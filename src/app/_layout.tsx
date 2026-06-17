@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
+import '@/playback/register'; // registers the native background playback service (no-op on web)
 import { useSession } from '@/stores/session';
 import { ThemeProvider } from '@/theme/theme-provider';
 

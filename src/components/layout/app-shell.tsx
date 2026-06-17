@@ -2,6 +2,8 @@ import { type ReactNode } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MiniPlayer } from '@/components/player/mini-player';
+
 import { AppHeader } from './app-header';
 import { NavBar } from './app-nav';
 
@@ -24,6 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <View className="flex-1">
           <AppHeader />
           <View className="flex-1">{children}</View>
+          <MiniPlayer />
         </View>
       </View>
     );
@@ -33,6 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <View className="flex-1 bg-gray-200 dark:bg-gray-800">
       <AppHeader />
       <View className="flex-1">{children}</View>
+      <MiniPlayer />
       <SafeAreaView edges={['bottom']} className="bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="bottom" />
       </SafeAreaView>
