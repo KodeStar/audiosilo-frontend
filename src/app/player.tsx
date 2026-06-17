@@ -48,13 +48,16 @@ export default function PlayerScreen() {
   const { data: book } = useBook(libraryId, path);
   const { data: chapterData } = useChapters(libraryId, path);
 
-  // Start playback when a new book is opened from the library.
+  // Start playback when a new book is opened from the library. A chapter param
+  // starts at that chapter; otherwise resume from saved progress (undefined).
   useEffect(() => {
     if (!book || !path || Number.isNaN(libraryId)) return;
     if (nowPlaying?.libraryId === libraryId && nowPlaying?.path === path) return;
     const idx = chapter !== undefined ? Number(chapter) : NaN;
     const startAt =
-      !Number.isNaN(idx) && chapterData?.chapters?.[idx] ? chapterData.chapters[idx].book_offset : 0;
+      !Number.isNaN(idx) && chapterData?.chapters?.[idx]
+        ? chapterData.chapters[idx].book_offset
+        : undefined;
     void usePlayer.getState().playBook(api, libraryId, book, chapterData, startAt);
   }, [api, book, chapterData, libraryId, path, chapter, nowPlaying]);
 
