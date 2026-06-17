@@ -1,7 +1,10 @@
 import { Pressable, ScrollView, View } from 'react-native';
 
+import { useOptionalApi } from '@/api/provider';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
+import { useSession } from '@/stores/session';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
 
 const APPEARANCE: { value: SchemePref; label: string }[] = [
@@ -12,6 +15,21 @@ const APPEARANCE: { value: SchemePref; label: string }[] = [
 
 export default function SettingsScreen() {
   const { pref, setPref } = useTheme();
+  const api = useOptionalApi();
+  const user = useSession((s) => s.user);
+  const serverUrl = useSession((s) => s.serverUrl);
+  const logout = useSession((s) => s.logout);
+
+  const onLogout = async () => {
+    // Best-effort server-side revocation; clear locally regardless.
+    try {
+      await api?.logout();
+    } catch {
+      // ignore network/4xx; the local session is cleared below
+    }
+    await logout();
+  };
+
   return (
     <ScrollView className="flex-1" contentContainerClassName="p-4 gap-6">
       <Text variant="heading">Settings</Text>
@@ -35,6 +53,20 @@ export default function SettingsScreen() {
               </Pressable>
             );
           })}
+        </Card>
+      </View>
+
+      <View className="gap-2">
+        <Text variant="label">Account</Text>
+        <Card className="gap-3">
+          <View>
+            <Text variant="subtitle">{user?.username ?? 'Signed in'}</Text>
+            <Text variant="muted">
+              {user?.role === 'admin' ? 'Administrator' : 'User'}
+              {serverUrl ? ` · ${serverUrl.replace(/^https?:\/\//, '')}` : ''}
+            </Text>
+          </View>
+          <Button title="Sign out" variant="secondary" icon="logout" onPress={onLogout} />
         </Card>
       </View>
     </ScrollView>
