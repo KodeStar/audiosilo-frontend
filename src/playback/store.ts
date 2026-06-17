@@ -4,10 +4,17 @@ import type { ApiClient } from '@/api/client';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
+import { flushQueue, getDeviceId, loadInitialProgress, saveProgress } from './progress-sync';
 import { createPlaybackService } from './service';
 import { INITIAL_SNAPSHOT, type PlaybackService, type PlaybackSnapshot } from './types';
 
 let service: PlaybackService | null = null;
+let apiRef: ApiClient | null = null;
+let deviceId = '';
+let saveTimer: ReturnType<typeof setInterval> | null = null;
+
+const SAVE_INTERVAL_MS = 15_000;
+const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
 
 export type NowPlaying = {
   libraryId: number;
@@ -23,6 +30,7 @@ type PlayerState = {
   snapshot: PlaybackSnapshot;
   rate: number;
 
+  /** Start a book. Omit startBookPosition to resume from saved progress. */
   playBook: (
     api: ApiClient,
     libraryId: number,
@@ -37,11 +45,44 @@ type PlayerState = {
   stop: () => Promise<void>;
 };
 
+/** Persist the current whole-book position (offline-safe). */
+async function persist() {
+  const { nowPlaying, snapshot, rate } = usePlayer.getState();
+  if (!apiRef || !nowPlaying) return;
+  const position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
+  if (position <= 0) return;
+  const total = nowPlaying.queue.total;
+  await saveProgress(apiRef, {
+    libraryId: nowPlaying.libraryId,
+    path: nowPlaying.path,
+    position,
+    duration: total,
+    finished: total > 0 && position >= total - FINISHED_TOLERANCE,
+    playback_speed: rate,
+    device_id: deviceId,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+function startSaveLoop() {
+  stopSaveLoop();
+  saveTimer = setInterval(() => void persist(), SAVE_INTERVAL_MS);
+}
+function stopSaveLoop() {
+  if (saveTimer) {
+    clearInterval(saveTimer);
+    saveTimer = null;
+  }
+}
+
 async function ensureService(): Promise<PlaybackService> {
   if (service) return service;
   const svc = createPlaybackService();
   await svc.setup();
-  svc.subscribe((snapshot) => usePlayer.setState({ snapshot }));
+  svc.subscribe((snapshot) => {
+    usePlayer.setState({ snapshot });
+    if (snapshot.state === 'ended') void persist();
+  });
   service = svc;
   return svc;
 }
@@ -51,11 +92,23 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
 
-  playBook: async (api, libraryId, book, chapterData, startBookPosition = 0) => {
+  playBook: async (api, libraryId, book, chapterData, startBookPosition) => {
+    apiRef = api;
+    deviceId = await getDeviceId();
     const queue = buildBookQueue(api, libraryId, book, chapterData);
     const svc = await ensureService();
-    const { index, positionInTrack } = locate(queue.offsets, startBookPosition);
+
+    let startAt = startBookPosition ?? 0;
+    let speed = get().rate;
+    if (startBookPosition === undefined) {
+      const saved = await loadInitialProgress(api, libraryId, book.rel_path);
+      if (saved && !saved.finished && saved.position > 0) startAt = saved.position;
+      if (saved?.playback_speed && saved.playback_speed > 0) speed = saved.playback_speed;
+    }
+
+    const { index, positionInTrack } = locate(queue.offsets, startAt);
     set({
+      rate: speed,
       nowPlaying: {
         libraryId,
         path: book.rel_path,
@@ -66,14 +119,20 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       },
     });
     await svc.load(queue.tracks, index, positionInTrack);
-    await svc.setRate(get().rate);
+    await svc.setRate(speed);
     await svc.play();
+    startSaveLoop();
+    void flushQueue(api);
   },
 
   toggle: async () => {
     const svc = await ensureService();
-    if (get().snapshot.state === 'playing') await svc.pause();
-    else await svc.play();
+    if (get().snapshot.state === 'playing') {
+      await svc.pause();
+      void persist();
+    } else {
+      await svc.play();
+    }
   },
 
   seekBook: async (bookPosition) => {
@@ -86,6 +145,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     } else {
       await svc.skipToTrack(target.index, target.positionInTrack);
     }
+    void persist();
   },
 
   skipSeconds: async (delta) => {
@@ -99,9 +159,12 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   setRate: async (rate) => {
     set({ rate });
     if (service) await service.setRate(rate);
+    void persist();
   },
 
   stop: async () => {
+    stopSaveLoop();
+    await persist();
     if (service) await service.reset();
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
