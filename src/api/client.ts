@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import type {
   AuthSession,
   Book,
@@ -151,12 +153,22 @@ export class ApiClient {
     });
   }
 
-  // --- Media URLs (consumed by expo-image / playback layer with authHeaders) -
+  // --- Media URLs ----------------------------------------------------------
+  // On native the token travels in headers (expo-image / track-player). On web,
+  // <img>/<audio> can't set headers, so the token is appended as a query param
+  // (the server accepts `?token=` as a fallback for media GETs).
+  private mediaTokenQuery(): Query {
+    return Platform.OS === 'web' && this.token ? { token: this.token } : {};
+  }
   coverUrl(libraryId: number, path: string) {
-    return this.apiUrl(`/libraries/${libraryId}/cover`, { path });
+    return this.apiUrl(`/libraries/${libraryId}/cover`, { path, ...this.mediaTokenQuery() });
   }
   streamUrl(libraryId: number, path: string, download = false) {
-    return this.apiUrl(`/libraries/${libraryId}/stream`, { path, download: download ? 1 : undefined });
+    return this.apiUrl(`/libraries/${libraryId}/stream`, {
+      path,
+      download: download ? 1 : undefined,
+      ...this.mediaTokenQuery(),
+    });
   }
 
   // --- Listening state -----------------------------------------------------

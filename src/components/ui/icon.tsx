@@ -1,15 +1,43 @@
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
+import { faBackwardStep } from '@fortawesome/pro-solid-svg-icons/faBackwardStep';
+import { faCirclePause } from '@fortawesome/pro-solid-svg-icons/faCirclePause';
+import { faCirclePlay } from '@fortawesome/pro-solid-svg-icons/faCirclePlay';
+import { faForwardStep } from '@fortawesome/pro-solid-svg-icons/faForwardStep';
+import { faPause } from '@fortawesome/pro-solid-svg-icons/faPause';
+import { faPlay } from '@fortawesome/pro-solid-svg-icons/faPlay';
+import { faRotateLeft } from '@fortawesome/pro-solid-svg-icons/faRotateLeft';
+import { faRotateRight } from '@fortawesome/pro-solid-svg-icons/faRotateRight';
+import { faAlarmSnooze } from '@fortawesome/pro-light-svg-icons/faAlarmSnooze';
+import { faBook } from '@fortawesome/pro-light-svg-icons/faBook';
+import { faBookmark } from '@fortawesome/pro-light-svg-icons/faBookmark';
+import { faCheck } from '@fortawesome/pro-light-svg-icons/faCheck';
+import { faChevronDown } from '@fortawesome/pro-light-svg-icons/faChevronDown';
+import { faChevronLeft } from '@fortawesome/pro-light-svg-icons/faChevronLeft';
+import { faChevronRight } from '@fortawesome/pro-light-svg-icons/faChevronRight';
+import { faClock } from '@fortawesome/pro-light-svg-icons/faClock';
+import { faDownToLine } from '@fortawesome/pro-light-svg-icons/faDownToLine';
+import { faFolder } from '@fortawesome/pro-light-svg-icons/faFolder';
+import { faGear } from '@fortawesome/pro-light-svg-icons/faGear';
+import { faHouse } from '@fortawesome/pro-light-svg-icons/faHouse';
+import { faList } from '@fortawesome/pro-light-svg-icons/faList';
+import { faMagnifyingGlass } from '@fortawesome/pro-light-svg-icons/faMagnifyingGlass';
+import { faMinus } from '@fortawesome/pro-light-svg-icons/faMinus';
+import { faPlus } from '@fortawesome/pro-light-svg-icons/faPlus';
+import { faQrcode } from '@fortawesome/pro-light-svg-icons/faQrcode';
+import { faRightFromBracket } from '@fortawesome/pro-light-svg-icons/faRightFromBracket';
+import { faServer } from '@fortawesome/pro-light-svg-icons/faServer';
+import { faSliders } from '@fortawesome/pro-light-svg-icons/faSliders';
+import { faSpinnerThird } from '@fortawesome/pro-light-svg-icons/faSpinnerThird';
+import { faTrashCan } from '@fortawesome/pro-light-svg-icons/faTrashCan';
+import { faUser } from '@fortawesome/pro-light-svg-icons/faUser';
+import { faXmark } from '@fortawesome/pro-light-svg-icons/faXmark';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { View } from 'react-native';
 
 /**
- * Central icon abstraction. Every screen imports `<Icon name=... />` from here,
- * never an icon library directly — so switching the icon backend is a one-file
- * change.
- *
- * TODO(fontawesome): once the FontAwesome Pro npm token is configured and the
- * `@fortawesome/*` packages are installed, replace the placeholder body below
- * with `<FontAwesomeIcon icon={ICONS[name]} size={size} color={color} />` and
- * fill in the ICONS map. The IconName union and component API stay identical,
- * so no consumer changes.
+ * Central icon abstraction. Screens import `<Icon name=... />` from here, never
+ * an icon library directly, so the backend stays swappable. Backed by
+ * FontAwesome Pro (light for chrome, solid for transport controls).
  */
 export type IconName =
   | 'home'
@@ -23,6 +51,8 @@ export type IconName =
   | 'circle-pause'
   | 'forward'
   | 'backward'
+  | 'next'
+  | 'prev'
   | 'chevron-left'
   | 'chevron-right'
   | 'chevron-down'
@@ -43,6 +73,41 @@ export type IconName =
   | 'check'
   | 'user';
 
+const ICONS: Record<IconName, IconDefinition> = {
+  home: faHouse,
+  folder: faFolder,
+  search: faMagnifyingGlass,
+  settings: faGear,
+  logout: faRightFromBracket,
+  play: faPlay,
+  pause: faPause,
+  'circle-play': faCirclePlay,
+  'circle-pause': faCirclePause,
+  forward: faRotateRight,
+  backward: faRotateLeft,
+  next: faForwardStep,
+  prev: faBackwardStep,
+  'chevron-left': faChevronLeft,
+  'chevron-right': faChevronRight,
+  'chevron-down': faChevronDown,
+  spinner: faSpinnerThird,
+  bookmark: faBookmark,
+  clock: faClock,
+  sliders: faSliders,
+  trash: faTrashCan,
+  close: faXmark,
+  plus: faPlus,
+  minus: faMinus,
+  download: faDownToLine,
+  sleep: faAlarmSnooze,
+  book: faBook,
+  list: faList,
+  qrcode: faQrcode,
+  server: faServer,
+  check: faCheck,
+  user: faUser,
+};
+
 export type IconProps = {
   name: IconName;
   size?: number;
@@ -51,20 +116,6 @@ export type IconProps = {
 };
 
 export function Icon({ name, size = 20, color = '#9ca3af', className }: IconProps) {
-  // Placeholder rendering until FontAwesome Pro is wired in. Renders a sized,
-  // outlined square so layouts are correct ahead of real glyphs.
-  return (
-    <View
-      accessibilityLabel={name}
-      className={className}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: Math.max(2, size * 0.18),
-        borderWidth: 1.5,
-        borderColor: color,
-        opacity: 0.55,
-      }}
-    />
-  );
+  const icon = <FontAwesomeIcon icon={ICONS[name]} size={size} color={color} />;
+  return className ? <View className={className}>{icon}</View> : icon;
 }
