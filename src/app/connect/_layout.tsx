@@ -1,11 +1,10 @@
-import { Redirect, Slot } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 
-import { AppShell } from '@/components/layout/app-shell';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { useSession } from '@/stores/session';
 
-export default function AppGroupLayout() {
+export default function ConnectLayout() {
   const status = useSession((s) => s.status);
 
   if (status === 'loading') {
@@ -15,13 +14,8 @@ export default function AppGroupLayout() {
       </Screen>
     );
   }
-  if (status === 'unauthenticated') {
-    return <Redirect href="/connect" />;
+  if (status === 'authenticated') {
+    return <Redirect href="/" />;
   }
-
-  return (
-    <AppShell>
-      <Slot />
-    </AppShell>
-  );
+  return <Stack screenOptions={{ headerShown: false }} />;
 }
