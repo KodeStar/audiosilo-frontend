@@ -8,7 +8,12 @@ import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { libraryHref, segmentsToPath } from '@/lib/paths';
 
-export default function BrowseScreen() {
+/**
+ * Filesystem browse view, shared by the library root (`index.tsx`) and the
+ * nested catch-all (`[...path].tsx`). The optional `path` param is absent at the
+ * root and a segment array once the user drills into folders.
+ */
+export function BrowseScreen() {
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
     path?: string | string[];
