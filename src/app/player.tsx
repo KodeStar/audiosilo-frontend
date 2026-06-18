@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAddBookmark, useBook, useChapters } from '@/api/hooks';
 import { useApi } from '@/api/provider';
@@ -24,6 +24,7 @@ export default function PlayerScreen() {
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
   const api = useApi();
+  const insets = useSafeAreaInsets();
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
 
@@ -64,14 +65,20 @@ export default function PlayerScreen() {
 
   if (!book && !nowPlaying) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+      <View
+        style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+        className="flex-1 bg-gray-200 dark:bg-gray-800"
+      >
         <Spinner center />
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <View
+      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+      className="flex-1 bg-gray-200 dark:bg-gray-800"
+    >
       <View className="flex-row items-center justify-between px-4 py-2">
         <Pressable onPress={() => router.back()} hitSlop={12} className="h-8 w-8 items-center justify-center">
           <Icon name="chevron-down" size={26} color={neutral} />
@@ -87,6 +94,6 @@ export default function PlayerScreen() {
       </View>
 
       <PlayerView />
-    </SafeAreaView>
+    </View>
   );
 }

@@ -7,6 +7,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
 import { useSession } from '@/stores/session';
+import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 type NavItem = { href: Href; match: string; label: string; icon: IconName };
@@ -27,6 +28,7 @@ function isActive(pathname: string, match: string) {
 /** Left sidebar on wide screens, bottom tab bar on phones. */
 export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   const pathname = usePathname();
+  const { scheme } = useTheme();
   const api = useOptionalApi();
   const logout = useSession((s) => s.logout);
 
@@ -61,10 +63,10 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
 
   return (
     <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800 after:content-[''] after:border-r after:absolute after:right-0 after:h-full after:border-gray-300 after:dark:border-gray-860">
-      <View className="p-5">
+      <View className="p-5 border-b border-gray-100 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-b after:absolute after:bottom-0 after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860">
         <Brand size={50} showVersion />
       </View>
-      <View className="gap-2 px-3">
+      <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {
           const active = isActive(pathname, item.match);
           return (
@@ -77,9 +79,9 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                 }`}
               >
                 {active ? (
-                  <View className="absolute -left-2 bottom-1 top-1 w-1.5 rounded-full bg-primary" />
+                  <View className="absolute -left-[1px] -bottom-[1px] top-0 w-1.5 rounded-tl-lg rounded-bl-lg bg-primary" />
                 ) : null}
-                <Icon name={item.icon} size={20} color={colors.dark.text} />
+                <Icon name={item.icon} size={24} color={colors[scheme].text} />
                 <Text className="text-base text-gray-600 dark:text-gray-300">{item.label}</Text>
               </Pressable>
             </Link>
@@ -91,9 +93,9 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
 
       <Pressable
         onPress={onLogout}
-        className="flex-row items-center gap-3 border-t border-gray-100 px-6 py-5 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840"
+        className="flex-row items-center gap-3 border-t border-gray-100 px-6 py-5 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-t after:absolute after:top-[-2px] after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860"
       >
-        <Icon name="logout" size={20} color={colors.dark.text} />
+        <Icon name="logout" size={20} color={colors[scheme].text} />
         <Text className="text-base text-gray-600 dark:text-gray-300">Logout</Text>
       </Pressable>
     </View>

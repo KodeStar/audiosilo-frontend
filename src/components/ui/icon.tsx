@@ -1,22 +1,13 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
-import { faBackwardStep } from '@fortawesome/pro-solid-svg-icons/faBackwardStep';
-import { faCirclePause } from '@fortawesome/pro-solid-svg-icons/faCirclePause';
-import { faCirclePlay } from '@fortawesome/pro-solid-svg-icons/faCirclePlay';
-import { faForwardStep } from '@fortawesome/pro-solid-svg-icons/faForwardStep';
-import { faPause } from '@fortawesome/pro-solid-svg-icons/faPause';
-import { faPlay } from '@fortawesome/pro-solid-svg-icons/faPlay';
-import { faRotateLeft } from '@fortawesome/pro-solid-svg-icons/faRotateLeft';
-import { faRotateRight } from '@fortawesome/pro-solid-svg-icons/faRotateRight';
 import { faAlarmSnooze } from '@fortawesome/pro-light-svg-icons/faAlarmSnooze';
 import { faBook } from '@fortawesome/pro-light-svg-icons/faBook';
 import { faBookmark } from '@fortawesome/pro-light-svg-icons/faBookmark';
 import { faCheck } from '@fortawesome/pro-light-svg-icons/faCheck';
 import { faChevronDown } from '@fortawesome/pro-light-svg-icons/faChevronDown';
-import { faClockRotateLeft } from '@fortawesome/pro-light-svg-icons/faClockRotateLeft';
-import { faNoteSticky } from '@fortawesome/pro-light-svg-icons/faNoteSticky';
 import { faChevronLeft } from '@fortawesome/pro-light-svg-icons/faChevronLeft';
 import { faChevronRight } from '@fortawesome/pro-light-svg-icons/faChevronRight';
 import { faClock } from '@fortawesome/pro-light-svg-icons/faClock';
+import { faClockRotateLeft } from '@fortawesome/pro-light-svg-icons/faClockRotateLeft';
 import { faDownToLine } from '@fortawesome/pro-light-svg-icons/faDownToLine';
 import { faEllipsis } from '@fortawesome/pro-light-svg-icons/faEllipsis';
 import { faFolder } from '@fortawesome/pro-light-svg-icons/faFolder';
@@ -25,6 +16,7 @@ import { faHouse } from '@fortawesome/pro-light-svg-icons/faHouse';
 import { faList } from '@fortawesome/pro-light-svg-icons/faList';
 import { faMagnifyingGlass } from '@fortawesome/pro-light-svg-icons/faMagnifyingGlass';
 import { faMinus } from '@fortawesome/pro-light-svg-icons/faMinus';
+import { faNoteSticky } from '@fortawesome/pro-light-svg-icons/faNoteSticky';
 import { faPlus } from '@fortawesome/pro-light-svg-icons/faPlus';
 import { faQrcode } from '@fortawesome/pro-light-svg-icons/faQrcode';
 import { faRectangleVerticalHistory } from '@fortawesome/pro-light-svg-icons/faRectangleVerticalHistory';
@@ -35,6 +27,14 @@ import { faSpinnerThird } from '@fortawesome/pro-light-svg-icons/faSpinnerThird'
 import { faTrashCan } from '@fortawesome/pro-light-svg-icons/faTrashCan';
 import { faUser } from '@fortawesome/pro-light-svg-icons/faUser';
 import { faXmark } from '@fortawesome/pro-light-svg-icons/faXmark';
+import { faCirclePause } from '@fortawesome/pro-solid-svg-icons/faCirclePause';
+import { faCirclePlay } from '@fortawesome/pro-solid-svg-icons/faCirclePlay';
+import { faPause } from '@fortawesome/pro-solid-svg-icons/faPause';
+import { faPlay } from '@fortawesome/pro-solid-svg-icons/faPlay';
+import { faArrowRotateLeft } from '@fortawesome/pro-thin-svg-icons/faArrowRotateLeft';
+import { faArrowRotateRight } from '@fortawesome/pro-thin-svg-icons/faArrowRotateRight';
+import { faBackwardStep } from '@fortawesome/pro-thin-svg-icons/faBackwardStep';
+import { faForwardStep } from '@fortawesome/pro-thin-svg-icons/faForwardStep';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { View } from 'react-native';
 
@@ -91,8 +91,8 @@ const ICONS: Record<IconName, IconDefinition> = {
   pause: faPause,
   'circle-play': faCirclePlay,
   'circle-pause': faCirclePause,
-  forward: faRotateRight,
-  backward: faRotateLeft,
+  forward: faArrowRotateRight,
+  backward: faArrowRotateLeft,
   next: faForwardStep,
   prev: faBackwardStep,
   'chevron-left': faChevronLeft,

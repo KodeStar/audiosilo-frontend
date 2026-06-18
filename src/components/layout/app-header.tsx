@@ -15,7 +15,7 @@ export function AppHeader() {
   const insets = useSafeAreaInsets();
   return (
     <View
-      style={{ paddingTop: insets.top }}
+      style={{ paddingTop: insets.top + 8 }}
       className="border-b border-gray-100 bg-gray-200/90 dark:border-gray-750 dark:bg-gray-800/90"
     >
       <View className="h-16 flex-row items-center justify-between px-4">

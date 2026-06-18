@@ -39,6 +39,7 @@ export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: numb
             </Text>
           ) : null}
         </View>
+        <Icon name="chevron-right" size={16} className="mr-4" />
       </Pressable>
     </Link>
   );

@@ -29,11 +29,9 @@ export function SleepTimerButton() {
     <>
       <Pressable onPress={() => setOpen(true)} className="flex-row items-center gap-1.5" hitSlop={8}>
         <Icon name="sleep" size={20} color={active ? colors.primary : neutral} />
-        {active && remaining !== null ? (
+        {active && remaining !== null &&
           <Text className="text-sm text-primary">{formatClock(remaining)}</Text>
-        ) : (
-          <Text variant="caption">Sleep</Text>
-        )}
+       }
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>

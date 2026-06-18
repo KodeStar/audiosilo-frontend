@@ -42,7 +42,7 @@ export function ContentColumn({ children }: { children: ReactNode }) {
   const searching = useSearchStore((s) => s.query.trim().length > 0);
   return (
     <View className="flex-1">
-      <View className="px-6 pb-2 pt-5">
+      <View className="px-8 pb-3 pt-5">
         <DesktopSearch />
       </View>
       <View className="flex-1">

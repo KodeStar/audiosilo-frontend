@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { useApi } from '@/api/provider';
 import { HistorySection } from '@/components/library/history-section';
@@ -100,7 +100,7 @@ export function PlayerView() {
   return (
     <View className="flex-1">
       {/* Cover fills the space; falls back to the title when there's no art. */}
-      <View className="flex-1 items-center justify-center px-6">
+      <View className="items-center p-6">
         <View className="aspect-square w-full max-w-[300px]">
           <Cover source={cover ? { uri: cover, headers: api.authHeaders() } : null} label={title} />
           {sleepActive && sleepRemaining !== null ? (
@@ -113,7 +113,7 @@ export function PlayerView() {
       </View>
 
       {/* Transport pinned toward the bottom. */}
-      <View className="gap-5 px-6 pb-4">
+      <View className="flex-1 justify-between gap-5 px-6 pb-4 bg-gray-200 dark:bg-gray-800 bg-opacity-90 dark:bg-opacity-90">
         <Text variant="subtitle" className="text-center" numberOfLines={1}>
           {segTitle}
         </Text>
@@ -133,19 +133,23 @@ export function PlayerView() {
           <Pressable onPress={goPrev} hitSlop={8} className="h-10 w-10 items-center justify-center">
             <Icon name="prev" size={24} color={neutral} />
           </Pressable>
-          <Pressable onPress={() => void skipSeconds(-skipBackward)} className="items-center gap-0.5" hitSlop={8}>
-            <Icon name="backward" size={28} color={neutral} />
-            <Text variant="caption">{skipBackward}</Text>
+          <Pressable onPress={() => void skipSeconds(-skipBackward)} className="items-center justify-center" hitSlop={8}>
+            <Icon name="backward" size={50} color={neutral} />
+            <View className="absolute inset-0 items-center justify-center">
+              <Text variant="caption">{skipBackward}</Text>
+            </View>
           </Pressable>
           <Pressable
             onPress={() => void toggle()}
-            className="h-16 w-16 items-center justify-center rounded-full bg-primary active:opacity-80"
+            className="h-20 w-20 items-center justify-center rounded-full bg-primary active:opacity-80"
           >
             <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
           </Pressable>
-          <Pressable onPress={() => void skipSeconds(skipForward)} className="items-center gap-0.5" hitSlop={8}>
-            <Icon name="forward" size={28} color={neutral} />
-            <Text variant="caption">{skipForward}</Text>
+          <Pressable onPress={() => void skipSeconds(skipForward)} className="items-center justify-center" hitSlop={8}>
+            <Icon name="forward" size={50} color={neutral} />
+            <View className="absolute inset-0 items-center justify-center">
+              <Text variant="caption">{skipForward}</Text>
+            </View>
           </Pressable>
           <Pressable onPress={goNext} hitSlop={8} className="h-10 w-10 items-center justify-center">
             <Icon name="next" size={24} color={neutral} />
@@ -153,31 +157,31 @@ export function PlayerView() {
         </View>
 
         <View className="flex-row items-center justify-between px-2">
-          <SpeedButton />
-          <View className="flex-row items-center gap-5">
+          
+            <SpeedButton />
             <Pressable onPress={() => setSheet('history')} hitSlop={8} className="items-center gap-0.5">
               <Icon name="history" size={20} color={neutral} />
-              <Text variant="caption">History</Text>
             </Pressable>
             <Pressable onPress={() => setSheet('notes')} hitSlop={8} className="items-center gap-0.5">
               <Icon name="notes" size={20} color={neutral} />
-              <Text variant="caption">Notes</Text>
             </Pressable>
             <SleepTimerButton />
-          </View>
         </View>
       </View>
 
-      <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
-        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setSheet(null)}>
-          <Pressable className="max-h-[75%] rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840" onPress={() => {}}>
+      {/* In-view overlay rather than a nested RN <Modal>: a Modal inside the
+          native full-screen player modal won't present on iOS. */}
+      {sheet !== null ? (
+        <View className="absolute inset-0 justify-end">
+          <Pressable className="absolute inset-0 bg-black/40" onPress={() => setSheet(null)} />
+          <View className="max-h-[75%] rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840">
             <ScrollView contentContainerClassName="pb-4" keyboardShouldPersistTaps="handled">
               {sheet === 'history' ? <HistorySection libraryId={libraryId} path={path} /> : null}
               {sheet === 'notes' ? <NotesSection libraryId={libraryId} path={path} /> : null}
             </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }

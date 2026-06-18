@@ -32,7 +32,7 @@ export default function RootLayout() {
           <ApiProvider>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(app)" />
-              <Stack.Screen name="player" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
             </Stack>
             <StatusBar style="auto" />
           </ApiProvider>
