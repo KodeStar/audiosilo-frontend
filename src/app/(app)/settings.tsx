@@ -46,7 +46,7 @@ export default function SettingsScreen() {
                 className={`flex-1 items-center rounded-md px-3 py-2 ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-860'}`}
               >
                 <Text
-                  className={`font-roboto-medium ${active ? 'text-white' : 'text-gray-600 dark:text-gray-400'}`}
+                  className={`font-roboto-medium ${active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}
                 >
                   {o.label}
                 </Text>
