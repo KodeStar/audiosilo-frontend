@@ -178,3 +178,14 @@ export type Note = {
   created_at: string;
   updated_at: string;
 };
+
+/** A recorded listening span (positions over a time range). */
+export type History = {
+  id: number;
+  library_id: number;
+  path: string;
+  from_pos: number;
+  to_pos: number;
+  started_at: string;
+  ended_at: string;
+};

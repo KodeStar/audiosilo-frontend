@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
+import { queryClient } from '@/api/provider';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 import { useSettings } from '@/stores/settings';
 
@@ -13,6 +14,9 @@ let service: PlaybackService | null = null;
 let apiRef: ApiClient | null = null;
 let deviceId = '';
 let saveTimer: ReturnType<typeof setInterval> | null = null;
+let historyStart: { position: number; at: number } | null = null;
+
+const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 
 const SAVE_INTERVAL_MS = 15_000;
 const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
@@ -77,12 +81,43 @@ function stopSaveLoop() {
   }
 }
 
+/** Mark the start of a listening span when playback begins. */
+function beginHistory() {
+  if (historyStart) return;
+  const player = usePlayer.getState();
+  if (!player.nowPlaying) return;
+  historyStart = { position: selectBookPosition(player), at: Date.now() };
+}
+
+/** Record the listening span (from→to over the elapsed time) when playback
+ * stops, ignoring brief spans. */
+function endHistory() {
+  const start = historyStart;
+  historyStart = null;
+  if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
+  const player = usePlayer.getState();
+  const np = player.nowPlaying;
+  if (!np) return;
+  void apiRef
+    .addHistory(np.libraryId, np.path, {
+      from_pos: start.position,
+      to_pos: selectBookPosition(player),
+      started_at: new Date(start.at).toISOString(),
+      ended_at: new Date().toISOString(),
+    })
+    .then(() => queryClient.invalidateQueries({ queryKey: ['history'] }))
+    .catch(() => {});
+}
+
 async function ensureService(): Promise<PlaybackService> {
   if (service) return service;
   const svc = createPlaybackService();
   await svc.setup();
   svc.subscribe((snapshot) => {
+    const prev = usePlayer.getState().snapshot.state;
     usePlayer.setState({ snapshot });
+    if (snapshot.state === 'playing' && prev !== 'playing') beginHistory();
+    else if (prev === 'playing' && snapshot.state !== 'playing') endHistory();
     if (snapshot.state === 'ended') void persist();
   });
   service = svc;
@@ -95,6 +130,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   rate: 1,
 
   playBook: async (api, libraryId, book, chapterData, startBookPosition) => {
+    endHistory(); // flush any prior book's listening span before switching
     apiRef = api;
     deviceId = await getDeviceId();
     const queue = buildBookQueue(api, libraryId, book, chapterData);
