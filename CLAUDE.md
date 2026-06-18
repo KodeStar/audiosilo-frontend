@@ -85,8 +85,9 @@ Raw color values for native props in `src/theme/tokens.ts`.
 
 **Routing**: `src/app/(app)/*` is the authenticated shell (guarded in its
 `_layout.tsx`); `src/app/connect/*` is onboarding; `src/app/player.tsx` is a modal.
-Dynamic content uses optional catch-alls, e.g. `library/[libraryId]/[[...path]].tsx`.
-Path helpers in `src/lib/paths.ts`.
+Library browse uses `library/[libraryId]/index.tsx` (root) + `library/[libraryId]/[...path].tsx`
+(sub-path), both re-exporting `src/components/library/browse-screen.tsx`; book detail
+is `book/[libraryId]/[...path].tsx`. Path helpers in `src/lib/paths.ts`.
 
 ## Layout
 ```
