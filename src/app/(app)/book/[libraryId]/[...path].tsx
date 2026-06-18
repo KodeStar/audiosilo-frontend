@@ -4,13 +4,12 @@ import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useBook, useChapters, useLibraries } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import type { Chapter } from '@/api/types';
+import { ContentColumn } from '@/components/layout/content-column';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { DownloadControl } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
-import { ContentColumn } from '@/components/layout/content-column';
 import { PlayerView } from '@/components/player/player-view';
-import { useDownloadEntry } from '@/downloads/store';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
@@ -18,6 +17,7 @@ import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { useDownloadEntry } from '@/downloads/store';
 import { bookSubtitle, formatBitrate, formatDuration, formatDurationFull } from '@/lib/format';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
@@ -169,7 +169,7 @@ export default function BookDetailScreen() {
     return (
       <View className="flex-1 flex-row">
         <ContentColumn>
-          <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pt-2">
+          <ScrollView className="flex-1" contentContainerClassName="gap-4 p-8 pt-2">
             <BreadCrumbs crumbs={crumbs} />
             <DownloadControl libraryId={libraryId} path={path} book={book} chapterData={chapterData} disabled={chaptersLoading} />
             {fileList}

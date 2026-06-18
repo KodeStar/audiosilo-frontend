@@ -7,7 +7,7 @@ const variants: Record<Variant, string> = {
   muted: 'font-sans text-sm text-gray-500 dark:text-gray-500',
   heading: 'font-roboto-semibold text-xl text-gray-700 dark:text-gray-100',
   title: 'font-roboto-medium text-lg text-gray-700 dark:text-gray-200',
-  subtitle: 'font-roboto-regular text-sm text-gray-700 dark:text-gray-200',
+  subtitle: 'font-roboto-medium text-sm text-gray-700 dark:text-gray-200',
   label: 'font-roboto-regular text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400',
   caption: 'font-sans text-xs text-gray-500 dark:text-gray-500',
 };
