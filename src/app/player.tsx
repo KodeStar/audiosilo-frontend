@@ -157,7 +157,7 @@ export default function PlayerScreen() {
                 onPress={() => void setRate(r)}
                 className={`rounded-full px-3 py-1.5 ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-840'}`}
               >
-                <Text className={`text-sm ${active ? 'text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                <Text className={`text-sm ${active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
                   {r}×
                 </Text>
               </Pressable>

@@ -4,6 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiClient, ApiError } from '@/api/client';
+import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -52,7 +53,8 @@ export default function ConnectServerScreen() {
         contentContainerClassName="flex-grow justify-center gap-8 p-6"
         keyboardShouldPersistTaps="handled"
       >
-        <View className="items-center gap-2">
+        <View className="items-center gap-3">
+          <Logo size={64} />
           <Text className="font-roboto-bold text-3xl text-primary">AudioSilo</Text>
           <Text variant="muted">Connect to your audiobook server</Text>
         </View>

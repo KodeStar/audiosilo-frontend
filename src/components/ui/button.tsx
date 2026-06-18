@@ -1,9 +1,8 @@
-import { ActivityIndicator, Pressable, type PressableProps } from 'react-native';
+import { ActivityIndicator, Pressable, Text as RNText, type PressableProps } from 'react-native';
 
 import { colors } from '@/theme/tokens';
 
 import { Icon, type IconName } from './icon';
-import { Text } from './text';
 
 type Variant = 'primary' | 'secondary' | 'ghost';
 
@@ -58,7 +57,7 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={16} color={iconColor[variant]} /> : null}
-          <Text className={`font-roboto-semibold text-base ${labelVariant[variant]}`}>{title}</Text>
+          <RNText className={`font-roboto-semibold text-base ${labelVariant[variant]}`}>{title}</RNText>
         </>
       )}
     </Pressable>
