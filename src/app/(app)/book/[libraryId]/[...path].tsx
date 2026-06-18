@@ -8,6 +8,7 @@ import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { DownloadControl } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
+import { ContentColumn } from '@/components/layout/content-column';
 import { PlayerView } from '@/components/player/player-view';
 import { useDownloadEntry } from '@/downloads/store';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
@@ -167,14 +168,16 @@ export default function BookDetailScreen() {
   if (wide) {
     return (
       <View className="flex-1 flex-row">
-        <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pt-2">
-          <BreadCrumbs crumbs={crumbs} />
-          <DownloadControl libraryId={libraryId} path={path} book={book} chapterData={chapterData} disabled={chaptersLoading} />
-          {fileList}
-          <BookmarksSection libraryId={libraryId} path={path} />
-          <HistorySection libraryId={libraryId} path={path} />
-          <NotesSection libraryId={libraryId} path={path} />
-        </ScrollView>
+        <ContentColumn>
+          <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pt-2">
+            <BreadCrumbs crumbs={crumbs} />
+            <DownloadControl libraryId={libraryId} path={path} book={book} chapterData={chapterData} disabled={chaptersLoading} />
+            {fileList}
+            <BookmarksSection libraryId={libraryId} path={path} />
+            <HistorySection libraryId={libraryId} path={path} />
+            <NotesSection libraryId={libraryId} path={path} />
+          </ScrollView>
+        </ContentColumn>
 
         <View className="w-[380px] border-l border-gray-100 dark:border-gray-750">
           {isThisPlaying ? (
