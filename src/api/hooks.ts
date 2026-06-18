@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { getDeviceId, saveProgress } from '@/playback/progress-sync';
+
 import { useApi } from './provider';
 
 /** Centralized query keys so mutations can invalidate precisely. */
@@ -72,6 +74,37 @@ export function useRecentBooks(limit = 48) {
 export function useAllProgress() {
   const api = useApi();
   return useQuery({ queryKey: qk.allProgress(), queryFn: () => api.allProgress() });
+}
+
+/** Mark a book finished. Goes through the offline-aware last-write-wins save so
+ * it reconciles with playback progress, then refreshes the home lists. */
+export function useMarkFinished() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (p: {
+      libraryId: number;
+      path: string;
+      position: number;
+      duration: number;
+      playback_speed?: number;
+    }) => {
+      await saveProgress(api, {
+        libraryId: p.libraryId,
+        path: p.path,
+        position: p.position,
+        duration: p.duration,
+        finished: true,
+        playback_speed: p.playback_speed && p.playback_speed > 0 ? p.playback_speed : 1,
+        device_id: await getDeviceId(),
+        updated_at: new Date().toISOString(),
+      });
+    },
+    onSuccess: (_data, p) => {
+      qc.invalidateQueries({ queryKey: qk.allProgress() });
+      qc.invalidateQueries({ queryKey: qk.progress(p.libraryId, p.path) });
+    },
+  });
 }
 
 // --- Bookmarks -------------------------------------------------------------

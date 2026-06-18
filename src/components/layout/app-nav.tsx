@@ -60,7 +60,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   }
 
   return (
-    <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800 after:content-[''] after:border-r after:border-gray-100 after:dark:border-gray-750">
+    <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800 after:content-[''] after:border-r after:absolute after:right-0 after:h-full after:border-gray-300 after:dark:border-gray-860">
       <View className="p-5">
         <Brand size={50} showVersion />
       </View>

@@ -1,17 +1,23 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { useAllProgress, useRecentBooks } from '@/api/hooks';
+import { qk, useAllProgress, useMarkFinished, useRecentBooks } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import type { Progress } from '@/api/types';
 import { DownloadBadge } from '@/components/library/download-badge';
 import { Cover } from '@/components/ui/cover';
+import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { bookHref, pathLeaf } from '@/lib/paths';
+import { formatDuration, formatRelative } from '@/lib/format';
+import { bookHref, libraryHref, parentPath, pathLeaf } from '@/lib/paths';
 import { flushQueue } from '@/playback/progress-sync';
+import { usePlayer } from '@/playback/store';
+import { useTheme } from '@/theme/theme-provider';
+import { colors } from '@/theme/tokens';
 
 const WIDE_BREAKPOINT = 1024;
 
@@ -86,9 +92,11 @@ function GridCard({
         rounded="rounded-lg"
       />
       <View className="flex-row items-start gap-1.5">
-        <Text variant="subtitle" numberOfLines={2} className="flex-1 h-10 items-center">
-          {title}
-        </Text>
+        <View className="h-10 flex-1 justify-center">
+          <Text variant="subtitle" numberOfLines={2}>
+            {title}
+          </Text>
+        </View>
         <View className="pt-0.5">
           <DownloadBadge libraryId={libraryId} path={path} />
         </View>
@@ -98,8 +106,99 @@ function GridCard({
   );
 }
 
+/** Overflow menu for an in-progress book: mark finished, or jump to the
+ * containing folder ("more in series"). */
+function ProgressMenu({ item }: { item: Progress }) {
+  const [open, setOpen] = useState(false);
+  const markFinished = useMarkFinished();
+  const { scheme } = useTheme();
+  const neutral = scheme === 'dark' ? colors.dark.text : colors.light.textMuted;
+
+  const onMarkFinished = () => {
+    setOpen(false);
+    markFinished.mutate({
+      libraryId: item.library_id,
+      path: item.path,
+      position: item.position,
+      duration: item.duration,
+      playback_speed: item.playback_speed,
+    });
+  };
+  const onMoreInSeries = () => {
+    setOpen(false);
+    router.push(libraryHref(item.library_id, parentPath(item.path)));
+  };
+
+  return (
+    <>
+      <Pressable onPress={() => setOpen(true)} hitSlop={8} className="px-1 active:opacity-60">
+        <Icon name="ellipsis" size={22} color={neutral} />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
+          <Pressable className="gap-1 rounded-t-2xl bg-gray-100 p-2 pb-6 dark:bg-gray-840" onPress={() => {}}>
+            <MenuRow icon="check" label="Mark as Finished" onPress={onMarkFinished} />
+            <MenuRow icon="library" label="More in series" onPress={onMoreInSeries} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+function MenuRow({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: 'check' | 'library';
+  label: string;
+  onPress: () => void;
+}) {
+  const { scheme } = useTheme();
+  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  return (
+    <Pressable
+      onPress={onPress}
+      className="flex-row items-center gap-3 rounded-lg px-4 py-3 active:bg-gray-200 dark:active:bg-gray-860"
+    >
+      <Icon name={icon} size={20} color={neutral} />
+      <Text variant="title">{label}</Text>
+    </Pressable>
+  );
+}
+
 function ProgressCard({ item, width }: { item: Progress; width: number }) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const { width: screenWidth } = useWindowDimensions();
+  const wide = screenWidth >= WIDE_BREAKPOINT;
   const fraction = item.duration > 0 ? Math.min(1, item.position / item.duration) : 0;
+  const remaining = Math.max(0, item.duration - item.position);
+
+  // On phone, open the full-screen player modal. On desktop, resume right in the
+  // persistent player panel: fetch the book + chapters (seeding the shared cache)
+  // and start playback, which surfaces the panel via `nowPlaying`.
+  const play = async () => {
+    if (!wide) {
+      router.push({ pathname: '/player', params: { libraryId: String(item.library_id), path: item.path } });
+      return;
+    }
+    const current = usePlayer.getState().nowPlaying;
+    if (current?.libraryId === item.library_id && current?.path === item.path) return;
+    const [book, chapterData] = await Promise.all([
+      qc.fetchQuery({
+        queryKey: qk.item(item.library_id, item.path),
+        queryFn: ({ signal }) => api.item(item.library_id, item.path, signal),
+      }),
+      qc.fetchQuery({
+        queryKey: qk.chapters(item.library_id, item.path),
+        queryFn: ({ signal }) => api.chapters(item.library_id, item.path, signal),
+      }),
+    ]);
+    await usePlayer.getState().playBook(api, item.library_id, book, chapterData);
+  };
   return (
     <GridCard
       libraryId={item.library_id}
@@ -108,8 +207,17 @@ function ProgressCard({ item, width }: { item: Progress; width: number }) {
       width={width}
       footer={
         !item.finished ? (
-          <View className="h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-            <View className="h-full rounded-full bg-primary" style={{ width: `${fraction * 100}%` }} />
+          <View className="gap-1">
+            <View className="flex-row items-center gap-2">
+              <View className="h-1 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <View className="h-full rounded-full bg-primary" style={{ width: `${fraction * 100}%` }} />
+              </View>
+              <Pressable onPress={() => void play()} hitSlop={8} className="active:opacity-60">
+                <Icon name="circle-play" size={26} color={colors.primary} />
+              </Pressable>
+              <ProgressMenu item={item} />
+            </View>
+            {remaining > 0 ? <Text variant="caption">{formatDuration(remaining)} left</Text> : null}
           </View>
         ) : (
           <Text variant="caption">Finished</Text>
@@ -197,15 +305,19 @@ export default function HomeScreen() {
             {recentError ? <ErrorNote message="Could not load new books." onRetry={() => refetchRecent()} /> : null}
             {cardWidth > 0 && recent.length > 0 ? (
               <Grid>
-                {visibleRecent.map((b) => (
-                  <GridCard
-                    key={`${b.library_id}:${b.rel_path}`}
-                    libraryId={b.library_id}
-                    path={b.rel_path}
-                    title={b.title || pathLeaf(b.rel_path)}
-                    width={cardWidth}
-                  />
-                ))}
+                {visibleRecent.map((b) => {
+                  const added = formatRelative(b.added_at);
+                  return (
+                    <GridCard
+                      key={`${b.library_id}:${b.rel_path}`}
+                      libraryId={b.library_id}
+                      path={b.rel_path}
+                      title={b.title || pathLeaf(b.rel_path)}
+                      width={cardWidth}
+                      footer={added ? <Text variant="caption">Added {added}</Text> : undefined}
+                    />
+                  );
+                })}
               </Grid>
             ) : null}
           </>

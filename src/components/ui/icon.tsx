@@ -18,6 +18,7 @@ import { faChevronLeft } from '@fortawesome/pro-light-svg-icons/faChevronLeft';
 import { faChevronRight } from '@fortawesome/pro-light-svg-icons/faChevronRight';
 import { faClock } from '@fortawesome/pro-light-svg-icons/faClock';
 import { faDownToLine } from '@fortawesome/pro-light-svg-icons/faDownToLine';
+import { faEllipsis } from '@fortawesome/pro-light-svg-icons/faEllipsis';
 import { faFolder } from '@fortawesome/pro-light-svg-icons/faFolder';
 import { faGear } from '@fortawesome/pro-light-svg-icons/faGear';
 import { faHouse } from '@fortawesome/pro-light-svg-icons/faHouse';
@@ -69,6 +70,7 @@ export type IconName =
   | 'close'
   | 'plus'
   | 'minus'
+  | 'ellipsis'
   | 'download'
   | 'sleep'
   | 'book'
@@ -106,6 +108,7 @@ const ICONS: Record<IconName, IconDefinition> = {
   close: faXmark,
   plus: faPlus,
   minus: faMinus,
+  ellipsis: faEllipsis,
   download: faDownToLine,
   sleep: faAlarmSnooze,
   book: faBook,

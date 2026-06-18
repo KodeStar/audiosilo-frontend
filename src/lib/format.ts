@@ -48,6 +48,31 @@ export function formatDurationFull(seconds?: number): string {
   return `${s}s`;
 }
 
+/** "just now" / "3 days ago" / "2 months ago" — coarse relative time from an
+ * RFC3339 timestamp. Empty when the input is missing or unparseable. */
+export function formatRelative(iso?: string): string {
+  if (!iso) return '';
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return '';
+  const sec = Math.max(0, (Date.now() - then) / 1000);
+  const units: [limit: number, secs: number, name: string][] = [
+    [60, 1, 'second'],
+    [3600, 60, 'minute'],
+    [86400, 3600, 'hour'],
+    [2592000, 86400, 'day'],
+    [31536000, 2592000, 'month'],
+    [Infinity, 31536000, 'year'],
+  ];
+  if (sec < 45) return 'just now';
+  for (const [limit, secs, name] of units) {
+    if (sec < limit) {
+      const n = Math.max(1, Math.round(sec / secs));
+      return `${n} ${name}${n === 1 ? '' : 's'} ago`;
+    }
+  }
+  return '';
+}
+
 /** Author / series line for a book, skipping empty parts. */
 export function bookSubtitle(opts: { author?: string; series?: string; seriesIndex?: number }): string {
   const parts: string[] = [];

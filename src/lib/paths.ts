@@ -21,6 +21,13 @@ export function pathLeaf(relPath: string): string {
   return parts[parts.length - 1] ?? '';
 }
 
+/** Path one level up (the containing folder), or '' at the library root. */
+export function parentPath(relPath: string): string {
+  const parts = relPath.split('/').filter(Boolean);
+  parts.pop();
+  return parts.join('/');
+}
+
 export function libraryHref(libraryId: number, relPath = ''): Href {
   const enc = encodePathSegments(relPath);
   return (enc ? `/library/${libraryId}/${enc}` : `/library/${libraryId}`) as Href;
