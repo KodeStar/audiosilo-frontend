@@ -1,4 +1,4 @@
-import Svg, { G, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 import { colors } from '@/theme/tokens';
 
@@ -15,9 +15,11 @@ const PATH =
 export function Logo({ size = 28, color = colors.primary }: { size?: number; color?: string }) {
   return (
     <Svg width={size * ASPECT} height={size} viewBox={VIEW_BOX}>
-      <G rotation={180} originX={CENTER_X} originY={CENTER_Y}>
-        <Path d={PATH} fill={color} />
-      </G>
+      {/* Rotate the path 180° about the viewBox centre via the SVG transform
+          attribute — a string, which renders on web (react-native-svg-web) and
+          native alike. The previous `<G rotation originX originY>` props threw on
+          web. */}
+      <Path d={PATH} fill={color} transform={`rotate(180, ${CENTER_X}, ${CENTER_Y})`} />
     </Svg>
   );
 }

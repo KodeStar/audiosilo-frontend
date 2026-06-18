@@ -6,6 +6,7 @@
  */
 export const colors = {
   primary: '#db2777', // pink-600
+  blue: '#3b82f6', // blue-500 — chapters/files (distinct from pink folders)
   white: '#ffffff',
   light: {
     bg: '#e5e7eb', // gray-200

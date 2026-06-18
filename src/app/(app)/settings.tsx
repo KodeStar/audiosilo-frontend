@@ -4,12 +4,11 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useOptionalApi } from '@/api/provider';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Icon } from '@/components/ui/icon';
+import { Stepper } from '@/components/ui/stepper';
 import { Text } from '@/components/ui/text';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
 
 const APPEARANCE: { value: SchemePref; label: string }[] = [
   { value: 'light', label: 'Light' },
@@ -17,41 +16,8 @@ const APPEARANCE: { value: SchemePref; label: string }[] = [
   { value: 'system', label: 'System' },
 ];
 
-const RATES = [0.8, 1, 1.25, 1.5, 1.75, 2];
-
-function Stepper({
-  value,
-  onChange,
-  step = 5,
-  min = 5,
-  max = 120,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  step?: number;
-  min?: number;
-  max?: number;
-}) {
-  return (
-    <View className="flex-row items-center gap-3">
-      <Pressable
-        onPress={() => onChange(Math.max(min, value - step))}
-        className="h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-860"
-      >
-        <Icon name="minus" size={14} color={colors.primary} />
-      </Pressable>
-      <Text variant="subtitle" className="w-12 text-center">
-        {value}s
-      </Text>
-      <Pressable
-        onPress={() => onChange(Math.min(max, value + step))}
-        className="h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-860"
-      >
-        <Icon name="plus" size={14} color={colors.primary} />
-      </Pressable>
-    </View>
-  );
-}
+const sec = (v: number) => `${v}s`;
+const speed = (v: number) => `${Number(v.toFixed(2))}×`;
 
 export default function SettingsScreen() {
   const { pref, setPref } = useTheme();
@@ -107,32 +73,15 @@ export default function SettingsScreen() {
         <Card className="gap-4">
           <View className="flex-row items-center justify-between">
             <Text>Skip back</Text>
-            <Stepper value={skipBackward} onChange={setSkipBackward} />
+            <Stepper value={skipBackward} onChange={setSkipBackward} step={5} min={5} max={120} format={sec} />
           </View>
           <View className="flex-row items-center justify-between">
             <Text>Skip forward</Text>
-            <Stepper value={skipForward} onChange={setSkipForward} />
+            <Stepper value={skipForward} onChange={setSkipForward} step={5} min={5} max={120} format={sec} />
           </View>
-          <View className="gap-2">
+          <View className="flex-row items-center justify-between">
             <Text>Default speed</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {RATES.map((r) => {
-                const active = defaultRate === r;
-                return (
-                  <Pressable
-                    key={r}
-                    onPress={() => setDefaultRate(r)}
-                    className={`rounded-full px-3 py-1.5 ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-860'}`}
-                  >
-                    <Text
-                      className={`text-sm ${active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}
-                    >
-                      {r}×
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <Stepper value={defaultRate} onChange={setDefaultRate} step={0.05} min={0.5} max={3} format={speed} />
           </View>
         </Card>
       </View>

@@ -1,29 +1,32 @@
-import { View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Logo } from '@/components/brand/logo';
-import { Text } from '@/components/ui/text';
+import { Brand } from '@/components/brand/brand';
+import { Icon } from '@/components/ui/icon';
+import { colors } from '@/theme/tokens';
 
 /**
- * Sticky top header. Translucent gray surface with a bottom hairline, matching
- * the old client's glassy `.header`. (A true blur can be layered in later with
- * expo-glass-effect / expo-blur.)
+ * Sticky phone header: the wordmark on the left, a search affordance on the
+ * right (search no longer lives in the bottom tab bar). The desktop sidebar
+ * carries the brand + search instead, so this is only rendered on phones.
  */
-export function AppHeader({ title }: { title?: string }) {
+export function AppHeader() {
   const insets = useSafeAreaInsets();
   return (
     <View
       style={{ paddingTop: insets.top }}
       className="border-b border-gray-100 bg-gray-200/90 dark:border-gray-750 dark:bg-gray-800/90"
     >
-      <View className="h-16 flex-row items-center gap-2 px-4">
-        <Logo size={24} />
-        <Text className="font-roboto-bold text-xl text-primary">AudioSilo</Text>
-        {title ? (
-          <Text className="font-roboto-semibold text-lg text-gray-700 dark:text-gray-200">
-            {title}
-          </Text>
-        ) : null}
+      <View className="h-16 flex-row items-center justify-between px-4">
+        <Brand size={26} />
+        <Pressable
+          onPress={() => router.push('/search')}
+          hitSlop={10}
+          className="h-10 w-10 items-center justify-center"
+        >
+          <Icon name="search" size={20} color={colors.dark.textMuted} />
+        </Pressable>
       </View>
     </View>
   );

@@ -9,6 +9,7 @@ export const qk = {
   item: (lib: number, path: string) => ['item', lib, path] as const,
   chapters: (lib: number, path: string) => ['chapters', lib, path] as const,
   search: (q: string) => ['search', q] as const,
+  recentBooks: (limit: number) => ['books', 'recent', limit] as const,
   allProgress: () => ['progress', 'all'] as const,
   progress: (lib: number, path: string) => ['progress', lib, path] as const,
   bookmarks: (lib: number, path: string) => ['bookmarks', lib, path] as const,
@@ -55,6 +56,16 @@ export function useSearch(query: string) {
     queryKey: qk.search(q),
     queryFn: ({ signal }) => api.search(q, 50, signal),
     enabled: q.length > 0,
+  });
+}
+
+/** Recently added books across every accessible library, merged and sorted by
+ * the server (one cross-library call — no per-library fan-out). */
+export function useRecentBooks(limit = 48) {
+  const api = useApi();
+  return useQuery({
+    queryKey: qk.recentBooks(limit),
+    queryFn: ({ signal }) => api.recentBooks(limit, signal),
   });
 }
 

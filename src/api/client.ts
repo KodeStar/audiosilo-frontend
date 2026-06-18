@@ -142,6 +142,12 @@ export class ApiClient {
     const r = await this.request<{ books: Book[] }>('GET', '/search', { query: { q, limit }, signal });
     return r.books ?? [];
   }
+  /** Most recently added books across every accessible library (server merges and
+   * sorts by added date), so the client needn't fan out per library. */
+  async recentBooks(limit?: number, signal?: AbortSignal) {
+    const r = await this.request<{ books: Book[] }>('GET', '/books/recent', { query: { limit }, signal });
+    return r.books ?? [];
+  }
   item(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<Book>('GET', `/libraries/${libraryId}/item`, { query: { path }, signal });
   }

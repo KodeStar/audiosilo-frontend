@@ -29,6 +29,25 @@ export function formatBytes(bytes?: number): string {
   return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
 
+/** "128kbps" from a file's bytes + seconds; empty when not derivable. */
+export function formatBitrate(sizeBytes?: number, durationSec?: number): string {
+  if (!sizeBytes || !durationSec || durationSec <= 0) return '';
+  const kbps = Math.round((sizeBytes * 8) / durationSec / 1000);
+  return kbps > 0 ? `${kbps}kbps` : '';
+}
+
+/** "8m52s" / "1h33m" / "45s" — compact spoken-style duration (per old client). */
+export function formatDurationFull(seconds?: number): string {
+  if (!seconds || seconds <= 0) return '';
+  const t = Math.round(seconds);
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  if (h > 0) return `${h}h${m}m`;
+  if (m > 0) return `${m}m${s}s`;
+  return `${s}s`;
+}
+
 /** Author / series line for a book, skipping empty parts. */
 export function bookSubtitle(opts: { author?: string; series?: string; seriesIndex?: number }): string {
   const parts: string[] = [];
