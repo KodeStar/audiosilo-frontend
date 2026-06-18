@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 import type {
   AuthSession,
   Book,
@@ -154,11 +152,15 @@ export class ApiClient {
   }
 
   // --- Media URLs ----------------------------------------------------------
-  // On native the token travels in headers (expo-image / track-player). On web,
-  // <img>/<audio> can't set headers, so the token is appended as a query param
-  // (the server accepts `?token=` as a fallback for media GETs).
+  // The token rides in the media URL on every platform (the server accepts
+  // `?token=` for media GETs). Web requires this — browsers can't set an
+  // Authorization header on <img>/<audio>. Native uses the same mechanism for a
+  // single uniform path, so cover/stream auth never depends on whether a given
+  // library (expo-image, track-player) forwards custom request headers. (We did
+  // not confirm whether track-player forwards them; native still also passes
+  // headers via the track/source, so this is belt-and-braces.)
   private mediaTokenQuery(): Query {
-    return Platform.OS === 'web' && this.token ? { token: this.token } : {};
+    return this.token ? { token: this.token } : {};
   }
   coverUrl(libraryId: number, path: string) {
     return this.apiUrl(`/libraries/${libraryId}/cover`, { path, ...this.mediaTokenQuery() });

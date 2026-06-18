@@ -51,6 +51,26 @@ The **old client** at `~/dev/audiosilo` — a Nuxt 2 / Vue / Tailwind v2 PWA wra
 
 **M5 — release:** EAS Build profiles, app icons/splash per platform (port the real logo SVG), store metadata; deep-link/universal-link verification; capability-driven feature flags (upload/transcode/websocket) for server Phases B/C.
 
+## Server-side notes & follow-ups
+
+The clients depend on two small `audiosilo-server` changes:
+- `internal/api/middleware.go` — `bearerToken` accepts a `?token=` query param for
+  media GETs (browsers can't set an Authorization header on `<img>`/`<audio>`, and
+  track-player doesn't reliably forward track headers to the native player, so the
+  token rides in the media URL on all platforms).
+- `internal/media/media.go` — `ServeFile` sets a real audio `Content-Type` by
+  sniffing the file's magic bytes (`ftyp`→`audio/mp4`, ID3/MPEG sync→`audio/mpeg`,
+  ADTS→`audio/aac`, `fLaC`, `OggS`, `RIFF/WAVE`), falling back to the extension.
+  Without this, `.m4b`/`.aax` served as `application/octet-stream` + `nosniff` are
+  rejected by iOS AVPlayer (`-12847`).
+
+**Future — exact codec/MIME at index time:** the scanner already runs ffprobe for
+durations/chapters; have it also record each file's container/codec/MIME in the
+catalog and serve that stored value. Gives precise types (e.g. Opus vs Vorbis,
+AAC vs ALAC) with zero per-request work — the byte-sniff above is the pragmatic
+interim. (`ffprobe`-ing the live stream URL is also the go-to "check, don't
+assume" debugging tool.)
+
 ## Verification
 
 - Per change: `npx tsc --noEmit` clean; `npx expo export -p web` succeeds.
