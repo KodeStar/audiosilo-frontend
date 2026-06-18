@@ -31,10 +31,19 @@ export function buildBookQueue(
   const artwork = api.coverUrl(libraryId, book.rel_path);
 
   const files = chapterData?.files?.length ? chapterData.files : (book.files ?? []);
-  const specs =
-    files.length > 0
-      ? [...files].sort((a, b) => a.seq - b.seq).map((f) => ({ path: f.rel_path, duration: f.duration }))
-      : [{ path: book.rel_path, duration: book.duration }];
+  const chapters = chapterData?.chapters ?? book.chapters ?? [];
+
+  let specs: { path: string; duration: number }[];
+  if (files.length > 0) {
+    specs = [...files].sort((a, b) => a.seq - b.seq).map((f) => ({ path: f.rel_path, duration: f.duration }));
+  } else if (chapters.length > 0) {
+    // No explicit file list (single chaptered m4b, or a folder book whose files
+    // weren't returned): derive the distinct audio files from the chapters'
+    // file_path. This must never fall through to streaming a folder path.
+    specs = distinctFilesFromChapters(chapters);
+  } else {
+    specs = [{ path: book.rel_path, duration: book.duration }];
+  }
 
   const tracks: PlaybackTrack[] = specs.map((s) => ({
     id: `${libraryId}:${s.path}`,
@@ -58,8 +67,20 @@ export function buildBookQueue(
     tracks,
     offsets,
     total: book.duration > 0 ? book.duration : acc,
-    chapters: chapterData?.chapters ?? book.chapters ?? [],
+    chapters,
   };
+}
+
+/** Distinct audio files referenced by a book's chapters, in play order, with a
+ * per-file duration estimated from the largest chapter end within it. */
+function distinctFilesFromChapters(chapters: Chapter[]): { path: string; duration: number }[] {
+  const order: string[] = [];
+  const durations = new Map<string, number>();
+  for (const ch of chapters) {
+    if (!order.includes(ch.file_path)) order.push(ch.file_path);
+    durations.set(ch.file_path, Math.max(durations.get(ch.file_path) ?? 0, ch.end));
+  }
+  return order.map((path) => ({ path, duration: durations.get(path) ?? 0 }));
 }
 
 /** Map a whole-book position to (trackIndex, positionInTrack). */
