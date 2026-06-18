@@ -13,6 +13,8 @@ export const qk = {
   progress: (lib: number, path: string) => ['progress', lib, path] as const,
   bookmarks: (lib: number, path: string) => ['bookmarks', lib, path] as const,
   notes: (lib: number, path: string) => ['notes', lib, path] as const,
+  history: (lib: number, path: string) => ['history', lib, path] as const,
+  allHistory: () => ['history', 'all'] as const,
 };
 
 export function useLibraries() {
@@ -116,5 +118,15 @@ export function useDeleteNote(libraryId: number, path: string) {
   return useMutation({
     mutationFn: (id: number) => api.deleteNote(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(libraryId, path) }),
+  });
+}
+
+// --- History ---------------------------------------------------------------
+export function useHistory(libraryId: number, path: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: qk.history(libraryId, path),
+    queryFn: () => api.history(libraryId, path),
+    enabled: path.length > 0,
   });
 }

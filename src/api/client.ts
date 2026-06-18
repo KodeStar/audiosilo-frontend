@@ -5,6 +5,7 @@ import type {
   BooksPage,
   BooksSort,
   ChaptersResponse,
+  History,
   Library,
   Listing,
   Note,
@@ -226,5 +227,28 @@ export class ApiClient {
   }
   deleteNote(id: number) {
     return this.request<void>('DELETE', `/notes/${id}`);
+  }
+
+  async history(libraryId: number, path: string) {
+    const r = await this.request<{ history: History[] | null }>(
+      'GET',
+      `/libraries/${libraryId}/history`,
+      { query: { path } },
+    );
+    return r.history ?? [];
+  }
+  async allHistory() {
+    const r = await this.request<{ history: History[] | null }>('GET', '/me/history');
+    return r.history ?? [];
+  }
+  addHistory(
+    libraryId: number,
+    path: string,
+    span: { from_pos: number; to_pos: number; started_at: string; ended_at: string },
+  ) {
+    return this.request<void>('POST', `/libraries/${libraryId}/history`, {
+      query: { path },
+      body: span,
+    });
   }
 }
