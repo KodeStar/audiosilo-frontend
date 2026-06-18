@@ -36,17 +36,24 @@ type PlayerState = {
   snapshot: PlaybackSnapshot;
   rate: number;
 
-  /** Start a book. Omit startBookPosition to resume from saved progress. */
+  /** Start a book. Omit startBookPosition to resume from saved progress; pass
+   * startTrack to begin at a specific file (used when file durations are
+   * unknown, so a whole-book position can't address a track). */
   playBook: (
     api: ApiClient,
     libraryId: number,
     book: Book,
     chapterData?: ChaptersResponse,
     startBookPosition?: number,
+    startTrack?: number,
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
   seekBook: (bookPosition: number) => Promise<void>;
+  /** Seek within the current track (used when the whole-book timeline is unknown). */
+  seekInTrack: (positionInTrack: number) => Promise<void>;
+  /** Jump to a track by index (multi-file books without a reliable timeline). */
+  goToTrack: (index: number) => Promise<void>;
   skipSeconds: (delta: number) => Promise<void>;
   setRate: (rate: number) => Promise<void>;
   stop: () => Promise<void>;
@@ -115,10 +122,16 @@ async function ensureService(): Promise<PlaybackService> {
   const svc = createPlaybackService();
   await svc.setup();
   svc.subscribe((snapshot) => {
-    const prev = usePlayer.getState().snapshot.state;
+    const prev = usePlayer.getState().snapshot;
     usePlayer.setState({ snapshot });
-    if (snapshot.state === 'playing' && prev !== 'playing') beginHistory();
-    else if (prev === 'playing' && snapshot.state !== 'playing') endHistory();
+    if (snapshot.state === 'playing' && prev.state !== 'playing') beginHistory();
+    else if (prev.state === 'playing' && snapshot.state !== 'playing') endHistory();
+    // Close + reopen a span when the track advances mid-playback (e.g. a
+    // multi-file book auto-advancing), so each file is logged as it finishes.
+    else if (snapshot.state === 'playing' && snapshot.trackIndex !== prev.trackIndex) {
+      endHistory();
+      beginHistory();
+    }
     if (snapshot.state === 'ended') void persist();
   });
   service = svc;
@@ -130,7 +143,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
 
-  playBook: async (api, libraryId, book, chapterData, startBookPosition) => {
+  playBook: async (api, libraryId, book, chapterData, startBookPosition, startTrack) => {
     endHistory(); // flush any prior book's listening span before switching
     apiRef = api;
     deviceId = await getDeviceId();
@@ -150,13 +163,16 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
     let startAt = startBookPosition ?? 0;
     let speed = useSettings.getState().defaultRate;
-    if (startBookPosition === undefined) {
+    if (startBookPosition === undefined && startTrack === undefined) {
       const saved = await loadInitialProgress(api, libraryId, book.rel_path);
       if (saved && !saved.finished && saved.position > 0) startAt = saved.position;
       if (saved?.playback_speed && saved.playback_speed > 0) speed = saved.playback_speed;
     }
 
-    const { index, positionInTrack } = locate(queue.offsets, startAt);
+    const { index, positionInTrack } =
+      startTrack !== undefined
+        ? { index: Math.max(0, Math.min(startTrack, queue.tracks.length - 1)), positionInTrack: 0 }
+        : locate(queue.offsets, startAt);
     set({
       rate: speed,
       nowPlaying: {
@@ -208,12 +224,35 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     void persist();
   },
 
+  seekInTrack: async (positionInTrack) => {
+    if (!Number.isFinite(positionInTrack)) return;
+    const dur = get().snapshot.duration;
+    const pos = Math.max(0, dur > 0 ? Math.min(positionInTrack, dur) : positionInTrack);
+    const svc = await ensureService();
+    await svc.seekTo(pos);
+    void persist();
+  },
+
+  goToTrack: async (index) => {
+    const np = get().nowPlaying;
+    if (!np) return;
+    const i = Math.max(0, Math.min(index, np.queue.tracks.length - 1));
+    const svc = await ensureService();
+    await svc.skipToTrack(i, 0);
+    void persist();
+  },
+
   skipSeconds: async (delta) => {
     const np = get().nowPlaying;
     if (!np) return;
+    // No reliable whole-book timeline (file durations unknown): seek within the
+    // current track using the engine's reported position instead.
+    if (np.queue.total <= 0) {
+      await get().seekInTrack(get().snapshot.position + delta);
+      return;
+    }
     const pos = toBookPosition(np.queue.offsets, get().snapshot.trackIndex, get().snapshot.position);
-    const max = np.queue.total > 0 ? np.queue.total : pos + delta;
-    await get().seekBook(Math.max(0, Math.min(max, pos + delta)));
+    await get().seekBook(Math.max(0, Math.min(np.queue.total, pos + delta)));
   },
 
   setRate: async (rate) => {

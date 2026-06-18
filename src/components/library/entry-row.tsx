@@ -1,57 +1,44 @@
 import { Link } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
-import { useApi } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
-import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { DownloadBadge } from '@/components/library/download-badge';
-import { bookSubtitle, formatDuration } from '@/lib/format';
+import { bookSubtitle, formatBitrate, formatDurationFull } from '@/lib/format';
 import { bookHref, libraryHref } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
 
-/** One row in the filesystem browse view: a folder (drill in) or a book. */
+/** One row in the filesystem browse view: a folder (pink block, drill in) or an
+ * audio file (blue block, opens the book). Ported from the old client's list. */
 export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: number }) {
-  const api = useApi();
-  const isBook = Boolean(entry.is_book) || (entry.is_audio && !entry.is_dir);
-  const isFolder = entry.is_dir && !entry.is_book;
-  const href = isFolder ? libraryHref(libraryId, entry.path) : bookHref(libraryId, entry.path);
+  const isDir = entry.is_dir;
+  // Plain folders drill in; book folders and audio leaves open the book screen.
+  const href = isDir && !entry.is_book ? libraryHref(libraryId, entry.path) : bookHref(libraryId, entry.path);
   const title = entry.title || entry.name;
-  const subtitle = bookSubtitle({
-    author: entry.author,
-    series: entry.series,
-    seriesIndex: entry.series_index,
-  });
+  const meta = isDir
+    ? bookSubtitle({ author: entry.author, series: entry.series, seriesIndex: entry.series_index })
+    : `Duration: ${formatDurationFull(entry.duration)}${
+        formatBitrate(entry.size, entry.duration) ? `   Bitrate: ${formatBitrate(entry.size, entry.duration)}` : ''
+      }`;
 
   return (
     <Link href={href} asChild>
-      <Pressable className="flex-row items-center gap-3 rounded-lg bg-white p-2 active:opacity-80 dark:border dark:border-gray-860 dark:bg-gray-840">
-        {isFolder ? (
-          <View className="h-12 w-12 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-860">
-            <Icon name="folder" size={22} color={colors.primary} />
-          </View>
-        ) : (
-          <Cover
-            source={{ uri: api.coverUrl(libraryId, entry.path), headers: api.authHeaders() }}
-            label={title}
-            rounded="rounded-md"
-            size={48}
-          />
-        )}
-        <View className="flex-1">
+      <Pressable className="my-1 w-full flex-row items-center overflow-hidden rounded-lg bg-gray-50 shadow-sm active:opacity-80 dark:border dark:border-gray-900 dark:bg-gray-840 dark:shadow-none">
+        <View
+          className={`min-h-[3.5rem] items-center justify-center self-stretch px-4 ${isDir ? 'bg-primary' : 'bg-blue-500'}`}
+        >
+          <Icon name={isDir ? 'folder' : 'book'} size={20} color={colors.white} />
+        </View>
+        <View className="flex-1 px-5 py-2">
           <Text variant="subtitle" numberOfLines={1}>
             {title}
           </Text>
-          {subtitle ? (
-            <Text variant="muted" numberOfLines={1}>
-              {subtitle}
+          {meta ? (
+            <Text variant="caption" numberOfLines={1}>
+              {meta}
             </Text>
           ) : null}
         </View>
-        {entry.duration ? <Text variant="caption">{formatDuration(entry.duration)}</Text> : null}
-        {!isFolder ? <DownloadBadge libraryId={libraryId} path={entry.path} /> : null}
-        <Icon name="chevron-right" size={14} />
       </Pressable>
     </Link>
   );

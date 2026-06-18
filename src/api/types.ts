@@ -117,6 +117,8 @@ export type Book = {
   isbn?: string;
   format: string;
   size: number;
+  /** RFC3339; when the book was added (filesystem birth time, from the scanner). */
+  added_at?: string;
   files?: BookFile[];
   chapters?: Chapter[];
 };

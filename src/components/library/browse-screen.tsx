@@ -6,6 +6,7 @@ import { EntryRow } from '@/components/library/entry-row';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
+import { Text } from '@/components/ui/text';
 import { libraryHref, segmentsToPath } from '@/lib/paths';
 
 /**
@@ -43,20 +44,36 @@ export function BrowseScreen() {
     }),
   ];
 
+  const entries = listing?.entries ?? [];
+  const folders = entries.filter((e) => e.is_dir);
+  const audioFiles = entries.filter((e) => !e.is_dir);
+
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-2 p-4">
-      <BreadCrumbs crumbs={crumbs} />
+    <ScrollView className="flex-1" contentContainerClassName="p-4">
+      {crumbs.length > 1 ? <BreadCrumbs crumbs={crumbs} /> : null}
 
       {isLoading ? <Spinner center /> : null}
       {error ? <ErrorNote message="Could not open this folder." onRetry={() => refetch()} /> : null}
 
-      {listing?.entries.map((entry) => (
-        <EntryRow key={entry.path} entry={entry} libraryId={libraryId} />
-      ))}
-
-      {listing && listing.entries.length === 0 ? (
-        <EmptyNote message="This folder is empty." />
+      {folders.length > 0 ? (
+        <>
+          <Text className="mb-2 mt-4 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">Folders</Text>
+          {folders.map((entry) => (
+            <EntryRow key={entry.path} entry={entry} libraryId={libraryId} />
+          ))}
+        </>
       ) : null}
+
+      {audioFiles.length > 0 ? (
+        <>
+          <Text className="mb-2 mt-4 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">Files</Text>
+          {audioFiles.map((entry) => (
+            <EntryRow key={entry.path} entry={entry} libraryId={libraryId} />
+          ))}
+        </>
+      ) : null}
+
+      {!isLoading && !error && entries.length === 0 ? <EmptyNote message="This folder is empty." /> : null}
     </ScrollView>
   );
 }

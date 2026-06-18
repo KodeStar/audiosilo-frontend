@@ -12,6 +12,8 @@ import { faBook } from '@fortawesome/pro-light-svg-icons/faBook';
 import { faBookmark } from '@fortawesome/pro-light-svg-icons/faBookmark';
 import { faCheck } from '@fortawesome/pro-light-svg-icons/faCheck';
 import { faChevronDown } from '@fortawesome/pro-light-svg-icons/faChevronDown';
+import { faClockRotateLeft } from '@fortawesome/pro-light-svg-icons/faClockRotateLeft';
+import { faNoteSticky } from '@fortawesome/pro-light-svg-icons/faNoteSticky';
 import { faChevronLeft } from '@fortawesome/pro-light-svg-icons/faChevronLeft';
 import { faChevronRight } from '@fortawesome/pro-light-svg-icons/faChevronRight';
 import { faClock } from '@fortawesome/pro-light-svg-icons/faClock';
@@ -24,6 +26,7 @@ import { faMagnifyingGlass } from '@fortawesome/pro-light-svg-icons/faMagnifying
 import { faMinus } from '@fortawesome/pro-light-svg-icons/faMinus';
 import { faPlus } from '@fortawesome/pro-light-svg-icons/faPlus';
 import { faQrcode } from '@fortawesome/pro-light-svg-icons/faQrcode';
+import { faRectangleVerticalHistory } from '@fortawesome/pro-light-svg-icons/faRectangleVerticalHistory';
 import { faRightFromBracket } from '@fortawesome/pro-light-svg-icons/faRightFromBracket';
 import { faServer } from '@fortawesome/pro-light-svg-icons/faServer';
 import { faSliders } from '@fortawesome/pro-light-svg-icons/faSliders';
@@ -59,6 +62,8 @@ export type IconName =
   | 'spinner'
   | 'bookmark'
   | 'clock'
+  | 'history'
+  | 'notes'
   | 'sliders'
   | 'trash'
   | 'close'
@@ -68,6 +73,7 @@ export type IconName =
   | 'sleep'
   | 'book'
   | 'list'
+  | 'library'
   | 'qrcode'
   | 'server'
   | 'check'
@@ -93,6 +99,8 @@ const ICONS: Record<IconName, IconDefinition> = {
   spinner: faSpinnerThird,
   bookmark: faBookmark,
   clock: faClock,
+  history: faClockRotateLeft,
+  notes: faNoteSticky,
   sliders: faSliders,
   trash: faTrashCan,
   close: faXmark,
@@ -102,6 +110,7 @@ const ICONS: Record<IconName, IconDefinition> = {
   sleep: faAlarmSnooze,
   book: faBook,
   list: faList,
+  library: faRectangleVerticalHistory,
   qrcode: faQrcode,
   server: faServer,
   check: faCheck,
