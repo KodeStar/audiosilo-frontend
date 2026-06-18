@@ -5,8 +5,8 @@ audiobook server at `~/dev/audiosilo-server`). One Expo / React Native codebase
 shipping to **web PWA + iOS + Android**. Design is ported from the old Nuxt
 client at `~/dev/audiosilo` (pink-accented, Roboto, dark-mode-first).
 
-Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1 is complete;
-M2–M5 pending.
+Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
+M3–M5 pending.
 
 ## Stack
 - **Expo SDK 56**, **React Native 0.85** (new architecture), **React 19**, **Expo Router** (file-based, in `src/app`).
