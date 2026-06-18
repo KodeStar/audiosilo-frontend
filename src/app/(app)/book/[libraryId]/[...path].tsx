@@ -3,6 +3,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 
 import { useBook, useChapters } from '@/api/hooks';
 import { useApi } from '@/api/provider';
+import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
 import { ErrorNote } from '@/components/ui/query-state';
@@ -89,6 +90,8 @@ export default function BookDetailScreen() {
           ))}
         </View>
       ) : null}
+
+      <BookmarksSection libraryId={libraryId} path={path} />
     </ScrollView>
   );
 }

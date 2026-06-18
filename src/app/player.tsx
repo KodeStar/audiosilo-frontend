@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useBook, useChapters } from '@/api/hooks';
+import { useAddBookmark, useBook, useChapters } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { SeekBar } from '@/components/player/seek-bar';
 import { Cover } from '@/components/ui/cover';
@@ -25,10 +25,11 @@ import { colors } from '@/theme/tokens';
 const RATES = [0.8, 1, 1.25, 1.5, 1.75, 2];
 
 export default function PlayerScreen() {
-  const { libraryId: libParam, path: pathParam, chapter } = useLocalSearchParams<{
+  const { libraryId: libParam, path: pathParam, chapter, position } = useLocalSearchParams<{
     libraryId?: string;
     path?: string | string[];
     chapter?: string;
+    position?: string;
   }>();
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
@@ -51,20 +52,29 @@ export default function PlayerScreen() {
   const { data: book } = useBook(libraryId, path);
   const chaptersQuery = useChapters(libraryId, path);
   const chapterData = chaptersQuery.data;
+  const addBookmark = useAddBookmark(libraryId, path);
 
   // Start playback once the book AND its chapters/files have loaded — otherwise
   // multi-file/folder books would fall back to streaming the folder path and
-  // chapters would be missing. A chapter param starts there; else resume.
+  // chapters would be missing. Start point priority: explicit position (bookmark
+  // jump) > chapter param > resume. If this book is already playing, only honor
+  // an explicit jump.
   useEffect(() => {
     if (!book || Number.isNaN(libraryId) || chaptersQuery.isLoading) return;
-    if (nowPlaying?.libraryId === libraryId && nowPlaying?.path === path) return;
+    const posParam = position !== undefined ? Number(position) : undefined;
+    const hasPos = posParam !== undefined && !Number.isNaN(posParam);
+    if (nowPlaying?.libraryId === libraryId && nowPlaying?.path === path) {
+      if (hasPos) void seekBook(posParam);
+      return;
+    }
     const idx = chapter !== undefined ? Number(chapter) : NaN;
-    const startAt =
-      !Number.isNaN(idx) && chapterData?.chapters?.[idx]
+    const startAt = hasPos
+      ? posParam
+      : !Number.isNaN(idx) && chapterData?.chapters?.[idx]
         ? chapterData.chapters[idx].book_offset
         : undefined;
     void usePlayer.getState().playBook(api, libraryId, book, chapterData, startAt);
-  }, [api, book, chapterData, chaptersQuery.isLoading, libraryId, path, chapter, nowPlaying]);
+  }, [api, book, chapterData, chaptersQuery.isLoading, libraryId, path, chapter, position, nowPlaying, seekBook]);
 
   const total = nowPlaying?.queue.total ?? book?.duration ?? 0;
   const title = nowPlaying?.title ?? book?.title ?? '';
@@ -97,7 +107,14 @@ export default function PlayerScreen() {
             Chapter {currentChapter.index + 1} of {chapterCount}
           </Text>
         ) : null}
-        <View className="h-8 w-8" />
+        <Pressable
+          onPress={() => addBookmark.mutate({ position: Math.round(bookPosition) })}
+          disabled={addBookmark.isPending || !nowPlaying}
+          hitSlop={12}
+          className="h-8 w-8 items-center justify-center"
+        >
+          <Icon name="bookmark" size={20} color={neutral} />
+        </Pressable>
       </View>
 
       {/* Cover + title fill the available space and stay centered. */}
