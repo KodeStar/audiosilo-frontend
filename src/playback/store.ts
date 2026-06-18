@@ -40,6 +40,7 @@ type PlayerState = {
     startBookPosition?: number,
   ) => Promise<void>;
   toggle: () => Promise<void>;
+  pause: () => Promise<void>;
   seekBook: (bookPosition: number) => Promise<void>;
   skipSeconds: (delta: number) => Promise<void>;
   setRate: (rate: number) => Promise<void>;
@@ -133,6 +134,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       void persist();
     } else {
       await svc.play();
+    }
+  },
+
+  pause: async () => {
+    const svc = await ensureService();
+    if (get().snapshot.state === 'playing') {
+      await svc.pause();
+      void persist();
     }
   },
 
