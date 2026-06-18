@@ -31,16 +31,16 @@ export function buildBookQueue(
   const artwork = api.coverUrl(libraryId, book.rel_path);
 
   const files = chapterData?.files?.length ? chapterData.files : (book.files ?? []);
-  const chapters = chapterData?.chapters ?? book.chapters ?? [];
+  const rawChapters = chapterData?.chapters ?? book.chapters ?? [];
 
   let specs: { path: string; duration: number }[];
   if (files.length > 0) {
     specs = [...files].sort((a, b) => a.seq - b.seq).map((f) => ({ path: f.rel_path, duration: f.duration }));
-  } else if (chapters.length > 0) {
+  } else if (rawChapters.length > 0) {
     // No explicit file list (single chaptered m4b, or a folder book whose files
     // weren't returned): derive the distinct audio files from the chapters'
     // file_path. This must never fall through to streaming a folder path.
-    specs = distinctFilesFromChapters(chapters);
+    specs = distinctFilesFromChapters(rawChapters);
   } else {
     specs = [{ path: book.rel_path, duration: book.duration }];
   }
@@ -63,12 +63,25 @@ export function buildBookQueue(
     acc += s.duration > 0 ? s.duration : 0;
   }
 
-  return {
-    tracks,
-    offsets,
-    total: book.duration > 0 ? book.duration : acc,
-    chapters,
-  };
+  // Recompute each chapter's whole-book offset from our own track offsets + the
+  // in-file start. The server's book_offset is unreliable for some on-demand
+  // indexed books (comes back 0 for every chapter), which otherwise makes
+  // chapter detection always resolve to the last chapter.
+  const trackOffset = (fileIndex: number) => offsets[fileIndex] ?? 0;
+  const chapters: Chapter[] = rawChapters.map((ch) => ({
+    ...ch,
+    book_offset: trackOffset(ch.file_index) + ch.start,
+  }));
+
+  // total: prefer the book duration, else the summed file durations, else the
+  // furthest chapter end on the book timeline (handles duration === 0 metadata).
+  const furthestEnd = chapters.reduce(
+    (max, ch) => Math.max(max, trackOffset(ch.file_index) + ch.end),
+    0,
+  );
+  const total = Math.max(book.duration > 0 ? book.duration : 0, acc, furthestEnd);
+
+  return { tracks, offsets, total, chapters };
 }
 
 /** Distinct audio files referenced by a book's chapters, in play order, with a

@@ -183,9 +183,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
   seekBook: async (bookPosition) => {
     const np = get().nowPlaying;
-    if (!np) return;
+    if (!np || !Number.isFinite(bookPosition)) return;
+    const clamped =
+      np.queue.total > 0 ? Math.max(0, Math.min(bookPosition, np.queue.total)) : Math.max(0, bookPosition);
     const svc = await ensureService();
-    const target = locate(np.queue.offsets, bookPosition);
+    const target = locate(np.queue.offsets, clamped);
     if (target.index === get().snapshot.trackIndex) {
       await svc.seekTo(target.positionInTrack);
     } else {
