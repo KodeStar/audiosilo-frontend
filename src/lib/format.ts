@@ -20,6 +20,15 @@ export function formatClock(seconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+/** "1.2 GB" / "340 MB" / "12 KB" — human-readable file size. */
+export function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const v = bytes / 1024 ** i;
+  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+}
+
 /** Author / series line for a book, skipping empty parts. */
 export function bookSubtitle(opts: { author?: string; series?: string; seriesIndex?: number }): string {
   const parts: string[] = [];

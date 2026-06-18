@@ -6,6 +6,7 @@ import type { Book } from '@/api/types';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { DownloadBadge } from '@/components/library/download-badge';
 import { bookSubtitle, formatDuration } from '@/lib/format';
 import { bookHref } from '@/lib/paths';
 
@@ -38,6 +39,7 @@ export function BookRow({ book }: { book: Book }) {
           ) : null}
         </View>
         {book.duration ? <Text variant="caption">{formatDuration(book.duration)}</Text> : null}
+        <DownloadBadge libraryId={book.library_id} path={book.rel_path} />
         <Icon name="chevron-right" size={14} />
       </Pressable>
     </Link>

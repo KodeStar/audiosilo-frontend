@@ -37,10 +37,31 @@ export async function loadInitialProgress(
   path: string,
 ): Promise<Progress | null> {
   try {
-    return (await api.getProgress(libraryId, path)) ?? null;
+    const server = await api.getProgress(libraryId, path);
+    if (server) return server;
   } catch {
-    return null;
+    // offline or unreachable — fall back to the latest local save below
   }
+  return pendingProgressFor(libraryId, path);
+}
+
+/** Reconstruct progress from the offline replay queue, so a downloaded book
+ * resumes at the right spot when the server can't be reached. */
+async function pendingProgressFor(libraryId: number, path: string): Promise<Progress | null> {
+  const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
+  const save = queue.find((s) => s.libraryId === libraryId && s.path === path);
+  if (!save) return null;
+  return {
+    library_id: libraryId,
+    path,
+    position: save.position,
+    duration: save.duration,
+    finished: save.finished,
+    playback_speed: save.playback_speed,
+    version: 0,
+    device_id: save.device_id,
+    updated_at: save.updated_at,
+  };
 }
 
 function isUnrecoverable(e: unknown): boolean {

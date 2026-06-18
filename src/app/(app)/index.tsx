@@ -5,6 +5,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useAllProgress } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import type { Progress } from '@/api/types';
+import { DownloadBadge } from '@/components/library/download-badge';
 import { Cover } from '@/components/ui/cover';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
@@ -43,6 +44,7 @@ function ProgressRow({ item }: { item: Progress }) {
           <Text variant="caption">Finished</Text>
         )}
       </View>
+      <DownloadBadge libraryId={item.library_id} path={item.path} />
     </Pressable>
   );
 }

@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
+import { useDownloads } from '@/downloads/store';
 import '@/playback/register'; // registers the native background playback service (no-op on web)
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -17,10 +18,12 @@ export const unstable_settings = {
 export default function RootLayout() {
   const hydrate = useSession((s) => s.hydrate);
   const hydrateSettings = useSettings((s) => s.hydrate);
+  const hydrateDownloads = useDownloads((s) => s.hydrate);
   useEffect(() => {
     void hydrate();
     void hydrateSettings();
-  }, [hydrate, hydrateSettings]);
+    void hydrateDownloads();
+  }, [hydrate, hydrateSettings, hydrateDownloads]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
