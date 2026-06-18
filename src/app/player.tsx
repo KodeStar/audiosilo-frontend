@@ -18,6 +18,7 @@ import {
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
+import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -44,6 +45,8 @@ export default function PlayerScreen() {
   const seekBook = usePlayer((s) => s.seekBook);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const setRate = usePlayer((s) => s.setRate);
+  const skipForward = useSettings((s) => s.skipForward);
+  const skipBackward = useSettings((s) => s.skipBackward);
 
   const { data: book } = useBook(libraryId, path);
   const chaptersQuery = useChapters(libraryId, path);
@@ -132,9 +135,13 @@ export default function PlayerScreen() {
         </View>
 
         <View className="flex-row items-center justify-center gap-10">
-          <Pressable onPress={() => void skipSeconds(-15)} className="items-center gap-0.5" hitSlop={8}>
+          <Pressable
+            onPress={() => void skipSeconds(-skipBackward)}
+            className="items-center gap-0.5"
+            hitSlop={8}
+          >
             <Icon name="backward" size={30} color={neutral} />
-            <Text variant="caption">15</Text>
+            <Text variant="caption">{skipBackward}</Text>
           </Pressable>
           <Pressable
             onPress={() => void toggle()}
@@ -142,9 +149,13 @@ export default function PlayerScreen() {
           >
             <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
           </Pressable>
-          <Pressable onPress={() => void skipSeconds(30)} className="items-center gap-0.5" hitSlop={8}>
+          <Pressable
+            onPress={() => void skipSeconds(skipForward)}
+            className="items-center gap-0.5"
+            hitSlop={8}
+          >
             <Icon name="forward" size={30} color={neutral} />
-            <Text variant="caption">30</Text>
+            <Text variant="caption">{skipForward}</Text>
           </Pressable>
         </View>
 

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
+import { useSettings } from '@/stores/settings';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
 import { flushQueue, getDeviceId, loadInitialProgress, saveProgress } from './progress-sync';
@@ -99,7 +100,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const svc = await ensureService();
 
     let startAt = startBookPosition ?? 0;
-    let speed = get().rate;
+    let speed = useSettings.getState().defaultRate;
     if (startBookPosition === undefined) {
       const saved = await loadInitialProgress(api, libraryId, book.rel_path);
       if (saved && !saved.finished && saved.position > 0) startAt = saved.position;
