@@ -6,18 +6,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAddBookmark, useBook, useChapters } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { SeekBar } from '@/components/player/seek-bar';
+import { SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
 import { segmentsToPath } from '@/lib/paths';
+import { useSleepTimer } from '@/playback/sleep-timer';
 import {
   selectBookPosition,
   selectCurrentChapter,
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
+import { useShakeToCancel } from '@/playback/use-shake-to-cancel';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
@@ -48,6 +51,9 @@ export default function PlayerScreen() {
   const setRate = usePlayer((s) => s.setRate);
   const skipForward = useSettings((s) => s.skipForward);
   const skipBackward = useSettings((s) => s.skipBackward);
+  const sleepActive = useSleepTimer((s) => s.active);
+  const sleepRemaining = useSleepTimer((s) => s.remaining);
+  useShakeToCancel();
 
   const { data: book } = useBook(libraryId, path);
   const chaptersQuery = useChapters(libraryId, path);
@@ -121,6 +127,12 @@ export default function PlayerScreen() {
       <View className="flex-1 items-center justify-center gap-6 px-6">
         <View className="aspect-square w-full max-w-[300px]">
           <Cover source={coverUrl ? { uri: coverUrl, headers: api.authHeaders() } : null} label={title} />
+          {sleepActive && sleepRemaining !== null ? (
+            <View className="absolute right-2 top-2 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
+              <Icon name="sleep" size={12} color={colors.white} />
+              <Text className="text-xs text-white dark:text-white">{formatClock(sleepRemaining)}</Text>
+            </View>
+          ) : null}
         </View>
         <View className="items-center gap-1">
           <Text variant="heading" className="text-center" numberOfLines={2}>
@@ -191,6 +203,10 @@ export default function PlayerScreen() {
               </Pressable>
             );
           })}
+        </View>
+
+        <View className="flex-row items-center justify-center">
+          <SleepTimerButton />
         </View>
       </View>
     </SafeAreaView>
