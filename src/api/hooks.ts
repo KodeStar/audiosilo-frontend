@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useApi } from './provider';
 
@@ -59,4 +59,62 @@ export function useSearch(query: string) {
 export function useAllProgress() {
   const api = useApi();
   return useQuery({ queryKey: qk.allProgress(), queryFn: () => api.allProgress() });
+}
+
+// --- Bookmarks -------------------------------------------------------------
+export function useBookmarks(libraryId: number, path: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: qk.bookmarks(libraryId, path),
+    queryFn: () => api.bookmarks(libraryId, path),
+    enabled: path.length > 0,
+  });
+}
+
+export function useAddBookmark(libraryId: number, path: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { position: number; note?: string }) =>
+      api.addBookmark(libraryId, path, vars.position, vars.note ?? ''),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(libraryId, path) }),
+  });
+}
+
+export function useDeleteBookmark(libraryId: number, path: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteBookmark(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(libraryId, path) }),
+  });
+}
+
+// --- Notes -----------------------------------------------------------------
+export function useNotes(libraryId: number, path: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: qk.notes(libraryId, path),
+    queryFn: () => api.notes(libraryId, path),
+    enabled: path.length > 0,
+  });
+}
+
+export function useAddNote(libraryId: number, path: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { body: string; position?: number }) =>
+      api.addNote(libraryId, path, vars.body, vars.position ?? 0),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(libraryId, path) }),
+  });
+}
+
+export function useDeleteNote(libraryId: number, path: string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteNote(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(libraryId, path) }),
+  });
 }
