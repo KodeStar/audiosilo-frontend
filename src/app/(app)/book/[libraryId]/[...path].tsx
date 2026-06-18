@@ -4,6 +4,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useBook, useChapters } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
+import { DownloadControl } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { Button } from '@/components/ui/button';
@@ -24,7 +25,7 @@ export default function BookDetailScreen() {
   const api = useApi();
 
   const { data: book, isLoading, error, refetch } = useBook(libraryId, path);
-  const { data: chapterData } = useChapters(libraryId, path);
+  const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
 
   const openPlayer = (chapterIndex?: number) =>
     router.push({
@@ -37,7 +38,10 @@ export default function BookDetailScreen() {
     });
 
   if (isLoading) return <Spinner center />;
-  if (error || !book) {
+  // Render whenever we have book data — including a downloaded book served from
+  // the seeded query cache while offline (a failed background refetch sets
+  // `error` but keeps `book`). Only surface the error when there is no data.
+  if (!book) {
     return (
       <View className="flex-1 p-4">
         <ErrorNote message="Could not load this book." onRetry={() => refetch()} />
@@ -66,8 +70,15 @@ export default function BookDetailScreen() {
           <Text variant="muted">
             {[formatDuration(book.duration), book.format?.toUpperCase()].filter(Boolean).join(' · ')}
           </Text>
-          <View className="mt-2">
+          <View className="mt-2 gap-2">
             <Button title="Listen" icon="play" onPress={() => openPlayer()} />
+            <DownloadControl
+              libraryId={libraryId}
+              path={path}
+              book={book}
+              chapterData={chapterData}
+              disabled={chaptersLoading}
+            />
           </View>
         </View>
       </View>

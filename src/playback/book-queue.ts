@@ -14,47 +14,65 @@ export type BookQueue = {
   chapters: Chapter[];
 };
 
+/** One distinct audio file of a book, in play order. */
+export type FileSpec = { path: string; duration: number; size: number };
+
+/**
+ * The distinct audio files that make up a book, in play order — the single
+ * source of truth for both playback (`buildBookQueue`) and offline downloads, so
+ * download order ≡ play order. Prefers an explicit file list; falls back to the
+ * files referenced by the chapters; finally the book path itself. This must never
+ * resolve to a folder path.
+ */
+export function bookFileSpecs(book: Book, chapterData?: ChaptersResponse): FileSpec[] {
+  const files = chapterData?.files?.length ? chapterData.files : (book.files ?? []);
+  if (files.length > 0) {
+    return [...files]
+      .sort((a, b) => a.seq - b.seq)
+      .map((f) => ({ path: f.rel_path, duration: f.duration, size: f.size }));
+  }
+  const rawChapters = chapterData?.chapters ?? book.chapters ?? [];
+  if (rawChapters.length > 0) {
+    return distinctFilesFromChapters(rawChapters).map((s) => ({ ...s, size: 0 }));
+  }
+  return [{ path: book.rel_path, duration: book.duration, size: book.size }];
+}
+
 /**
  * Build the playable queue for a book. Each distinct audio file becomes one
  * track; chapters are markers laid over the whole-book timeline. A single
  * chaptered m4b yields one track with several chapters; a folder of mp3 parts
- * yields one track per file — both render identically downstream.
+ * yields one track per file — both render identically downstream. When `local`
+ * is supplied (the book is downloaded), each file's track points at its local
+ * `file://` uri instead of the server stream.
  */
 export function buildBookQueue(
   api: ApiClient,
   libraryId: number,
   book: Book,
   chapterData?: ChaptersResponse,
+  local?: { files: Map<string, string>; artwork?: string },
 ): BookQueue {
   // Native engines authenticate via headers; web embeds the token in the URL.
   const headers = Platform.OS === 'web' ? undefined : api.authHeaders();
-  const artwork = api.coverUrl(libraryId, book.rel_path);
+  const artwork = local?.artwork ?? api.coverUrl(libraryId, book.rel_path);
 
-  const files = chapterData?.files?.length ? chapterData.files : (book.files ?? []);
   const rawChapters = chapterData?.chapters ?? book.chapters ?? [];
+  const specs = bookFileSpecs(book, chapterData);
 
-  let specs: { path: string; duration: number }[];
-  if (files.length > 0) {
-    specs = [...files].sort((a, b) => a.seq - b.seq).map((f) => ({ path: f.rel_path, duration: f.duration }));
-  } else if (rawChapters.length > 0) {
-    // No explicit file list (single chaptered m4b, or a folder book whose files
-    // weren't returned): derive the distinct audio files from the chapters'
-    // file_path. This must never fall through to streaming a folder path.
-    specs = distinctFilesFromChapters(rawChapters);
-  } else {
-    specs = [{ path: book.rel_path, duration: book.duration }];
-  }
-
-  const tracks: PlaybackTrack[] = specs.map((s) => ({
-    id: `${libraryId}:${s.path}`,
-    url: api.streamUrl(libraryId, s.path),
-    headers,
-    title: book.title,
-    album: book.series || book.title,
-    artist: book.author || book.narrator || '',
-    artwork,
-    duration: s.duration > 0 ? s.duration : undefined,
-  }));
+  const tracks: PlaybackTrack[] = specs.map((s) => {
+    const localUri = local?.files.get(s.path);
+    return {
+      id: `${libraryId}:${s.path}`,
+      url: localUri ?? api.streamUrl(libraryId, s.path),
+      headers: localUri ? undefined : headers,
+      title: book.title,
+      album: book.series || book.title,
+      artist: book.author || book.narrator || '',
+      artwork,
+      duration: s.duration > 0 ? s.duration : undefined,
+    };
+  });
 
   const offsets: number[] = [];
   let acc = 0;

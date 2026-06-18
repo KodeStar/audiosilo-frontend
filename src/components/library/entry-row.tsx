@@ -6,6 +6,7 @@ import type { FsEntry } from '@/api/types';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { DownloadBadge } from '@/components/library/download-badge';
 import { bookSubtitle, formatDuration } from '@/lib/format';
 import { bookHref, libraryHref } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
@@ -49,6 +50,7 @@ export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: numb
           ) : null}
         </View>
         {entry.duration ? <Text variant="caption">{formatDuration(entry.duration)}</Text> : null}
+        {!isFolder ? <DownloadBadge libraryId={libraryId} path={entry.path} /> : null}
         <Icon name="chevron-right" size={14} />
       </Pressable>
     </Link>

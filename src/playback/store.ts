@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { ApiClient } from '@/api/client';
 import { queryClient } from '@/api/provider';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
+import { downloadKey, useDownloads } from '@/downloads/store';
 import { useSettings } from '@/stores/settings';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
@@ -133,7 +134,18 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     endHistory(); // flush any prior book's listening span before switching
     apiRef = api;
     deviceId = await getDeviceId();
-    const queue = buildBookQueue(api, libraryId, book, chapterData);
+
+    // Play from local files when the book is downloaded (works fully offline).
+    const dl = useDownloads.getState().entries[downloadKey(libraryId, book.rel_path)];
+    const local =
+      dl?.status === 'downloaded'
+        ? {
+            files: new Map(dl.manifest.files.map((f) => [f.relPath, f.localUri] as const)),
+            artwork: dl.manifest.coverUri ?? undefined,
+          }
+        : undefined;
+
+    const queue = buildBookQueue(api, libraryId, book, chapterData, local);
     const svc = await ensureService();
 
     let startAt = startBookPosition ?? 0;
@@ -152,7 +164,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         path: book.rel_path,
         title: book.title,
         author: book.author || book.narrator || '',
-        cover: api.coverUrl(libraryId, book.rel_path),
+        cover: local?.artwork ?? api.coverUrl(libraryId, book.rel_path),
         queue,
       },
     });

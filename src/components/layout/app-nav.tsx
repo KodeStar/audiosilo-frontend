@@ -3,6 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { engine } from '@/downloads/engine';
 import { colors } from '@/theme/tokens';
 
 type NavItem = { href: Href; match: string; label: string; icon: IconName };
@@ -11,6 +12,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/', match: '/', label: 'Home', icon: 'home' },
   { href: '/library', match: '/library', label: 'Library', icon: 'folder' },
   { href: '/search', match: '/search', label: 'Search', icon: 'search' },
+  // Downloads are native-only (no web offline storage until the M4 service worker).
+  ...(engine.supported ? [{ href: '/downloads', match: '/downloads', label: 'Downloads', icon: 'download' } as NavItem] : []),
   { href: '/settings', match: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
