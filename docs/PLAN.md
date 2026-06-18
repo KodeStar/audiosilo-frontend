@@ -1,9 +1,11 @@
 # AudioSilo Frontend — Implementation Plan
 
-> Status (2026-06-18): **Milestone 1 complete** (scaffold, design system, API
-> client, connect/auth, browse + book detail, hybrid player, progress sync).
-> M2–M5 are pending. This is the original approved plan, kept for reference; see
-> [CLAUDE.md](../CLAUDE.md) for current architecture, conventions, and gotchas.
+> Status (2026-06-18): **Milestones 1–2 complete.** M1 = scaffold, design system,
+> API client, connect/auth, browse + book detail, hybrid player, progress sync.
+> M2 = settings (skip/speed), search results, bookmarks, markdown notes, sleep
+> timer, and listening history (which added GET/POST history routes to
+> audiosilo-server). M3–M5 pending. This is the original approved plan, kept for
+> reference; see [CLAUDE.md](../CLAUDE.md) for current architecture and gotchas.
 
 ## Context
 
@@ -43,7 +45,7 @@ The **old client** at `~/dev/audiosilo` — a Nuxt 2 / Vue / Tailwind v2 PWA wra
 
 **M1 — core (done):** scaffold; FA Pro icons; NativeWind theme + responsive shell; typed API client + session store + React Query; connect/auth (server URL, auth-code, password, logout, guard); library browse + book detail; hybrid playback (PlaybackService, web + native engines, MiniPlayer + full Player); progress sync (resume, last-write-wins saves, offline queue, Home continue-listening).
 
-**M2 — listening features:** bookmarks (add at timestamp, list, delete), notes (markdown via `react-native-markdown-display`), history sessions, sleep timer (presets + end-of-chapter, on-cover countdown, shake-to-cancel), full settings (skip ± seconds, default speed, transcode placeholder, version). Finish **search results** rendering (hook exists; results not yet shown).
+**M2 — listening features (done):** settings (skip ± seconds, default speed, version), search results, bookmarks (add from player, list/jump/delete), markdown notes (via `react-native-marked`), sleep timer (duration + end-of-chapter, on-cover countdown, shake-to-cancel via `expo-sensors`), and listening history. History required new `audiosilo-server` routes (`GET /me/history`, `GET`/`POST /libraries/{id}/history`) backed by the existing `catalog` history table.
 
 **M3 — offline:** download books/chapters via `expo-file-system` (native) / Cache API + SW (web); cached indicators, download progress, delete; offline playback.
 
