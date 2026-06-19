@@ -9,7 +9,8 @@ import { formatBytes } from '@/lib/format';
 import { colors } from '@/theme/tokens';
 
 /** Download affordance on the book detail screen: download / progress+cancel /
- * downloaded+delete / retry, and an app-only hint on web. */
+ * downloaded+delete / retry, with a fallback when offline storage is unavailable
+ * (an insecure-context or very old browser). */
 export function DownloadControl({
   libraryId,
   path,
@@ -31,7 +32,7 @@ export function DownloadControl({
   );
 
   if (!supported) {
-    return <Button title="Download (app only)" variant="secondary" icon="download" disabled />;
+    return <Button title="Downloads unavailable" variant="secondary" icon="download" disabled />;
   }
 
   if (status === 'downloaded') {

@@ -1,6 +1,13 @@
 import { ApiError, type ApiClient } from '@/api/client';
+import { getReachabilityApi, isReachable, noteError, noteSuccess, onReconnect } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { getItem, setItem } from '@/lib/storage';
+
+// When the server comes back, replay anything that piled up while it was away.
+onReconnect(() => {
+  const api = getReachabilityApi();
+  if (api) void flushQueue(api);
+});
 
 const QUEUE_KEY = 'audiosilo.progressQueue';
 const DEVICE_KEY = 'audiosilo.deviceId';
@@ -39,8 +46,8 @@ export async function loadInitialProgress(
   try {
     const server = await api.getProgress(libraryId, path);
     if (server) return server;
-  } catch {
-    // offline or unreachable — fall back to the latest local save below
+  } catch (e) {
+    noteError(e); // offline or unreachable — fall back to the latest local save below
   }
   return pendingProgressFor(libraryId, path);
 }
@@ -71,6 +78,12 @@ function isUnrecoverable(e: unknown): boolean {
 /** Save progress now; if the network fails, queue it for later replay. version
  * is left 0 so the server reconciles by (updated_at, version). */
 export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<void> {
+  // Server known to be unreachable: queue locally without hitting the network, so
+  // the 15s save loop doesn't fire a doomed request every tick while offline.
+  if (!isReachable()) {
+    await enqueue(save);
+    return;
+  }
   try {
     await api.saveProgress(save.libraryId, save.path, {
       position: save.position,
@@ -81,9 +94,11 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
       device_id: save.device_id,
       updated_at: save.updated_at,
     });
+    noteSuccess();
     void flushQueue(api);
   } catch (e) {
     if (isUnrecoverable(e)) return; // auth/forbidden — don't retry forever
+    noteError(e); // a connection error flips us offline (stops further attempts)
     await enqueue(save);
   }
 }
@@ -98,10 +113,12 @@ async function enqueue(save: ProgressSave): Promise<void> {
 
 /** Replay queued saves (call on reconnect / app open). */
 export async function flushQueue(api: ApiClient): Promise<void> {
+  if (!isReachable()) return; // wait for reconnect rather than fail item by item
   const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
   if (queue.length === 0) return;
   const remaining: ProgressSave[] = [];
-  for (const save of queue) {
+  for (let i = 0; i < queue.length; i++) {
+    const save = queue[i];
     try {
       await api.saveProgress(save.libraryId, save.path, {
         position: save.position,
@@ -112,9 +129,16 @@ export async function flushQueue(api: ApiClient): Promise<void> {
         device_id: save.device_id,
         updated_at: save.updated_at,
       });
+      noteSuccess();
     } catch (e) {
       if (isUnrecoverable(e)) continue; // drop; can't ever succeed
-      remaining.push(save); // still offline — keep for next time
+      noteError(e);
+      if (!isReachable()) {
+        // Connection dropped mid-flush — keep this and everything after it.
+        remaining.push(...queue.slice(i));
+        break;
+      }
+      remaining.push(save); // transient server error — retry next time
     }
   }
   await setItem(QUEUE_KEY, remaining);

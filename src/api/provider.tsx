@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 
 import { useSession } from '@/stores/session';
 
 import { ApiClient } from './client';
+import { setReachabilityApi } from './reachability';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +26,9 @@ export function ApiProvider({ children }: { children: ReactNode }) {
     () => (serverUrl ? new ApiClient(serverUrl, token) : null),
     [serverUrl, token],
   );
+
+  // Keep the reachability probe pointed at the live client.
+  useEffect(() => setReachabilityApi(client), [client]);
 
   return (
     <QueryClientProvider client={queryClient}>

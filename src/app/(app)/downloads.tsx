@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useApi } from '@/api/provider';
@@ -65,7 +65,17 @@ export default function DownloadsScreen() {
     () => Object.values(entries).sort((a, b) => b.manifest.savedAt.localeCompare(a.manifest.savedAt)),
     [entries],
   );
-  const totalBytes = useMemo(() => engine.totalBytesUsed(), [entries]);
+  // Disk usage is an async query on web (Cache API), so resolve it into state.
+  const [totalBytes, setTotalBytes] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void engine.totalBytesUsed().then((bytes) => {
+      if (!cancelled) setTotalBytes(bytes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [entries]);
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 px-8">
@@ -75,7 +85,7 @@ export default function DownloadsScreen() {
       </View>
 
       {!supported ? (
-        <EmptyNote message="Downloads are available in the installed iOS and Android app." />
+        <EmptyNote message="Offline downloads aren't available in this browser. Use the installed app or a secure (https) connection." />
       ) : list.length === 0 ? (
         <EmptyNote message="Download a book from its detail screen to listen offline." />
       ) : (

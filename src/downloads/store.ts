@@ -44,7 +44,11 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     for (const [key, e] of Object.entries(saved)) {
       // Only fully-downloaded books survive a relaunch; our engine can't resume a
       // download interrupted by an app kill, so partials are dropped + cleaned up.
-      if (e.status === 'downloaded' && e.manifest.files.length > 0 && e.manifest.files.every((f) => engine.fileExists(f.localUri))) {
+      const present =
+        e.status === 'downloaded' &&
+        e.manifest.files.length > 0 &&
+        (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(Boolean);
+      if (present) {
         cleaned[key] = e;
         seedQueryCache(e.manifest, e.libraryId, e.path);
       } else {
