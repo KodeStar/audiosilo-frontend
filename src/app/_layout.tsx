@@ -6,7 +6,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
-import '@/playback/register'; // registers the native background playback service (no-op on web)
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { ThemeProvider } from '@/theme/theme-provider';

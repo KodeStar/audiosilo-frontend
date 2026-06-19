@@ -1,5 +1,11 @@
 /// <reference lib="dom" />
-import { INITIAL_SNAPSHOT, type PlaybackService, type PlaybackSnapshot, type PlaybackTrack } from './types';
+import {
+  INITIAL_SNAPSHOT,
+  type PlaybackConfig,
+  type PlaybackService,
+  type PlaybackSnapshot,
+  type PlaybackTrack,
+} from './types';
 
 /**
  * Web playback via a single HTML5 <audio> element. The token is already in the
@@ -12,6 +18,8 @@ class WebPlaybackService implements PlaybackService {
   private tracks: PlaybackTrack[] = [];
   private index = 0;
   private rate = 1;
+  private config: PlaybackConfig = { autoRewindMax: 0, jumpForward: 30, jumpBackward: 15 };
+  private pausedAt: number | null = null;
   private snapshot: PlaybackSnapshot = { ...INITIAL_SNAPSHOT };
   private listeners = new Set<(s: PlaybackSnapshot) => void>();
 
@@ -81,6 +89,10 @@ class WebPlaybackService implements PlaybackService {
     /* no-op on web */
   }
 
+  async configure(config: PlaybackConfig) {
+    this.config = config;
+  }
+
   async load(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number) {
     this.tracks = tracks;
     this.loadTrack(startIndex, positionInTrack, false);
@@ -88,11 +100,18 @@ class WebPlaybackService implements PlaybackService {
   }
 
   async play() {
-    await this.el().play();
+    const a = this.el();
+    if (this.config.autoRewindMax > 0 && this.pausedAt != null) {
+      const rewind = Math.min(this.config.autoRewindMax, (Date.now() - this.pausedAt) / 1000);
+      if (rewind > 0.5) a.currentTime = Math.max(0, a.currentTime - rewind);
+    }
+    this.pausedAt = null;
+    await a.play();
   }
 
   async pause() {
     this.el().pause();
+    this.pausedAt = Date.now();
   }
 
   async seekTo(positionInTrack: number) {
@@ -146,10 +165,10 @@ class WebPlaybackService implements PlaybackService {
       navigator.mediaSession.setActionHandler('play', () => void this.play());
       navigator.mediaSession.setActionHandler('pause', () => void this.pause());
       navigator.mediaSession.setActionHandler('seekbackward', () =>
-        void this.seekTo(Math.max(0, this.snapshot.position - 30)),
+        void this.seekTo(Math.max(0, this.snapshot.position - this.config.jumpBackward)),
       );
       navigator.mediaSession.setActionHandler('seekforward', () =>
-        void this.seekTo(this.snapshot.position + 30),
+        void this.seekTo(this.snapshot.position + this.config.jumpForward),
       );
     } catch {
       // unsupported action handlers; ignore

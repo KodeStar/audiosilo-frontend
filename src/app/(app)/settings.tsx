@@ -17,6 +17,7 @@ const APPEARANCE: { value: SchemePref; label: string }[] = [
 ];
 
 const sec = (v: number) => `${v}s`;
+const secOrOff = (v: number) => (v === 0 ? 'Off' : `${v}s`);
 const speed = (v: number) => `${Number(v.toFixed(2))}×`;
 
 export default function SettingsScreen() {
@@ -29,9 +30,11 @@ export default function SettingsScreen() {
   const skipForward = useSettings((s) => s.skipForward);
   const skipBackward = useSettings((s) => s.skipBackward);
   const defaultRate = useSettings((s) => s.defaultRate);
+  const autoRewindMax = useSettings((s) => s.autoRewindMax);
   const setSkipForward = useSettings((s) => s.setSkipForward);
   const setSkipBackward = useSettings((s) => s.setSkipBackward);
   const setDefaultRate = useSettings((s) => s.setDefaultRate);
+  const setAutoRewindMax = useSettings((s) => s.setAutoRewindMax);
 
   const onLogout = async () => {
     try {
@@ -81,7 +84,11 @@ export default function SettingsScreen() {
           </View>
           <View className="flex-row items-center justify-between">
             <Text>Default speed</Text>
-            <Stepper value={defaultRate} onChange={setDefaultRate} step={0.05} min={0.5} max={3} format={speed} />
+            <Stepper value={defaultRate} onChange={setDefaultRate} step={0.05} min={0.5} max={2} format={speed} />
+          </View>
+          <View className="flex-row items-center justify-between">
+            <Text>Auto-rewind on resume</Text>
+            <Stepper value={autoRewindMax} onChange={setAutoRewindMax} step={5} min={0} max={30} format={secOrOff} />
           </View>
         </Card>
       </View>
