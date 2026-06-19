@@ -68,7 +68,7 @@ export default function DownloadsScreen() {
   const totalBytes = useMemo(() => engine.totalBytesUsed(), [entries]);
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4">
+    <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 px-8">
       <View className="flex-row items-center justify-between">
         <Text variant="heading">Downloads</Text>
         {supported && totalBytes > 0 ? <Text variant="muted">{formatBytes(totalBytes)} used</Text> : null}

@@ -10,19 +10,25 @@ import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
-type NavItem = { href: Href; match: string; label: string; icon: IconName };
+// `alsoMatch` keeps a tab highlighted on related routes that live outside its
+// own path — e.g. a book screen (`/book/...`) is reached through the library.
+type NavItem = { href: Href; match: string; label: string; icon: IconName; alsoMatch?: string[] };
 
 // Search lives in the header (phone) / top bar (desktop), not the tab bar.
 export const NAV_ITEMS: NavItem[] = [
   { href: '/', match: '/', label: 'Home', icon: 'home' },
-  { href: '/library', match: '/library', label: 'Library', icon: 'library' },
+  { href: '/library', match: '/library', label: 'Library', icon: 'library', alsoMatch: ['/book'] },
   // Downloads are native-only (no web offline storage until the M4 service worker).
   ...(engine.supported ? [{ href: '/downloads', match: '/downloads', label: 'Downloads', icon: 'download' } as NavItem] : []),
   { href: '/settings', match: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
-function isActive(pathname: string, match: string) {
+function matchesPath(pathname: string, match: string) {
   return match === '/' ? pathname === '/' : pathname === match || pathname.startsWith(`${match}/`);
+}
+
+function isActive(pathname: string, item: NavItem) {
+  return matchesPath(pathname, item.match) || (item.alsoMatch?.some((m) => matchesPath(pathname, m)) ?? false);
 }
 
 /** Left sidebar on wide screens, bottom tab bar on phones. */
@@ -45,7 +51,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
     return (
       <View className="flex-row border-t border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800">
         {NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item.match);
+          const active = isActive(pathname, item);
           return (
             <Link key={item.match} href={item.href} asChild>
               <Pressable className="flex-1 items-center justify-center gap-1 py-2.5">
@@ -68,7 +74,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       </View>
       <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item.match);
+          const active = isActive(pathname, item);
           return (
             <Link key={item.match} href={item.href} asChild>
               <Pressable
