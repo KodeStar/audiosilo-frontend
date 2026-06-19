@@ -1,0 +1,9 @@
+# Minimal image holding only the static web export at /web. It carries no runtime
+# of its own; the audiosilo-server image consumes it via
+#   COPY --from=ghcr.io/<owner>/audiosilo-web:<tag> /web /app/web
+#
+# The build context is the exported dist/ directory (see .github/workflows/web.yml),
+# produced by `npx expo export --platform web` with baseUrl=/web (app.json
+# experiments.baseUrl), so asset URLs resolve under /web.
+FROM scratch
+COPY . /web
