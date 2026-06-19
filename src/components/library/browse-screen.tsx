@@ -49,7 +49,7 @@ export function BrowseScreen() {
   const audioFiles = entries.filter((e) => !e.is_dir);
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="p-4">
+    <ScrollView className="flex-1" contentContainerClassName="p-4 px-8">
       {crumbs.length > 1 ? <BreadCrumbs crumbs={crumbs} /> : null}
 
       {isLoading ? <Spinner center /> : null}

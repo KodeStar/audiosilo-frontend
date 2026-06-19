@@ -203,7 +203,7 @@ export default function BookDetailScreen() {
   }
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4">
+    <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4 px-8">
       <BreadCrumbs crumbs={crumbs} />
 
       <View className="gap-4">
