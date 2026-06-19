@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.audiosiloplayer'
+version = '0.1.0'
+
+def media3Version = '1.5.1'
+
+android {
+  namespace "expo.modules.audiosiloplayer"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  implementation "androidx.media3:media3-exoplayer:${media3Version}"
+  implementation "androidx.media3:media3-session:${media3Version}"
+  implementation "androidx.media3:media3-datasource:${media3Version}"
+}

@@ -22,6 +22,16 @@ const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const SAVE_INTERVAL_MS = 15_000;
 const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
 
+const MIN_RATE = 0.5;
+const MAX_RATE = 2; // engines support more; the product caps speed at 2x
+const clampRate = (r: number) => Math.max(MIN_RATE, Math.min(MAX_RATE, r));
+
+/** Engine tunables derived from the settings store. */
+function currentConfig() {
+  const s = useSettings.getState();
+  return { autoRewindMax: s.autoRewindMax, jumpForward: s.skipForward, jumpBackward: s.skipBackward };
+}
+
 export type NowPlaying = {
   libraryId: number;
   path: string;
@@ -121,6 +131,9 @@ async function ensureService(): Promise<PlaybackService> {
   if (service) return service;
   const svc = createPlaybackService();
   await svc.setup();
+  await svc.configure(currentConfig());
+  // Keep auto-rewind + lock-screen skip intervals in sync with the settings store.
+  useSettings.subscribe(() => void svc.configure(currentConfig()));
   svc.subscribe((snapshot) => {
     const prev = usePlayer.getState().snapshot;
     usePlayer.setState({ snapshot });
@@ -162,11 +175,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const svc = await ensureService();
 
     let startAt = startBookPosition ?? 0;
-    let speed = useSettings.getState().defaultRate;
+    let speed = clampRate(useSettings.getState().defaultRate);
     if (startBookPosition === undefined && startTrack === undefined) {
       const saved = await loadInitialProgress(api, libraryId, book.rel_path);
       if (saved && !saved.finished && saved.position > 0) startAt = saved.position;
-      if (saved?.playback_speed && saved.playback_speed > 0) speed = saved.playback_speed;
+      if (saved?.playback_speed && saved.playback_speed > 0) speed = clampRate(saved.playback_speed);
     }
 
     const { index, positionInTrack } =
@@ -256,8 +269,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   },
 
   setRate: async (rate) => {
-    set({ rate });
-    if (service) await service.setRate(rate);
+    const clamped = clampRate(rate);
+    set({ rate: clamped });
+    if (service) await service.setRate(clamped);
     void persist();
   },
 

@@ -11,9 +11,11 @@ export type PlaybackSettings = {
   skipBackward: number;
   /** Default playback speed for a book with no saved speed. */
   defaultRate: number;
+  /** Max seconds to rewind when resuming after a pause (0 = disabled). */
+  autoRewindMax: number;
 };
 
-const DEFAULTS: PlaybackSettings = { skipForward: 30, skipBackward: 15, defaultRate: 1 };
+const DEFAULTS: PlaybackSettings = { skipForward: 30, skipBackward: 15, defaultRate: 1, autoRewindMax: 5 };
 
 type SettingsState = PlaybackSettings & {
   hydrated: boolean;
@@ -21,12 +23,13 @@ type SettingsState = PlaybackSettings & {
   setSkipForward: (seconds: number) => void;
   setSkipBackward: (seconds: number) => void;
   setDefaultRate: (rate: number) => void;
+  setAutoRewindMax: (seconds: number) => void;
 };
 
 export const useSettings = create<SettingsState>()((set, get) => {
   const save = () => {
-    const { skipForward, skipBackward, defaultRate } = get();
-    void setItem(KEY, { skipForward, skipBackward, defaultRate });
+    const { skipForward, skipBackward, defaultRate, autoRewindMax } = get();
+    void setItem(KEY, { skipForward, skipBackward, defaultRate, autoRewindMax });
   };
   return {
     ...DEFAULTS,
@@ -45,6 +48,10 @@ export const useSettings = create<SettingsState>()((set, get) => {
     },
     setDefaultRate: (defaultRate) => {
       set({ defaultRate });
+      save();
+    },
+    setAutoRewindMax: (autoRewindMax) => {
+      set({ autoRewindMax });
       save();
     },
   };

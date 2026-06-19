@@ -63,7 +63,7 @@ export class ApiClient {
   }
 
   /** Authorization header for use by the playback/image layers (expo-image,
-   * track-player) which need to attach the token to their own requests. */
+   * the native player module) which need to attach the token to their own requests. */
   authHeaders(): Record<string, string> {
     return this.token ? { Authorization: `Bearer ${this.token}` } : {};
   }
@@ -163,9 +163,9 @@ export class ApiClient {
   // `?token=` for media GETs). Web requires this — browsers can't set an
   // Authorization header on <img>/<audio>. Native uses the same mechanism for a
   // single uniform path, so cover/stream auth never depends on whether a given
-  // library (expo-image, track-player) forwards custom request headers. (We did
-  // not confirm whether track-player forwards them; native still also passes
-  // headers via the track/source, so this is belt-and-braces.)
+  // library (expo-image, the native player module) forwards custom request
+  // headers. Native still also passes headers via the track/source, so this is
+  // belt-and-braces (and lets lock-screen artwork load without extra wiring).
   private mediaTokenQuery(): Query {
     return this.token ? { token: this.token } : {};
   }

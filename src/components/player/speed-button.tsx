@@ -24,7 +24,7 @@ export function SpeedButton() {
           <Pressable className="gap-4 rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840" onPress={() => {}}>
             <Text variant="title">Playback speed</Text>
             <View className="items-center py-2">
-              <Stepper value={rate} onChange={(v) => void setRate(v)} step={0.05} min={0.5} max={3} format={fmt} />
+              <Stepper value={rate} onChange={(v) => void setRate(v)} step={0.05} min={0.5} max={2} format={fmt} />
             </View>
           </Pressable>
         </Pressable>
