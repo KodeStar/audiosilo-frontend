@@ -53,9 +53,9 @@ export interface DownloadEngine {
     signal?: AbortSignal,
   ): Promise<string>;
   /** Whether a previously downloaded local file still exists on disk. */
-  fileExists(localUri: string): boolean;
+  fileExists(localUri: string): Promise<boolean>;
   /** Delete a book's directory and all its files. */
   removeBook(libraryId: number, path: string): Promise<void>;
   /** Total bytes used by all downloads. */
-  totalBytesUsed(): number;
+  totalBytesUsed(): Promise<number>;
 }

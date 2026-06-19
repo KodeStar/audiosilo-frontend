@@ -59,6 +59,13 @@ export interface PlaybackService {
   /** Apply runtime tunables (auto-rewind, skip intervals). */
   configure(config: PlaybackConfig): Promise<void>;
   load(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number): Promise<void>;
+  /**
+   * Swap the queue to a new source as gaplessly as possible: keep the current
+   * source playing until the new one is buffered and ready at `positionInTrack`,
+   * then switch. Used to move a streaming book onto its just-downloaded local files
+   * without an audible gap. Optional — callers fall back to `load` + `play`.
+   */
+  swapTo?(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   /** Seek within the current track. */

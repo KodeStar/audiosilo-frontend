@@ -7,7 +7,7 @@ export const engine: DownloadEngine = {
   downloadFile: async () => {
     throw new Error('No download engine is available for this platform.');
   },
-  fileExists: () => false,
+  fileExists: async () => false,
   removeBook: async () => {},
-  totalBytesUsed: () => 0,
+  totalBytesUsed: async () => 0,
 };
