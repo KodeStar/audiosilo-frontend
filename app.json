@@ -12,9 +12,10 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.anonymous.audiosilo"
+      "bundleIdentifier": "app.audiosilo"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +25,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.audiosilo"
+      "package": "app.audiosilo",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -55,6 +60,12 @@
       "typedRoutes": true,
       "reactCompiler": true,
       "baseUrl": "/web"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fd711c89-9502-47ff-a881-eb5f043847a2"
+      }
     }
   }
 }
