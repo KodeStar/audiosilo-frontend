@@ -17,6 +17,8 @@ export type ServerInfo = {
   api: string;
   capabilities: Capabilities;
   auth: { methods: string[] };
+  /** Present when the server runs in public demo mode (instant throwaway accounts). */
+  demo?: { enabled: boolean };
 };
 
 export type Role = 'admin' | 'user';
@@ -32,6 +34,12 @@ export type User = {
 export type AuthSession = {
   token: string;
   user: User;
+};
+
+/** Response of /demo/session: a session for this client plus a pairing payload
+ * (QR) so the same throwaway demo user can be opened on another device. */
+export type DemoSession = AuthSession & {
+  pairing: PairingPayload;
 };
 
 /** Response of /auth/redeem and /auth/pair. */
