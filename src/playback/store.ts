@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { queryClient } from '@/api/provider';
+import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 import { downloadKey, useDownloads } from '@/downloads/store';
 import { useSettings } from '@/stores/settings';
@@ -113,6 +114,8 @@ function endHistory() {
   const start = historyStart;
   historyStart = null;
   if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
+  // Listening spans are best-effort; don't fire at a server we know is unreachable.
+  if (!isReachable()) return;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
@@ -124,7 +127,10 @@ function endHistory() {
       ended_at: new Date().toISOString(),
     })
     .then(() => queryClient.invalidateQueries({ queryKey: ['history'] }))
-    .catch((err) => console.warn('[history] failed to save listening span', err));
+    .catch((err) => {
+      noteError(err);
+      console.warn('[history] failed to save listening span', err);
+    });
 }
 
 async function ensureService(): Promise<PlaybackService> {
@@ -145,7 +151,17 @@ async function ensureService(): Promise<PlaybackService> {
       endHistory();
       beginHistory();
     }
-    if (snapshot.state === 'ended') void persist();
+    // Drive the periodic progress save off the real play state: it runs only while
+    // actually playing, so we don't keep re-saving the same position every 15s
+    // after pause/stop/end — including a lock-screen pause or a book that simply
+    // finishes, neither of which calls stop().
+    if (snapshot.state !== prev.state) {
+      if (snapshot.state === 'playing') startSaveLoop();
+      else if (snapshot.state === 'paused' || snapshot.state === 'ended') {
+        void persist(); // capture where we stopped...
+        stopSaveLoop(); // ...then halt the loop until playback resumes
+      }
+    }
   });
   service = svc;
   return svc;
@@ -200,26 +216,20 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     await svc.load(queue.tracks, index, positionInTrack);
     await svc.setRate(speed);
     await svc.play();
-    startSaveLoop();
+    // The save loop is started by the engine 'playing' transition (see subscribe).
     void flushQueue(api);
   },
 
   toggle: async () => {
     const svc = await ensureService();
-    if (get().snapshot.state === 'playing') {
-      await svc.pause();
-      void persist();
-    } else {
-      await svc.play();
-    }
+    // persist + save-loop start/stop are handled by the engine state transition.
+    if (get().snapshot.state === 'playing') await svc.pause();
+    else await svc.play();
   },
 
   pause: async () => {
     const svc = await ensureService();
-    if (get().snapshot.state === 'playing') {
-      await svc.pause();
-      void persist();
-    }
+    if (get().snapshot.state === 'playing') await svc.pause();
   },
 
   seekBook: async (bookPosition) => {
@@ -282,6 +292,54 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
 }));
+
+/**
+ * Hot-swap the currently-playing book onto its local files the moment its download
+ * finishes, preserving position + play state. `playBook` already prefers local when
+ * a book is downloaded *before* playback starts; this covers the other order —
+ * downloading while it streams — so playback keeps going when the network drops
+ * instead of dying with the live stream. Shared by web + native.
+ */
+async function switchCurrentBookToLocal() {
+  const { nowPlaying, snapshot, rate } = usePlayer.getState();
+  if (!nowPlaying || !apiRef) return;
+  const dl = useDownloads.getState().entries[downloadKey(nowPlaying.libraryId, nowPlaying.path)];
+  if (dl?.status !== 'downloaded' || dl.manifest.files.length === 0) return;
+
+  // Already playing from local? (every track points at a downloaded uri) → nothing to do.
+  const localUris = new Set(dl.manifest.files.map((f) => f.localUri));
+  if (nowPlaying.queue.tracks.every((t) => localUris.has(t.url))) return;
+
+  const bookPos = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
+  const local = {
+    files: new Map(dl.manifest.files.map((f) => [f.relPath, f.localUri] as const)),
+    artwork: dl.manifest.coverUri ?? undefined,
+  };
+  const queue = buildBookQueue(apiRef, nowPlaying.libraryId, dl.manifest.book, dl.manifest.chapters ?? undefined, local);
+  const { index, positionInTrack } = locate(queue.offsets, bookPos);
+  const wasPlaying = snapshot.state === 'playing';
+  const svc = await ensureService();
+  usePlayer.setState({ nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue } });
+  if (svc.swapTo) {
+    // Gapless: keep streaming until the local file is buffered at this position.
+    await svc.swapTo(queue.tracks, index, positionInTrack);
+  } else {
+    await svc.load(queue.tracks, index, positionInTrack);
+    await svc.setRate(rate);
+    if (wasPlaying) await svc.play();
+  }
+}
+
+// When a download completes for the book that's currently playing, switch it to the
+// local copy (see above).
+useDownloads.subscribe((state, prev) => {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np) return;
+  const key = downloadKey(np.libraryId, np.path);
+  if (state.entries[key]?.status === 'downloaded' && prev.entries[key]?.status !== 'downloaded') {
+    void switchCurrentBookToLocal();
+  }
+});
 
 // --- selectors -------------------------------------------------------------
 export const selectBookPosition = (s: PlayerState): number =>

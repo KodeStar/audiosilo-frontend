@@ -60,7 +60,7 @@ export default function BookDetailScreen() {
   const chapters = chapterData?.chapters ?? [];
   const files = chapterData?.files ?? [];
   const listLabel = chapters.length > 0 ? 'Chapters' : 'Files';
-  const isThisPlaying = nowPlaying?.libraryId === libraryId && nowPlaying?.path === path;
+  const isThisPlaying = nowPlaying?.libraryId === libraryId && nowPlaying?.path === book.rel_path;
   const activeIndex = isThisPlaying ? currentChapter?.index : undefined;
   const downloaded = downloadEntry?.status === 'downloaded';
 
