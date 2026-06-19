@@ -176,7 +176,9 @@ export function PlayerView() {
           <Pressable className="absolute inset-0 bg-black/40" onPress={() => setSheet(null)} />
           <View className="max-h-[75%] rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840">
             <ScrollView contentContainerClassName="pb-4" keyboardShouldPersistTaps="handled">
-              {sheet === 'history' ? <HistorySection libraryId={libraryId} path={path} /> : null}
+              {sheet === 'history' ? (
+                <HistorySection libraryId={libraryId} path={path} emptyLabel="No history yet." />
+              ) : null}
               {sheet === 'notes' ? <NotesSection libraryId={libraryId} path={path} /> : null}
             </ScrollView>
           </View>

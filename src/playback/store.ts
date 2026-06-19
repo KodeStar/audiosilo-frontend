@@ -114,7 +114,7 @@ function endHistory() {
       ended_at: new Date().toISOString(),
     })
     .then(() => queryClient.invalidateQueries({ queryKey: ['history'] }))
-    .catch(() => {});
+    .catch((err) => console.warn('[history] failed to save listening span', err));
 }
 
 async function ensureService(): Promise<PlaybackService> {

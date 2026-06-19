@@ -9,10 +9,28 @@ import { colors } from '@/theme/tokens';
 
 /** Recent listening spans for a book; tap to jump back to a span's start.
  * Renders nothing when there's no history. */
-export function HistorySection({ libraryId, path }: { libraryId: number; path: string }) {
+export function HistorySection({
+  libraryId,
+  path,
+  emptyLabel,
+}: {
+  libraryId: number;
+  path: string;
+  emptyLabel?: string;
+}) {
   const { data: history } = useHistory(libraryId, path);
 
-  if (!history || history.length === 0) return null;
+  if (!history || history.length === 0) {
+    // Inline (book screen) hides entirely when empty; the player sheet passes an
+    // emptyLabel so the sheet visibly opens instead of showing a blank panel.
+    if (!emptyLabel) return null;
+    return (
+      <View className="gap-2">
+        <Text variant="title">History</Text>
+        <Text variant="caption">{emptyLabel}</Text>
+      </View>
+    );
+  }
 
   const jump = (position: number) =>
     router.push({
