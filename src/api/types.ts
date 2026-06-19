@@ -39,8 +39,10 @@ export type PairingPayload = {
   server_name: string;
   base_url: string;
   pairing_token: string;
-  /** audiosilo://pair?url=<base>&token=<pairing_token> — encoded in the QR. */
+  /** audiosilo://connect?server=<base>&token=<pairing_token> — custom-scheme "Open in app" link. */
   uri: string;
+  /** https://<base>/web/connect?token=<pairing_token> — encoded in the QR. */
+  web_url: string;
   qr_png_data_uri: string;
   links: { web: string; admin: string; ios?: string; android?: string };
 };
