@@ -26,6 +26,7 @@ import { faSliders } from '@fortawesome/pro-light-svg-icons/faSliders';
 import { faSpinnerThird } from '@fortawesome/pro-light-svg-icons/faSpinnerThird';
 import { faTrashCan } from '@fortawesome/pro-light-svg-icons/faTrashCan';
 import { faUser } from '@fortawesome/pro-light-svg-icons/faUser';
+import { faWifiSlash } from '@fortawesome/pro-light-svg-icons/faWifiSlash';
 import { faXmark } from '@fortawesome/pro-light-svg-icons/faXmark';
 import { faCirclePause } from '@fortawesome/pro-solid-svg-icons/faCirclePause';
 import { faCirclePlay } from '@fortawesome/pro-solid-svg-icons/faCirclePlay';
@@ -79,6 +80,7 @@ export type IconName =
   | 'qrcode'
   | 'server'
   | 'check'
+  | 'offline'
   | 'user';
 
 const ICONS: Record<IconName, IconDefinition> = {
@@ -117,6 +119,7 @@ const ICONS: Record<IconName, IconDefinition> = {
   qrcode: faQrcode,
   server: faServer,
   check: faCheck,
+  offline: faWifiSlash,
   user: faUser,
 };
 

@@ -18,7 +18,8 @@ type NavItem = { href: Href; match: string; label: string; icon: IconName; alsoM
 export const NAV_ITEMS: NavItem[] = [
   { href: '/', match: '/', label: 'Home', icon: 'home' },
   { href: '/library', match: '/library', label: 'Library', icon: 'library', alsoMatch: ['/book'] },
-  // Downloads are native-only (no web offline storage until the M4 service worker).
+  // Downloads need offline storage: always on native; on web wherever the service
+  // worker + Cache API are available (a secure context — https or localhost).
   ...(engine.supported ? [{ href: '/downloads', match: '/downloads', label: 'Downloads', icon: 'download' } as NavItem] : []),
   { href: '/settings', match: '/settings', label: 'Settings', icon: 'settings' },
 ];

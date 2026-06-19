@@ -31,23 +31,30 @@ class WebPlaybackService implements PlaybackService {
     this.emit();
   }
 
-  private el(): HTMLAudioElement {
-    if (this.audio) return this.audio;
+  /** Create an <audio> with all listeners wired. Each listener no-ops unless its
+   * element is the active one, so a buffering element being prepared by `swapTo`
+   * can't drive the snapshot until we switch to it. */
+  private createAudio(): HTMLAudioElement {
     const a = new Audio();
     a.preload = 'auto';
-    a.addEventListener('timeupdate', () => this.update({ position: a.currentTime }));
+    const active = () => a === this.audio;
+    a.addEventListener('timeupdate', () => active() && this.update({ position: a.currentTime }));
     a.addEventListener('durationchange', () => {
-      if (Number.isFinite(a.duration)) this.update({ duration: a.duration });
+      if (active() && Number.isFinite(a.duration)) this.update({ duration: a.duration });
     });
-    a.addEventListener('playing', () => this.update({ state: 'playing' }));
+    a.addEventListener('playing', () => active() && this.update({ state: 'playing' }));
     a.addEventListener('pause', () => {
-      if (this.snapshot.state !== 'ended') this.update({ state: 'paused' });
+      if (active() && this.snapshot.state !== 'ended') this.update({ state: 'paused' });
     });
-    a.addEventListener('waiting', () => this.update({ state: 'loading' }));
-    a.addEventListener('ended', () => this.handleEnded());
-    a.addEventListener('error', () => this.update({ state: 'error' }));
-    this.audio = a;
+    a.addEventListener('waiting', () => active() && this.update({ state: 'loading' }));
+    a.addEventListener('ended', () => active() && this.handleEnded());
+    a.addEventListener('error', () => active() && this.update({ state: 'error' }));
     return a;
+  }
+
+  private el(): HTMLAudioElement {
+    if (!this.audio) this.audio = this.createAudio();
+    return this.audio;
   }
 
   private loadTrack(index: number, positionInTrack: number, autoplay: boolean) {
@@ -97,6 +104,81 @@ class WebPlaybackService implements PlaybackService {
     this.tracks = tracks;
     this.loadTrack(startIndex, positionInTrack, false);
     this.update({ state: 'ready' });
+  }
+
+  async swapTo(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number) {
+    const track = tracks[startIndex];
+    if (!track) return;
+    const wasPlaying = this.snapshot.state === 'playing';
+
+    // Buffer the new (local) source on a separate element while the current one
+    // keeps playing, then switch — so there's no silent gap while it loads/seeks.
+    const pending = this.createAudio();
+    pending.src = track.url;
+    pending.playbackRate = this.rate;
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        pending.removeEventListener('loadedmetadata', onLoaded);
+        pending.removeEventListener('canplay', onReady);
+        pending.removeEventListener('seeked', onReady);
+        pending.removeEventListener('error', finish);
+        resolve();
+      };
+      const onLoaded = () => {
+        try {
+          pending.currentTime = positionInTrack || 0;
+        } catch {
+          // can't seek yet; timeupdate after swap will correct
+        }
+      };
+      // Ready once it can play AND the playhead is at the seek target.
+      const onReady = () => {
+        if (pending.readyState >= 3 && Math.abs(pending.currentTime - (positionInTrack || 0)) < 1.5) finish();
+      };
+      pending.addEventListener('loadedmetadata', onLoaded);
+      pending.addEventListener('canplay', onReady);
+      pending.addEventListener('seeked', onReady);
+      pending.addEventListener('error', finish);
+      pending.load();
+      setTimeout(finish, 8000); // never hang waiting to swap
+    });
+
+    // Switch. The active() guard makes the old element's teardown events no-ops.
+    const old = this.audio;
+    this.audio = pending;
+    this.tracks = tracks;
+    this.index = startIndex;
+    if (old) {
+      old.pause();
+      old.removeAttribute('src');
+      old.load();
+    }
+    // Safety: if preparation timed out before the seek landed, re-assert the
+    // position on the now-active element so we never restart from the beginning.
+    if (Math.abs(pending.currentTime - (positionInTrack || 0)) > 1.5) {
+      try {
+        pending.currentTime = positionInTrack || 0;
+      } catch {
+        // timeupdate will correct once it's seekable
+      }
+    }
+    this.setMediaSession(track);
+    this.update({
+      trackIndex: startIndex,
+      position: positionInTrack,
+      duration: track.duration ?? (Number.isFinite(pending.duration) ? pending.duration : 0),
+      state: wasPlaying ? 'playing' : 'paused',
+    });
+    if (wasPlaying) {
+      try {
+        await pending.play();
+      } catch {
+        // autoplay shouldn't be blocked mid-session, but ignore if it is
+      }
+    }
   }
 
   async play() {

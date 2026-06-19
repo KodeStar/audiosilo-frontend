@@ -11,6 +11,7 @@ import { useSearchStore } from '@/stores/search';
 import { AppHeader } from './app-header';
 import { NavBar } from './app-nav';
 import { ContentColumn } from './content-column';
+import { OfflineBanner } from './offline-banner';
 
 const WIDE_BREAKPOINT = 1024;
 
@@ -42,7 +43,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="sidebar" />
-        <View className="flex-1">{children}</View>
+        <View className="flex-1">
+          <OfflineBanner />
+          {children}
+        </View>
       </View>
     );
   }
@@ -54,7 +58,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="sidebar" />
-        <ContentColumn>{children}</ContentColumn>
+        <View className="flex-1">
+          <OfflineBanner />
+          <ContentColumn>{children}</ContentColumn>
+        </View>
         {playing ? (
           <View className="w-[380px] border-l border-gray-100 dark:border-gray-750">
             <PlayerView />
@@ -67,6 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <View className="flex-1 bg-gray-200 dark:bg-gray-800">
       <AppHeader />
+      <OfflineBanner />
       <View className="flex-1">{children}</View>
       {!onBook ? <MiniPlayer /> : null}
       <SafeAreaView edges={['bottom']} className="bg-gray-200 dark:bg-gray-800">

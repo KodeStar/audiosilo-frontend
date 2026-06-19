@@ -60,7 +60,7 @@ export const engine: DownloadEngine = {
     return file.uri;
   },
 
-  fileExists(localUri) {
+  async fileExists(localUri) {
     try {
       return new File(localUri).exists;
     } catch {
@@ -77,7 +77,7 @@ export const engine: DownloadEngine = {
     }
   },
 
-  totalBytesUsed() {
+  async totalBytesUsed() {
     try {
       const root = rootDir();
       return root.exists ? dirSize(root) : 0;

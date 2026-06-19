@@ -49,7 +49,11 @@ export default function PlayerScreen() {
     const hasPos = posParam !== undefined && !Number.isNaN(posParam);
     const trackParam = track !== undefined ? Number(track) : undefined;
     const hasTrack = trackParam !== undefined && !Number.isNaN(trackParam);
-    if (nowPlaying?.libraryId === libraryId && nowPlaying?.path === path) {
+    // Compare against the book's canonical rel_path — playBook stores that as
+    // nowPlaying.path, which can differ from the decoded route param. Using the
+    // route param here made the guard never match for some paths, re-invoking
+    // playBook every render (hammering getProgress + restarting playback).
+    if (nowPlaying?.libraryId === libraryId && nowPlaying?.path === book.rel_path) {
       if (hasPos) void seekBook(posParam);
       else if (hasTrack) void goToTrack(trackParam);
       return;
