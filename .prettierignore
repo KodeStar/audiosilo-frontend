@@ -1,0 +1,8 @@
+dist/
+.expo/
+android/
+ios/
+public/
+node_modules/
+package-lock.json
+*.md

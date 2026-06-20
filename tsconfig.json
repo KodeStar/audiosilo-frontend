@@ -2,6 +2,7 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "types": ["jest", "react"],
     "paths": {
       "@/*": [
         "./src/*"
@@ -16,6 +17,7 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
+    "expo-globals.d.ts",
     "nativewind-env.d.ts"
   ]
 }

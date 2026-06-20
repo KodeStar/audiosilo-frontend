@@ -37,9 +37,18 @@ M3–M5 pending.
 ```sh
 npm run web                 # expo start --web (testable without a dev build)
 npm run ios / npm run android
-npx tsc --noEmit            # typecheck (must stay clean)
+npx tsc --noEmit            # typecheck (strict; must stay clean)
+npm run lint                # eslint flat config (eslint-config-expo + prettier)
+npm test                    # jest-expo unit tests (npm test -- --coverage for coverage)
+npx prettier --write .      # format to .prettierrc (advisory; not gated in CI yet)
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
 ```
+
+**Before a change is done, run `npx tsc --noEmit && npm run lint && npm test`** — CI
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all three on every
+PR/push (its `npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` secret). `.nvmrc` pins
+Node `24.16.0`, which CI reads via `node-version-file`; keep the lockfile committed
+in sync (regenerate with `npm install` after changing deps).
 
 ## Architecture & conventions
 
@@ -76,6 +85,15 @@ native passes `Authorization` headers. **This depends on a server change** in
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.
+
+**Tests** — new logic ships with a unit test. Pure, framework-free modules get
+direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
+`progress-sync.ts`, `src/stores/*` (see the co-located `*.test.ts`). Keep logic out
+of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo (jest 29)
++ @testing-library/react-native 14** — matchers are built in (no `jest-native`);
+`jest.setup.ts` provides in-memory mocks for `expo-secure-store` + AsyncStorage,
+and tests mock `fetch` / `@/api/reachability` as needed. Flip `Platform.OS` at
+runtime to cover web-vs-native branches.
 
 **Styling**: use `className` on core RN components (NativeWind). Never import an
 icon lib directly — use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text via
