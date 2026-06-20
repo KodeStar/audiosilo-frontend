@@ -36,6 +36,10 @@ export default function ConnectServerScreen() {
   const [error, setError] = useState<string | null>(null);
   const [pairing, setPairing] = useState(!!token);
   const [pairError, setPairError] = useState<string | null>(null);
+  // Set once we connect to a server that advertises demo mode, enabling a one-tap
+  // guest login (handy for app-store review).
+  const [demoBase, setDemoBase] = useState<string | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -79,7 +83,11 @@ export default function ConnectServerScreen() {
     try {
       const info = await new ApiClient(normalized).serverInfo();
       await setServerUrl(normalized);
-      router.push({ pathname: '/connect/sign-in', params: { serverName: info.name } });
+      if (info.demo?.enabled) {
+        setDemoBase(normalized); // reveal the one-tap demo login below
+      } else {
+        router.push({ pathname: '/connect/sign-in', params: { serverName: info.name } });
+      }
     } catch (e) {
       setError(
         e instanceof ApiError
@@ -88,6 +96,25 @@ export default function ConnectServerScreen() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onTryDemo = async () => {
+    if (!demoBase) return;
+    setError(null);
+    setDemoLoading(true);
+    try {
+      const demo = await new ApiClient(demoBase).demoSession(getDeviceName());
+      await setSession({ serverUrl: demoBase, token: demo.token, user: demo.user });
+      router.replace('/');
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? `Could not start the demo: ${e.message}`
+          : 'Could not reach the demo server.',
+      );
+    } finally {
+      setDemoLoading(false);
     }
   };
 
@@ -129,6 +156,24 @@ export default function ConnectServerScreen() {
           />
           <Button title="Connect" icon="server" loading={loading} onPress={onConnect} />
         </View>
+        {demoBase ? (
+          <View className="gap-4">
+            <View className="flex-row items-center gap-3">
+              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+              <Text variant="muted">demo server</Text>
+              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+            </View>
+            <Text variant="muted" className="text-center">
+              This server offers a guest demo — no account needed.
+            </Text>
+            <Button title="Try the demo" icon="play" loading={demoLoading} onPress={onTryDemo} />
+            <Button
+              title="Sign in instead"
+              variant="secondary"
+              onPress={() => router.push('/connect/sign-in')}
+            />
+          </View>
+        ) : null}
         {Platform.OS !== 'web' ? (
           <View className="gap-4">
             <View className="flex-row items-center gap-3">
