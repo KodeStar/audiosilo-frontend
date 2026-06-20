@@ -27,6 +27,18 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Thrown when a request exceeds its timeout. Distinct from the `AbortError` a
+ * caller-supplied signal raises on cancellation, so the reachability layer can
+ * treat a timeout as "server unreachable" while still ignoring deliberate cancels.
+ */
+export class TimeoutError extends Error {
+  constructor(public timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs}ms`);
+    this.name = 'TimeoutError';
+  }
+}
+
 type QueryValue = string | number | boolean | undefined | null;
 type Query = Record<string, QueryValue>;
 
@@ -81,8 +93,15 @@ export class ApiClient {
 
     // Abort after timeoutMs so a frozen/unreachable server can't hang the caller
     // (and the 15s save loop) indefinitely; still honour a caller-supplied signal.
+    // A timeout surfaces as a TimeoutError rather than the AbortError a caller
+    // cancel raises, so reachability counts it as unreachable instead of ignoring
+    // it as a cancellation.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.timeoutMs);
     const onCallerAbort = () => controller.abort();
     if (opts.signal) {
       if (opts.signal.aborted) controller.abort();
@@ -104,6 +123,11 @@ export class ApiClient {
         throw new ApiError(res.status, data?.error ?? res.statusText ?? 'Request failed');
       }
       return data as T;
+    } catch (e) {
+      // Our timeout fired (not a caller cancel, and not a real server answer in
+      // the same tick): report it as a timeout so it's classified as unreachable.
+      if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(this.timeoutMs);
+      throw e;
     } finally {
       clearTimeout(timer);
       opts.signal?.removeEventListener('abort', onCallerAbort);

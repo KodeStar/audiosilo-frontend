@@ -59,7 +59,7 @@ by `(library_id, path)`. See `src/api/client.ts` + `src/api/types.ts`.
 **API envelopes** (from the Go handlers): auth returns `{ token, user }`; `/me`
 returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cursor }`,
 `{ progress }`, `{ bookmarks }`, `{ notes }`); errors are `{ error }`. Pairing deep
-link is `audiosilo://pair?url=<base>&token=<pairing_token>`.
+link is `audiosilo://connect?server=<base>&token=<pairing_token>`.
 
 **Media auth differs by platform** (`src/api/client.ts` `mediaTokenQuery`): web
 embeds `?token=` in cover/stream URLs (`<img>`/`<audio>` can't set headers);

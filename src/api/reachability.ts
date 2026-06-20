@@ -56,7 +56,9 @@ function setOnline(online: boolean) {
 
 /**
  * Classify a thrown API error. An `ApiError` means the server answered (even a 500),
- * so it's reachable; a plain fetch rejection means it isn't. Aborts are ignored.
+ * so it's reachable; a plain fetch rejection (or a `TimeoutError`) means it isn't.
+ * Deliberate caller cancellations (`AbortError`) are ignored — only a `TimeoutError`,
+ * not an `AbortError`, marks the server unreachable.
  */
 export function noteError(e: unknown) {
   if (e instanceof ApiError) return setOnline(true);
