@@ -10,18 +10,10 @@ import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { normalizeUrl } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
-
-// webOrigin is the URL the web build is served from (which is also its API base).
-// null on native, where the server address must arrive in the link's `server` param.
-function webOrigin(): string | null {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.location.origin.replace(/\/+$/, '');
-  }
-  return null;
-}
 
 export default function ConnectServerScreen() {
   // A copy-invite link or pairing QR opens this screen with a single-use pairing

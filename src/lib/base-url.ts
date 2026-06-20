@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * The app's base path at runtime.
  *
@@ -12,3 +14,15 @@ export const BASE_URL =
 
 /** True under the Metro dev server (`expo start --web`). */
 export const IS_DEV = process.env.NODE_ENV !== 'production';
+
+/**
+ * Origin the web build is served from (which is also its API base in the web /
+ * demo flows). `null` on native, where the server address must arrive explicitly
+ * (e.g. a pairing link's `server` param) rather than being inferred from the host.
+ */
+export function webOrigin(): string | null {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+  return null;
+}

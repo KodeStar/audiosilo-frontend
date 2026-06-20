@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiClient, ApiError } from '@/api/client';
@@ -11,17 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
-
-// webOrigin is the URL the web build is served from (also its API base). Demo mode
-// is a web-first experience served by the demo server itself.
-function webOrigin(): string | null {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.location.origin.replace(/\/+$/, '');
-  }
-  return null;
-}
 
 /**
  * Public demo landing. On a demo server (e.g. demo.audiosilo.app), visiting this

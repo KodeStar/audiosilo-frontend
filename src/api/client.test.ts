@@ -84,8 +84,8 @@ describe('ApiClient', () => {
     expect(headerValue(init, 'Content-Type')).toBe('application/json');
   });
 
-  it('aborts a request that exceeds the timeout (review finding F3)', async () => {
-    // A fetch that never resolves until its signal aborts.
+  // A fetch that never resolves until its signal aborts.
+  function installHangingFetch() {
     globalThis.fetch = jest.fn(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
@@ -94,7 +94,21 @@ describe('ApiClient', () => {
           );
         }),
     ) as unknown as typeof globalThis.fetch;
+  }
+
+  it('surfaces a timeout as TimeoutError, not AbortError (review finding F3)', async () => {
+    installHangingFetch();
     const c = new ApiClient('https://h', 'tok', 10); // 10ms timeout
-    await expect(c.serverInfo()).rejects.toThrow();
+    // A TimeoutError (not the AbortError a caller cancel raises) lets reachability
+    // classify a frozen server as unreachable instead of ignoring it as a cancel.
+    await expect(c.serverInfo()).rejects.toMatchObject({ name: 'TimeoutError' });
+  });
+
+  it('propagates a caller-cancel as AbortError, not a timeout', async () => {
+    installHangingFetch();
+    const caller = new AbortController();
+    const pending = new ApiClient('https://h', 'tok').serverInfo(caller.signal);
+    caller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
