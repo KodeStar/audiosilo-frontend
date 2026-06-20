@@ -36,7 +36,7 @@ export default function BookDetailScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
 
-  const { data: book, isLoading, error, refetch } = useBook(libraryId, path);
+  const { data: book, isLoading, refetch } = useBook(libraryId, path);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
 
