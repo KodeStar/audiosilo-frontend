@@ -2,11 +2,7 @@ import type { Href } from 'expo-router';
 
 /** Encode a slash-separated library-relative path into URL path segments. */
 export function encodePathSegments(relPath: string): string {
-  return relPath
-    .split('/')
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join('/');
+  return relPath.split('/').filter(Boolean).map(encodeURIComponent).join('/');
 }
 
 /** Reconstruct a rel_path from an Expo Router catch-all param. */

@@ -57,7 +57,9 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={16} color={iconColor[variant]} /> : null}
-          <RNText className={`font-roboto-semibold text-base ${labelVariant[variant]}`}>{title}</RNText>
+          <RNText className={`font-roboto-semibold text-base ${labelVariant[variant]}`}>
+            {title}
+          </RNText>
         </>
       )}
     </Pressable>

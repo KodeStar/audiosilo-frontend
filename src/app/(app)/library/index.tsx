@@ -23,7 +23,7 @@ export default function LibrariesScreen() {
 
       {libraries?.map((lib) => (
         <Link key={lib.id} href={libraryHref(lib.id)} asChild>
-          <Pressable  className="my-1 w-full flex-row items-center overflow-hidden rounded-lg bg-gray-50 shadow-sm active:opacity-80 dark:border dark:border-gray-900 dark:bg-gray-840 dark:shadow-none">
+          <Pressable className="my-1 w-full flex-row items-center overflow-hidden rounded-lg bg-gray-50 shadow-sm active:opacity-80 dark:border dark:border-gray-900 dark:bg-gray-840 dark:shadow-none">
             <View
               className={`min-h-[3.5rem] items-center justify-center self-stretch px-4 bg-primary`}
             >

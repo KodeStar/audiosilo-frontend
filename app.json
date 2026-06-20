@@ -10,9 +10,7 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "audio"
-        ],
+        "UIBackgroundModes": ["audio"],
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "app.audiosilo"
@@ -26,10 +24,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "app.audiosilo",
-      "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
+      "permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
     },
     "web": {
       "output": "static",

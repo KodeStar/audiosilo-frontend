@@ -27,16 +27,23 @@ export function SleepTimerButton() {
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} className="flex-row items-center gap-1.5" hitSlop={8}>
+      <Pressable
+        onPress={() => setOpen(true)}
+        className="flex-row items-center gap-1.5"
+        hitSlop={8}
+      >
         <Icon name="sleep" size={20} color={active ? colors.primary : neutral} />
-        {active && remaining !== null &&
+        {active && remaining !== null && (
           <Text className="text-sm text-primary">{formatClock(remaining)}</Text>
-       }
+        )}
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
-          <Pressable className="gap-3 rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840" onPress={() => {}}>
+          <Pressable
+            className="gap-3 rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840"
+            onPress={() => {}}
+          >
             <Text variant="title">Sleep timer</Text>
             <View className="flex-row flex-wrap gap-2">
               {PRESETS.map((m) => (
@@ -60,7 +67,9 @@ export function SleepTimerButton() {
                 onPress={() => pick(cancel)}
                 className="mt-1 items-center rounded-lg bg-primary px-4 py-3 active:opacity-80"
               >
-                <Text className="font-roboto-semibold text-white dark:text-white">Cancel timer</Text>
+                <Text className="font-roboto-semibold text-white dark:text-white">
+                  Cancel timer
+                </Text>
               </Pressable>
             ) : null}
           </Pressable>

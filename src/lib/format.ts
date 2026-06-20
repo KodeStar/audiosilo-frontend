@@ -74,11 +74,17 @@ export function formatRelative(iso?: string): string {
 }
 
 /** Author / series line for a book, skipping empty parts. */
-export function bookSubtitle(opts: { author?: string; series?: string; seriesIndex?: number }): string {
+export function bookSubtitle(opts: {
+  author?: string;
+  series?: string;
+  seriesIndex?: number;
+}): string {
   const parts: string[] = [];
   if (opts.author) parts.push(opts.author);
   if (opts.series) {
-    parts.push(opts.seriesIndex ? `${opts.series} #${formatSeriesIndex(opts.seriesIndex)}` : opts.series);
+    parts.push(
+      opts.seriesIndex ? `${opts.series} #${formatSeriesIndex(opts.seriesIndex)}` : opts.series,
+    );
   }
   return parts.join(' · ');
 }

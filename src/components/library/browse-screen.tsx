@@ -57,7 +57,9 @@ export function BrowseScreen() {
 
       {folders.length > 0 ? (
         <>
-          <Text className="mb-2 mt-4 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">Folders</Text>
+          <Text className="mb-2 mt-4 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">
+            Folders
+          </Text>
           {folders.map((entry) => (
             <EntryRow key={entry.path} entry={entry} libraryId={libraryId} />
           ))}
@@ -66,14 +68,18 @@ export function BrowseScreen() {
 
       {audioFiles.length > 0 ? (
         <>
-          <Text className="mb-2 mt-4 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">Files</Text>
+          <Text className="mb-2 mt-4 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">
+            Files
+          </Text>
           {audioFiles.map((entry) => (
             <EntryRow key={entry.path} entry={entry} libraryId={libraryId} />
           ))}
         </>
       ) : null}
 
-      {!isLoading && !error && entries.length === 0 ? <EmptyNote message="This folder is empty." /> : null}
+      {!isLoading && !error && entries.length === 0 ? (
+        <EmptyNote message="This folder is empty." />
+      ) : null}
     </ScrollView>
   );
 }

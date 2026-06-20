@@ -97,7 +97,11 @@ async function runProbe() {
 
 // Web only: the browser's own connectivity signal flips state instantly (a probe
 // confirms the server itself, not just the NIC). Native relies on the probe loop.
-if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+if (
+  Platform.OS === 'web' &&
+  typeof window !== 'undefined' &&
+  typeof window.addEventListener === 'function'
+) {
   window.addEventListener('online', () => void runProbe());
   window.addEventListener('offline', () => setOnline(false));
 }

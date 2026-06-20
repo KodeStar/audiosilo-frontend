@@ -32,19 +32,25 @@ describe('ApiClient', () => {
 
   it('builds query strings, skipping null/undefined values', () => {
     const c = new ApiClient('https://h');
-    expect(c.apiUrl('/x', { a: 1, b: undefined, c: null, d: 'y' })).toBe('https://h/api/v1/x?a=1&d=y');
+    expect(c.apiUrl('/x', { a: 1, b: undefined, c: null, d: 'y' })).toBe(
+      'https://h/api/v1/x?a=1&d=y',
+    );
   });
 
   it('omits Authorization when there is no token', () => {
     expect(new ApiClient('https://h').authHeaders()).toEqual({});
-    expect(new ApiClient('https://h', 'tok').authHeaders()).toEqual({ Authorization: 'Bearer tok' });
+    expect(new ApiClient('https://h', 'tok').authHeaders()).toEqual({
+      Authorization: 'Bearer tok',
+    });
   });
 
   it('sends the bearer token and parses the JSON body', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { name: 'AudioSilo' } }));
     const info = await new ApiClient('https://h', 'tok').serverInfo();
     expect(info).toMatchObject({ name: 'AudioSilo' });
-    expect(headerValue(fetchMock.mock.calls[0][1] as RequestInit, 'Authorization')).toBe('Bearer tok');
+    expect(headerValue(fetchMock.mock.calls[0][1] as RequestInit, 'Authorization')).toBe(
+      'Bearer tok',
+    );
   });
 
   it('throws ApiError carrying the server error message on non-2xx', async () => {
