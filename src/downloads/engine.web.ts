@@ -35,6 +35,43 @@ function bookPrefix(libraryId: number, path: string): string {
   return `${location.origin}${BASE}/_offline/${libraryId}/${slug(path)}/`;
 }
 
+/** Resolve true once our service worker controls this page (it serves the cached
+ * `_offline/` bytes). On a first-ever load this can race SW activation, so wait
+ * briefly for it to take control before giving up. */
+async function hasControllingSW(): Promise<boolean> {
+  if (typeof navigator === 'undefined') return false;
+  const sw = navigator.serviceWorker;
+  if (!sw) return false;
+  if (sw.controller) return true;
+  await sw.ready.catch(() => undefined);
+  if (!sw.controller) {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 3000);
+      sw.addEventListener(
+        'controllerchange',
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
+    });
+  }
+  return !!sw.controller;
+}
+
+/** A Range request for an `_offline/` url only comes back 206 from our SW's media
+ * handler; the network / SPA fallback for an unknown path won't. So a 206 confirms
+ * the SW — not the server — answered with the cached bytes. */
+async function servedBySW(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { headers: { Range: 'bytes=0-0' } });
+    return res.status === 206;
+  } catch {
+    return false;
+  }
+}
+
 let persisted = false;
 /** Ask the browser to keep our cache durable (best-effort; granted silently for
  * installed PWAs and engaged sites). */
@@ -100,6 +137,41 @@ export const engine: DownloadEngine = {
       return !!(await cache.match(localUri));
     } catch {
       return false;
+    }
+  },
+
+  async verify(localUri) {
+    if (!supported || !(await hasControllingSW())) return false;
+    return servedBySW(localUri);
+  },
+
+  async probe() {
+    if (!supported || !(await hasControllingSW())) return false;
+    // Self-test: stash a throwaway file under an in-scope `_offline/` url and confirm
+    // the SW serves it back, then clean up. Proves end-to-end offline playback works
+    // without needing a real download, so the UI can hide downloads up front.
+    const url = `${location.origin}${BASE}/_offline/__probe__`;
+    try {
+      const cache = await caches.open(MEDIA_CACHE);
+      await cache.put(
+        url,
+        new Response(new Blob([new Uint8Array([0])]), {
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': '1',
+            'Accept-Ranges': 'bytes',
+          },
+        }),
+      );
+      return await servedBySW(url);
+    } catch {
+      return false;
+    } finally {
+      try {
+        await (await caches.open(MEDIA_CACHE)).delete(url);
+      } catch {
+        // best-effort cleanup
+      }
     }
   },
 

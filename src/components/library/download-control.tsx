@@ -24,7 +24,7 @@ export function DownloadControl({
   chapterData?: ChaptersResponse;
   disabled?: boolean;
 }) {
-  const { supported, status, progress, bytes, totalBytes, start, cancel, remove } =
+  const { supported, status, error, progress, bytes, totalBytes, start, cancel, remove } =
     useDownloadControls(libraryId, path, book, chapterData);
 
   if (!supported) {
@@ -74,12 +74,19 @@ export function DownloadControl({
   }
 
   return (
-    <Button
-      title={status === 'error' ? 'Retry download' : 'Download'}
-      variant="secondary"
-      icon="download"
-      disabled={disabled || !book}
-      onPress={start}
-    />
+    <View className="gap-1.5">
+      {status === 'error' && error ? (
+        <Text className="text-xs text-red-500" numberOfLines={2}>
+          {error}
+        </Text>
+      ) : null}
+      <Button
+        title={status === 'error' ? 'Retry download' : 'Download'}
+        variant="secondary"
+        icon="download"
+        disabled={disabled || !book}
+        onPress={start}
+      />
+    </View>
   );
 }

@@ -54,6 +54,20 @@ export interface DownloadEngine {
   ): Promise<string>;
   /** Whether a previously downloaded local file still exists on disk. */
   fileExists(localUri: string): Promise<boolean>;
+  /**
+   * Whether a just-downloaded file can actually be *played back offline* right now —
+   * stronger than `fileExists`. On web, having bytes in the cache isn't enough: the
+   * service worker has to be controlling the page to serve them, so this exercises
+   * the real offline path. Omitted where presence implies playability (native disk).
+   */
+  verify?(localUri: string): Promise<boolean>;
+  /**
+   * Whether offline playback works *at all* in this environment — a self-test that
+   * needs no real download (web: round-trips a throwaway file through the service
+   * worker). Lets the UI hide downloads up front rather than only failing after one.
+   * Omitted where `supported` already implies it (native).
+   */
+  probe?(): Promise<boolean>;
   /** Delete a book's directory and all its files. */
   removeBook(libraryId: number, path: string): Promise<void>;
   /** Total bytes used by all downloads. */

@@ -336,17 +336,24 @@ async function switchCurrentBookToLocal() {
   const { index, positionInTrack } = locate(queue.offsets, bookPos);
   const wasPlaying = snapshot.state === 'playing';
   const svc = await ensureService();
-  usePlayer.setState({
-    nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue },
-  });
+
   if (svc.swapTo) {
-    // Gapless: keep streaming until the local file is buffered at this position.
-    await svc.swapTo(queue.tracks, index, positionInTrack);
+    // Gapless: keep streaming until the local file is buffered at this position. The
+    // swap can be refused (e.g. the local source isn't servable on web) — in that
+    // case leave nowPlaying on the streaming queue so playback keeps going.
+    const swapped = await svc.swapTo(queue.tracks, index, positionInTrack);
+    if (!swapped) return;
   } else {
     await svc.load(queue.tracks, index, positionInTrack);
     await svc.setRate(rate);
     if (wasPlaying) await svc.play();
   }
+  // Commit only once the engine has actually moved onto the local files. The old and
+  // new queues share file count/durations, so the (index, position) stays valid
+  // across the brief window before this lands.
+  usePlayer.setState({
+    nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue },
+  });
 }
 
 // When a download completes for the book that's currently playing, switch it to the

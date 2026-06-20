@@ -47,6 +47,7 @@ final class AudioEngine: NSObject {
   private var timeObserver: Any?
   private var statusObs: NSKeyValueObservation?
   private var itemObs: NSKeyValueObservation?
+  private var itemStatusObs: NSKeyValueObservation?
   private var artworkURL: String?
   /// Suppresses transient state/track events while the queue is being rebuilt
   /// (removeAllItems briefly sets currentItem to nil).
@@ -122,10 +123,30 @@ final class AudioEngine: NSObject {
     if position > 0, let first = player.currentItem {
       first.seek(to: CMTime(seconds: position, preferredTimescale: 1000), completionHandler: nil)
     }
+    reassertRateWhenReady()
     rebuilding = false
     updateNowPlayingInfo()
     send("onTrackChange", ["index": currentIndex])
     send("onProgress", ["position": position, "duration": currentDuration()])
+  }
+
+  /// AVPlayer can silently drop a `rate` set on a not-yet-ready item back to 1.0 once
+  /// that item becomes ready — which made the chosen speed revert to 1x when a
+  /// mid-playback download swap replaced the streaming item with the local file (the
+  /// JS state still showed the old speed because the engine never reads `rate` back).
+  /// Watch the freshly-current item and re-assert the intended rate once it's ready.
+  private func reassertRateWhenReady() {
+    itemStatusObs?.invalidate()
+    itemStatusObs = nil
+    guard let item = player.currentItem, item.status != .readyToPlay else { return }
+    itemStatusObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+      guard let self = self, item.status == .readyToPlay else { return }
+      DispatchQueue.main.async {
+        if self.player.rate != 0, self.player.rate != self.rate {
+          self.player.rate = self.rate
+        }
+      }
+    }
   }
 
   // MARK: Transport
@@ -184,6 +205,8 @@ final class AudioEngine: NSObject {
   }
 
   func reset() {
+    itemStatusObs?.invalidate()
+    itemStatusObs = nil
     player.pause()
     player.removeAllItems()
     queued.removeAll()
@@ -342,6 +365,7 @@ final class AudioEngine: NSObject {
 
   deinit {
     if let timeObserver = timeObserver { player.removeTimeObserver(timeObserver) }
+    itemStatusObs?.invalidate()
     NotificationCenter.default.removeObserver(self)
   }
 }
