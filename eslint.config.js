@@ -19,6 +19,7 @@ module.exports = [
       'scripts/',
       '*.config.js',
       'expo-env.d.ts',
+      'expo-globals.d.ts',
       'nativewind-env.d.ts',
     ],
   },
