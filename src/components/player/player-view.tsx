@@ -14,7 +14,12 @@ import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
 import { useSleepTimer } from '@/playback/sleep-timer';
-import { selectBookPosition, selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
+import {
+  selectBookPosition,
+  selectCurrentChapter,
+  selectIsPlaying,
+  usePlayer,
+} from '@/playback/store';
 import { useShakeToCancel } from '@/playback/use-shake-to-cancel';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
@@ -66,7 +71,9 @@ export function PlayerView() {
     : currentChapter
       ? Math.max(1, currentChapter.end - currentChapter.start)
       : total;
-  const segElapsed = perTrack ? trackPos : Math.max(0, Math.min(segLength, bookPosition - segStart));
+  const segElapsed = perTrack
+    ? trackPos
+    : Math.max(0, Math.min(segLength, bookPosition - segStart));
   const segRemaining = Math.max(0, segLength - segElapsed);
   const bookLeft = Math.max(0, total - bookPosition) / (rate > 0 ? rate : 1);
   const centerLabel = perTrack
@@ -77,7 +84,9 @@ export function PlayerView() {
   // Title line: the current chapter, else the current file's name.
   const track = queue.tracks[trackIndex];
   const trackName = track ? pathLeaf(track.id.split(':').slice(1).join(':')) || title : title;
-  const segTitle = currentChapter ? currentChapter.title || `Chapter ${currentChapter.index + 1}` : trackName;
+  const segTitle = currentChapter
+    ? currentChapter.title || `Chapter ${currentChapter.index + 1}`
+    : trackName;
 
   // Prev/next: per file when there's no timeline, else by chapter/file boundary.
   const segs = queue.chapters.length > 0 ? queue.chapters.map((c) => c.book_offset) : queue.offsets;
@@ -106,7 +115,9 @@ export function PlayerView() {
           {sleepActive && sleepRemaining !== null ? (
             <View className="absolute right-2 top-2 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
               <Icon name="sleep" size={12} color={colors.white} />
-              <Text className="text-xs text-white dark:text-white">{formatClock(sleepRemaining)}</Text>
+              <Text className="text-xs text-white dark:text-white">
+                {formatClock(sleepRemaining)}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -133,7 +144,11 @@ export function PlayerView() {
           <Pressable onPress={goPrev} hitSlop={8} className="h-10 w-10 items-center justify-center">
             <Icon name="prev" size={24} color={neutral} />
           </Pressable>
-          <Pressable onPress={() => void skipSeconds(-skipBackward)} className="items-center justify-center" hitSlop={8}>
+          <Pressable
+            onPress={() => void skipSeconds(-skipBackward)}
+            className="items-center justify-center"
+            hitSlop={8}
+          >
             <Icon name="backward" size={50} color={neutral} />
             <View className="absolute inset-0 items-center justify-center">
               <Text variant="caption">{skipBackward}</Text>
@@ -145,7 +160,11 @@ export function PlayerView() {
           >
             <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
           </Pressable>
-          <Pressable onPress={() => void skipSeconds(skipForward)} className="items-center justify-center" hitSlop={8}>
+          <Pressable
+            onPress={() => void skipSeconds(skipForward)}
+            className="items-center justify-center"
+            hitSlop={8}
+          >
             <Icon name="forward" size={50} color={neutral} />
             <View className="absolute inset-0 items-center justify-center">
               <Text variant="caption">{skipForward}</Text>
@@ -157,15 +176,18 @@ export function PlayerView() {
         </View>
 
         <View className="flex-row items-center justify-between px-2">
-          
-            <SpeedButton />
-            <Pressable onPress={() => setSheet('history')} hitSlop={8} className="items-center gap-0.5">
-              <Icon name="history" size={20} color={neutral} />
-            </Pressable>
-            <Pressable onPress={() => setSheet('notes')} hitSlop={8} className="items-center gap-0.5">
-              <Icon name="notes" size={20} color={neutral} />
-            </Pressable>
-            <SleepTimerButton />
+          <SpeedButton />
+          <Pressable
+            onPress={() => setSheet('history')}
+            hitSlop={8}
+            className="items-center gap-0.5"
+          >
+            <Icon name="history" size={20} color={neutral} />
+          </Pressable>
+          <Pressable onPress={() => setSheet('notes')} hitSlop={8} className="items-center gap-0.5">
+            <Icon name="notes" size={20} color={neutral} />
+          </Pressable>
+          <SleepTimerButton />
         </View>
       </View>
 

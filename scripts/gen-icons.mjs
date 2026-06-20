@@ -59,7 +59,9 @@ async function emitPng(rel, opts, size) {
   await mkdir(dirname(out), { recursive: true });
   // The master SVG carries width/height = size, so sharp rasterises crisply at the
   // target resolution (no upscaling of a small raster).
-  await sharp(Buffer.from(master({ ...opts, size }))).png().toFile(out);
+  await sharp(Buffer.from(master({ ...opts, size })))
+    .png()
+    .toFile(out);
   console.log('png ', rel, `${size}²`);
 }
 

@@ -37,7 +37,9 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
             {entry.title}
           </Text>
           {entry.status === 'downloaded' ? (
-            <Text variant="caption">{entry.totalBytes > 0 ? formatBytes(entry.totalBytes) : 'Downloaded'}</Text>
+            <Text variant="caption">
+              {entry.totalBytes > 0 ? formatBytes(entry.totalBytes) : 'Downloaded'}
+            </Text>
           ) : entry.status === 'error' ? (
             <Text className="text-xs text-red-500">Download failed</Text>
           ) : (
@@ -62,7 +64,8 @@ export default function DownloadsScreen() {
   const supported = useDownloads((s) => s.supported);
 
   const list = useMemo(
-    () => Object.values(entries).sort((a, b) => b.manifest.savedAt.localeCompare(a.manifest.savedAt)),
+    () =>
+      Object.values(entries).sort((a, b) => b.manifest.savedAt.localeCompare(a.manifest.savedAt)),
     [entries],
   );
   // Disk usage is an async query on web (Cache API), so resolve it into state.
@@ -81,7 +84,9 @@ export default function DownloadsScreen() {
     <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 px-8">
       <View className="flex-row items-center justify-between">
         <Text variant="heading">Downloads</Text>
-        {supported && totalBytes > 0 ? <Text variant="muted">{formatBytes(totalBytes)} used</Text> : null}
+        {supported && totalBytes > 0 ? (
+          <Text variant="muted">{formatBytes(totalBytes)} used</Text>
+        ) : null}
       </View>
 
       {!supported ? (

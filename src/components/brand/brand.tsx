@@ -10,7 +10,13 @@ import { Logo } from './logo';
  * app version underneath. Used in the desktop sidebar (large, with version) and
  * the phone header (compact).
  */
-export function Brand({ size = 28, showVersion = false }: { size?: number; showVersion?: boolean }) {
+export function Brand({
+  size = 28,
+  showVersion = false,
+}: {
+  size?: number;
+  showVersion?: boolean;
+}) {
   return (
     <View className="flex-row items-center gap-2.5">
       <Logo size={size} />

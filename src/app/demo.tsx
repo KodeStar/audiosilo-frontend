@@ -103,8 +103,8 @@ export default function DemoScreen() {
               />
             </View>
             <Text variant="muted" className="text-center">
-              Scan with your phone to continue in the AudioSilo app, or keep exploring
-              in this browser.
+              Scan with your phone to continue in the AudioSilo app, or keep exploring in this
+              browser.
             </Text>
             <Button
               title="Browse the demo here"

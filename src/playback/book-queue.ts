@@ -115,7 +115,10 @@ function distinctFilesFromChapters(chapters: Chapter[]): { path: string; duratio
 }
 
 /** Map a whole-book position to (trackIndex, positionInTrack). */
-export function locate(offsets: number[], bookPosition: number): { index: number; positionInTrack: number } {
+export function locate(
+  offsets: number[],
+  bookPosition: number,
+): { index: number; positionInTrack: number } {
   let index = 0;
   for (let i = 0; i < offsets.length; i++) {
     if (bookPosition >= offsets[i]) index = i;

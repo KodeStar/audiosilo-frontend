@@ -30,7 +30,11 @@ const clampRate = (r: number) => Math.max(MIN_RATE, Math.min(MAX_RATE, r));
 /** Engine tunables derived from the settings store. */
 function currentConfig() {
   const s = useSettings.getState();
-  return { autoRewindMax: s.autoRewindMax, jumpForward: s.skipForward, jumpBackward: s.skipBackward };
+  return {
+    autoRewindMax: s.autoRewindMax,
+    jumpForward: s.skipForward,
+    jumpBackward: s.skipBackward,
+  };
 }
 
 export type NowPlaying = {
@@ -195,7 +199,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     if (startBookPosition === undefined && startTrack === undefined) {
       const saved = await loadInitialProgress(api, libraryId, book.rel_path);
       if (saved && !saved.finished && saved.position > 0) startAt = saved.position;
-      if (saved?.playback_speed && saved.playback_speed > 0) speed = clampRate(saved.playback_speed);
+      if (saved?.playback_speed && saved.playback_speed > 0)
+        speed = clampRate(saved.playback_speed);
     }
 
     const { index, positionInTrack } =
@@ -236,7 +241,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const np = get().nowPlaying;
     if (!np || !Number.isFinite(bookPosition)) return;
     const clamped =
-      np.queue.total > 0 ? Math.max(0, Math.min(bookPosition, np.queue.total)) : Math.max(0, bookPosition);
+      np.queue.total > 0
+        ? Math.max(0, Math.min(bookPosition, np.queue.total))
+        : Math.max(0, bookPosition);
     const svc = await ensureService();
     const target = locate(np.queue.offsets, clamped);
     if (target.index === get().snapshot.trackIndex) {
@@ -274,7 +281,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       await get().seekInTrack(get().snapshot.position + delta);
       return;
     }
-    const pos = toBookPosition(np.queue.offsets, get().snapshot.trackIndex, get().snapshot.position);
+    const pos = toBookPosition(
+      np.queue.offsets,
+      get().snapshot.trackIndex,
+      get().snapshot.position,
+    );
     await get().seekBook(Math.max(0, Math.min(np.queue.total, pos + delta)));
   },
 
@@ -315,11 +326,19 @@ async function switchCurrentBookToLocal() {
     files: new Map(dl.manifest.files.map((f) => [f.relPath, f.localUri] as const)),
     artwork: dl.manifest.coverUri ?? undefined,
   };
-  const queue = buildBookQueue(apiRef, nowPlaying.libraryId, dl.manifest.book, dl.manifest.chapters ?? undefined, local);
+  const queue = buildBookQueue(
+    apiRef,
+    nowPlaying.libraryId,
+    dl.manifest.book,
+    dl.manifest.chapters ?? undefined,
+    local,
+  );
   const { index, positionInTrack } = locate(queue.offsets, bookPos);
   const wasPlaying = snapshot.state === 'playing';
   const svc = await ensureService();
-  usePlayer.setState({ nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue } });
+  usePlayer.setState({
+    nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue },
+  });
   if (svc.swapTo) {
     // Gapless: keep streaming until the local file is buffered at this position.
     await svc.swapTo(queue.tracks, index, positionInTrack);
@@ -343,7 +362,9 @@ useDownloads.subscribe((state, prev) => {
 
 // --- selectors -------------------------------------------------------------
 export const selectBookPosition = (s: PlayerState): number =>
-  s.nowPlaying ? toBookPosition(s.nowPlaying.queue.offsets, s.snapshot.trackIndex, s.snapshot.position) : 0;
+  s.nowPlaying
+    ? toBookPosition(s.nowPlaying.queue.offsets, s.snapshot.trackIndex, s.snapshot.position)
+    : 0;
 
 export const selectCurrentChapter = (s: PlayerState): Chapter | null =>
   s.nowPlaying ? chapterAt(s.nowPlaying.queue.chapters, selectBookPosition(s)) : null;

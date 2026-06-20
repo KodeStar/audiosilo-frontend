@@ -15,7 +15,12 @@ export type PlaybackSettings = {
   autoRewindMax: number;
 };
 
-const DEFAULTS: PlaybackSettings = { skipForward: 30, skipBackward: 15, defaultRate: 1, autoRewindMax: 5 };
+const DEFAULTS: PlaybackSettings = {
+  skipForward: 30,
+  skipBackward: 15,
+  defaultRate: 1,
+  autoRewindMax: 5,
+};
 
 type SettingsState = PlaybackSettings & {
   hydrated: boolean;

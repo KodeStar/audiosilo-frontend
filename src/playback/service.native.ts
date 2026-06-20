@@ -51,7 +51,9 @@ class NativePlaybackService implements PlaybackService {
       AudiosiloPlayer.addListener('onProgress', ({ position, duration }) =>
         this.update({ position, duration }),
       ),
-      AudiosiloPlayer.addListener('onTrackChange', ({ index }) => this.update({ trackIndex: index })),
+      AudiosiloPlayer.addListener('onTrackChange', ({ index }) =>
+        this.update({ trackIndex: index }),
+      ),
     );
     await AudiosiloPlayer.setup();
     this.setupDone = true;
