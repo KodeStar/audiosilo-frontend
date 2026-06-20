@@ -106,9 +106,27 @@ class WebPlaybackService implements PlaybackService {
     this.update({ state: 'ready' });
   }
 
-  async swapTo(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number) {
+  async swapTo(
+    tracks: PlaybackTrack[],
+    startIndex: number,
+    positionInTrack: number,
+  ): Promise<boolean> {
     const track = tracks[startIndex];
-    if (!track) return;
+    if (!track) return false;
+
+    // Downloaded files live behind synthetic `…/_offline/…` urls that only resolve
+    // when our service worker is controlling this page (it serves them from the
+    // Cache API). If it isn't — unsupported, registration delayed/failed, or a
+    // non-PWA first load that hasn't been claimed yet — the url 404s. Switching to a
+    // dead source would stop playback with no way to resume, so refuse the swap and
+    // keep streaming; a later open of the book will pick up the local copy.
+    if (
+      track.url.includes('/_offline/') &&
+      !(typeof navigator !== 'undefined' && navigator.serviceWorker?.controller)
+    ) {
+      return false;
+    }
+
     const wasPlaying = this.snapshot.state === 'playing';
 
     // Buffer the new (local) source on a separate element while the current one
@@ -116,36 +134,46 @@ class WebPlaybackService implements PlaybackService {
     const pending = this.createAudio();
     pending.src = track.url;
     pending.playbackRate = this.rate;
-    await new Promise<void>((resolve) => {
+    const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
-      const finish = () => {
+      const done = (ok: boolean) => {
         if (settled) return;
         settled = true;
         pending.removeEventListener('loadedmetadata', onLoaded);
         pending.removeEventListener('canplay', onReady);
         pending.removeEventListener('seeked', onReady);
-        pending.removeEventListener('error', finish);
-        resolve();
+        pending.removeEventListener('error', onError);
+        resolve(ok);
       };
       const onLoaded = () => {
         try {
           pending.currentTime = positionInTrack || 0;
         } catch {
-          // can't seek yet; timeupdate after swap will correct
+          // can't seek yet; the readiness check below retries via `seeked`
         }
       };
       // Ready once it can play AND the playhead is at the seek target.
       const onReady = () => {
         if (pending.readyState >= 3 && Math.abs(pending.currentTime - (positionInTrack || 0)) < 1.5)
-          finish();
+          done(true);
       };
+      const onError = () => done(false);
       pending.addEventListener('loadedmetadata', onLoaded);
       pending.addEventListener('canplay', onReady);
       pending.addEventListener('seeked', onReady);
-      pending.addEventListener('error', finish);
+      pending.addEventListener('error', onError);
       pending.load();
-      setTimeout(finish, 8000); // never hang waiting to swap
+      setTimeout(() => done(false), 8000); // never hang; a slow load counts as a failed swap
     });
+
+    // The local source never became playable — discard it and keep streaming rather
+    // than cutting the live element over to a dead one.
+    if (!ready) {
+      pending.pause();
+      pending.removeAttribute('src');
+      pending.load();
+      return false;
+    }
 
     // Switch. The active() guard makes the old element's teardown events no-ops.
     const old = this.audio;
@@ -156,15 +184,6 @@ class WebPlaybackService implements PlaybackService {
       old.pause();
       old.removeAttribute('src');
       old.load();
-    }
-    // Safety: if preparation timed out before the seek landed, re-assert the
-    // position on the now-active element so we never restart from the beginning.
-    if (Math.abs(pending.currentTime - (positionInTrack || 0)) > 1.5) {
-      try {
-        pending.currentTime = positionInTrack || 0;
-      } catch {
-        // timeupdate will correct once it's seekable
-      }
     }
     this.setMediaSession(track);
     this.update({
@@ -180,6 +199,7 @@ class WebPlaybackService implements PlaybackService {
         // autoplay shouldn't be blocked mid-session, but ignore if it is
       }
     }
+    return true;
   }
 
   async play() {
