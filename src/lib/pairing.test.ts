@@ -14,6 +14,10 @@ describe('normalizeUrl', () => {
   it('returns an empty string for blank input', () => {
     expect(normalizeUrl('   ')).toBe('');
   });
+  it('rejects malformed inputs (review finding F5)', () => {
+    expect(normalizeUrl('not a valid host')).toBe('');
+    expect(normalizeUrl('https://')).toBe('');
+  });
 });
 
 describe('parsePairingScan', () => {

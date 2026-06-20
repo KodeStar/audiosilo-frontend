@@ -47,10 +47,12 @@ function toQueryString(query?: Query): string {
 export class ApiClient {
   readonly baseUrl: string;
   private token: string | null;
+  private readonly timeoutMs: number;
 
-  constructor(baseUrl: string, token: string | null = null) {
+  constructor(baseUrl: string, token: string | null = null, timeoutMs = 15000) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
+    this.timeoutMs = timeoutMs;
   }
 
   setToken(token: string | null) {
@@ -76,20 +78,35 @@ export class ApiClient {
     const headers: Record<string, string> = { ...this.authHeaders() };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
-    const res = await fetch(this.apiUrl(path, opts.query), {
-      method,
-      headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-      signal: opts.signal,
-    });
-
-    if (res.status === 204) return undefined as T;
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : undefined;
-    if (!res.ok) {
-      throw new ApiError(res.status, data?.error ?? res.statusText ?? 'Request failed');
+    // Abort after timeoutMs so a frozen/unreachable server can't hang the caller
+    // (and the 15s save loop) indefinitely; still honour a caller-supplied signal.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const onCallerAbort = () => controller.abort();
+    if (opts.signal) {
+      if (opts.signal.aborted) controller.abort();
+      else opts.signal.addEventListener('abort', onCallerAbort);
     }
-    return data as T;
+
+    try {
+      const res = await fetch(this.apiUrl(path, opts.query), {
+        method,
+        headers,
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        signal: controller.signal,
+      });
+
+      if (res.status === 204) return undefined as T;
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : undefined;
+      if (!res.ok) {
+        throw new ApiError(res.status, data?.error ?? res.statusText ?? 'Request failed');
+      }
+      return data as T;
+    } finally {
+      clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onCallerAbort);
+    }
   }
 
   // --- Discovery & auth (public) -------------------------------------------

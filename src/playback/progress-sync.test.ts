@@ -88,11 +88,20 @@ describe('progress-sync', () => {
     expect(await readQueue()).toHaveLength(0);
   });
 
-  // TODO(review finding F4): two overlapping flushQueue() calls each read the
-  // queue and each write it back, so saves enqueued/processed by the other are
-  // lost. Fix by serializing queue mutations behind a single in-flight promise,
-  // then unskip this test.
-  it.skip('serializes concurrent flushes without losing queued saves', () => {
-    // Intentionally skipped until the serialization refactor lands.
+  // Review finding F4: overlapping flushes must serialize, not clobber the queue.
+  it('serializes concurrent flushes without losing queued saves', async () => {
+    reachable.mockReturnValue(false);
+    const offline = fakeApi(() => Promise.resolve());
+    await saveProgress(offline, { ...save, path: 'A/one', position: 1 });
+    await saveProgress(offline, { ...save, path: 'A/two', position: 2 });
+    expect(await readQueue()).toHaveLength(2);
+
+    reachable.mockReturnValue(true);
+    const ok = fakeApi(() => Promise.resolve());
+    await Promise.all([flushQueue(ok), flushQueue(ok)]);
+
+    // Each queued save sent exactly once; the queue is drained, nothing lost.
+    expect(ok.saveProgress).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toHaveLength(0);
   });
 });

@@ -83,4 +83,18 @@ describe('ApiClient', () => {
     });
     expect(headerValue(init, 'Content-Type')).toBe('application/json');
   });
+
+  it('aborts a request that exceeds the timeout (review finding F3)', async () => {
+    // A fetch that never resolves until its signal aborts.
+    globalThis.fetch = jest.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+          );
+        }),
+    ) as unknown as typeof globalThis.fetch;
+    const c = new ApiClient('https://h', 'tok', 10); // 10ms timeout
+    await expect(c.serverInfo()).rejects.toThrow();
+  });
 });
