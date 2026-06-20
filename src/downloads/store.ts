@@ -59,6 +59,15 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     }
     set({ entries: cleaned, hydrated: true, supported: engine.supported });
     await persist();
+
+    // On web, having the Cache API isn't enough — offline files only play if the
+    // service worker is actually controlling the page and serving them. Probe the
+    // real path (no real download needed) and downgrade `supported` if it can't, so
+    // the UI hides downloads instead of offering ones that won't play offline.
+    if (engine.supported && engine.probe) {
+      const servable = await engine.probe();
+      if (servable !== useDownloads.getState().supported) set({ supported: servable });
+    }
   },
 
   download: (api, libraryId, book, chapterData) => {
@@ -225,6 +234,22 @@ async function runOne(key: string) {
       coverUri,
       savedAt: new Date().toISOString(),
     };
+
+    // Don't claim "downloaded" unless the file can really be played back offline.
+    // On web the bytes are cached but only playable once the service worker controls
+    // the page; mark an error (keeping the bytes for a retry) so the badge can't lie.
+    if (engine.verify && files.length > 0 && !(await engine.verify(files[0].localUri))) {
+      patchEntry(key, {
+        status: 'error',
+        error: 'Saved, but offline playback isn’t ready yet — reload the app, then retry.',
+        progress: 1,
+        bytes: priorBytes,
+        manifest,
+      });
+      void persist();
+      return;
+    }
+
     patchEntry(key, { status: 'downloaded', progress: 1, bytes: priorBytes, manifest });
     void persist();
     seedQueryCache(manifest, libraryId, path);

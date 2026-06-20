@@ -57,8 +57,15 @@ export interface PlaybackService {
    * source playing until the new one is buffered and ready at `positionInTrack`,
    * then switch. Used to move a streaming book onto its just-downloaded local files
    * without an audible gap. Optional — callers fall back to `load` + `play`.
+   *
+   * Resolves `true` if the swap happened, `false` if it was refused (e.g. the local
+   * source can't be served) and the original source is still playing.
    */
-  swapTo?(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number): Promise<void>;
+  swapTo?(
+    tracks: PlaybackTrack[],
+    startIndex: number,
+    positionInTrack: number,
+  ): Promise<boolean>;
   play(): Promise<void>;
   pause(): Promise<void>;
   /** Seek within the current track. */
