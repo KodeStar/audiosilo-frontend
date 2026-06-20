@@ -1,9 +1,13 @@
 import Constants from 'expo-constants';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useState } from 'react';
+import { Image, Pressable, ScrollView, Share, View } from 'react-native';
 
+import { ApiError } from '@/api/client';
 import { useOptionalApi } from '@/api/provider';
+import type { PairingPayload } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
 import { Stepper } from '@/components/ui/stepper';
 import { Text } from '@/components/ui/text';
 import { useSession } from '@/stores/session';
@@ -43,6 +47,34 @@ export default function SettingsScreen() {
       // ignore; clear locally regardless
     }
     await logout();
+  };
+
+  // Self-service device pairing: mint a fresh pairing QR for the signed-in user so
+  // another device can scan it (or open the link) and pair without an admin.
+  const [pairing, setPairing] = useState<PairingPayload | null>(null);
+  const [pairLoading, setPairLoading] = useState(false);
+  const [pairError, setPairError] = useState<string | null>(null);
+
+  const onAddDevice = async () => {
+    if (!api) return;
+    setPairError(null);
+    setPairLoading(true);
+    try {
+      setPairing(await api.pair());
+    } catch (e) {
+      setPairError(e instanceof ApiError ? e.message : 'Could not reach the server.');
+    } finally {
+      setPairLoading(false);
+    }
+  };
+
+  const shareLink = async () => {
+    if (!pairing) return;
+    try {
+      await Share.share({ message: pairing.web_url });
+    } catch {
+      // user dismissed, or sharing is unavailable on this platform
+    }
   };
 
   return (
@@ -104,6 +136,41 @@ export default function SettingsScreen() {
             </Text>
           </View>
           <Button title="Sign out" variant="secondary" icon="logout" onPress={onLogout} />
+        </Card>
+      </View>
+
+      <View className="gap-2">
+        <Text variant="label">Devices</Text>
+        <Card className="gap-3">
+          {pairing ? (
+            <View className="items-center gap-3">
+              <Text variant="muted" className="text-center">
+                On the other device, open AudioSilo and scan this code — or open the link below.
+              </Text>
+              <Image
+                source={{ uri: pairing.qr_png_data_uri }}
+                style={{ width: 220, height: 220 }}
+                className="self-center rounded-lg bg-white p-2"
+              />
+              <Text selectable variant="muted" className="text-center text-xs">
+                {pairing.web_url}
+              </Text>
+              <View className="flex-row gap-2">
+                <Button title="Share link" variant="secondary" icon="qrcode" onPress={shareLink} />
+                <Button title="Done" variant="secondary" onPress={() => setPairing(null)} />
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text variant="muted">Pair another phone, tablet, or browser to this account.</Text>
+              {pairError ? <Text className="text-sm text-red-500">{pairError}</Text> : null}
+              {pairLoading ? (
+                <Spinner />
+              ) : (
+                <Button title="Add a device" icon="qrcode" onPress={onAddDevice} />
+              )}
+            </>
+          )}
         </Card>
       </View>
 
