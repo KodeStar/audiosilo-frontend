@@ -103,43 +103,60 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
   }
 }
 
+// Serialize all read-modify-write access to the queue so a flush and a
+// concurrent save (or two overlapping flushes) can't clobber each other's writes
+// and drop queued saves (review finding F4).
+let queueLock: Promise<unknown> = Promise.resolve();
+function withQueueLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queueLock.then(fn, fn);
+  queueLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function enqueue(save: ProgressSave): Promise<void> {
-  const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
-  // Keep only the latest pending save per (library, path).
-  const next = queue.filter((s) => !(s.libraryId === save.libraryId && s.path === save.path));
-  next.push(save);
-  await setItem(QUEUE_KEY, next);
+  await withQueueLock(async () => {
+    const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
+    // Keep only the latest pending save per (library, path).
+    const next = queue.filter((s) => !(s.libraryId === save.libraryId && s.path === save.path));
+    next.push(save);
+    await setItem(QUEUE_KEY, next);
+  });
 }
 
 /** Replay queued saves (call on reconnect / app open). */
 export async function flushQueue(api: ApiClient): Promise<void> {
   if (!isReachable()) return; // wait for reconnect rather than fail item by item
-  const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
-  if (queue.length === 0) return;
-  const remaining: ProgressSave[] = [];
-  for (let i = 0; i < queue.length; i++) {
-    const save = queue[i];
-    try {
-      await api.saveProgress(save.libraryId, save.path, {
-        position: save.position,
-        duration: save.duration,
-        finished: save.finished,
-        playback_speed: save.playback_speed,
-        version: 0,
-        device_id: save.device_id,
-        updated_at: save.updated_at,
-      });
-      noteSuccess();
-    } catch (e) {
-      if (isUnrecoverable(e)) continue; // drop; can't ever succeed
-      noteError(e);
-      if (!isReachable()) {
-        // Connection dropped mid-flush — keep this and everything after it.
-        remaining.push(...queue.slice(i));
-        break;
+  await withQueueLock(async () => {
+    const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
+    if (queue.length === 0) return;
+    const remaining: ProgressSave[] = [];
+    for (let i = 0; i < queue.length; i++) {
+      const save = queue[i];
+      try {
+        await api.saveProgress(save.libraryId, save.path, {
+          position: save.position,
+          duration: save.duration,
+          finished: save.finished,
+          playback_speed: save.playback_speed,
+          version: 0,
+          device_id: save.device_id,
+          updated_at: save.updated_at,
+        });
+        noteSuccess();
+      } catch (e) {
+        if (isUnrecoverable(e)) continue; // drop; can't ever succeed
+        noteError(e);
+        if (!isReachable()) {
+          // Connection dropped mid-flush — keep this and everything after it.
+          remaining.push(...queue.slice(i));
+          break;
+        }
+        remaining.push(save); // transient server error — retry next time
       }
-      remaining.push(save); // transient server error — retry next time
     }
-  }
-  await setItem(QUEUE_KEY, remaining);
+    await setItem(QUEUE_KEY, remaining);
+  });
 }

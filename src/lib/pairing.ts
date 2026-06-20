@@ -1,11 +1,25 @@
 // Pairing helpers shared by the connect screen and the QR scanner.
 
-/** Trim, add a default https:// scheme, and strip trailing slashes from a server URL. */
+/**
+ * Trim, add a default https:// scheme, validate, and strip trailing slashes from
+ * a server URL. Returns '' when the input isn't a valid http(s) URL (so callers
+ * treat it as "no/invalid server address" rather than passing a malformed base
+ * to fetch). Host:port and any base-path prefix are preserved.
+ */
 export function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return '';
   const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  return withScheme.replace(/\/+$/, '');
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    return '';
+  }
+  if (!parsed.hostname || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+    return '';
+  }
+  return (parsed.origin + parsed.pathname).replace(/\/+$/, '');
 }
 
 function queryParam(query: string, key: string): string | null {
