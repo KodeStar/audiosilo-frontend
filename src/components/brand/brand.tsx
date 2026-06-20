@@ -6,16 +6,19 @@ import { Text } from '@/components/ui/text';
 import { Logo } from './logo';
 
 /**
- * Wordmark: the silo logo + "AUDIO" (pink) / "SILO" (grey), optionally with the
- * app version underneath. Used in the desktop sidebar (large, with version) and
- * the phone header (compact).
+ * Wordmark: the silo logo + "AUDIO" (pink) / "SILO" (grey), optionally with a
+ * version underneath. Used in the desktop sidebar (large, with version) and the
+ * phone header (compact). `version` is the connected server's version (from
+ * /server); it falls back to this build's bundled version when unknown.
  */
 export function Brand({
   size = 28,
   showVersion = false,
+  version,
 }: {
   size?: number;
   showVersion?: boolean;
+  version?: string;
 }) {
   return (
     <View className="flex-row items-center gap-2.5">
@@ -26,7 +29,7 @@ export function Brand({
           <RNText className="font-roboto-bold text-gray-500 dark:text-gray-300">SILO</RNText>
         </RNText>
         {showVersion ? (
-          <Text variant="caption">v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
+          <Text variant="caption">v{version ?? Constants.expoConfig?.version ?? '1.0.0'}</Text>
         ) : null}
       </View>
     </View>
