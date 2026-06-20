@@ -6,3 +6,6 @@ public/
 node_modules/
 package-lock.json
 *.md
+
+# Apple Icon Composer artifact (its own JSON spacing; would break on re-export)
+assets/expo.icon/
