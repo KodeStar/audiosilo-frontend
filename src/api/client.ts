@@ -5,6 +5,7 @@ import type {
   BooksPage,
   BooksSort,
   ChaptersResponse,
+  DemoSession,
   History,
   Library,
   Listing,
@@ -124,6 +125,14 @@ export class ApiClient {
   login(username: string, password: string, deviceName: string) {
     return this.request<AuthSession>('POST', '/auth/login', {
       body: { username, password, device_name: deviceName },
+    });
+  }
+  /** Mint a throwaway demo account (when the server runs in demo mode). Returns a
+   * ready-to-use session plus a pairing payload so the same user can be opened on
+   * a phone via the QR. */
+  demoSession(deviceName: string) {
+    return this.request<DemoSession>('POST', '/demo/session', {
+      body: { device_name: deviceName },
     });
   }
 
