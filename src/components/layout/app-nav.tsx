@@ -1,6 +1,7 @@
 import { Link, usePathname, type Href } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
+import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { Brand } from '@/components/brand/brand';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -42,6 +43,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   const pathname = usePathname();
   const { scheme } = useTheme();
   const api = useOptionalApi();
+  const { data: server } = useServerInfo();
   const logout = useSession((s) => s.logout);
 
   const onLogout = async () => {
@@ -82,7 +84,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   return (
     <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800 after:content-[''] after:border-r after:absolute after:right-0 after:h-full after:border-gray-300 after:dark:border-gray-860">
       <View className="p-5 border-b border-gray-100 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-b after:absolute after:bottom-0 after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860">
-        <Brand size={50} showVersion />
+        <Brand size={50} showVersion version={server?.version} />
       </View>
       <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {

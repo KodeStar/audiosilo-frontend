@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Image, Pressable, ScrollView, Share, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
+import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ const speed = (v: number) => `${Number(v.toFixed(2))}×`;
 export default function SettingsScreen() {
   const { pref, setPref } = useTheme();
   const api = useOptionalApi();
+  const { data: server } = useServerInfo();
   const user = useSession((s) => s.user);
   const serverUrl = useSession((s) => s.serverUrl);
   const logout = useSession((s) => s.logout);
@@ -203,7 +205,7 @@ export default function SettingsScreen() {
       </View>
 
       <Text variant="caption" className="text-center">
-        AudioSilo v{Constants.expoConfig?.version ?? '1.0.0'}
+        AudioSilo v{server?.version ?? Constants.expoConfig?.version ?? '1.0.0'}
       </Text>
     </ScrollView>
   );
