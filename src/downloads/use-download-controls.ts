@@ -3,13 +3,13 @@ import { useCallback } from 'react';
 import { useApi } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 
-import { engine } from './engine';
 import { useDownloadEntry, useDownloads } from './store';
 import type { DownloadStatus } from './types';
 
 export type DownloadControls = {
   supported: boolean;
   status: DownloadStatus | undefined;
+  error: string | undefined;
   progress: number;
   bytes: number;
   totalBytes: number;
@@ -27,6 +27,9 @@ export function useDownloadControls(
 ): DownloadControls {
   const api = useApi();
   const entry = useDownloadEntry(libraryId, path);
+  // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
+  // serve offline media), not just the static Cache-API capability.
+  const supported = useDownloads((s) => s.supported);
 
   const start = useCallback(() => {
     if (book) useDownloads.getState().download(api, libraryId, book, chapterData);
@@ -41,8 +44,9 @@ export function useDownloadControls(
   );
 
   return {
-    supported: engine.supported,
+    supported,
     status: entry?.status,
+    error: entry?.error,
     progress: entry?.progress ?? 0,
     bytes: entry?.bytes ?? 0,
     totalBytes: entry?.totalBytes ?? 0,
