@@ -47,7 +47,9 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       const present =
         e.status === 'downloaded' &&
         e.manifest.files.length > 0 &&
-        (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(Boolean);
+        (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
+          Boolean,
+        );
       if (present) {
         cleaned[key] = e;
         seedQueryCache(e.manifest, e.libraryId, e.path);
@@ -117,7 +119,9 @@ function persist(): Promise<void> {
 function patchEntry(key: string, patch: Partial<DownloadEntry>) {
   const cur = useDownloads.getState().entries[key];
   if (!cur) return;
-  useDownloads.setState({ entries: { ...useDownloads.getState().entries, [key]: { ...cur, ...patch } } });
+  useDownloads.setState({
+    entries: { ...useDownloads.getState().entries, [key]: { ...cur, ...patch } },
+  });
 }
 
 function removeEntry(key: string) {
@@ -171,11 +175,20 @@ async function runOne(key: string) {
 
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
-    const knownTotal = specs.every((s) => s.size > 0) ? specs.reduce((sum, s) => sum + s.size, 0) : 0;
+    const knownTotal = specs.every((s) => s.size > 0)
+      ? specs.reduce((sum, s) => sum + s.size, 0)
+      : 0;
 
     let coverUri: string | null = null;
     try {
-      coverUri = await engine.downloadFile(libraryId, path, 'cover.jpg', api.coverUrl(libraryId, path), undefined, ctrl.signal);
+      coverUri = await engine.downloadFile(
+        libraryId,
+        path,
+        'cover.jpg',
+        api.coverUrl(libraryId, path),
+        undefined,
+        ctrl.signal,
+      );
     } catch (e) {
       if (isAbort(e)) throw e; // a cancel during cover download still cancels the book
       // otherwise the cover is optional — carry on without it
@@ -206,7 +219,12 @@ async function runOne(key: string) {
       files.push({ relPath: s.path, localUri });
     }
 
-    const manifest: DownloadManifest = { ...entry.manifest, files, coverUri, savedAt: new Date().toISOString() };
+    const manifest: DownloadManifest = {
+      ...entry.manifest,
+      files,
+      coverUri,
+      savedAt: new Date().toISOString(),
+    };
     patchEntry(key, { status: 'downloaded', progress: 1, bytes: priorBytes, manifest });
     void persist();
     seedQueryCache(manifest, libraryId, path);
@@ -215,7 +233,10 @@ async function runOne(key: string) {
     if (isAbort(e)) {
       removeEntry(key); // cancelled — drop the partial entry
     } else {
-      patchEntry(key, { status: 'error', error: e instanceof Error ? e.message : 'Download failed' });
+      patchEntry(key, {
+        status: 'error',
+        error: e instanceof Error ? e.message : 'Download failed',
+      });
       void persist();
     }
   } finally {

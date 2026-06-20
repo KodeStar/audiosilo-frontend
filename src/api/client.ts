@@ -184,18 +184,30 @@ export class ApiClient {
   }
   books(
     libraryId: number,
-    opts: { sort?: BooksSort; author?: string; series?: string; cursor?: string; limit?: number } = {},
+    opts: {
+      sort?: BooksSort;
+      author?: string;
+      series?: string;
+      cursor?: string;
+      limit?: number;
+    } = {},
   ) {
     return this.request<BooksPage>('GET', `/libraries/${libraryId}/books`, { query: { ...opts } });
   }
   async search(q: string, limit?: number, signal?: AbortSignal) {
-    const r = await this.request<{ books: Book[] }>('GET', '/search', { query: { q, limit }, signal });
+    const r = await this.request<{ books: Book[] }>('GET', '/search', {
+      query: { q, limit },
+      signal,
+    });
     return r.books ?? [];
   }
   /** Most recently added books across every accessible library (server merges and
    * sorts by added date), so the client needn't fan out per library. */
   async recentBooks(limit?: number, signal?: AbortSignal) {
-    const r = await this.request<{ books: Book[] }>('GET', '/books/recent', { query: { limit }, signal });
+    const r = await this.request<{ books: Book[] }>('GET', '/books/recent', {
+      query: { limit },
+      signal,
+    });
     return r.books ?? [];
   }
   item(libraryId: number, path: string, signal?: AbortSignal) {
@@ -244,10 +256,14 @@ export class ApiClient {
     return r.progress;
   }
   async saveProgress(libraryId: number, path: string, input: ProgressInput) {
-    const r = await this.request<{ progress: Progress }>('PUT', `/libraries/${libraryId}/progress`, {
-      query: { path },
-      body: input,
-    });
+    const r = await this.request<{ progress: Progress }>(
+      'PUT',
+      `/libraries/${libraryId}/progress`,
+      {
+        query: { path },
+        body: input,
+      },
+    );
     return r.progress;
   }
 

@@ -36,7 +36,7 @@ export default function BookDetailScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
 
-  const { data: book, isLoading, error, refetch } = useBook(libraryId, path);
+  const { data: book, isLoading, refetch } = useBook(libraryId, path);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
 
@@ -55,7 +55,11 @@ export default function BookDetailScreen() {
     );
   }
 
-  const subtitle = bookSubtitle({ author: book.author, series: book.series, seriesIndex: book.series_index });
+  const subtitle = bookSubtitle({
+    author: book.author,
+    series: book.series,
+    seriesIndex: book.series_index,
+  });
   const coverUrl = api.coverUrl(libraryId, path);
   const chapters = chapterData?.chapters ?? [];
   const files = chapterData?.files ?? [];
@@ -79,21 +83,26 @@ export default function BookDetailScreen() {
   // recompute from the cumulative file durations like book-queue does).
   const fileStartOffset = (fileIndex: number) =>
     files.slice(0, fileIndex).reduce((acc, f) => acc + (f.duration > 0 ? f.duration : 0), 0);
-  const chapterStart = (ch: Chapter) => (files.length > 0 ? fileStartOffset(ch.file_index) + ch.start : ch.book_offset);
+  const chapterStart = (ch: Chapter) =>
+    files.length > 0 ? fileStartOffset(ch.file_index) + ch.start : ch.book_offset;
 
   // On desktop the player lives in the right panel, so play inline; on phone open
   // the full-screen player modal. A chapter is addressed by whole-book position;
   // a file by track index (durations may be unknown, so a position can't locate it).
   const goPlay = (target: { position?: number; track?: number }) => {
     if (wide) {
-      void usePlayer.getState().playBook(api, libraryId, book, chapterData, target.position, target.track);
+      void usePlayer
+        .getState()
+        .playBook(api, libraryId, book, chapterData, target.position, target.track);
     } else {
       router.push({
         pathname: '/player',
         params: {
           libraryId: String(libraryId),
           path,
-          ...(target.position !== undefined ? { position: String(Math.round(target.position)) } : {}),
+          ...(target.position !== undefined
+            ? { position: String(Math.round(target.position)) }
+            : {}),
           ...(target.track !== undefined ? { track: String(target.track) } : {}),
         },
       });
@@ -131,7 +140,9 @@ export default function BookDetailScreen() {
           </Text>
         </View>
         <View className="px-4">
-          <View className={`h-3.5 w-3.5 rounded-full ${downloaded ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-800'}`} />
+          <View
+            className={`h-3.5 w-3.5 rounded-full ${downloaded ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-800'}`}
+          />
         </View>
       </View>
     </Pressable>
@@ -153,14 +164,23 @@ export default function BookDetailScreen() {
       });
     }
     return files.map((f, i) =>
-      fileRow(f.rel_path, pathLeaf(f.rel_path), f.duration, formatBitrate(f.size, f.duration), () => goPlay({ track: i }), false),
+      fileRow(
+        f.rel_path,
+        pathLeaf(f.rel_path),
+        f.duration,
+        formatBitrate(f.size, f.duration),
+        () => goPlay({ track: i }),
+        false,
+      ),
     );
   };
 
   const hasList = chapters.length > 0 || files.length > 0;
   const fileList = hasList ? (
     <View>
-      <Text className="mb-2 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">{listLabel}</Text>
+      <Text className="mb-2 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">
+        {listLabel}
+      </Text>
       {renderRows()}
     </View>
   ) : null;
@@ -171,7 +191,13 @@ export default function BookDetailScreen() {
         <ContentColumn>
           <ScrollView className="flex-1" contentContainerClassName="gap-4 p-8 pt-2">
             <BreadCrumbs crumbs={crumbs} />
-            <DownloadControl libraryId={libraryId} path={path} book={book} chapterData={chapterData} disabled={chaptersLoading} />
+            <DownloadControl
+              libraryId={libraryId}
+              path={path}
+              book={book}
+              chapterData={chapterData}
+              disabled={chaptersLoading}
+            />
             {fileList}
             <BookmarksSection libraryId={libraryId} path={path} />
             <HistorySection libraryId={libraryId} path={path} />
@@ -215,11 +241,19 @@ export default function BookDetailScreen() {
           {subtitle ? <Text variant="title">{subtitle}</Text> : null}
           {book.narrator ? <Text variant="muted">Narrated by {book.narrator}</Text> : null}
           <Text variant="muted">
-            {[formatDuration(book.duration), book.format?.toUpperCase()].filter(Boolean).join(' · ')}
+            {[formatDuration(book.duration), book.format?.toUpperCase()]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
           <View className="mt-2 gap-2">
             <Button title="Listen" icon="play" onPress={() => goPlay({})} />
-            <DownloadControl libraryId={libraryId} path={path} book={book} chapterData={chapterData} disabled={chaptersLoading} />
+            <DownloadControl
+              libraryId={libraryId}
+              path={path}
+              book={book}
+              chapterData={chapterData}
+              disabled={chaptersLoading}
+            />
           </View>
         </View>
       </View>

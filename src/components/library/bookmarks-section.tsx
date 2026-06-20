@@ -29,7 +29,10 @@ export function BookmarksSection({ libraryId, path }: { libraryId: number; path:
           key={bm.id}
           className="flex-row items-center gap-3 rounded-lg bg-white p-3 dark:border dark:border-gray-860 dark:bg-gray-840"
         >
-          <Pressable className="flex-1 flex-row items-center gap-3" onPress={() => jump(bm.position)}>
+          <Pressable
+            className="flex-1 flex-row items-center gap-3"
+            onPress={() => jump(bm.position)}
+          >
             <Icon name="bookmark" size={16} color={colors.primary} />
             <View className="flex-1">
               <Text variant="subtitle">{formatClock(bm.position)}</Text>

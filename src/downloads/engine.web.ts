@@ -51,7 +51,14 @@ async function requestPersistence() {
 export const engine: DownloadEngine = {
   supported,
 
-  async downloadFile(libraryId, path, fileName, url, onProgress?: DownloadProgressCb, signal?: AbortSignal) {
+  async downloadFile(
+    libraryId,
+    path,
+    fileName,
+    url,
+    onProgress?: DownloadProgressCb,
+    signal?: AbortSignal,
+  ) {
     await requestPersistence();
     const res = await fetch(url, { signal });
     if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
@@ -101,7 +108,9 @@ export const engine: DownloadEngine = {
       const cache = await caches.open(MEDIA_CACHE);
       const prefix = bookPrefix(libraryId, path);
       const keys = await cache.keys();
-      await Promise.all(keys.filter((req) => req.url.startsWith(prefix)).map((req) => cache.delete(req)));
+      await Promise.all(
+        keys.filter((req) => req.url.startsWith(prefix)).map((req) => cache.delete(req)),
+      );
     } catch {
       // best-effort cleanup
     }

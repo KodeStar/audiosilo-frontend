@@ -57,7 +57,9 @@ function SectionHeader({
       <Text variant="heading">{title}</Text>
       {hasMore && onToggle ? (
         <Pressable onPress={onToggle} hitSlop={8} className="active:opacity-70">
-          <Text className="font-roboto-medium text-primary">{expanded ? 'Collapse' : 'See all'}</Text>
+          <Text className="font-roboto-medium text-primary">
+            {expanded ? 'Collapse' : 'See all'}
+          </Text>
         </Pressable>
       ) : null}
     </View>
@@ -137,7 +139,10 @@ function ProgressMenu({ item }: { item: Progress }) {
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
-          <Pressable className="gap-1 rounded-t-2xl bg-gray-100 p-2 pb-6 dark:bg-gray-840" onPress={() => {}}>
+          <Pressable
+            className="gap-1 rounded-t-2xl bg-gray-100 p-2 pb-6 dark:bg-gray-840"
+            onPress={() => {}}
+          >
             <MenuRow icon="check" label="Mark as Finished" onPress={onMarkFinished} />
             <MenuRow icon="library" label="More in series" onPress={onMoreInSeries} />
           </Pressable>
@@ -182,7 +187,10 @@ function ProgressCard({ item, width }: { item: Progress; width: number }) {
   // and start playback, which surfaces the panel via `nowPlaying`.
   const play = async () => {
     if (!wide) {
-      router.push({ pathname: '/player', params: { libraryId: String(item.library_id), path: item.path } });
+      router.push({
+        pathname: '/player',
+        params: { libraryId: String(item.library_id), path: item.path },
+      });
       return;
     }
     const current = usePlayer.getState().nowPlaying;
@@ -210,7 +218,10 @@ function ProgressCard({ item, width }: { item: Progress; width: number }) {
           <View className="gap-1">
             <View className="flex-row items-center gap-2">
               <View className="h-1 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                <View className="h-full rounded-full bg-primary" style={{ width: `${fraction * 100}%` }} />
+                <View
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${fraction * 100}%` }}
+                />
               </View>
               <Pressable onPress={() => void play()} hitSlop={8} className="active:opacity-60">
                 <Icon name="circle-play" size={26} color={colors.primary} />
@@ -243,7 +254,8 @@ export default function HomeScreen() {
   // desktop sidebar means window width isn't the content width).
   const [gridWidth, setGridWidth] = useState(0);
   const columns = gridColumns(gridWidth);
-  const cardWidth = gridWidth > 0 ? Math.floor((gridWidth - GRID_GAP * (columns - 1)) / columns) : 0;
+  const cardWidth =
+    gridWidth > 0 ? Math.floor((gridWidth - GRID_GAP * (columns - 1)) / columns) : 0;
 
   // Sections collapse to a single desktop row (the column count) / 4 on phone;
   // "See all" reveals the rest, "Collapse" hides them again.
@@ -281,7 +293,9 @@ export default function HomeScreen() {
           onToggle={() => setInProgressExpanded((v) => !v)}
         />
         {isLoading ? <Spinner center /> : null}
-        {error ? <ErrorNote message="Could not load your progress." onRetry={() => refetch()} /> : null}
+        {error ? (
+          <ErrorNote message="Could not load your progress." onRetry={() => refetch()} />
+        ) : null}
         {!isLoading && !error && inProgress.length === 0 ? (
           <EmptyNote message="Start a book and it will show up here." />
         ) : null}
@@ -302,7 +316,9 @@ export default function HomeScreen() {
               onToggle={() => setRecentExpanded((v) => !v)}
             />
             {recentLoading ? <Spinner center /> : null}
-            {recentError ? <ErrorNote message="Could not load new books." onRetry={() => refetchRecent()} /> : null}
+            {recentError ? (
+              <ErrorNote message="Could not load new books." onRetry={() => refetchRecent()} />
+            ) : null}
             {cardWidth > 0 && recent.length > 0 ? (
               <Grid>
                 {visibleRecent.map((b) => {
@@ -329,7 +345,11 @@ export default function HomeScreen() {
             {cardWidth > 0 ? (
               <Grid>
                 {finished.slice(0, 10).map((item) => (
-                  <ProgressCard key={`${item.library_id}:${item.path}`} item={item} width={cardWidth} />
+                  <ProgressCard
+                    key={`${item.library_id}:${item.path}`}
+                    item={item}
+                    width={cardWidth}
+                  />
                 ))}
               </Grid>
             ) : null}

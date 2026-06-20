@@ -46,7 +46,14 @@ function dirSize(dir: Directory): number {
 export const engine: DownloadEngine = {
   supported: true,
 
-  async downloadFile(libraryId, path, fileName, url, onProgress?: DownloadProgressCb, signal?: AbortSignal) {
+  async downloadFile(
+    libraryId,
+    path,
+    fileName,
+    url,
+    onProgress?: DownloadProgressCb,
+    signal?: AbortSignal,
+  ) {
     const dir = bookDir(libraryId, path);
     ensureDir(dir);
     const dest = new File(dir, fileName);

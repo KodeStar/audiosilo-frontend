@@ -72,7 +72,11 @@ export default function ScanScreen() {
           {permission.canAskAgain ? (
             <Button title="Allow camera" icon="qrcode" onPress={requestPermission} />
           ) : (
-            <Button title="Open settings" variant="secondary" onPress={() => Linking.openSettings()} />
+            <Button
+              title="Open settings"
+              variant="secondary"
+              onPress={() => Linking.openSettings()}
+            />
           )}
         </View>
       </SafeAreaView>
