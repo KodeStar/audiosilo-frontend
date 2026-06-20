@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
 
-import { useApi } from './provider';
+import { useApi, useOptionalApi } from './provider';
 
 /** Centralized query keys so mutations can invalidate precisely. */
 export const qk = {
+  server: () => ['server'] as const,
   libraries: () => ['libraries'] as const,
   browse: (lib: number, path: string) => ['browse', lib, path] as const,
   item: (lib: number, path: string) => ['item', lib, path] as const,
@@ -19,6 +20,19 @@ export const qk = {
   history: (lib: number, path: string) => ['history', lib, path] as const,
   allHistory: () => ['history', 'all'] as const,
 };
+
+/** The connected server's identity/capabilities (incl. its release version).
+ * Tolerates an unconfigured server (returns disabled) so it is safe in chrome
+ * like the sidebar that can render before/without a connection. */
+export function useServerInfo() {
+  const api = useOptionalApi();
+  return useQuery({
+    queryKey: qk.server(),
+    queryFn: ({ signal }) => api!.serverInfo(signal),
+    enabled: !!api,
+    staleTime: 5 * 60_000, // the server version doesn't change within a session
+  });
+}
 
 export function useLibraries() {
   const api = useApi();
