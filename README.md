@@ -1,56 +1,52 @@
-# Welcome to your Expo app 👋
+# AudioSilo Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The audiobook **player** for [audiosilo-server](https://github.com/kodestar/audiosilo-server) —
+one Expo / React Native codebase shipping to **web PWA + iOS + Android**.
 
-## Get started
+See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the full stack;
+[docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
-1. Install dependencies
+## Prerequisites
 
-   ```bash
-   npm install
-   ```
+- **Node `24.16.0`** (pinned in [`.nvmrc`](.nvmrc); `nvm use`).
+- **FontAwesome Pro token** in a gitignored **`.env`** as
+  `FONTAWESOME_NPM_AUTH_TOKEN=...` (referenced by `.npmrc`). It must be in the
+  process env to install `@fortawesome/*`:
 
-2. Start the app
+  ```sh
+  set -a; . ./.env; set +a
+  npm install
+  ```
 
-   ```bash
-   npx expo start
-   ```
+## Develop
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```sh
+npm run web                     # expo start --web (no native build needed)
+npm run ios | npm run android   # needs a dev build (npx expo prebuild first)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Testing & CI
 
-### Other setup steps
+Run the same checks CI runs, locally:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```sh
+npx tsc --noEmit            # typecheck (strict; must stay clean)
+npm run lint                # eslint flat config (eslint-config-expo + prettier)
+npm test                    # jest-expo unit tests
+npm test -- --coverage      # …with coverage
+npx prettier --write .      # format to .prettierrc (advisory; not gated yet)
+```
 
-## Learn more
+Tests use **jest-expo** (jest 29) + **@testing-library/react-native** 14, with
+in-memory mocks for `expo-secure-store` and AsyncStorage in
+[`jest.setup.ts`](jest.setup.ts). Initial coverage targets the framework-free
+logic: the API client, pairing parser, playback queue/timeline math, the offline
+progress-sync queue, secure-store, and the session store. Add tests next to the
+code as `*.test.ts`.
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs typecheck + lint +
+tests on every pull request and push to `main`, and **gates merges**. Its
+`npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` repo secret (the private icon
+registry). After changing dependencies, run `npm install` and **commit the
+updated `package-lock.json` in sync** — CI uses `npm ci` (frozen lockfile). The
+web-export image build ([`web.yml`](.github/workflows/web.yml)) stays separate.

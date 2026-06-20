@@ -1,0 +1,38 @@
+# Gates every pull request and push to main on typecheck + lint + tests.
+# The web-export image build (web.yml) stays separate.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # npm ci resolves the @fortawesome/pro-* packages from the private registry,
+      # so the token must be present (same secret as web.yml).
+      - name: Install dependencies
+        run: npm ci
+        env:
+          FONTAWESOME_NPM_AUTH_TOKEN: ${{ secrets.FONTAWESOME_NPM_AUTH_TOKEN }}
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --ci --coverage
