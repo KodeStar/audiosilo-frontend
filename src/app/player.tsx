@@ -14,7 +14,13 @@ import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 export default function PlayerScreen() {
-  const { libraryId: libParam, path: pathParam, chapter, position, track } = useLocalSearchParams<{
+  const {
+    libraryId: libParam,
+    path: pathParam,
+    chapter,
+    position,
+    track,
+  } = useLocalSearchParams<{
     libraryId?: string;
     path?: string | string[];
     chapter?: string;
@@ -64,8 +70,23 @@ export default function PlayerScreen() {
       : !Number.isNaN(idx) && chapterData?.chapters?.[idx]
         ? chapterData.chapters[idx].book_offset
         : undefined;
-    void usePlayer.getState().playBook(api, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
-  }, [api, book, chapterData, chaptersQuery.isLoading, libraryId, path, chapter, position, track, nowPlaying, seekBook, goToTrack]);
+    void usePlayer
+      .getState()
+      .playBook(api, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
+  }, [
+    api,
+    book,
+    chapterData,
+    chaptersQuery.isLoading,
+    libraryId,
+    path,
+    chapter,
+    position,
+    track,
+    nowPlaying,
+    seekBook,
+    goToTrack,
+  ]);
 
   if (!book && !nowPlaying) {
     return (
@@ -84,7 +105,11 @@ export default function PlayerScreen() {
       className="flex-1 bg-gray-200 dark:bg-gray-800"
     >
       <View className="flex-row items-center justify-between px-4 py-2">
-        <Pressable onPress={() => router.back()} hitSlop={12} className="h-8 w-8 items-center justify-center">
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={12}
+          className="h-8 w-8 items-center justify-center"
+        >
           <Icon name="chevron-down" size={26} color={neutral} />
         </Pressable>
         <Pressable

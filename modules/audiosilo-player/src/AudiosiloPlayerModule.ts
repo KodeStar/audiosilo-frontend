@@ -1,6 +1,10 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
-import type { AudiosiloPlayerModuleEvents, NativeTrack, PlayerConfig } from './AudiosiloPlayer.types';
+import type {
+  AudiosiloPlayerModuleEvents,
+  NativeTrack,
+  PlayerConfig,
+} from './AudiosiloPlayer.types';
 
 declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEvents> {
   /** Initialise the audio session / media session (idempotent). */

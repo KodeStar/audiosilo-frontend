@@ -11,14 +11,7 @@ export type PlaybackTrack = {
   duration?: number;
 };
 
-export type PlaybackState =
-  | 'idle'
-  | 'loading'
-  | 'ready'
-  | 'playing'
-  | 'paused'
-  | 'ended'
-  | 'error';
+export type PlaybackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 /** Engine status, expressed per-track (the store maps it to the whole-book timeline). */
 export type PlaybackSnapshot = {

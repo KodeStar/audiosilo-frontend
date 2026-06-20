@@ -15,16 +15,32 @@ export function SpeedButton() {
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} hitSlop={8} className="rounded-full px-2 py-1 active:opacity-70">
-        <Text className="font-roboto-medium text-base text-gray-700 dark:text-gray-200">{fmt(rate)}</Text>
+      <Pressable
+        onPress={() => setOpen(true)}
+        hitSlop={8}
+        className="rounded-full px-2 py-1 active:opacity-70"
+      >
+        <Text className="font-roboto-medium text-base text-gray-700 dark:text-gray-200">
+          {fmt(rate)}
+        </Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
-          <Pressable className="gap-4 rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840" onPress={() => {}}>
+          <Pressable
+            className="gap-4 rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840"
+            onPress={() => {}}
+          >
             <Text variant="title">Playback speed</Text>
             <View className="items-center py-2">
-              <Stepper value={rate} onChange={(v) => void setRate(v)} step={0.05} min={0.5} max={2} format={fmt} />
+              <Stepper
+                value={rate}
+                onChange={(v) => void setRate(v)}
+                step={0.05}
+                min={0.5}
+                max={2}
+                format={fmt}
+              />
             </View>
           </Pressable>
         </Pressable>

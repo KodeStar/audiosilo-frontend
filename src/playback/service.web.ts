@@ -136,7 +136,8 @@ class WebPlaybackService implements PlaybackService {
       };
       // Ready once it can play AND the playhead is at the seek target.
       const onReady = () => {
-        if (pending.readyState >= 3 && Math.abs(pending.currentTime - (positionInTrack || 0)) < 1.5) finish();
+        if (pending.readyState >= 3 && Math.abs(pending.currentTime - (positionInTrack || 0)) < 1.5)
+          finish();
       };
       pending.addEventListener('loadedmetadata', onLoaded);
       pending.addEventListener('canplay', onReady);
@@ -246,11 +247,13 @@ class WebPlaybackService implements PlaybackService {
       });
       navigator.mediaSession.setActionHandler('play', () => void this.play());
       navigator.mediaSession.setActionHandler('pause', () => void this.pause());
-      navigator.mediaSession.setActionHandler('seekbackward', () =>
-        void this.seekTo(Math.max(0, this.snapshot.position - this.config.jumpBackward)),
+      navigator.mediaSession.setActionHandler(
+        'seekbackward',
+        () => void this.seekTo(Math.max(0, this.snapshot.position - this.config.jumpBackward)),
       );
-      navigator.mediaSession.setActionHandler('seekforward', () =>
-        void this.seekTo(this.snapshot.position + this.config.jumpForward),
+      navigator.mediaSession.setActionHandler(
+        'seekforward',
+        () => void this.seekTo(this.snapshot.position + this.config.jumpForward),
       );
     } catch {
       // unsupported action handlers; ignore

@@ -24,12 +24,8 @@ export function DownloadControl({
   chapterData?: ChaptersResponse;
   disabled?: boolean;
 }) {
-  const { supported, status, progress, bytes, totalBytes, start, cancel, remove } = useDownloadControls(
-    libraryId,
-    path,
-    book,
-    chapterData,
-  );
+  const { supported, status, progress, bytes, totalBytes, start, cancel, remove } =
+    useDownloadControls(libraryId, path, book, chapterData);
 
   if (!supported) {
     return <Button title="Downloads unavailable" variant="secondary" icon="download" disabled />;
@@ -68,7 +64,10 @@ export function DownloadControl({
           </Pressable>
         </View>
         <View className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-          <View className="h-full rounded-full bg-primary" style={{ width: `${Math.max(4, progress * 100)}%` }} />
+          <View
+            className="h-full rounded-full bg-primary"
+            style={{ width: `${Math.max(4, progress * 100)}%` }}
+          />
         </View>
       </View>
     );

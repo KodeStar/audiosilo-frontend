@@ -20,7 +20,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/library', match: '/library', label: 'Library', icon: 'library', alsoMatch: ['/book'] },
   // Downloads need offline storage: always on native; on web wherever the service
   // worker + Cache API are available (a secure context — https or localhost).
-  ...(engine.supported ? [{ href: '/downloads', match: '/downloads', label: 'Downloads', icon: 'download' } as NavItem] : []),
+  ...(engine.supported
+    ? [{ href: '/downloads', match: '/downloads', label: 'Downloads', icon: 'download' } as NavItem]
+    : []),
   { href: '/settings', match: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -29,7 +31,10 @@ function matchesPath(pathname: string, match: string) {
 }
 
 function isActive(pathname: string, item: NavItem) {
-  return matchesPath(pathname, item.match) || (item.alsoMatch?.some((m) => matchesPath(pathname, m)) ?? false);
+  return (
+    matchesPath(pathname, item.match) ||
+    (item.alsoMatch?.some((m) => matchesPath(pathname, m)) ?? false)
+  );
 }
 
 /** Left sidebar on wide screens, bottom tab bar on phones. */
@@ -56,8 +61,14 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
           return (
             <Link key={item.match} href={item.href} asChild>
               <Pressable className="flex-1 items-center justify-center gap-1 py-2.5">
-                <Icon name={item.icon} size={24} color={active ? colors.primary : colors.dark.textMuted} />
-                <Text className={`text-[11px] ${active ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}>
+                <Icon
+                  name={item.icon}
+                  size={24}
+                  color={active ? colors.primary : colors.dark.textMuted}
+                />
+                <Text
+                  className={`text-[11px] ${active ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}
+                >
                   {item.label}
                 </Text>
               </Pressable>

@@ -28,7 +28,9 @@ describe('parsePairingScan', () => {
     });
   });
   it('parses the custom-scheme deep link', () => {
-    expect(parsePairingScan('audiosilo://connect?server=https://books.example.com&token=tok')).toEqual({
+    expect(
+      parsePairingScan('audiosilo://connect?server=https://books.example.com&token=tok'),
+    ).toEqual({
       base: 'https://books.example.com',
       token: 'tok',
     });

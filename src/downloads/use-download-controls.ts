@@ -31,8 +31,14 @@ export function useDownloadControls(
   const start = useCallback(() => {
     if (book) useDownloads.getState().download(api, libraryId, book, chapterData);
   }, [api, libraryId, book, chapterData]);
-  const cancel = useCallback(() => useDownloads.getState().cancel(libraryId, path), [libraryId, path]);
-  const remove = useCallback(() => void useDownloads.getState().remove(libraryId, path), [libraryId, path]);
+  const cancel = useCallback(
+    () => useDownloads.getState().cancel(libraryId, path),
+    [libraryId, path],
+  );
+  const remove = useCallback(
+    () => void useDownloads.getState().remove(libraryId, path),
+    [libraryId, path],
+  );
 
   return {
     supported: engine.supported,

@@ -108,19 +108,47 @@ export default function SettingsScreen() {
         <Card className="gap-4">
           <View className="flex-row items-center justify-between">
             <Text>Skip back</Text>
-            <Stepper value={skipBackward} onChange={setSkipBackward} step={5} min={5} max={120} format={sec} />
+            <Stepper
+              value={skipBackward}
+              onChange={setSkipBackward}
+              step={5}
+              min={5}
+              max={120}
+              format={sec}
+            />
           </View>
           <View className="flex-row items-center justify-between">
             <Text>Skip forward</Text>
-            <Stepper value={skipForward} onChange={setSkipForward} step={5} min={5} max={120} format={sec} />
+            <Stepper
+              value={skipForward}
+              onChange={setSkipForward}
+              step={5}
+              min={5}
+              max={120}
+              format={sec}
+            />
           </View>
           <View className="flex-row items-center justify-between">
             <Text>Default speed</Text>
-            <Stepper value={defaultRate} onChange={setDefaultRate} step={0.05} min={0.5} max={2} format={speed} />
+            <Stepper
+              value={defaultRate}
+              onChange={setDefaultRate}
+              step={0.05}
+              min={0.5}
+              max={2}
+              format={speed}
+            />
           </View>
           <View className="flex-row items-center justify-between">
             <Text>Auto-rewind on resume</Text>
-            <Stepper value={autoRewindMax} onChange={setAutoRewindMax} step={5} min={0} max={30} format={secOrOff} />
+            <Stepper
+              value={autoRewindMax}
+              onChange={setAutoRewindMax}
+              step={5}
+              min={0}
+              max={30}
+              format={secOrOff}
+            />
           </View>
         </Card>
       </View>

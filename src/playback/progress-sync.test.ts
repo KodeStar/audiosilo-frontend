@@ -48,7 +48,11 @@ describe('progress-sync', () => {
   it('saves straight to the server when reachable', async () => {
     const api = fakeApi(() => Promise.resolve());
     await saveProgress(api, save);
-    expect(api.saveProgress).toHaveBeenCalledWith(1, 'A/Book', expect.objectContaining({ position: 10 }));
+    expect(api.saveProgress).toHaveBeenCalledWith(
+      1,
+      'A/Book',
+      expect.objectContaining({ position: 10 }),
+    );
     expect(reachability.noteSuccess).toHaveBeenCalled();
   });
 
