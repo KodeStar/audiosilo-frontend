@@ -4,7 +4,14 @@ import * as SecureStore from 'expo-secure-store';
 import type { User } from '@/api/types';
 import { useSession } from '@/stores/session';
 
-const user: User = { id: 1, username: 'bob', role: 'user', disabled: false };
+const user: User = {
+  id: 1,
+  username: 'bob',
+  role: 'user',
+  disabled: false,
+  has_password: false,
+  has_recovery: false,
+};
 
 // Exercises the real session store over the in-memory storage mocks (jest.setup).
 describe('session store', () => {

@@ -40,15 +40,17 @@ npm run ios / npm run android
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
 npm test                    # jest-expo unit tests (npm test -- --coverage for coverage)
-npx prettier --write .      # format to .prettierrc (advisory; not gated in CI yet)
+npm run format              # prettier --check . (CI-gated; fails on unformatted files)
+npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
 ```
 
-**Before a change is done, run `npx tsc --noEmit && npm run lint && npm test`** — CI
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all three on every
-PR/push (its `npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` secret). `.nvmrc` pins
-Node `24.16.0`, which CI reads via `node-version-file`; keep the lockfile committed
-in sync (regenerate with `npm install` after changing deps).
+**Before a change is done, run `npx tsc --noEmit && npm run lint && npm run format && npm test`**
+— CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all four (typecheck,
+lint, **prettier `--check`** via the `format` script, test) on every PR/push (its
+`npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` secret). `.nvmrc` pins Node `24.16.0`,
+which CI reads via `node-version-file`; keep the lockfile committed in sync (regenerate
+with `npm install` after changing deps).
 
 ## Architecture & conventions
 
@@ -60,6 +62,15 @@ by `(library_id, path)`. See `src/api/client.ts` + `src/api/types.ts`.
 returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cursor }`,
 `{ progress }`, `{ bookmarks }`, `{ notes }`); errors are `{ error }`. Pairing deep
 link is `audiosilo://connect?server=<base>&token=<pairing_token>`.
+
+**Self-service recovery.** `User` carries `has_password`/`has_recovery`. A signed-in
+user can set a password (`client.setPassword`) and/or mint a durable **recovery code**
+(`client.generateRecoveryCode`) from Settings so they can get back in after signing out
+without an admin. A recovery code is just an auth code the user owns — it redeems through
+the same `redeemCode → exchange` path as an invite, so the connect screen's code field
+accepts either. Sign-out is guarded (`src/lib/recovery.ts` `needsRecoveryWarning`):
+a user with neither credential is warned and offered a recovery code before their only
+way in is revoked (`src/components/account/sign-out-confirm.tsx`).
 
 **Media auth differs by platform** (`src/api/client.ts` `mediaTokenQuery`): web
 embeds `?token=` in cover/stream URLs (`<img>`/`<audio>` can't set headers);

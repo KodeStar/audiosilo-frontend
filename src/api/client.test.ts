@@ -79,6 +79,34 @@ describe('ApiClient', () => {
     expect(new ApiClient('https://h').coverUrl(3, 'A/Book')).not.toContain('token=');
   });
 
+  it('sets a password via POST /auth/password with the documented body', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await new ApiClient('https://h', 'tok').setPassword('longenough');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/auth/password');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ password: 'longenough' });
+  });
+
+  it('includes current_password when changing an existing password', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await new ApiClient('https://h', 'tok').setPassword('newpass12', 'oldpass12');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      password: 'newpass12',
+      current_password: 'oldpass12',
+    });
+  });
+
+  it('mints a recovery code via POST /auth/recovery and unwraps recovery_code', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: { recovery_code: 'ABCD-EFGH' } }));
+    const c = new ApiClient('https://h', 'tok');
+    await expect(c.generateRecoveryCode()).resolves.toBe('ABCD-EFGH');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/auth/recovery');
+    expect(init.method).toBe('POST');
+  });
+
   it('posts the documented body shape for exchange', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { token: 't', user: {} } }));
     await new ApiClient('https://h').exchange('pair-token', 'iPhone');
