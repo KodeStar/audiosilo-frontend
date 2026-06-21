@@ -13,6 +13,7 @@ import { faDownToLine } from '@fortawesome/pro-light-svg-icons/faDownToLine';
 import { faEllipsis } from '@fortawesome/pro-light-svg-icons/faEllipsis';
 import { faFolder } from '@fortawesome/pro-light-svg-icons/faFolder';
 import { faGear } from '@fortawesome/pro-light-svg-icons/faGear';
+import { faHeart } from '@fortawesome/pro-light-svg-icons/faHeart';
 import { faHouse } from '@fortawesome/pro-light-svg-icons/faHouse';
 import { faList } from '@fortawesome/pro-light-svg-icons/faList';
 import { faMagnifyingGlass } from '@fortawesome/pro-light-svg-icons/faMagnifyingGlass';
@@ -31,6 +32,7 @@ import { faWifiSlash } from '@fortawesome/pro-light-svg-icons/faWifiSlash';
 import { faXmark } from '@fortawesome/pro-light-svg-icons/faXmark';
 import { faCirclePause } from '@fortawesome/pro-solid-svg-icons/faCirclePause';
 import { faCirclePlay } from '@fortawesome/pro-solid-svg-icons/faCirclePlay';
+import { faHeart as faHeartSolid } from '@fortawesome/pro-solid-svg-icons/faHeart';
 import { faPause } from '@fortawesome/pro-solid-svg-icons/faPause';
 import { faPlay } from '@fortawesome/pro-solid-svg-icons/faPlay';
 import { faArrowRotateLeft } from '@fortawesome/pro-thin-svg-icons/faArrowRotateLeft';
@@ -83,7 +85,9 @@ export type IconName =
   | 'server'
   | 'check'
   | 'offline'
-  | 'user';
+  | 'user'
+  | 'heart'
+  | 'heart-solid';
 
 const ICONS: Record<IconName, IconDefinition> = {
   home: faHouse,
@@ -124,6 +128,8 @@ const ICONS: Record<IconName, IconDefinition> = {
   check: faCheck,
   offline: faWifiSlash,
   user: faUser,
+  heart: faHeart,
+  'heart-solid': faHeartSolid,
 };
 
 export type IconProps = {

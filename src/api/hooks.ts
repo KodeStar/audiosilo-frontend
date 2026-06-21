@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
 
 import { useApi, useOptionalApi } from './provider';
+import type { Favourite } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. */
 export const qk = {
@@ -19,6 +20,7 @@ export const qk = {
   notes: (lib: number, path: string) => ['notes', lib, path] as const,
   history: (lib: number, path: string) => ['history', lib, path] as const,
   allHistory: () => ['history', 'all'] as const,
+  favourites: () => ['favourites', 'all'] as const,
 };
 
 /** The connected server's identity/capabilities (incl. its release version).
@@ -186,5 +188,52 @@ export function useHistory(libraryId: number, path: string) {
     queryKey: qk.history(libraryId, path),
     queryFn: () => api.history(libraryId, path),
     enabled: path.length > 0,
+  });
+}
+
+// --- Favourites ------------------------------------------------------------
+/** The caller's favourites across every accessible library (one cross-library
+ * call). Feeds the per-row hearts, the Favourites shelf, and the home section. */
+export function useFavourites() {
+  const api = useApi();
+  return useQuery({ queryKey: qk.favourites(), queryFn: ({ signal }) => api.favourites(signal) });
+}
+
+/** Toggle a path's favourite state. Optimistically updates the shared favourites
+ * list so the heart and shelf react instantly, then reconciles via invalidation
+ * (which fills in server-derived fields like is_book/title for a fresh add). */
+export function useToggleFavourite() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ libraryId, path, on }: { libraryId: number; path: string; on: boolean }) =>
+      on ? api.addFavourite(libraryId, path) : api.removeFavourite(libraryId, path),
+    onMutate: async ({ libraryId, path, on }) => {
+      await qc.cancelQueries({ queryKey: qk.favourites() });
+      const prev = qc.getQueryData<Favourite[]>(qk.favourites());
+      qc.setQueryData<Favourite[]>(qk.favourites(), (cur) => {
+        const list = cur ?? [];
+        if (!on) return list.filter((f) => !(f.library_id === libraryId && f.path === path));
+        if (list.some((f) => f.library_id === libraryId && f.path === path)) return list;
+        // Minimal optimistic stub; onSettled refetch fills in is_book/title/etc.
+        const stub: Favourite = {
+          library_id: libraryId,
+          path,
+          is_book: false,
+          title: '',
+          author: '',
+          series: '',
+          series_index: 0,
+          duration: 0,
+          created_at: new Date().toISOString(),
+        };
+        return [stub, ...list];
+      });
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.favourites(), ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.favourites() }),
   });
 }
