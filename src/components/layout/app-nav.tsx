@@ -1,12 +1,15 @@
-import { Link, usePathname, type Href } from 'expo-router';
+import { Link, useRouter, usePathname, type Href } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
+import { SignOutConfirm } from '@/components/account/sign-out-confirm';
 import { Brand } from '@/components/brand/brand';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
+import { needsRecoveryWarning } from '@/lib/recovery';
 import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
@@ -43,16 +46,26 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   const pathname = usePathname();
   const { scheme } = useTheme();
   const api = useOptionalApi();
+  const router = useRouter();
   const { data: server } = useServerInfo();
   const logout = useSession((s) => s.logout);
+  const user = useSession((s) => s.user);
+  const [confirmOut, setConfirmOut] = useState(false);
 
-  const onLogout = async () => {
+  const doLogout = async () => {
+    setConfirmOut(false);
     try {
       await api?.logout();
     } catch {
       // ignore; clear locally regardless
     }
     await logout();
+  };
+  // Guard the footgun: warn a user with no durable credential before revoking
+  // their only way in, and send them to Settings to set a recovery code.
+  const onLogoutPress = () => {
+    if (needsRecoveryWarning(user)) setConfirmOut(true);
+    else void doLogout();
   };
 
   if (orientation === 'bottom') {
@@ -112,12 +125,22 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       <View className="flex-1" />
 
       <Pressable
-        onPress={onLogout}
+        onPress={onLogoutPress}
         className="flex-row items-center gap-3 border-t border-gray-100 px-6 py-5 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-t after:absolute after:top-[-2px] after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860"
       >
         <Icon name="logout" size={20} color={colors[scheme].text} />
         <Text className="text-base text-gray-600 dark:text-gray-300">Logout</Text>
       </Pressable>
+
+      <SignOutConfirm
+        visible={confirmOut}
+        onCancel={() => setConfirmOut(false)}
+        onSignOut={doLogout}
+        onSetRecovery={() => {
+          setConfirmOut(false);
+          router.push('/settings');
+        }}
+      />
     </View>
   );
 }

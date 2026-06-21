@@ -172,6 +172,22 @@ export class ApiClient {
     return this.request<PairingPayload>('POST', '/auth/pair');
   }
 
+  // --- Self-service recovery (authed) --------------------------------------
+  // Set/change/clear your own password and mint a durable recovery code, so a
+  // signed-out user can get back in without an admin. A recovery code redeems
+  // through the normal connect flow (redeemCode → exchange) — it is just an auth
+  // code the user owns. Pass an empty password to clear it (non-admins only).
+  setPassword(password: string) {
+    return this.request<void>('POST', '/auth/password', { body: { password } });
+  }
+  async generateRecoveryCode() {
+    const r = await this.request<{ recovery_code: string }>('POST', '/auth/recovery');
+    return r.recovery_code;
+  }
+  clearRecoveryCode() {
+    return this.request<void>('DELETE', '/auth/recovery');
+  }
+
   // --- Libraries & browsing ------------------------------------------------
   async libraries() {
     const r = await this.request<{ libraries: Library[] }>('GET', '/libraries');
