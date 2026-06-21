@@ -6,6 +6,7 @@ import type {
   BooksSort,
   ChaptersResponse,
   DemoSession,
+  Favourite,
   History,
   Library,
   Listing,
@@ -299,6 +300,28 @@ export class ApiClient {
   }
   deleteNote(id: number) {
     return this.request<void>('DELETE', `/notes/${id}`);
+  }
+
+  // --- Favourites ----------------------------------------------------------
+  // A single cross-library list feeds the per-row hearts, the Favourites shelf,
+  // and the home section. A server without the endpoint (older build) yields []
+  // so the UI degrades gracefully rather than erroring.
+  async favourites(signal?: AbortSignal) {
+    try {
+      const r = await this.request<{ favourites: Favourite[] | null }>('GET', '/me/favourites', {
+        signal,
+      });
+      return r.favourites ?? [];
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return [];
+      throw e;
+    }
+  }
+  addFavourite(libraryId: number, path: string) {
+    return this.request<void>('POST', `/libraries/${libraryId}/favourites`, { query: { path } });
+  }
+  removeFavourite(libraryId: number, path: string) {
+    return this.request<void>('DELETE', `/libraries/${libraryId}/favourites`, { query: { path } });
   }
 
   async history(libraryId: number, path: string) {

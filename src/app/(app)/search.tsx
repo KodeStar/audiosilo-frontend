@@ -28,7 +28,7 @@ export default function SearchScreen() {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerClassName="gap-3 p-4 px-8"
+      contentContainerClassName="gap-0 p-4 px-8"
       keyboardShouldPersistTaps="handled"
     >
       {/* On desktop the always-visible top bar is the input; on phone we render one here. */}
