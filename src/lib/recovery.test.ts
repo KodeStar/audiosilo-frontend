@@ -1,6 +1,6 @@
 import type { User } from '@/api/types';
 
-import { needsRecoveryWarning } from './recovery';
+import { accountFlagsKnown, needsRecoveryWarning } from './recovery';
 
 const base: User = {
   id: 1,
@@ -36,5 +36,22 @@ describe('needsRecoveryWarning', () => {
   it('does not warn for a signed-out (null/undefined) user', () => {
     expect(needsRecoveryWarning(null)).toBe(false);
     expect(needsRecoveryWarning(undefined)).toBe(false);
+  });
+});
+
+describe('accountFlagsKnown', () => {
+  it('is true once the flags are present (any value)', () => {
+    expect(accountFlagsKnown(base)).toBe(true);
+    expect(accountFlagsKnown({ ...base, has_password: true })).toBe(true);
+  });
+
+  it('is false for a session stored before the flags existed', () => {
+    const stale = { id: 2, username: 's', role: 'user', disabled: false } as unknown as User;
+    expect(accountFlagsKnown(stale)).toBe(false);
+  });
+
+  it('is false for a signed-out (null/undefined) user', () => {
+    expect(accountFlagsKnown(null)).toBe(false);
+    expect(accountFlagsKnown(undefined)).toBe(false);
   });
 });
