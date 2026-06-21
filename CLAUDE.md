@@ -1,9 +1,9 @@
 # AudioSilo Frontend — project guide
 
 The audiobook **player** frontend for **audiosilo-server** (a self-hosted Go
-audiobook server at `~/dev/audiosilo-server`). One Expo / React Native codebase
+audiobook server at `~/dev/audiosilo/audiosilo-server`). One Expo / React Native codebase
 shipping to **web PWA + iOS + Android**. Design is ported from the old Nuxt
-client at `~/dev/audiosilo` (pink-accented, Roboto, dark-mode-first).
+client at `~/dev/audiosilo-old` (pink-accented, Roboto, dark-mode-first).
 
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
 M3–M5 pending.
