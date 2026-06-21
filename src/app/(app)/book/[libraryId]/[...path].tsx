@@ -6,7 +6,8 @@ import { useApi } from '@/api/provider';
 import type { Chapter } from '@/api/types';
 import { ContentColumn } from '@/components/layout/content-column';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
-import { DownloadControl } from '@/components/library/download-control';
+import { BookStats } from '@/components/library/book-stats';
+import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { PlayerView } from '@/components/player/player-view';
@@ -18,7 +19,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
-import { bookSubtitle, formatBitrate, formatDuration, formatDurationFull } from '@/lib/format';
+import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
 import { colors } from '@/theme/tokens';
@@ -55,11 +56,11 @@ export default function BookDetailScreen() {
     );
   }
 
-  const subtitle = bookSubtitle({
-    author: book.author,
-    series: book.series,
-    seriesIndex: book.series_index,
-  });
+  const seriesLabel = book.series
+    ? book.series_index
+      ? `${book.series} #${book.series_index}`
+      : book.series
+    : '';
   const coverUrl = api.coverUrl(libraryId, path);
   const chapters = chapterData?.chapters ?? [];
   const files = chapterData?.files ?? [];
@@ -214,13 +215,27 @@ export default function BookDetailScreen() {
                 <Cover source={{ uri: coverUrl, headers: api.authHeaders() }} label={book.title} />
               </View>
               <View className="items-center gap-1">
+                {book.author ? (
+                  <Text variant="muted" className="text-center opacity-80">
+                    By {book.author}
+                  </Text>
+                ) : null}
                 <Text variant="title" className="text-center" numberOfLines={2}>
                   {book.title}
                 </Text>
-                {subtitle ? <Text variant="muted">{subtitle}</Text> : null}
-                {book.narrator ? <Text variant="muted">Narrated by {book.narrator}</Text> : null}
+                {seriesLabel ? (
+                  <Text variant="muted" className="text-center">
+                    {seriesLabel}
+                  </Text>
+                ) : null}
               </View>
+              <BookStats libraryId={libraryId} path={path} book={book} />
               <Button title="Listen" icon="play" onPress={() => goPlay({})} />
+              {book.narrator ? (
+                <Text variant="muted" className="text-center">
+                  Narrated by {book.narrator}
+                </Text>
+              ) : null}
             </View>
           )}
         </View>
@@ -229,33 +244,50 @@ export default function BookDetailScreen() {
   }
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4 px-8">
+    <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4">
       <BreadCrumbs crumbs={crumbs} />
 
       <View className="gap-4">
         <View className="w-full max-w-[240px] self-center">
           <Cover source={{ uri: coverUrl, headers: api.authHeaders() }} label={book.title} />
         </View>
-        <View className="gap-2">
-          <Text variant="heading">{book.title}</Text>
-          {subtitle ? <Text variant="title">{subtitle}</Text> : null}
-          {book.narrator ? <Text variant="muted">Narrated by {book.narrator}</Text> : null}
-          <Text variant="muted">
-            {[formatDuration(book.duration), book.format?.toUpperCase()]
-              .filter(Boolean)
-              .join(' · ')}
+        <View className="gap-1">
+          {book.author ? (
+            <Text variant="body" className="text-center opacity-80">
+              By {book.author}
+            </Text>
+          ) : null}
+          <Text variant="heading" className="text-center">
+            {book.title}
           </Text>
-          <View className="mt-2 gap-2">
-            <Button title="Listen" icon="play" onPress={() => goPlay({})} />
-            <DownloadControl
-              libraryId={libraryId}
-              path={path}
-              book={book}
-              chapterData={chapterData}
-              disabled={chaptersLoading}
-            />
-          </View>
+          {seriesLabel ? (
+            <Text variant="muted" className="text-center">
+              {seriesLabel}
+            </Text>
+          ) : null}
         </View>
+
+        <BookStats libraryId={libraryId} path={path} book={book} />
+
+        <View className="mt-1 flex-row gap-2">
+          <Button title="Listen" icon="play" className="flex-1" onPress={() => goPlay({})} />
+          <DownloadControl
+            libraryId={libraryId}
+            path={path}
+            book={book}
+            chapterData={chapterData}
+            disabled={chaptersLoading}
+            compact
+          />
+        </View>
+
+        <DownloadProgress libraryId={libraryId} path={path} />
+
+        {book.narrator ? (
+          <Text variant="muted" className="text-center">
+            Narrated by {book.narrator}
+          </Text>
+        ) : null}
       </View>
 
       {fileList}

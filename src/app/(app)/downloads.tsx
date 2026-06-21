@@ -81,7 +81,7 @@ export default function DownloadsScreen() {
   }, [entries]);
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 px-8">
+    <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 lg:px-8">
       <View className="flex-row items-center justify-between">
         <Text variant="heading">Downloads</Text>
         {supported && totalBytes > 0 ? (

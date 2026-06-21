@@ -80,7 +80,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4 px-8">
+    <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4 lg:px-8">
       <Text variant="heading">Settings</Text>
 
       <View className="gap-2">

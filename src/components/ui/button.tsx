@@ -28,7 +28,8 @@ const iconColor: Record<Variant, string> = {
 };
 
 export type ButtonProps = Omit<PressableProps, 'children'> & {
-  title: string;
+  /** Omit for an icon-only button (pass an `accessibilityLabel` instead). */
+  title?: string;
   variant?: Variant;
   icon?: IconName;
   loading?: boolean;
@@ -57,9 +58,11 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={16} color={iconColor[variant]} /> : null}
-          <RNText className={`font-roboto-semibold text-base ${labelVariant[variant]}`}>
-            {title}
-          </RNText>
+          {title ? (
+            <RNText className={`font-roboto-semibold text-base ${labelVariant[variant]}`}>
+              {title}
+            </RNText>
+          ) : null}
         </>
       )}
     </Pressable>
