@@ -6,6 +6,7 @@ import { faCheck } from '@fortawesome/pro-light-svg-icons/faCheck';
 import { faChevronDown } from '@fortawesome/pro-light-svg-icons/faChevronDown';
 import { faChevronLeft } from '@fortawesome/pro-light-svg-icons/faChevronLeft';
 import { faChevronRight } from '@fortawesome/pro-light-svg-icons/faChevronRight';
+import { faChevronUp } from '@fortawesome/pro-light-svg-icons/faChevronUp';
 import { faClock } from '@fortawesome/pro-light-svg-icons/faClock';
 import { faClockRotateLeft } from '@fortawesome/pro-light-svg-icons/faClockRotateLeft';
 import { faDownToLine } from '@fortawesome/pro-light-svg-icons/faDownToLine';
@@ -61,6 +62,7 @@ export type IconName =
   | 'chevron-left'
   | 'chevron-right'
   | 'chevron-down'
+  | 'chevron-up'
   | 'spinner'
   | 'bookmark'
   | 'clock'
@@ -100,6 +102,7 @@ const ICONS: Record<IconName, IconDefinition> = {
   'chevron-left': faChevronLeft,
   'chevron-right': faChevronRight,
   'chevron-down': faChevronDown,
+  'chevron-up': faChevronUp,
   spinner: faSpinnerThird,
   bookmark: faBookmark,
   clock: faClock,
