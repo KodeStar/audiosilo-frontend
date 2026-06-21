@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
+import { clearScrollMemory } from '@/lib/scroll-memory';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
 
@@ -38,6 +39,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   // panel) and renders its own content column, so the shell just gives it the
   // sidebar — no full-width search bar across its panel, no duplicate player.
   const onBook = pathname.startsWith('/book');
+
+  // Remembered browse scroll positions only make sense while moving within the
+  // library (drilling into folders/books and back). Leaving the section — Home,
+  // Settings, etc. — forgets them, so re-entering the library starts at the top.
+  const inBrowse = pathname.startsWith('/library') || onBook;
+  useEffect(() => {
+    if (!inBrowse) clearScrollMemory();
+  }, [inBrowse]);
 
   if (wide && onBook) {
     return (
