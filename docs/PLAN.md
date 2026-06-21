@@ -11,7 +11,7 @@
 
 `audiosilo-server` (Go) is a self-hosted audiobook server exposing a JSON API at `/api/v1`. Its README states the audiobook **player** frontend is "planned separately; only the admin/connect UI ships in this binary." This repo (`audiosilo-frontend`) is where that player frontend lives.
 
-The **old client** at `~/dev/audiosilo` — a Nuxt 2 / Vue / Tailwind v2 PWA wrapped with Capacitor, built for a *different* backend (Audioserve) — is the reference for **look, feel, and functionality**, rebuilt as a **single Expo / React Native codebase** shipping to three targets:
+The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA wrapped with Capacitor, built for a *different* backend (Audioserve) — is the reference for **look, feel, and functionality**, rebuilt as a **single Expo / React Native codebase** shipping to three targets:
 
 - **Web PWA** — the build we bundle with / serve alongside the Go server.
 - **iOS** and **Android** — native apps via EAS Build.
