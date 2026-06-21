@@ -1,43 +1,24 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { qk, useAllProgress, useMarkFinished, useRecentBooks } from '@/api/hooks';
+import { qk, useAllProgress, useFavourites, useMarkFinished, useRecentBooks } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import type { Progress } from '@/api/types';
-import { DownloadBadge } from '@/components/library/download-badge';
-import { Cover } from '@/components/ui/cover';
+import { Grid, GRID_GAP, GridCard, gridColumns } from '@/components/library/poster-grid';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatRelative } from '@/lib/format';
-import { bookHref, libraryHref, parentPath, pathLeaf } from '@/lib/paths';
+import { libraryHref, parentPath, pathLeaf } from '@/lib/paths';
 import { flushQueue } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 const WIDE_BREAKPOINT = 1024;
-
-// Grid sizing: pick as many columns as fit at a comfortable minimum card width,
-// then divide the measured row width evenly (numeric widths avoid the flex-gap
-// overflow that percentage widths hit on native).
-const GRID_GAP = 12;
-const MIN_CARD_WIDTH = 220;
-
-function gridColumns(width: number) {
-  return Math.max(2, Math.floor((width + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP)));
-}
-
-function Grid({ children }: { children: ReactNode }) {
-  return (
-    <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
-      {children}
-    </View>
-  );
-}
 
 /** Section heading with an optional "See all" / "Collapse" toggle (shown only
  * when there is more than the collapsed row holds). */
@@ -63,48 +44,6 @@ function SectionHeader({
         </Pressable>
       ) : null}
     </View>
-  );
-}
-
-/** A poster-style grid cell: square cover, title (with the download badge), and
- * an optional footer (e.g. a progress bar). */
-function GridCard({
-  libraryId,
-  path,
-  title,
-  width,
-  footer,
-}: {
-  libraryId: number;
-  path: string;
-  title: string;
-  width: number;
-  footer?: ReactNode;
-}) {
-  const api = useApi();
-  return (
-    <Pressable
-      onPress={() => router.push(bookHref(libraryId, path))}
-      style={{ width }}
-      className="gap-2 rounded-lg border p-4 border-gray-200 bg-gray-50 shadow-sm dark:border-gray-860 dark:bg-gray-840 dark:shadow-none active:opacity-80"
-    >
-      <Cover
-        source={{ uri: api.coverUrl(libraryId, path), headers: api.authHeaders() }}
-        label={title}
-        rounded="rounded-lg"
-      />
-      <View className="flex-row items-start gap-1.5">
-        <View className="h-10 flex-1 justify-center">
-          <Text variant="subtitle" numberOfLines={2}>
-            {title}
-          </Text>
-        </View>
-        <View className="pt-0.5">
-          <DownloadBadge libraryId={libraryId} path={path} />
-        </View>
-      </View>
-      {footer}
-    </Pressable>
   );
 }
 
@@ -249,6 +188,7 @@ export default function HomeScreen() {
     error: recentError,
     refetch: refetchRecent,
   } = useRecentBooks();
+  const { data: favourites } = useFavourites();
 
   // Measure the content row so the grid columns track the available width (the
   // desktop sidebar means window width isn't the content width).
@@ -262,7 +202,15 @@ export default function HomeScreen() {
   const sectionInitial = wide ? columns : 4;
   const [inProgressExpanded, setInProgressExpanded] = useState(false);
   const [recentExpanded, setRecentExpanded] = useState(false);
+  const [favouritesExpanded, setFavouritesExpanded] = useState(false);
   const recent = recentBooks ?? [];
+  // Only favourited books surface on home (cover cards); favourited folders live
+  // on the Favourites shelf, not here.
+  const favouriteBooks = (favourites ?? []).filter((f) => f.is_book);
+  const visibleFavourites = favouritesExpanded
+    ? favouriteBooks
+    : favouriteBooks.slice(0, sectionInitial);
+  const favouritesHasMore = favouriteBooks.length > sectionInitial;
 
   // Replay any saves captured while offline.
   useEffect(() => {
@@ -305,6 +253,30 @@ export default function HomeScreen() {
               <ProgressCard key={`${item.library_id}:${item.path}`} item={item} width={cardWidth} />
             ))}
           </Grid>
+        ) : null}
+
+        {favouriteBooks.length > 0 ? (
+          <>
+            <SectionHeader
+              title="Favourites"
+              expanded={favouritesExpanded}
+              hasMore={favouritesHasMore}
+              onToggle={() => setFavouritesExpanded((v) => !v)}
+            />
+            {cardWidth > 0 ? (
+              <Grid>
+                {visibleFavourites.map((f) => (
+                  <GridCard
+                    key={`${f.library_id}:${f.path}`}
+                    libraryId={f.library_id}
+                    path={f.path}
+                    title={f.title || pathLeaf(f.path)}
+                    width={cardWidth}
+                  />
+                ))}
+              </Grid>
+            ) : null}
+          </>
         ) : null}
 
         {recentLoading || recentError || recent.length > 0 ? (
