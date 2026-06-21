@@ -92,7 +92,7 @@ export function BrowseScreen() {
       <ScrollView
         ref={scrollRef}
         className="flex-1"
-        contentContainerClassName="p-4 px-8"
+        contentContainerClassName="p-4 lg:px-8"
         onScroll={onScroll}
         scrollEventThrottle={16}
         onContentSizeChange={onContentSizeChange}

@@ -38,7 +38,7 @@ export default function LibrariesScreen() {
   const { data: libraries, isLoading, error, refetch } = useLibraries();
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-0 p-4 px-8">
+    <ScrollView className="flex-1" contentContainerClassName="gap-0 p-4 lg:px-8">
       <Text variant="heading" className="mb-1">
         Libraries
       </Text>

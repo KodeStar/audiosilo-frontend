@@ -232,7 +232,7 @@ export default function HomeScreen() {
   const recentHasMore = recent.length > sectionInitial;
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="p-4 px-8">
+    <ScrollView className="flex-1" contentContainerClassName="p-4 lg:px-8">
       <View className="gap-6" onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
         <SectionHeader
           title="Continue listening"
