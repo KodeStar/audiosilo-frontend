@@ -28,6 +28,12 @@ export type User = {
   username: string;
   role: Role;
   disabled: boolean;
+  /** Whether the account can sign in with a username + password. False for
+   * password-less accounts onboarded purely via auth-code pairing. */
+  has_password: boolean;
+  /** Whether the user holds a durable recovery code to re-authenticate without an
+   * admin. Drives the "you have no way back in" warning shown at sign-out. */
+  has_recovery: boolean;
 };
 
 /** Response of /auth/exchange and /auth/login. The token is the session secret. */

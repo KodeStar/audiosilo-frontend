@@ -35,7 +35,12 @@ export function DownloadControl({
   if (compact) {
     if (!supported) {
       return (
-        <Button icon="download" variant="secondary" disabled accessibilityLabel="Downloads unavailable" />
+        <Button
+          icon="download"
+          variant="secondary"
+          disabled
+          accessibilityLabel="Downloads unavailable"
+        />
       );
     }
     // The icon shows the action, not the state: trash = delete the download,
