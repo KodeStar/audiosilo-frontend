@@ -15,7 +15,7 @@ import { useSession } from '@/stores/session';
 type Mode = 'code' | 'password';
 
 const MODES: { value: Mode; label: string }[] = [
-  { value: 'code', label: 'Auth code' },
+  { value: 'code', label: 'Code' },
   { value: 'password', label: 'Password' },
 ];
 
@@ -96,8 +96,8 @@ export default function SignInScreen() {
 
         {mode === 'code' ? (
           <TextField
-            label="Auth code"
-            placeholder="Enter the code from the server"
+            label="Invite or recovery code"
+            placeholder="Enter your invite or recovery code"
             value={code}
             onChangeText={setCode}
             autoCapitalize="characters"

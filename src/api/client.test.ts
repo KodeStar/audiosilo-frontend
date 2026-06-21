@@ -79,6 +79,30 @@ describe('ApiClient', () => {
     expect(new ApiClient('https://h').coverUrl(3, 'A/Book')).not.toContain('token=');
   });
 
+  it('sets a password via POST /auth/password with the documented body', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await new ApiClient('https://h', 'tok').setPassword('longenough');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/auth/password');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ password: 'longenough' });
+  });
+
+  it('mints a recovery code and unwraps recovery_code; clears via DELETE', async () => {
+    const fetchMock = installFetch((url) =>
+      String(url).endsWith('/auth/recovery')
+        ? { status: 201, body: { recovery_code: 'ABCD-EFGH' } }
+        : { status: 204 },
+    );
+    const c = new ApiClient('https://h', 'tok');
+    await expect(c.generateRecoveryCode()).resolves.toBe('ABCD-EFGH');
+    await c.clearRecoveryCode();
+    const [, genInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [, delInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(genInit.method).toBe('POST');
+    expect(delInit.method).toBe('DELETE');
+  });
+
   it('posts the documented body shape for exchange', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { token: 't', user: {} } }));
     await new ApiClient('https://h').exchange('pair-token', 'iPhone');
