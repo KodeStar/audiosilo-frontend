@@ -51,11 +51,13 @@ export default function SettingsScreen() {
   const setDefaultRate = useSettings((s) => s.setDefaultRate);
   const setAutoRewindMax = useSettings((s) => s.setAutoRewindMax);
 
-  // Set/change a password — the conventional way back in after a sign-out. The
-  // server treats an empty password as "clear", so require a real one (min 8,
-  // matching the server) here rather than silently wiping the credential.
+  // Set/change a password — the conventional way back in after a sign-out. A new
+  // password must be a real one (min 8, matching the server); changing an existing
+  // password requires the current one so a stolen session can't silently replace
+  // a known password.
   const [pwOpen, setPwOpen] = useState(false);
   const [pw, setPw] = useState('');
+  const [curPw, setCurPw] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
 
@@ -68,7 +70,9 @@ export default function SettingsScreen() {
     setPwError(null);
     setPwBusy(true);
     try {
-      await api.setPassword(pw);
+      // Changing an existing password requires the current one; setting a first
+      // password (a password-less account) does not.
+      await api.setPassword(pw, user?.has_password ? curPw : undefined);
       // The change has landed; refreshing has_password is best-effort and must not
       // surface as a "could not update the password" error if /me hiccups.
       try {
@@ -77,6 +81,7 @@ export default function SettingsScreen() {
         // ignore — the password change succeeded regardless
       }
       setPw('');
+      setCurPw('');
       setPwOpen(false);
     } catch (e) {
       setPwError(e instanceof ApiError ? e.message : 'Could not update the password.');
@@ -207,6 +212,16 @@ export default function SettingsScreen() {
               </View>
               {pwOpen ? (
                 <View className="gap-2">
+                  {user?.has_password ? (
+                    <TextField
+                      label="Current password"
+                      placeholder="Your current password"
+                      secureTextEntry
+                      autoCapitalize="none"
+                      value={curPw}
+                      onChangeText={setCurPw}
+                    />
+                  ) : null}
                   <TextField
                     label="New password"
                     placeholder="At least 8 characters"
@@ -220,7 +235,7 @@ export default function SettingsScreen() {
                     <Button
                       title="Save"
                       loading={pwBusy}
-                      disabled={pw.length < PW_MIN}
+                      disabled={pw.length < PW_MIN || (!!user?.has_password && curPw.length === 0)}
                       onPress={savePassword}
                     />
                     <Button
@@ -229,6 +244,7 @@ export default function SettingsScreen() {
                       onPress={() => {
                         setPwOpen(false);
                         setPw('');
+                        setCurPw('');
                         setPwError(null);
                       }}
                     />

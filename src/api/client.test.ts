@@ -88,6 +88,16 @@ describe('ApiClient', () => {
     expect(JSON.parse(init.body as string)).toEqual({ password: 'longenough' });
   });
 
+  it('includes current_password when changing an existing password', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await new ApiClient('https://h', 'tok').setPassword('newpass12', 'oldpass12');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      password: 'newpass12',
+      current_password: 'oldpass12',
+    });
+  });
+
   it('mints a recovery code via POST /auth/recovery and unwraps recovery_code', async () => {
     const fetchMock = installFetch(() => ({ status: 201, body: { recovery_code: 'ABCD-EFGH' } }));
     const c = new ApiClient('https://h', 'tok');
