@@ -2,11 +2,21 @@ import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
 import { BASE_URL as BASE } from '@/lib/base-url';
+import { colors } from '@/theme/tokens';
 
 // Customises the static HTML shell Expo emits for every web route. This is where
 // the PWA install metadata and favicon live. Links use absolute, base-prefixed
 // hrefs so they resolve from nested routes too — empty base in dev (served at root),
 // "/web" in the production export (see base-url.ts).
+
+// Paint the document backdrop dark (the dark-mode-first default) before React
+// mounts, so there's no white flash on first paint, no white in the iOS PWA
+// home-indicator gap, and no white frame during the browser back-swipe. #root is
+// included because react-native-web can size its root container to innerHeight
+// (short of the full screen in a standalone PWA), leaving a strip the backdrop
+// must cover. The live theme keeps these in sync at runtime (see ThemeProvider's
+// web effect), which also covers the light-theme case.
+const backdropCss = `html, body, #root { background-color: ${colors.dark.bg}; }`;
 
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -33,6 +43,9 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* Disable body scrolling on web so ScrollView works like on native. */}
         <ScrollViewStyleReset />
+
+        {/* Backdrop behind the app, to avoid a white flash before/around React. */}
+        <style dangerouslySetInnerHTML={{ __html: backdropCss }} />
       </head>
       <body>{children}</body>
     </html>
