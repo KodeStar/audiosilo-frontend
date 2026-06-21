@@ -191,6 +191,23 @@ export type Note = {
   updated_at: string;
 };
 
+/** A user-hearted item, addressed by (library_id, path). May be a navigation
+ * folder, a book folder, or a single-file book. `is_book` reports whether the
+ * server matched an indexed book at the path (so the client knows whether to open
+ * the book screen or drill into the folder); the title/author/… fields are only
+ * populated for books. */
+export type Favourite = {
+  library_id: number;
+  path: string;
+  is_book: boolean;
+  title: string;
+  author: string;
+  series: string;
+  series_index: number;
+  duration: number;
+  created_at: string;
+};
+
 /** A recorded listening span (positions over a time range). */
 export type History = {
   id: number;

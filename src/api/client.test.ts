@@ -90,6 +90,30 @@ describe('ApiClient', () => {
     expect(headerValue(init, 'Content-Type')).toBe('application/json');
   });
 
+  it('lists favourites by GET /me/favourites and tolerates a null array', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { favourites: null } }));
+    await expect(new ApiClient('https://h', 'tok').favourites()).resolves.toEqual([]);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://h/api/v1/me/favourites');
+  });
+
+  it('treats a 404 on favourites as an empty list (older server)', async () => {
+    installFetch(() => ({ status: 404, body: { error: 'not found' } }));
+    await expect(new ApiClient('https://h', 'tok').favourites()).resolves.toEqual([]);
+  });
+
+  it('adds and removes a favourite by path with the right method', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    const c = new ApiClient('https://h', 'tok');
+    await c.addFavourite(3, 'Author/Series');
+    await c.removeFavourite(3, 'Author/Series');
+    const [addUrl, addInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [delUrl, delInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(String(addUrl)).toBe('https://h/api/v1/libraries/3/favourites?path=Author%2FSeries');
+    expect(addInit.method).toBe('POST');
+    expect(String(delUrl)).toBe('https://h/api/v1/libraries/3/favourites?path=Author%2FSeries');
+    expect(delInit.method).toBe('DELETE');
+  });
+
   // A fetch that never resolves until its signal aborts.
   function installHangingFetch() {
     globalThis.fetch = jest.fn(
