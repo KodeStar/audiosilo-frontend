@@ -9,8 +9,10 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'nativewind';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 
 import { getItem, setItem } from '@/lib/storage';
+import { colors } from '@/theme/tokens';
 
 import '@/global.css';
 
@@ -63,6 +65,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (fontsLoaded && hydrated) void SplashScreen.hideAsync();
   }, [fontsLoaded, hydrated]);
+
+  // Keep the web document backdrop in sync with the resolved scheme. The static
+  // shell (+html.tsx) paints dark before mount; this corrects it for light theme
+  // and ensures the browser back-swipe gesture reveals the themed color, not white.
+  const resolved = colorScheme ?? 'dark';
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const bg = resolved === 'dark' ? colors.dark.bg : colors.light.bg;
+    document.documentElement.style.backgroundColor = bg;
+    document.body.style.backgroundColor = bg;
+  }, [resolved]);
 
   const setPref = (p: SchemePref) => {
     setPrefState(p);
