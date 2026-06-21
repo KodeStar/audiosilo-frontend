@@ -1,22 +1,28 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, Share, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
+import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
 import { SignOutConfirm } from '@/components/account/sign-out-confirm';
+import { useRecoveryCode } from '@/components/account/use-recovery-code';
+import { useSignOut } from '@/components/account/use-sign-out';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { Stepper } from '@/components/ui/stepper';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { needsRecoveryWarning } from '@/lib/recovery';
+import { shareText } from '@/lib/share';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
+
+const PW_MIN = 8;
 
 const APPEARANCE: { value: SchemePref; label: string }[] = [
   { value: 'light', label: 'Light' },
@@ -34,7 +40,6 @@ export default function SettingsScreen() {
   const { data: server } = useServerInfo();
   const user = useSession((s) => s.user);
   const serverUrl = useSession((s) => s.serverUrl);
-  const logout = useSession((s) => s.logout);
   const setUser = useSession((s) => s.setUser);
 
   const skipForward = useSettings((s) => s.skipForward);
@@ -46,23 +51,33 @@ export default function SettingsScreen() {
   const setDefaultRate = useSettings((s) => s.setDefaultRate);
   const setAutoRewindMax = useSettings((s) => s.setAutoRewindMax);
 
-  // Set/change a password — the conventional way back in after a sign-out.
+  // Set/change a password — the conventional way back in after a sign-out. The
+  // server treats an empty password as "clear", so require a real one (min 8,
+  // matching the server) here rather than silently wiping the credential.
   const [pwOpen, setPwOpen] = useState(false);
   const [pw, setPw] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
-  const [pwDone, setPwDone] = useState(false);
 
   const savePassword = async () => {
     if (!api) return;
+    if (pw.length < PW_MIN) {
+      setPwError(`Password must be at least ${PW_MIN} characters.`);
+      return;
+    }
     setPwError(null);
     setPwBusy(true);
     try {
       await api.setPassword(pw);
-      setUser(await api.me()); // refresh has_password for the sign-out guard
+      // The change has landed; refreshing has_password is best-effort and must not
+      // surface as a "could not update the password" error if /me hiccups.
+      try {
+        void setUser(await api.me());
+      } catch {
+        // ignore — the password change succeeded regardless
+      }
       setPw('');
       setPwOpen(false);
-      setPwDone(true);
     } catch (e) {
       setPwError(e instanceof ApiError ? e.message : 'Could not update the password.');
     } finally {
@@ -70,51 +85,9 @@ export default function SettingsScreen() {
     }
   };
 
-  // Recovery code — a durable secret the user keeps to re-pair without an admin.
-  const [recovery, setRecovery] = useState<string | null>(null);
-  const [recBusy, setRecBusy] = useState(false);
-  const [recError, setRecError] = useState<string | null>(null);
-
-  const generateRecovery = async () => {
-    if (!api) return;
-    setRecError(null);
-    setRecBusy(true);
-    try {
-      const code = await api.generateRecoveryCode();
-      setRecovery(code);
-      setUser(await api.me()); // refresh has_recovery for the sign-out guard
-    } catch (e) {
-      setRecError(e instanceof ApiError ? e.message : 'Could not generate a recovery code.');
-    } finally {
-      setRecBusy(false);
-    }
-  };
-
-  const shareRecovery = async () => {
-    if (!recovery) return;
-    try {
-      await Share.share({ message: recovery });
-    } catch {
-      // user dismissed, or sharing is unavailable on this platform
-    }
-  };
-
-  // Sign-out, guarded: a user with no durable credential is warned (and offered a
-  // recovery code) before their only way in is revoked.
-  const [confirmOut, setConfirmOut] = useState(false);
-  const doSignOut = async () => {
-    setConfirmOut(false);
-    try {
-      await api?.logout();
-    } catch {
-      // ignore; clear locally regardless
-    }
-    await logout();
-  };
-  const onSignOutPress = () => {
-    if (needsRecoveryWarning(user)) setConfirmOut(true);
-    else void doSignOut();
-  };
+  // Recovery code + guarded sign-out share their logic with the sidebar via hooks.
+  const recovery = useRecoveryCode();
+  const signOut = useSignOut();
 
   // Self-service device pairing: mint a fresh pairing QR for the signed-in user so
   // another device can scan it (or open the link) and pair without an admin.
@@ -135,13 +108,8 @@ export default function SettingsScreen() {
     }
   };
 
-  const shareLink = async () => {
-    if (!pairing) return;
-    try {
-      await Share.share({ message: pairing.web_url });
-    } catch {
-      // user dismissed, or sharing is unavailable on this platform
-    }
+  const shareLink = () => {
+    if (pairing) void shareText(pairing.web_url);
   };
 
   return (
@@ -240,7 +208,8 @@ export default function SettingsScreen() {
               {pwOpen ? (
                 <View className="gap-2">
                   <TextField
-                    placeholder="New password (min 8 characters)"
+                    label="New password"
+                    placeholder="At least 8 characters"
                     secureTextEntry
                     autoCapitalize="none"
                     value={pw}
@@ -248,7 +217,12 @@ export default function SettingsScreen() {
                     error={pwError ?? undefined}
                   />
                   <View className="flex-row gap-2">
-                    <Button title="Save" loading={pwBusy} onPress={savePassword} />
+                    <Button
+                      title="Save"
+                      loading={pwBusy}
+                      disabled={pw.length < PW_MIN}
+                      onPress={savePassword}
+                    />
                     <Button
                       title="Cancel"
                       variant="ghost"
@@ -264,17 +238,9 @@ export default function SettingsScreen() {
                 <Button
                   title={user?.has_password ? 'Change password' : 'Set a password'}
                   variant="secondary"
-                  onPress={() => {
-                    setPwDone(false);
-                    setPwOpen(true);
-                  }}
+                  onPress={() => setPwOpen(true)}
                 />
               )}
-              {pwDone ? (
-                <Text variant="muted" className="text-xs">
-                  Password updated — you can now sign in with your username and password.
-                </Text>
-              ) : null}
             </View>
 
             <View className="gap-2">
@@ -282,48 +248,27 @@ export default function SettingsScreen() {
                 <Text>Recovery code</Text>
                 <Text variant="muted">{user?.has_recovery ? 'Set' : 'Not set'}</Text>
               </View>
-              {recovery ? (
-                <View className="gap-2 rounded-lg bg-gray-100 p-3 dark:bg-gray-860">
-                  <Text variant="muted" className="text-xs">
-                    Save this somewhere safe. Enter it on the connect screen to sign back in on any
-                    device. It won’t be shown again.
-                  </Text>
-                  <Text
-                    selectable
-                    className="text-center font-roboto-semibold text-lg tracking-wider"
-                  >
-                    {recovery}
-                  </Text>
-                  <View className="flex-row gap-2">
-                    <Button
-                      title="Share"
-                      variant="secondary"
-                      icon="qrcode"
-                      onPress={shareRecovery}
-                    />
-                    <Button title="Done" variant="ghost" onPress={() => setRecovery(null)} />
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <Text variant="muted" className="text-xs">
-                    A code you keep to sign back in yourself — no admin needed.
-                  </Text>
-                  {recError ? <Text className="text-xs text-red-500">{recError}</Text> : null}
-                  <Button
-                    title={
-                      user?.has_recovery ? 'Regenerate recovery code' : 'Generate recovery code'
-                    }
-                    variant="secondary"
-                    icon="qrcode"
-                    loading={recBusy}
-                    onPress={generateRecovery}
-                  />
-                </>
-              )}
+              <Text variant="muted" className="text-xs">
+                A code you keep to sign back in yourself — no admin needed.
+              </Text>
+              {recovery.error ? (
+                <Text className="text-xs text-red-500">{recovery.error}</Text>
+              ) : null}
+              <Button
+                title={user?.has_recovery ? 'Regenerate recovery code' : 'Generate recovery code'}
+                variant="secondary"
+                icon="qrcode"
+                loading={recovery.busy}
+                onPress={recovery.requestGenerate}
+              />
             </View>
 
-            <Button title="Sign out" variant="secondary" icon="logout" onPress={onSignOutPress} />
+            <Button
+              title="Sign out"
+              variant="secondary"
+              icon="logout"
+              onPress={() => void signOut.requestSignOut()}
+            />
           </Card>
         </View>
 
@@ -373,13 +318,23 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <SignOutConfirm
-        visible={confirmOut}
-        onCancel={() => setConfirmOut(false)}
-        onSignOut={doSignOut}
+        visible={signOut.confirmVisible}
+        onCancel={() => signOut.setConfirmVisible(false)}
+        onSignOut={signOut.signOut}
         onSetRecovery={() => {
-          setConfirmOut(false);
-          void generateRecovery();
+          signOut.setConfirmVisible(false);
+          recovery.requestGenerate();
         }}
+      />
+      <RecoveryCodeModal code={recovery.code} onClose={() => recovery.setCode(null)} />
+      <ConfirmDialog
+        visible={recovery.confirmRegen}
+        title="Replace recovery code?"
+        message="Your current recovery code will stop working. You'll need to save the new one everywhere you keep it."
+        confirmLabel="Replace it"
+        confirmIcon="qrcode"
+        onConfirm={recovery.confirmGenerate}
+        onCancel={() => recovery.setConfirmRegen(false)}
       />
     </>
   );

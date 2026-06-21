@@ -88,19 +88,13 @@ describe('ApiClient', () => {
     expect(JSON.parse(init.body as string)).toEqual({ password: 'longenough' });
   });
 
-  it('mints a recovery code and unwraps recovery_code; clears via DELETE', async () => {
-    const fetchMock = installFetch((url) =>
-      String(url).endsWith('/auth/recovery')
-        ? { status: 201, body: { recovery_code: 'ABCD-EFGH' } }
-        : { status: 204 },
-    );
+  it('mints a recovery code via POST /auth/recovery and unwraps recovery_code', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: { recovery_code: 'ABCD-EFGH' } }));
     const c = new ApiClient('https://h', 'tok');
     await expect(c.generateRecoveryCode()).resolves.toBe('ABCD-EFGH');
-    await c.clearRecoveryCode();
-    const [, genInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const [, delInit] = fetchMock.mock.calls[1] as [string, RequestInit];
-    expect(genInit.method).toBe('POST');
-    expect(delInit.method).toBe('DELETE');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/auth/recovery');
+    expect(init.method).toBe('POST');
   });
 
   it('posts the documented body shape for exchange', async () => {

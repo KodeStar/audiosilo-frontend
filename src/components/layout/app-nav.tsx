@@ -1,16 +1,15 @@
-import { Link, useRouter, usePathname, type Href } from 'expo-router';
-import { useState } from 'react';
+import { Link, usePathname, type Href } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
 import { useServerInfo } from '@/api/hooks';
-import { useOptionalApi } from '@/api/provider';
+import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
 import { SignOutConfirm } from '@/components/account/sign-out-confirm';
+import { useRecoveryCode } from '@/components/account/use-recovery-code';
+import { useSignOut } from '@/components/account/use-sign-out';
 import { Brand } from '@/components/brand/brand';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
-import { needsRecoveryWarning } from '@/lib/recovery';
-import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -45,28 +44,12 @@ function isActive(pathname: string, item: NavItem) {
 export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   const pathname = usePathname();
   const { scheme } = useTheme();
-  const api = useOptionalApi();
-  const router = useRouter();
   const { data: server } = useServerInfo();
-  const logout = useSession((s) => s.logout);
-  const user = useSession((s) => s.user);
-  const [confirmOut, setConfirmOut] = useState(false);
-
-  const doLogout = async () => {
-    setConfirmOut(false);
-    try {
-      await api?.logout();
-    } catch {
-      // ignore; clear locally regardless
-    }
-    await logout();
-  };
-  // Guard the footgun: warn a user with no durable credential before revoking
-  // their only way in, and send them to Settings to set a recovery code.
-  const onLogoutPress = () => {
-    if (needsRecoveryWarning(user)) setConfirmOut(true);
-    else void doLogout();
-  };
+  // Sign-out is guarded centrally (useSignOut) so the strand-the-user warning
+  // can't be skipped here; the recovery hook lets the warning mint + reveal a code
+  // in place rather than dead-ending the user on the Settings screen.
+  const signOut = useSignOut();
+  const recovery = useRecoveryCode();
 
   if (orientation === 'bottom') {
     return (
@@ -125,7 +108,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       <View className="flex-1" />
 
       <Pressable
-        onPress={onLogoutPress}
+        onPress={() => void signOut.requestSignOut()}
         className="flex-row items-center gap-3 border-t border-gray-100 px-6 py-5 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-t after:absolute after:top-[-2px] after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860"
       >
         <Icon name="logout" size={20} color={colors[scheme].text} />
@@ -133,14 +116,15 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       </Pressable>
 
       <SignOutConfirm
-        visible={confirmOut}
-        onCancel={() => setConfirmOut(false)}
-        onSignOut={doLogout}
+        visible={signOut.confirmVisible}
+        onCancel={() => signOut.setConfirmVisible(false)}
+        onSignOut={signOut.signOut}
         onSetRecovery={() => {
-          setConfirmOut(false);
-          router.push('/settings');
+          signOut.setConfirmVisible(false);
+          recovery.requestGenerate();
         }}
       />
+      <RecoveryCodeModal code={recovery.code} onClose={() => recovery.setCode(null)} />
     </View>
   );
 }
