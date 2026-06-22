@@ -14,10 +14,13 @@ import { useOpen } from '@/lib/open';
 export function BookRow({
   book,
   connectionId,
+  source,
   also,
 }: {
   book: Book;
   connectionId: string;
+  /** Where the shown copy lives, e.g. "books.kobol.nexus · Sci-Fi". */
+  source?: string;
   also?: { connectionName: string }[];
 }) {
   const api = useApi(connectionId);
@@ -27,11 +30,17 @@ export function BookRow({
     series: book.series,
     seriesIndex: book.series_index,
   });
-  const alsoLabel = also?.length
-    ? `Also on ${also.map((a) => a.connectionName).join(', ')}`
-    : book.other_locations?.length
-      ? `Also in ${book.other_locations.map((l) => l.library_name).join(', ')}`
-      : null;
+  // One provenance line: where this copy is, then where else it exists.
+  const provenance = [
+    source,
+    also?.length
+      ? `also on ${also.map((a) => a.connectionName).join(', ')}`
+      : book.other_locations?.length
+        ? `also in ${book.other_locations.map((l) => l.library_name).join(', ')}`
+        : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <Pressable
@@ -54,9 +63,9 @@ export function BookRow({
             {subtitle}
           </Text>
         ) : null}
-        {alsoLabel ? (
+        {provenance ? (
           <Text variant="caption" numberOfLines={1}>
-            {alsoLabel}
+            {provenance}
           </Text>
         ) : null}
       </View>

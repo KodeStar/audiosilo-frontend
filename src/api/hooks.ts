@@ -1,6 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
+import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
 
 import { useApi, useApis, useOptionalApi } from './provider';
@@ -360,6 +360,92 @@ export function useAllProgressAll() {
       isLoading: results.some((r) => r.isLoading),
       error: results.find((r) => r.error)?.error ?? null,
     }),
+  });
+}
+
+/**
+ * Returns a labeller that names where a result lives: "<server> · <library>".
+ * The server is included only when more than one is connected (otherwise it's
+ * noise); the library name is resolved from the per-connection library lists.
+ * Use it to show the source of a de-duplicated result so "also on/in" makes sense.
+ */
+export function useSourceLabeller() {
+  const apis = useApis();
+  const { libraries } = useLibrariesAll();
+  const multipleServers = apis.length > 1;
+  return (connectionId: string, libraryId: number, connectionName: string): string | undefined => {
+    const libName = libraries.find(
+      (l) => l.connectionId === connectionId && l.id === libraryId,
+    )?.name;
+    const parts: string[] = [];
+    if (multipleServers) parts.push(connectionName);
+    if (libName) parts.push(libName);
+    return parts.join(' · ') || undefined;
+  };
+}
+
+/** One copy of a book: a specific (connection, library, path) with quality hints. */
+export type BookCopy = {
+  connectionId: string;
+  connectionName: string;
+  libraryId: number;
+  path: string;
+  format?: string;
+  size?: number;
+  multiFile?: boolean;
+};
+
+/**
+ * Every copy of a given book across all connections and libraries, so the book
+ * screen can offer "other versions" to switch to. Found by searching each
+ * connection for the title and keeping rows with the same dedup key; expands the
+ * server-side other_locations so within-server duplicates are included too.
+ */
+export function useBookCopies(book: Book | undefined) {
+  const apis = useApis();
+  const key = book ? bookDedupKey(book) : '';
+  const title = book?.title ?? '';
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: ['copies', connection.id, key] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) => client.search(title, 50, signal),
+      enabled: !!book && title.trim().length > 0,
+    })),
+    combine: (results) => {
+      const copies: BookCopy[] = [];
+      const seen = new Set<string>();
+      results.forEach((r, i) => {
+        const conn = apis[i].connection;
+        const add = (
+          libraryId: number,
+          path: string,
+          format?: string,
+          size?: number,
+          multiFile?: boolean,
+        ) => {
+          const k = `${conn.id}:${libraryId}:${path}`;
+          if (seen.has(k)) return;
+          seen.add(k);
+          copies.push({
+            connectionId: conn.id,
+            connectionName: conn.name,
+            libraryId,
+            path,
+            format,
+            size,
+            multiFile,
+          });
+        };
+        for (const b of r.data ?? []) {
+          if (bookDedupKey(b) !== key) continue;
+          add(b.library_id, b.rel_path, b.format, b.size, b.multi_file ?? undefined);
+          for (const ol of b.other_locations ?? []) {
+            add(ol.library_id, ol.path, ol.format, ol.size, ol.multi_file);
+          }
+        }
+      });
+      return { copies, isLoading: results.some((r) => r.isLoading) };
+    },
   });
 }
 
