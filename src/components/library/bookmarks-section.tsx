@@ -2,18 +2,37 @@ import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
 import { useBookmarks, useDeleteBookmark } from '@/api/hooks';
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
 import { colors } from '@/theme/tokens';
 
-/** Bookmarks for a book: tap to jump in the player, trash to delete. Renders
- * nothing when there are none. */
-export function BookmarksSection({ libraryId, path }: { libraryId: number; path: string }) {
+/** Bookmarks for a book: tap to jump in the player, trash to delete.
+ *
+ * Inline on the book screen it renders nothing when empty. The player sheet
+ * passes `onAdd`/`emptyLabel` so it stays visible — an "add at current position"
+ * button plus a placeholder — giving a way to both create and see bookmarks. */
+export function BookmarksSection({
+  libraryId,
+  path,
+  emptyLabel,
+  onAdd,
+  adding,
+  addLabel,
+}: {
+  libraryId: number;
+  path: string;
+  emptyLabel?: string;
+  onAdd?: () => void;
+  adding?: boolean;
+  addLabel?: string;
+}) {
   const { data: bookmarks } = useBookmarks(libraryId, path);
   const del = useDeleteBookmark(libraryId, path);
 
-  if (!bookmarks || bookmarks.length === 0) return null;
+  const empty = !bookmarks || bookmarks.length === 0;
+  if (empty && !onAdd && !emptyLabel) return null;
 
   const jump = (position: number) =>
     router.push({
@@ -24,7 +43,16 @@ export function BookmarksSection({ libraryId, path }: { libraryId: number; path:
   return (
     <View className="gap-2">
       <Text variant="title">Bookmarks</Text>
-      {bookmarks.map((bm) => (
+      {onAdd ? (
+        <Button
+          title={addLabel ?? 'Add bookmark'}
+          icon="bookmark"
+          onPress={onAdd}
+          loading={adding}
+        />
+      ) : null}
+      {empty ? emptyLabel ? <Text variant="caption">{emptyLabel}</Text> : null : null}
+      {(bookmarks ?? []).map((bm) => (
         <View
           key={bm.id}
           className="flex-row items-center gap-3 rounded-lg bg-white p-3 dark:border dark:border-gray-860 dark:bg-gray-840"

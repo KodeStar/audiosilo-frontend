@@ -24,7 +24,7 @@ export function SeekBar({
       }}
       className="h-6 justify-center"
     >
-      <View className="h-1.5 overflow-hidden rounded-full bg-gray-300 dark:bg-gray-700">
+      <View className="h-1.5 overflow-hidden rounded-full bg-gray-400 dark:bg-gray-700">
         <View className="h-full rounded-full bg-primary" style={{ width: `${fraction * 100}%` }} />
       </View>
     </Pressable>

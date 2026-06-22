@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 
+import { useAddBookmark } from '@/api/hooks';
 import { useApi } from '@/api/provider';
+import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { SeekBar } from '@/components/player/seek-bar';
@@ -28,13 +30,21 @@ import { colors } from '@/theme/tokens';
 /**
  * The full transport for the currently-playing book, driven by the player store.
  * Rendered inside the player modal (phone) and as the right-hand panel on the
- * desktop book screen.
+ * desktop book screen — identical everywhere except the close button, which the
+ * phone modal supplies via `onClose` (the desktop panel has nothing to close).
+ *
+ * The top toolbar's right side is the home for player actions (bookmark,
+ * history, notes, speed, sleep) and where new ones should be added.
  */
-export function PlayerView() {
+export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
   const api = useApi();
-  const [sheet, setSheet] = useState<'history' | 'notes' | null>(null);
+  const [sheet, setSheet] = useState<'history' | 'notes' | 'bookmarks' | null>(null);
+  // Brief "saved" confirmation after adding a bookmark; the ref lets a rapid
+  // second add reset the timer instead of stacking timeouts.
+  const [savedBookmark, setSavedBookmark] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const bookPosition = usePlayer(selectBookPosition);
@@ -54,6 +64,21 @@ export function PlayerView() {
   const sleepActive = useSleepTimer((s) => s.active);
   const sleepRemaining = useSleepTimer((s) => s.remaining);
   useShakeToCancel();
+  // Keyed to the playing book; placeholders keep hook order stable before the
+  // early return below (nowPlaying is null only briefly while loading).
+  const addBookmark = useAddBookmark(nowPlaying?.libraryId ?? -1, nowPlaying?.path ?? '');
+
+  const onAddBookmark = () =>
+    addBookmark.mutate(
+      { position: Math.round(bookPosition) },
+      {
+        onSuccess: () => {
+          setSavedBookmark(true);
+          if (savedTimer.current) clearTimeout(savedTimer.current);
+          savedTimer.current = setTimeout(() => setSavedBookmark(false), 1800);
+        },
+      },
+    );
 
   if (!nowPlaying) return <Spinner center />;
 
@@ -108,87 +133,148 @@ export function PlayerView() {
 
   return (
     <View className="flex-1">
-      {/* Cover fills the space; falls back to the title when there's no art. */}
-      <View className="items-center p-6">
-        <View className="aspect-square w-full max-w-[300px]">
-          <Cover source={cover ? { uri: cover, headers: api.authHeaders() } : null} label={title} />
-          {sleepActive && sleepRemaining !== null ? (
-            <View className="absolute right-2 top-2 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
-              <Icon name="sleep" size={12} color={colors.white} />
-              <Text className="text-xs text-white dark:text-white">
-                {formatClock(sleepRemaining)}
-              </Text>
-            </View>
-          ) : null}
+      {/* Header (auto height). The close button is mobile-only (the phone modal
+          passes onClose; the desktop panel has nothing to close). The right side
+          is the shared action area where new player functionality is added. */}
+      <View className="flex-row items-center px-4 py-2">
+        {onClose ? (
+          <Pressable onPress={onClose} hitSlop={12} className="h-8 w-8 items-center justify-center">
+            <Icon name="chevron-down" size={26} color={neutral} />
+          </Pressable>
+        ) : null}
+        <View className="ml-auto flex-row items-center gap-4">
+          <Pressable
+            onPress={() => setSheet('bookmarks')}
+            hitSlop={8}
+            className="h-8 w-8 items-center justify-center"
+          >
+            <Icon name="bookmark" size={20} color={neutral} />
+          </Pressable>
         </View>
       </View>
 
-      {/* Transport pinned toward the bottom. */}
-      <View className="flex-1 justify-between gap-5 px-6 pb-4 bg-gray-200 dark:bg-gray-800 bg-opacity-90 dark:bg-opacity-90">
-        <Text variant="subtitle" className="text-center" numberOfLines={1}>
-          {segTitle}
-        </Text>
+      {/* Middle (flex-1, centered): fills the space between header and footer and
+          centers the cover + transport as a group. flex-1 here stretches the
+          *container*, not the content — justify-center keeps the cover/title/
+          controls tightly grouped and absorbs the leftover space symmetrically,
+          so the layout looks the same regardless of viewport height (web window
+          vs tall phone). The inner transport stays content-sized — a flex-1
+          child here would collapse on iOS (Yoga). */}
+      <View className="flex-1 justify-center items-center p-8 ">
+        {/* Cover fills the space; falls back to the title when there's no art.
+            One unified card: cover flush at the rounded top, transport in the
+            padded body. Shadow in light mode; in dark mode (where a shadow is
+            invisible) a subtle border gives the edge — the codebase convention
+            (see ui/card.tsx).
 
-        <View className="gap-1">
-          <SeekBar position={segElapsed} duration={segLength} onSeek={onSeek} />
-          <View className="flex-row items-center justify-between">
-            <Text variant="caption">{formatClock(segElapsed)}</Text>
-            <Text variant="caption" className="flex-1 text-center">
-              {centerLabel}
-            </Text>
-            <Text variant="caption">-{formatClock(segRemaining)}</Text>
+            Background: native (iOS/Android) derives a view's drop shadow from the
+            alpha mask of its *content*, not its border box — so a translucent
+            bg (black/5) makes shadow-lg hug only the opaque cover, not the whole
+            card. Use an opaque surface on native (matching the black/5 ~ white/5
+            tint over the gray-200/gray-800 page) so the shadow wraps the full
+            rounded box. Web's box-shadow already follows the border box, so keep
+            the translucent tint there. */}
+        <View
+          className={`w-full max-w-[380px] items-center rounded-[2rem] shadow-lg dark:shadow-lg dark:border dark:border-white/10 ${
+            Platform.OS === 'web' ? 'bg-black/5 dark:bg-white/5' : 'bg-gray-300 dark:bg-gray-750'
+          }`}
+        >
+          <View className="items-center w-full">
+            <View className="aspect-square w-full ">
+              <Cover
+                source={cover ? { uri: cover, headers: api.authHeaders() } : null}
+                label={title}
+                rounded="rounded-t-[2rem]"
+              />
+              {sleepActive && sleepRemaining !== null ? (
+                <View className="absolute right-2 top-2 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
+                  <Icon name="sleep" size={12} color={colors.white} />
+                  <Text className="text-xs text-white dark:text-white">
+                    {formatClock(sleepRemaining)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Transport: fills the card body (w-full) so the seek bar and controls
+            span the same width on web and native — without it the row shrink-wraps
+            and renders as a narrow column inset in the card on mobile. */}
+          <View className="w-full p-4">
+            <View className="w-full flex flex-row items-center justify-between">
+              <Pressable
+                onPress={goPrev}
+                hitSlop={8}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Icon name="prev" size={24} color={neutral} />
+              </Pressable>
+
+              <Text variant="subtitle" className="text-center" numberOfLines={1}>
+                {segTitle}
+              </Text>
+              <Pressable
+                onPress={goNext}
+                hitSlop={8}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Icon name="next" size={24} color={neutral} />
+              </Pressable>
+            </View>
+
+            <View className="gap-1">
+              <SeekBar position={segElapsed} duration={segLength} onSeek={onSeek} />
+              <View className="flex-row items-center justify-between">
+                <Text variant="caption">{formatClock(segElapsed)}</Text>
+                <Text variant="caption" className="flex-1 text-center">
+                  {centerLabel}
+                </Text>
+                <Text variant="caption">-{formatClock(segRemaining)}</Text>
+              </View>
+            </View>
+
+            <View className="flex-row items-center justify-center gap-6 py-8">
+              <Pressable
+                onPress={() => void skipSeconds(-skipBackward)}
+                className="items-center justify-center"
+                hitSlop={8}
+              >
+                <Icon name="backward" size={50} color={neutral} />
+                <View className="absolute inset-0 items-center justify-center">
+                  <Text variant="caption">{skipBackward}</Text>
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={() => void toggle()}
+                className="h-28 w-28 items-center justify-center rounded-full bg-primary active:opacity-80"
+              >
+                <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
+              </Pressable>
+              <Pressable
+                onPress={() => void skipSeconds(skipForward)}
+                className="items-center justify-center"
+                hitSlop={8}
+              >
+                <Icon name="forward" size={50} color={neutral} />
+                <View className="absolute inset-0 items-center justify-center">
+                  <Text variant="caption">{skipForward}</Text>
+                </View>
+              </Pressable>
+            </View>
           </View>
         </View>
-
-        <View className="flex-row items-center justify-center gap-6">
-          <Pressable onPress={goPrev} hitSlop={8} className="h-10 w-10 items-center justify-center">
-            <Icon name="prev" size={24} color={neutral} />
-          </Pressable>
-          <Pressable
-            onPress={() => void skipSeconds(-skipBackward)}
-            className="items-center justify-center"
-            hitSlop={8}
-          >
-            <Icon name="backward" size={50} color={neutral} />
-            <View className="absolute inset-0 items-center justify-center">
-              <Text variant="caption">{skipBackward}</Text>
-            </View>
-          </Pressable>
-          <Pressable
-            onPress={() => void toggle()}
-            className="h-20 w-20 items-center justify-center rounded-full bg-primary active:opacity-80"
-          >
-            <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
-          </Pressable>
-          <Pressable
-            onPress={() => void skipSeconds(skipForward)}
-            className="items-center justify-center"
-            hitSlop={8}
-          >
-            <Icon name="forward" size={50} color={neutral} />
-            <View className="absolute inset-0 items-center justify-center">
-              <Text variant="caption">{skipForward}</Text>
-            </View>
-          </Pressable>
-          <Pressable onPress={goNext} hitSlop={8} className="h-10 w-10 items-center justify-center">
-            <Icon name="next" size={24} color={neutral} />
-          </Pressable>
-        </View>
-
-        <View className="flex-row items-center justify-between px-2">
-          <SpeedButton />
-          <Pressable
-            onPress={() => setSheet('history')}
-            hitSlop={8}
-            className="items-center gap-0.5"
-          >
-            <Icon name="history" size={20} color={neutral} />
-          </Pressable>
-          <Pressable onPress={() => setSheet('notes')} hitSlop={8} className="items-center gap-0.5">
-            <Icon name="notes" size={20} color={neutral} />
-          </Pressable>
-          <SleepTimerButton />
-        </View>
+      </View>
+      {/* Footer (auto height): the secondary action row. Sits at the bottom
+          because the middle above is flex-1 — no mt-auto hack needed. */}
+      <View className="flex-row items-center justify-between px-8 py-2">
+        <SpeedButton />
+        <Pressable onPress={() => setSheet('history')} hitSlop={8} className="items-center gap-0.5">
+          <Icon name="history" size={20} color={neutral} />
+        </Pressable>
+        <Pressable onPress={() => setSheet('notes')} hitSlop={8} className="items-center gap-0.5">
+          <Icon name="notes" size={20} color={neutral} />
+        </Pressable>
+        <SleepTimerButton />
       </View>
 
       {/* In-view overlay rather than a nested RN <Modal>: a Modal inside the
@@ -198,6 +284,20 @@ export function PlayerView() {
           <Pressable className="absolute inset-0 bg-black/40" onPress={() => setSheet(null)} />
           <View className="max-h-[75%] rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840">
             <ScrollView contentContainerClassName="pb-4" keyboardShouldPersistTaps="handled">
+              {sheet === 'bookmarks' ? (
+                <BookmarksSection
+                  libraryId={libraryId}
+                  path={path}
+                  emptyLabel="No bookmarks yet."
+                  onAdd={onAddBookmark}
+                  adding={addBookmark.isPending}
+                  addLabel={
+                    savedBookmark
+                      ? 'Bookmark saved'
+                      : `Add bookmark at ${formatClock(bookPosition)}`
+                  }
+                />
+              ) : null}
               {sheet === 'history' ? (
                 <HistorySection libraryId={libraryId} path={path} emptyLabel="No history yet." />
               ) : null}
