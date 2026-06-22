@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { useFavourites, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
+import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
@@ -12,8 +12,8 @@ import { colors } from '@/theme/tokens';
 /** Favourites sits alongside the libraries as a special "shelf": a row that opens
  * the dedicated Favourites screen. Always shown so it stays discoverable. */
 function FavouritesShelfRow() {
-  const { data: favourites } = useFavourites();
-  const count = favourites?.length ?? 0;
+  const { favourites } = useFavouritesAll();
+  const count = favourites.length;
   return (
     <Link href="/library/favourites" asChild>
       <Pressable className="my-1 w-full flex-row items-center overflow-hidden rounded-lg bg-gray-50 shadow-sm active:opacity-80 dark:border dark:border-gray-900 dark:bg-gray-840 dark:shadow-none">

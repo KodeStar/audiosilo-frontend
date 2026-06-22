@@ -1,20 +1,26 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { qk, useAllProgress, useFavourites, useMarkFinished, useRecentAll } from '@/api/hooks';
+import {
+  useAllProgressAll,
+  useFavouritesAll,
+  useMarkFinished,
+  useRecentAll,
+  type SourcedProgress,
+} from '@/api/hooks';
 import { useApi } from '@/api/provider';
-import type { Progress } from '@/api/types';
 import { Grid, GRID_GAP, GridCard, gridColumns } from '@/components/library/poster-grid';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatRelative } from '@/lib/format';
-import { libraryHref, parentPath, pathLeaf } from '@/lib/paths';
+import { useOpen } from '@/lib/open';
+import { parentPath, pathLeaf } from '@/lib/paths';
 import { flushQueue } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
+import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -49,9 +55,10 @@ function SectionHeader({
 
 /** Overflow menu for an in-progress book: mark finished, or jump to the
  * containing folder ("more in series"). */
-function ProgressMenu({ item }: { item: Progress }) {
+function ProgressMenu({ item }: { item: SourcedProgress }) {
   const [open, setOpen] = useState(false);
-  const markFinished = useMarkFinished();
+  const markFinished = useMarkFinished(item.connectionId);
+  const { openLibrary } = useOpen();
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.text : colors.light.textMuted;
 
@@ -67,7 +74,7 @@ function ProgressMenu({ item }: { item: Progress }) {
   };
   const onMoreInSeries = () => {
     setOpen(false);
-    router.push(libraryHref(item.library_id, parentPath(item.path)));
+    void openLibrary(item.connectionId, item.library_id, parentPath(item.path));
   };
 
   return (
@@ -113,18 +120,19 @@ function MenuRow({
   );
 }
 
-function ProgressCard({ item, width }: { item: Progress; width: number }) {
-  const api = useApi();
-  const qc = useQueryClient();
+function ProgressCard({ item, width }: { item: SourcedProgress; width: number }) {
+  const api = useApi(item.connectionId);
+  const setActive = useSession((s) => s.setActiveConnection);
   const { width: screenWidth } = useWindowDimensions();
   const wide = screenWidth >= WIDE_BREAKPOINT;
   const fraction = item.duration > 0 ? Math.min(1, item.position / item.duration) : 0;
   const remaining = Math.max(0, item.duration - item.position);
 
-  // On phone, open the full-screen player modal. On desktop, resume right in the
-  // persistent player panel: fetch the book + chapters (seeding the shared cache)
-  // and start playback, which surfaces the panel via `nowPlaying`.
+  // Make this item's server active first (so the player chrome reads from it),
+  // then on phone open the full-screen player modal, or on desktop resume in the
+  // persistent player panel (fetch via the item's connection, start playback).
   const play = async () => {
+    await setActive(item.connectionId);
     if (!wide) {
       router.push({
         pathname: '/player',
@@ -135,14 +143,8 @@ function ProgressCard({ item, width }: { item: Progress; width: number }) {
     const current = usePlayer.getState().nowPlaying;
     if (current?.libraryId === item.library_id && current?.path === item.path) return;
     const [book, chapterData] = await Promise.all([
-      qc.fetchQuery({
-        queryKey: qk.item(item.library_id, item.path),
-        queryFn: ({ signal }) => api.item(item.library_id, item.path, signal),
-      }),
-      qc.fetchQuery({
-        queryKey: qk.chapters(item.library_id, item.path),
-        queryFn: ({ signal }) => api.chapters(item.library_id, item.path, signal),
-      }),
+      api.item(item.library_id, item.path),
+      api.chapters(item.library_id, item.path),
     ]);
     await usePlayer.getState().playBook(api, item.library_id, book, chapterData);
   };
@@ -151,6 +153,7 @@ function ProgressCard({ item, width }: { item: Progress; width: number }) {
       libraryId={item.library_id}
       path={item.path}
       title={pathLeaf(item.path)}
+      connectionId={item.connectionId}
       width={width}
       footer={
         !item.finished ? (
@@ -181,9 +184,9 @@ export default function HomeScreen() {
   const api = useApi();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
-  const { data: progress, isLoading, error, refetch } = useAllProgress();
+  const { progress, isLoading, error } = useAllProgressAll();
   const { books: recent, isLoading: recentLoading, error: recentError } = useRecentAll();
-  const { data: favourites } = useFavourites();
+  const { favourites } = useFavouritesAll();
 
   // Measure the content row so the grid columns track the available width (the
   // desktop sidebar means window width isn't the content width).
@@ -200,7 +203,7 @@ export default function HomeScreen() {
   const [favouritesExpanded, setFavouritesExpanded] = useState(false);
   // Only favourited books surface on home (cover cards); favourited folders live
   // on the Favourites shelf, not here.
-  const favouriteBooks = (favourites ?? []).filter((f) => f.is_book);
+  const favouriteBooks = favourites.filter((f) => f.is_book);
   const visibleFavourites = favouritesExpanded
     ? favouriteBooks
     : favouriteBooks.slice(0, sectionInitial);
@@ -212,8 +215,7 @@ export default function HomeScreen() {
   }, [api]);
 
   const { inProgress, finished } = useMemo(() => {
-    const items = progress ?? [];
-    const sorted = [...items].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    const sorted = [...progress].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     return {
       inProgress: sorted.filter((p) => !p.finished && p.position > 0),
       finished: sorted.filter((p) => p.finished),
@@ -235,16 +237,18 @@ export default function HomeScreen() {
           onToggle={() => setInProgressExpanded((v) => !v)}
         />
         {isLoading ? <Spinner center /> : null}
-        {error ? (
-          <ErrorNote message="Could not load your progress." onRetry={() => refetch()} />
-        ) : null}
+        {error ? <ErrorNote message="Could not load your progress." /> : null}
         {!isLoading && !error && inProgress.length === 0 ? (
           <EmptyNote message="Start a book and it will show up here." />
         ) : null}
         {cardWidth > 0 && inProgress.length > 0 ? (
           <Grid>
             {visibleInProgress.map((item) => (
-              <ProgressCard key={`${item.library_id}:${item.path}`} item={item} width={cardWidth} />
+              <ProgressCard
+                key={`${item.connectionId}:${item.library_id}:${item.path}`}
+                item={item}
+                width={cardWidth}
+              />
             ))}
           </Grid>
         ) : null}
@@ -261,11 +265,12 @@ export default function HomeScreen() {
               <Grid>
                 {visibleFavourites.map((f) => (
                   <GridCard
-                    key={`${f.library_id}:${f.path}`}
+                    key={`${f.connectionId}:${f.library_id}:${f.path}`}
                     libraryId={f.library_id}
                     path={f.path}
                     title={f.title || pathLeaf(f.path)}
                     author={f.author}
+                    connectionId={f.connectionId}
                     width={cardWidth}
                   />
                 ))}
@@ -313,7 +318,7 @@ export default function HomeScreen() {
               <Grid>
                 {finished.slice(0, 10).map((item) => (
                   <ProgressCard
-                    key={`${item.library_id}:${item.path}`}
+                    key={`${item.connectionId}:${item.library_id}:${item.path}`}
                     item={item}
                     width={cardWidth}
                   />

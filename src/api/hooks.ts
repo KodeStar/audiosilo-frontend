@@ -2,6 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
+import { useSession } from '@/stores/session';
 
 import { useApi, useApis, useOptionalApi } from './provider';
 import type { Book, Favourite, Library, Progress } from './types';
@@ -21,7 +22,7 @@ export const qk = {
   notes: (lib: number, path: string) => ['notes', lib, path] as const,
   history: (lib: number, path: string) => ['history', lib, path] as const,
   allHistory: () => ['history', 'all'] as const,
-  favourites: () => ['favourites', 'all'] as const,
+  favourites: (connectionId: string) => ['favourites', connectionId] as const,
 };
 
 /** The connected server's identity/capabilities (incl. its release version).
@@ -95,8 +96,8 @@ export function useAllProgress() {
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so
  * it reconciles with playback progress, then refreshes the home lists. */
-export function useMarkFinished() {
-  const api = useApi();
+export function useMarkFinished(connectionId?: string) {
+  const api = useApi(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: {
@@ -197,22 +198,29 @@ export function useHistory(libraryId: number, path: string) {
  * call). Feeds the per-row hearts, the Favourites shelf, and the home section. */
 export function useFavourites() {
   const api = useApi();
-  return useQuery({ queryKey: qk.favourites(), queryFn: ({ signal }) => api.favourites(signal) });
+  const activeId = useSession((s) => s.activeConnectionId) ?? '';
+  return useQuery({
+    queryKey: qk.favourites(activeId),
+    queryFn: ({ signal }) => api.favourites(signal),
+    enabled: !!activeId,
+  });
 }
 
 /** Toggle a path's favourite state. Optimistically updates the shared favourites
  * list so the heart and shelf react instantly, then reconciles via invalidation
  * (which fills in server-derived fields like is_book/title for a fresh add). */
-export function useToggleFavourite() {
-  const api = useApi();
+export function useToggleFavourite(connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useSession((s) => s.activeConnectionId) ?? '';
+  const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ libraryId, path, on }: { libraryId: number; path: string; on: boolean }) =>
       on ? api.addFavourite(libraryId, path) : api.removeFavourite(libraryId, path),
     onMutate: async ({ libraryId, path, on }) => {
-      await qc.cancelQueries({ queryKey: qk.favourites() });
-      const prev = qc.getQueryData<Favourite[]>(qk.favourites());
-      qc.setQueryData<Favourite[]>(qk.favourites(), (cur) => {
+      await qc.cancelQueries({ queryKey: qk.favourites(cid) });
+      const prev = qc.getQueryData<Favourite[]>(qk.favourites(cid));
+      qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
         const list = cur ?? [];
         if (!on) return list.filter((f) => !(f.library_id === libraryId && f.path === path));
         if (list.some((f) => f.library_id === libraryId && f.path === path)) return list;
@@ -233,9 +241,9 @@ export function useToggleFavourite() {
       return { prev };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(qk.favourites(), ctx.prev);
+      if (ctx?.prev) qc.setQueryData(qk.favourites(cid), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.favourites() }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.favourites(cid) }),
   });
 }
 
@@ -318,7 +326,7 @@ export function useFavouritesAll() {
   const apis = useApis();
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: ['favourites', connection.id] as const,
+      queryKey: qk.favourites(connection.id),
       queryFn: ({ signal }: { signal: AbortSignal }) => client.favourites(signal),
     })),
     combine: (results) => ({
