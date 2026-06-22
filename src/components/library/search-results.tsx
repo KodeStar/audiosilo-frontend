@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 
-import { useSearch } from '@/api/hooks';
+import { useSearchAll } from '@/api/hooks';
 import { BookRow } from '@/components/library/book-row';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
@@ -18,7 +18,7 @@ export function SearchResults() {
     return () => clearTimeout(t);
   }, [query]);
 
-  const { data: results, isFetching, error } = useSearch(debounced);
+  const { books, isFetching, error } = useSearchAll(debounced);
 
   return (
     <ScrollView
@@ -30,10 +30,17 @@ export function SearchResults() {
         <Spinner center />
       ) : error ? (
         <ErrorNote message="Search failed." />
-      ) : results && results.length === 0 ? (
+      ) : books.length === 0 ? (
         <EmptyNote message={`No results for “${debounced}”.`} />
       ) : (
-        results?.map((b) => <BookRow key={`${b.library_id}:${b.rel_path}`} book={b} />)
+        books.map((b) => (
+          <BookRow
+            key={`${b.connectionId}:${b.library_id}:${b.rel_path}`}
+            book={b}
+            connectionId={b.connectionId}
+            also={b.also}
+          />
+        ))
       )}
     </ScrollView>
   );
