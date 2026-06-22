@@ -6,6 +6,7 @@ import { ApiError } from '@/api/client';
 import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
+import { ConnectionsSection } from '@/components/account/connections-section';
 import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
 import { SignOutConfirm } from '@/components/account/sign-out-confirm';
 import { useRecoveryCode } from '@/components/account/use-recovery-code';
@@ -39,7 +40,7 @@ export default function SettingsScreen() {
   const api = useOptionalApi();
   const { data: server } = useServerInfo();
   const user = useSession((s) => s.user);
-  const serverUrl = useSession((s) => s.serverUrl);
+  const serverUrl = useSession((s) => s.activeServerUrl);
   const setUser = useSession((s) => s.setUser);
 
   const skipForward = useSettings((s) => s.skipForward);
@@ -121,6 +122,8 @@ export default function SettingsScreen() {
     <>
       <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4 lg:px-8">
         <Text variant="heading">Settings</Text>
+
+        <ConnectionsSection />
 
         <View className="gap-2">
           <Text variant="label">Appearance</Text>

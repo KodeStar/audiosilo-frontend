@@ -1,11 +1,10 @@
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiError } from '@/api/client';
+import { ApiClient, ApiError } from '@/api/client';
 import type { AuthSession } from '@/api/types';
-import { useOptionalApi } from '@/api/provider';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -20,8 +19,7 @@ const MODES: { value: Mode; label: string }[] = [
 ];
 
 export default function SignInScreen() {
-  const api = useOptionalApi();
-  const serverUrl = useSession((s) => s.serverUrl);
+  const pendingServerUrl = useSession((s) => s.pendingServerUrl);
   const setSession = useSession((s) => s.setSession);
   const { serverName } = useLocalSearchParams<{ serverName?: string }>();
 
@@ -32,13 +30,20 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reached only with a configured server; bounce back if not.
-  if (!api || !serverUrl) {
+  // Sign in against the server being connected to (which is not a saved
+  // connection yet), so adding a second server doesn't talk to the active one.
+  const api = useMemo(
+    () => (pendingServerUrl ? new ApiClient(pendingServerUrl) : null),
+    [pendingServerUrl],
+  );
+
+  // Reached only mid-connect; bounce back if there's no pending server.
+  if (!api || !pendingServerUrl) {
     return <Redirect href="/connect" />;
   }
 
   const finish = async (session: AuthSession) => {
-    await setSession({ serverUrl, token: session.token, user: session.user });
+    await setSession({ serverUrl: pendingServerUrl, token: session.token, user: session.user });
     router.replace('/');
   };
 
