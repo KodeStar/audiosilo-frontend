@@ -1,17 +1,14 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAddBookmark, useBook, useChapters } from '@/api/hooks';
+import { useBook, useChapters } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
-import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { segmentsToPath } from '@/lib/paths';
-import { selectBookPosition, usePlayer } from '@/playback/store';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
   const {
@@ -31,18 +28,14 @@ export default function PlayerScreen() {
   const path = segmentsToPath(pathParam);
   const api = useApi();
   const insets = useSafeAreaInsets();
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const bookPosition = usePlayer(selectBookPosition);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
   const { data: book } = useBook(libraryId, path);
   const chaptersQuery = useChapters(libraryId, path);
   const chapterData = chaptersQuery.data;
-  const addBookmark = useAddBookmark(libraryId, path);
 
   // Start playback once the book AND its chapters/files have loaded — otherwise
   // multi-file/folder books would fall back to streaming the folder path and
@@ -104,25 +97,9 @@ export default function PlayerScreen() {
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       className="flex-1 bg-gray-200 dark:bg-gray-800"
     >
-      <View className="flex-row items-center justify-between px-4 py-2">
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={12}
-          className="h-8 w-8 items-center justify-center"
-        >
-          <Icon name="chevron-down" size={26} color={neutral} />
-        </Pressable>
-        <Pressable
-          onPress={() => addBookmark.mutate({ position: Math.round(bookPosition) })}
-          disabled={addBookmark.isPending || !nowPlaying}
-          hitSlop={12}
-          className="h-8 w-8 items-center justify-center"
-        >
-          <Icon name="bookmark" size={20} color={neutral} />
-        </Pressable>
-      </View>
-
-      <PlayerView />
+      {/* The close button is the only mobile-specific chrome; PlayerView renders
+          it in its top toolbar when given onClose. */}
+      <PlayerView onClose={() => router.back()} />
     </View>
   );
 }
