@@ -197,6 +197,7 @@ export default function BookDetailScreen() {
         <ContentColumn>
           <ScrollView className="flex-1" contentContainerClassName="gap-4 p-8 pt-2">
             <BreadCrumbs crumbs={crumbs} />
+            <BookVersions book={book} connectionId={activeConnectionId} />
             <DownloadControl
               libraryId={libraryId}
               path={path}
@@ -205,7 +206,6 @@ export default function BookDetailScreen() {
               disabled={chaptersLoading}
             />
             {fileList}
-            <BookVersions book={book} connectionId={activeConnectionId} />
             <BookmarksSection libraryId={libraryId} path={path} />
             <HistorySection libraryId={libraryId} path={path} />
             <NotesSection libraryId={libraryId} path={path} />
@@ -257,6 +257,8 @@ export default function BookDetailScreen() {
     <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4">
       <BreadCrumbs crumbs={crumbs} />
 
+      <BookVersions book={book} connectionId={activeConnectionId} />
+
       <View className="gap-4">
         <View className="w-full max-w-[240px] self-center">
           <Cover
@@ -305,8 +307,6 @@ export default function BookDetailScreen() {
       </View>
 
       {fileList}
-
-      <BookVersions book={book} connectionId={activeConnectionId} />
 
       <BookmarksSection libraryId={libraryId} path={path} />
       <HistorySection libraryId={libraryId} path={path} />
