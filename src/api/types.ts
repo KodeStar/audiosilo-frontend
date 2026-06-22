@@ -70,6 +70,9 @@ export type Library = {
   root: string;
   layout: LibraryLayout;
   default_view: LibraryView;
+  /** Display order (lower first). Also the tiebreaker when the same book exists in
+   * more than one library — the earlier library's copy wins de-duplication. */
+  sort_order: number;
 };
 
 /** One entry in the filesystem (hybrid) browse view. */
@@ -137,6 +140,27 @@ export type Book = {
   added_at?: string;
   files?: BookFile[];
   chapters?: Chapter[];
+  /** Groups copies of the same logical book (across libraries, and later servers)
+   * so a client can collapse duplicates. A display-grouping HINT, not an identity —
+   * never key durable state on it. Present on de-duplicated lists (search/recent). */
+  dedup_key?: string;
+  /** Whether the book has more than one audio file (a multipart book). Used to rank
+   * copies when de-duplicating across servers (single file beats multipart). */
+  multi_file?: boolean;
+  /** The same book's other (non-winning) copies, so the UI can show "also on X"
+   * and let the user switch. Present on de-duplicated lists. */
+  other_locations?: BookLocation[];
+};
+
+/** One copy of a book in a particular library — the non-winning copies behind a
+ * de-duplicated search/recent result. */
+export type BookLocation = {
+  library_id: number;
+  library_name: string;
+  path: string;
+  format?: string;
+  size?: number;
+  multi_file?: boolean;
 };
 
 export type ChaptersResponse = {

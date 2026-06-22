@@ -25,6 +25,7 @@ export function BookRow({ book }: { book: Book }) {
         <Cover
           source={{ uri: api.coverUrl(book.library_id, book.rel_path), headers: api.authHeaders() }}
           label={book.title}
+          sublabel={book.author}
           rounded="rounded-md"
           size={48}
         />
@@ -35,6 +36,11 @@ export function BookRow({ book }: { book: Book }) {
           {subtitle ? (
             <Text variant="muted" numberOfLines={1}>
               {subtitle}
+            </Text>
+          ) : null}
+          {book.other_locations?.length ? (
+            <Text variant="caption" numberOfLines={1}>
+              Also in {book.other_locations.map((l) => l.library_name).join(', ')}
             </Text>
           ) : null}
         </View>
