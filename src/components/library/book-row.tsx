@@ -30,17 +30,13 @@ export function BookRow({
     series: book.series,
     seriesIndex: book.series_index,
   });
-  // One provenance line: where this copy is, then where else it exists.
-  const provenance = [
-    source,
-    also?.length
-      ? `also on ${also.map((a) => a.connectionName).join(', ')}`
-      : book.other_locations?.length
-        ? `also in ${book.other_locations.map((l) => l.library_name).join(', ')}`
-        : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  // Where else this (de-duplicated) copy exists — other servers, else other
+  // libraries on this server. Shown on its own line so it isn't truncated.
+  const alsoLabel = also?.length
+    ? `Also on ${also.map((a) => a.connectionName).join(', ')}`
+    : book.other_locations?.length
+      ? `Also in ${book.other_locations.map((l) => l.library_name).join(', ')}`
+      : null;
 
   return (
     <Pressable
@@ -52,7 +48,7 @@ export function BookRow({
         label={book.title}
         sublabel={book.author}
         rounded="rounded-md"
-        size={48}
+        size={64}
       />
       <View className="flex-1">
         <Text variant="subtitle" numberOfLines={1}>
@@ -63,9 +59,14 @@ export function BookRow({
             {subtitle}
           </Text>
         ) : null}
-        {provenance ? (
+        {source ? (
           <Text variant="caption" numberOfLines={1}>
-            {provenance}
+            {source}
+          </Text>
+        ) : null}
+        {alsoLabel ? (
+          <Text variant="caption" numberOfLines={1}>
+            {alsoLabel}
           </Text>
         ) : null}
       </View>
