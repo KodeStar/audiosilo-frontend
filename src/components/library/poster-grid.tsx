@@ -6,6 +6,7 @@ import { useApi } from '@/api/provider';
 import { DownloadBadge } from '@/components/library/download-badge';
 import { Cover } from '@/components/ui/cover';
 import { Text } from '@/components/ui/text';
+import { useOpen } from '@/lib/open';
 import { bookHref } from '@/lib/paths';
 
 // Grid sizing: pick as many columns as fit at a comfortable minimum card width,
@@ -36,6 +37,7 @@ export function GridCard({
   author,
   width,
   footer,
+  connectionId,
 }: {
   libraryId: number;
   path: string;
@@ -43,11 +45,18 @@ export function GridCard({
   title: string;
   width: number;
   footer?: ReactNode;
+  /** Source connection; when set, opening switches to it first (cross-server). */
+  connectionId?: string;
 }) {
-  const api = useApi();
+  const api = useApi(connectionId);
+  const { openBook } = useOpen();
   return (
     <Pressable
-      onPress={() => router.push(bookHref(libraryId, path))}
+      onPress={() =>
+        connectionId
+          ? void openBook(connectionId, libraryId, path)
+          : router.push(bookHref(libraryId, path))
+      }
       style={{ width }}
       className="gap-2 rounded-lg border p-4 border-gray-200 bg-gray-50 shadow-sm dark:border-gray-860 dark:bg-gray-840 dark:shadow-none active:opacity-80"
     >
