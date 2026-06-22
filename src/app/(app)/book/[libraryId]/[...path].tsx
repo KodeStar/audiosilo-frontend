@@ -77,7 +77,9 @@ export default function BookDetailScreen() {
       label: seg,
       onPress: () => router.push(libraryHref(libraryId, segments.slice(0, i + 1).join('/'))),
     })),
-    { label: book.title, active: true },
+    // The active crumb is the on-disk folder/file name (matching the other path
+    // crumbs and the browse view); the book's title is shown in the header below.
+    { label: pathLeaf(path) || book.title, active: true },
   ];
 
   // Whole-book offset for a file/chapter (the server's book_offset is unreliable;
@@ -212,7 +214,11 @@ export default function BookDetailScreen() {
           ) : (
             <View className="flex-1 items-center justify-center gap-6 p-6">
               <View className="aspect-square w-full max-w-[300px]">
-                <Cover source={{ uri: coverUrl, headers: api.authHeaders() }} label={book.title} />
+                <Cover
+                  source={{ uri: coverUrl, headers: api.authHeaders() }}
+                  label={book.title}
+                  sublabel={book.author}
+                />
               </View>
               <View className="items-center gap-1">
                 {book.author ? (
@@ -249,7 +255,11 @@ export default function BookDetailScreen() {
 
       <View className="gap-4">
         <View className="w-full max-w-[240px] self-center">
-          <Cover source={{ uri: coverUrl, headers: api.authHeaders() }} label={book.title} />
+          <Cover
+            source={{ uri: coverUrl, headers: api.authHeaders() }}
+            label={book.title}
+            sublabel={book.author}
+          />
         </View>
         <View className="gap-1">
           {book.author ? (

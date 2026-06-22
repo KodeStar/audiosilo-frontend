@@ -5,7 +5,7 @@ import { useFavourites, useToggleFavourite } from '@/api/hooks';
 import type { FsEntry } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { bookSubtitle, formatBitrate, formatDurationFull } from '@/lib/format';
+import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { bookHref, libraryHref } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
 
@@ -21,9 +21,14 @@ export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: numb
   // Plain folders drill in; book folders and audio leaves open the book screen.
   const href =
     isDir && !entry.is_book ? libraryHref(libraryId, entry.path) : bookHref(libraryId, entry.path);
-  const title = entry.title || entry.name;
+  // Show what's on disk — the name the user gave the folder/file — as the title,
+  // so sibling parts ("CD 1", "CD 2", …) stay distinct. The grabbed book metadata
+  // (title, author) goes underneath when it adds something the name doesn't.
+  const title = entry.name;
   const meta = isDir
-    ? bookSubtitle({ author: entry.author, series: entry.series, seriesIndex: entry.series_index })
+    ? [entry.is_book && entry.title && entry.title !== entry.name ? entry.title : '', entry.author]
+        .filter(Boolean)
+        .join(' · ')
     : `Duration: ${formatDurationFull(entry.duration)}${
         formatBitrate(entry.size, entry.duration)
           ? `   Bitrate: ${formatBitrate(entry.size, entry.duration)}`

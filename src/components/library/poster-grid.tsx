@@ -33,11 +33,13 @@ export function GridCard({
   libraryId,
   path,
   title,
+  author,
   width,
   footer,
 }: {
   libraryId: number;
   path: string;
+  author?: string;
   title: string;
   width: number;
   footer?: ReactNode;
@@ -52,6 +54,7 @@ export function GridCard({
       <Cover
         source={{ uri: api.coverUrl(libraryId, path), headers: api.authHeaders() }}
         label={title}
+        sublabel={author}
         rounded="rounded-lg"
       />
       <View className="flex-row items-start gap-1.5">

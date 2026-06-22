@@ -271,6 +271,7 @@ export default function HomeScreen() {
                     libraryId={f.library_id}
                     path={f.path}
                     title={f.title || pathLeaf(f.path)}
+                    author={f.author}
                     width={cardWidth}
                   />
                 ))}
@@ -301,6 +302,7 @@ export default function HomeScreen() {
                       libraryId={b.library_id}
                       path={b.rel_path}
                       title={b.title || pathLeaf(b.rel_path)}
+                      author={b.author}
                       width={cardWidth}
                       footer={added ? <Text variant="caption">Added {added}</Text> : undefined}
                     />
