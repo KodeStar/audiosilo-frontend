@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 
-import { useSearchAll } from '@/api/hooks';
+import { useSearchAll, useSourceLabeller } from '@/api/hooks';
 import { BookRow } from '@/components/library/book-row';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
@@ -19,6 +19,7 @@ export function SearchResults() {
   }, [query]);
 
   const { books, isFetching, error } = useSearchAll(debounced);
+  const sourceOf = useSourceLabeller();
 
   return (
     <ScrollView
@@ -38,6 +39,7 @@ export function SearchResults() {
             key={`${b.connectionId}:${b.library_id}:${b.rel_path}`}
             book={b}
             connectionId={b.connectionId}
+            source={sourceOf(b.connectionId, b.library_id, b.connectionName)}
             also={b.also}
           />
         ))
