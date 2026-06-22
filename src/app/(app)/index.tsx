@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { qk, useAllProgress, useFavourites, useMarkFinished, useRecentBooks } from '@/api/hooks';
+import { qk, useAllProgress, useFavourites, useMarkFinished, useRecentAll } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import type { Progress } from '@/api/types';
 import { Grid, GRID_GAP, GridCard, gridColumns } from '@/components/library/poster-grid';
@@ -182,12 +182,7 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
   const { data: progress, isLoading, error, refetch } = useAllProgress();
-  const {
-    data: recentBooks,
-    isLoading: recentLoading,
-    error: recentError,
-    refetch: refetchRecent,
-  } = useRecentBooks();
+  const { books: recent, isLoading: recentLoading, error: recentError } = useRecentAll();
   const { data: favourites } = useFavourites();
 
   // Measure the content row so the grid columns track the available width (the
@@ -203,7 +198,6 @@ export default function HomeScreen() {
   const [inProgressExpanded, setInProgressExpanded] = useState(false);
   const [recentExpanded, setRecentExpanded] = useState(false);
   const [favouritesExpanded, setFavouritesExpanded] = useState(false);
-  const recent = recentBooks ?? [];
   // Only favourited books surface on home (cover cards); favourited folders live
   // on the Favourites shelf, not here.
   const favouriteBooks = (favourites ?? []).filter((f) => f.is_book);
@@ -289,20 +283,19 @@ export default function HomeScreen() {
               onToggle={() => setRecentExpanded((v) => !v)}
             />
             {recentLoading ? <Spinner center /> : null}
-            {recentError ? (
-              <ErrorNote message="Could not load new books." onRetry={() => refetchRecent()} />
-            ) : null}
+            {recentError ? <ErrorNote message="Could not load new books." /> : null}
             {cardWidth > 0 && recent.length > 0 ? (
               <Grid>
                 {visibleRecent.map((b) => {
                   const added = formatRelative(b.added_at);
                   return (
                     <GridCard
-                      key={`${b.library_id}:${b.rel_path}`}
+                      key={`${b.connectionId}:${b.library_id}:${b.rel_path}`}
                       libraryId={b.library_id}
                       path={b.rel_path}
                       title={b.title || pathLeaf(b.rel_path)}
                       author={b.author}
+                      connectionId={b.connectionId}
                       width={cardWidth}
                       footer={added ? <Text variant="caption">Added {added}</Text> : undefined}
                     />
