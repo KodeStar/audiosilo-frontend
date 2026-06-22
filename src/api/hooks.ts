@@ -1,9 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
+import { useSession } from '@/stores/session';
 
-import { useApi, useOptionalApi } from './provider';
-import type { Favourite } from './types';
+import { useApi, useApis, useOptionalApi } from './provider';
+import type { Book, Favourite, Library, Progress } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. */
 export const qk = {
@@ -20,7 +22,7 @@ export const qk = {
   notes: (lib: number, path: string) => ['notes', lib, path] as const,
   history: (lib: number, path: string) => ['history', lib, path] as const,
   allHistory: () => ['history', 'all'] as const,
-  favourites: () => ['favourites', 'all'] as const,
+  favourites: (connectionId: string) => ['favourites', connectionId] as const,
 };
 
 /** The connected server's identity/capabilities (incl. its release version).
@@ -94,8 +96,8 @@ export function useAllProgress() {
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so
  * it reconciles with playback progress, then refreshes the home lists. */
-export function useMarkFinished() {
-  const api = useApi();
+export function useMarkFinished(connectionId?: string) {
+  const api = useApi(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: {
@@ -196,22 +198,29 @@ export function useHistory(libraryId: number, path: string) {
  * call). Feeds the per-row hearts, the Favourites shelf, and the home section. */
 export function useFavourites() {
   const api = useApi();
-  return useQuery({ queryKey: qk.favourites(), queryFn: ({ signal }) => api.favourites(signal) });
+  const activeId = useSession((s) => s.activeConnectionId) ?? '';
+  return useQuery({
+    queryKey: qk.favourites(activeId),
+    queryFn: ({ signal }) => api.favourites(signal),
+    enabled: !!activeId,
+  });
 }
 
 /** Toggle a path's favourite state. Optimistically updates the shared favourites
  * list so the heart and shelf react instantly, then reconciles via invalidation
  * (which fills in server-derived fields like is_book/title for a fresh add). */
-export function useToggleFavourite() {
-  const api = useApi();
+export function useToggleFavourite(connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useSession((s) => s.activeConnectionId) ?? '';
+  const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ libraryId, path, on }: { libraryId: number; path: string; on: boolean }) =>
       on ? api.addFavourite(libraryId, path) : api.removeFavourite(libraryId, path),
     onMutate: async ({ libraryId, path, on }) => {
-      await qc.cancelQueries({ queryKey: qk.favourites() });
-      const prev = qc.getQueryData<Favourite[]>(qk.favourites());
-      qc.setQueryData<Favourite[]>(qk.favourites(), (cur) => {
+      await qc.cancelQueries({ queryKey: qk.favourites(cid) });
+      const prev = qc.getQueryData<Favourite[]>(qk.favourites(cid));
+      qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
         const list = cur ?? [];
         if (!on) return list.filter((f) => !(f.library_id === libraryId && f.path === path));
         if (list.some((f) => f.library_id === libraryId && f.path === path)) return list;
@@ -232,8 +241,234 @@ export function useToggleFavourite() {
       return { prev };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(qk.favourites(), ctx.prev);
+      if (ctx?.prev) qc.setQueryData(qk.favourites(cid), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.favourites() }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.favourites(cid) }),
   });
 }
+
+// --- Cross-connection aggregation ------------------------------------------
+// These fan out across every connection and merge, for the unified Home, Search
+// and Libraries surfaces. Items are tagged with the connection they came from;
+// books are de-duplicated (best-quality copy wins, source order breaks ties).
+// Source priority = the order connections appear in the session list.
+
+/** A library tagged with the connection it belongs to. */
+export type SourcedLibrary = Library & { connectionId: string; connectionName: string };
+/** A favourite/progress entry tagged with its connection. */
+export type SourcedFavourite = Favourite & { connectionId: string; connectionName: string };
+export type SourcedProgress = Progress & { connectionId: string; connectionName: string };
+
+export function useLibrariesAll() {
+  const apis = useApis();
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: ['libraries', connection.id] as const,
+      queryFn: () => client.libraries(),
+    })),
+    combine: (results) => ({
+      libraries: results.flatMap((r, i) =>
+        (r.data ?? []).map(
+          (l): SourcedLibrary => ({
+            ...l,
+            connectionId: apis[i].connection.id,
+            connectionName: apis[i].connection.name,
+          }),
+        ),
+      ),
+      isLoading: results.some((r) => r.isLoading),
+      error: results.find((r) => r.error)?.error ?? null,
+    }),
+  });
+}
+
+export function useSearchAll(query: string) {
+  const apis = useApis();
+  const q = query.trim();
+  const rank = (id: string) => {
+    const i = apis.findIndex((a) => a.connection.id === id);
+    return i === -1 ? apis.length : i;
+  };
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: ['search', connection.id, q] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) => client.search(q, 50, signal),
+      enabled: q.length > 0,
+    })),
+    combine: (results) => ({
+      books: dedupBooks(tagBooks(results, apis), rank),
+      isFetching: results.some((r) => r.isFetching),
+      error: results.find((r) => r.error)?.error ?? null,
+    }),
+  });
+}
+
+export function useRecentAll(limit = 48) {
+  const apis = useApis();
+  const rank = (id: string) => {
+    const i = apis.findIndex((a) => a.connection.id === id);
+    return i === -1 ? apis.length : i;
+  };
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: ['books', 'recent', connection.id, limit] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) => client.recentBooks(limit, signal),
+    })),
+    combine: (results) => ({
+      books: dedupBooks(tagBooks(results, apis), rank),
+      isLoading: results.some((r) => r.isLoading),
+      error: results.find((r) => r.error)?.error ?? null,
+    }),
+  });
+}
+
+export function useFavouritesAll() {
+  const apis = useApis();
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: qk.favourites(connection.id),
+      queryFn: ({ signal }: { signal: AbortSignal }) => client.favourites(signal),
+    })),
+    combine: (results) => ({
+      favourites: results.flatMap((r, i) =>
+        (r.data ?? []).map(
+          (f): SourcedFavourite => ({
+            ...f,
+            connectionId: apis[i].connection.id,
+            connectionName: apis[i].connection.name,
+          }),
+        ),
+      ),
+      isLoading: results.some((r) => r.isLoading),
+      error: results.find((r) => r.error)?.error ?? null,
+    }),
+  });
+}
+
+export function useAllProgressAll() {
+  const apis = useApis();
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: ['progress', 'all', connection.id] as const,
+      queryFn: () => client.allProgress(),
+    })),
+    combine: (results) => ({
+      // Newest first across all connections (no cross-connection merge yet).
+      progress: results
+        .flatMap((r, i) =>
+          (r.data ?? []).map(
+            (p): SourcedProgress => ({
+              ...p,
+              connectionId: apis[i].connection.id,
+              connectionName: apis[i].connection.name,
+            }),
+          ),
+        )
+        .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
+      isLoading: results.some((r) => r.isLoading),
+      error: results.find((r) => r.error)?.error ?? null,
+    }),
+  });
+}
+
+/**
+ * Returns a labeller that names where a result lives: "<server> · <library>".
+ * The server is included only when more than one is connected (otherwise it's
+ * noise); the library name is resolved from the per-connection library lists.
+ * Use it to show the source of a de-duplicated result so "also on/in" makes sense.
+ */
+export function useSourceLabeller() {
+  const apis = useApis();
+  const { libraries } = useLibrariesAll();
+  const multipleServers = apis.length > 1;
+  return (connectionId: string, libraryId: number, connectionName: string): string | undefined => {
+    const libName = libraries.find(
+      (l) => l.connectionId === connectionId && l.id === libraryId,
+    )?.name;
+    const parts: string[] = [];
+    if (multipleServers) parts.push(connectionName);
+    if (libName) parts.push(libName);
+    return parts.join(' · ') || undefined;
+  };
+}
+
+/** One copy of a book: a specific (connection, library, path) with quality hints. */
+export type BookCopy = {
+  connectionId: string;
+  connectionName: string;
+  libraryId: number;
+  path: string;
+  format?: string;
+  size?: number;
+  multiFile?: boolean;
+};
+
+/**
+ * Every copy of a given book across all connections and libraries, so the book
+ * screen can offer "other versions" to switch to. Found by searching each
+ * connection for the title and keeping rows with the same dedup key; expands the
+ * server-side other_locations so within-server duplicates are included too.
+ */
+export function useBookCopies(book: Book | undefined) {
+  const apis = useApis();
+  const key = book ? bookDedupKey(book) : '';
+  const title = book?.title ?? '';
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: ['copies', connection.id, key] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) => client.search(title, 50, signal),
+      enabled: !!book && title.trim().length > 0,
+    })),
+    combine: (results) => {
+      const copies: BookCopy[] = [];
+      const seen = new Set<string>();
+      results.forEach((r, i) => {
+        const conn = apis[i].connection;
+        const add = (
+          libraryId: number,
+          path: string,
+          format?: string,
+          size?: number,
+          multiFile?: boolean,
+        ) => {
+          const k = `${conn.id}:${libraryId}:${path}`;
+          if (seen.has(k)) return;
+          seen.add(k);
+          copies.push({
+            connectionId: conn.id,
+            connectionName: conn.name,
+            libraryId,
+            path,
+            format,
+            size,
+            multiFile,
+          });
+        };
+        for (const b of r.data ?? []) {
+          if (bookDedupKey(b) !== key) continue;
+          add(b.library_id, b.rel_path, b.format, b.size, b.multi_file ?? undefined);
+          for (const ol of b.other_locations ?? []) {
+            add(ol.library_id, ol.path, ol.format, ol.size, ol.multi_file);
+          }
+        }
+      });
+      return { copies, isLoading: results.some((r) => r.isLoading) };
+    },
+  });
+}
+
+/** Flatten per-connection book lists into source-tagged books for dedup. */
+function tagBooks(
+  results: { data?: Book[] }[],
+  apis: { connection: { id: string; name: string } }[],
+): SourcedBook[] {
+  return results.flatMap((r, i) =>
+    (r.data ?? []).map((b) => ({
+      ...b,
+      connectionId: apis[i].connection.id,
+      connectionName: apis[i].connection.name,
+    })),
+  );
+}
+
+export type { MergedBook };

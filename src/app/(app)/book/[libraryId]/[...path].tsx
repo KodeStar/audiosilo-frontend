@@ -7,6 +7,7 @@ import type { Chapter } from '@/api/types';
 import { ContentColumn } from '@/components/layout/content-column';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
+import { BookVersions } from '@/components/library/book-versions';
 import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
@@ -22,6 +23,7 @@ import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
+import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
 const WIDE_BREAKPOINT = 1024;
@@ -34,6 +36,7 @@ export default function BookDetailScreen() {
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
   const api = useApi();
+  const activeConnectionId = useSession((s) => s.activeConnectionId);
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
 
@@ -194,6 +197,7 @@ export default function BookDetailScreen() {
         <ContentColumn>
           <ScrollView className="flex-1" contentContainerClassName="gap-4 p-8 pt-2">
             <BreadCrumbs crumbs={crumbs} />
+            <BookVersions book={book} connectionId={activeConnectionId} />
             <DownloadControl
               libraryId={libraryId}
               path={path}
@@ -252,6 +256,8 @@ export default function BookDetailScreen() {
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4">
       <BreadCrumbs crumbs={crumbs} />
+
+      <BookVersions book={book} connectionId={activeConnectionId} />
 
       <View className="gap-4">
         <View className="w-full max-w-[240px] self-center">

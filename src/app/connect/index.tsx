@@ -20,9 +20,9 @@ export default function ConnectServerScreen() {
   // `token` (and, on native, the `server` it belongs to). When present we exchange
   // it for a session automatically — no server address or code to type.
   const { token, server } = useLocalSearchParams<{ token?: string; server?: string }>();
-  const setServerUrl = useSession((s) => s.setServerUrl);
+  const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const setSession = useSession((s) => s.setSession);
-  const savedUrl = useSession((s) => s.serverUrl);
+  const savedUrl = useSession((s) => s.pendingServerUrl);
   const [url, setUrl] = useState(savedUrl ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export default function ConnectServerScreen() {
     setLoading(true);
     try {
       const info = await new ApiClient(normalized).serverInfo();
-      await setServerUrl(normalized);
+      await setPendingServerUrl(normalized);
       if (info.demo?.enabled) {
         setDemoBase(normalized); // reveal the one-tap demo login below
       } else {
