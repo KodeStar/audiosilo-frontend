@@ -1,3 +1,5 @@
+import { getLocale } from '@/i18n/locale';
+
 /** "12h 30m" / "45m" / "30s" — compact total-duration label. */
 export function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0) return '';
@@ -20,13 +22,16 @@ export function formatClock(seconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/** "1.2 GB" / "340 MB" / "12 KB" — human-readable file size. */
-export function formatBytes(bytes?: number): string {
+/** "1.2 GB" / "340 MB" / "12 KB" — human-readable file size. The number is
+ * locale-formatted (e.g. "1,2 GB" in de); the unit symbols are universal. */
+export function formatBytes(bytes?: number, locale: string = getLocale()): string {
   if (!bytes || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
   const v = bytes / 1024 ** i;
-  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+  const maxFractionDigits = v >= 100 || i === 0 ? 0 : 1;
+  const n = new Intl.NumberFormat(locale, { maximumFractionDigits: maxFractionDigits }).format(v);
+  return `${n} ${units[i]}`;
 }
 
 /** "128kbps" from a file's bytes + seconds; empty when not derivable. */
@@ -60,14 +65,18 @@ export function formatCountdown(seconds: number): string {
   return `${s}s`;
 }
 
-/** "just now" / "3 days ago" / "2 months ago" — coarse relative time from an
- * RFC3339 timestamp. Empty when the input is missing or unparseable. */
-export function formatRelative(iso?: string): string {
+/** "now" / "3 days ago" / "2 months ago" — coarse, locale-formatted relative time
+ * from an RFC3339 timestamp (via `Intl.RelativeTimeFormat`; `numeric: 'auto'` yields
+ * "yesterday"/"last month" at the ±1 boundaries). Empty when the input is missing or
+ * unparseable. */
+export function formatRelative(iso?: string, locale: string = getLocale()): string {
   if (!iso) return '';
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return '';
   const sec = Math.max(0, (Date.now() - then) / 1000);
-  const units: [limit: number, secs: number, name: string][] = [
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  if (sec < 45) return rtf.format(0, 'second');
+  const units: [limit: number, secs: number, unit: Intl.RelativeTimeFormatUnit][] = [
     [60, 1, 'second'],
     [3600, 60, 'minute'],
     [86400, 3600, 'hour'],
@@ -75,11 +84,10 @@ export function formatRelative(iso?: string): string {
     [31536000, 2592000, 'month'],
     [Infinity, 31536000, 'year'],
   ];
-  if (sec < 45) return 'just now';
-  for (const [limit, secs, name] of units) {
+  for (const [limit, secs, unit] of units) {
     if (sec < limit) {
       const n = Math.max(1, Math.round(sec / secs));
-      return `${n} ${name}${n === 1 ? '' : 's'} ago`;
+      return rtf.format(-n, unit);
     }
   }
   return '';

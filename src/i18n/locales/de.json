@@ -1,0 +1,73 @@
+{
+  "common": {
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "done": "Fertig",
+    "retry": "Erneut versuchen",
+    "close": "Schließen"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "appearance": {
+      "label": "Darstellung",
+      "light": "Hell",
+      "dark": "Dunkel",
+      "system": "System"
+    },
+    "language": {
+      "label": "Sprache",
+      "system": "System"
+    },
+    "playback": {
+      "label": "Wiedergabe",
+      "skipBack": "Zurückspringen",
+      "skipForward": "Vorwärtsspringen",
+      "defaultSpeed": "Standardgeschwindigkeit",
+      "autoRewind": "Auto-Rücklauf beim Fortsetzen",
+      "off": "Aus"
+    },
+    "account": {
+      "label": "Konto",
+      "administrator": "Administrator",
+      "user": "Benutzer",
+      "signedIn": "Angemeldet",
+      "password": {
+        "label": "Passwort",
+        "set": "Festgelegt",
+        "notSet": "Nicht festgelegt",
+        "current": "Aktuelles Passwort",
+        "currentPlaceholder": "Dein aktuelles Passwort",
+        "new": "Neues Passwort",
+        "newPlaceholder": "Mindestens {{count}} Zeichen",
+        "change": "Passwort ändern",
+        "setNew": "Passwort festlegen",
+        "minError": "Das Passwort muss mindestens {{count}} Zeichen lang sein.",
+        "updateError": "Passwort konnte nicht aktualisiert werden."
+      },
+      "recovery": {
+        "label": "Wiederherstellungscode",
+        "set": "Festgelegt",
+        "notSet": "Nicht festgelegt",
+        "hint": "Ein Code, den du aufbewahrst, um dich selbst wieder anzumelden – ohne Administrator.",
+        "regenerate": "Wiederherstellungscode neu erstellen",
+        "generate": "Wiederherstellungscode erstellen"
+      },
+      "signOut": "Abmelden"
+    },
+    "devices": {
+      "label": "Geräte",
+      "intro": "Verbinde ein weiteres Telefon, Tablet oder einen Browser mit diesem Konto.",
+      "scanHint": "Öffne AudioSilo auf dem anderen Gerät und scanne diesen Code – oder öffne den Link unten.",
+      "add": "Gerät hinzufügen",
+      "share": "Link teilen",
+      "done": "Fertig",
+      "reachError": "Server konnte nicht erreicht werden."
+    },
+    "recoveryReplace": {
+      "title": "Wiederherstellungscode ersetzen?",
+      "message": "Dein aktueller Wiederherstellungscode funktioniert dann nicht mehr. Du musst den neuen überall dort speichern, wo du ihn aufbewahrst.",
+      "confirm": "Ersetzen"
+    },
+    "version": "AudioSilo v{{version}}"
+  }
+}
