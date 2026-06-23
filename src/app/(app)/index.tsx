@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import {
@@ -41,17 +42,18 @@ function SectionHeader({
   onToggle?: () => void;
   onViewMore?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View className="flex-row items-center justify-between">
       <Text variant="heading">{title}</Text>
       {onViewMore ? (
         <Pressable onPress={onViewMore} hitSlop={8} className="active:opacity-70">
-          <Text className="font-roboto-medium text-primary">View more</Text>
+          <Text className="font-roboto-medium text-primary">{t('home.viewMore')}</Text>
         </Pressable>
       ) : hasMore && onToggle ? (
         <Pressable onPress={onToggle} hitSlop={8} className="active:opacity-70">
           <Text className="font-roboto-medium text-primary">
-            {expanded ? 'Collapse' : 'See all'}
+            {expanded ? t('home.collapse') : t('home.seeAll')}
           </Text>
         </Pressable>
       ) : null}
@@ -63,6 +65,7 @@ const bookKey = (b: MergedBook) => `${b.connectionId}:${b.library_id}:${b.rel_pa
 const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.path}`;
 
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const api = useApi();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
@@ -136,7 +139,9 @@ export default function HomeScreen() {
         author={b.author}
         connectionId={b.connectionId}
         width={w}
-        footer={added ? <Text variant="caption">Added {added}</Text> : undefined}
+        footer={
+          added ? <Text variant="caption">{t('home.added', { when: added })}</Text> : undefined
+        }
       />
     );
   };
@@ -159,16 +164,16 @@ export default function HomeScreen() {
     >
       <View className="gap-6" onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
         <View className="gap-3">
-          <SectionHeader title="Continue listening" />
+          <SectionHeader title={t('home.continueListening')} />
           {isLoading ? <Spinner center /> : null}
           {/* Only surface the error when it actually left us with nothing to show.
               The aggregate hook flags an error if *any* connection (or a background
               refetch) failed, even while cached books are still on screen. */}
           {error && inProgress.length === 0 ? (
-            <ErrorNote message="Could not load your progress." />
+            <ErrorNote message={t('home.progressError')} />
           ) : null}
           {!isLoading && !error && inProgress.length === 0 ? (
-            <EmptyNote message="Start a book and it will show up here." />
+            <EmptyNote message={t('home.continueEmpty')} />
           ) : null}
           {inProgress.length > 0 ? shelfBody(inProgress, progressKey, progressCard) : null}
         </View>
@@ -176,7 +181,7 @@ export default function HomeScreen() {
         {favouriteBooks.length > 0 ? (
           <View className="gap-3">
             <SectionHeader
-              title="Favourites"
+              title={t('home.favourites')}
               expanded={favouritesExpanded}
               hasMore={wide && favouritesHasMore}
               onToggle={() => setFavouritesExpanded((v) => !v)}
@@ -188,12 +193,12 @@ export default function HomeScreen() {
         {recentLoading || recentError || recent.length > 0 ? (
           <View className="gap-3">
             <SectionHeader
-              title="Recently added"
+              title={t('home.recentlyAdded')}
               onViewMore={recent.length > 0 ? () => router.push('/browse?type=recent') : undefined}
             />
             {recentLoading ? <Spinner center /> : null}
             {recentError && recent.length === 0 ? (
-              <ErrorNote message="Could not load new books." />
+              <ErrorNote message={t('home.recentError')} />
             ) : null}
             {recent.length > 0 ? shelfBody(recentItems, bookKey, recentCard) : null}
           </View>
@@ -202,7 +207,7 @@ export default function HomeScreen() {
         {finished.length > 0 ? (
           <View className="gap-3">
             <SectionHeader
-              title="Recently finished"
+              title={t('home.recentlyFinished')}
               onViewMore={() => router.push('/browse?type=finished')}
             />
             {shelfBody(finishedItems, progressKey, progressCard)}

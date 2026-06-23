@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import type { Book, ChaptersResponse } from '@/api/types';
@@ -27,6 +28,7 @@ export function DownloadControl({
   /** Render an icon-only square button (sits inline next to the Listen button). */
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const { supported, status, error, progress, bytes, totalBytes, start, cancel, remove } =
     useDownloadControls(libraryId, path, book, chapterData);
 
@@ -39,7 +41,7 @@ export function DownloadControl({
           icon="download"
           variant="secondary"
           disabled
-          accessibilityLabel="Downloads unavailable"
+          accessibilityLabel={t('library.download.unavailable')}
         />
       );
     }
@@ -52,7 +54,7 @@ export function DownloadControl({
           variant="secondary"
           className="px-5"
           onPress={remove}
-          accessibilityLabel="Delete download"
+          accessibilityLabel={t('library.download.delete')}
         />
       );
     }
@@ -63,7 +65,7 @@ export function DownloadControl({
           variant="secondary"
           className="px-5"
           onPress={cancel}
-          accessibilityLabel="Cancel download"
+          accessibilityLabel={t('library.download.cancel')}
         />
       );
     }
@@ -74,13 +76,22 @@ export function DownloadControl({
         className="px-5"
         disabled={disabled || !book}
         onPress={start}
-        accessibilityLabel={status === 'error' ? 'Retry download' : 'Download'}
+        accessibilityLabel={
+          status === 'error' ? t('library.download.retry') : t('library.download.download')
+        }
       />
     );
   }
 
   if (!supported) {
-    return <Button title="Downloads unavailable" variant="secondary" icon="download" disabled />;
+    return (
+      <Button
+        title={t('library.download.unavailable')}
+        variant="secondary"
+        icon="download"
+        disabled
+      />
+    );
   }
 
   if (status === 'downloaded') {
@@ -89,7 +100,8 @@ export function DownloadControl({
         <View className="flex-1 flex-row items-center gap-2 rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-840">
           <Icon name="check" size={16} color={colors.primary} />
           <Text className="font-roboto-semibold text-gray-700 dark:text-gray-200">
-            Downloaded{totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : ''}
+            {t('library.download.downloaded')}
+            {totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : ''}
           </Text>
         </View>
         <Pressable
@@ -108,7 +120,9 @@ export function DownloadControl({
       <View className="gap-1.5">
         <View className="flex-row items-center gap-2">
           <Text variant="muted" className="flex-1" numberOfLines={1}>
-            {status === 'queued' ? 'Queued…' : `Downloading ${Math.round(progress * 100)}%`}
+            {status === 'queued'
+              ? t('library.download.queued')
+              : t('library.download.downloading', { percent: Math.round(progress * 100) })}
             {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
           </Text>
           <Pressable onPress={cancel} hitSlop={8} className="h-8 w-8 items-center justify-center">
@@ -133,7 +147,7 @@ export function DownloadControl({
         </Text>
       ) : null}
       <Button
-        title={status === 'error' ? 'Retry download' : 'Download'}
+        title={status === 'error' ? t('library.download.retry') : t('library.download.download')}
         variant="secondary"
         icon="download"
         disabled={disabled || !book}
@@ -147,12 +161,15 @@ export function DownloadControl({
  * Pairs with the compact DownloadControl button (which handles cancel), so it
  * carries no controls of its own — just the percentage and bar. */
 export function DownloadProgress({ libraryId, path }: { libraryId: number; path: string }) {
+  const { t } = useTranslation();
   const { status, progress, bytes, totalBytes } = useDownloadControls(libraryId, path);
   if (status !== 'downloading' && status !== 'queued') return null;
   return (
     <View className="gap-1.5">
       <Text variant="muted" numberOfLines={1}>
-        {status === 'queued' ? 'Queued…' : `Downloading ${Math.round(progress * 100)}%`}
+        {status === 'queued'
+          ? t('library.download.queued')
+          : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
       <View className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">

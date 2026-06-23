@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useMarkdown } from 'react-native-marked';
 
@@ -26,6 +27,7 @@ function NoteMarkdown({ body }: { body: string }) {
 
 /** Free-form markdown notes for a book: add, render, delete. */
 export function NotesSection({ libraryId, path }: { libraryId: number; path: string }) {
+  const { t } = useTranslation();
   const { data: notes } = useNotes(libraryId, path);
   const add = useAddNote(libraryId, path);
   const del = useDeleteNote(libraryId, path);
@@ -39,10 +41,10 @@ export function NotesSection({ libraryId, path }: { libraryId: number; path: str
 
   return (
     <View className="gap-2">
-      <Text variant="title">Notes</Text>
+      <Text variant="title">{t('library.notes.title')}</Text>
       <View className="gap-2 rounded-lg bg-white p-3 dark:border dark:border-gray-860 dark:bg-gray-840">
         <TextField
-          placeholder="Add a note (markdown supported)…"
+          placeholder={t('library.notes.placeholder')}
           value={draft}
           onChangeText={setDraft}
           multiline
@@ -50,7 +52,12 @@ export function NotesSection({ libraryId, path }: { libraryId: number; path: str
           className="min-h-[64px]"
           containerClassName="mb-0"
         />
-        <Button title="Add note" icon="plus" onPress={onAdd} loading={add.isPending} />
+        <Button
+          title={t('library.notes.add')}
+          icon="plus"
+          onPress={onAdd}
+          loading={add.isPending}
+        />
       </View>
 
       {notes?.map((note) => (

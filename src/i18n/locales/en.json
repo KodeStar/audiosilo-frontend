@@ -137,5 +137,104 @@
       "openSettings": "Open settings",
       "aimHint": "Point your camera at the pairing QR on your server's connect page."
     }
+  },
+  "home": {
+    "continueListening": "Continue listening",
+    "favourites": "Favourites",
+    "recentlyAdded": "Recently added",
+    "recentlyFinished": "Recently finished",
+    "viewMore": "View more",
+    "seeAll": "See all",
+    "collapse": "Collapse",
+    "added": "Added {{when}}",
+    "progressError": "Could not load your progress.",
+    "continueEmpty": "Start a book and it will show up here.",
+    "recentError": "Could not load new books."
+  },
+  "library": {
+    "browse": {
+      "fallbackName": "Library",
+      "empty": "This folder is empty.",
+      "noMatches": "No matches in this folder.",
+      "filterPlaceholder": "Filter this folder…",
+      "openError": "Could not open this folder.",
+      "jumpTo": "Jump to {{letter}}",
+      "backToTop": "Back to top"
+    },
+    "bookRow": {
+      "alsoOn": "Also on {{servers}}",
+      "alsoIn": "Also in {{libraries}}"
+    },
+    "entryRow": {
+      "duration": "Duration: {{value}}",
+      "bitrate": "Bitrate: {{value}}"
+    },
+    "progressCard": {
+      "markFinished": "Mark as Finished",
+      "moreInSeries": "More in series",
+      "timeLeft": "{{duration}} left",
+      "finished": "Finished"
+    },
+    "searchResults": {
+      "failed": "Search failed.",
+      "noResults": "No results for “{{query}}”."
+    },
+    "notes": {
+      "title": "Notes",
+      "placeholder": "Add a note (markdown supported)…",
+      "add": "Add note"
+    },
+    "history": {
+      "title": "History"
+    },
+    "bookmarks": {
+      "title": "Bookmarks",
+      "add": "Add bookmark"
+    },
+    "versions": {
+      "choose": "Choose a version",
+      "thisCopy": "This copy",
+      "otherCount_one": "{{count}} other version",
+      "otherCount_other": "{{count}} other versions",
+      "multiFile": "multi-file",
+      "singleFile": "single file"
+    },
+    "favourite": {
+      "remove": "Remove from favourites",
+      "add": "Add to favourites"
+    },
+    "bookStats": {
+      "favourite": "Favourite",
+      "audio": "Audio",
+      "length": "length"
+    },
+    "download": {
+      "unavailable": "Downloads unavailable",
+      "delete": "Delete download",
+      "cancel": "Cancel download",
+      "retry": "Retry download",
+      "download": "Download",
+      "downloaded": "Downloaded",
+      "queued": "Queued…",
+      "downloading": "Downloading {{percent}}%"
+    },
+    "list": {
+      "title": "Library",
+      "recentlyAdded": "Recently added",
+      "recentlyFinished": "Recently finished",
+      "added": "Added {{when}}",
+      "loadError": "Could not load.",
+      "noBooks": "No books yet.",
+      "noFinished": "No finished books yet.",
+      "loadLibrariesError": "Could not load libraries.",
+      "noLibraries": "No libraries are shared with your account yet."
+    },
+    "favourites": {
+      "title": "Favourites",
+      "emptyHint": "Tap the heart on any item to curate",
+      "itemCount_one": "{{count}} item",
+      "itemCount_other": "{{count}} items",
+      "empty": "Tap the heart on a folder or book to add it here."
+    }
   }
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useBookCopies, useSourceLabeller } from '@/api/hooks';
@@ -16,6 +17,7 @@ const mb = (n?: number) => (n && n > 0 ? `${Math.round(n / 1048576)} MB` : null)
  * copies across servers/libraries (with quality hints) to switch to. Hidden when
  * there's only one copy. Sits near the top of the book screen, under the breadcrumb. */
 export function BookVersions({ book, connectionId }: { book: Book; connectionId: string | null }) {
+  const { t } = useTranslation();
   const { copies, isLoading } = useBookCopies(book);
   const sourceOf = useSourceLabeller();
   const { openBook } = useOpen();
@@ -40,17 +42,17 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
       <Pressable
         onPress={() => setOpen((v) => !v)}
         accessibilityRole="button"
-        accessibilityLabel="Choose a version"
+        accessibilityLabel={t('library.versions.choose')}
         hitSlop={6}
         className="flex-row items-center gap-3 rounded-lg bg-gray-100 px-4 py-3 active:opacity-70 dark:bg-gray-840"
       >
         <Icon name="server" size={16} color={colors.primary} />
         <View className="flex-1">
           <Text variant="subtitle" numberOfLines={1}>
-            {currentSource || 'This copy'}
+            {currentSource || t('library.versions.thisCopy')}
           </Text>
           <Text variant="caption" numberOfLines={1}>
-            {others.length} other version{others.length === 1 ? '' : 's'}
+            {t('library.versions.otherCount', { count: others.length })}
           </Text>
         </View>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} />
@@ -61,7 +63,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
             const src = sourceOf(c.connectionId, c.libraryId, c.connectionName) ?? c.connectionName;
             const quality = [
               c.format?.toUpperCase(),
-              c.multiFile ? 'multi-file' : 'single file',
+              c.multiFile ? t('library.versions.multiFile') : t('library.versions.singleFile'),
               mb(c.size),
             ]
               .filter(Boolean)

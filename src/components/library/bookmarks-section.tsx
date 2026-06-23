@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useBookmarks, useDeleteBookmark } from '@/api/hooks';
@@ -28,6 +29,7 @@ export function BookmarksSection({
   adding?: boolean;
   addLabel?: string;
 }) {
+  const { t } = useTranslation();
   const { data: bookmarks } = useBookmarks(libraryId, path);
   const del = useDeleteBookmark(libraryId, path);
 
@@ -42,10 +44,10 @@ export function BookmarksSection({
 
   return (
     <View className="gap-2">
-      <Text variant="title">Bookmarks</Text>
+      <Text variant="title">{t('library.bookmarks.title')}</Text>
       {onAdd ? (
         <Button
-          title={addLabel ?? 'Add bookmark'}
+          title={addLabel ?? t('library.bookmarks.add')}
           icon="bookmark"
           onPress={onAdd}
           loading={adding}
