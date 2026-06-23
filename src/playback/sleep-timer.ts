@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 
-import { chapterAt } from './book-queue';
 import { selectBookPosition, usePlayer } from './store';
 
 let interval: ReturnType<typeof setInterval> | null = null;
@@ -27,7 +26,9 @@ type SleepTimerState = {
   remaining: number | null;
 
   startDuration: (minutes: number) => void;
-  startEndOfChapter: () => void;
+  /** Pause when the whole-book timeline reaches `position`; `label` is shown
+   * while the timer is active (e.g. "End of Chapter 12"). */
+  startUntilPosition: (position: number, label: string) => void;
   extend: (minutes: number) => void;
   cancel: () => void;
   /** Internal 1s tick. */
@@ -52,19 +53,16 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => ({
     startInterval();
   },
 
-  startEndOfChapter: () => {
+  startUntilPosition: (position, label) => {
     const player = usePlayer.getState();
-    const np = player.nowPlaying;
-    if (!np) return;
+    if (!player.nowPlaying) return;
     const pos = selectBookPosition(player);
-    const ch = chapterAt(np.queue.chapters, pos);
-    const target = ch ? ch.book_offset + Math.max(0, ch.end - ch.start) : np.queue.total;
     set({
       active: true,
-      label: 'End of chapter',
+      label,
       endsAt: null,
-      pauseAtPosition: target,
-      remaining: Math.max(0, Math.round(target - pos)),
+      pauseAtPosition: position,
+      remaining: Math.max(0, Math.round(position - pos)),
     });
     startInterval();
   },

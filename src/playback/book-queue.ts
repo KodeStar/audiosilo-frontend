@@ -141,3 +141,42 @@ export function chapterAt(chapters: Chapter[], bookPosition: number): Chapter | 
   }
   return current ?? chapters[0] ?? null;
 }
+
+export type ChapterCountdown = {
+  chapter: Chapter;
+  /** Whole-book position (seconds) of this chapter's end. */
+  endPosition: number;
+  /** Seconds from `bookPosition` until this chapter's end. */
+  untilEnd: number;
+};
+
+/**
+ * The current chapter and the ones after it, each annotated with the whole-book
+ * position of its end and the time from `bookPosition` until that end — drives
+ * the sleep timer's "end of chapter" picker. The first entry is always the
+ * current chapter (the time left in it). Returns [] when there are no chapters.
+ *
+ * `limit` bounds how many options to show so the list mirrors the time presets
+ * (which top out at an hour): keep chapters until one's countdown passes
+ * `maxSeconds` (that chapter is the last kept, so the list always crosses the
+ * threshold rather than stopping just short), but never fewer than `minCount`.
+ */
+export function chapterCountdowns(
+  chapters: Chapter[],
+  bookPosition: number,
+  limit?: { minCount: number; maxSeconds: number },
+): ChapterCountdown[] {
+  if (chapters.length === 0) return [];
+  const current = chapterAt(chapters, bookPosition);
+  const from = current ? chapters.indexOf(current) : 0;
+  const list = chapters.slice(Math.max(0, from)).map((ch) => {
+    const endPosition = ch.book_offset + Math.max(0, ch.end - ch.start);
+    return { chapter: ch, endPosition, untilEnd: Math.max(0, endPosition - bookPosition) };
+  });
+  if (!limit) return list;
+  // First chapter whose countdown passes the threshold, kept inclusively as the
+  // last entry; if none pass, keep them all. Then never show fewer than minCount.
+  const firstOver = list.findIndex((c) => c.untilEnd > limit.maxSeconds);
+  const count = Math.max(limit.minCount, firstOver < 0 ? list.length : firstOver + 1);
+  return list.slice(0, count);
+}

@@ -5,6 +5,7 @@ import {
   bookFileSpecs,
   buildBookQueue,
   chapterAt,
+  chapterCountdowns,
   locate,
   toBookPosition,
 } from '@/playback/book-queue';
@@ -148,5 +149,55 @@ describe('timeline math', () => {
     expect(chapterAt(chapters, 75)?.index).toBe(1);
     expect(chapterAt(chapters, -5)?.index).toBe(0);
     expect(chapterAt([], 10)).toBeNull();
+  });
+});
+
+describe('chapterCountdowns', () => {
+  const chapters = [
+    chapter({ index: 0, book_offset: 0, start: 0, end: 60 }),
+    chapter({ index: 1, book_offset: 60, start: 60, end: 200 }),
+    chapter({ index: 2, book_offset: 200, start: 200, end: 320 }),
+  ];
+
+  it('lists the current chapter first, then the rest, with time until each end', () => {
+    const out = chapterCountdowns(chapters, 90);
+    expect(out.map((c) => c.chapter.index)).toEqual([1, 2]);
+    expect(out[0].endPosition).toBe(200);
+    expect(out[0].untilEnd).toBe(110); // 200 - 90
+    expect(out[1].untilEnd).toBe(230); // 320 - 90
+  });
+
+  it('starts at the first chapter when before the first offset', () => {
+    const out = chapterCountdowns(chapters, 0);
+    expect(out.map((c) => c.chapter.index)).toEqual([0, 1, 2]);
+    expect(out[0].untilEnd).toBe(60);
+  });
+
+  it('returns [] when there are no chapters', () => {
+    expect(chapterCountdowns([], 10)).toEqual([]);
+  });
+
+  // Build N back-to-back chapters of `len` seconds each, from offset 0.
+  const evenChapters = (n: number, len: number) =>
+    Array.from({ length: n }, (_, i) =>
+      chapter({ index: i, book_offset: i * len, start: i * len, end: (i + 1) * len }),
+    );
+
+  it('keeps chapters through the one that crosses maxSeconds (inclusive)', () => {
+    // 12 × 10min: countdowns 10,20,…,120min. First over 60min is the 70-min one.
+    const out = chapterCountdowns(evenChapters(12, 600), 0, { minCount: 5, maxSeconds: 3600 });
+    expect(out).toHaveLength(7);
+    expect(out[6].untilEnd).toBe(4200); // 70 min — the chapter that crosses the hour
+  });
+
+  it('never shows fewer than minCount even when the hour is reached sooner', () => {
+    // 10 × 20min: 20,40,60,80,… — the hour is crossed at the 4th, but min is 5.
+    const out = chapterCountdowns(evenChapters(10, 1200), 0, { minCount: 5, maxSeconds: 3600 });
+    expect(out).toHaveLength(5);
+  });
+
+  it('keeps every chapter when none reach maxSeconds', () => {
+    const out = chapterCountdowns(evenChapters(3, 600), 0, { minCount: 5, maxSeconds: 3600 });
+    expect(out).toHaveLength(3);
   });
 });
