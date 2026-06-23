@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   FlatList,
   type ListRenderItem,
@@ -57,6 +58,7 @@ type Row = { type: 'header'; letter: string } | { type: 'entry'; entry: FsEntry 
  * each row's pink-folder / blue-book icon.
  */
 export function BrowseScreen() {
+  const { t } = useTranslation();
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
     path?: string | string[];
@@ -126,7 +128,8 @@ export function BrowseScreen() {
     index,
   });
 
-  const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? 'Library';
+  const libraryName =
+    libraries?.find((l) => l.id === libraryId)?.name ?? t('library.browse.fallbackName');
   const segments = path ? path.split('/') : [];
   const crumbs: Crumb[] = [
     {
@@ -192,7 +195,9 @@ export function BrowseScreen() {
     );
 
   const emptyMessage =
-    showTools && query.trim().length > 0 ? 'No matches in this folder.' : 'This folder is empty.';
+    showTools && query.trim().length > 0
+      ? t('library.browse.noMatches')
+      : t('library.browse.empty');
 
   return (
     <View className="flex-1">
@@ -202,7 +207,7 @@ export function BrowseScreen() {
           {showTools ? (
             <TextField
               containerClassName={crumbs.length > 1 ? 'mt-3' : ''}
-              placeholder="Filter this folder…"
+              placeholder={t('library.browse.filterPlaceholder')}
               value={query}
               onChangeText={setQuery}
               autoCapitalize="none"
@@ -214,7 +219,9 @@ export function BrowseScreen() {
       ) : null}
 
       {isLoading ? <Spinner center /> : null}
-      {error ? <ErrorNote message="Could not open this folder." onRetry={() => refetch()} /> : null}
+      {error ? (
+        <ErrorNote message={t('library.browse.openError')} onRetry={() => refetch()} />
+      ) : null}
 
       {!isLoading && !error ? (
         <View className="flex-1 flex-row">
@@ -256,7 +263,7 @@ export function BrowseScreen() {
                     onPress={() => jumpToLetter(l)}
                     hitSlop={{ top: 2, bottom: 2, left: 12, right: 6 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Jump to ${l}`}
+                    accessibilityLabel={t('library.browse.jumpTo', { letter: l })}
                     className="w-full items-center py-0.5"
                   >
                     <Text
@@ -282,7 +289,7 @@ export function BrowseScreen() {
             setShowTop(false);
           }}
           accessibilityRole="button"
-          accessibilityLabel="Back to top"
+          accessibilityLabel={t('library.browse.backToTop')}
           className="absolute bottom-6 right-8 h-12 w-12 items-center justify-center rounded-full bg-primary shadow-lg active:opacity-80"
         >
           <Icon name="chevron-up" size={22} color={colors.white} />

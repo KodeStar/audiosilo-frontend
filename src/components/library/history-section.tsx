@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useHistory } from '@/api/hooks';
@@ -18,6 +19,7 @@ export function HistorySection({
   path: string;
   emptyLabel?: string;
 }) {
+  const { t } = useTranslation();
   const { data: history } = useHistory(libraryId, path);
 
   if (!history || history.length === 0) {
@@ -26,7 +28,7 @@ export function HistorySection({
     if (!emptyLabel) return null;
     return (
       <View className="gap-2">
-        <Text variant="title">History</Text>
+        <Text variant="title">{t('library.history.title')}</Text>
         <Text variant="caption">{emptyLabel}</Text>
       </View>
     );
@@ -40,7 +42,7 @@ export function HistorySection({
 
   return (
     <View className="gap-2">
-      <Text variant="title">History</Text>
+      <Text variant="title">{t('library.history.title')}</Text>
       {history.map((h) => (
         <Pressable
           key={h.id}

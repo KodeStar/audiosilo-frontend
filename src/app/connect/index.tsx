@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,6 +17,7 @@ import { normalizeUrl } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 
 export default function ConnectServerScreen() {
+  const { t } = useTranslation();
   // A copy-invite link or pairing QR opens this screen with a single-use pairing
   // `token` (and, on native, the `server` it belongs to). When present we exchange
   // it for a session automatically — no server address or code to type.
@@ -39,7 +41,7 @@ export default function ConnectServerScreen() {
     (async () => {
       const base = server ? normalizeUrl(server) : webOrigin();
       if (!base) {
-        setPairError('This pairing link is missing its server address. Enter it below.');
+        setPairError(t('connect.server.missingAddress'));
         setPairing(false);
         return;
       }
@@ -52,8 +54,8 @@ export default function ConnectServerScreen() {
         if (cancelled) return;
         setPairError(
           e instanceof ApiError
-            ? `Pairing failed: ${e.message}. The code may have expired — ask for a new invite.`
-            : 'Could not reach the server to finish pairing.',
+            ? t('connect.server.pairingFailed', { message: e.message })
+            : t('connect.server.pairingReachError'),
         );
         setUrl((u) => u || base);
         setPairing(false);
@@ -62,13 +64,16 @@ export default function ConnectServerScreen() {
     return () => {
       cancelled = true;
     };
+    // `t` is intentionally excluded: this is a one-shot deep-link pairing exchange,
+    // and depending on `t` would re-run the network exchange on a language switch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, setSession]);
 
   const onConnect = async () => {
     setError(null);
     const normalized = normalizeUrl(url);
     if (!normalized) {
-      setError('Enter your server address');
+      setError(t('connect.server.enterAddress'));
       return;
     }
     setLoading(true);
@@ -83,8 +88,8 @@ export default function ConnectServerScreen() {
     } catch (e) {
       setError(
         e instanceof ApiError
-          ? `Server responded with an error: ${e.message}`
-          : 'Could not reach that server. Check the address and that it is online.',
+          ? t('connect.server.serverError', { message: e.message })
+          : t('connect.server.reachError'),
       );
     } finally {
       setLoading(false);
@@ -102,8 +107,8 @@ export default function ConnectServerScreen() {
     } catch (e) {
       setError(
         e instanceof ApiError
-          ? `Could not start the demo: ${e.message}`
-          : 'Could not reach the demo server.',
+          ? t('connect.server.demoError', { message: e.message })
+          : t('connect.server.demoReachError'),
       );
     } finally {
       setDemoLoading(false);
@@ -115,7 +120,7 @@ export default function ConnectServerScreen() {
       <Screen className="items-center justify-center gap-4">
         <Logo size={64} />
         <Spinner size="large" />
-        <Text variant="muted">Connecting your device…</Text>
+        <Text variant="muted">{t('connect.server.connecting')}</Text>
       </Screen>
     );
   }
@@ -128,13 +133,14 @@ export default function ConnectServerScreen() {
       >
         <View className="items-center gap-3">
           <Logo size={64} />
+          {/* eslint-disable-next-line i18next/no-literal-string -- brand wordmark, never translated */}
           <Text className="font-roboto-bold text-3xl text-primary">AudioSilo</Text>
-          <Text variant="muted">Connect to your audiobook server</Text>
+          <Text variant="muted">{t('connect.server.subtitle')}</Text>
         </View>
         {pairError ? <Text className="text-center text-sm text-red-500">{pairError}</Text> : null}
         <View>
           <TextField
-            label="Server address"
+            label={t('connect.server.addressLabel')}
             placeholder="https://books.example.com"
             value={url}
             onChangeText={setUrl}
@@ -146,21 +152,31 @@ export default function ConnectServerScreen() {
             returnKeyType="go"
             onSubmitEditing={onConnect}
           />
-          <Button title="Connect" icon="server" loading={loading} onPress={onConnect} />
+          <Button
+            title={t('connect.server.connect')}
+            icon="server"
+            loading={loading}
+            onPress={onConnect}
+          />
         </View>
         {demoBase ? (
           <View className="gap-4">
             <View className="flex-row items-center gap-3">
               <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-              <Text variant="muted">demo server</Text>
+              <Text variant="muted">{t('connect.server.demoDivider')}</Text>
               <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
             </View>
             <Text variant="muted" className="text-center">
-              This server offers a guest demo — no account needed.
+              {t('connect.server.demoIntro')}
             </Text>
-            <Button title="Try the demo" icon="play" loading={demoLoading} onPress={onTryDemo} />
             <Button
-              title="Sign in instead"
+              title={t('connect.server.tryDemo')}
+              icon="play"
+              loading={demoLoading}
+              onPress={onTryDemo}
+            />
+            <Button
+              title={t('connect.server.signInInstead')}
               variant="secondary"
               onPress={() => router.push('/connect/sign-in')}
             />
@@ -170,11 +186,11 @@ export default function ConnectServerScreen() {
           <View className="gap-4">
             <View className="flex-row items-center gap-3">
               <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-              <Text variant="muted">or</Text>
+              <Text variant="muted">{t('connect.server.or')}</Text>
               <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
             </View>
             <Button
-              title="Scan QR code"
+              title={t('connect.server.scanQr')}
               icon="qrcode"
               variant="secondary"
               onPress={() => router.push('/connect/scan')}

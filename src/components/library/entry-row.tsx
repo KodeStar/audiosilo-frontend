@@ -1,4 +1,5 @@
 import { Link } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useFavourites, useToggleFavourite } from '@/api/hooks';
@@ -12,6 +13,7 @@ import { colors } from '@/theme/tokens';
 /** One row in the filesystem browse view: a folder (pink block, drill in) or an
  * audio file (blue block, opens the book). Ported from the old client's list. */
 export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: number }) {
+  const { t } = useTranslation();
   const isDir = entry.is_dir;
   const { data: favourites } = useFavourites();
   const toggleFavourite = useToggleFavourite();
@@ -25,14 +27,13 @@ export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: numb
   // so sibling parts ("CD 1", "CD 2", …) stay distinct. The grabbed book metadata
   // (title, author) goes underneath when it adds something the name doesn't.
   const title = entry.name;
+  const bitrate = formatBitrate(entry.size, entry.duration);
   const meta = isDir
     ? [entry.is_book && entry.title && entry.title !== entry.name ? entry.title : '', entry.author]
         .filter(Boolean)
         .join(' · ')
-    : `Duration: ${formatDurationFull(entry.duration)}${
-        formatBitrate(entry.size, entry.duration)
-          ? `   Bitrate: ${formatBitrate(entry.size, entry.duration)}`
-          : ''
+    : `${t('library.entryRow.duration', { value: formatDurationFull(entry.duration) })}${
+        bitrate ? `   ${t('library.entryRow.bitrate', { value: bitrate })}` : ''
       }`;
 
   // The heart must NOT be inside the Link: a nested press bubbles to the Link's
@@ -64,7 +65,9 @@ export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: numb
         onPress={() => toggleFavourite.mutate({ libraryId, path: entry.path, on: !isFavourite })}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={isFavourite ? 'Remove from favourites' : 'Add to favourites'}
+        accessibilityLabel={
+          isFavourite ? t('library.favourite.remove') : t('library.favourite.add')
+        }
         className="self-stretch justify-center px-4 active:opacity-60 bg-black/5 dark:bg-black/15"
       >
         <Icon

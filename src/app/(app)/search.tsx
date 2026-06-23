@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, useWindowDimensions } from 'react-native';
 
 import { useSearchAll, useSourceLabeller } from '@/api/hooks';
@@ -12,6 +13,7 @@ import { useSearchStore } from '@/stores/search';
 const WIDE_BREAKPOINT = 1024;
 
 export default function SearchScreen() {
+  const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
   const query = useSearchStore((s) => s.query);
@@ -38,7 +40,7 @@ export default function SearchScreen() {
       {/* On desktop the always-visible top bar is the input; on phone we render one here. */}
       {!wide ? (
         <TextField
-          placeholder="Search titles, authors, series…"
+          placeholder={t('search.placeholder')}
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
@@ -49,13 +51,13 @@ export default function SearchScreen() {
       ) : null}
 
       {debounced.length === 0 ? (
-        <EmptyNote message="Search titles, authors, and series." />
+        <EmptyNote message={t('search.prompt')} />
       ) : isFetching ? (
         <Spinner center />
       ) : error ? (
-        <ErrorNote message="Search failed." />
+        <ErrorNote message={t('search.failed')} />
       ) : books.length === 0 ? (
-        <EmptyNote message={`No results for “${debounced}”.`} />
+        <EmptyNote message={t('search.noResults', { query: debounced })} />
       ) : (
         books.map((book) => (
           <BookRow

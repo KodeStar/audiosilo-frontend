@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useApi } from '@/api/provider';
@@ -23,6 +24,7 @@ export function BookRow({
   source?: string;
   also?: { connectionName: string }[];
 }) {
+  const { t } = useTranslation();
   const api = useApi(connectionId);
   const { openBook } = useOpen();
   const subtitle = bookSubtitle({
@@ -33,9 +35,11 @@ export function BookRow({
   // Where else this (de-duplicated) copy exists — other servers, else other
   // libraries on this server. Shown on its own line so it isn't truncated.
   const alsoLabel = also?.length
-    ? `Also on ${also.map((a) => a.connectionName).join(', ')}`
+    ? t('library.bookRow.alsoOn', { servers: also.map((a) => a.connectionName).join(', ') })
     : book.other_locations?.length
-      ? `Also in ${book.other_locations.map((l) => l.library_name).join(', ')}`
+      ? t('library.bookRow.alsoIn', {
+          libraries: book.other_locations.map((l) => l.library_name).join(', '),
+        })
       : null;
 
   return (

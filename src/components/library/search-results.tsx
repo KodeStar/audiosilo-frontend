@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 
 import { useSearchAll, useSourceLabeller } from '@/api/hooks';
@@ -10,6 +11,7 @@ import { useSearchStore } from '@/stores/search';
 /** Results for the desktop search bar, shown as an overlay over the content (no
  * route change). Selecting a result navigates away, which clears the query. */
 export function SearchResults() {
+  const { t } = useTranslation();
   const query = useSearchStore((s) => s.query);
   const [debounced, setDebounced] = useState(query.trim());
 
@@ -30,9 +32,9 @@ export function SearchResults() {
       {isFetching ? (
         <Spinner center />
       ) : error ? (
-        <ErrorNote message="Search failed." />
+        <ErrorNote message={t('library.searchResults.failed')} />
       ) : books.length === 0 ? (
-        <EmptyNote message={`No results for “${debounced}”.`} />
+        <EmptyNote message={t('library.searchResults.noResults', { query: debounced })} />
       ) : (
         books.map((b) => (
           <BookRow

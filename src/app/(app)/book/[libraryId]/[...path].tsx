@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { useBook, useChapters, useLibraries } from '@/api/hooks';
@@ -30,6 +31,7 @@ import { colors } from '@/theme/tokens';
 const WIDE_BREAKPOINT = 1024;
 
 export default function BookDetailScreen() {
+  const { t } = useTranslation();
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
     path?: string | string[];
@@ -56,7 +58,7 @@ export default function BookDetailScreen() {
   if (!book) {
     return (
       <View className="flex-1 p-4">
-        <ErrorNote message="Could not load this book." onRetry={() => refetch()} />
+        <ErrorNote message={t('book.loadError')} onRetry={() => refetch()} />
       </View>
     );
   }
@@ -69,12 +71,12 @@ export default function BookDetailScreen() {
   const coverUrl = api.coverUrl(libraryId, path);
   const chapters = chapterData?.chapters ?? [];
   const files = chapterData?.files ?? [];
-  const listLabel = chapters.length > 0 ? 'Chapters' : 'Files';
+  const listLabel = chapters.length > 0 ? t('book.chaptersTitle') : t('book.filesTitle');
   const isThisPlaying = nowPlaying?.libraryId === libraryId && nowPlaying?.path === book.rel_path;
   const activeIndex = isThisPlaying ? currentChapter?.index : undefined;
   const downloaded = downloadEntry?.status === 'downloaded';
 
-  const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? 'Library';
+  const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? t('book.libraryFallback');
   const segments = path.split('/').filter(Boolean);
   const crumbs: Crumb[] = [
     { label: libraryName, onPress: () => router.push(libraryHref(libraryId)) },
@@ -144,7 +146,9 @@ export default function BookDetailScreen() {
             {name}
           </Text>
           <Text variant="caption">
-            {`Duration: ${formatDurationFull(durationSec)}${bitrate ? `   Bitrate: ${bitrate}` : ''}`}
+            {`${t('book.duration', { value: formatDurationFull(durationSec) })}${
+              bitrate ? `   ${t('book.bitrate', { value: bitrate })}` : ''
+            }`}
           </Text>
         </View>
         <View className="px-4">
@@ -163,7 +167,7 @@ export default function BookDetailScreen() {
         const dim = isThisPlaying && activeIndex !== undefined && ch.index !== activeIndex;
         return fileRow(
           ch.index,
-          ch.title || `Chapter ${ch.index + 1}`,
+          ch.title || t('book.chapterFallback', { number: ch.index + 1 }),
           Math.max(0, ch.end - ch.start),
           formatBitrate(file?.size, file?.duration),
           () => goPlay({ position: chapterStart(ch) }),
@@ -229,7 +233,7 @@ export default function BookDetailScreen() {
               <View className="items-center gap-1">
                 {book.author ? (
                   <Text variant="muted" className="text-center opacity-80">
-                    By {book.author}
+                    {t('book.byAuthor', { author: book.author })}
                   </Text>
                 ) : null}
                 <Text variant="title" className="text-center" numberOfLines={2}>
@@ -242,10 +246,10 @@ export default function BookDetailScreen() {
                 ) : null}
               </View>
               <BookStats libraryId={libraryId} path={path} book={book} />
-              <Button title="Listen" icon="play" onPress={() => goPlay({})} />
+              <Button title={t('book.listen')} icon="play" onPress={() => goPlay({})} />
               {book.narrator ? (
                 <Text variant="muted" className="text-center">
-                  Narrated by {book.narrator}
+                  {t('book.narratedBy', { narrator: book.narrator })}
                 </Text>
               ) : null}
             </View>
@@ -276,7 +280,7 @@ export default function BookDetailScreen() {
         <View className="gap-1">
           {book.author ? (
             <Text variant="body" className="text-center opacity-80">
-              By {book.author}
+              {t('book.byAuthor', { author: book.author })}
             </Text>
           ) : null}
           <Text variant="heading" className="text-center">
@@ -292,7 +296,12 @@ export default function BookDetailScreen() {
         <BookStats libraryId={libraryId} path={path} book={book} />
 
         <View className="mt-1 flex-row gap-2">
-          <Button title="Listen" icon="play" className="flex-1" onPress={() => goPlay({})} />
+          <Button
+            title={t('book.listen')}
+            icon="play"
+            className="flex-1"
+            onPress={() => goPlay({})}
+          />
           <DownloadControl
             libraryId={libraryId}
             path={path}
@@ -307,7 +316,7 @@ export default function BookDetailScreen() {
 
         {book.narrator ? (
           <Text variant="muted" className="text-center">
-            Narrated by {book.narrator}
+            {t('book.narratedBy', { narrator: book.narrator })}
           </Text>
         ) : null}
       </View>

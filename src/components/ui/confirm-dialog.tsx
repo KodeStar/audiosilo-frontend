@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import type { IconName } from '@/components/ui/icon';
@@ -27,13 +28,14 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <ModalCard visible={visible} onRequestClose={onCancel}>
       <Text variant="title">{title}</Text>
       <Text variant="muted">{message}</Text>
       <View className="gap-2">
         <Button title={confirmLabel} icon={confirmIcon} onPress={onConfirm} />
-        <Button title="Cancel" variant="ghost" onPress={onCancel} />
+        <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
       </View>
     </ModalCard>
   );

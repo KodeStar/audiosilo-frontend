@@ -1,4 +1,5 @@
 import { Link, usePathname, type Href } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useServerInfo } from '@/api/hooks';
@@ -15,18 +16,39 @@ import { colors } from '@/theme/tokens';
 
 // `alsoMatch` keeps a tab highlighted on related routes that live outside its
 // own path — e.g. a book screen (`/book/...`) is reached through the library.
-type NavItem = { href: Href; match: string; label: string; icon: IconName; alsoMatch?: string[] };
+// `labelKey` is the i18n key suffix under `nav.` — resolved with `t()` at render
+// since this is a module-level static array (no hook in scope here).
+type NavItem = {
+  href: Href;
+  match: string;
+  labelKey: 'home' | 'library' | 'downloads' | 'settings';
+  icon: IconName;
+  alsoMatch?: string[];
+};
 
 // Search lives in the header (phone) / top bar (desktop), not the tab bar.
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/', match: '/', label: 'Home', icon: 'home' },
-  { href: '/library', match: '/library', label: 'Library', icon: 'library', alsoMatch: ['/book'] },
+  { href: '/', match: '/', labelKey: 'home', icon: 'home' },
+  {
+    href: '/library',
+    match: '/library',
+    labelKey: 'library',
+    icon: 'library',
+    alsoMatch: ['/book'],
+  },
   // Downloads need offline storage: always on native; on web wherever the service
   // worker + Cache API are available (a secure context — https or localhost).
   ...(engine.supported
-    ? [{ href: '/downloads', match: '/downloads', label: 'Downloads', icon: 'download' } as NavItem]
+    ? [
+        {
+          href: '/downloads',
+          match: '/downloads',
+          labelKey: 'downloads',
+          icon: 'download',
+        } as NavItem,
+      ]
     : []),
-  { href: '/settings', match: '/settings', label: 'Settings', icon: 'settings' },
+  { href: '/settings', match: '/settings', labelKey: 'settings', icon: 'settings' },
 ];
 
 function matchesPath(pathname: string, match: string) {
@@ -42,6 +64,7 @@ function isActive(pathname: string, item: NavItem) {
 
 /** Left sidebar on wide screens, bottom tab bar on phones. */
 export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const { scheme } = useTheme();
   const { data: server } = useServerInfo();
@@ -67,7 +90,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                 <Text
                   className={`text-[11px] ${active ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}
                 >
-                  {item.label}
+                  {t(`nav.${item.labelKey}`)}
                 </Text>
               </Pressable>
             </Link>
@@ -98,7 +121,9 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                   <View className="absolute -left-[1px] -bottom-[1px] top-0 w-1.5 rounded-tl-lg rounded-bl-lg bg-primary" />
                 ) : null}
                 <Icon name={item.icon} size={24} color={colors[scheme].text} />
-                <Text className="text-base text-gray-600 dark:text-gray-300">{item.label}</Text>
+                <Text className="text-base text-gray-600 dark:text-gray-300">
+                  {t(`nav.${item.labelKey}`)}
+                </Text>
               </Pressable>
             </Link>
           );
@@ -112,7 +137,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
         className="flex-row items-center gap-3 border-t border-gray-100 px-6 py-5 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-t after:absolute after:top-[-2px] after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860"
       >
         <Icon name="logout" size={20} color={colors[scheme].text} />
-        <Text className="text-base text-gray-600 dark:text-gray-300">Logout</Text>
+        <Text className="text-base text-gray-600 dark:text-gray-300">{t('nav.logout')}</Text>
       </Pressable>
 
       <SignOutConfirm

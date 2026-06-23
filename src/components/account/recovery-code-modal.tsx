@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -12,19 +13,19 @@ import { shareText } from '@/lib/share';
  * which point the user has had the chance to copy or share it.
  */
 export function RecoveryCodeModal({ code, onClose }: { code: string | null; onClose: () => void }) {
+  const { t } = useTranslation();
   return (
     <ModalCard visible={code !== null} onRequestClose={onClose}>
-      <Text variant="title">Recovery code</Text>
+      <Text variant="title">{t('account.recoveryModal.title')}</Text>
       <Text variant="muted" className="text-xs">
-        Save this somewhere safe. Enter it on the connect screen to sign back in on any device. It
-        won’t be shown again.
+        {t('account.recoveryModal.description')}
       </Text>
       <Text selectable className="text-center font-roboto-semibold text-lg tracking-wider">
         {code}
       </Text>
       <View className="flex-row gap-2">
         <Button
-          title="Share"
+          title={t('account.recoveryModal.share')}
           variant="secondary"
           icon="qrcode"
           className="flex-1"
@@ -32,7 +33,7 @@ export function RecoveryCodeModal({ code, onClose }: { code: string | null; onCl
             if (code) void shareText(code);
           }}
         />
-        <Button title="Done" variant="ghost" className="flex-1" onPress={onClose} />
+        <Button title={t('common.done')} variant="ghost" className="flex-1" onPress={onClose} />
       </View>
     </ModalCard>
   );
