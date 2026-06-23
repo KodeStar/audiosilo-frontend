@@ -250,5 +250,54 @@
     "prompt": "Cerca titoli, autori e serie.",
     "failed": "Ricerca non riuscita.",
     "noResults": "Nessun risultato per «{{query}}»."
+  },
+  "book": {
+    "loadError": "Impossibile caricare questo libro.",
+    "libraryFallback": "Libreria",
+    "chaptersTitle": "Capitoli",
+    "filesTitle": "File",
+    "chapterFallback": "Capitolo {{number}}",
+    "duration": "Durata: {{value}}",
+    "bitrate": "Bitrate: {{value}}",
+    "byAuthor": "Di {{author}}",
+    "narratedBy": "Narrato da {{narrator}}",
+    "listen": "Ascolta"
+  },
+  "player": {
+    "controls": {
+      "fileOf": "File {{current}} di {{total}}",
+      "fileNumber": "File {{number}}",
+      "timeLeft": "{{time}} rimanente ({{rate}})",
+      "showChapters": "Mostra capitoli"
+    },
+    "chapters": {
+      "chaptersTitle": "Capitoli",
+      "filesTitle": "File",
+      "chapterNumber": "Capitolo {{number}}"
+    },
+    "bookmarks": {
+      "empty": "Ancora nessun segnalibro.",
+      "saved": "Segnalibro salvato",
+      "addAt": "Aggiungi segnalibro a {{time}}"
+    },
+    "history": {
+      "empty": "Ancora nessuna cronologia."
+    },
+    "sleepTimer": {
+      "title": "Timer di spegnimento",
+      "running": "Timer in corso",
+      "timeSection": "Tempo",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "endOfChapterSection": "Fine del capitolo",
+      "endOf": "Fine di {{chapter}}",
+      "current": " (attuale)",
+      "endOfBook": "Fine del libro",
+      "noChapters": "Nessun capitolo disponibile.",
+      "cancel": "Annulla timer"
+    },
+    "speed": {
+      "title": "Velocità di riproduzione"
+    }
   }
 }

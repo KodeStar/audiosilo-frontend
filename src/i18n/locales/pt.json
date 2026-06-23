@@ -250,5 +250,54 @@
     "prompt": "Procura títulos, autores e séries.",
     "failed": "A pesquisa falhou.",
     "noResults": "Sem resultados para «{{query}}»."
+  },
+  "book": {
+    "loadError": "Não foi possível carregar este livro.",
+    "libraryFallback": "Biblioteca",
+    "chaptersTitle": "Capítulos",
+    "filesTitle": "Ficheiros",
+    "chapterFallback": "Capítulo {{number}}",
+    "duration": "Duração: {{value}}",
+    "bitrate": "Taxa de bits: {{value}}",
+    "byAuthor": "De {{author}}",
+    "narratedBy": "Narrado por {{narrator}}",
+    "listen": "Ouvir"
+  },
+  "player": {
+    "controls": {
+      "fileOf": "Ficheiro {{current}} de {{total}}",
+      "fileNumber": "Ficheiro {{number}}",
+      "timeLeft": "{{time}} restante ({{rate}})",
+      "showChapters": "Mostrar capítulos"
+    },
+    "chapters": {
+      "chaptersTitle": "Capítulos",
+      "filesTitle": "Ficheiros",
+      "chapterNumber": "Capítulo {{number}}"
+    },
+    "bookmarks": {
+      "empty": "Ainda não há marcadores.",
+      "saved": "Marcador guardado",
+      "addAt": "Adicionar marcador em {{time}}"
+    },
+    "history": {
+      "empty": "Ainda não há histórico."
+    },
+    "sleepTimer": {
+      "title": "Temporizador",
+      "running": "Temporizador a contar",
+      "timeSection": "Tempo",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "endOfChapterSection": "Fim do capítulo",
+      "endOf": "Fim de {{chapter}}",
+      "current": " (atual)",
+      "endOfBook": "Fim do livro",
+      "noChapters": "Não há capítulos disponíveis.",
+      "cancel": "Cancelar temporizador"
+    },
+    "speed": {
+      "title": "Velocidade de reprodução"
+    }
   }
 }

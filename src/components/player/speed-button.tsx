@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,6 +14,7 @@ const fmt = (v: number) => `${Number(v.toFixed(2))}×`;
 
 /** Tappable speed readout that opens a stepper (0.1× increments). */
 export function SpeedButton() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rate = usePlayer((s) => s.rate);
   const setRate = usePlayer((s) => s.setRate);
@@ -42,7 +44,7 @@ export function SpeedButton() {
             onPress={() => {}}
           >
             <View className="flex-row items-center justify-between">
-              <Text variant="title">Playback speed</Text>
+              <Text variant="title">{t('player.speed.title')}</Text>
               <Pressable
                 onPress={() => setOpen(false)}
                 hitSlop={12}

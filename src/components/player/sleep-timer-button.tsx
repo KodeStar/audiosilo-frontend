@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,9 +15,10 @@ import { colors } from '@/theme/tokens';
 
 const PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
-const chapterLabel = (ch: Chapter) => ch.title || `Chapter ${ch.index + 1}`;
-
 export function SleepTimerButton() {
+  const { t } = useTranslation();
+  const chapterLabel = (ch: Chapter) =>
+    ch.title || t('player.chapters.chapterNumber', { number: ch.index + 1 });
   const [open, setOpen] = useState(false);
   const active = useSleepTimer((s) => s.active);
   const label = useSleepTimer((s) => s.label);
@@ -63,7 +65,7 @@ export function SleepTimerButton() {
             onPress={() => {}}
           >
             <View className="flex-row items-center justify-between">
-              <Text variant="title">Sleep timer</Text>
+              <Text variant="title">{t('player.sleepTimer.title')}</Text>
               <Pressable
                 onPress={() => setOpen(false)}
                 hitSlop={12}
@@ -75,7 +77,7 @@ export function SleepTimerButton() {
 
             {active ? (
               <View className="flex-row items-center justify-between rounded-lg bg-primary/10 px-3 py-2">
-                <Text className="text-primary">{label || 'Timer running'}</Text>
+                <Text className="text-primary">{label || t('player.sleepTimer.running')}</Text>
                 {remaining !== null ? (
                   <Text className="font-roboto-semibold text-primary">
                     {formatClock(remaining)}
@@ -85,7 +87,7 @@ export function SleepTimerButton() {
             ) : null}
 
             <Text variant="caption" className="uppercase tracking-wide">
-              Time
+              {t('player.sleepTimer.timeSection')}
             </Text>
             <View className="flex-row flex-wrap gap-2">
               {PRESETS.map((m) => (
@@ -94,13 +96,13 @@ export function SleepTimerButton() {
                   onPress={() => pick(() => startDuration(m))}
                   className="rounded-full bg-white px-4 py-2 dark:bg-gray-860"
                 >
-                  <Text>{m} min</Text>
+                  <Text>{t('player.sleepTimer.minutes', { count: m })}</Text>
                 </Pressable>
               ))}
             </View>
 
             <Text variant="caption" className="uppercase tracking-wide">
-              End of chapter
+              {t('player.sleepTimer.endOfChapterSection')}
             </Text>
             {countdowns.length > 0 ? (
               // Cap height on the wrapper View (not the ScrollView itself) so the
@@ -113,14 +115,17 @@ export function SleepTimerButton() {
                       key={c.chapter.index}
                       onPress={() =>
                         pick(() =>
-                          startUntilPosition(c.endPosition, `End of ${chapterLabel(c.chapter)}`),
+                          startUntilPosition(
+                            c.endPosition,
+                            t('player.sleepTimer.endOf', { chapter: chapterLabel(c.chapter) }),
+                          ),
                         )
                       }
                       className="flex-row items-center justify-between rounded-lg bg-white px-4 py-3 dark:bg-gray-860"
                     >
                       <Text numberOfLines={1} className="flex-1 pr-3">
                         {chapterLabel(c.chapter)}
-                        {i === 0 ? ' (current)' : ''}
+                        {i === 0 ? t('player.sleepTimer.current') : ''}
                       </Text>
                       <Text variant="caption">{formatCountdown(c.untilEnd)}</Text>
                     </Pressable>
@@ -129,14 +134,16 @@ export function SleepTimerButton() {
               </View>
             ) : nowPlaying ? (
               <Pressable
-                onPress={() => pick(() => startUntilPosition(total, 'End of book'))}
+                onPress={() =>
+                  pick(() => startUntilPosition(total, t('player.sleepTimer.endOfBook')))
+                }
                 className="flex-row items-center justify-between rounded-lg bg-white px-4 py-3 dark:bg-gray-860"
               >
-                <Text>End of book</Text>
+                <Text>{t('player.sleepTimer.endOfBook')}</Text>
                 <Text variant="caption">{formatCountdown(Math.max(0, total - bookPosition))}</Text>
               </Pressable>
             ) : (
-              <Text variant="caption">No chapters available.</Text>
+              <Text variant="caption">{t('player.sleepTimer.noChapters')}</Text>
             )}
 
             {active ? (
@@ -145,7 +152,7 @@ export function SleepTimerButton() {
                 className="mt-1 items-center rounded-lg bg-primary px-4 py-3 active:opacity-80"
               >
                 <Text className="font-roboto-semibold text-white dark:text-white">
-                  Cancel timer
+                  {t('player.sleepTimer.cancel')}
                 </Text>
               </Pressable>
             ) : null}
