@@ -158,8 +158,7 @@
       "noMatches": "No hay coincidencias en esta carpeta.",
       "filterPlaceholder": "Filtrar esta carpeta…",
       "openError": "No se pudo abrir esta carpeta.",
-      "jumpTo": "Ir a {{letter}}",
-      "backToTop": "Volver arriba"
+      "jumpTo": "Ir a {{letter}}"
     },
     "bookRow": {
       "alsoOn": "También en {{servers}}",
