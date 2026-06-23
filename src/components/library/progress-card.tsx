@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
 
 import { useMarkFinished, type SourcedProgress } from '@/api/hooks';
@@ -25,6 +26,7 @@ export const progressKey = (it: SourcedProgress) =>
 /** Overflow menu for an in-progress book: mark finished, or jump to the
  * containing folder ("more in series"). */
 function ProgressMenu({ item }: { item: SourcedProgress }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const markFinished = useMarkFinished(item.connectionId);
   const { openLibrary } = useOpen();
@@ -58,8 +60,16 @@ function ProgressMenu({ item }: { item: SourcedProgress }) {
             className="gap-1 rounded-t-2xl bg-gray-100 p-2 pb-6 dark:bg-gray-840"
             onPress={() => {}}
           >
-            <MenuRow icon="check" label="Mark as Finished" onPress={onMarkFinished} />
-            <MenuRow icon="library" label="More in series" onPress={onMoreInSeries} />
+            <MenuRow
+              icon="check"
+              label={t('library.progressCard.markFinished')}
+              onPress={onMarkFinished}
+            />
+            <MenuRow
+              icon="library"
+              label={t('library.progressCard.moreInSeries')}
+              onPress={onMoreInSeries}
+            />
           </Pressable>
         </Pressable>
       </Modal>
@@ -92,6 +102,7 @@ function MenuRow({
 /** A poster card for an in-progress / finished book, with a live-updating progress
  * bar and "time left". Shared by the Home shelves and the /browse page. */
 export function ProgressCard({ item, width }: { item: SourcedProgress; width: number }) {
+  const { t } = useTranslation();
   const api = useApi(item.connectionId);
   const setActive = useSession((s) => s.setActiveConnection);
   const activeConnectionId = useSession((s) => s.activeConnectionId);
@@ -158,10 +169,14 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
               </Pressable>
               <ProgressMenu item={item} />
             </View>
-            {remaining > 0 ? <Text variant="caption">{formatDuration(remaining)} left</Text> : null}
+            {remaining > 0 ? (
+              <Text variant="caption">
+                {t('library.progressCard.timeLeft', { duration: formatDuration(remaining) })}
+              </Text>
+            ) : null}
           </View>
         ) : (
-          <Text variant="caption">Finished</Text>
+          <Text variant="caption">{t('library.progressCard.finished')}</Text>
         )
       }
     />

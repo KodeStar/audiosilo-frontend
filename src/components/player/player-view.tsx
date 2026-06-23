@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
@@ -39,6 +40,7 @@ import { colors } from '@/theme/tokens';
  * history, notes, speed, sleep) and where new ones should be added.
  */
 export function PlayerView({ onClose }: { onClose?: () => void }) {
+  const { t } = useTranslation();
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
   const api = useApi();
@@ -104,15 +106,16 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const segRemaining = Math.max(0, segLength - segElapsed);
   const bookLeft = Math.max(0, total - bookPosition) / (rate > 0 ? rate : 1);
   const centerLabel = perTrack
-    ? `File ${trackIndex + 1} of ${queue.tracks.length}`
-    : `${formatClock(bookLeft)} left (${rateLabel})`;
+    ? t('player.controls.fileOf', { current: trackIndex + 1, total: queue.tracks.length })
+    : t('player.controls.timeLeft', { time: formatClock(bookLeft), rate: rateLabel });
   const onSeek = (p: number) => (perTrack ? void seekInTrack(p) : void seekBook(segStart + p));
 
   // Title line: the current chapter, else the current file's name.
   const track = queue.tracks[trackIndex];
   const trackName = track ? pathLeaf(track.id.split(':').slice(1).join(':')) || title : title;
   const segTitle = currentChapter
-    ? currentChapter.title || `Chapter ${currentChapter.index + 1}`
+    ? currentChapter.title ||
+      t('player.chapters.chapterNumber', { number: currentChapter.index + 1 })
     : trackName;
 
   // Prev/next: per file when there's no timeline, else by chapter/file boundary.
@@ -136,13 +139,15 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   // Tapping the chapter title opens a list of all chapters (or files, when the
   // book has no chapters), scrolled to the current one.
   const chapterItems: ChapterItem[] = perTrack
-    ? queue.tracks.map((t, i) => ({
+    ? queue.tracks.map((track, i) => ({
         key: `t${i}`,
-        label: pathLeaf(t.id.split(':').slice(1).join(':')) || `File ${i + 1}`,
+        label:
+          pathLeaf(track.id.split(':').slice(1).join(':')) ||
+          t('player.controls.fileNumber', { number: i + 1 }),
       }))
     : queue.chapters.map((c) => ({
         key: `c${c.index}`,
-        label: c.title || `Chapter ${c.index + 1}`,
+        label: c.title || t('player.chapters.chapterNumber', { number: c.index + 1 }),
         sublabel: formatClock(c.book_offset),
       }));
   const chapterCurrentIndex = perTrack ? trackIndex : (currentChapter?.index ?? 0);
@@ -238,7 +243,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                   hitSlop={8}
                   className="flex-1 flex-row items-center justify-center gap-1.5 px-2 active:opacity-60"
                   accessibilityRole="button"
-                  accessibilityLabel="Show chapters"
+                  accessibilityLabel={t('player.controls.showChapters')}
                 >
                   <Text variant="subtitle" className="text-center" numberOfLines={1}>
                     {segTitle}
@@ -284,6 +289,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                     color={'#9ca3af4d'}
                   />
                   <View className="absolute inset-0 items-center justify-center">
+                    {/* eslint-disable-next-line i18next/no-literal-string -- universal "Ns" skip label */}
                     <Text variant="subtitle">-{skipBackward}s</Text>
                   </View>
                 </View>
@@ -330,6 +336,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                     color={'#9ca3af4d'}
                   />
                   <View className="absolute inset-0 items-center justify-center">
+                    {/* eslint-disable-next-line i18next/no-literal-string -- universal "Ns" skip label */}
                     <Text variant="subtitle">+{skipForward}s</Text>
                   </View>
                 </View>
@@ -362,18 +369,22 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 <BookmarksSection
                   libraryId={libraryId}
                   path={path}
-                  emptyLabel="No bookmarks yet."
+                  emptyLabel={t('player.bookmarks.empty')}
                   onAdd={onAddBookmark}
                   adding={addBookmark.isPending}
                   addLabel={
                     savedBookmark
-                      ? 'Bookmark saved'
-                      : `Add bookmark at ${formatClock(bookPosition)}`
+                      ? t('player.bookmarks.saved')
+                      : t('player.bookmarks.addAt', { time: formatClock(bookPosition) })
                   }
                 />
               ) : null}
               {sheet === 'history' ? (
-                <HistorySection libraryId={libraryId} path={path} emptyLabel="No history yet." />
+                <HistorySection
+                  libraryId={libraryId}
+                  path={path}
+                  emptyLabel={t('player.history.empty')}
+                />
               ) : null}
               {sheet === 'notes' ? <NotesSection libraryId={libraryId} path={path} /> : null}
             </ScrollView>
@@ -393,7 +404,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
 
       {sheet === 'chapters' ? (
         <ChapterListSheet
-          title={perTrack ? 'Files' : 'Chapters'}
+          title={perTrack ? t('player.chapters.filesTitle') : t('player.chapters.chaptersTitle')}
           items={chapterItems}
           currentIndex={chapterCurrentIndex}
           onSelect={onSelectChapter}

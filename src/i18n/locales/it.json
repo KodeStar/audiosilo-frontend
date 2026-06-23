@@ -69,5 +69,260 @@
       "confirm": "Sostituiscilo"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Server",
+      "remove": "Rimuovi {{name}}",
+      "add": "Aggiungi un server"
+    },
+    "recoveryModal": {
+      "title": "Codice di recupero",
+      "description": "Conservalo in un luogo sicuro. Inseriscilo nella schermata di connessione per accedere di nuovo su qualsiasi dispositivo. Non verrà mostrato di nuovo.",
+      "share": "Condividi"
+    },
+    "signOut": {
+      "title": "Disconnettersi?",
+      "warning": "Non hai impostato alcuna password né codice di recupero. Senza uno dei due, ti servirà un nuovo invito dal tuo amministratore per accedere di nuovo a questo server.",
+      "setRecovery": "Imposta un codice di recupero",
+      "confirm": "Disconnetti comunque"
+    },
+    "recovery": {
+      "generateError": "Impossibile generare un codice di recupero."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Connettiti al tuo server di audiolibri",
+      "connecting": "Connessione del dispositivo in corso…",
+      "addressLabel": "Indirizzo del server",
+      "connect": "Connetti",
+      "enterAddress": "Inserisci l'indirizzo del tuo server",
+      "missingAddress": "A questo link di abbinamento manca l'indirizzo del server. Inseriscilo qui sotto.",
+      "pairingFailed": "Abbinamento non riuscito: {{message}}. Il codice potrebbe essere scaduto: richiedi un nuovo invito.",
+      "pairingReachError": "Impossibile raggiungere il server per completare l'abbinamento.",
+      "serverError": "Il server ha risposto con un errore: {{message}}",
+      "reachError": "Impossibile raggiungere quel server. Controlla l'indirizzo e che sia online.",
+      "demoError": "Impossibile avviare la demo: {{message}}",
+      "demoReachError": "Impossibile raggiungere il server demo.",
+      "demoDivider": "server demo",
+      "demoIntro": "Questo server offre una demo per ospiti, senza bisogno di un account.",
+      "tryDemo": "Prova la demo",
+      "signInInstead": "Accedi invece",
+      "or": "oppure",
+      "scanQr": "Scansiona codice QR"
+    },
+    "signIn": {
+      "title": "Accedi",
+      "mode": {
+        "code": "Codice",
+        "password": "Password"
+      },
+      "codeLabel": "Codice di invito o di recupero",
+      "codePlaceholder": "Inserisci il tuo codice di invito o di recupero",
+      "usernameLabel": "Nome utente",
+      "usernamePlaceholder": "Nome utente",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Password",
+      "connect": "Connetti",
+      "submit": "Accedi",
+      "failed": "Accesso non riuscito. Riprova."
+    },
+    "scan": {
+      "closeLabel": "Chiudi lo scanner",
+      "invalidCode": "Quel codice QR non è un codice di abbinamento AudioSilo.",
+      "permissionTitle": "Accesso alla fotocamera necessario",
+      "permissionMessage": "Consenti l'accesso alla fotocamera per scansionare il codice QR di abbinamento del tuo server.",
+      "allowCamera": "Consenti la fotocamera",
+      "openSettings": "Apri le impostazioni",
+      "aimHint": "Inquadra con la fotocamera il codice QR di abbinamento nella pagina di connessione del tuo server."
+    }
+  },
+  "home": {
+    "continueListening": "Continua ad ascoltare",
+    "favourites": "Preferiti",
+    "recentlyAdded": "Aggiunti di recente",
+    "recentlyFinished": "Terminati di recente",
+    "viewMore": "Mostra altro",
+    "seeAll": "Mostra tutto",
+    "collapse": "Comprimi",
+    "added": "Aggiunto {{when}}",
+    "progressError": "Impossibile caricare i tuoi progressi.",
+    "continueEmpty": "Inizia un libro e apparirà qui.",
+    "recentError": "Impossibile caricare i nuovi libri."
+  },
+  "library": {
+    "browse": {
+      "fallbackName": "Libreria",
+      "empty": "Questa cartella è vuota.",
+      "noMatches": "Nessuna corrispondenza in questa cartella.",
+      "filterPlaceholder": "Filtra questa cartella…",
+      "openError": "Impossibile aprire questa cartella.",
+      "jumpTo": "Vai a {{letter}}",
+      "backToTop": "Torna su"
+    },
+    "bookRow": {
+      "alsoOn": "Anche su {{servers}}",
+      "alsoIn": "Anche in {{libraries}}"
+    },
+    "entryRow": {
+      "duration": "Durata: {{value}}",
+      "bitrate": "Bitrate: {{value}}"
+    },
+    "progressCard": {
+      "markFinished": "Segna come finito",
+      "moreInSeries": "Altro della serie",
+      "timeLeft": "{{duration}} rimanenti",
+      "finished": "Finito"
+    },
+    "searchResults": {
+      "failed": "Ricerca non riuscita.",
+      "noResults": "Nessun risultato per «{{query}}»."
+    },
+    "notes": {
+      "title": "Note",
+      "placeholder": "Aggiungi una nota (markdown supportato)…",
+      "add": "Aggiungi nota"
+    },
+    "history": {
+      "title": "Cronologia"
+    },
+    "bookmarks": {
+      "title": "Segnalibri",
+      "add": "Aggiungi segnalibro"
+    },
+    "versions": {
+      "choose": "Scegli una versione",
+      "thisCopy": "Questa copia",
+      "otherCount_one": "{{count}} altra versione",
+      "otherCount_other": "{{count}} altre versioni",
+      "multiFile": "più file",
+      "singleFile": "file singolo"
+    },
+    "favourite": {
+      "remove": "Rimuovi dai preferiti",
+      "add": "Aggiungi ai preferiti"
+    },
+    "bookStats": {
+      "favourite": "Preferito",
+      "audio": "Audio",
+      "length": "durata"
+    },
+    "download": {
+      "unavailable": "Download non disponibili",
+      "delete": "Elimina download",
+      "cancel": "Annulla download",
+      "retry": "Riprova download",
+      "download": "Scarica",
+      "downloaded": "Scaricato",
+      "queued": "In coda…",
+      "downloading": "Download {{percent}} %"
+    },
+    "list": {
+      "title": "Libreria",
+      "recentlyAdded": "Aggiunti di recente",
+      "recentlyFinished": "Finiti di recente",
+      "added": "Aggiunto {{when}}",
+      "loadError": "Impossibile caricare.",
+      "noBooks": "Ancora nessun libro.",
+      "noFinished": "Ancora nessun libro finito.",
+      "loadLibrariesError": "Impossibile caricare le librerie.",
+      "noLibraries": "Nessuna libreria è ancora condivisa con il tuo account."
+    },
+    "favourites": {
+      "title": "Preferiti",
+      "emptyHint": "Tocca il cuore su un elemento per organizzarlo",
+      "itemCount_one": "{{count}} elemento",
+      "itemCount_other": "{{count}} elementi",
+      "empty": "Tocca il cuore su una cartella o un libro per aggiungerlo qui."
+    }
+  },
+  "downloads": {
+    "title": "Download",
+    "storageUsed": "{{size}} usati",
+    "downloaded": "Scaricato",
+    "failed": "Download non riuscito",
+    "unsupported": "I download offline non sono disponibili in questo browser. Usa l'app installata o una connessione sicura (https).",
+    "empty": "Scarica un libro dalla sua schermata dei dettagli per ascoltarlo offline."
+  },
+  "search": {
+    "placeholder": "Cerca titoli, autori, serie…",
+    "prompt": "Cerca titoli, autori e serie.",
+    "failed": "Ricerca non riuscita.",
+    "noResults": "Nessun risultato per «{{query}}»."
+  },
+  "book": {
+    "loadError": "Impossibile caricare questo libro.",
+    "libraryFallback": "Libreria",
+    "chaptersTitle": "Capitoli",
+    "filesTitle": "File",
+    "chapterFallback": "Capitolo {{number}}",
+    "duration": "Durata: {{value}}",
+    "bitrate": "Bitrate: {{value}}",
+    "byAuthor": "Di {{author}}",
+    "narratedBy": "Narrato da {{narrator}}",
+    "listen": "Ascolta"
+  },
+  "player": {
+    "controls": {
+      "fileOf": "File {{current}} di {{total}}",
+      "fileNumber": "File {{number}}",
+      "timeLeft": "{{time}} rimanente ({{rate}})",
+      "showChapters": "Mostra capitoli"
+    },
+    "chapters": {
+      "chaptersTitle": "Capitoli",
+      "filesTitle": "File",
+      "chapterNumber": "Capitolo {{number}}"
+    },
+    "bookmarks": {
+      "empty": "Ancora nessun segnalibro.",
+      "saved": "Segnalibro salvato",
+      "addAt": "Aggiungi segnalibro a {{time}}"
+    },
+    "history": {
+      "empty": "Ancora nessuna cronologia."
+    },
+    "sleepTimer": {
+      "title": "Timer di spegnimento",
+      "running": "Timer in corso",
+      "timeSection": "Tempo",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "endOfChapterSection": "Fine del capitolo",
+      "endOf": "Fine di {{chapter}}",
+      "current": " (attuale)",
+      "endOfBook": "Fine del libro",
+      "noChapters": "Nessun capitolo disponibile.",
+      "cancel": "Annulla timer"
+    },
+    "speed": {
+      "title": "Velocità di riproduzione"
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "library": "Libreria",
+    "search": "Cerca",
+    "downloads": "Download",
+    "settings": "Impostazioni",
+    "logout": "Esci",
+    "offline": "Offline — le modifiche si sincronizzano alla riconnessione",
+    "searchPlaceholder": "Cerca…"
+  },
+  "ui": {
+    "error": "Qualcosa è andato storto."
+  },
+  "demo": {
+    "title": "Demo di AudioSilo",
+    "intro": "Una demo dal vivo, in sola lettura, con audiolibri di pubblico dominio di LibriVox.",
+    "webOnly": "La demo è disponibile sul web all'indirizzo demo.audiosilo.app.",
+    "startError": "Impossibile avviare la demo: {{message}}",
+    "reachError": "Impossibile raggiungere il server della demo. Riprova.",
+    "tryAgain": "Riprova",
+    "settingUp": "Stiamo preparando la tua demo…",
+    "qrLabel": "Codice QR per aprire la demo nell'app",
+    "scanHint": "Scansiona con il telefono per continuare nell'app AudioSilo, oppure continua a esplorare in questo browser.",
+    "browseHere": "Esplora la demo qui"
   }
 }

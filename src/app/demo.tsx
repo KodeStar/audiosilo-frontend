@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -21,6 +22,7 @@ import { useSession } from '@/stores/session';
  * a QR so the visitor can continue in the app on their phone as the same user.
  */
 export default function DemoScreen() {
+  const { t } = useTranslation();
   const status = useSession((s) => s.status);
   const setSession = useSession((s) => s.setSession);
   const [pairing, setPairing] = useState<PairingPayload | null>(null);
@@ -36,7 +38,7 @@ export default function DemoScreen() {
     (async () => {
       const base = webOrigin();
       if (!base) {
-        setError('The demo is available on the web at demo.audiosilo.app.');
+        setError(t('demo.webOnly'));
         return;
       }
       setError(null);
@@ -49,15 +51,15 @@ export default function DemoScreen() {
         if (cancelled) return;
         setError(
           e instanceof ApiError
-            ? `Could not start the demo: ${e.message}`
-            : 'Could not reach the demo server. Please try again.',
+            ? t('demo.startError', { message: e.message })
+            : t('demo.reachError'),
         );
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [status, attempt, setSession]);
+  }, [status, attempt, setSession, t]);
 
   if (status === 'loading') {
     return (
@@ -76,21 +78,21 @@ export default function DemoScreen() {
       <ScrollView contentContainerClassName="flex-grow items-center justify-center gap-8 p-6">
         <View className="items-center gap-3">
           <Logo size={64} />
-          <Text className="font-roboto-bold text-3xl text-primary">AudioSilo demo</Text>
+          <Text className="font-roboto-bold text-3xl text-primary">{t('demo.title')}</Text>
           <Text variant="muted" className="text-center">
-            A live, read-only demo with public-domain LibriVox audiobooks.
+            {t('demo.intro')}
           </Text>
         </View>
 
         {error ? (
           <View className="items-center gap-4">
             <Text className="text-center text-sm text-red-500">{error}</Text>
-            <Button title="Try again" onPress={() => setAttempt((n) => n + 1)} />
+            <Button title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
           </View>
         ) : !pairing ? (
           <View className="items-center gap-4">
             <Spinner size="large" />
-            <Text variant="muted">Setting up your demo…</Text>
+            <Text variant="muted">{t('demo.settingUp')}</Text>
           </View>
         ) : (
           <View className="w-full max-w-sm items-center gap-6">
@@ -99,15 +101,14 @@ export default function DemoScreen() {
                 source={{ uri: pairing.qr_png_data_uri }}
                 style={{ width: 220, height: 220 }}
                 contentFit="contain"
-                accessibilityLabel="QR code to open the demo in the app"
+                accessibilityLabel={t('demo.qrLabel')}
               />
             </View>
             <Text variant="muted" className="text-center">
-              Scan with your phone to continue in the AudioSilo app, or keep exploring in this
-              browser.
+              {t('demo.scanHint')}
             </Text>
             <Button
-              title="Browse the demo here"
+              title={t('demo.browseHere')}
               icon="play"
               className="w-full"
               onPress={() => router.replace('/')}

@@ -1,5 +1,6 @@
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -13,15 +14,18 @@ import { useSession } from '@/stores/session';
 
 type Mode = 'code' | 'password';
 
-const MODES: { value: Mode; label: string }[] = [
-  { value: 'code', label: 'Code' },
-  { value: 'password', label: 'Password' },
-];
+const MODE_VALUES: Mode[] = ['code', 'password'];
 
 export default function SignInScreen() {
+  const { t } = useTranslation();
   const pendingServerUrl = useSession((s) => s.pendingServerUrl);
   const setSession = useSession((s) => s.setSession);
   const { serverName } = useLocalSearchParams<{ serverName?: string }>();
+
+  const modes: { value: Mode; label: string }[] = MODE_VALUES.map((value) => ({
+    value,
+    label: t(`connect.signIn.mode.${value}`),
+  }));
 
   const [mode, setMode] = useState<Mode>('code');
   const [code, setCode] = useState('');
@@ -60,7 +64,7 @@ export default function SignInScreen() {
         await finish(session);
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Sign in failed. Please try again.');
+      setError(e instanceof ApiError ? e.message : t('connect.signIn.failed'));
     } finally {
       setLoading(false);
     }
@@ -73,12 +77,12 @@ export default function SignInScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View className="items-center gap-1">
-          <Text variant="heading">Sign in</Text>
+          <Text variant="heading">{t('connect.signIn.title')}</Text>
           {serverName ? <Text variant="muted">{serverName}</Text> : null}
         </View>
 
         <View className="flex-row gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-840">
-          {MODES.map((m) => {
+          {modes.map((m) => {
             const active = mode === m.value;
             return (
               <Pressable
@@ -101,8 +105,8 @@ export default function SignInScreen() {
 
         {mode === 'code' ? (
           <TextField
-            label="Invite or recovery code"
-            placeholder="Enter your invite or recovery code"
+            label={t('connect.signIn.codeLabel')}
+            placeholder={t('connect.signIn.codePlaceholder')}
             value={code}
             onChangeText={setCode}
             autoCapitalize="characters"
@@ -113,8 +117,8 @@ export default function SignInScreen() {
         ) : (
           <View>
             <TextField
-              label="Username"
-              placeholder="Username"
+              label={t('connect.signIn.usernameLabel')}
+              placeholder={t('connect.signIn.usernamePlaceholder')}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
@@ -122,8 +126,8 @@ export default function SignInScreen() {
               textContentType="username"
             />
             <TextField
-              label="Password"
-              placeholder="Password"
+              label={t('connect.signIn.passwordLabel')}
+              placeholder={t('connect.signIn.passwordPlaceholder')}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -137,7 +141,7 @@ export default function SignInScreen() {
         {error ? <Text className="text-sm text-red-500">{error}</Text> : null}
 
         <Button
-          title={mode === 'code' ? 'Connect' : 'Sign in'}
+          title={mode === 'code' ? t('connect.signIn.connect') : t('connect.signIn.submit')}
           loading={loading}
           onPress={onSubmit}
         />

@@ -1,6 +1,7 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -13,10 +14,11 @@ import { parsePairingScan } from '@/lib/pairing';
 import { colors } from '@/theme/tokens';
 
 function CloseControl() {
+  const { t } = useTranslation();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Close scanner"
+      accessibilityLabel={t('connect.scan.closeLabel')}
       onPress={() => router.back()}
       className="absolute left-4 top-4 z-10 h-10 w-10 items-center justify-center rounded-full bg-black/50 active:opacity-70"
     >
@@ -26,6 +28,7 @@ function CloseControl() {
 }
 
 export default function ScanScreen() {
+  const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
   const [error, setError] = useState<string | null>(null);
   // Guards against the camera firing onBarcodeScanned repeatedly for the same frame.
@@ -36,7 +39,7 @@ export default function ScanScreen() {
     handling.current = true;
     const parsed = parsePairingScan(data);
     if (!parsed) {
-      setError("That QR code isn't an AudioSilo pairing code.");
+      setError(t('connect.scan.invalidCode'));
       // Let the user re-aim at a different code after a beat.
       setTimeout(() => {
         handling.current = false;
@@ -64,16 +67,20 @@ export default function ScanScreen() {
         <View className="flex-1 items-center justify-center gap-4 p-8">
           <Icon name="qrcode" size={48} color={colors.primary} />
           <Text variant="title" className="text-center">
-            Camera access needed
+            {t('connect.scan.permissionTitle')}
           </Text>
           <Text variant="muted" className="text-center">
-            Allow camera access to scan your server&apos;s pairing QR code.
+            {t('connect.scan.permissionMessage')}
           </Text>
           {permission.canAskAgain ? (
-            <Button title="Allow camera" icon="qrcode" onPress={requestPermission} />
+            <Button
+              title={t('connect.scan.allowCamera')}
+              icon="qrcode"
+              onPress={requestPermission}
+            />
           ) : (
             <Button
-              title="Open settings"
+              title={t('connect.scan.openSettings')}
               variant="secondary"
               onPress={() => Linking.openSettings()}
             />
@@ -99,7 +106,7 @@ export default function ScanScreen() {
               error ? 'bg-red-600/80' : 'bg-black/60'
             }`}
           >
-            {error ?? "Point your camera at the pairing QR on your server's connect page."}
+            {error ?? t('connect.scan.aimHint')}
           </Text>
         </View>
       </SafeAreaView>

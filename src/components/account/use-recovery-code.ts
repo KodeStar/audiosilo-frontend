@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 
 import { ApiError } from '@/api/client';
 import { useOptionalApi } from '@/api/provider';
+import i18n from '@/i18n';
 import { useSession } from '@/stores/session';
 
 /**
@@ -36,7 +37,7 @@ export function useRecoveryCode() {
         // the code was minted regardless; a stale flag is harmless
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not generate a recovery code.');
+      setError(e instanceof ApiError ? e.message : i18n.t('account.recovery.generateError'));
     } finally {
       setBusy(false);
     }

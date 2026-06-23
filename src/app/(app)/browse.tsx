@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { type ReactElement, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, useWindowDimensions, View } from 'react-native';
 
 import { useAllProgressAll, useRecentAll, type MergedBook } from '@/api/hooks';
@@ -18,9 +19,9 @@ const PAGE_LIMIT = 200;
 
 type BrowseType = 'recent' | 'finished';
 
-const TYPES: { key: BrowseType; label: string }[] = [
-  { key: 'recent', label: 'Recently added' },
-  { key: 'finished', label: 'Recently finished' },
+const TYPES: { key: BrowseType; labelKey: 'recentlyAdded' | 'recentlyFinished' }[] = [
+  { key: 'recent', labelKey: 'recentlyAdded' },
+  { key: 'finished', labelKey: 'recentlyFinished' },
 ];
 
 const bookKey = (b: MergedBook) => `${b.connectionId}:${b.library_id}:${b.rel_path}`;
@@ -33,6 +34,7 @@ function TypeSelector({
   value: BrowseType;
   onChange: (t: BrowseType) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View className="flex-row self-start rounded-xl bg-gray-100 p-1 dark:bg-gray-840">
       {TYPES.map((o) => {
@@ -50,7 +52,7 @@ function TypeSelector({
                 active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-300'
               }`}
             >
-              {o.label}
+              {t(`library.list.${o.labelKey}`)}
             </Text>
           </Pressable>
         );
@@ -60,6 +62,7 @@ function TypeSelector({
 }
 
 export default function BrowseScreen() {
+  const { t } = useTranslation();
   // The active type is driven by the URL param, so a fresh "View more" tap (which
   // updates the param) switches the list without any mirrored state.
   const params = useLocalSearchParams<{ type?: string }>();
@@ -93,7 +96,11 @@ export default function BrowseScreen() {
         author={b.author}
         connectionId={b.connectionId}
         width={w}
-        footer={added ? <Text variant="caption">Added {added}</Text> : undefined}
+        footer={
+          added ? (
+            <Text variant="caption">{t('library.list.added', { when: added })}</Text>
+          ) : undefined
+        }
       />
     );
   };
@@ -107,9 +114,11 @@ export default function BrowseScreen() {
   const empty = loading ? (
     <Spinner center />
   ) : error && isEmpty ? (
-    <ErrorNote message="Could not load." />
+    <ErrorNote message={t('library.list.loadError')} />
   ) : (
-    <EmptyNote message={type === 'recent' ? 'No books yet.' : 'No finished books yet.'} />
+    <EmptyNote
+      message={type === 'recent' ? t('library.list.noBooks') : t('library.list.noFinished')}
+    />
   );
 
   return (

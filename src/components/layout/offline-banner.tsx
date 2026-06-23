@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useReachability } from '@/api/reachability';
@@ -11,12 +12,13 @@ import { colors } from '@/theme/tokens';
  * saved locally and syncs automatically when the server comes back.
  */
 export function OfflineBanner() {
+  const { t } = useTranslation();
   const online = useReachability((s) => s.online);
   if (online) return null;
   return (
     <View className="flex-row items-center justify-center gap-2 bg-gray-300 py-1.5 dark:bg-gray-840">
       <Icon name="offline" size={13} color={colors.dark.textMuted} />
-      <Text variant="caption">Offline — changes sync when reconnected</Text>
+      <Text variant="caption">{t('nav.offline')}</Text>
     </View>
   );
 }

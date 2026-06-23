@@ -69,5 +69,260 @@
       "confirm": "Replace it"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Servers",
+      "remove": "Remove {{name}}",
+      "add": "Add a server"
+    },
+    "recoveryModal": {
+      "title": "Recovery code",
+      "description": "Save this somewhere safe. Enter it on the connect screen to sign back in on any device. It won’t be shown again.",
+      "share": "Share"
+    },
+    "signOut": {
+      "title": "Sign out?",
+      "warning": "You don’t have a password or recovery code set. Without one you’ll need a new invite from your admin to sign back in on this server.",
+      "setRecovery": "Set a recovery code",
+      "confirm": "Sign out anyway"
+    },
+    "recovery": {
+      "generateError": "Could not generate a recovery code."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Connect to your audiobook server",
+      "connecting": "Connecting your device…",
+      "addressLabel": "Server address",
+      "connect": "Connect",
+      "enterAddress": "Enter your server address",
+      "missingAddress": "This pairing link is missing its server address. Enter it below.",
+      "pairingFailed": "Pairing failed: {{message}}. The code may have expired — ask for a new invite.",
+      "pairingReachError": "Could not reach the server to finish pairing.",
+      "serverError": "Server responded with an error: {{message}}",
+      "reachError": "Could not reach that server. Check the address and that it is online.",
+      "demoError": "Could not start the demo: {{message}}",
+      "demoReachError": "Could not reach the demo server.",
+      "demoDivider": "demo server",
+      "demoIntro": "This server offers a guest demo — no account needed.",
+      "tryDemo": "Try the demo",
+      "signInInstead": "Sign in instead",
+      "or": "or",
+      "scanQr": "Scan QR code"
+    },
+    "signIn": {
+      "title": "Sign in",
+      "mode": {
+        "code": "Code",
+        "password": "Password"
+      },
+      "codeLabel": "Invite or recovery code",
+      "codePlaceholder": "Enter your invite or recovery code",
+      "usernameLabel": "Username",
+      "usernamePlaceholder": "Username",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Password",
+      "connect": "Connect",
+      "submit": "Sign in",
+      "failed": "Sign in failed. Please try again."
+    },
+    "scan": {
+      "closeLabel": "Close scanner",
+      "invalidCode": "That QR code isn't an AudioSilo pairing code.",
+      "permissionTitle": "Camera access needed",
+      "permissionMessage": "Allow camera access to scan your server's pairing QR code.",
+      "allowCamera": "Allow camera",
+      "openSettings": "Open settings",
+      "aimHint": "Point your camera at the pairing QR on your server's connect page."
+    }
+  },
+  "home": {
+    "continueListening": "Continue listening",
+    "favourites": "Favourites",
+    "recentlyAdded": "Recently added",
+    "recentlyFinished": "Recently finished",
+    "viewMore": "View more",
+    "seeAll": "See all",
+    "collapse": "Collapse",
+    "added": "Added {{when}}",
+    "progressError": "Could not load your progress.",
+    "continueEmpty": "Start a book and it will show up here.",
+    "recentError": "Could not load new books."
+  },
+  "library": {
+    "browse": {
+      "fallbackName": "Library",
+      "empty": "This folder is empty.",
+      "noMatches": "No matches in this folder.",
+      "filterPlaceholder": "Filter this folder…",
+      "openError": "Could not open this folder.",
+      "jumpTo": "Jump to {{letter}}",
+      "backToTop": "Back to top"
+    },
+    "bookRow": {
+      "alsoOn": "Also on {{servers}}",
+      "alsoIn": "Also in {{libraries}}"
+    },
+    "entryRow": {
+      "duration": "Duration: {{value}}",
+      "bitrate": "Bitrate: {{value}}"
+    },
+    "progressCard": {
+      "markFinished": "Mark as Finished",
+      "moreInSeries": "More in series",
+      "timeLeft": "{{duration}} left",
+      "finished": "Finished"
+    },
+    "searchResults": {
+      "failed": "Search failed.",
+      "noResults": "No results for “{{query}}”."
+    },
+    "notes": {
+      "title": "Notes",
+      "placeholder": "Add a note (markdown supported)…",
+      "add": "Add note"
+    },
+    "history": {
+      "title": "History"
+    },
+    "bookmarks": {
+      "title": "Bookmarks",
+      "add": "Add bookmark"
+    },
+    "versions": {
+      "choose": "Choose a version",
+      "thisCopy": "This copy",
+      "otherCount_one": "{{count}} other version",
+      "otherCount_other": "{{count}} other versions",
+      "multiFile": "multi-file",
+      "singleFile": "single file"
+    },
+    "favourite": {
+      "remove": "Remove from favourites",
+      "add": "Add to favourites"
+    },
+    "bookStats": {
+      "favourite": "Favourite",
+      "audio": "Audio",
+      "length": "length"
+    },
+    "download": {
+      "unavailable": "Downloads unavailable",
+      "delete": "Delete download",
+      "cancel": "Cancel download",
+      "retry": "Retry download",
+      "download": "Download",
+      "downloaded": "Downloaded",
+      "queued": "Queued…",
+      "downloading": "Downloading {{percent}}%"
+    },
+    "list": {
+      "title": "Library",
+      "recentlyAdded": "Recently added",
+      "recentlyFinished": "Recently finished",
+      "added": "Added {{when}}",
+      "loadError": "Could not load.",
+      "noBooks": "No books yet.",
+      "noFinished": "No finished books yet.",
+      "loadLibrariesError": "Could not load libraries.",
+      "noLibraries": "No libraries are shared with your account yet."
+    },
+    "favourites": {
+      "title": "Favourites",
+      "emptyHint": "Tap the heart on any item to curate",
+      "itemCount_one": "{{count}} item",
+      "itemCount_other": "{{count}} items",
+      "empty": "Tap the heart on a folder or book to add it here."
+    }
+  },
+  "downloads": {
+    "title": "Downloads",
+    "storageUsed": "{{size}} used",
+    "downloaded": "Downloaded",
+    "failed": "Download failed",
+    "unsupported": "Offline downloads aren't available in this browser. Use the installed app or a secure (https) connection.",
+    "empty": "Download a book from its detail screen to listen offline."
+  },
+  "search": {
+    "placeholder": "Search titles, authors, series…",
+    "prompt": "Search titles, authors, and series.",
+    "failed": "Search failed.",
+    "noResults": "No results for “{{query}}”."
+  },
+  "book": {
+    "loadError": "Could not load this book.",
+    "libraryFallback": "Library",
+    "chaptersTitle": "Chapters",
+    "filesTitle": "Files",
+    "chapterFallback": "Chapter {{number}}",
+    "duration": "Duration: {{value}}",
+    "bitrate": "Bitrate: {{value}}",
+    "byAuthor": "By {{author}}",
+    "narratedBy": "Narrated by {{narrator}}",
+    "listen": "Listen"
+  },
+  "player": {
+    "controls": {
+      "fileOf": "File {{current}} of {{total}}",
+      "fileNumber": "File {{number}}",
+      "timeLeft": "{{time}} left ({{rate}})",
+      "showChapters": "Show chapters"
+    },
+    "chapters": {
+      "chaptersTitle": "Chapters",
+      "filesTitle": "Files",
+      "chapterNumber": "Chapter {{number}}"
+    },
+    "bookmarks": {
+      "empty": "No bookmarks yet.",
+      "saved": "Bookmark saved",
+      "addAt": "Add bookmark at {{time}}"
+    },
+    "history": {
+      "empty": "No history yet."
+    },
+    "sleepTimer": {
+      "title": "Sleep timer",
+      "running": "Timer running",
+      "timeSection": "Time",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "endOfChapterSection": "End of chapter",
+      "endOf": "End of {{chapter}}",
+      "current": " (current)",
+      "endOfBook": "End of book",
+      "noChapters": "No chapters available.",
+      "cancel": "Cancel timer"
+    },
+    "speed": {
+      "title": "Playback speed"
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "library": "Library",
+    "search": "Search",
+    "downloads": "Downloads",
+    "settings": "Settings",
+    "logout": "Logout",
+    "offline": "Offline — changes sync when reconnected",
+    "searchPlaceholder": "Search…"
+  },
+  "ui": {
+    "error": "Something went wrong."
+  },
+  "demo": {
+    "title": "AudioSilo demo",
+    "intro": "A live, read-only demo with public-domain LibriVox audiobooks.",
+    "webOnly": "The demo is available on the web at demo.audiosilo.app.",
+    "startError": "Could not start the demo: {{message}}",
+    "reachError": "Could not reach the demo server. Please try again.",
+    "tryAgain": "Try again",
+    "settingUp": "Setting up your demo…",
+    "qrLabel": "QR code to open the demo in the app",
+    "scanHint": "Scan with your phone to continue in the AudioSilo app, or keep exploring in this browser.",
+    "browseHere": "Browse the demo here"
   }
 }

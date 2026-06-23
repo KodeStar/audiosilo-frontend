@@ -1,4 +1,5 @@
 import { Link } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
@@ -13,6 +14,7 @@ import { colors } from '@/theme/tokens';
 /** Favourites sits alongside the libraries as a special "shelf": a row that opens
  * the dedicated Favourites screen. Always shown so it stays discoverable. */
 function FavouritesShelfRow() {
+  const { t } = useTranslation();
   const { favourites } = useFavouritesAll();
   const count = favourites.length;
   return (
@@ -22,11 +24,11 @@ function FavouritesShelfRow() {
           <Icon name="heart-solid" size={20} color={colors.white} />
         </View>
         <View className="flex-1 px-5 py-2">
-          <Text variant="subtitle">Favourites</Text>
+          <Text variant="subtitle">{t('library.favourites.title')}</Text>
           <Text variant="muted">
             {count === 0
-              ? 'Tap the heart on any item to curate'
-              : `${count} item${count === 1 ? '' : 's'}`}
+              ? t('library.favourites.emptyHint')
+              : t('library.favourites.itemCount', { count })}
           </Text>
         </View>
         <Icon name="chevron-right" size={16} className="mr-4" />
@@ -36,6 +38,7 @@ function FavouritesShelfRow() {
 }
 
 export default function LibrariesScreen() {
+  const { t } = useTranslation();
   const { libraries, isLoading, error } = useLibrariesAll();
   const { openLibrary } = useOpen();
   const paddingBottom = useMiniPlayerInset();
@@ -59,11 +62,11 @@ export default function LibrariesScreen() {
       contentContainerStyle={{ paddingBottom }}
     >
       <Text variant="heading" className="mb-1">
-        Library
+        {t('library.list.title')}
       </Text>
 
       {isLoading ? <Spinner center /> : null}
-      {error ? <ErrorNote message="Could not load libraries." /> : null}
+      {error ? <ErrorNote message={t('library.list.loadLibrariesError')} /> : null}
 
       <FavouritesShelfRow />
 
@@ -94,7 +97,7 @@ export default function LibrariesScreen() {
       ))}
 
       {libraries.length === 0 && !isLoading ? (
-        <EmptyNote message="No libraries are shared with your account yet." />
+        <EmptyNote message={t('library.list.noLibraries')} />
       ) : null}
     </ScrollView>
   );

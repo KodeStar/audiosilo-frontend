@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
 import { SearchResults } from '@/components/library/search-results';
@@ -10,6 +11,7 @@ import { colors } from '@/theme/tokens';
  * overlay in place (no route change). It lives in the content column, so it
  * sits above the page (e.g. the breadcrumbs) and never spans the player panel. */
 function DesktopSearch() {
+  const { t } = useTranslation();
   const query = useSearchStore((s) => s.query);
   const setQuery = useSearchStore((s) => s.setQuery);
   return (
@@ -20,7 +22,7 @@ function DesktopSearch() {
       <TextInput
         value={query}
         onChangeText={setQuery}
-        placeholder="Search…"
+        placeholder={t('nav.searchPlaceholder')}
         placeholderTextColor="#9ca3af"
         autoCapitalize="none"
         autoCorrect={false}

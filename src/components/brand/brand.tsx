@@ -29,6 +29,7 @@ export function Brand({
           <RNText className="font-roboto-bold text-gray-500 dark:text-gray-300">SILO</RNText>
         </RNText>
         {showVersion ? (
+          // eslint-disable-next-line i18next/no-literal-string -- "v" is universal version notation
           <Text variant="caption">v{version ?? Constants.expoConfig?.version ?? '1.0.0'}</Text>
         ) : null}
       </View>

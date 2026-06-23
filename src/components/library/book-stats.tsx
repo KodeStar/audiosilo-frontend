@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useFavourites, useToggleFavourite } from '@/api/hooks';
@@ -46,6 +47,7 @@ export function BookStats({
   path: string;
   book: Book;
 }) {
+  const { t } = useTranslation();
   const { data: favourites } = useFavourites();
   const toggleFavourite = useToggleFavourite();
   const isFavourite = !!favourites?.some((f) => f.library_id === libraryId && f.path === path);
@@ -55,7 +57,9 @@ export function BookStats({
       <Pressable
         onPress={() => toggleFavourite.mutate({ libraryId, path, on: !isFavourite })}
         accessibilityRole="button"
-        accessibilityLabel={isFavourite ? 'Remove from favourites' : 'Add to favourites'}
+        accessibilityLabel={
+          isFavourite ? t('library.favourite.remove') : t('library.favourite.add')
+        }
         className="flex-1 items-center gap-1 px-2 active:opacity-60"
       >
         <View className={topSlot}>
@@ -65,14 +69,17 @@ export function BookStats({
             color={isFavourite ? colors.primary : undefined}
           />
         </View>
-        <Text variant="muted">Favourite</Text>
+        <Text variant="muted">{t('library.bookStats.favourite')}</Text>
       </Pressable>
 
       <Divider />
-      <Stat value={formatBytes(book.size)} label={book.format?.toUpperCase() || 'Audio'} />
+      <Stat
+        value={formatBytes(book.size)}
+        label={book.format?.toUpperCase() || t('library.bookStats.audio')}
+      />
 
       <Divider />
-      <Stat value={formatDuration(book.duration)} label="length" />
+      <Stat value={formatDuration(book.duration)} label={t('library.bookStats.length')} />
     </View>
   );
 }
