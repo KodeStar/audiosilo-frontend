@@ -236,5 +236,19 @@
       "itemCount_other": "{{count}} Einträge",
       "empty": "Tippe bei einem Ordner oder Buch auf das Herz, um es hier hinzuzufügen."
     }
+  },
+  "downloads": {
+    "title": "Downloads",
+    "storageUsed": "{{size}} belegt",
+    "downloaded": "Heruntergeladen",
+    "failed": "Download fehlgeschlagen",
+    "unsupported": "Offline-Downloads sind in diesem Browser nicht verfügbar. Verwende die installierte App oder eine sichere (https) Verbindung.",
+    "empty": "Lade ein Buch über seine Detailseite herunter, um es offline zu hören."
+  },
+  "search": {
+    "placeholder": "Titel, Autoren, Reihen suchen…",
+    "prompt": "Suche nach Titeln, Autoren und Reihen.",
+    "failed": "Suche fehlgeschlagen.",
+    "noResults": "Keine Ergebnisse für „{{query}}“."
   }
 }

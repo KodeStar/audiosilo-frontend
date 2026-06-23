@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useApi } from '@/api/provider';
@@ -15,6 +16,7 @@ import { formatBytes } from '@/lib/format';
 import { colors } from '@/theme/tokens';
 
 function DownloadRow({ entry }: { entry: DownloadEntry }) {
+  const { t } = useTranslation();
   const api = useApi();
   const remove = () => void useDownloads.getState().remove(entry.libraryId, entry.path);
   const coverSource = entry.manifest.coverUri
@@ -39,10 +41,10 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
           </Text>
           {entry.status === 'downloaded' ? (
             <Text variant="caption">
-              {entry.totalBytes > 0 ? formatBytes(entry.totalBytes) : 'Downloaded'}
+              {entry.totalBytes > 0 ? formatBytes(entry.totalBytes) : t('downloads.downloaded')}
             </Text>
           ) : entry.status === 'error' ? (
-            <Text className="text-xs text-red-500">Download failed</Text>
+            <Text className="text-xs text-red-500">{t('downloads.failed')}</Text>
           ) : (
             <View className="h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
               <View
@@ -61,6 +63,7 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
 }
 
 export default function DownloadsScreen() {
+  const { t } = useTranslation();
   const entries = useDownloads((s) => s.entries);
   const supported = useDownloads((s) => s.supported);
   const paddingBottom = useMiniPlayerInset();
@@ -89,16 +92,18 @@ export default function DownloadsScreen() {
       contentContainerStyle={{ paddingBottom }}
     >
       <View className="flex-row items-center justify-between">
-        <Text variant="heading">Downloads</Text>
+        <Text variant="heading">{t('downloads.title')}</Text>
         {supported && totalBytes > 0 ? (
-          <Text variant="muted">{formatBytes(totalBytes)} used</Text>
+          <Text variant="muted">
+            {t('downloads.storageUsed', { size: formatBytes(totalBytes) })}
+          </Text>
         ) : null}
       </View>
 
       {!supported ? (
-        <EmptyNote message="Offline downloads aren't available in this browser. Use the installed app or a secure (https) connection." />
+        <EmptyNote message={t('downloads.unsupported')} />
       ) : list.length === 0 ? (
-        <EmptyNote message="Download a book from its detail screen to listen offline." />
+        <EmptyNote message={t('downloads.empty')} />
       ) : (
         list.map((entry) => <DownloadRow key={`${entry.libraryId}:${entry.path}`} entry={entry} />)
       )}

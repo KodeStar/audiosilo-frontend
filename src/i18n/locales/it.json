@@ -236,5 +236,19 @@
       "itemCount_other": "{{count}} elementi",
       "empty": "Tocca il cuore su una cartella o un libro per aggiungerlo qui."
     }
+  },
+  "downloads": {
+    "title": "Download",
+    "storageUsed": "{{size}} usati",
+    "downloaded": "Scaricato",
+    "failed": "Download non riuscito",
+    "unsupported": "I download offline non sono disponibili in questo browser. Usa l'app installata o una connessione sicura (https).",
+    "empty": "Scarica un libro dalla sua schermata dei dettagli per ascoltarlo offline."
+  },
+  "search": {
+    "placeholder": "Cerca titoli, autori, serie…",
+    "prompt": "Cerca titoli, autori e serie.",
+    "failed": "Ricerca non riuscita.",
+    "noResults": "Nessun risultato per «{{query}}»."
   }
 }

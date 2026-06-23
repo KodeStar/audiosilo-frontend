@@ -236,5 +236,19 @@
       "itemCount_other": "{{count}} elementos",
       "empty": "Toca el corazón en una carpeta o libro para añadirlo aquí."
     }
+  },
+  "downloads": {
+    "title": "Descargas",
+    "storageUsed": "{{size}} usados",
+    "downloaded": "Descargado",
+    "failed": "Error al descargar",
+    "unsupported": "Las descargas sin conexión no están disponibles en este navegador. Usa la aplicación instalada o una conexión segura (https).",
+    "empty": "Descarga un libro desde su pantalla de detalles para escucharlo sin conexión."
+  },
+  "search": {
+    "placeholder": "Busca títulos, autores, series…",
+    "prompt": "Busca títulos, autores y series.",
+    "failed": "La búsqueda falló.",
+    "noResults": "Sin resultados para «{{query}}»."
   }
 }

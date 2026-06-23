@@ -236,5 +236,19 @@
       "itemCount_other": "{{count}} items",
       "empty": "Tap the heart on a folder or book to add it here."
     }
+  },
+  "downloads": {
+    "title": "Downloads",
+    "storageUsed": "{{size}} used",
+    "downloaded": "Downloaded",
+    "failed": "Download failed",
+    "unsupported": "Offline downloads aren't available in this browser. Use the installed app or a secure (https) connection.",
+    "empty": "Download a book from its detail screen to listen offline."
+  },
+  "search": {
+    "placeholder": "Search titles, authors, series…",
+    "prompt": "Search titles, authors, and series.",
+    "failed": "Search failed.",
+    "noResults": "No results for “{{query}}”."
   }
 }
