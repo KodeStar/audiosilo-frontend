@@ -11,6 +11,7 @@ import { BookVersions } from '@/components/library/book-versions';
 import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ export default function BookDetailScreen() {
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
   const downloadEntry = useDownloadEntry(libraryId, path);
+  const paddingBottom = useMiniPlayerInset();
 
   if (isLoading) return <Spinner center />;
   // Render whenever we have book data — including a downloaded book served from
@@ -254,7 +256,11 @@ export default function BookDetailScreen() {
   }
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4">
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="gap-6 p-4"
+      contentContainerStyle={{ paddingBottom }}
+    >
       <BreadCrumbs crumbs={crumbs} />
 
       <BookVersions book={book} connectionId={activeConnectionId} />

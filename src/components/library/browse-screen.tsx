@@ -10,6 +10,7 @@ import {
 
 import { useBrowse, useLibraries } from '@/api/hooks';
 import { EntryRow } from '@/components/library/entry-row';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
@@ -37,6 +38,7 @@ export function BrowseScreen() {
 
   const { data: libraries } = useLibraries();
   const { data: listing, isLoading, error, refetch } = useBrowse(libraryId, path);
+  const paddingBottom = useMiniPlayerInset();
 
   // This screen unmounts on every navigation (see scroll-memory), so we restore
   // the last scroll offset ourselves rather than relying on the navigator.
@@ -93,6 +95,7 @@ export function BrowseScreen() {
         ref={scrollRef}
         className="flex-1"
         contentContainerClassName="p-4 lg:px-8"
+        contentContainerStyle={{ paddingBottom }}
         onScroll={onScroll}
         scrollEventThrottle={16}
         onContentSizeChange={onContentSizeChange}

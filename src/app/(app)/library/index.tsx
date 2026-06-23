@@ -2,6 +2,7 @@ import { Link } from 'expo-router';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
@@ -37,6 +38,7 @@ function FavouritesShelfRow() {
 export default function LibrariesScreen() {
   const { libraries, isLoading, error } = useLibrariesAll();
   const { openLibrary } = useOpen();
+  const paddingBottom = useMiniPlayerInset();
 
   // Group libraries by their server (connection), preserving connection order.
   const groups: { id: string; name: string; libs: SourcedLibrary[] }[] = [];
@@ -51,7 +53,11 @@ export default function LibrariesScreen() {
   const showServerHeaders = groups.length > 1;
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-0 p-4 lg:px-8">
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="gap-0 p-4 lg:px-8"
+      contentContainerStyle={{ paddingBottom }}
+    >
       <Text variant="heading" className="mb-1">
         Library
       </Text>

@@ -3,6 +3,7 @@ import { ScrollView, useWindowDimensions } from 'react-native';
 
 import { useSearchAll, useSourceLabeller } from '@/api/hooks';
 import { BookRow } from '@/components/library/book-row';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { TextField } from '@/components/ui/text-field';
@@ -25,11 +26,13 @@ export default function SearchScreen() {
 
   const { books, isFetching, error } = useSearchAll(debounced);
   const sourceOf = useSourceLabeller();
+  const paddingBottom = useMiniPlayerInset();
 
   return (
     <ScrollView
       className="flex-1"
       contentContainerClassName="gap-0 p-4 lg:px-8"
+      contentContainerStyle={{ paddingBottom }}
       keyboardShouldPersistTaps="handled"
     >
       {/* On desktop the always-visible top bar is the input; on phone we render one here. */}

@@ -11,6 +11,7 @@ import {
 } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { Grid, GRID_GAP, GridCard, gridColumns } from '@/components/library/poster-grid';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
@@ -190,6 +191,7 @@ export default function HomeScreen() {
   const { progress, isLoading, error } = useAllProgressAll();
   const { books: recent, isLoading: recentLoading, error: recentError } = useRecentAll();
   const { favourites } = useFavouritesAll();
+  const paddingBottom = useMiniPlayerInset();
 
   // Measure the content row so the grid columns track the available width (the
   // desktop sidebar means window width isn't the content width).
@@ -231,7 +233,11 @@ export default function HomeScreen() {
   const recentHasMore = recent.length > sectionInitial;
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="p-4 lg:px-8">
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="p-4 lg:px-8"
+      contentContainerStyle={{ paddingBottom }}
+    >
       <View className="gap-6" onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
         <SectionHeader
           title="Continue listening"

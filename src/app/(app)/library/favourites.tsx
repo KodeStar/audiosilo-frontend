@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/api/hooks';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
@@ -85,9 +86,14 @@ function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
  * across every connected server. Everything is a row here (no cover cards). */
 export default function FavouritesScreen() {
   const { favourites, isLoading } = useFavouritesAll();
+  const paddingBottom = useMiniPlayerInset();
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-0 p-4 lg:px-8">
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="gap-0 p-4 lg:px-8"
+      contentContainerStyle={{ paddingBottom }}
+    >
       <Text variant="heading" className="mb-1">
         Favourites
       </Text>
