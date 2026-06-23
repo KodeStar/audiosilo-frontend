@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -21,17 +22,20 @@ export function SignOutConfirm({
   onSignOut: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <ModalCard visible={visible} onRequestClose={onCancel}>
-      <Text variant="title">Sign out?</Text>
-      <Text variant="muted">
-        You don’t have a password or recovery code set. Without one you’ll need a new invite from
-        your admin to sign back in on this server.
-      </Text>
+      <Text variant="title">{t('account.signOut.title')}</Text>
+      <Text variant="muted">{t('account.signOut.warning')}</Text>
       <View className="gap-2">
-        <Button title="Set a recovery code" icon="qrcode" onPress={onSetRecovery} />
-        <Button title="Sign out anyway" variant="secondary" icon="logout" onPress={onSignOut} />
-        <Button title="Cancel" variant="ghost" onPress={onCancel} />
+        <Button title={t('account.signOut.setRecovery')} icon="qrcode" onPress={onSetRecovery} />
+        <Button
+          title={t('account.signOut.confirm')}
+          variant="secondary"
+          icon="logout"
+          onPress={onSignOut}
+        />
+        <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
       </View>
     </ModalCard>
   );

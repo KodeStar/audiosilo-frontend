@@ -69,5 +69,73 @@
       "confirm": "Replace it"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Servers",
+      "remove": "Remove {{name}}",
+      "add": "Add a server"
+    },
+    "recoveryModal": {
+      "title": "Recovery code",
+      "description": "Save this somewhere safe. Enter it on the connect screen to sign back in on any device. It won’t be shown again.",
+      "share": "Share"
+    },
+    "signOut": {
+      "title": "Sign out?",
+      "warning": "You don’t have a password or recovery code set. Without one you’ll need a new invite from your admin to sign back in on this server.",
+      "setRecovery": "Set a recovery code",
+      "confirm": "Sign out anyway"
+    },
+    "recovery": {
+      "generateError": "Could not generate a recovery code."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Connect to your audiobook server",
+      "connecting": "Connecting your device…",
+      "addressLabel": "Server address",
+      "connect": "Connect",
+      "enterAddress": "Enter your server address",
+      "missingAddress": "This pairing link is missing its server address. Enter it below.",
+      "pairingFailed": "Pairing failed: {{message}}. The code may have expired — ask for a new invite.",
+      "pairingReachError": "Could not reach the server to finish pairing.",
+      "serverError": "Server responded with an error: {{message}}",
+      "reachError": "Could not reach that server. Check the address and that it is online.",
+      "demoError": "Could not start the demo: {{message}}",
+      "demoReachError": "Could not reach the demo server.",
+      "demoDivider": "demo server",
+      "demoIntro": "This server offers a guest demo — no account needed.",
+      "tryDemo": "Try the demo",
+      "signInInstead": "Sign in instead",
+      "or": "or",
+      "scanQr": "Scan QR code"
+    },
+    "signIn": {
+      "title": "Sign in",
+      "mode": {
+        "code": "Code",
+        "password": "Password"
+      },
+      "codeLabel": "Invite or recovery code",
+      "codePlaceholder": "Enter your invite or recovery code",
+      "usernameLabel": "Username",
+      "usernamePlaceholder": "Username",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Password",
+      "connect": "Connect",
+      "submit": "Sign in",
+      "failed": "Sign in failed. Please try again."
+    },
+    "scan": {
+      "closeLabel": "Close scanner",
+      "invalidCode": "That QR code isn't an AudioSilo pairing code.",
+      "permissionTitle": "Camera access needed",
+      "permissionMessage": "Allow camera access to scan your server's pairing QR code.",
+      "allowCamera": "Allow camera",
+      "openSettings": "Open settings",
+      "aimHint": "Point your camera at the pairing QR on your server's connect page."
+    }
   }
 }

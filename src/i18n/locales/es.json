@@ -69,5 +69,73 @@
       "confirm": "Reemplazarlo"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Servidores",
+      "remove": "Eliminar {{name}}",
+      "add": "Añadir un servidor"
+    },
+    "recoveryModal": {
+      "title": "Código de recuperación",
+      "description": "Guárdalo en un lugar seguro. Introdúcelo en la pantalla de conexión para volver a iniciar sesión en cualquier dispositivo. No se mostrará de nuevo.",
+      "share": "Compartir"
+    },
+    "signOut": {
+      "title": "¿Cerrar sesión?",
+      "warning": "No tienes ninguna contraseña ni código de recuperación configurado. Sin uno de ellos, necesitarás una nueva invitación de tu administrador para volver a iniciar sesión en este servidor.",
+      "setRecovery": "Configurar un código de recuperación",
+      "confirm": "Cerrar sesión de todas formas"
+    },
+    "recovery": {
+      "generateError": "No se pudo generar un código de recuperación."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Conéctate a tu servidor de audiolibros",
+      "connecting": "Conectando tu dispositivo…",
+      "addressLabel": "Dirección del servidor",
+      "connect": "Conectar",
+      "enterAddress": "Introduce la dirección de tu servidor",
+      "missingAddress": "A este enlace de vinculación le falta la dirección del servidor. Introdúcela a continuación.",
+      "pairingFailed": "Error de vinculación: {{message}}. Es posible que el código haya caducado; solicita una nueva invitación.",
+      "pairingReachError": "No se pudo contactar con el servidor para completar la vinculación.",
+      "serverError": "El servidor respondió con un error: {{message}}",
+      "reachError": "No se pudo contactar con ese servidor. Comprueba la dirección y que esté en línea.",
+      "demoError": "No se pudo iniciar la demostración: {{message}}",
+      "demoReachError": "No se pudo contactar con el servidor de demostración.",
+      "demoDivider": "servidor de demostración",
+      "demoIntro": "Este servidor ofrece una demostración para invitados, sin necesidad de cuenta.",
+      "tryDemo": "Probar la demostración",
+      "signInInstead": "Iniciar sesión en su lugar",
+      "or": "o",
+      "scanQr": "Escanear código QR"
+    },
+    "signIn": {
+      "title": "Iniciar sesión",
+      "mode": {
+        "code": "Código",
+        "password": "Contraseña"
+      },
+      "codeLabel": "Código de invitación o recuperación",
+      "codePlaceholder": "Introduce tu código de invitación o recuperación",
+      "usernameLabel": "Nombre de usuario",
+      "usernamePlaceholder": "Nombre de usuario",
+      "passwordLabel": "Contraseña",
+      "passwordPlaceholder": "Contraseña",
+      "connect": "Conectar",
+      "submit": "Iniciar sesión",
+      "failed": "Error al iniciar sesión. Inténtalo de nuevo."
+    },
+    "scan": {
+      "closeLabel": "Cerrar el escáner",
+      "invalidCode": "Ese código QR no es un código de vinculación de AudioSilo.",
+      "permissionTitle": "Se necesita acceso a la cámara",
+      "permissionMessage": "Permite el acceso a la cámara para escanear el código QR de vinculación de tu servidor.",
+      "allowCamera": "Permitir la cámara",
+      "openSettings": "Abrir ajustes",
+      "aimHint": "Apunta la cámara al código QR de vinculación en la página de conexión de tu servidor."
+    }
   }
 }

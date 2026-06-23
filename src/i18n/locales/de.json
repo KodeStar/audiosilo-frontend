@@ -69,5 +69,73 @@
       "confirm": "Ersetzen"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Server",
+      "remove": "{{name}} entfernen",
+      "add": "Server hinzufügen"
+    },
+    "recoveryModal": {
+      "title": "Wiederherstellungscode",
+      "description": "Bewahre ihn an einem sicheren Ort auf. Gib ihn auf dem Verbindungsbildschirm ein, um dich auf einem beliebigen Gerät wieder anzumelden. Er wird nicht erneut angezeigt.",
+      "share": "Teilen"
+    },
+    "signOut": {
+      "title": "Abmelden?",
+      "warning": "Du hast weder ein Passwort noch einen Wiederherstellungscode festgelegt. Ohne eines davon brauchst du eine neue Einladung von deinem Administrator, um dich wieder bei diesem Server anzumelden.",
+      "setRecovery": "Wiederherstellungscode festlegen",
+      "confirm": "Trotzdem abmelden"
+    },
+    "recovery": {
+      "generateError": "Wiederherstellungscode konnte nicht generiert werden."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Mit deinem Hörbuch-Server verbinden",
+      "connecting": "Gerät wird verbunden…",
+      "addressLabel": "Serveradresse",
+      "connect": "Verbinden",
+      "enterAddress": "Gib deine Serveradresse ein",
+      "missingAddress": "Bei diesem Kopplungslink fehlt die Serveradresse. Gib sie unten ein.",
+      "pairingFailed": "Kopplung fehlgeschlagen: {{message}}. Der Code ist möglicherweise abgelaufen – fordere eine neue Einladung an.",
+      "pairingReachError": "Der Server konnte nicht erreicht werden, um die Kopplung abzuschließen.",
+      "serverError": "Der Server hat mit einem Fehler geantwortet: {{message}}",
+      "reachError": "Dieser Server konnte nicht erreicht werden. Überprüfe die Adresse und ob er online ist.",
+      "demoError": "Die Demo konnte nicht gestartet werden: {{message}}",
+      "demoReachError": "Der Demo-Server konnte nicht erreicht werden.",
+      "demoDivider": "Demo-Server",
+      "demoIntro": "Dieser Server bietet eine Gast-Demo – kein Konto erforderlich.",
+      "tryDemo": "Demo ausprobieren",
+      "signInInstead": "Stattdessen anmelden",
+      "or": "oder",
+      "scanQr": "QR-Code scannen"
+    },
+    "signIn": {
+      "title": "Anmelden",
+      "mode": {
+        "code": "Code",
+        "password": "Passwort"
+      },
+      "codeLabel": "Einladungs- oder Wiederherstellungscode",
+      "codePlaceholder": "Gib deinen Einladungs- oder Wiederherstellungscode ein",
+      "usernameLabel": "Benutzername",
+      "usernamePlaceholder": "Benutzername",
+      "passwordLabel": "Passwort",
+      "passwordPlaceholder": "Passwort",
+      "connect": "Verbinden",
+      "submit": "Anmelden",
+      "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut."
+    },
+    "scan": {
+      "closeLabel": "Scanner schließen",
+      "invalidCode": "Dieser QR-Code ist kein AudioSilo-Kopplungscode.",
+      "permissionTitle": "Kamerazugriff erforderlich",
+      "permissionMessage": "Erlaube den Kamerazugriff, um den Kopplungs-QR-Code deines Servers zu scannen.",
+      "allowCamera": "Kamera erlauben",
+      "openSettings": "Einstellungen öffnen",
+      "aimHint": "Richte deine Kamera auf den Kopplungs-QR-Code auf der Verbindungsseite deines Servers."
+    }
   }
 }

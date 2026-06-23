@@ -69,5 +69,73 @@
       "confirm": "Sostituiscilo"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Server",
+      "remove": "Rimuovi {{name}}",
+      "add": "Aggiungi un server"
+    },
+    "recoveryModal": {
+      "title": "Codice di recupero",
+      "description": "Conservalo in un luogo sicuro. Inseriscilo nella schermata di connessione per accedere di nuovo su qualsiasi dispositivo. Non verrà mostrato di nuovo.",
+      "share": "Condividi"
+    },
+    "signOut": {
+      "title": "Disconnettersi?",
+      "warning": "Non hai impostato alcuna password né codice di recupero. Senza uno dei due, ti servirà un nuovo invito dal tuo amministratore per accedere di nuovo a questo server.",
+      "setRecovery": "Imposta un codice di recupero",
+      "confirm": "Disconnetti comunque"
+    },
+    "recovery": {
+      "generateError": "Impossibile generare un codice di recupero."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Connettiti al tuo server di audiolibri",
+      "connecting": "Connessione del dispositivo in corso…",
+      "addressLabel": "Indirizzo del server",
+      "connect": "Connetti",
+      "enterAddress": "Inserisci l'indirizzo del tuo server",
+      "missingAddress": "A questo link di abbinamento manca l'indirizzo del server. Inseriscilo qui sotto.",
+      "pairingFailed": "Abbinamento non riuscito: {{message}}. Il codice potrebbe essere scaduto: richiedi un nuovo invito.",
+      "pairingReachError": "Impossibile raggiungere il server per completare l'abbinamento.",
+      "serverError": "Il server ha risposto con un errore: {{message}}",
+      "reachError": "Impossibile raggiungere quel server. Controlla l'indirizzo e che sia online.",
+      "demoError": "Impossibile avviare la demo: {{message}}",
+      "demoReachError": "Impossibile raggiungere il server demo.",
+      "demoDivider": "server demo",
+      "demoIntro": "Questo server offre una demo per ospiti, senza bisogno di un account.",
+      "tryDemo": "Prova la demo",
+      "signInInstead": "Accedi invece",
+      "or": "oppure",
+      "scanQr": "Scansiona codice QR"
+    },
+    "signIn": {
+      "title": "Accedi",
+      "mode": {
+        "code": "Codice",
+        "password": "Password"
+      },
+      "codeLabel": "Codice di invito o di recupero",
+      "codePlaceholder": "Inserisci il tuo codice di invito o di recupero",
+      "usernameLabel": "Nome utente",
+      "usernamePlaceholder": "Nome utente",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Password",
+      "connect": "Connetti",
+      "submit": "Accedi",
+      "failed": "Accesso non riuscito. Riprova."
+    },
+    "scan": {
+      "closeLabel": "Chiudi lo scanner",
+      "invalidCode": "Quel codice QR non è un codice di abbinamento AudioSilo.",
+      "permissionTitle": "Accesso alla fotocamera necessario",
+      "permissionMessage": "Consenti l'accesso alla fotocamera per scansionare il codice QR di abbinamento del tuo server.",
+      "allowCamera": "Consenti la fotocamera",
+      "openSettings": "Apri le impostazioni",
+      "aimHint": "Inquadra con la fotocamera il codice QR di abbinamento nella pagina di connessione del tuo server."
+    }
   }
 }
