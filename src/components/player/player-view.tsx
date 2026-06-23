@@ -289,6 +289,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                     color={'#9ca3af4d'}
                   />
                   <View className="absolute inset-0 items-center justify-center">
+                    {/* eslint-disable-next-line i18next/no-literal-string -- universal "Ns" skip label */}
                     <Text variant="subtitle">-{skipBackward}s</Text>
                   </View>
                 </View>
@@ -335,6 +336,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                     color={'#9ca3af4d'}
                   />
                   <View className="absolute inset-0 items-center justify-center">
+                    {/* eslint-disable-next-line i18next/no-literal-string -- universal "Ns" skip label */}
                     <Text variant="subtitle">+{skipForward}s</Text>
                   </View>
                 </View>

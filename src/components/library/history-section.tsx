@@ -42,7 +42,7 @@ export function HistorySection({
 
   return (
     <View className="gap-2">
-      <Text variant="title">History</Text>
+      <Text variant="title">{t('library.history.title')}</Text>
       {history.map((h) => (
         <Pressable
           key={h.id}

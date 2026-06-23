@@ -133,6 +133,7 @@ export default function ConnectServerScreen() {
       >
         <View className="items-center gap-3">
           <Logo size={64} />
+          {/* eslint-disable-next-line i18next/no-literal-string -- brand wordmark, never translated */}
           <Text className="font-roboto-bold text-3xl text-primary">AudioSilo</Text>
           <Text variant="muted">{t('connect.server.subtitle')}</Text>
         </View>
