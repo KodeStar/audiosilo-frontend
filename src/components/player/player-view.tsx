@@ -321,7 +321,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
         <View className="absolute inset-0 justify-end">
           <Pressable className="absolute inset-0 bg-black/40" onPress={() => setSheet(null)} />
           <View className="max-h-[75%] rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840">
-            <ScrollView contentContainerClassName="pb-4" keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerClassName="pb-4 pr-8" keyboardShouldPersistTaps="handled">
               {sheet === 'bookmarks' ? (
                 <BookmarksSection
                   libraryId={libraryId}
@@ -341,6 +341,16 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
               ) : null}
               {sheet === 'notes' ? <NotesSection libraryId={libraryId} path={path} /> : null}
             </ScrollView>
+            {/* Floats over the section's top-left title; titles are left-aligned
+                so it never overlaps. Rendered last so it sits above the
+                ScrollView for taps. */}
+            <Pressable
+              onPress={() => setSheet(null)}
+              hitSlop={12}
+              className="absolute right-2 top-2 z-10 h-8 w-8 items-center justify-center"
+            >
+              <Icon name="close" size={22} color={neutral} />
+            </Pressable>
           </View>
         </View>
       ) : null}

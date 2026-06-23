@@ -48,6 +48,18 @@ export function formatDurationFull(seconds?: number): string {
   return `${s}s`;
 }
 
+/** "5m 12s" / "1h 5m" / "45s" — the two most-significant units of a short
+ * duration, spaced. Used by the sleep timer's end-of-chapter countdown list. */
+export function formatCountdown(seconds: number): string {
+  const t = Math.max(0, Math.round(seconds));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 /** "just now" / "3 days ago" / "2 months ago" — coarse relative time from an
  * RFC3339 timestamp. Empty when the input is missing or unparseable. */
 export function formatRelative(iso?: string): string {
