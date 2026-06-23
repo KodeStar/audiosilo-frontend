@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,6 +31,7 @@ export function ChapterListSheet({
   onSelect: (index: number) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
   const { height } = useWindowDimensions();
@@ -47,7 +49,7 @@ export function ChapterListSheet({
             hitSlop={12}
             className="h-8 w-8 items-center justify-center"
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={t('common.close')}
           >
             <Icon name="close" size={22} color={neutral} />
           </Pressable>

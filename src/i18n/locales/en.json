@@ -250,5 +250,54 @@
     "prompt": "Search titles, authors, and series.",
     "failed": "Search failed.",
     "noResults": "No results for “{{query}}”."
+  },
+  "book": {
+    "loadError": "Could not load this book.",
+    "libraryFallback": "Library",
+    "chaptersTitle": "Chapters",
+    "filesTitle": "Files",
+    "chapterFallback": "Chapter {{number}}",
+    "duration": "Duration: {{value}}",
+    "bitrate": "Bitrate: {{value}}",
+    "byAuthor": "By {{author}}",
+    "narratedBy": "Narrated by {{narrator}}",
+    "listen": "Listen"
+  },
+  "player": {
+    "controls": {
+      "fileOf": "File {{current}} of {{total}}",
+      "fileNumber": "File {{number}}",
+      "timeLeft": "{{time}} left ({{rate}})",
+      "showChapters": "Show chapters"
+    },
+    "chapters": {
+      "chaptersTitle": "Chapters",
+      "filesTitle": "Files",
+      "chapterNumber": "Chapter {{number}}"
+    },
+    "bookmarks": {
+      "empty": "No bookmarks yet.",
+      "saved": "Bookmark saved",
+      "addAt": "Add bookmark at {{time}}"
+    },
+    "history": {
+      "empty": "No history yet."
+    },
+    "sleepTimer": {
+      "title": "Sleep timer",
+      "running": "Timer running",
+      "timeSection": "Time",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "endOfChapterSection": "End of chapter",
+      "endOf": "End of {{chapter}}",
+      "current": " (current)",
+      "endOfBook": "End of book",
+      "noChapters": "No chapters available.",
+      "cancel": "Cancel timer"
+    },
+    "speed": {
+      "title": "Playback speed"
+    }
   }
 }
