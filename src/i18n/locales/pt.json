@@ -299,5 +299,30 @@
     "speed": {
       "title": "Velocidade de reprodução"
     }
+  },
+  "nav": {
+    "home": "Início",
+    "library": "Biblioteca",
+    "search": "Pesquisar",
+    "downloads": "Transferências",
+    "settings": "Definições",
+    "logout": "Terminar sessão",
+    "offline": "Offline — as alterações sincronizam ao reconectar",
+    "searchPlaceholder": "Pesquisar…"
+  },
+  "ui": {
+    "error": "Algo correu mal."
+  },
+  "demo": {
+    "title": "Demo do AudioSilo",
+    "intro": "Uma demo ao vivo, só de leitura, com audiolivros de domínio público da LibriVox.",
+    "webOnly": "A demo está disponível na web em demo.audiosilo.app.",
+    "startError": "Não foi possível iniciar a demo: {{message}}",
+    "reachError": "Não foi possível contactar o servidor da demo. Tenta novamente.",
+    "tryAgain": "Tentar novamente",
+    "settingUp": "A preparar a tua demo…",
+    "qrLabel": "Código QR para abrir a demo na aplicação",
+    "scanHint": "Lê com o teu telemóvel para continuar na aplicação AudioSilo, ou continua a explorar neste navegador.",
+    "browseHere": "Explorar a demo aqui"
   }
 }

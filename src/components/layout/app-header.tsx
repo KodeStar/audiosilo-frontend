@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,6 +13,7 @@ import { colors } from '@/theme/tokens';
  * carries the brand + search instead, so this is only rendered on phones.
  */
 export function AppHeader() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -23,6 +25,7 @@ export function AppHeader() {
         <Pressable
           onPress={() => router.push('/search')}
           hitSlop={10}
+          accessibilityLabel={t('nav.search')}
           className="h-10 w-10 items-center justify-center"
         >
           <Icon name="search" size={20} color={colors.dark.textMuted} />

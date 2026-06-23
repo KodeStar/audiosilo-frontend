@@ -299,5 +299,30 @@
     "speed": {
       "title": "Playback speed"
     }
+  },
+  "nav": {
+    "home": "Home",
+    "library": "Library",
+    "search": "Search",
+    "downloads": "Downloads",
+    "settings": "Settings",
+    "logout": "Logout",
+    "offline": "Offline — changes sync when reconnected",
+    "searchPlaceholder": "Search…"
+  },
+  "ui": {
+    "error": "Something went wrong."
+  },
+  "demo": {
+    "title": "AudioSilo demo",
+    "intro": "A live, read-only demo with public-domain LibriVox audiobooks.",
+    "webOnly": "The demo is available on the web at demo.audiosilo.app.",
+    "startError": "Could not start the demo: {{message}}",
+    "reachError": "Could not reach the demo server. Please try again.",
+    "tryAgain": "Try again",
+    "settingUp": "Setting up your demo…",
+    "qrLabel": "QR code to open the demo in the app",
+    "scanHint": "Scan with your phone to continue in the AudioSilo app, or keep exploring in this browser.",
+    "browseHere": "Browse the demo here"
   }
 }

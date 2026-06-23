@@ -299,5 +299,30 @@
     "speed": {
       "title": "Wiedergabegeschwindigkeit"
     }
+  },
+  "nav": {
+    "home": "Start",
+    "library": "Bibliothek",
+    "search": "Suchen",
+    "downloads": "Downloads",
+    "settings": "Einstellungen",
+    "logout": "Abmelden",
+    "offline": "Offline – Änderungen werden bei erneuter Verbindung synchronisiert",
+    "searchPlaceholder": "Suchen…"
+  },
+  "ui": {
+    "error": "Etwas ist schiefgelaufen."
+  },
+  "demo": {
+    "title": "AudioSilo-Demo",
+    "intro": "Eine Live-Demo (nur lesend) mit gemeinfreien LibriVox-Hörbüchern.",
+    "webOnly": "Die Demo ist im Web unter demo.audiosilo.app verfügbar.",
+    "startError": "Demo konnte nicht gestartet werden: {{message}}",
+    "reachError": "Der Demo-Server war nicht erreichbar. Versuch es noch einmal.",
+    "tryAgain": "Erneut versuchen",
+    "settingUp": "Deine Demo wird eingerichtet…",
+    "qrLabel": "QR-Code, um die Demo in der App zu öffnen",
+    "scanHint": "Scanne ihn mit deinem Handy, um in der AudioSilo-App weiterzumachen, oder erkunde weiter in diesem Browser.",
+    "browseHere": "Demo hier durchstöbern"
   }
 }
