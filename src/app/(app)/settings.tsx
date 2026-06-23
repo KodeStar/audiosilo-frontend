@@ -11,6 +11,7 @@ import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
 import { SignOutConfirm } from '@/components/account/sign-out-confirm';
 import { useRecoveryCode } from '@/components/account/use-recovery-code';
 import { useSignOut } from '@/components/account/use-sign-out';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -94,6 +95,7 @@ export default function SettingsScreen() {
   // Recovery code + guarded sign-out share their logic with the sidebar via hooks.
   const recovery = useRecoveryCode();
   const signOut = useSignOut();
+  const paddingBottom = useMiniPlayerInset();
 
   // Self-service device pairing: mint a fresh pairing QR for the signed-in user so
   // another device can scan it (or open the link) and pair without an admin.
@@ -120,7 +122,11 @@ export default function SettingsScreen() {
 
   return (
     <>
-      <ScrollView className="flex-1" contentContainerClassName="gap-6 p-4 lg:px-8">
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="gap-6 p-4 lg:px-8"
+        contentContainerStyle={{ paddingBottom }}
+      >
         <Text variant="heading">Settings</Text>
 
         <ConnectionsSection />

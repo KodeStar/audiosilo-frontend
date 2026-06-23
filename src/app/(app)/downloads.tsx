@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useApi } from '@/api/provider';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote } from '@/components/ui/query-state';
@@ -62,6 +63,7 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
 export default function DownloadsScreen() {
   const entries = useDownloads((s) => s.entries);
   const supported = useDownloads((s) => s.supported);
+  const paddingBottom = useMiniPlayerInset();
 
   const list = useMemo(
     () =>
@@ -81,7 +83,11 @@ export default function DownloadsScreen() {
   }, [entries]);
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 lg:px-8">
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="gap-4 p-4 lg:px-8"
+      contentContainerStyle={{ paddingBottom }}
+    >
       <View className="flex-row items-center justify-between">
         <Text variant="heading">Downloads</Text>
         {supported && totalBytes > 0 ? (

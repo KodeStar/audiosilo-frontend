@@ -1,7 +1,7 @@
 import { usePathname } from 'expo-router';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
@@ -28,6 +28,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const setQuery = useSearchStore((s) => s.setQuery);
   const playing = usePlayer((s) => s.nowPlaying != null);
+
+  // The mini-player floats just above the bottom nav. The nav's rendered height
+  // includes the bottom safe-area inset (iOS home indicator), so we measure it
+  // and offset the bar by that — a fixed offset left it hidden behind the nav on
+  // iOS. Until the first layout, estimate from the inset so it never starts under.
+  const insets = useSafeAreaInsets();
+  const [navHeight, setNavHeight] = useState<number | null>(null);
+  const navOffset = navHeight ?? 64 + insets.bottom;
 
   // Clear the search when navigating (e.g. after picking a result), so the
   // overlay closes and the bar resets.
@@ -86,9 +94,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       <OfflineBanner />
       <View className="flex-1">{children}</View>
       {/* Phone book screen has no inline player (that's the wide-only right panel),
-          so the mini player belongs here too — it self-hides when nothing's loaded. */}
-      <MiniPlayer />
-      <SafeAreaView edges={['bottom']} className="bg-gray-200 dark:bg-gray-800">
+          so the mini player belongs here too — it self-hides when nothing's loaded.
+          It floats above the nav (whose measured height feeds its bottom offset). */}
+      <MiniPlayer bottomOffset={navOffset} />
+      <SafeAreaView
+        edges={['bottom']}
+        className="bg-gray-200 dark:bg-gray-800"
+        onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
+      >
         <NavBar orientation="bottom" />
       </SafeAreaView>
     </View>
