@@ -158,8 +158,7 @@
       "noMatches": "Keine Treffer in diesem Ordner.",
       "filterPlaceholder": "Diesen Ordner filtern…",
       "openError": "Dieser Ordner konnte nicht geöffnet werden.",
-      "jumpTo": "Zu {{letter}} springen",
-      "backToTop": "Nach oben"
+      "jumpTo": "Zu {{letter}} springen"
     },
     "bookRow": {
       "alsoOn": "Auch auf {{servers}}",

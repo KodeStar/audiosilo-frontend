@@ -158,8 +158,7 @@
       "noMatches": "Aucun résultat dans ce dossier.",
       "filterPlaceholder": "Filtrer ce dossier…",
       "openError": "Impossible d’ouvrir ce dossier.",
-      "jumpTo": "Aller à {{letter}}",
-      "backToTop": "Retour en haut"
+      "jumpTo": "Aller à {{letter}}"
     },
     "bookRow": {
       "alsoOn": "Aussi sur {{servers}}",

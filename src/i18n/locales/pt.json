@@ -158,8 +158,7 @@
       "noMatches": "Sem correspondências nesta pasta.",
       "filterPlaceholder": "Filtrar esta pasta…",
       "openError": "Não foi possível abrir esta pasta.",
-      "jumpTo": "Ir para {{letter}}",
-      "backToTop": "Voltar ao topo"
+      "jumpTo": "Ir para {{letter}}"
     },
     "bookRow": {
       "alsoOn": "Também em {{servers}}",

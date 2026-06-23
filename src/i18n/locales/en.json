@@ -158,8 +158,7 @@
       "noMatches": "No matches in this folder.",
       "filterPlaceholder": "Filter this folder…",
       "openError": "Could not open this folder.",
-      "jumpTo": "Jump to {{letter}}",
-      "backToTop": "Back to top"
+      "jumpTo": "Jump to {{letter}}"
     },
     "bookRow": {
       "alsoOn": "Also on {{servers}}",

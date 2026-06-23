@@ -3,11 +3,12 @@ import type { FsEntry } from '@/api/types';
 /** A first-letter group of filesystem entries for the browse SectionList. */
 export type AlphaSection = { letter: string; data: FsEntry[] };
 
-/** The A–Z jump-rail letters, with '#' (non-Latin/digits/symbols) last. */
-export const RAIL_LETTERS: string[] = [
-  ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)),
-  '#',
-];
+/** The A–Z jump-rail letters. The '#' bucket (non-Latin/digits/symbols) is a real
+ * section but is omitted from the rail to save vertical space — it stays reachable
+ * by scrolling, and a tapped letter with no later match snaps to it. */
+export const RAIL_LETTERS: string[] = Array.from({ length: 26 }, (_, i) =>
+  String.fromCharCode(65 + i),
+);
 
 /** First-letter bucket for an entry name: an uppercase A–Z, or '#' for anything
  * else (digits, symbols, accented/non-Latin first characters, empty). */

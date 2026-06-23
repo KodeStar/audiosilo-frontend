@@ -1,22 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  FlatList,
-  type ListRenderItem,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  Pressable,
-  type ViewToken,
-  View,
-} from 'react-native';
+import { FlatList, type ListRenderItem, Pressable, type ViewToken, View } from 'react-native';
 
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
 import type { FsEntry } from '@/api/types';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
-import { Icon } from '@/components/ui/icon';
 import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
@@ -30,10 +21,7 @@ import {
 } from '@/lib/alpha-sections';
 import { libraryHref, segmentsToPath } from '@/lib/paths';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
-import { colors } from '@/theme/tokens';
 
-// Reveal the back-to-top button once the user is roughly a screenful down.
-const BACK_TO_TOP_THRESHOLD = 600;
 // Show the filter box + A–Z rail only once a folder is big enough to need them.
 const NARROW_THRESHOLD = 25;
 // Stable across renders (FlatList rejects a changing viewability config).
@@ -78,7 +66,6 @@ export function BrowseScreen() {
   // pixel offset, which is reliable on a virtualized list.
   const listRef = useRef<FlatList<Row>>(null);
   const restoredRef = useRef(false);
-  const [showTop, setShowTop] = useState(false);
   const key = scrollKey(libraryId, path);
   const keyRef = useRef(key);
   useEffect(() => {
@@ -147,12 +134,6 @@ export function BrowseScreen() {
       } satisfies Crumb;
     }),
   ];
-
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    const shouldShow = y > BACK_TO_TOP_THRESHOLD;
-    if (shouldShow !== showTop) setShowTop(shouldShow);
-  };
 
   const onViewableItemsChanged = useCallback((info: { viewableItems: ViewToken[] }) => {
     const idxs = info.viewableItems.map((v) => v.index).filter((i): i is number => i != null);
@@ -234,8 +215,6 @@ export function BrowseScreen() {
             getItemLayout={getItemLayout}
             stickyHeaderIndices={headerRows}
             contentContainerStyle={{ paddingBottom }}
-            onScroll={onScroll}
-            scrollEventThrottle={16}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={VIEWABILITY_CONFIG}
             ListEmptyComponent={
@@ -253,7 +232,11 @@ export function BrowseScreen() {
           />
 
           {showTools && present.size > 1 ? (
-            <View className="w-8 items-center justify-center pr-1">
+            // Inset the rail so its 27 letters distribute (each flex-1) within the
+            // column instead of overflowing: a top gap clears the filter box, and
+            // the same bottom inset the list uses keeps the last letters above the
+            // floating mini-player. pr-3 lifts it off the screen edge.
+            <View style={{ paddingTop: 12, paddingBottom }} className="w-10 items-center pr-3">
               {RAIL_LETTERS.map((l) => {
                 const active = present.has(l);
                 return (
@@ -264,10 +247,10 @@ export function BrowseScreen() {
                     hitSlop={{ top: 2, bottom: 2, left: 12, right: 6 }}
                     accessibilityRole="button"
                     accessibilityLabel={t('library.browse.jumpTo', { letter: l })}
-                    className="w-full items-center py-0.5"
+                    className="w-full flex-1 items-center justify-center"
                   >
                     <Text
-                      className={`text-[11px] font-roboto-semibold ${
+                      className={`text-[10px] font-roboto-semibold ${
                         active ? 'text-primary' : 'text-gray-300 dark:text-gray-700'
                       }`}
                     >
@@ -279,21 +262,6 @@ export function BrowseScreen() {
             </View>
           ) : null}
         </View>
-      ) : null}
-
-      {showTop ? (
-        <Pressable
-          onPress={() => {
-            listRef.current?.scrollToOffset({ offset: 0, animated: false });
-            rememberScroll(key, 0);
-            setShowTop(false);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={t('library.browse.backToTop')}
-          className="absolute bottom-6 right-8 h-12 w-12 items-center justify-center rounded-full bg-primary shadow-lg active:opacity-80"
-        >
-          <Icon name="chevron-up" size={22} color={colors.white} />
-        </Pressable>
       ) : null}
     </View>
   );

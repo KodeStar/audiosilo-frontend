@@ -158,8 +158,7 @@
       "noMatches": "Nessuna corrispondenza in questa cartella.",
       "filterPlaceholder": "Filtra questa cartella…",
       "openError": "Impossibile aprire questa cartella.",
-      "jumpTo": "Vai a {{letter}}",
-      "backToTop": "Torna su"
+      "jumpTo": "Vai a {{letter}}"
     },
     "bookRow": {
       "alsoOn": "Anche su {{servers}}",
