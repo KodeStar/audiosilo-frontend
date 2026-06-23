@@ -1,4 +1,10 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
@@ -43,11 +49,21 @@ export function useLibraries() {
   return useQuery({ queryKey: qk.libraries(), queryFn: () => api.libraries() });
 }
 
-export function useBrowse(libraryId: number, path: string) {
+/** Server page size for the folder browse view (the server caps a page at 500). */
+const BROWSE_PAGE_SIZE = 500;
+
+/** A folder's full listing, fetched page-by-page via the server's `next_offset`
+ * cursor. The browse screen drives `fetchNextPage` until the folder is exhausted
+ * so the A–Z jump rail and the filter box operate on the complete list (a 1000-
+ * entry folder is two requests; cached by React Query). */
+export function useBrowseInfinite(libraryId: number, path: string) {
   const api = useApi();
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: qk.browse(libraryId, path),
-    queryFn: ({ signal }) => api.browse(libraryId, path, 0, 200, signal),
+    queryFn: ({ pageParam, signal }) =>
+      api.browse(libraryId, path, pageParam, BROWSE_PAGE_SIZE, signal),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.next_offset ?? undefined,
   });
 }
 

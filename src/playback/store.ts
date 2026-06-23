@@ -93,6 +93,14 @@ async function persist() {
   });
 }
 
+/** Nudge the Home/Browse "continue listening" + "finished" lists to re-read from
+ * the server after playback halts. The live in-card position covers the actively-
+ * playing book while it plays; this refreshes the other cards (finished state,
+ * other-device progress) once it stops, without invalidating on every 15s save. */
+function invalidateProgressLists() {
+  void queryClient.invalidateQueries({ queryKey: ['progress', 'all'] });
+}
+
 function startSaveLoop() {
   stopSaveLoop();
   saveTimer = setInterval(() => void persist(), SAVE_INTERVAL_MS);
@@ -162,7 +170,9 @@ async function ensureService(): Promise<PlaybackService> {
     if (snapshot.state !== prev.state) {
       if (snapshot.state === 'playing') startSaveLoop();
       else if (snapshot.state === 'paused' || snapshot.state === 'ended') {
-        void persist(); // capture where we stopped...
+        // Capture where we stopped, then refresh the progress lists (run on both
+        // outcomes so a queued-offline save still re-reads current server state).
+        void persist().then(invalidateProgressLists, invalidateProgressLists);
         stopSaveLoop(); // ...then halt the loop until playback resumes
       }
     }
@@ -299,6 +309,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   stop: async () => {
     stopSaveLoop();
     await persist();
+    invalidateProgressLists();
     if (service) await service.reset();
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
