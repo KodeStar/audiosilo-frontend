@@ -137,5 +137,104 @@
       "openSettings": "Abrir definições",
       "aimHint": "Aponta a câmara para o código QR de emparelhamento na página de ligação do teu servidor."
     }
+  },
+  "home": {
+    "continueListening": "Continuar a ouvir",
+    "favourites": "Favoritos",
+    "recentlyAdded": "Adicionados recentemente",
+    "recentlyFinished": "Terminados recentemente",
+    "viewMore": "Ver mais",
+    "seeAll": "Ver tudo",
+    "collapse": "Recolher",
+    "added": "Adicionado {{when}}",
+    "progressError": "Não foi possível carregar o teu progresso.",
+    "continueEmpty": "Começa um livro e ele aparecerá aqui.",
+    "recentError": "Não foi possível carregar os livros novos."
+  },
+  "library": {
+    "browse": {
+      "fallbackName": "Biblioteca",
+      "empty": "Esta pasta está vazia.",
+      "noMatches": "Sem correspondências nesta pasta.",
+      "filterPlaceholder": "Filtrar esta pasta…",
+      "openError": "Não foi possível abrir esta pasta.",
+      "jumpTo": "Ir para {{letter}}",
+      "backToTop": "Voltar ao topo"
+    },
+    "bookRow": {
+      "alsoOn": "Também em {{servers}}",
+      "alsoIn": "Também em {{libraries}}"
+    },
+    "entryRow": {
+      "duration": "Duração: {{value}}",
+      "bitrate": "Taxa de bits: {{value}}"
+    },
+    "progressCard": {
+      "markFinished": "Marcar como terminado",
+      "moreInSeries": "Mais da série",
+      "timeLeft": "{{duration}} em falta",
+      "finished": "Terminado"
+    },
+    "searchResults": {
+      "failed": "A pesquisa falhou.",
+      "noResults": "Sem resultados para «{{query}}»."
+    },
+    "notes": {
+      "title": "Notas",
+      "placeholder": "Adiciona uma nota (suporta markdown)…",
+      "add": "Adicionar nota"
+    },
+    "history": {
+      "title": "Histórico"
+    },
+    "bookmarks": {
+      "title": "Marcadores",
+      "add": "Adicionar marcador"
+    },
+    "versions": {
+      "choose": "Escolher uma versão",
+      "thisCopy": "Esta cópia",
+      "otherCount_one": "{{count}} outra versão",
+      "otherCount_other": "{{count}} outras versões",
+      "multiFile": "vários ficheiros",
+      "singleFile": "um único ficheiro"
+    },
+    "favourite": {
+      "remove": "Remover dos favoritos",
+      "add": "Adicionar aos favoritos"
+    },
+    "bookStats": {
+      "favourite": "Favorito",
+      "audio": "Áudio",
+      "length": "duração"
+    },
+    "download": {
+      "unavailable": "Transferências indisponíveis",
+      "delete": "Eliminar transferência",
+      "cancel": "Cancelar transferência",
+      "retry": "Repetir transferência",
+      "download": "Transferir",
+      "downloaded": "Transferido",
+      "queued": "Em fila…",
+      "downloading": "A transferir {{percent}} %"
+    },
+    "list": {
+      "title": "Biblioteca",
+      "recentlyAdded": "Adicionados recentemente",
+      "recentlyFinished": "Terminados recentemente",
+      "added": "Adicionado {{when}}",
+      "loadError": "Não foi possível carregar.",
+      "noBooks": "Ainda não há livros.",
+      "noFinished": "Ainda não há livros terminados.",
+      "loadLibrariesError": "Não foi possível carregar as bibliotecas.",
+      "noLibraries": "Ainda não foi partilhada nenhuma biblioteca com a tua conta."
+    },
+    "favourites": {
+      "title": "Favoritos",
+      "emptyHint": "Toca no coração em qualquer item para o organizar",
+      "itemCount_one": "{{count}} item",
+      "itemCount_other": "{{count}} itens",
+      "empty": "Toca no coração numa pasta ou livro para o adicionar aqui."
+    }
   }
 }

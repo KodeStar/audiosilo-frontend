@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/api/hooks';
@@ -22,13 +23,14 @@ function UnfavouriteButton({
   libraryId: number;
   path: string;
 }) {
+  const { t } = useTranslation();
   const toggleFavourite = useToggleFavourite(connectionId);
   return (
     <Pressable
       onPress={() => toggleFavourite.mutate({ libraryId, path, on: false })}
       hitSlop={10}
       accessibilityRole="button"
-      accessibilityLabel="Remove from favourites"
+      accessibilityLabel={t('library.favourite.remove')}
       className="self-stretch justify-center pl-2 pr-4 active:opacity-60"
     >
       <Icon name="heart-solid" size={18} color={colors.primary} />
@@ -85,6 +87,7 @@ function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
 /** The Favourites shelf screen (reached from the Libraries list), aggregated
  * across every connected server. Everything is a row here (no cover cards). */
 export default function FavouritesScreen() {
+  const { t } = useTranslation();
   const { favourites, isLoading } = useFavouritesAll();
   const paddingBottom = useMiniPlayerInset();
 
@@ -95,12 +98,12 @@ export default function FavouritesScreen() {
       contentContainerStyle={{ paddingBottom }}
     >
       <Text variant="heading" className="mb-1">
-        Favourites
+        {t('library.favourites.title')}
       </Text>
 
       {isLoading ? <Spinner center /> : null}
       {!isLoading && favourites.length === 0 ? (
-        <EmptyNote message="Tap the heart on a folder or book to add it here." />
+        <EmptyNote message={t('library.favourites.empty')} />
       ) : null}
 
       {favourites.map((f) => (

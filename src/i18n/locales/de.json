@@ -137,5 +137,104 @@
       "openSettings": "Einstellungen öffnen",
       "aimHint": "Richte deine Kamera auf den Kopplungs-QR-Code auf der Verbindungsseite deines Servers."
     }
+  },
+  "home": {
+    "continueListening": "Weiterhören",
+    "favourites": "Favoriten",
+    "recentlyAdded": "Kürzlich hinzugefügt",
+    "recentlyFinished": "Kürzlich beendet",
+    "viewMore": "Mehr anzeigen",
+    "seeAll": "Alle anzeigen",
+    "collapse": "Einklappen",
+    "added": "Hinzugefügt {{when}}",
+    "progressError": "Dein Fortschritt konnte nicht geladen werden.",
+    "continueEmpty": "Starte ein Buch und es erscheint hier.",
+    "recentError": "Neue Bücher konnten nicht geladen werden."
+  },
+  "library": {
+    "browse": {
+      "fallbackName": "Bibliothek",
+      "empty": "Dieser Ordner ist leer.",
+      "noMatches": "Keine Treffer in diesem Ordner.",
+      "filterPlaceholder": "Diesen Ordner filtern…",
+      "openError": "Dieser Ordner konnte nicht geöffnet werden.",
+      "jumpTo": "Zu {{letter}} springen",
+      "backToTop": "Nach oben"
+    },
+    "bookRow": {
+      "alsoOn": "Auch auf {{servers}}",
+      "alsoIn": "Auch in {{libraries}}"
+    },
+    "entryRow": {
+      "duration": "Dauer: {{value}}",
+      "bitrate": "Bitrate: {{value}}"
+    },
+    "progressCard": {
+      "markFinished": "Als abgeschlossen markieren",
+      "moreInSeries": "Mehr aus der Reihe",
+      "timeLeft": "{{duration}} übrig",
+      "finished": "Abgeschlossen"
+    },
+    "searchResults": {
+      "failed": "Suche fehlgeschlagen.",
+      "noResults": "Keine Ergebnisse für „{{query}}“."
+    },
+    "notes": {
+      "title": "Notizen",
+      "placeholder": "Notiz hinzufügen (Markdown unterstützt)…",
+      "add": "Notiz hinzufügen"
+    },
+    "history": {
+      "title": "Verlauf"
+    },
+    "bookmarks": {
+      "title": "Lesezeichen",
+      "add": "Lesezeichen hinzufügen"
+    },
+    "versions": {
+      "choose": "Eine Version wählen",
+      "thisCopy": "Diese Kopie",
+      "otherCount_one": "{{count}} weitere Version",
+      "otherCount_other": "{{count}} weitere Versionen",
+      "multiFile": "mehrere Dateien",
+      "singleFile": "eine Datei"
+    },
+    "favourite": {
+      "remove": "Aus Favoriten entfernen",
+      "add": "Zu Favoriten hinzufügen"
+    },
+    "bookStats": {
+      "favourite": "Favorit",
+      "audio": "Audio",
+      "length": "Länge"
+    },
+    "download": {
+      "unavailable": "Downloads nicht verfügbar",
+      "delete": "Download löschen",
+      "cancel": "Download abbrechen",
+      "retry": "Download wiederholen",
+      "download": "Herunterladen",
+      "downloaded": "Heruntergeladen",
+      "queued": "In Warteschlange…",
+      "downloading": "Download läuft {{percent}} %"
+    },
+    "list": {
+      "title": "Bibliothek",
+      "recentlyAdded": "Kürzlich hinzugefügt",
+      "recentlyFinished": "Kürzlich abgeschlossen",
+      "added": "Hinzugefügt {{when}}",
+      "loadError": "Konnte nicht geladen werden.",
+      "noBooks": "Noch keine Bücher.",
+      "noFinished": "Noch keine abgeschlossenen Bücher.",
+      "loadLibrariesError": "Bibliotheken konnten nicht geladen werden.",
+      "noLibraries": "Mit deinem Konto wurde noch keine Bibliothek geteilt."
+    },
+    "favourites": {
+      "title": "Favoriten",
+      "emptyHint": "Tippe bei einem Eintrag auf das Herz, um ihn zu sammeln",
+      "itemCount_one": "{{count}} Eintrag",
+      "itemCount_other": "{{count}} Einträge",
+      "empty": "Tippe bei einem Ordner oder Buch auf das Herz, um es hier hinzuzufügen."
+    }
   }
 }
