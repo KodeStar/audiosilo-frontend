@@ -69,5 +69,73 @@
       "confirm": "Le remplacer"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Serveurs",
+      "remove": "Supprimer {{name}}",
+      "add": "Ajouter un serveur"
+    },
+    "recoveryModal": {
+      "title": "Code de récupération",
+      "description": "Conservez-le en lieu sûr. Saisissez-le sur l’écran de connexion pour vous reconnecter sur n’importe quel appareil. Il ne sera plus affiché.",
+      "share": "Partager"
+    },
+    "signOut": {
+      "title": "Se déconnecter ?",
+      "warning": "Vous n’avez défini ni mot de passe ni code de récupération. Sans cela, il vous faudra une nouvelle invitation de votre administrateur pour vous reconnecter à ce serveur.",
+      "setRecovery": "Définir un code de récupération",
+      "confirm": "Se déconnecter quand même"
+    },
+    "recovery": {
+      "generateError": "Impossible de générer un code de récupération."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Connectez-vous à votre serveur de livres audio",
+      "connecting": "Connexion de votre appareil…",
+      "addressLabel": "Adresse du serveur",
+      "connect": "Se connecter",
+      "enterAddress": "Saisissez l'adresse de votre serveur",
+      "missingAddress": "Ce lien d'association ne comporte pas l'adresse du serveur. Saisissez-la ci-dessous.",
+      "pairingFailed": "Échec de l'association : {{message}}. Le code a peut-être expiré : demandez une nouvelle invitation.",
+      "pairingReachError": "Impossible de joindre le serveur pour terminer l'association.",
+      "serverError": "Le serveur a répondu par une erreur : {{message}}",
+      "reachError": "Impossible de joindre ce serveur. Vérifiez l'adresse et qu'il est en ligne.",
+      "demoError": "Impossible de démarrer la démo : {{message}}",
+      "demoReachError": "Impossible de joindre le serveur de démonstration.",
+      "demoDivider": "serveur de démo",
+      "demoIntro": "Ce serveur propose une démo invité, sans compte requis.",
+      "tryDemo": "Essayer la démo",
+      "signInInstead": "Se connecter à la place",
+      "or": "ou",
+      "scanQr": "Scanner le code QR"
+    },
+    "signIn": {
+      "title": "Connexion",
+      "mode": {
+        "code": "Code",
+        "password": "Mot de passe"
+      },
+      "codeLabel": "Code d'invitation ou de récupération",
+      "codePlaceholder": "Saisissez votre code d'invitation ou de récupération",
+      "usernameLabel": "Nom d'utilisateur",
+      "usernamePlaceholder": "Nom d'utilisateur",
+      "passwordLabel": "Mot de passe",
+      "passwordPlaceholder": "Mot de passe",
+      "connect": "Se connecter",
+      "submit": "Se connecter",
+      "failed": "Échec de la connexion. Veuillez réessayer."
+    },
+    "scan": {
+      "closeLabel": "Fermer le scanner",
+      "invalidCode": "Ce code QR n'est pas un code d'association AudioSilo.",
+      "permissionTitle": "Accès à la caméra requis",
+      "permissionMessage": "Autorisez l'accès à la caméra pour scanner le code QR d'association de votre serveur.",
+      "allowCamera": "Autoriser la caméra",
+      "openSettings": "Ouvrir les réglages",
+      "aimHint": "Pointez votre caméra vers le code QR d'association sur la page de connexion de votre serveur."
+    }
   }
 }

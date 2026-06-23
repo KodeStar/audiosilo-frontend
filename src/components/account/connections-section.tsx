@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useApiRegistry } from '@/api/provider';
@@ -13,6 +14,7 @@ import { colors } from '@/theme/tokens';
  * connection, or add another. Content from non-active connections still appears in
  * the unified Home/Search; the active connection is the default for new playback. */
 export function ConnectionsSection() {
+  const { t } = useTranslation();
   const connections = useSession((s) => s.connections);
   const activeId = useSession((s) => s.activeConnectionId);
   const setActive = useSession((s) => s.setActiveConnection);
@@ -30,7 +32,7 @@ export function ConnectionsSection() {
 
   return (
     <View className="gap-2">
-      <Text variant="label">Servers</Text>
+      <Text variant="label">{t('account.connections.label')}</Text>
       <Card className="gap-1">
         {connections.map((c) => {
           const active = c.id === activeId;
@@ -58,7 +60,7 @@ export function ConnectionsSection() {
                 onPress={() => onRemove(c.id)}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={`Remove ${c.name}`}
+                accessibilityLabel={t('account.connections.remove', { name: c.name })}
                 className="px-3 py-2 active:opacity-60"
               >
                 <Icon name="trash" size={16} />
@@ -67,7 +69,7 @@ export function ConnectionsSection() {
           );
         })}
         <Button
-          title="Add a server"
+          title={t('account.connections.add')}
           icon="plus"
           variant="secondary"
           onPress={() => router.push('/connect?add=1')}

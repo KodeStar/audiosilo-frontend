@@ -69,5 +69,73 @@
       "confirm": "Substituir"
     },
     "version": "AudioSilo v{{version}}"
+  },
+  "account": {
+    "connections": {
+      "label": "Servidores",
+      "remove": "Remover {{name}}",
+      "add": "Adicionar um servidor"
+    },
+    "recoveryModal": {
+      "title": "Código de recuperação",
+      "description": "Guarde-o num local seguro. Introduza-o no ecrã de ligação para iniciar sessão novamente em qualquer dispositivo. Não será mostrado outra vez.",
+      "share": "Partilhar"
+    },
+    "signOut": {
+      "title": "Terminar sessão?",
+      "warning": "Não tem qualquer palavra-passe nem código de recuperação definido. Sem um deles, vai precisar de um novo convite do seu administrador para iniciar sessão novamente neste servidor.",
+      "setRecovery": "Definir um código de recuperação",
+      "confirm": "Terminar sessão mesmo assim"
+    },
+    "recovery": {
+      "generateError": "Não foi possível gerar um código de recuperação."
+    }
+  },
+  "connect": {
+    "server": {
+      "subtitle": "Liga-te ao teu servidor de audiolivros",
+      "connecting": "A ligar o teu dispositivo…",
+      "addressLabel": "Endereço do servidor",
+      "connect": "Ligar",
+      "enterAddress": "Introduz o endereço do teu servidor",
+      "missingAddress": "Falta o endereço do servidor a esta ligação de emparelhamento. Introduze-o abaixo.",
+      "pairingFailed": "Falha no emparelhamento: {{message}}. O código pode ter expirado — pede um novo convite.",
+      "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",
+      "serverError": "O servidor respondeu com um erro: {{message}}",
+      "reachError": "Não foi possível contactar esse servidor. Verifica o endereço e se está online.",
+      "demoError": "Não foi possível iniciar a demonstração: {{message}}",
+      "demoReachError": "Não foi possível contactar o servidor de demonstração.",
+      "demoDivider": "servidor de demonstração",
+      "demoIntro": "Este servidor oferece uma demonstração para convidados — sem necessidade de conta.",
+      "tryDemo": "Experimentar a demonstração",
+      "signInInstead": "Iniciar sessão em alternativa",
+      "or": "ou",
+      "scanQr": "Ler código QR"
+    },
+    "signIn": {
+      "title": "Iniciar sessão",
+      "mode": {
+        "code": "Código",
+        "password": "Palavra-passe"
+      },
+      "codeLabel": "Código de convite ou recuperação",
+      "codePlaceholder": "Introduz o teu código de convite ou recuperação",
+      "usernameLabel": "Nome de utilizador",
+      "usernamePlaceholder": "Nome de utilizador",
+      "passwordLabel": "Palavra-passe",
+      "passwordPlaceholder": "Palavra-passe",
+      "connect": "Ligar",
+      "submit": "Iniciar sessão",
+      "failed": "Falha ao iniciar sessão. Tenta novamente."
+    },
+    "scan": {
+      "closeLabel": "Fechar o leitor",
+      "invalidCode": "Esse código QR não é um código de emparelhamento do AudioSilo.",
+      "permissionTitle": "É necessário acesso à câmara",
+      "permissionMessage": "Permite o acesso à câmara para ler o código QR de emparelhamento do teu servidor.",
+      "allowCamera": "Permitir a câmara",
+      "openSettings": "Abrir definições",
+      "aimHint": "Aponta a câmara para o código QR de emparelhamento na página de ligação do teu servidor."
+    }
   }
 }
