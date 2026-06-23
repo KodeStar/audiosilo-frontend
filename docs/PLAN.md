@@ -19,7 +19,7 @@ The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA
 **Outcome:** one responsive, offline-capable audiobook player matching the old client's pink-accented, dark-mode-first design, talking to the path-addressed API, from one codebase.
 
 ### Decisions locked (from user)
-- **Playback:** Hybrid — `react-native-track-player` on native (5.0.0-alpha for the new architecture / RN 0.85), HTML5 + Media Session on web, behind one shared `PlaybackService` interface. Requires a dev build, not Expo Go.
+- **Playback:** Hybrid behind one shared `PlaybackService` interface, HTML5 + Media Session on web. _(Originally planned on `react-native-track-player` 5.0.0-alpha; that proved unreliable on the new architecture, so native playback was rebuilt as a **custom local Expo module**, `modules/audiosilo-player` — AVQueuePlayer on iOS, Media3/ExoPlayer on Android. track-player is no longer a dependency.)_ Requires a dev build, not Expo Go.
 - **Scope:** Phased. Milestone 1 = scaffold + design system + connect/auth + browse + working player + progress sync. Features layered after.
 - **Icons:** FontAwesome Pro via npm auth token from the start.
 - **Web media auth:** server accepts a `?token=` query param for media GETs (covers/stream) since browsers can't set an Authorization header on `<img>`/`<audio>`.
@@ -36,7 +36,7 @@ The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA
 | `@nuxtjs/pwa` | Expo static web export + service worker + manifest (M4) |
 | Capacitor | Expo prebuild + EAS Build |
 | FA Pro Kit (CDN) | `@fortawesome/react-native-fontawesome` + pro `*-svg-icons` |
-| HTML5 `<audio>` + Cache API | Hybrid: track-player (native) / HTML5 (web) |
+| HTML5 `<audio>` + Cache API | Hybrid: custom `audiosilo-player` native module (AVQueuePlayer / Media3) / HTML5 (web) |
 | Google Fonts Roboto | `@expo-google-fonts/roboto` |
 | Shake-to-cancel (DeviceMotion) | `expo-sensors` Accelerometer (M2) |
 | Offline download (Cache API) | `expo-file-system` (native) / SW (web) (M3) |
@@ -57,9 +57,11 @@ The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA
 
 The clients depend on two small `audiosilo-server` changes:
 - `internal/api/middleware.go` — `bearerToken` accepts a `?token=` query param for
-  media GETs (browsers can't set an Authorization header on `<img>`/`<audio>`, and
-  track-player doesn't reliably forward track headers to the native player, so the
-  token rides in the media URL on all platforms).
+  media GETs. Browsers can't set an Authorization header on `<img>`/`<audio>`, so web
+  needs it; native also uses it for a single uniform media-auth path that doesn't
+  depend on whether expo-image / the native player module forward custom headers (the
+  native module *does* pass headers too — this is belt-and-braces). The token rides in
+  the media URL on every platform.
 - `internal/media/media.go` — `ServeFile` sets a real audio `Content-Type` by
   sniffing the file's magic bytes (`ftyp`→`audio/mp4`, ID3/MPEG sync→`audio/mpeg`,
   ADTS→`audio/aac`, `fLaC`, `OggS`, `RIFF/WAVE`), falling back to the extension.

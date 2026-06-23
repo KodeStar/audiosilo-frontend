@@ -17,7 +17,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { parentPath, pathLeaf } from '@/lib/paths';
+import { bookHref, parentPath, pathLeaf } from '@/lib/paths';
 import { flushQueue } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
@@ -134,6 +134,9 @@ function ProgressCard({ item, width }: { item: SourcedProgress; width: number })
   const play = async () => {
     await setActive(item.connectionId);
     if (!wide) {
+      // Land on the book page underneath the player (like tapping the cover does),
+      // so closing the player returns there instead of back to Home.
+      router.push(bookHref(item.library_id, item.path));
       router.push({
         pathname: '/player',
         params: { libraryId: String(item.library_id), path: item.path },
@@ -237,7 +240,12 @@ export default function HomeScreen() {
           onToggle={() => setInProgressExpanded((v) => !v)}
         />
         {isLoading ? <Spinner center /> : null}
-        {error ? <ErrorNote message="Could not load your progress." /> : null}
+        {/* Only surface the error when it actually left us with nothing to show.
+            The aggregate hook flags an error if *any* connection (or a background
+            refetch) failed, even while cached books are still on screen. */}
+        {error && inProgress.length === 0 ? (
+          <ErrorNote message="Could not load your progress." />
+        ) : null}
         {!isLoading && !error && inProgress.length === 0 ? (
           <EmptyNote message="Start a book and it will show up here." />
         ) : null}
@@ -288,7 +296,9 @@ export default function HomeScreen() {
               onToggle={() => setRecentExpanded((v) => !v)}
             />
             {recentLoading ? <Spinner center /> : null}
-            {recentError ? <ErrorNote message="Could not load new books." /> : null}
+            {recentError && recent.length === 0 ? (
+              <ErrorNote message="Could not load new books." />
+            ) : null}
             {cardWidth > 0 && recent.length > 0 ? (
               <Grid>
                 {visibleRecent.map((b) => {

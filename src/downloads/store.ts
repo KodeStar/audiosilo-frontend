@@ -41,7 +41,13 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   hydrate: async () => {
     const saved = (await getItem<Registry>(KEY)) ?? {};
     const cleaned: Registry = {};
-    for (const [key, e] of Object.entries(saved)) {
+    for (const [key, raw] of Object.entries(saved)) {
+      // Re-resolve stored file uris against the live storage root first: the app's
+      // document-container path can change between installs/launches (notably dev
+      // rebuilds), which leaves the persisted absolute uris stale even though the
+      // files are still on disk. Without this the existence check below fails and
+      // the book is dropped *and deleted* — the download vanishes after a rebuild.
+      const e = relocateEntry(raw);
       // Only fully-downloaded books survive a relaunch; our engine can't resume a
       // download interrupted by an app kill, so partials are dropped + cleaned up.
       const present =
@@ -143,6 +149,27 @@ function removeEntry(key: string) {
 function seedQueryCache(manifest: DownloadManifest, libraryId: number, path: string) {
   queryClient.setQueryData(qk.item(libraryId, path), manifest.book);
   if (manifest.chapters) queryClient.setQueryData(qk.chapters(libraryId, path), manifest.chapters);
+}
+
+/**
+ * Rebuild a saved entry's local file uris from the *current* storage root. The
+ * on-disk filename scheme is owned here (`fileName` for audio, `cover.jpg` for the
+ * cover), so the (libraryId, path, fileName) → live-uri mapping lives here too;
+ * `engine.localUri` supplies the container-current absolute uri. A no-op when the
+ * engine has no `localUri` (web), where uris are stable cache keys, not paths.
+ */
+function relocateEntry(e: DownloadEntry): DownloadEntry {
+  const resolve = engine.localUri;
+  if (!resolve) return e;
+  const { libraryId, path } = e;
+  const files = e.manifest.files.map((f, i) => ({
+    ...f,
+    localUri: resolve(libraryId, path, fileName(i, f.relPath)),
+  }));
+  const coverUri = e.manifest.coverUri
+    ? resolve(libraryId, path, 'cover.jpg')
+    : e.manifest.coverUri;
+  return { ...e, manifest: { ...e.manifest, files, coverUri } };
 }
 
 function isAbort(e: unknown): boolean {

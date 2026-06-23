@@ -52,6 +52,19 @@ final class AudioEngine: NSObject {
   /// Suppresses transient state/track events while the queue is being rebuilt
   /// (removeAllItems briefly sets currentItem to nil).
   private var rebuilding = false
+  /// Start position (seconds) to apply once the current item is ready to play.
+  /// 0 = none. Seeking a not-yet-ready AVPlayerItem is silently dropped, so the
+  /// resume/skip seek is deferred until .readyToPlay (see applyPendingSeek).
+  private var pendingSeek: Double = 0
+  /// A play() was requested while a pendingSeek was still in flight — start the
+  /// instant the seek lands, so audio never briefly begins at 0.
+  private var wantsPlay = false
+  /// Observes the current item's readiness to run the deferred start seek.
+  private var startObs: NSKeyValueObservation?
+  /// Whether playback was active when an audio-session interruption began — only
+  /// then do we auto-resume on .ended (so the charging chime can't resume a book
+  /// the user had paused).
+  private var wasPlayingBeforeInterruption = false
   private let send: (String, [String: Any]) -> Void
 
   init(send: @escaping (String, [String: Any]) -> Void) {
@@ -110,24 +123,62 @@ final class AudioEngine: NSObject {
   /// remaining items gaplessly; arbitrary skips rebuild from the target index.
   private func rebuildQueue(from startIndex: Int, position: Double) {
     rebuilding = true
+    startObs?.invalidate()
+    startObs = nil
     player.pause()
     player.removeAllItems()
     queued.removeAll()
-    guard startIndex < tracks.count else { rebuilding = false; return }
+    guard startIndex < tracks.count else { rebuilding = false; pendingSeek = 0; return }
     for i in startIndex..<tracks.count {
       guard let item = makeItem(tracks[i]) else { continue }
       queued.append((index: i, item: item))
       player.insert(item, after: nil)
     }
     currentIndex = startIndex
-    if position > 0, let first = player.currentItem {
-      first.seek(to: CMTime(seconds: position, preferredTimescale: 1000), completionHandler: nil)
-    }
+    // Defer the start seek until the item is actually ready. Seeking a freshly
+    // created AVPlayerItem before .readyToPlay is silently dropped — especially
+    // for streaming assets — which made resume play the book from 0.
+    pendingSeek = max(0, position)
+    applyPendingSeek()
     reassertRateWhenReady()
     rebuilding = false
     updateNowPlayingInfo()
     send("onTrackChange", ["index": currentIndex])
     send("onProgress", ["position": position, "duration": currentDuration()])
+  }
+
+  /// Apply the queued start position once the current item can honor it. If it's
+  /// already ready, seek now; otherwise wait for .readyToPlay (mirrors
+  /// reassertRateWhenReady, which exists for the same not-ready-yet reason).
+  private func applyPendingSeek() {
+    guard pendingSeek > 0, let item = player.currentItem else { pendingSeek = 0; return }
+    if item.status == .readyToPlay {
+      performPendingSeek(on: item)
+      return
+    }
+    startObs?.invalidate()
+    startObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+      guard let self = self, item.status == .readyToPlay else { return }
+      DispatchQueue.main.async { self.performPendingSeek(on: item) }
+    }
+  }
+
+  private func performPendingSeek(on item: AVPlayerItem) {
+    startObs?.invalidate()
+    startObs = nil
+    guard pendingSeek > 0 else { return }
+    let target = pendingSeek
+    pendingSeek = 0
+    item.seek(to: CMTime(seconds: target, preferredTimescale: 1000)) { [weak self] _ in
+      guard let self = self else { return }
+      // Start playback only now, so audio begins at the resumed position not at 0.
+      if self.wantsPlay {
+        self.wantsPlay = false
+        self.player.rate = self.rate
+      }
+      self.send("onProgress", ["position": self.player.currentTime().seconds, "duration": self.currentDuration()])
+      self.updateNowPlayingInfo()
+    }
   }
 
   /// AVPlayer can silently drop a `rate` set on a not-yet-ready item back to 1.0 once
@@ -151,7 +202,22 @@ final class AudioEngine: NSObject {
 
   // MARK: Transport
 
+  /// Flip playback from the *real* transport state. All remote play/pause/toggle
+  /// commands route here (see setupRemoteCommands) so a single earbud press always
+  /// toggles, even when iOS's idea of our state is stale. A pending resume seek
+  /// (wantsPlay) counts as "playing" so the press pauses it.
+  private func togglePlayback() {
+    if player.timeControlStatus != .paused || wantsPlay {
+      pause()
+    } else {
+      play()
+    }
+  }
+
   func play() {
+    // Reclaim the audio session so we're the active Now Playing app when (re)starting
+    // — another app may have taken it since we last played.
+    try? AVAudioSession.sharedInstance().setActive(true)
     if autoRewindMax > 0, let p = pausedAt, let item = player.currentItem {
       let elapsed = Date().timeIntervalSince(p)
       let rewind = min(autoRewindMax, elapsed)
@@ -161,11 +227,19 @@ final class AudioEngine: NSObject {
       }
     }
     pausedAt = nil
+    // A resume/skip seek hasn't landed yet — start the moment it does, so playback
+    // begins at the saved position instead of at 0.
+    if pendingSeek > 0 {
+      wantsPlay = true
+      updateNowPlayingInfo()
+      return
+    }
     player.rate = rate
     updateNowPlayingInfo()
   }
 
   func pause() {
+    wantsPlay = false
     player.pause()
     pausedAt = Date()
     updateNowPlayingInfo()
@@ -185,9 +259,11 @@ final class AudioEngine: NSObject {
 
   func skip(to index: Int, position: Double) {
     guard index >= 0, index < tracks.count else { return }
-    let wasPlaying = player.rate != 0
+    let wasPlaying = player.timeControlStatus != .paused || wantsPlay
     rebuildQueue(from: index, position: position)
-    if wasPlaying { player.rate = rate }
+    // Route through play() so a non-zero target waits for the deferred seek before
+    // starting, instead of beginning at 0 on the freshly-rebuilt (not-ready) item.
+    if wasPlaying { play() }
   }
 
   func skipToNext() {
@@ -207,6 +283,10 @@ final class AudioEngine: NSObject {
   func reset() {
     itemStatusObs?.invalidate()
     itemStatusObs = nil
+    startObs?.invalidate()
+    startObs = nil
+    pendingSeek = 0
+    wantsPlay = false
     player.pause()
     player.removeAllItems()
     queued.removeAll()
@@ -275,8 +355,15 @@ final class AudioEngine: NSObject {
           let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
     switch type {
     case .began:
+      // Capture intent *before* pausing (pause() clears wantsPlay).
+      wasPlayingBeforeInterruption = player.timeControlStatus != .paused || wantsPlay
       pause()
     case .ended:
+      // Only auto-resume if we were actually playing when the interruption began.
+      // The charging chime (and other brief system sounds) fire an interruption
+      // whose .ended carries .shouldResume; without this guard that resumes a book
+      // the user had paused — e.g. playback starting when the phone is plugged in.
+      guard wasPlayingBeforeInterruption else { return }
       if let optsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt,
          AVAudioSession.InterruptionOptions(rawValue: optsRaw).contains(.shouldResume) {
         play()
@@ -296,14 +383,20 @@ final class AudioEngine: NSObject {
   // MARK: Remote commands / Now Playing
 
   private func setupRemoteCommands() {
+    // Receive hardware remote-control events (Bluetooth/AVRCP earbud, wired headset).
+    UIApplication.shared.beginReceivingRemoteControlEvents()
     let cc = MPRemoteCommandCenter.shared()
-    cc.playCommand.addTarget { [weak self] _ in self?.play(); return .success }
-    cc.pauseCommand.addTarget { [weak self] _ in self?.pause(); return .success }
-    cc.togglePlayPauseCommand.addTarget { [weak self] _ in
-      guard let self = self else { return .commandFailed }
-      if self.player.rate != 0 { self.pause() } else { self.play() }
-      return .success
-    }
+    // A single earbud/headset press is a *toggle*, but iOS/AVRCP delivers it as a
+    // discrete Play OR Pause chosen from iOS's own notion of our play state — which
+    // on iOS a third-party app can't correct (MPNowPlayingInfoCenter.playbackState is
+    // entitlement-gated and silently ignored, so iOS infers the state itself and can
+    // get stuck on "paused"). When it guesses wrong it sends Play while we're already
+    // playing, so the press no-ops and the user has to press a second time. Routing
+    // Play, Pause and Toggle all through one real-state toggle makes a single press
+    // always flip playback, regardless of what iOS believes.
+    cc.playCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
+    cc.pauseCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
+    cc.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
     cc.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForward)]
     cc.skipForwardCommand.addTarget { [weak self] event in
       guard let self = self else { return .commandFailed }
@@ -366,6 +459,7 @@ final class AudioEngine: NSObject {
   deinit {
     if let timeObserver = timeObserver { player.removeTimeObserver(timeObserver) }
     itemStatusObs?.invalidate()
+    startObs?.invalidate()
     NotificationCenter.default.removeObserver(self)
   }
 }

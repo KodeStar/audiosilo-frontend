@@ -68,6 +68,16 @@ export interface DownloadEngine {
    * Omitted where `supported` already implies it (native).
    */
   probe?(): Promise<boolean>;
+  /**
+   * The *current* absolute uri for a stored file, recomputed from the live storage
+   * root. Native only: the app's document-container path can change between
+   * installs/launches (notably across dev rebuilds), so a `localUri` persisted at
+   * download time goes stale even though the file is still on disk at the same
+   * relative location. Hydrate re-resolves through this so downloads survive a
+   * container-path change instead of being dropped (and deleted). Omitted on web,
+   * where downloads are keyed by stable cache URLs, not container paths.
+   */
+  localUri?(libraryId: number, path: string, fileName: string): string;
   /** Delete a book's directory and all its files. */
   removeBook(libraryId: number, path: string): Promise<void>;
   /** Total bytes used by all downloads. */
