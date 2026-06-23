@@ -6,6 +6,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
+import '@/i18n';
+import { LanguageProvider } from '@/i18n/language-provider';
 import '@/lib/register-sw';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -45,12 +47,14 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <ApiProvider>
-            <RootNavigator />
-            <StatusBar style="auto" />
-          </ApiProvider>
-        </ThemeProvider>
+        <LanguageProvider>
+          <ThemeProvider>
+            <ApiProvider>
+              <RootNavigator />
+              <StatusBar style="auto" />
+            </ApiProvider>
+          </ThemeProvider>
+        </LanguageProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

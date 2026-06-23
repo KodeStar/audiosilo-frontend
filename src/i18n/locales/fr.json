@@ -1,0 +1,73 @@
+{
+  "common": {
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "done": "Terminé",
+    "retry": "Réessayer",
+    "close": "Fermer"
+  },
+  "settings": {
+    "title": "Réglages",
+    "appearance": {
+      "label": "Apparence",
+      "light": "Clair",
+      "dark": "Sombre",
+      "system": "Système"
+    },
+    "language": {
+      "label": "Langue",
+      "system": "Système"
+    },
+    "playback": {
+      "label": "Lecture",
+      "skipBack": "Reculer",
+      "skipForward": "Avancer",
+      "defaultSpeed": "Vitesse par défaut",
+      "autoRewind": "Retour arrière auto à la reprise",
+      "off": "Désactivé"
+    },
+    "account": {
+      "label": "Compte",
+      "administrator": "Administrateur",
+      "user": "Utilisateur",
+      "signedIn": "Connecté",
+      "password": {
+        "label": "Mot de passe",
+        "set": "Défini",
+        "notSet": "Non défini",
+        "current": "Mot de passe actuel",
+        "currentPlaceholder": "Votre mot de passe actuel",
+        "new": "Nouveau mot de passe",
+        "newPlaceholder": "Au moins {{count}} caractères",
+        "change": "Modifier le mot de passe",
+        "setNew": "Définir un mot de passe",
+        "minError": "Le mot de passe doit comporter au moins {{count}} caractères.",
+        "updateError": "Impossible de mettre à jour le mot de passe."
+      },
+      "recovery": {
+        "label": "Code de récupération",
+        "set": "Défini",
+        "notSet": "Non défini",
+        "hint": "Un code que vous conservez pour vous reconnecter vous-même, sans administrateur.",
+        "regenerate": "Régénérer le code de récupération",
+        "generate": "Générer un code de récupération"
+      },
+      "signOut": "Se déconnecter"
+    },
+    "devices": {
+      "label": "Appareils",
+      "intro": "Associez un autre téléphone, une tablette ou un navigateur à ce compte.",
+      "scanHint": "Sur l'autre appareil, ouvrez AudioSilo et scannez ce code, ou ouvrez le lien ci-dessous.",
+      "add": "Ajouter un appareil",
+      "share": "Partager le lien",
+      "done": "Terminé",
+      "reachError": "Impossible de joindre le serveur."
+    },
+    "recoveryReplace": {
+      "title": "Remplacer le code de récupération ?",
+      "message": "Votre code de récupération actuel cessera de fonctionner. Vous devrez enregistrer le nouveau partout où vous le conservez.",
+      "confirm": "Le remplacer"
+    },
+    "version": "AudioSilo v{{version}}"
+  }
+}

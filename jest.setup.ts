@@ -1,6 +1,10 @@
 // Global test setup: in-memory mocks for the native storage modules, so the
 // storage / session / sync layers run unchanged without a device or browser.
 
+// Initialise i18next (English) so components using `useTranslation` and the
+// locale-aware formatters resolve strings under the fallback catalog in tests.
+import '@/i18n';
+
 jest.mock('@react-native-async-storage/async-storage', () => {
   const store = new Map<string, string>();
   return {

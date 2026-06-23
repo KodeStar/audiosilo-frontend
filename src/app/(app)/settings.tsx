@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
@@ -19,6 +20,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { Stepper } from '@/components/ui/stepper';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+import { SUPPORTED_LANGUAGES } from '@/i18n';
+import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { shareText } from '@/lib/share';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -26,18 +29,22 @@ import { useTheme, type SchemePref } from '@/theme/theme-provider';
 
 const PW_MIN = 8;
 
-const APPEARANCE: { value: SchemePref; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
-];
+const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
 
 const sec = (v: number) => `${v}s`;
-const secOrOff = (v: number) => (v === 0 ? 'Off' : `${v}s`);
 const speed = (v: number) => `${Number(v.toFixed(2))}×`;
 
 export default function SettingsScreen() {
+  const { t } = useTranslation();
   const { pref, setPref } = useTheme();
+  const { pref: langPref, setPref: setLangPref } = useLanguage();
+
+  // System default first, then each catalog in its own endonym (not translated).
+  const languages: { value: LanguagePref; label: string }[] = [
+    { value: 'system', label: t('settings.language.system') },
+    ...SUPPORTED_LANGUAGES.map((l) => ({ value: l.code, label: l.label })),
+  ];
+  const secOrOff = (v: number) => (v === 0 ? t('settings.playback.off') : `${v}s`);
   const api = useOptionalApi();
   const { data: server } = useServerInfo();
   const user = useSession((s) => s.user);
@@ -66,7 +73,7 @@ export default function SettingsScreen() {
   const savePassword = async () => {
     if (!api) return;
     if (pw.length < PW_MIN) {
-      setPwError(`Password must be at least ${PW_MIN} characters.`);
+      setPwError(t('settings.account.password.minError', { count: PW_MIN }));
       return;
     }
     setPwError(null);
@@ -86,7 +93,7 @@ export default function SettingsScreen() {
       setCurPw('');
       setPwOpen(false);
     } catch (e) {
-      setPwError(e instanceof ApiError ? e.message : 'Could not update the password.');
+      setPwError(e instanceof ApiError ? e.message : t('settings.account.password.updateError'));
     } finally {
       setPwBusy(false);
     }
@@ -110,7 +117,7 @@ export default function SettingsScreen() {
     try {
       setPairing(await api.pair());
     } catch (e) {
-      setPairError(e instanceof ApiError ? e.message : 'Could not reach the server.');
+      setPairError(e instanceof ApiError ? e.message : t('settings.devices.reachError'));
     } finally {
       setPairLoading(false);
     }
@@ -127,20 +134,42 @@ export default function SettingsScreen() {
         contentContainerClassName="gap-6 p-4 lg:px-8"
         contentContainerStyle={{ paddingBottom }}
       >
-        <Text variant="heading">Settings</Text>
+        <Text variant="heading">{t('settings.title')}</Text>
 
         <ConnectionsSection />
 
         <View className="gap-2">
-          <Text variant="label">Appearance</Text>
+          <Text variant="label">{t('settings.appearance.label')}</Text>
           <Card className="flex-row gap-2 p-2">
-            {APPEARANCE.map((o) => {
-              const active = pref === o.value;
+            {APPEARANCE.map((value) => {
+              const active = pref === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setPref(value)}
+                  className={`flex-1 items-center rounded-md px-3 py-2 ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-860'}`}
+                >
+                  <Text
+                    className={`font-roboto-medium ${active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}
+                  >
+                    {t(`settings.appearance.${value}`)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </Card>
+        </View>
+
+        <View className="gap-2">
+          <Text variant="label">{t('settings.language.label')}</Text>
+          <Card className="flex-row flex-wrap gap-2 p-2">
+            {languages.map((o) => {
+              const active = langPref === o.value;
               return (
                 <Pressable
                   key={o.value}
-                  onPress={() => setPref(o.value)}
-                  className={`flex-1 items-center rounded-md px-3 py-2 ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-860'}`}
+                  onPress={() => setLangPref(o.value)}
+                  className={`items-center rounded-md px-3 py-2 ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-860'}`}
                 >
                   <Text
                     className={`font-roboto-medium ${active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}
@@ -154,10 +183,10 @@ export default function SettingsScreen() {
         </View>
 
         <View className="gap-2">
-          <Text variant="label">Playback</Text>
+          <Text variant="label">{t('settings.playback.label')}</Text>
           <Card className="gap-4">
             <View className="flex-row items-center justify-between">
-              <Text>Skip back</Text>
+              <Text>{t('settings.playback.skipBack')}</Text>
               <Stepper
                 value={skipBackward}
                 onChange={setSkipBackward}
@@ -168,7 +197,7 @@ export default function SettingsScreen() {
               />
             </View>
             <View className="flex-row items-center justify-between">
-              <Text>Skip forward</Text>
+              <Text>{t('settings.playback.skipForward')}</Text>
               <Stepper
                 value={skipForward}
                 onChange={setSkipForward}
@@ -179,7 +208,7 @@ export default function SettingsScreen() {
               />
             </View>
             <View className="flex-row items-center justify-between">
-              <Text>Default speed</Text>
+              <Text>{t('settings.playback.defaultSpeed')}</Text>
               <Stepper
                 value={defaultRate}
                 onChange={setDefaultRate}
@@ -190,7 +219,7 @@ export default function SettingsScreen() {
               />
             </View>
             <View className="flex-row items-center justify-between">
-              <Text>Auto-rewind on resume</Text>
+              <Text>{t('settings.playback.autoRewind')}</Text>
               <Stepper
                 value={autoRewindMax}
                 onChange={setAutoRewindMax}
@@ -204,27 +233,33 @@ export default function SettingsScreen() {
         </View>
 
         <View className="gap-2">
-          <Text variant="label">Account</Text>
+          <Text variant="label">{t('settings.account.label')}</Text>
           <Card className="gap-4">
             <View>
-              <Text variant="subtitle">{user?.username ?? 'Signed in'}</Text>
+              <Text variant="subtitle">{user?.username ?? t('settings.account.signedIn')}</Text>
               <Text variant="muted">
-                {user?.role === 'admin' ? 'Administrator' : 'User'}
+                {user?.role === 'admin'
+                  ? t('settings.account.administrator')
+                  : t('settings.account.user')}
                 {serverUrl ? ` · ${serverUrl.replace(/^https?:\/\//, '')}` : ''}
               </Text>
             </View>
 
             <View className="gap-2">
               <View className="flex-row items-center justify-between">
-                <Text>Password</Text>
-                <Text variant="muted">{user?.has_password ? 'Set' : 'Not set'}</Text>
+                <Text>{t('settings.account.password.label')}</Text>
+                <Text variant="muted">
+                  {user?.has_password
+                    ? t('settings.account.password.set')
+                    : t('settings.account.password.notSet')}
+                </Text>
               </View>
               {pwOpen ? (
                 <View className="gap-2">
                   {user?.has_password ? (
                     <TextField
-                      label="Current password"
-                      placeholder="Your current password"
+                      label={t('settings.account.password.current')}
+                      placeholder={t('settings.account.password.currentPlaceholder')}
                       secureTextEntry
                       autoCapitalize="none"
                       value={curPw}
@@ -232,8 +267,8 @@ export default function SettingsScreen() {
                     />
                   ) : null}
                   <TextField
-                    label="New password"
-                    placeholder="At least 8 characters"
+                    label={t('settings.account.password.new')}
+                    placeholder={t('settings.account.password.newPlaceholder', { count: PW_MIN })}
                     secureTextEntry
                     autoCapitalize="none"
                     value={pw}
@@ -242,13 +277,13 @@ export default function SettingsScreen() {
                   />
                   <View className="flex-row gap-2">
                     <Button
-                      title="Save"
+                      title={t('common.save')}
                       loading={pwBusy}
                       disabled={pw.length < PW_MIN || (!!user?.has_password && curPw.length === 0)}
                       onPress={savePassword}
                     />
                     <Button
-                      title="Cancel"
+                      title={t('common.cancel')}
                       variant="ghost"
                       onPress={() => {
                         setPwOpen(false);
@@ -261,7 +296,11 @@ export default function SettingsScreen() {
                 </View>
               ) : (
                 <Button
-                  title={user?.has_password ? 'Change password' : 'Set a password'}
+                  title={
+                    user?.has_password
+                      ? t('settings.account.password.change')
+                      : t('settings.account.password.setNew')
+                  }
                   variant="secondary"
                   onPress={() => setPwOpen(true)}
                 />
@@ -270,17 +309,25 @@ export default function SettingsScreen() {
 
             <View className="gap-2">
               <View className="flex-row items-center justify-between">
-                <Text>Recovery code</Text>
-                <Text variant="muted">{user?.has_recovery ? 'Set' : 'Not set'}</Text>
+                <Text>{t('settings.account.recovery.label')}</Text>
+                <Text variant="muted">
+                  {user?.has_recovery
+                    ? t('settings.account.recovery.set')
+                    : t('settings.account.recovery.notSet')}
+                </Text>
               </View>
               <Text variant="muted" className="text-xs">
-                A code you keep to sign back in yourself — no admin needed.
+                {t('settings.account.recovery.hint')}
               </Text>
               {recovery.error ? (
                 <Text className="text-xs text-red-500">{recovery.error}</Text>
               ) : null}
               <Button
-                title={user?.has_recovery ? 'Regenerate recovery code' : 'Generate recovery code'}
+                title={
+                  user?.has_recovery
+                    ? t('settings.account.recovery.regenerate')
+                    : t('settings.account.recovery.generate')
+                }
                 variant="secondary"
                 icon="qrcode"
                 loading={recovery.busy}
@@ -289,7 +336,7 @@ export default function SettingsScreen() {
             </View>
 
             <Button
-              title="Sign out"
+              title={t('settings.account.signOut')}
               variant="secondary"
               icon="logout"
               onPress={() => void signOut.requestSignOut()}
@@ -298,12 +345,12 @@ export default function SettingsScreen() {
         </View>
 
         <View className="gap-2">
-          <Text variant="label">Devices</Text>
+          <Text variant="label">{t('settings.devices.label')}</Text>
           <Card className="gap-3">
             {pairing ? (
               <View className="items-center gap-3">
                 <Text variant="muted" className="text-center">
-                  On the other device, open AudioSilo and scan this code — or open the link below.
+                  {t('settings.devices.scanHint')}
                 </Text>
                 <Image
                   source={{ uri: pairing.qr_png_data_uri }}
@@ -315,22 +362,26 @@ export default function SettingsScreen() {
                 </Text>
                 <View className="flex-row gap-2">
                   <Button
-                    title="Share link"
+                    title={t('settings.devices.share')}
                     variant="secondary"
                     icon="qrcode"
                     onPress={shareLink}
                   />
-                  <Button title="Done" variant="secondary" onPress={() => setPairing(null)} />
+                  <Button
+                    title={t('settings.devices.done')}
+                    variant="secondary"
+                    onPress={() => setPairing(null)}
+                  />
                 </View>
               </View>
             ) : (
               <>
-                <Text variant="muted">Pair another phone, tablet, or browser to this account.</Text>
+                <Text variant="muted">{t('settings.devices.intro')}</Text>
                 {pairError ? <Text className="text-sm text-red-500">{pairError}</Text> : null}
                 {pairLoading ? (
                   <Spinner />
                 ) : (
-                  <Button title="Add a device" icon="qrcode" onPress={onAddDevice} />
+                  <Button title={t('settings.devices.add')} icon="qrcode" onPress={onAddDevice} />
                 )}
               </>
             )}
@@ -338,7 +389,9 @@ export default function SettingsScreen() {
         </View>
 
         <Text variant="caption" className="text-center">
-          AudioSilo v{server?.version ?? Constants.expoConfig?.version ?? '1.0.0'}
+          {t('settings.version', {
+            version: server?.version ?? Constants.expoConfig?.version ?? '1.0.0',
+          })}
         </Text>
       </ScrollView>
 
@@ -354,9 +407,9 @@ export default function SettingsScreen() {
       <RecoveryCodeModal code={recovery.code} onClose={() => recovery.setCode(null)} />
       <ConfirmDialog
         visible={recovery.confirmRegen}
-        title="Replace recovery code?"
-        message="Your current recovery code will stop working. You'll need to save the new one everywhere you keep it."
-        confirmLabel="Replace it"
+        title={t('settings.recoveryReplace.title')}
+        message={t('settings.recoveryReplace.message')}
+        confirmLabel={t('settings.recoveryReplace.confirm')}
         confirmIcon="qrcode"
         onConfirm={recovery.confirmGenerate}
         onCancel={() => recovery.setConfirmRegen(false)}

@@ -1,0 +1,9 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "AudioSilo",
+    "NSCameraUsageDescription": "Consenti ad AudioSilo di scansionare il codice QR di abbinamento del tuo server."
+  },
+  "android": {
+    "app_name": "AudioSilo"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "common": {
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "done": "Concluído",
+    "retry": "Tentar novamente",
+    "close": "Fechar"
+  },
+  "settings": {
+    "title": "Definições",
+    "appearance": {
+      "label": "Aparência",
+      "light": "Claro",
+      "dark": "Escuro",
+      "system": "Sistema"
+    },
+    "language": {
+      "label": "Idioma",
+      "system": "Sistema"
+    },
+    "playback": {
+      "label": "Reprodução",
+      "skipBack": "Recuar",
+      "skipForward": "Avançar",
+      "defaultSpeed": "Velocidade predefinida",
+      "autoRewind": "Recuo automático ao retomar",
+      "off": "Desligado"
+    },
+    "account": {
+      "label": "Conta",
+      "administrator": "Administrador",
+      "user": "Utilizador",
+      "signedIn": "Sessão iniciada",
+      "password": {
+        "label": "Palavra-passe",
+        "set": "Definida",
+        "notSet": "Não definida",
+        "current": "Palavra-passe atual",
+        "currentPlaceholder": "A sua palavra-passe atual",
+        "new": "Nova palavra-passe",
+        "newPlaceholder": "Pelo menos {{count}} caracteres",
+        "change": "Alterar palavra-passe",
+        "setNew": "Definir uma palavra-passe",
+        "minError": "A palavra-passe deve ter pelo menos {{count}} caracteres.",
+        "updateError": "Não foi possível atualizar a palavra-passe."
+      },
+      "recovery": {
+        "label": "Código de recuperação",
+        "set": "Definido",
+        "notSet": "Não definido",
+        "hint": "Um código que guarda para iniciar sessão sozinho — sem precisar de um administrador.",
+        "regenerate": "Regenerar código de recuperação",
+        "generate": "Gerar código de recuperação"
+      },
+      "signOut": "Terminar sessão"
+    },
+    "devices": {
+      "label": "Dispositivos",
+      "intro": "Associe outro telemóvel, tablet ou navegador a esta conta.",
+      "scanHint": "No outro dispositivo, abra o AudioSilo e leia este código — ou abra a ligação abaixo.",
+      "add": "Adicionar um dispositivo",
+      "share": "Partilhar ligação",
+      "done": "Concluído",
+      "reachError": "Não foi possível contactar o servidor."
+    },
+    "recoveryReplace": {
+      "title": "Substituir o código de recuperação?",
+      "message": "O seu código de recuperação atual deixará de funcionar. Terá de guardar o novo em todos os locais onde o conserva.",
+      "confirm": "Substituir"
+    },
+    "version": "AudioSilo v{{version}}"
+  }
+}

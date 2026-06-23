@@ -1,0 +1,73 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "done": "Done",
+    "retry": "Retry",
+    "close": "Close"
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": {
+      "label": "Appearance",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "language": {
+      "label": "Language",
+      "system": "System"
+    },
+    "playback": {
+      "label": "Playback",
+      "skipBack": "Skip back",
+      "skipForward": "Skip forward",
+      "defaultSpeed": "Default speed",
+      "autoRewind": "Auto-rewind on resume",
+      "off": "Off"
+    },
+    "account": {
+      "label": "Account",
+      "administrator": "Administrator",
+      "user": "User",
+      "signedIn": "Signed in",
+      "password": {
+        "label": "Password",
+        "set": "Set",
+        "notSet": "Not set",
+        "current": "Current password",
+        "currentPlaceholder": "Your current password",
+        "new": "New password",
+        "newPlaceholder": "At least {{count}} characters",
+        "change": "Change password",
+        "setNew": "Set a password",
+        "minError": "Password must be at least {{count}} characters.",
+        "updateError": "Could not update the password."
+      },
+      "recovery": {
+        "label": "Recovery code",
+        "set": "Set",
+        "notSet": "Not set",
+        "hint": "A code you keep to sign back in yourself — no admin needed.",
+        "regenerate": "Regenerate recovery code",
+        "generate": "Generate recovery code"
+      },
+      "signOut": "Sign out"
+    },
+    "devices": {
+      "label": "Devices",
+      "intro": "Pair another phone, tablet, or browser to this account.",
+      "scanHint": "On the other device, open AudioSilo and scan this code — or open the link below.",
+      "add": "Add a device",
+      "share": "Share link",
+      "done": "Done",
+      "reachError": "Could not reach the server."
+    },
+    "recoveryReplace": {
+      "title": "Replace recovery code?",
+      "message": "Your current recovery code will stop working. You'll need to save the new one everywhere you keep it.",
+      "confirm": "Replace it"
+    },
+    "version": "AudioSilo v{{version}}"
+  }
+}

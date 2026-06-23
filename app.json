@@ -8,10 +8,10 @@
     "scheme": "audiosilo",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
       "infoPlist": {
         "UIBackgroundModes": ["audio"],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true
       },
       "bundleIdentifier": "app.audiosilo"
     },
@@ -24,11 +24,18 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "app.audiosilo",
-      "permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
+      "permissions": ["android.permission.CAMERA"]
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
+    },
+    "locales": {
+      "es": "./assets/locales/es.json",
+      "fr": "./assets/locales/fr.json",
+      "de": "./assets/locales/de.json",
+      "pt": "./assets/locales/pt.json",
+      "it": "./assets/locales/it.json"
     },
     "plugins": [
       "expo-router",
@@ -47,9 +54,11 @@
         "expo-camera",
         {
           "cameraPermission": "Allow AudioSilo to scan your server's pairing QR code.",
-          "barcodeScannerEnabled": true
+          "barcodeScannerEnabled": true,
+          "recordAudioAndroid": false
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,
