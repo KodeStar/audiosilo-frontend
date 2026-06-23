@@ -236,5 +236,19 @@
       "itemCount_other": "{{count}} itens",
       "empty": "Toca no coração numa pasta ou livro para o adicionar aqui."
     }
+  },
+  "downloads": {
+    "title": "Transferências",
+    "storageUsed": "{{size}} utilizados",
+    "downloaded": "Transferido",
+    "failed": "Falha na transferência",
+    "unsupported": "As transferências offline não estão disponíveis neste navegador. Usa a aplicação instalada ou uma ligação segura (https).",
+    "empty": "Transfere um livro a partir do ecrã de detalhes para o ouvires offline."
+  },
+  "search": {
+    "placeholder": "Procurar títulos, autores, séries…",
+    "prompt": "Procura títulos, autores e séries.",
+    "failed": "A pesquisa falhou.",
+    "noResults": "Sem resultados para «{{query}}»."
   }
 }

@@ -236,5 +236,19 @@
       "itemCount_other": "{{count}} éléments",
       "empty": "Touche le cœur sur un dossier ou un livre pour l’ajouter ici."
     }
+  },
+  "downloads": {
+    "title": "Téléchargements",
+    "storageUsed": "{{size}} utilisés",
+    "downloaded": "Téléchargé",
+    "failed": "Échec du téléchargement",
+    "unsupported": "Les téléchargements hors connexion ne sont pas disponibles dans ce navigateur. Utilise l'application installée ou une connexion sécurisée (https).",
+    "empty": "Télécharge un livre depuis sa page de détails pour l'écouter hors connexion."
+  },
+  "search": {
+    "placeholder": "Rechercher des titres, auteurs, séries…",
+    "prompt": "Recherche des titres, auteurs et séries.",
+    "failed": "La recherche a échoué.",
+    "noResults": "Aucun résultat pour « {{query}} »."
   }
 }
