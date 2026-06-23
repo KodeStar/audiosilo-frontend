@@ -12,7 +12,10 @@ M3–M5 pending.
 - **Expo SDK 56**, **React Native 0.85** (new architecture), **React 19**, **Expo Router** (file-based, in `src/app`).
 - **NativeWind v4** (Tailwind v3.4 engine) for styling. Tokens in `tailwind.config.js`, directives in `src/global.css`.
 - **TanStack Query** (server state) + **Zustand** (session + player state).
-- **react-native-track-player 5.0.0-alpha** on native / **HTML5 Audio + Media Session** on web.
+- **Custom native playback module** (`modules/audiosilo-player`, a local Expo
+  module): **AVQueuePlayer** on iOS, **Media3/ExoPlayer** on Android. **HTML5 Audio +
+  Media Session** on web. (This replaced react-native-track-player — that dep is gone;
+  ignore any older doc that still names it.)
 - **FontAwesome Pro 7** icons via `@fortawesome/react-native-fontawesome` + `react-native-svg`.
 - **expo-secure-store** for the session token; **AsyncStorage** for everything else.
 
@@ -25,8 +28,10 @@ M3–M5 pending.
   `FONTAWESOME_NPM_AUTH_TOKEN=...`; `.npmrc` references it. To (re)install any
   `@fortawesome/*` package the token must be in the process env:
   `set -a; . ./.env; set +a; npm install …`.
-- **Native runs need a dev build, not Expo Go** (track-player, svg, secure-store
-  are native modules): `npx expo prebuild` then `npx expo run:ios` / `run:android`.
+- **Native runs need a dev build, not Expo Go** (the `audiosilo-player` module, svg,
+  secure-store are native): `npx expo prebuild` then `npx expo run:ios` / `run:android`.
+  **Editing native code under `modules/audiosilo-player/{ios,android}` requires a full
+  rebuild** (`run:ios`/`run:android`) — a Metro/JS reload won't pick it up.
 - **Web dev needs CORS**: set `cors_origins` in the server config to the web origin
   (e.g. `http://localhost:8081`), or serve same-origin. Self-signed TLS may need
   trusting / `tls.mode: autocert`.
@@ -80,9 +85,34 @@ native passes `Authorization` headers. **This depends on a server change** in
 
 **Playback (`src/playback/`)** — the fiddly part:
 - `PlaybackService` interface (`types.ts`). Metro resolves the engine per platform:
-  `service.web.ts` (HTML5 + Media Session) / `service.native.ts` (track-player).
-  `service.ts` is a throwing fallback for tsc only. `register.native.ts` registers
-  the track-player background service and is imported (side-effect) by the root layout.
+  `service.web.ts` (HTML5 + Media Session) / `service.native.ts`, which is a thin
+  bridge to the **custom native module** `modules/audiosilo-player` (AVQueuePlayer on
+  iOS, Media3/ExoPlayer on Android — that module owns the audio session, background
+  audio, lock-screen/remote commands, gapless multi-file playback, and pitch-corrected
+  speed). `service.ts` is a throwing fallback for tsc only. (There is **no**
+  `register.native.ts` and no react-native-track-player — both are gone; the native
+  module registers its own background service.)
+- **The native module is where the OS-integration bugs live**, and it can only be
+  validated by a device rebuild. Known iOS gotchas now handled in
+  `AudiosiloPlayerModule.swift` (read its comments before touching it):
+  - **Seek before ready.** Seeking a freshly-created `AVPlayerItem` before it reaches
+    `.readyToPlay` is silently dropped (esp. streaming) — this made resume start from
+    0. The resume/skip start position is **deferred** until `.readyToPlay`
+    (`pendingSeek`/`applyPendingSeek`), with play gated (`wantsPlay`) so audio never
+    briefly starts at 0. Android doesn't have this — Media3's `setMediaItems(items,
+    startIndex, startPositionMs)` honors the start natively.
+  - **Now Playing focus / "pause needs two presses".** `MPNowPlayingInfoCenter.
+    playbackState` must be kept in sync (`syncPlaybackState`); leaving it `.unknown`
+    makes iOS spend the first remote/earbud press claiming now-playing focus.
+  - **Interruption auto-resume.** Only resume on interruption `.ended` if we were
+    actually playing when it began (`wasPlayingBeforeInterruption`) — otherwise the
+    charging chime (a brief interruption) resumes a paused book.
+- **Downloads store absolute file URIs**; the iOS document-container path can change
+  between installs (notably dev rebuilds), so `downloads/store.ts` `relocateEntry`
+  re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
+  — without it a stale path fails the existence check and the book is dropped *and
+  deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
+  `engine.localUri` in agreement.
 - **Stream the file, not the book.** A track URL must be a real audio file
   (a chapter's `file_path` or a `BookFile.rel_path`) — **never** a folder/book path.
   `book-queue.ts` builds tracks from `files`, else derives distinct files from the

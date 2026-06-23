@@ -75,6 +75,13 @@ export const engine: DownloadEngine = {
     }
   },
 
+  // Recompute the absolute uri from the live document root + deterministic
+  // (libraryId, path) layout, so a stored uri whose container path has since
+  // changed still resolves to the file on disk.
+  localUri(libraryId, path, fileName) {
+    return new File(bookDir(libraryId, path), fileName).uri;
+  },
+
   async removeBook(libraryId, path) {
     try {
       const dir = bookDir(libraryId, path);

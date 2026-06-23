@@ -81,11 +81,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <View className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <View className="flex-1 relative bg-gray-200 dark:bg-gray-800">
       <AppHeader />
       <OfflineBanner />
       <View className="flex-1">{children}</View>
-      {!onBook ? <MiniPlayer /> : null}
+      {/* Phone book screen has no inline player (that's the wide-only right panel),
+          so the mini player belongs here too — it self-hides when nothing's loaded. */}
+      <MiniPlayer />
       <SafeAreaView edges={['bottom']} className="bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="bottom" />
       </SafeAreaView>

@@ -21,7 +21,7 @@ export function MiniPlayer() {
   return (
     <Pressable
       onPress={() => router.push('/player')}
-      className="flex-row items-center gap-3 border-t border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-750 dark:bg-gray-840"
+      className="flex-row absolute inset-x-2 bottom-20 rounded-lg items-center gap-3 border border-gray-100 backdrop-blur-sm bg-gray-50/90 px-3 py-2 dark:border-gray-750 dark:bg-gray-840/90"
     >
       <View className="h-10 w-10">
         <Cover
