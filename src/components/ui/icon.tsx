@@ -1,5 +1,7 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { faAlarmSnooze } from '@fortawesome/pro-light-svg-icons/faAlarmSnooze';
+import { faArrowRotateLeft } from '@fortawesome/pro-light-svg-icons/faArrowRotateLeft';
+import { faArrowRotateRight } from '@fortawesome/pro-light-svg-icons/faArrowRotateRight';
 import { faBook } from '@fortawesome/pro-light-svg-icons/faBook';
 import { faBookmark } from '@fortawesome/pro-light-svg-icons/faBookmark';
 import { faCheck } from '@fortawesome/pro-light-svg-icons/faCheck';
@@ -31,15 +33,14 @@ import { faTrashCan } from '@fortawesome/pro-light-svg-icons/faTrashCan';
 import { faUser } from '@fortawesome/pro-light-svg-icons/faUser';
 import { faWifiSlash } from '@fortawesome/pro-light-svg-icons/faWifiSlash';
 import { faXmark } from '@fortawesome/pro-light-svg-icons/faXmark';
+import { faBackwardStep } from '@fortawesome/pro-regular-svg-icons/faBackwardStep';
+import { faForwardStep } from '@fortawesome/pro-regular-svg-icons/faForwardStep';
 import { faCirclePause } from '@fortawesome/pro-solid-svg-icons/faCirclePause';
 import { faCirclePlay } from '@fortawesome/pro-solid-svg-icons/faCirclePlay';
 import { faHeart as faHeartSolid } from '@fortawesome/pro-solid-svg-icons/faHeart';
 import { faPause } from '@fortawesome/pro-solid-svg-icons/faPause';
 import { faPlay } from '@fortawesome/pro-solid-svg-icons/faPlay';
-import { faArrowRotateLeft } from '@fortawesome/pro-thin-svg-icons/faArrowRotateLeft';
-import { faArrowRotateRight } from '@fortawesome/pro-thin-svg-icons/faArrowRotateRight';
-import { faBackwardStep } from '@fortawesome/pro-thin-svg-icons/faBackwardStep';
-import { faForwardStep } from '@fortawesome/pro-thin-svg-icons/faForwardStep';
+import { faTriangle } from '@fortawesome/pro-solid-svg-icons/faTriangle';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { View } from 'react-native';
 
@@ -89,6 +90,7 @@ export type IconName =
   | 'offline'
   | 'user'
   | 'heart'
+  | 'triangle'
   | 'heart-solid';
 
 const ICONS: Record<IconName, IconDefinition> = {
@@ -98,6 +100,7 @@ const ICONS: Record<IconName, IconDefinition> = {
   settings: faGear,
   logout: faRightFromBracket,
   play: faPlay,
+  triangle: faTriangle,
   pause: faPause,
   'circle-play': faCirclePlay,
   'circle-pause': faCirclePause,

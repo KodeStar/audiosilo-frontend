@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { useAddBookmark } from '@/api/hooks';
 import { useApi } from '@/api/provider';
@@ -239,15 +240,45 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 className="items-center justify-center"
                 hitSlop={8}
               >
-                <Icon name="backward" size={50} color={neutral} />
-                <View className="absolute inset-0 items-center justify-center">
-                  <Text variant="caption">{skipBackward}</Text>
+                <View className="w-[48px] h-[48px] rounded-full items-center relative justify-center bg-gray-400/30 overflow-hidden border-4 border-l-0 border-b-2 border-l-transparent border-gray-400/15">
+                  <Icon
+                    className="-rotate-[141deg] absolute -top-0.5 -left-1"
+                    name="triangle"
+                    size={20}
+                    color={'#9ca3af4d'}
+                  />
+                  <View className="absolute inset-0 items-center justify-center">
+                    <Text variant="subtitle">-{skipBackward}s</Text>
+                  </View>
                 </View>
               </Pressable>
               <Pressable
                 onPress={() => void toggle()}
-                className="h-28 w-28 items-center justify-center rounded-full bg-primary active:opacity-80"
+                className="h-[112px] w-[112px] items-center justify-center rounded-full bg-primary active:opacity-80"
               >
+                {/* Diagonal bevel highlight. Drawn as an SVG ring with a 135°
+                    white→transparent→white gradient stroke rather than per-side
+                    borders + rotation: iOS clips a non-uniform border on a fully
+                    rounded view (curved corners square off), so the bevel
+                    rendered cropped there while web was fine. An SVG stroke
+                    renders identically on web/iOS/Android. */}
+                <Svg width={112} height={112} pointerEvents="none" style={{ position: 'absolute' }}>
+                  <Defs>
+                    <LinearGradient id="playBevel" x1="0" y1="0" x2="1" y2="1">
+                      <Stop offset="0" stopColor={colors.white} stopOpacity={0.4} />
+                      <Stop offset="0.5" stopColor={colors.white} stopOpacity={0} />
+                      <Stop offset="1" stopColor={colors.white} stopOpacity={0.4} />
+                    </LinearGradient>
+                  </Defs>
+                  <Circle
+                    cx={56}
+                    cy={56}
+                    r={55}
+                    fill="none"
+                    stroke="url(#playBevel)"
+                    strokeWidth={2}
+                  />
+                </Svg>
                 <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
               </Pressable>
               <Pressable
@@ -255,9 +286,16 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 className="items-center justify-center"
                 hitSlop={8}
               >
-                <Icon name="forward" size={50} color={neutral} />
-                <View className="absolute inset-0 items-center justify-center">
-                  <Text variant="caption">{skipForward}</Text>
+                <View className="w-[48px] h-[48px] rounded-full items-center relative justify-center bg-gray-400/30 overflow-hidden border-4 border-r-0 border-b-2 border-r-transparent border-gray-400/15 shadow-inner">
+                  <Icon
+                    className="rotate-[141deg] absolute -top-0.5 -right-1"
+                    name="triangle"
+                    size={20}
+                    color={'#9ca3af4d'}
+                  />
+                  <View className="absolute inset-0 items-center justify-center">
+                    <Text variant="subtitle">+{skipForward}s</Text>
+                  </View>
                 </View>
               </Pressable>
             </View>
