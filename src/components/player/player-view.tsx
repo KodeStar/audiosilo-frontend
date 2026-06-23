@@ -7,6 +7,7 @@ import { useApi } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
+import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';
 import { SeekBar } from '@/components/player/seek-bar';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton } from '@/components/player/speed-button';
@@ -41,7 +42,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
   const api = useApi();
-  const [sheet, setSheet] = useState<'history' | 'notes' | 'bookmarks' | null>(null);
+  const [sheet, setSheet] = useState<'history' | 'notes' | 'bookmarks' | 'chapters' | null>(null);
   // Brief "saved" confirmation after adding a bookmark; the ref lets a rapid
   // second add reset the timer instead of stacking timeouts.
   const [savedBookmark, setSavedBookmark] = useState(false);
@@ -132,6 +133,26 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     void seekBook(prior.length ? prior[prior.length - 1] : 0);
   };
 
+  // Tapping the chapter title opens a list of all chapters (or files, when the
+  // book has no chapters), scrolled to the current one.
+  const chapterItems: ChapterItem[] = perTrack
+    ? queue.tracks.map((t, i) => ({
+        key: `t${i}`,
+        label: pathLeaf(t.id.split(':').slice(1).join(':')) || `File ${i + 1}`,
+      }))
+    : queue.chapters.map((c) => ({
+        key: `c${c.index}`,
+        label: c.title || `Chapter ${c.index + 1}`,
+        sublabel: formatClock(c.book_offset),
+      }));
+  const chapterCurrentIndex = perTrack ? trackIndex : (currentChapter?.index ?? 0);
+  const hasChapterList = chapterItems.length > 1;
+  const onSelectChapter = (i: number) => {
+    if (perTrack) return void goToTrack(i);
+    const c = queue.chapters[i];
+    if (c) void seekBook(c.book_offset);
+  };
+
   return (
     <View className="flex-1">
       {/* Header (auto height). The close button is mobile-only (the phone modal
@@ -211,9 +232,24 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 <Icon name="prev" size={24} color={neutral} />
               </Pressable>
 
-              <Text variant="subtitle" className="text-center" numberOfLines={1}>
-                {segTitle}
-              </Text>
+              {hasChapterList ? (
+                <Pressable
+                  onPress={() => setSheet('chapters')}
+                  hitSlop={8}
+                  className="flex-1 flex-row items-center justify-center gap-1.5 px-2 active:opacity-60"
+                  accessibilityRole="button"
+                  accessibilityLabel="Show chapters"
+                >
+                  <Text variant="subtitle" className="text-center" numberOfLines={1}>
+                    {segTitle}
+                  </Text>
+                  <Icon name="list" size={13} color={neutral} />
+                </Pressable>
+              ) : (
+                <Text variant="subtitle" className="flex-1 text-center" numberOfLines={1}>
+                  {segTitle}
+                </Text>
+              )}
               <Pressable
                 onPress={goNext}
                 hitSlop={8}
@@ -317,7 +353,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
 
       {/* In-view overlay rather than a nested RN <Modal>: a Modal inside the
           native full-screen player modal won't present on iOS. */}
-      {sheet !== null ? (
+      {sheet !== null && sheet !== 'chapters' ? (
         <View className="absolute inset-0 justify-end">
           <Pressable className="absolute inset-0 bg-black/40" onPress={() => setSheet(null)} />
           <View className="max-h-[75%] rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840">
@@ -353,6 +389,16 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             </Pressable>
           </View>
         </View>
+      ) : null}
+
+      {sheet === 'chapters' ? (
+        <ChapterListSheet
+          title={perTrack ? 'Files' : 'Chapters'}
+          items={chapterItems}
+          currentIndex={chapterCurrentIndex}
+          onSelect={onSelectChapter}
+          onClose={() => setSheet(null)}
+        />
       ) : null}
     </View>
   );
