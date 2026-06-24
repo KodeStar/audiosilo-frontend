@@ -9,7 +9,7 @@
 
 ## Context
 
-`audiosilo-server` (Go) is a self-hosted audiobook server exposing a JSON API at `/api/v1`. Its README states the audiobook **player** frontend is "planned separately; only the admin/connect UI ships in this binary." This repo (`audiosilo-frontend`) is where that player frontend lives.
+`audiosilo-server` (Go) is a self-hosted audiobook server exposing a JSON API at `/api/v1`. This repo (`audiosilo-frontend`) is where the audiobook **player** frontend lives. _(Historical: the server README once said the player was "planned separately; only the admin/connect UI ships in this binary." That is no longer the design — the player's web build is now served **by the server at `/web`** from `web_dir`; see [CROSS-REPO.md](../../CROSS-REPO.md) §9.)_
 
 The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA wrapped with Capacitor, built for a *different* backend (Audioserve) — is the reference for **look, feel, and functionality**, rebuilt as a **single Expo / React Native codebase** shipping to three targets:
 
@@ -49,7 +49,13 @@ The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA
 
 **M3 — offline:** download books/chapters via `expo-file-system` (native) / Cache API + SW (web); cached indicators, download progress, delete; offline playback.
 
-**M4 — PWA + server bundling:** Expo static web export → Workbox SW + web manifest (installable, offline shell). Coordinate serving the static export from the Go server (`embed.FS` at `/web` — server-side change). Indexed-book list (`/books` keyset) + search polish; admin screens gated by `role==="admin"`.
+**M4 — PWA + server bundling:** Expo static web export → Workbox SW + web manifest (installable, offline shell). Coordinate serving the static export from the Go server. Indexed-book list (`/books` keyset) + search polish; admin screens gated by `role==="admin"`.
+
+> **Update (shipped design):** the `embed.FS`-at-`/web` approach was **dropped** in
+> favour of **runtime serving from `web_dir`** — the server serves the player at `/web`
+> from `AUDIOSILO_WEB_DIR` (not vendored, not embedded in the binary), and the Docker
+> image bakes a *pinned* build into `/app/web`. See [CROSS-REPO.md](../../CROSS-REPO.md)
+> §9 / §11.
 
 **M5 — release:** EAS Build profiles, app icons/splash per platform (port the real logo SVG), store metadata; deep-link/universal-link verification; capability-driven feature flags (upload/transcode/websocket) for server Phases B/C.
 

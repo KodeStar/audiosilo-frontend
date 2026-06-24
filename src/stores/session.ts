@@ -54,7 +54,6 @@ type SessionState = {
   /** Update the active connection's user. */
   setUser: (user: User) => Promise<void>;
   setActiveConnection: (id: string) => Promise<void>;
-  reorderConnections: (ids: string[]) => Promise<void>;
   /** Remove one connection (deleting its token). */
   removeConnection: (id: string) => Promise<void>;
   /** Sign out of the active connection (remove it). */
@@ -175,16 +174,6 @@ export const useSession = create<SessionState>()((set, get) => ({
     if (!connections.some((c) => c.id === id)) return;
     await setItem(ACTIVE_KEY, id);
     set(mirror(connections, id));
-  },
-
-  reorderConnections: async (ids) => {
-    const { connections, activeConnectionId } = get();
-    const byId = new Map(connections.map((c) => [c.id, c]));
-    const next = ids.map((id) => byId.get(id)).filter((c): c is Connection => c !== undefined);
-    // Append any not named in ids (defensive).
-    for (const c of connections) if (!ids.includes(c.id)) next.push(c);
-    await persist(next, activeConnectionId);
-    set({ connections: next, ...mirror(next, activeConnectionId) });
   },
 
   removeConnection: async (id) => {

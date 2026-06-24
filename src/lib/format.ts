@@ -102,13 +102,7 @@ export function bookSubtitle(opts: {
   const parts: string[] = [];
   if (opts.author) parts.push(opts.author);
   if (opts.series) {
-    parts.push(
-      opts.seriesIndex ? `${opts.series} #${formatSeriesIndex(opts.seriesIndex)}` : opts.series,
-    );
+    parts.push(opts.seriesIndex ? `${opts.series} #${opts.seriesIndex}` : opts.series);
   }
   return parts.join(' · ');
-}
-
-function formatSeriesIndex(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(n);
 }

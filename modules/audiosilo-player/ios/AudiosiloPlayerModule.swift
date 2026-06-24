@@ -104,6 +104,10 @@ final class AudioEngine: NSObject {
     guard let url = URL(string: t.url) else { return nil }
     let asset: AVURLAsset
     if let headers = t.headers, !headers.isEmpty {
+      // "AVURLAssetHTTPHeaderFieldsKey" is the undocumented/unofficial AVFoundation
+      // option for injecting request headers (no public symbol exists). It is the
+      // mechanism we rely on for the Authorization header on streams; if Apple ever
+      // changes it, native stream auth breaks (cover art uses a separate URLRequest).
       asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
     } else {
       asset = AVURLAsset(url: url)

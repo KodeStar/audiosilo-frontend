@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-/** Tap-to-seek progress bar over the whole-book timeline. */
+/** Tap-to-seek progress bar over the given position/duration. */
 export function SeekBar({
   position,
   duration,

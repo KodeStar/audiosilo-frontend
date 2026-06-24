@@ -218,8 +218,14 @@ class WebPlaybackService implements PlaybackService {
   }
 
   async seekTo(positionInTrack: number) {
-    this.el().currentTime = positionInTrack;
-    this.update({ position: positionInTrack });
+    const a = this.el();
+    // Clamp to [0, duration] so the optimistic snapshot can't momentarily exceed
+    // the real track length (the browser clamps currentTime, but the snapshot
+    // drives the whole-book position mapping).
+    const dur = Number.isFinite(a.duration) ? a.duration : undefined;
+    const clamped = Math.max(0, dur != null ? Math.min(positionInTrack, dur) : positionInTrack);
+    a.currentTime = clamped;
+    this.update({ position: clamped });
   }
 
   async skipToTrack(index: number, positionInTrack = 0) {
