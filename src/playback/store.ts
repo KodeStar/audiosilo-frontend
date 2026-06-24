@@ -169,7 +169,14 @@ async function ensureService(): Promise<PlaybackService> {
     // finishes, neither of which calls stop().
     if (snapshot.state !== prev.state) {
       if (snapshot.state === 'playing') startSaveLoop();
-      else if (snapshot.state === 'paused' || snapshot.state === 'ended') {
+      // 'loading' is a transient buffering state during playback, so don't stop on
+      // it — but 'error' is terminal (the web engine emits it on a dead stream), so
+      // treat it like pause/end: capture the position and halt the leaked save loop.
+      else if (
+        snapshot.state === 'paused' ||
+        snapshot.state === 'ended' ||
+        snapshot.state === 'error'
+      ) {
         // Capture where we stopped, then refresh the progress lists (run on both
         // outcomes so a queued-offline save still re-reads current server state).
         void persist().then(invalidateProgressLists, invalidateProgressLists);

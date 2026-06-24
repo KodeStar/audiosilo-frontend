@@ -59,7 +59,12 @@ export default function DemoScreen() {
     return () => {
       cancelled = true;
     };
-  }, [status, attempt, setSession, t]);
+    // `t` is intentionally excluded: react-i18next gives it a new identity on a
+    // language change, which would re-run this effect and fire a SECOND
+    // demoSession() (provisioning a second throwaway account) while the first is
+    // still in flight. Error strings are only read inside the async body.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, attempt, setSession]);
 
   if (status === 'loading') {
     return (

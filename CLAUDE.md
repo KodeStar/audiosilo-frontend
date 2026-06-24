@@ -6,7 +6,13 @@ shipping to **web PWA + iOS + Android**. Design is ported from the old Nuxt
 client at `~/dev/audiosilo-old` (pink-accented, Roboto, dark-mode-first).
 
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
-M3–M5 pending.
+**M3 (offline downloads)** shipped (`src/downloads/` — `engine.native.ts`/
+`engine.web.ts`/`store.ts`, a `(app)/downloads` route, and the
+`download-control`/`download-badge` components); **M4 (PWA / service worker)**
+shipped (`public/sw.js`, `public/manifest.json`, `src/lib/register-sw{,.web}.ts`).
+Several features have landed since the original plan: **demo mode**, **favourites**,
+**self-service recovery**, and **i18n** (`src/i18n/`). M5 (release/store) is the main
+remaining track.
 
 ## Stack
 - **Expo SDK 56**, **React Native 0.85** (new architecture), **React 19**, **Expo Router** (file-based, in `src/app`).
@@ -56,6 +62,11 @@ lint, **prettier `--check`** via the `format` script, test) on every PR/push (it
 `npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` secret). `.nvmrc` pins Node `24.16.0`,
 which CI reads via `node-version-file`; keep the lockfile committed in sync (regenerate
 with `npm install` after changing deps).
+
+> Before adding code, read the workspace **[CODE-HEALTH.md](../CODE-HEALTH.md)** —
+> Definition of Done + the recurring drift patterns (wire-contract drift, dead
+> exports, stale docs, untested modules) a full review found. Especially: change
+> the wire format → change **both** repos **and** add a test on both sides.
 
 ## Architecture & conventions
 
@@ -108,7 +119,8 @@ native passes `Authorization` headers. **This depends on a server change** in
     actually playing when it began (`wasPlayingBeforeInterruption`) — otherwise the
     charging chime (a brief interruption) resumes a paused book.
 - **Downloads store absolute file URIs**; the iOS document-container path can change
-  between installs (notably dev rebuilds), so `downloads/store.ts` `relocateEntry`
+  between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
+  a top-level dir, a sibling of `src/playback`) `relocateEntry`
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
   — without it a stale path fails the existence check and the book is dropped *and
   deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
@@ -153,10 +165,12 @@ is `book/[libraryId]/[...path].tsx`. Path helpers in `src/lib/paths.ts`.
 src/app/            Expo Router routes ((app) shell, connect/, player modal)
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
+src/downloads/      offline downloads: native/web engines + store (sibling of playback)
 src/components/      ui/ (primitives + Icon), layout/ (shell/header/nav), player/, library/
-src/stores/         session (Zustand)
+src/stores/         Zustand: session, search, settings
+src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens + ThemeProvider
-src/lib/            storage, secure-store, device, paths, format
+src/lib/            storage, secure-store, device, paths, format, register-sw
 ```
 
 @AGENTS.md

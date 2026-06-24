@@ -51,8 +51,29 @@ describe('catalog switching', () => {
   });
 
   it('falls back to English for keys missing in a partial catalog', async () => {
-    await i18n.changeLanguage('es');
-    // A key present in every catalog still resolves in the active language…
-    expect(i18n.t('common.cancel')).toBe('Cancelar');
+    // The shipped catalogs are all complete, so to exercise the fallback we register
+    // a deliberately *partial* throwaway locale that defines one key (settings.title)
+    // but omits another (common.cancel). `supportedLngs` is widened at runtime so
+    // i18next will actually activate the throwaway locale (it filters unknown codes).
+    const prevSupported = i18n.options.supportedLngs;
+    i18n.options.supportedLngs = [...(prevSupported || []), 'zz'];
+    i18n.addResourceBundle('zz', 'translation', { settings: { title: 'Zz Settings' } });
+    try {
+      await i18n.changeLanguage('zz');
+      expect(i18n.language).toBe('zz');
+
+      // The partial catalog genuinely lacks the key (so the result below can only
+      // come from the English fallback, not the active locale).
+      const bundle = i18n.getResourceBundle('zz', 'translation') as Record<string, unknown>;
+      expect(bundle).toHaveProperty('settings');
+      expect(bundle).not.toHaveProperty('common');
+
+      // Missing in `zz` → resolves to the English source string, not the raw key.
+      // (English: common.cancel === 'Cancel'.)
+      expect(i18n.t('common.cancel')).toBe('Cancel');
+    } finally {
+      i18n.removeResourceBundle('zz', 'translation');
+      i18n.options.supportedLngs = prevSupported;
+    }
   });
 });

@@ -12,7 +12,7 @@ import { colors } from '@/theme/tokens';
 
 const fmt = (v: number) => `${Number(v.toFixed(2))}×`;
 
-/** Tappable speed readout that opens a stepper (0.1× increments). */
+/** Tappable speed readout that opens a stepper (0.05× increments). */
 export function SpeedButton() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);

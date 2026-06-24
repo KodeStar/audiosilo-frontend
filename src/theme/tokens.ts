@@ -27,5 +27,3 @@ export const colors = {
     border: '#2c3340', // gray-750
   },
 } as const;
-
-export type ColorScheme = 'light' | 'dark';

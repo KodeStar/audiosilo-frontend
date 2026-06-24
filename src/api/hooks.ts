@@ -20,14 +20,11 @@ export const qk = {
   browse: (lib: number, path: string) => ['browse', lib, path] as const,
   item: (lib: number, path: string) => ['item', lib, path] as const,
   chapters: (lib: number, path: string) => ['chapters', lib, path] as const,
-  search: (q: string) => ['search', q] as const,
-  recentBooks: (limit: number) => ['books', 'recent', limit] as const,
   allProgress: () => ['progress', 'all'] as const,
   progress: (lib: number, path: string) => ['progress', lib, path] as const,
   bookmarks: (lib: number, path: string) => ['bookmarks', lib, path] as const,
   notes: (lib: number, path: string) => ['notes', lib, path] as const,
   history: (lib: number, path: string) => ['history', lib, path] as const,
-  allHistory: () => ['history', 'all'] as const,
   favourites: (connectionId: string) => ['favourites', connectionId] as const,
 };
 
@@ -83,31 +80,6 @@ export function useChapters(libraryId: number, path: string) {
     queryFn: ({ signal }) => api.chapters(libraryId, path, signal),
     enabled: path.length > 0,
   });
-}
-
-export function useSearch(query: string) {
-  const api = useApi();
-  const q = query.trim();
-  return useQuery({
-    queryKey: qk.search(q),
-    queryFn: ({ signal }) => api.search(q, 50, signal),
-    enabled: q.length > 0,
-  });
-}
-
-/** Recently added books across every accessible library, merged and sorted by
- * the server (one cross-library call — no per-library fan-out). */
-export function useRecentBooks(limit = 48) {
-  const api = useApi();
-  return useQuery({
-    queryKey: qk.recentBooks(limit),
-    queryFn: ({ signal }) => api.recentBooks(limit, signal),
-  });
-}
-
-export function useAllProgress() {
-  const api = useApi();
-  return useQuery({ queryKey: qk.allProgress(), queryFn: () => api.allProgress() });
 }
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so
