@@ -79,6 +79,20 @@ describe('ApiClient', () => {
     expect(new ApiClient('https://h').coverUrl(3, 'A/Book')).not.toContain('token=');
   });
 
+  it('requests a transcoded stream with a mid-file offset only when asked', () => {
+    const c = new ApiClient('https://h', 'tok');
+    // No opts → neither transcode nor t in the URL.
+    const plain = c.streamUrl(3, 'A/Book');
+    expect(plain).not.toMatch(/transcode=/);
+    expect(plain).not.toMatch(/[?&]t=/);
+    // transcode + a positive offset are both encoded.
+    const tc = c.streamUrl(3, 'A/Book', false, { transcode: true, t: 42 });
+    expect(tc).toMatch(/transcode=1/);
+    expect(tc).toMatch(/[?&]t=42/);
+    // t=0 (start of file) is omitted — same as no offset, so a seek re-request is unambiguous.
+    expect(c.streamUrl(3, 'A/Book', false, { transcode: true, t: 0 })).not.toMatch(/[?&]t=/);
+  });
+
   it('sets a password via POST /auth/password with the documented body', async () => {
     const fetchMock = installFetch(() => ({ status: 204 }));
     await new ApiClient('https://h', 'tok').setPassword('longenough');

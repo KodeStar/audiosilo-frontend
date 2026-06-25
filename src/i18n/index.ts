@@ -10,9 +10,15 @@ import pt from './locales/pt.json';
 
 /**
  * Supported UI languages. `en` is the source-of-truth catalog and the fallback;
- * the rest are LTR translations (no RTL handling this pass). To add a language:
- * drop a `locales/<code>.json`, import it here, and add an entry below — the
- * Settings picker and native `app.json` `locales` declaration read from this list.
+ * the rest are LTR translations (no RTL handling this pass). The in-app Settings
+ * language picker derives its options from this list.
+ *
+ * NOTE: `app.json`'s `locales` is a SEPARATE, hand-maintained list — it points at
+ * native-metadata files (`./assets/locales/<code>.json`, distinct from these UI
+ * catalogs) and notably omits `en`. It does NOT read from SUPPORTED_LANGUAGES.
+ * To add a language you must touch BOTH places: drop a `locales/<code>.json`,
+ * import it here and add an entry below, AND add the matching `app.json` `locales`
+ * entry (+ its `assets/locales/<code>.json`).
  */
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },

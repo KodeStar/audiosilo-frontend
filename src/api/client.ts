@@ -2,8 +2,6 @@ import type {
   AuthSession,
   Book,
   Bookmark,
-  BooksPage,
-  BooksSort,
   ChaptersResponse,
   DemoSession,
   Favourite,
@@ -60,17 +58,13 @@ function toQueryString(query?: Query): string {
  */
 export class ApiClient {
   readonly baseUrl: string;
-  private token: string | null;
+  private readonly token: string | null;
   private readonly timeoutMs: number;
 
   constructor(baseUrl: string, token: string | null = null, timeoutMs = 15000) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
     this.timeoutMs = timeoutMs;
-  }
-
-  setToken(token: string | null) {
-    this.token = token;
   }
 
   /** Absolute URL for an API path (e.g. `/server`). */
@@ -200,18 +194,6 @@ export class ApiClient {
       signal,
     });
   }
-  books(
-    libraryId: number,
-    opts: {
-      sort?: BooksSort;
-      author?: string;
-      series?: string;
-      cursor?: string;
-      limit?: number;
-    } = {},
-  ) {
-    return this.request<BooksPage>('GET', `/libraries/${libraryId}/books`, { query: { ...opts } });
-  }
   async search(q: string, limit?: number, signal?: AbortSignal) {
     const r = await this.request<{ books: Book[] }>('GET', '/search', {
       query: { q, limit },
@@ -252,10 +234,22 @@ export class ApiClient {
   coverUrl(libraryId: number, path: string) {
     return this.apiUrl(`/libraries/${libraryId}/cover`, { path, ...this.mediaTokenQuery() });
   }
-  streamUrl(libraryId: number, path: string, download = false) {
+  /** Build a stream URL. `transcode` requests an on-the-fly MP3 re-encode for
+   * codecs the client can't decode natively (only useful when the server's
+   * `transcode` capability is on and the book's `direct_playable` is false);
+   * `t` starts that transcode mid-file (transcoded output isn't byte-seekable, so
+   * a seek re-requests with a new `t`). */
+  streamUrl(
+    libraryId: number,
+    path: string,
+    download = false,
+    opts?: { transcode?: boolean; t?: number },
+  ) {
     return this.apiUrl(`/libraries/${libraryId}/stream`, {
       path,
       download: download ? 1 : undefined,
+      transcode: opts?.transcode ? 1 : undefined,
+      t: opts?.t && opts.t > 0 ? opts.t : undefined,
       ...this.mediaTokenQuery(),
     });
   }
@@ -347,10 +341,6 @@ export class ApiClient {
       `/libraries/${libraryId}/history`,
       { query: { path } },
     );
-    return r.history ?? [];
-  }
-  async allHistory() {
-    const r = await this.request<{ history: History[] | null }>('GET', '/me/history');
     return r.history ?? [];
   }
   addHistory(

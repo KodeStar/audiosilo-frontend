@@ -6,6 +6,7 @@
 
 export type Capabilities = {
   admin_ui: boolean;
+  web_player: boolean;
   transcode: boolean;
   upload: boolean;
   websocket: boolean;
@@ -34,6 +35,9 @@ export type User = {
   /** Whether the user holds a durable recovery code to re-authenticate without an
    * admin. Drives the "you have no way back in" warning shown at sign-out. */
   has_recovery: boolean;
+  /** Throwaway demo account. The server refuses self-service password/recovery for
+   * these, so the UI hides those affordances when set. */
+  is_demo?: boolean;
 };
 
 /** Response of /auth/exchange and /auth/login. The token is the session secret. */
@@ -61,14 +65,12 @@ export type PairingPayload = {
   links: { web: string; admin: string; ios?: string; android?: string };
 };
 
-export type LibraryLayout = 'flat' | 'chapters_in_folder' | 'books_in_folder';
 export type LibraryView = 'filesystem' | 'computed' | 'hybrid';
 
 export type Library = {
   id: number;
   name: string;
   root: string;
-  layout: LibraryLayout;
   default_view: LibraryView;
   /** Display order (lower first). Also the tiebreaker when the same book exists in
    * more than one library — the earlier library's copy wins de-duplication. */
@@ -90,6 +92,9 @@ export type FsEntry = {
   series?: string;
   series_index?: number;
   duration?: number;
+  /** Per-folder detection override ("book" | "collection"); empty when auto-detected.
+   * An admin-console concern — the player browses read-only — but mirrored for completeness. */
+  override?: string;
 };
 
 export type Listing = {
@@ -136,6 +141,11 @@ export type Book = {
   isbn?: string;
   format: string;
   size: number;
+  /** Audio codec (ffprobe codec_name, e.g. "aac"/"mp3"/"ac3"); empty if unprobed. */
+  codec?: string;
+  /** Whether the codec plays natively in browsers. When false, a web client should
+   * request the transcoded stream (?transcode=1) instead of streaming directly. */
+  direct_playable?: boolean;
   /** RFC3339; when the book was added (filesystem birth time, from the scanner). */
   added_at?: string;
   files?: BookFile[];
@@ -170,13 +180,10 @@ export type ChaptersResponse = {
   is_folder: boolean;
   files: BookFile[];
   chapters: Chapter[];
-};
-
-export type BooksSort = 'author' | 'title' | 'recent';
-
-export type BooksPage = {
-  books: Book[];
-  next_cursor?: string;
+  /** Audio codec (ffprobe codec_name); empty if unprobed. */
+  codec?: string;
+  /** Whether the codec plays natively in browsers (see Book.direct_playable). */
+  direct_playable?: boolean;
 };
 
 export type Progress = {

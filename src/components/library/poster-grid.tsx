@@ -14,7 +14,7 @@ import { bookHref } from '@/lib/paths';
 // overflow that percentage widths hit on native). Shared by the home screen and
 // the Favourites screen so book cards look identical everywhere.
 export const GRID_GAP = 12;
-export const MIN_CARD_WIDTH = 220;
+const MIN_CARD_WIDTH = 220;
 
 export function gridColumns(width: number) {
   return Math.max(2, Math.floor((width + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP)));

@@ -21,7 +21,9 @@ function hash(s: string): string {
   return h.toString(16);
 }
 
-/** A url-safe, collision-resistant segment for a book's rel_path. */
+/** A url-safe, collision-resistant segment for a book's rel_path. Keep only the
+ * tail (the most-specific filename, capped at 40 chars) for a readable url; the
+ * appended `hash(path)` is what actually guarantees uniqueness. */
 function slug(path: string): string {
   const base = path
     .replace(/[^a-zA-Z0-9._-]+/g, '_')
@@ -46,6 +48,8 @@ async function hasControllingSW(): Promise<boolean> {
   await sw.ready.catch(() => undefined);
   if (!sw.controller) {
     await new Promise<void>((resolve) => {
+      // Bound the wait so a never-activating worker can't hang the UI; on the
+      // miss we just report unsupported and the caller hides downloads.
       const timer = setTimeout(resolve, 3000);
       sw.addEventListener(
         'controllerchange',
@@ -102,32 +106,42 @@ export const engine: DownloadEngine = {
     const total = Number(res.headers.get('Content-Length') ?? 0);
     const contentType = res.headers.get('Content-Type') ?? 'application/octet-stream';
 
-    // Stream the body so we can report progress (fetch has no native download
-    // progress), then store the assembled blob.
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
+    // Stream the body straight into the cache, counting bytes as they pass so we
+    // can report progress (fetch has no native download event). Accumulating the
+    // whole book into a Blob first risks OOM/jank on a multi-GB download on mobile.
     let received = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.byteLength;
-      onProgress?.(received, total || received);
-    }
+    const counter = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        received += chunk.byteLength;
+        onProgress?.(received, total || received);
+        controller.enqueue(chunk);
+      },
+    });
 
-    const blob = new Blob(chunks as BlobPart[], { type: contentType });
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+    };
+    if (total > 0) headers['Content-Length'] = String(total);
+
     const virtualUri = bookPrefix(libraryId, path) + fileName;
     const cache = await caches.open(MEDIA_CACHE);
-    await cache.put(
-      virtualUri,
-      new Response(blob, {
-        headers: {
-          'Content-Type': contentType,
-          'Content-Length': String(blob.size),
-          'Accept-Ranges': 'bytes',
-        },
-      }),
-    );
+    await cache.put(virtualUri, new Response(res.body.pipeThrough(counter), { headers }));
+    // If the server sent no Content-Length, the entry was stored without one, so
+    // totalBytesUsed() (which sums Content-Length across the cache) would count this
+    // book as 0 B. We now know its byte count — re-store with the header, streaming
+    // the cached body through (cache→cache, so still no full-blob buffer / OOM).
+    if (total === 0 && received > 0) {
+      const stored = await cache.match(virtualUri);
+      if (stored?.body) {
+        await cache.put(
+          virtualUri,
+          new Response(stored.body, {
+            headers: { ...headers, 'Content-Length': String(received) },
+          }),
+        );
+      }
+    }
     return virtualUri;
   },
 
@@ -192,12 +206,14 @@ export const engine: DownloadEngine = {
     try {
       const cache = await caches.open(MEDIA_CACHE);
       const keys = await cache.keys();
-      let total = 0;
-      for (const req of keys) {
-        const res = await cache.match(req);
-        total += Number(res?.headers.get('Content-Length') ?? 0);
-      }
-      return total;
+      // Read the cached sizes concurrently rather than awaiting each match in
+      // sequence (an N+1 over the whole media cache).
+      const sizes = await Promise.all(
+        keys.map(async (req) =>
+          Number((await cache.match(req))?.headers.get('Content-Length') ?? 0),
+        ),
+      );
+      return sizes.reduce((sum, n) => sum + n, 0);
     } catch {
       return 0;
     }

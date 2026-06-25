@@ -11,6 +11,7 @@ import { Brand } from '@/components/brand/brand';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
+import { isActiveNav } from '@/lib/nav';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -51,17 +52,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/settings', match: '/settings', labelKey: 'settings', icon: 'settings' },
 ];
 
-function matchesPath(pathname: string, match: string) {
-  return match === '/' ? pathname === '/' : pathname === match || pathname.startsWith(`${match}/`);
-}
-
-function isActive(pathname: string, item: NavItem) {
-  return (
-    matchesPath(pathname, item.match) ||
-    (item.alsoMatch?.some((m) => matchesPath(pathname, m)) ?? false)
-  );
-}
-
 /** Left sidebar on wide screens, bottom tab bar on phones. */
 export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   const { t } = useTranslation();
@@ -78,7 +68,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
     return (
       <View className="flex-row border-t border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800">
         {NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item);
+          const active = isActiveNav(pathname, item);
           return (
             <Link key={item.match} href={item.href} asChild>
               <Pressable className="flex-1 items-center justify-center gap-1 py-2.5">
@@ -107,7 +97,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       </View>
       <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item);
+          const active = isActiveNav(pathname, item);
           return (
             <Link key={item.match} href={item.href} asChild>
               <Pressable

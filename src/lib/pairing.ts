@@ -46,13 +46,16 @@ export function parsePairingScan(raw: string): { base: string; token: string } |
 
   if (/^audiosilo:/i.test(text)) {
     const server = queryParam(query, 'server');
-    return server ? { base: normalizeUrl(server), token } : null;
+    // A present-but-unnormalizable server (blank, wrong scheme) must fail the
+    // parse rather than returning a truthy result with an empty/garbage base.
+    const base = server ? normalizeUrl(server) : '';
+    return base ? { base, token } : null;
   }
 
   if (!/^https?:\/\//i.test(text)) return null;
   // Strip the `/web/connect` suffix (and query) rather than using the URL origin,
   // so a configured host:port or base-path prefix is preserved.
   const before = text.split('?')[0];
-  const base = before.replace(/\/web\/connect\/?$/i, '');
-  return { base: normalizeUrl(base), token };
+  const base = normalizeUrl(before.replace(/\/web\/connect\/?$/i, ''));
+  return base ? { base, token } : null;
 }

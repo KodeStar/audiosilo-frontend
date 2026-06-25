@@ -53,7 +53,7 @@ export function BookmarksSection({
           loading={adding}
         />
       ) : null}
-      {empty ? emptyLabel ? <Text variant="caption">{emptyLabel}</Text> : null : null}
+      {empty && emptyLabel ? <Text variant="caption">{emptyLabel}</Text> : null}
       {(bookmarks ?? []).map((bm) => (
         <View
           key={bm.id}
