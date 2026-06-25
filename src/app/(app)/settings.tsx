@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, Pressable, ScrollView, View } from 'react-native';
@@ -23,6 +22,7 @@ import { TextField } from '@/components/ui/text-field';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { shareText } from '@/lib/share';
+import { APP_VERSION } from '@/lib/version';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
@@ -400,7 +400,7 @@ export default function SettingsScreen() {
 
         <Text variant="caption" className="text-center">
           {t('settings.version', {
-            version: server?.version ?? Constants.expoConfig?.version ?? '1.0.0',
+            version: server?.version ?? APP_VERSION,
           })}
         </Text>
       </ScrollView>

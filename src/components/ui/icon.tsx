@@ -38,6 +38,8 @@ import { faTriangle } from '@fortawesome/pro-solid-svg-icons/faTriangle';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { View } from 'react-native';
 
+import { colors } from '@/theme/tokens';
+
 /**
  * Central icon abstraction. Screens import `<Icon name=... />` from here, never
  * an icon library directly, so the backend stays swappable. Backed by
@@ -127,7 +129,7 @@ export type IconProps = {
   className?: string;
 };
 
-export function Icon({ name, size = 20, color = '#9ca3af', className }: IconProps) {
+export function Icon({ name, size = 20, color = colors.dark.text, className }: IconProps) {
   const icon = <FontAwesomeIcon icon={ICONS[name]} size={size} color={color} />;
   return className ? <View className={className}>{icon}</View> : icon;
 }

@@ -5,6 +5,11 @@
 // locale-aware formatters resolve strings under the fallback catalog in tests.
 import '@/i18n';
 
+// React 19 gates act(...) support behind this flag; @testing-library/react-native's
+// render/renderHook need it so component + hook tests flush state updates. The
+// pure-logic suites are unaffected (they render nothing).
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 jest.mock('@react-native-async-storage/async-storage', () => {
   const store = new Map<string, string>();
   return {

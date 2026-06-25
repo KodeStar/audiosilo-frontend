@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { TextInput, View, type TextInputProps } from 'react-native';
 
+import { colors } from '@/theme/tokens';
+
 import { Text } from './text';
 
 export type TextFieldProps = TextInputProps & {
@@ -34,7 +36,7 @@ export function TextField({
         </Text>
       ) : null}
       <TextInput
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor={colors.dark.text}
         className={[
           'rounded-xl border px-4 py-3 font-sans text-base text-gray-700 dark:text-gray-100',
           'bg-gray-100 dark:bg-gray-840',

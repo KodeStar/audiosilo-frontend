@@ -8,6 +8,17 @@ import {
 } from './types';
 
 /**
+ * Whether a buffered <audio> element is ready to be swapped in for the gapless
+ * offline swap: it can play through (`readyState >= HAVE_FUTURE_DATA`, i.e. 3) AND
+ * its playhead has reached the seek target (within ~1.5s, since the browser may
+ * land slightly off after a seek). A falsy target means the start of the track.
+ * Pure and exported so the readiness rule is unit-testable without the DOM.
+ */
+export function isSwapReady(readyState: number, currentTime: number, target: number): boolean {
+  return readyState >= 3 && Math.abs(currentTime - (target || 0)) < 1.5;
+}
+
+/**
  * Web playback via a single HTML5 <audio> element. The token is already in the
  * track URL (query param), so Range requests (seek/scrub) work natively. The
  * queue is advanced manually on `ended`. Media Session API wires up OS / browser
@@ -154,8 +165,7 @@ class WebPlaybackService implements PlaybackService {
       };
       // Ready once it can play AND the playhead is at the seek target.
       const onReady = () => {
-        if (pending.readyState >= 3 && Math.abs(pending.currentTime - (positionInTrack || 0)) < 1.5)
-          done(true);
+        if (isSwapReady(pending.readyState, pending.currentTime, positionInTrack)) done(true);
       };
       const onError = () => done(false);
       pending.addEventListener('loadedmetadata', onLoaded);
