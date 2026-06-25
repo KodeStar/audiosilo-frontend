@@ -127,6 +127,21 @@ export const engine: DownloadEngine = {
     const virtualUri = bookPrefix(libraryId, path) + fileName;
     const cache = await caches.open(MEDIA_CACHE);
     await cache.put(virtualUri, new Response(res.body.pipeThrough(counter), { headers }));
+    // If the server sent no Content-Length, the entry was stored without one, so
+    // totalBytesUsed() (which sums Content-Length across the cache) would count this
+    // book as 0 B. We now know its byte count — re-store with the header, streaming
+    // the cached body through (cache→cache, so still no full-blob buffer / OOM).
+    if (total === 0 && received > 0) {
+      const stored = await cache.match(virtualUri);
+      if (stored?.body) {
+        await cache.put(
+          virtualUri,
+          new Response(stored.body, {
+            headers: { ...headers, 'Content-Length': String(received) },
+          }),
+        );
+      }
+    }
     return virtualUri;
   },
 

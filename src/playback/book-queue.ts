@@ -51,7 +51,12 @@ export function chapterBookOffset(
   ch: { file_index: number; file_path: string; start: number },
 ): number {
   const byPath = files.findIndex((f) => f.path === ch.file_path);
-  const upto = byPath >= 0 ? byPath : ch.file_index;
+  // Fall back to `file_index` only when it's a real index; an out-of-range index
+  // (stale chapter metadata that also fails the path match) would otherwise sum
+  // EVERY file's duration and roughly double the book's computed length — degrade
+  // to 0 preceding files instead, as the old `offsets[file_index] ?? 0` did.
+  const inRange = ch.file_index >= 0 && ch.file_index < files.length;
+  const upto = byPath >= 0 ? byPath : inRange ? ch.file_index : 0;
   let acc = 0;
   for (let i = 0; i < upto && i < files.length; i++) {
     acc += files[i].duration > 0 ? files[i].duration : 0;

@@ -278,13 +278,15 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('playing');
   });
 
-  it('does not error while paused (no playback intent)', async () => {
+  it('reads a parked loading as paused while there is no playback intent', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 30));
     await Promise.resolve();
     // User pauses, then the engine reports buffering while parked (e.g. ExoPlayer
-    // STATE_BUFFERING with playWhenReady=false). With no intent to play it must not
-    // be promoted to an error.
+    // STATE_BUFFERING with playWhenReady=false, or iOS reporting a failed item as
+    // `loading` while paused). With no intent to play, a `loading` is read as
+    // `paused` — the play button stays usable instead of stranding an endless
+    // spinner with no watchdog — and it is never promoted to an error.
     pushSnapshot(snap('paused', 30));
     await Promise.resolve();
     pushSnapshot(snap('loading', 30));
@@ -292,7 +294,7 @@ describe('stall watchdog promotes a stuck loading to error', () => {
 
     jest.advanceTimersByTime(10_000);
     await Promise.resolve();
-    expect(usePlayer.getState().snapshot.state).toBe('loading');
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
   });
 
   it("shows a spinner for 'ready' while intending to play, and still errors if it never plays", async () => {

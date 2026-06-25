@@ -229,6 +229,13 @@ async function ensureService(): Promise<PlaybackService> {
     let state = raw.state;
     if (startingPlayback && state !== 'playing' && state !== 'error') state = 'loading';
     else if (state === 'ready' && wantsPlayback) state = 'loading';
+    // When we're NOT intending to play (no attempt in flight), an engine `loading`
+    // is not "connecting" — it's a stalled/failed item we have no watchdog for
+    // (the watchdog only arms while wantsPlayback). iOS reports a failed item as
+    // `loading` even while the user has the book paused; left as `loading` it would
+    // strand an endless spinner with no retry. Read it as `paused` so the play
+    // button comes back (tapping it starts a fresh attempt, which the watchdog covers).
+    else if (state === 'loading' && !wantsPlayback && !startingPlayback) state = 'paused';
     const snapshot: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
     const prev = usePlayer.getState().snapshot;
     // After the stall watchdog (or an engine error) surfaces an `error`, the engine
@@ -349,7 +356,10 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   toggle: async () => {
     const svc = await ensureService();
     // persist + save-loop start/stop are handled by the engine state transition.
-    if (get().snapshot.state === 'playing') {
+    // `loading` counts as "trying to play" here so a tap on the spinner (slow start
+    // or mid-playback stall) cancels the attempt instead of re-arming a new one.
+    const st = get().snapshot.state;
+    if (st === 'playing' || st === 'loading') {
       wantsPlayback = false;
       startingPlayback = false;
       cancelStallWatchdog();
@@ -365,7 +375,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     startingPlayback = false;
     cancelStallWatchdog();
     const svc = await ensureService();
-    if (get().snapshot.state === 'playing') await svc.pause();
+    // Also pause while still `loading`: an in-flight start would otherwise resolve
+    // to `playing` and silently defeat the pause (e.g. the sleep timer firing while
+    // the stream is buffering). The engine pause is idempotent in either state.
+    const st = get().snapshot.state;
+    if (st === 'playing' || st === 'loading') await svc.pause();
   },
 
   retry: async () => {
