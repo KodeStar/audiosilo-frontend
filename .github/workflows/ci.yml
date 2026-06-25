@@ -1,4 +1,4 @@
-# Gates every pull request and push to main on typecheck + lint + tests.
+# Gates every pull request and push to main on typecheck + lint + format (prettier --check) + tests.
 # The web-export image build (web.yml) stays separate.
 name: ci
 

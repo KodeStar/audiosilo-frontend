@@ -45,8 +45,6 @@ class AudiosiloPlayerModule : Module() {
   private var controller: MediaController? = null
   private var controllerFuture: ListenableFuture<MediaController>? = null
   private val handler = Handler(Looper.getMainLooper())
-  private var autoRewindMax: Double = 0.0
-  private var pausedAt: Long = 0L
   private var progressRunnable: Runnable? = null
   private var lastTrackIndex: Int = -1
 
@@ -63,7 +61,10 @@ class AudiosiloPlayerModule : Module() {
     }
 
     AsyncFunction("setConfig") { config: ConfigRecord ->
-      autoRewindMax = config.autoRewindMax
+      // Auto-rewind is applied natively (AudiobookPlayer) so it covers lock-screen resumes
+      // too. Skip intervals aren't used natively on Android — the lock screen is
+      // play/pause only and in-app skip computes its own delta — so they're ignored here.
+      PlayerConfig.autoRewindMaxMs = (config.autoRewindMax * 1000).toLong()
     }
 
     AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double ->
@@ -79,25 +80,13 @@ class AudiosiloPlayerModule : Module() {
     }
 
     AsyncFunction("play") {
-      handler.post {
-        val c = controller ?: return@post
-        if (autoRewindMax > 0 && pausedAt > 0L) {
-          val elapsed = (System.currentTimeMillis() - pausedAt) / 1000.0
-          val rewind = minOf(autoRewindMax, elapsed)
-          if (rewind > 0.5) {
-            c.seekTo(maxOf(0L, c.currentPosition - (rewind * 1000).toLong()))
-          }
-        }
-        pausedAt = 0L
-        c.play()
-      }
+      // Auto-rewind on resume now lives in AudiobookPlayer (the session's player), so it
+      // applies to lock-screen/notification resumes too; controller.play() routes there.
+      handler.post { controller?.play() }
     }
 
     AsyncFunction("pause") {
-      handler.post {
-        controller?.pause()
-        pausedAt = System.currentTimeMillis()
-      }
+      handler.post { controller?.pause() }
     }
 
     AsyncFunction("seekTo") { seconds: Double ->
@@ -116,7 +105,6 @@ class AudiosiloPlayerModule : Module() {
       handler.post {
         controller?.stop()
         controller?.clearMediaItems()
-        pausedAt = 0L
         lastTrackIndex = -1
         sendEvent("onState", mapOf("state" to "idle"))
       }

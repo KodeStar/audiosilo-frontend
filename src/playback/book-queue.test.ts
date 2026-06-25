@@ -121,6 +121,31 @@ describe('buildBookQueue', () => {
     expect(q.total).toBe(200);
   });
 
+  it('maps chapter book_offsets by file_path, robust to non-sequential file_index', () => {
+    // No explicit files list: tracks derive from the distinct chapter file_paths in
+    // first-seen order [p2, p1] → offsets [0, 50]. The chapters carry file_index
+    // values that DON'T match that track order, so a correct build must locate each
+    // chapter's offset by its file_path (its real track), not by file_index — keying
+    // by file_index here would place the p2 chapter on p1's offset and vice-versa.
+    const book = makeBook({
+      rel_path: 'A/Book',
+      is_folder: true,
+      files: [],
+      chapters: [
+        chapter({ index: 0, file_index: 1, file_path: 'p2.mp3', start: 5, end: 50 }),
+        chapter({ index: 1, file_index: 0, file_path: 'p1.mp3', start: 0, end: 30 }),
+      ],
+    });
+    const q = buildBookQueue(fakeApi, 2, book);
+    // distinctFilesFromChapters order: p2 first (seen first), then p1.
+    expect(q.tracks.map((t) => t.url)).toEqual(['stream:2:p2.mp3', 'stream:2:p1.mp3']);
+    expect(q.offsets).toEqual([0, 50]); // p2 dur=50 at 0, p1 starts at 50
+    // chapter in p2.mp3 (track 0, offset 0) at in-file start 5 → 5
+    expect(q.chapters[0].book_offset).toBe(5);
+    // chapter in p1.mp3 (track 1, offset 50) at in-file start 0 → 50
+    expect(q.chapters[1].book_offset).toBe(50);
+  });
+
   it('uses local file uris and drops headers when the book is downloaded', () => {
     const book = makeBook({ rel_path: 'A/single.m4b', duration: 50 });
     const q = buildBookQueue(fakeApi, 2, book, undefined, {

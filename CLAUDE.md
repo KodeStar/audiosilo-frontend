@@ -6,7 +6,13 @@ shipping to **web PWA + iOS + Android**. Design is ported from the old Nuxt
 client at `~/dev/audiosilo-old` (pink-accented, Roboto, dark-mode-first).
 
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
-M3–M5 pending.
+**M3 (offline downloads)** shipped (`src/downloads/` — `engine.native.ts`/
+`engine.web.ts`/`store.ts`, a `(app)/downloads` route, and the
+`download-control`/`download-badge` components); **M4 (PWA / service worker)**
+shipped (`public/sw.js`, `public/manifest.json`, `src/lib/register-sw{,.web}.ts`).
+Several features have landed since the original plan: **demo mode**, **favourites**,
+**self-service recovery**, and **i18n** (`src/i18n/`). M5 (release/store) is the main
+remaining track.
 
 ## Stack
 - **Expo SDK 56**, **React Native 0.85** (new architecture), **React 19**, **Expo Router** (file-based, in `src/app`).
@@ -56,6 +62,11 @@ lint, **prettier `--check`** via the `format` script, test) on every PR/push (it
 `npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` secret). `.nvmrc` pins Node `24.16.0`,
 which CI reads via `node-version-file`; keep the lockfile committed in sync (regenerate
 with `npm install` after changing deps).
+
+> Before adding code, read the workspace **[CODE-HEALTH.md](../CODE-HEALTH.md)** —
+> Definition of Done + the recurring drift patterns (wire-contract drift, dead
+> exports, stale docs, untested modules) a full review found. Especially: change
+> the wire format → change **both** repos **and** add a test on both sides.
 
 ## Architecture & conventions
 
@@ -107,8 +118,21 @@ native passes `Authorization` headers. **This depends on a server change** in
   - **Interruption auto-resume.** Only resume on interruption `.ended` if we were
     actually playing when it began (`wasPlayingBeforeInterruption`) — otherwise the
     charging chime (a brief interruption) resumes a paused book.
+- **Android lock-screen controls are deliberately play/pause-only, no scrubber**
+  (`AudiosiloPlayerService.kt`). A Media3 `ForwardingPlayer` (`AudiobookPlayer`) applies
+  auto-rewind on every `play()` (so lock-screen resume rewinds too) and hides prev/next
+  (so "previous" can't restart a single-file book). The scrubber is hidden by restricting
+  the **media-notification controller** in `MediaSession.Callback.onConnect` (remove the
+  seek commands) — a whole-book scrubber is a foot-gun (a stray tap loses your place) and
+  there are no skip buttons to recover with. **Why no skip buttons:** media3-session ships
+  no skip drawables, so `ICON_SKIP_BACK/FORWARD` render icon-less and Android 16 drops
+  icon-less media actions. Don't re-add skip buttons without first shipping custom vector
+  icons AND verifying Android 16's media UI actually renders them. The in-app controller
+  keeps full seek commands, so the app's own seek bar is unaffected. iOS handles all this
+  natively (`preferredIntervals` + remote commands route through `play()`).
 - **Downloads store absolute file URIs**; the iOS document-container path can change
-  between installs (notably dev rebuilds), so `downloads/store.ts` `relocateEntry`
+  between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
+  a top-level dir, a sibling of `src/playback`) `relocateEntry`
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
   — without it a stale path fails the existence check and the book is dropped *and
   deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
@@ -126,6 +150,38 @@ native passes `Authorization` headers. **This depends on a server change** in
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.
+- **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
+  **armed by the play/retry action, not by interpreting engine events** — this is the key
+  to robustness, because the native bridge's resume/retry event stream is noisy and
+  out-of-order (see below). `beginPlaybackAttempt()` (called from `playBook`/`retry`/
+  `toggle`-play) sets `wantsPlayback` + `startingPlayback` and starts a `STALL_GRACE_MS`
+  (3s) timer; if the engine hasn't reached `playing` when it fires, the store synthesizes
+  an `error` so the player can offer a retry. Only reaching `playing` (or a user
+  pause/stop) cancels it; a mid-playback stall (`playing`→`loading`) re-arms it. The fire
+  test is simply "not playing", so no transient state can prevent it.
+- **Why not interpret engine events:** `service.native.ts` keeps ONE merged snapshot and
+  re-emits it on every event, and iOS delivers `timeControlStatus`/status KVO
+  asynchronously — so on a resume/retry the store sees a jumble of `ready`, frozen
+  `onProgress` ticks carrying `loading`, and a spurious `paused` (an async `.paused` from
+  the queue rebuild that escapes the native `rebuilding` guard). Trying to drive the
+  spinner/watchdog by reacting to those individually failed three different ways (error
+  flashed then reverted; stuck at a dead `ready` play button; spinner that never armed the
+  watchdog because the spurious `paused` cleared intent). So instead: while
+  `startingPlayback`, `subscribe` **collapses every non-`playing`/non-`error` state to
+  `loading`** (spinner), and the action-armed watchdog guarantees resolution. A genuine
+  user/lock-screen pause arrives AFTER `playing` (startingPlayback already false), so it
+  still reads as `paused`.
+- The synthesized `error` is also **held** against the engine's continued re-reports:
+  `subscribe` drops EVERY incoming state except `playing` while `prev` is `error` and no
+  retry is in flight. This is suppress-all-but-`playing`, not an allow-list — enumerating
+  the noisy states bit us repeatedly (iOS frozen `onProgress` ticks carrying `loading`;
+  Android `onPlayerError` → `STATE_IDLE` → `idle` plus its own ticks → a flash→spinner
+  loop). It's released by a retry (`wantsPlayback` true) or a genuine `playing`. The
+  engines only report raw transport state — iOS reports `loading` on a `.waiting`/`.failed`/stall
+  (it does **not** decide `error` itself); web/Android may emit a real `error` directly
+  (the watchdog is then a backstop for a buffer that never resolves). Recovery is
+  `retry()` (reloads the track — a dead source can't resume via `play()` alone). Keep this
+  one place; don't re-add a native timer.
 
 **Tests** — new logic ships with a unit test. Pure, framework-free modules get
 direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
@@ -153,10 +209,12 @@ is `book/[libraryId]/[...path].tsx`. Path helpers in `src/lib/paths.ts`.
 src/app/            Expo Router routes ((app) shell, connect/, player modal)
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
+src/downloads/      offline downloads: native/web engines + store (sibling of playback)
 src/components/      ui/ (primitives + Icon), layout/ (shell/header/nav), player/, library/
-src/stores/         session (Zustand)
+src/stores/         Zustand: session, search, settings
+src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens + ThemeProvider
-src/lib/            storage, secure-store, device, paths, format
+src/lib/            storage, secure-store, device, paths, format, register-sw
 ```
 
 @AGENTS.md

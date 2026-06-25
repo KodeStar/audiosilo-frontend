@@ -23,7 +23,7 @@ function DesktopSearch() {
         value={query}
         onChangeText={setQuery}
         placeholder={t('nav.searchPlaceholder')}
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor={colors.dark.text}
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"

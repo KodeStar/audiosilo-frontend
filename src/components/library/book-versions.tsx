@@ -6,11 +6,14 @@ import { useBookCopies, useSourceLabeller } from '@/api/hooks';
 import type { Book } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
-const mb = (n?: number) => (n && n > 0 ? `${Math.round(n / 1048576)} MB` : null);
+// Reuse the shared, locale-aware byte formatter (so a GB-sized copy reads "2 GB",
+// not "2048 MB"); null drops the size hint from the `· `-joined quality line.
+const mb = (n?: number) => (n && n > 0 ? formatBytes(n) : null);
 
 /** A version picker for a book that exists in more than one place. Collapsed, it
  * shows where the shown copy lives (the current value); tapping reveals the other

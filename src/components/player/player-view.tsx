@@ -58,7 +58,9 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const trackPos = usePlayer((s) => s.snapshot.position);
   const trackDur = usePlayer((s) => s.snapshot.duration);
   const rate = usePlayer((s) => s.rate);
+  const playbackState = usePlayer((s) => s.snapshot.state);
   const toggle = usePlayer((s) => s.toggle);
+  const retry = usePlayer((s) => s.retry);
   const seekBook = usePlayer((s) => s.seekBook);
   const seekInTrack = usePlayer((s) => s.seekInTrack);
   const goToTrack = usePlayer((s) => s.goToTrack);
@@ -93,6 +95,12 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   // reliable — drive the UI from the engine's current-track position/duration
   // and navigate per-file instead.
   const perTrack = total <= 0;
+  // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
+  // playback). Surface it with a retry rather than silently sitting on a dead
+  // stream where the play button does nothing. While buffering ('loading') show a
+  // spinner so a stall reads as "working", not an idle play button.
+  const isError = playbackState === 'error';
+  const isLoading = playbackState === 'loading';
 
   const segStart = currentChapter ? currentChapter.book_offset : 0;
   const segLength = perTrack
@@ -275,6 +283,23 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
               </View>
             </View>
 
+            {isError ? (
+              <View className="flex-row items-center justify-center gap-3 pt-3">
+                <Text variant="caption" className="text-red-500">
+                  {t('ui.error')}
+                </Text>
+                <Pressable
+                  onPress={() => void retry()}
+                  className="rounded-lg bg-primary px-4 py-1.5 active:opacity-80"
+                  accessibilityRole="button"
+                >
+                  <Text className="font-roboto-medium text-white dark:text-white">
+                    {t('common.retry')}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             <View className="flex-row items-center justify-center gap-6 py-8">
               <Pressable
                 onPress={() => void skipSeconds(-skipBackward)}
@@ -295,7 +320,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 </View>
               </Pressable>
               <Pressable
-                onPress={() => void toggle()}
+                onPress={() => (isError ? void retry() : void toggle())}
                 className="h-[112px] w-[112px] items-center justify-center rounded-full bg-primary active:opacity-80"
               >
                 {/* Diagonal bevel highlight. Drawn as an SVG ring with a 135°
@@ -321,7 +346,11 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                     strokeWidth={2}
                   />
                 </Svg>
-                <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
+                {isLoading ? (
+                  <Spinner size="large" color={colors.white} />
+                ) : (
+                  <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
+                )}
               </Pressable>
               <Pressable
                 onPress={() => void skipSeconds(skipForward)}
@@ -384,6 +413,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                   libraryId={libraryId}
                   path={path}
                   emptyLabel={t('player.history.empty')}
+                  chapters={queue.chapters}
                 />
               ) : null}
               {sheet === 'notes' ? <NotesSection libraryId={libraryId} path={path} /> : null}

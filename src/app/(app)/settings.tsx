@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, Pressable, ScrollView, View } from 'react-native';
@@ -23,6 +22,7 @@ import { TextField } from '@/components/ui/text-field';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { shareText } from '@/lib/share';
+import { APP_VERSION } from '@/lib/version';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
@@ -245,95 +245,105 @@ export default function SettingsScreen() {
               </Text>
             </View>
 
-            <View className="gap-2">
-              <View className="flex-row items-center justify-between">
-                <Text>{t('settings.account.password.label')}</Text>
-                <Text variant="muted">
-                  {user?.has_password
-                    ? t('settings.account.password.set')
-                    : t('settings.account.password.notSet')}
-                </Text>
-              </View>
-              {pwOpen ? (
+            {/* Demo accounts can't set a password or mint a recovery code (the
+                server refuses both), so hide those affordances entirely. */}
+            {!user?.is_demo && (
+              <>
                 <View className="gap-2">
-                  {user?.has_password ? (
-                    <TextField
-                      label={t('settings.account.password.current')}
-                      placeholder={t('settings.account.password.currentPlaceholder')}
-                      secureTextEntry
-                      autoCapitalize="none"
-                      value={curPw}
-                      onChangeText={setCurPw}
-                    />
-                  ) : null}
-                  <TextField
-                    label={t('settings.account.password.new')}
-                    placeholder={t('settings.account.password.newPlaceholder', { count: PW_MIN })}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    value={pw}
-                    onChangeText={setPw}
-                    error={pwError ?? undefined}
-                  />
-                  <View className="flex-row gap-2">
-                    <Button
-                      title={t('common.save')}
-                      loading={pwBusy}
-                      disabled={pw.length < PW_MIN || (!!user?.has_password && curPw.length === 0)}
-                      onPress={savePassword}
-                    />
-                    <Button
-                      title={t('common.cancel')}
-                      variant="ghost"
-                      onPress={() => {
-                        setPwOpen(false);
-                        setPw('');
-                        setCurPw('');
-                        setPwError(null);
-                      }}
-                    />
+                  <View className="flex-row items-center justify-between">
+                    <Text>{t('settings.account.password.label')}</Text>
+                    <Text variant="muted">
+                      {user?.has_password
+                        ? t('settings.account.password.set')
+                        : t('settings.account.password.notSet')}
+                    </Text>
                   </View>
+                  {pwOpen ? (
+                    <View className="gap-2">
+                      {user?.has_password ? (
+                        <TextField
+                          label={t('settings.account.password.current')}
+                          placeholder={t('settings.account.password.currentPlaceholder')}
+                          secureTextEntry
+                          autoCapitalize="none"
+                          value={curPw}
+                          onChangeText={setCurPw}
+                        />
+                      ) : null}
+                      <TextField
+                        label={t('settings.account.password.new')}
+                        placeholder={t('settings.account.password.newPlaceholder', {
+                          count: PW_MIN,
+                        })}
+                        secureTextEntry
+                        autoCapitalize="none"
+                        value={pw}
+                        onChangeText={setPw}
+                        error={pwError ?? undefined}
+                      />
+                      <View className="flex-row gap-2">
+                        <Button
+                          title={t('common.save')}
+                          loading={pwBusy}
+                          disabled={
+                            pw.length < PW_MIN || (!!user?.has_password && curPw.length === 0)
+                          }
+                          onPress={savePassword}
+                        />
+                        <Button
+                          title={t('common.cancel')}
+                          variant="ghost"
+                          onPress={() => {
+                            setPwOpen(false);
+                            setPw('');
+                            setCurPw('');
+                            setPwError(null);
+                          }}
+                        />
+                      </View>
+                    </View>
+                  ) : (
+                    <Button
+                      title={
+                        user?.has_password
+                          ? t('settings.account.password.change')
+                          : t('settings.account.password.setNew')
+                      }
+                      variant="secondary"
+                      onPress={() => setPwOpen(true)}
+                    />
+                  )}
                 </View>
-              ) : (
-                <Button
-                  title={
-                    user?.has_password
-                      ? t('settings.account.password.change')
-                      : t('settings.account.password.setNew')
-                  }
-                  variant="secondary"
-                  onPress={() => setPwOpen(true)}
-                />
-              )}
-            </View>
 
-            <View className="gap-2">
-              <View className="flex-row items-center justify-between">
-                <Text>{t('settings.account.recovery.label')}</Text>
-                <Text variant="muted">
-                  {user?.has_recovery
-                    ? t('settings.account.recovery.set')
-                    : t('settings.account.recovery.notSet')}
-                </Text>
-              </View>
-              <Text variant="muted" className="text-xs">
-                {t('settings.account.recovery.hint')}
-              </Text>
-              {recovery.error ? (
-                <Text className="text-xs text-red-500">{recovery.error}</Text>
-              ) : null}
-              <Button
-                title={
-                  user?.has_recovery
-                    ? t('settings.account.recovery.regenerate')
-                    : t('settings.account.recovery.generate')
-                }
-                variant="secondary"
-                icon="qrcode"
-                loading={recovery.busy}
-                onPress={recovery.requestGenerate}
-              />
-            </View>
+                <View className="gap-2">
+                  <View className="flex-row items-center justify-between">
+                    <Text>{t('settings.account.recovery.label')}</Text>
+                    <Text variant="muted">
+                      {user?.has_recovery
+                        ? t('settings.account.recovery.set')
+                        : t('settings.account.recovery.notSet')}
+                    </Text>
+                  </View>
+                  <Text variant="muted" className="text-xs">
+                    {t('settings.account.recovery.hint')}
+                  </Text>
+                  {recovery.error ? (
+                    <Text className="text-xs text-red-500">{recovery.error}</Text>
+                  ) : null}
+                  <Button
+                    title={
+                      user?.has_recovery
+                        ? t('settings.account.recovery.regenerate')
+                        : t('settings.account.recovery.generate')
+                    }
+                    variant="secondary"
+                    icon="qrcode"
+                    loading={recovery.busy}
+                    onPress={recovery.requestGenerate}
+                  />
+                </View>
+              </>
+            )}
 
             <Button
               title={t('settings.account.signOut')}
@@ -390,7 +400,7 @@ export default function SettingsScreen() {
 
         <Text variant="caption" className="text-center">
           {t('settings.version', {
-            version: server?.version ?? Constants.expoConfig?.version ?? '1.0.0',
+            version: server?.version ?? APP_VERSION,
           })}
         </Text>
       </ScrollView>

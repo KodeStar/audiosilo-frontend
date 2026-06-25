@@ -1,15 +1,16 @@
-import Constants from 'expo-constants';
 import { Text as RNText, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { APP_VERSION } from '@/lib/version';
 
 import { Logo } from './logo';
 
 /**
  * Wordmark: the silo logo + "AUDIO" (pink) / "SILO" (grey), optionally with a
  * version underneath. Used in the desktop sidebar (large, with version) and the
- * phone header (compact). `version` is the connected server's version (from
- * /server); it falls back to this build's bundled version when unknown.
+ * phone header (compact). `size` scales the logo only; the wordmark text stays a
+ * fixed size. `version` is the connected server's version (from /server); it
+ * falls back to this build's bundled version when unknown.
  */
 export function Brand({
   size = 28,
@@ -30,7 +31,7 @@ export function Brand({
         </RNText>
         {showVersion ? (
           // eslint-disable-next-line i18next/no-literal-string -- "v" is universal version notation
-          <Text variant="caption">v{version ?? Constants.expoConfig?.version ?? '1.0.0'}</Text>
+          <Text variant="caption">v{version ?? APP_VERSION}</Text>
         ) : null}
       </View>
     </View>

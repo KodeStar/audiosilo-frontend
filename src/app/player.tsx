@@ -14,13 +14,11 @@ export default function PlayerScreen() {
   const {
     libraryId: libParam,
     path: pathParam,
-    chapter,
     position,
     track,
   } = useLocalSearchParams<{
     libraryId?: string;
     path?: string | string[];
-    chapter?: string;
     position?: string;
     track?: string;
   }>();
@@ -40,8 +38,7 @@ export default function PlayerScreen() {
   // Start playback once the book AND its chapters/files have loaded — otherwise
   // multi-file/folder books would fall back to streaming the folder path and
   // chapters would be missing. Start point priority: explicit position (bookmark
-  // jump) > chapter param > resume. If this book is already playing, only honor
-  // an explicit jump.
+  // jump) > resume. If this book is already playing, only honor an explicit jump.
   useEffect(() => {
     if (!book || Number.isNaN(libraryId) || chaptersQuery.isLoading) return;
     const posParam = position !== undefined ? Number(position) : undefined;
@@ -57,12 +54,7 @@ export default function PlayerScreen() {
       else if (hasTrack) void goToTrack(trackParam);
       return;
     }
-    const idx = chapter !== undefined ? Number(chapter) : NaN;
-    const startAt = hasPos
-      ? posParam
-      : !Number.isNaN(idx) && chapterData?.chapters?.[idx]
-        ? chapterData.chapters[idx].book_offset
-        : undefined;
+    const startAt = hasPos ? posParam : undefined;
     void usePlayer
       .getState()
       .playBook(api, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
@@ -73,7 +65,6 @@ export default function PlayerScreen() {
     chaptersQuery.isLoading,
     libraryId,
     path,
-    chapter,
     position,
     track,
     nowPlaying,

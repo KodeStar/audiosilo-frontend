@@ -44,13 +44,19 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void getItem<LanguagePref>(STORAGE_KEY).then(async (saved) => {
-      const next: LanguagePref = saved === 'system' || isSupportedCode(saved) ? saved : 'system';
-      await i18n.changeLanguage(resolveLanguage(next));
-      if (!active) return;
-      setPrefState(next);
-      setHydrated(true);
-    });
+    void getItem<LanguagePref>(STORAGE_KEY)
+      .then(async (saved) => {
+        const next: LanguagePref = saved === 'system' || isSupportedCode(saved) ? saved : 'system';
+        await i18n.changeLanguage(resolveLanguage(next));
+        if (active) setPrefState(next);
+      })
+      .catch(() => {
+        // A rejected storage read / changeLanguage must not wedge first paint
+        // (render is gated on `hydrated`); degrade to the default language.
+      })
+      .finally(() => {
+        if (active) setHydrated(true);
+      });
     return () => {
       active = false;
     };

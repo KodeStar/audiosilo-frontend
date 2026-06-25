@@ -39,6 +39,32 @@ export function bookFileSpecs(book: Book, chapterData?: ChaptersResponse): FileS
 }
 
 /**
+ * Whole-book start offset (seconds) of a chapter: the summed duration of the
+ * files that precede it plus its in-file `start`. Located by `file_path` (with a
+ * `file_index` fallback) so a non-sequential `file_index` can't misplace a
+ * chapter. Shared by the playback queue and the book screen's chapter list so
+ * both agree on the timeline (the server's `book_offset` is unreliable for some
+ * on-demand-indexed books — it comes back 0 for every chapter).
+ */
+export function chapterBookOffset(
+  files: { path: string; duration: number }[],
+  ch: { file_index: number; file_path: string; start: number },
+): number {
+  const byPath = files.findIndex((f) => f.path === ch.file_path);
+  // Fall back to `file_index` only when it's a real index; an out-of-range index
+  // (stale chapter metadata that also fails the path match) would otherwise sum
+  // EVERY file's duration and roughly double the book's computed length — degrade
+  // to 0 preceding files instead, as the old `offsets[file_index] ?? 0` did.
+  const inRange = ch.file_index >= 0 && ch.file_index < files.length;
+  const upto = byPath >= 0 ? byPath : inRange ? ch.file_index : 0;
+  let acc = 0;
+  for (let i = 0; i < upto && i < files.length; i++) {
+    acc += files[i].duration > 0 ? files[i].duration : 0;
+  }
+  return acc + ch.start;
+}
+
+/**
  * Build the playable queue for a book. Each distinct audio file becomes one
  * track; chapters are markers laid over the whole-book timeline. A single
  * chaptered m4b yields one track with several chapters; a folder of mp3 parts
@@ -81,20 +107,19 @@ export function buildBookQueue(
     acc += s.duration > 0 ? s.duration : 0;
   }
 
-  // Recompute each chapter's whole-book offset from our own track offsets + the
-  // in-file start. The server's book_offset is unreliable for some on-demand
-  // indexed books (comes back 0 for every chapter), which otherwise makes
-  // chapter detection always resolve to the last chapter.
-  const trackOffset = (fileIndex: number) => offsets[fileIndex] ?? 0;
+  // Recompute each chapter's whole-book offset from our own file durations +
+  // the in-file start (see chapterBookOffset). The server's book_offset is
+  // unreliable for some on-demand indexed books (comes back 0 for every
+  // chapter), which otherwise makes chapter detection resolve to the last one.
   const chapters: Chapter[] = rawChapters.map((ch) => ({
     ...ch,
-    book_offset: trackOffset(ch.file_index) + ch.start,
+    book_offset: chapterBookOffset(specs, ch),
   }));
 
   // total: prefer the book duration, else the summed file durations, else the
   // furthest chapter end on the book timeline (handles duration === 0 metadata).
   const furthestEnd = chapters.reduce(
-    (max, ch) => Math.max(max, trackOffset(ch.file_index) + ch.end),
+    (max, ch) => Math.max(max, ch.book_offset + Math.max(0, ch.end - ch.start)),
     0,
   );
   const total = Math.max(book.duration > 0 ? book.duration : 0, acc, furthestEnd);

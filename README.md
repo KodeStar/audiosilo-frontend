@@ -32,9 +32,10 @@ Run the same checks CI runs, locally:
 ```sh
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
+npm run format              # prettier --check . (CI-gated; fails on unformatted files)
 npm test                    # jest-expo unit tests
 npm test -- --coverage      # …with coverage
-npx prettier --write .      # format to .prettierrc (advisory; not gated yet)
+npx prettier --write .      # auto-fix formatting before committing
 ```
 
 Tests use **jest-expo** (jest 29) + **@testing-library/react-native** 14, with
@@ -45,7 +46,8 @@ progress-sync queue, secure-store, and the session store. Add tests next to the
 code as `*.test.ts`.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs typecheck + lint +
-tests on every pull request and push to `main`, and **gates merges**. Its
+**format (prettier `--check`, via `npm run format`)** + tests on every pull request
+and push to `main`, and **gates merges**. Its
 `npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` repo secret (the private icon
 registry). After changing dependencies, run `npm install` and **commit the
 updated `package-lock.json` in sync** — CI uses `npm ci` (frozen lockfile). The
