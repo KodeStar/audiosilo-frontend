@@ -65,17 +65,23 @@ export function formatCountdown(seconds: number): string {
   return `${s}s`;
 }
 
-/** "now" / "3 days ago" / "2 months ago" — coarse, locale-formatted relative time
- * from an RFC3339 timestamp (via `Intl.RelativeTimeFormat`; `numeric: 'auto'` yields
- * "yesterday"/"last month" at the ±1 boundaries). Empty when the input is missing or
- * unparseable. */
+/** "now" / "3 days ago" / "2 months ago" — coarse relative time from an RFC3339
+ * timestamp. Uses `Intl.RelativeTimeFormat` (locale-formatted, `numeric: 'auto'`
+ * yields "yesterday"/"last month") where available — web and Node — but Hermes
+ * (React Native) does NOT ship `Intl.RelativeTimeFormat`, so we fall back to a
+ * plain English formatter rather than crashing. Empty when the input is missing
+ * or unparseable. */
 export function formatRelative(iso?: string, locale: string = getLocale()): string {
   if (!iso) return '';
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return '';
   const sec = Math.max(0, (Date.now() - then) / 1000);
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-  if (sec < 45) return rtf.format(0, 'second');
+  // Construct the formatter only when the API exists (absent on Hermes/RN).
+  const rtf =
+    typeof Intl !== 'undefined' && typeof Intl.RelativeTimeFormat === 'function'
+      ? new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+      : null;
+  if (sec < 45) return rtf ? rtf.format(0, 'second') : 'just now';
   const units: [limit: number, secs: number, unit: Intl.RelativeTimeFormatUnit][] = [
     [60, 1, 'second'],
     [3600, 60, 'minute'],
@@ -87,7 +93,7 @@ export function formatRelative(iso?: string, locale: string = getLocale()): stri
   for (const [limit, secs, unit] of units) {
     if (sec < limit) {
       const n = Math.max(1, Math.round(sec / secs));
-      return rtf.format(-n, unit);
+      return rtf ? rtf.format(-n, unit) : `${n} ${unit}${n === 1 ? '' : 's'} ago`;
     }
   }
   return '';

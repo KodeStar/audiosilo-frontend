@@ -48,6 +48,13 @@ final class AudioEngine: NSObject {
   private var statusObs: NSKeyValueObservation?
   private var itemObs: NSKeyValueObservation?
   private var itemStatusObs: NSKeyValueObservation?
+  /// Observes the current item's `.failed` status so a stream that dies (server
+  /// gone, network drop, unplayable) is reported as a sustained `loading` rather
+  /// than a silent stall or a misleading `paused`. The shared JS store owns the
+  /// stall→`error` decision (one 3s grace for every engine, never instant); this
+  /// module only reports the raw transport state. Re-attached whenever the current
+  /// item changes.
+  private var failureObs: NSKeyValueObservation?
   private var artworkURL: String?
   /// Suppresses transient state/track events while the queue is being rebuilt
   /// (removeAllItems briefly sets currentItem to nil).
@@ -145,6 +152,7 @@ final class AudioEngine: NSObject {
     pendingSeek = max(0, position)
     applyPendingSeek()
     reassertRateWhenReady()
+    observeItemFailure()
     rebuilding = false
     updateNowPlayingInfo()
     send("onTrackChange", ["index": currentIndex])
@@ -204,6 +212,43 @@ final class AudioEngine: NSObject {
     }
   }
 
+  /// Watch the current item for a fatal `.failed` status and report it as a sustained
+  /// `loading` to JS. A failed item parks the player at `.paused`, which would look
+  /// like a user pause; reporting `loading` instead lets the shared JS stall watchdog
+  /// promote it to `error` after the same grace as a mid-stream stall — uniform, and
+  /// never instant (an instant error caused a rapid-retry race). Re-attach on every
+  /// current-item change (skip/advance/rebuild).
+  private func observeItemFailure() {
+    failureObs?.invalidate()
+    failureObs = nil
+    guard let item = player.currentItem else { return }
+    if item.status == .failed {
+      send("onState", ["state": "loading"])
+      return
+    }
+    failureObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+      guard let self = self, !self.rebuilding, item.status == .failed else { return }
+      DispatchQueue.main.async { self.send("onState", ["state": "loading"]) }
+    }
+  }
+
+  @objc private func handleItemFailedToEnd(_ n: Notification) {
+    // A stream that was playing and then became unreachable mid-item fires this
+    // rather than flipping `.status` to `.failed`. Report a sustained `loading` so the
+    // shared JS stall watchdog surfaces `error` after its grace — every failure path
+    // converges on the same consistent, non-instant feedback.
+    guard !rebuilding else { return }
+    DispatchQueue.main.async { self.send("onState", ["state": "loading"]) }
+  }
+
+  /// Fired when playback stalls mid-item (buffer underrun). Report `loading`; the
+  /// shared JS stall watchdog promotes a stall that doesn't recover within its grace
+  /// to `error`.
+  @objc private func handlePlaybackStalled(_ n: Notification) {
+    guard !rebuilding else { return }
+    send("onState", ["state": "loading"])
+  }
+
   // MARK: Transport
 
   /// Flip playback from the *real* transport state. All remote play/pause/toggle
@@ -235,6 +280,10 @@ final class AudioEngine: NSObject {
     // begins at the saved position instead of at 0.
     if pendingSeek > 0 {
       wantsPlay = true
+      // We want to play but are waiting for the item to become ready (resume/retry):
+      // report 'loading' so the UI shows a spinner instead of an idle play button. The
+      // shared JS stall watchdog surfaces `error` if it never becomes ready (dead stream).
+      send("onState", ["state": "loading"])
       updateNowPlayingInfo()
       return
     }
@@ -287,6 +336,8 @@ final class AudioEngine: NSObject {
   func reset() {
     itemStatusObs?.invalidate()
     itemStatusObs = nil
+    failureObs?.invalidate()
+    failureObs = nil
     startObs?.invalidate()
     startObs = nil
     pendingSeek = 0
@@ -314,16 +365,31 @@ final class AudioEngine: NSObject {
       guard let self = self, !self.rebuilding else { return }
       let state: String
       switch p.timeControlStatus {
-      case .playing: state = "playing"
-      case .waitingToPlayAtSpecifiedRate: state = "loading"
-      case .paused: state = (p.currentItem == nil && !self.tracks.isEmpty) ? "ended" : "paused"
-      @unknown default: state = "paused"
+      case .playing:
+        state = "playing"
+      case .waitingToPlayAtSpecifiedRate:
+        // Wants to play but can't (buffering / underrun). With
+        // automaticallyWaitsToMinimizeStalling on (the default), this is where a
+        // stalled stream lands — report 'loading'; the shared JS stall watchdog
+        // promotes a stall that doesn't recover within its grace to 'error'.
+        state = "loading"
+      case .paused:
+        // A failed item also parks the player at .paused — keep reporting 'loading'
+        // there so the JS watchdog treats it as a dead stream, not a user pause.
+        if p.currentItem?.status == .failed {
+          state = "loading"
+        } else {
+          state = (p.currentItem == nil && !self.tracks.isEmpty) ? "ended" : "paused"
+        }
+      @unknown default:
+        state = "paused"
       }
       self.send("onState", ["state": state])
     }
     itemObs = player.observe(\.currentItem, options: [.new]) { [weak self] p, _ in
       guard let self = self, !self.rebuilding else { return }
       if let cur = p.currentItem, let match = self.queued.first(where: { $0.item === cur }) {
+        self.observeItemFailure() // re-attach to the now-current item
         if match.index != self.currentIndex {
           self.currentIndex = match.index
           self.updateNowPlayingInfo()
@@ -338,7 +404,14 @@ final class AudioEngine: NSObject {
   private func startProgressTimer() {
     let interval = CMTime(seconds: 1.0, preferredTimescale: 1)
     timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-      guard let self = self, self.player.currentItem != nil else { return }
+      // Don't report progress while a (re)load is in flight: a fresh AVPlayerItem
+      // reads currentTime() == 0 until it's ready AND the deferred resume seek has
+      // applied. Emitting that 0 would clobber the saved position in JS — which made
+      // a retry after a failed reload resume the book from the start.
+      guard let self = self,
+            self.pendingSeek == 0,
+            let item = self.player.currentItem,
+            item.status == .readyToPlay else { return }
       let pos = time.seconds.isFinite ? time.seconds : 0
       self.send("onProgress", ["position": pos, "duration": self.currentDuration()])
       self.updateNowPlayingElapsed(pos)
@@ -351,6 +424,10 @@ final class AudioEngine: NSObject {
                    name: AVAudioSession.interruptionNotification, object: nil)
     nc.addObserver(self, selector: #selector(handleRouteChange(_:)),
                    name: AVAudioSession.routeChangeNotification, object: nil)
+    nc.addObserver(self, selector: #selector(handleItemFailedToEnd(_:)),
+                   name: AVPlayerItem.failedToPlayToEndTimeNotification, object: nil)
+    nc.addObserver(self, selector: #selector(handlePlaybackStalled(_:)),
+                   name: AVPlayerItem.playbackStalledNotification, object: nil)
   }
 
   @objc private func handleInterruption(_ n: Notification) {
@@ -463,6 +540,7 @@ final class AudioEngine: NSObject {
   deinit {
     if let timeObserver = timeObserver { player.removeTimeObserver(timeObserver) }
     itemStatusObs?.invalidate()
+    failureObs?.invalidate()
     startObs?.invalidate()
     NotificationCenter.default.removeObserver(self)
   }
