@@ -28,6 +28,10 @@ describe('needsRecoveryWarning', () => {
     expect(needsRecoveryWarning({ ...base, role: 'admin' })).toBe(false);
   });
 
+  it('never warns a demo account (the server refuses it a recovery code)', () => {
+    expect(needsRecoveryWarning({ ...base, is_demo: true })).toBe(false);
+  });
+
   it('does not warn when the flags are unknown (a session stored before they existed)', () => {
     const stale = { id: 2, username: 's', role: 'user', disabled: false } as unknown as User;
     expect(needsRecoveryWarning(stale)).toBe(false);
