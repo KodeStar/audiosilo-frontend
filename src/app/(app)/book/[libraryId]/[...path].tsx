@@ -24,6 +24,7 @@ import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
+import { chapterBookOffset } from '@/playback/book-queue';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
@@ -89,12 +90,11 @@ export default function BookDetailScreen() {
     { label: pathLeaf(path) || book.title, active: true },
   ];
 
-  // Whole-book offset for a file/chapter (the server's book_offset is unreliable;
-  // recompute from the cumulative file durations like book-queue does).
-  const fileStartOffset = (fileIndex: number) =>
-    files.slice(0, fileIndex).reduce((acc, f) => acc + (f.duration > 0 ? f.duration : 0), 0);
+  // Whole-book offset for a chapter (the server's book_offset is unreliable;
+  // recompute from the cumulative file durations — shared with book-queue).
+  const fileDurations = files.map((f) => ({ path: f.rel_path, duration: f.duration }));
   const chapterStart = (ch: Chapter) =>
-    files.length > 0 ? fileStartOffset(ch.file_index) + ch.start : ch.book_offset;
+    files.length > 0 ? chapterBookOffset(fileDurations, ch) : ch.book_offset;
   // Chapters carrying the corrected whole-book offset, so the history panel can
   // label each listening span with its chapter.
   const historyChapters = chapters.map((ch) => ({ ...ch, book_offset: chapterStart(ch) }));

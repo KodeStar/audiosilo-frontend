@@ -17,9 +17,9 @@ const NATIVE_BLUR = Platform.OS !== 'web';
 const WIDE_BREAKPOINT = 1024;
 
 /** Approximate rendered height of the docked bar (cover 40 + py-2 + borders). */
-export const MINI_PLAYER_HEIGHT = 60;
+const MINI_PLAYER_HEIGHT = 60;
 /** Gap kept between the floating bar and the nav below it. */
-export const MINI_PLAYER_GAP = 8;
+const MINI_PLAYER_GAP = 8;
 /** The base bottom padding the scroll screens already carry (their `p-4`). */
 const BASE_CONTENT_PADDING = 16;
 

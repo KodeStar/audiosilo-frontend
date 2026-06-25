@@ -37,9 +37,9 @@ export type DownloadProgressCb = (bytesWritten: number, totalBytes: number) => v
 
 /**
  * Platform-agnostic file storage for downloads. Implemented with
- * `expo-file-system` on native; a no-op (`supported: false`) on web until the M4
- * service worker lands. Metro resolves the engine per platform like
- * `src/playback/service.*`.
+ * `expo-file-system` on native and the Cache API + service worker on web
+ * (`engine.web.ts`, gated on a controlling SW via `supported`/`probe`). Metro
+ * resolves the engine per platform like `src/playback/service.*`.
  */
 export interface DownloadEngine {
   readonly supported: boolean;

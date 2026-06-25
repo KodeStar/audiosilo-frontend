@@ -22,7 +22,7 @@ export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
           disabled={!c.onPress}
           className={`bg-gray-100 px-3 py-1.5 active:opacity-80 dark:bg-gray-840 ${
             i === 0 ? 'rounded-l-md' : ''
-          } ${i === last ? 'rounded-r-md' : 'border-r border-gray-200 dark:border-gray-800'}`}
+          } ${i === last ? 'rounded-r-md' : 'border-r border-gray-200 dark:border-gray-750'}`}
         >
           <Text
             numberOfLines={1}

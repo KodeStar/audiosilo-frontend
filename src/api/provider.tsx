@@ -35,11 +35,19 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
   const activeId = useSession((s) => s.activeConnectionId);
 
-  const registry = useMemo<ApiRegistry>(() => {
-    const clients = new Map<string, ApiClient>();
-    for (const c of connections) clients.set(c.id, new ApiClient(c.serverUrl, c.token));
-    return { clients, connections, activeId };
-  }, [connections, activeId]);
+  // Build the clients only when the connections change — switching the active
+  // connection must not tear down and recreate every ApiClient (it would drop
+  // in-flight reachability probes and force-refetch every query).
+  const clients = useMemo<Map<string, ApiClient>>(() => {
+    const map = new Map<string, ApiClient>();
+    for (const c of connections) map.set(c.id, new ApiClient(c.serverUrl, c.token));
+    return map;
+  }, [connections]);
+
+  const registry = useMemo<ApiRegistry>(
+    () => ({ clients, connections, activeId }),
+    [clients, connections, activeId],
+  );
 
   // Keep the reachability probe pointed at the active connection's client.
   useEffect(() => {
