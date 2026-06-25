@@ -95,6 +95,9 @@ export default function BookDetailScreen() {
     files.slice(0, fileIndex).reduce((acc, f) => acc + (f.duration > 0 ? f.duration : 0), 0);
   const chapterStart = (ch: Chapter) =>
     files.length > 0 ? fileStartOffset(ch.file_index) + ch.start : ch.book_offset;
+  // Chapters carrying the corrected whole-book offset, so the history panel can
+  // label each listening span with its chapter.
+  const historyChapters = chapters.map((ch) => ({ ...ch, book_offset: chapterStart(ch) }));
 
   // On desktop the player lives in the right panel, so play inline; on phone open
   // the full-screen player modal. A chapter is addressed by whole-book position;
@@ -213,7 +216,7 @@ export default function BookDetailScreen() {
             />
             {fileList}
             <BookmarksSection libraryId={libraryId} path={path} />
-            <HistorySection libraryId={libraryId} path={path} />
+            <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
             <NotesSection libraryId={libraryId} path={path} />
           </ScrollView>
         </ContentColumn>
@@ -324,7 +327,7 @@ export default function BookDetailScreen() {
       {fileList}
 
       <BookmarksSection libraryId={libraryId} path={path} />
-      <HistorySection libraryId={libraryId} path={path} />
+      <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
       <NotesSection libraryId={libraryId} path={path} />
     </ScrollView>
   );

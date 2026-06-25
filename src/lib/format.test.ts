@@ -43,6 +43,21 @@ describe('formatRelative', () => {
     expect(formatRelative(undefined, 'en')).toBe('');
     expect(formatRelative('not-a-date', 'en')).toBe('');
   });
+
+  it('falls back to plain English when Intl.RelativeTimeFormat is absent (Hermes/RN)', () => {
+    // Hermes (React Native) ships Intl.NumberFormat but not RelativeTimeFormat.
+    const intl = Intl as unknown as Record<string, unknown>;
+    const original = intl.RelativeTimeFormat;
+    delete intl.RelativeTimeFormat;
+    try {
+      expect(formatRelative(ago(10), 'en')).toBe('just now');
+      expect(formatRelative(ago(3 * 86400), 'en')).toBe('3 days ago');
+      expect(formatRelative(ago(3600), 'en')).toBe('1 hour ago');
+      expect(formatRelative(ago(60 * 86400), 'en')).toBe('2 months ago');
+    } finally {
+      intl.RelativeTimeFormat = original;
+    }
+  });
 });
 
 describe('formatBytes', () => {

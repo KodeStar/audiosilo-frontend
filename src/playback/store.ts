@@ -17,8 +17,23 @@ let apiRef: ApiClient | null = null;
 let deviceId = '';
 let saveTimer: ReturnType<typeof setInterval> | null = null;
 let historyStart: { position: number; at: number } | null = null;
+/** Do we intend to be playing right now? Gates the stall watchdog so an idle/paused
+ * buffer never surfaces as an error. Set by the play/pause actions and kept in sync
+ * with the engine's own play state (a lock-screen play/pause flows through subscribe,
+ * not the store actions). */
+let wantsPlayback = false;
+/** True from a play/retry request until the engine actually reaches `playing` (or the
+ * attempt fails/aborts). While starting, the native bridge emits transient `ready`/
+ * `paused` states as it rebuilds the queue; we must read those as "still connecting"
+ * (spinner + watchdog), NOT as a real pause that would clear intent and strand the UI.
+ * A genuine user/lock-screen pause arrives with this already false (we reached
+ * `playing` first), so it's still distinguishable. */
+let startingPlayback = false;
+/** Pending stall→error timer (see armStallWatchdog). */
+let stallTimer: ReturnType<typeof setTimeout> | null = null;
 
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
+const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
 
 const SAVE_INTERVAL_MS = 15_000;
 const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
@@ -64,6 +79,9 @@ type PlayerState = {
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
+  /** Re-load the current track at the current position and resume — recovery after
+   * the engine reports an `error` (e.g. the stream became unreachable). */
+  retry: () => Promise<void>;
   seekBook: (bookPosition: number) => Promise<void>;
   /** Seek within the current track (used when the whole-book timeline is unknown). */
   seekInTrack: (positionInTrack: number) => Promise<void>;
@@ -112,6 +130,52 @@ function stopSaveLoop() {
   }
 }
 
+/** Capture the current position then stop the periodic save loop — shared by the
+ * engine's terminal states (pause/end/error) and the stall watchdog. Refreshes the
+ * progress lists on both outcomes so a queued-offline save still re-reads server state. */
+function haltAndPersist() {
+  void persist().then(invalidateProgressLists, invalidateProgressLists);
+  stopSaveLoop();
+}
+
+/** Surface an `error` if we wanted to play but haven't reached `playing` within the
+ * grace — a dead/stalled stream then offers a retry instead of an endless spinner. The
+ * watchdog is armed by the play/retry actions (and by a mid-playback stall's `loading`),
+ * NOT by trying to interpret the native bridge's noisy resume/retry event stream — so no
+ * event ordering can prevent it from firing. Idempotent: one fixed window per attempt;
+ * only reaching `playing` (or a user pause/stop) cancels it. The fire test is simply
+ * "not playing", so it doesn't matter what transient state the bridge left us in. Lives
+ * in shared JS so iOS, Android and web behave identically. */
+function armStallWatchdog() {
+  if (stallTimer) return;
+  stallTimer = setTimeout(() => {
+    stallTimer = null;
+    if (!wantsPlayback) return; // attempt abandoned (user paused/stopped)
+    const { snapshot } = usePlayer.getState();
+    if (snapshot.state === 'playing') return; // we made it
+    wantsPlayback = false;
+    startingPlayback = false;
+    usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
+    haltAndPersist();
+  }, STALL_GRACE_MS);
+}
+
+/** Begin a playback attempt: we intend to play, we're "connecting" until the engine
+ * reaches `playing`, and the stall watchdog is ticking from now (a dead/slow-to-start
+ * stream surfaces an error after the grace, matching the old native behavior). */
+function beginPlaybackAttempt() {
+  wantsPlayback = true;
+  startingPlayback = true;
+  armStallWatchdog();
+}
+
+function cancelStallWatchdog() {
+  if (stallTimer) {
+    clearTimeout(stallTimer);
+    stallTimer = null;
+  }
+}
+
 /** Mark the start of a listening span when playback begins. */
 function beginHistory() {
   if (historyStart) return;
@@ -152,8 +216,34 @@ async function ensureService(): Promise<PlaybackService> {
   await svc.configure(currentConfig());
   // Keep auto-rewind + lock-screen skip intervals in sync with the settings store.
   useSettings.subscribe(() => void svc.configure(currentConfig()));
-  svc.subscribe((snapshot) => {
+  svc.subscribe((raw) => {
+    // Collapse the native bridge's noisy resume/retry event stream to a spinner. While
+    // starting (after a play/retry, before we reach `playing`), the only real outcomes
+    // are `playing` (success) and `error` (the watchdog gave up); every transient the
+    // bridge emits while rebuilding the queue — `ready`, `paused`, `idle`, `ended`,
+    // `loading` — is "still connecting" → `loading`. This is what makes the spinner and
+    // watchdog robust regardless of event ordering (the spurious `paused` used to clear
+    // intent and strand the spinner). A genuine user/lock-screen pause arrives AFTER
+    // `playing` (startingPlayback already false), so it stays `paused`. Outside a fresh
+    // start, a `ready` while intending to play is also a spinner.
+    let state = raw.state;
+    if (startingPlayback && state !== 'playing' && state !== 'error') state = 'loading';
+    else if (state === 'ready' && wantsPlayback) state = 'loading';
+    const snapshot: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
     const prev = usePlayer.getState().snapshot;
+    // After the stall watchdog (or an engine error) surfaces an `error`, the engine
+    // keeps re-reporting around the dead stream — iOS: frozen `onProgress` ticks
+    // carrying `loading`; Android: `onPlayerError` then `STATE_IDLE` → `idle`, plus its
+    // own progress ticks. Any of those would overwrite the `error` and drop the UI back
+    // to a spinner/play button (the flash→spinner loop seen on Android). So once we're
+    // in `error` and NOT retrying, hold it against EVERY re-report except a genuine
+    // recovery (`playing`). It's released by the user retrying (wantsPlayback flips true
+    // → this guard is skipped) or the stream actually resuming. Enumerating the "noisy"
+    // states bit us repeatedly (loading, ready, idle, paused…); suppress-all-but-playing
+    // is the robust rule.
+    if (prev.state === 'error' && !wantsPlayback && snapshot.state !== 'playing') {
+      return;
+    }
     usePlayer.setState({ snapshot });
     if (snapshot.state === 'playing' && prev.state !== 'playing') beginHistory();
     else if (prev.state === 'playing' && snapshot.state !== 'playing') endHistory();
@@ -168,19 +258,31 @@ async function ensureService(): Promise<PlaybackService> {
     // after pause/stop/end — including a lock-screen pause or a book that simply
     // finishes, neither of which calls stop().
     if (snapshot.state !== prev.state) {
-      if (snapshot.state === 'playing') startSaveLoop();
-      // 'loading' is a transient buffering state during playback, so don't stop on
-      // it — but 'error' is terminal (the web engine emits it on a dead stream), so
-      // treat it like pause/end: capture the position and halt the leaked save loop.
-      else if (
+      // A lock-screen play/pause arrives here (the engine state), not through the store
+      // actions — so keep intent + the start window in sync with it.
+      if (snapshot.state === 'playing') {
+        // Reached playback — the stream is alive and we're no longer "connecting".
+        wantsPlayback = true;
+        startingPlayback = false;
+        cancelStallWatchdog();
+        startSaveLoop();
+      } else if (snapshot.state === 'loading') {
+        // A mid-playback stall (or the ongoing start attempt): arm the watchdog so a
+        // buffer that outlasts the grace surfaces an error. Idempotent — already armed
+        // when an attempt began. Only when we intend to play.
+        if (wantsPlayback) armStallWatchdog();
+      } else if (
         snapshot.state === 'paused' ||
         snapshot.state === 'ended' ||
         snapshot.state === 'error'
       ) {
-        // Capture where we stopped, then refresh the progress lists (run on both
-        // outcomes so a queued-offline save still re-reads current server state).
-        void persist().then(invalidateProgressLists, invalidateProgressLists);
-        stopSaveLoop(); // ...then halt the loop until playback resumes
+        // Genuine terminal (a start-window transient was normalized to `loading`
+        // above): a real pause, a finished book, or a dead stream the web/Android
+        // engines report directly. Clear intent, halt the loop.
+        wantsPlayback = false;
+        startingPlayback = false;
+        cancelStallWatchdog();
+        haltAndPersist();
       }
     }
   });
@@ -195,6 +297,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
   playBook: async (api, libraryId, book, chapterData, startBookPosition, startTrack) => {
     endHistory(); // flush any prior book's listening span before switching
+    cancelStallWatchdog(); // drop any stale stall timer from the previous book
     apiRef = api;
     deviceId = await getDeviceId();
 
@@ -235,6 +338,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         queue,
       },
     });
+    beginPlaybackAttempt(); // intent + start window + watchdog armed from here
     await svc.load(queue.tracks, index, positionInTrack);
     await svc.setRate(speed);
     await svc.play();
@@ -245,13 +349,39 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   toggle: async () => {
     const svc = await ensureService();
     // persist + save-loop start/stop are handled by the engine state transition.
-    if (get().snapshot.state === 'playing') await svc.pause();
-    else await svc.play();
+    if (get().snapshot.state === 'playing') {
+      wantsPlayback = false;
+      startingPlayback = false;
+      cancelStallWatchdog();
+      await svc.pause();
+    } else {
+      beginPlaybackAttempt();
+      await svc.play();
+    }
   },
 
   pause: async () => {
+    wantsPlayback = false;
+    startingPlayback = false;
+    cancelStallWatchdog();
     const svc = await ensureService();
     if (get().snapshot.state === 'playing') await svc.pause();
+  },
+
+  retry: async () => {
+    const np = get().nowPlaying;
+    if (!np) return;
+    // Rebuild the engine's items from the current track + position so a failed/
+    // unreachable stream is re-requested (a dead AVPlayerItem can't recover via
+    // play() alone), then resume. The watchdog is armed from here, so even if the
+    // reload's event stream is noisy it still surfaces an error if it never plays.
+    beginPlaybackAttempt();
+    const svc = await ensureService();
+    const index = get().snapshot.trackIndex;
+    const positionInTrack = Math.max(0, get().snapshot.position);
+    await svc.load(np.queue.tracks, index, positionInTrack);
+    await svc.setRate(get().rate);
+    await svc.play();
   },
 
   seekBook: async (bookPosition) => {
@@ -314,6 +444,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   },
 
   stop: async () => {
+    wantsPlayback = false;
+    startingPlayback = false;
+    cancelStallWatchdog();
     stopSaveLoop();
     await persist();
     invalidateProgressLists();
