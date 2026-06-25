@@ -66,7 +66,9 @@ async function emitPng(rel, opts, size) {
 }
 
 // Icon recipes -------------------------------------------------------------
-const appIcon = { bg: '#ffffff', pad: 0.12 }; // opaque (iOS requires it)
+// pad is tight (0.06) so the mark fills the icon like the original client's —
+// the old 0.12 left a fat margin that read as a small logo on a launcher.
+const appIcon = { bg: '#ffffff', pad: 0.06 }; // opaque (iOS requires it)
 const maskable = { bg: '#ffffff', pad: 0.22 }; // extra safe-zone padding
 const onBlue = { bg: null, fill: '#ffffff', pad: 0.26 }; // white mark over the splash blue
 const adaptiveFg = { bg: null, pad: 0.28 }; // transparent; composited over the adaptive bg
