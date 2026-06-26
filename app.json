@@ -24,7 +24,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "app.audiosilo",
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": ["android.permission.CAMERA"],
+      "blockedPermissions": ["android.permission.ACTIVITY_RECOGNITION"]
     },
     "web": {
       "output": "static",
