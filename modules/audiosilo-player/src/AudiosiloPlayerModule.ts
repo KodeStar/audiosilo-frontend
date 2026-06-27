@@ -2,6 +2,7 @@ import { NativeModule, requireNativeModule } from 'expo';
 
 import type {
   AudiosiloPlayerModuleEvents,
+  NativeChapter,
   NativeTrack,
   PlayerConfig,
 } from './AudiosiloPlayer.types';
@@ -11,8 +12,15 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
   setup(): Promise<void>;
   /** Update runtime tunables (rewind, lock-screen skip intervals). */
   setConfig(config: PlayerConfig): Promise<void>;
-  /** Load a queue and position to `startIndex` at `positionInTrack` seconds (does not auto-play). */
-  load(tracks: NativeTrack[], startIndex: number, positionInTrack: number): Promise<void>;
+  /** Load a queue and position to `startIndex` at `positionInTrack` seconds (does not
+   * auto-play). `chapters` (Android only) makes each chapter a clipped media item so the
+   * lock screen gets a chapter scrubber + prev/next chapter; omit/empty for file-per-item. */
+  load(
+    tracks: NativeTrack[],
+    startIndex: number,
+    positionInTrack: number,
+    chapters?: NativeChapter[],
+  ): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   /** Seek within the current track (seconds). */

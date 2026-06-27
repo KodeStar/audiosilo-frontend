@@ -12,6 +12,17 @@ export type NativeTrack = {
   duration?: number;
 };
 
+/** A chapter clip for the Android engine to turn into a clipped MediaItem (lock-screen
+ * chapter scrubber + prev/next chapter). `fileIndex` indexes into the `tracks` passed to
+ * `load`; `startInFile`/`endInFile` bound the clip within that file (`endInFile <= 0` ⇒ to
+ * end of file). Optional `load` arg — iOS ignores it. */
+export type NativeChapter = {
+  fileIndex: number;
+  startInFile: number;
+  endInFile: number;
+  title: string;
+};
+
 export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 export type StateEvent = { state: NativeState };

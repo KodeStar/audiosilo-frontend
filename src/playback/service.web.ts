@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import {
   INITIAL_SNAPSHOT,
+  type PlaybackChapter,
   type PlaybackConfig,
   type PlaybackService,
   type PlaybackSnapshot,
@@ -111,7 +112,12 @@ class WebPlaybackService implements PlaybackService {
     this.config = config;
   }
 
-  async load(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number) {
+  async load(
+    tracks: PlaybackTrack[],
+    startIndex: number,
+    positionInTrack: number,
+    _chapters?: PlaybackChapter[], // chapters are a native lock-screen concern; web ignores them
+  ) {
     this.tracks = tracks;
     this.loadTrack(startIndex, positionInTrack, false);
     this.update({ state: 'ready' });
@@ -121,6 +127,7 @@ class WebPlaybackService implements PlaybackService {
     tracks: PlaybackTrack[],
     startIndex: number,
     positionInTrack: number,
+    _chapters?: PlaybackChapter[], // ignored on web (see load)
   ): Promise<boolean> {
     const track = tracks[startIndex];
     if (!track) return false;

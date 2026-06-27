@@ -4,8 +4,10 @@ import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 import {
   bookFileSpecs,
   buildBookQueue,
+  buildChapterClips,
   chapterAt,
   chapterCountdowns,
+  type FileSpec,
   locate,
   toBookPosition,
 } from '@/playback/book-queue';
@@ -153,6 +155,96 @@ describe('buildBookQueue', () => {
     });
     expect(q.tracks[0].url).toBe('file:///local/a.m4b');
     expect(q.tracks[0].headers).toBeUndefined();
+  });
+});
+
+describe('buildChapterClips', () => {
+  const spec = (path: string, duration = 0): FileSpec => ({ path, duration, size: 0 });
+
+  it('returns [] for 0 or 1 chapters (engine falls back to one item per file)', () => {
+    expect(buildChapterClips([spec('a.m4b')], [])).toEqual([]);
+    expect(buildChapterClips([spec('a.m4b')], [chapter({ file_path: 'a.m4b' })])).toEqual([]);
+  });
+
+  it('splits a single-file m4b into per-chapter clips; last clips to end of file', () => {
+    const specs = [spec('a.m4b', 300)];
+    const chapters = [
+      chapter({ index: 0, file_path: 'a.m4b', start: 0, end: 100 }),
+      chapter({ index: 1, file_path: 'a.m4b', start: 100, end: 200 }),
+      chapter({ index: 2, file_path: 'a.m4b', start: 200, end: 300 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([
+      { fileIndex: 0, startInFile: 0, endInFile: 100, title: 'ch' },
+      { fileIndex: 0, startInFile: 100, endInFile: 200, title: 'ch' },
+      { fileIndex: 0, startInFile: 200, endInFile: 0, title: 'ch' }, // last in file → to end
+    ]);
+  });
+
+  it('maps one-chapter-per-file books to a whole-file clip each (endInFile=0)', () => {
+    const specs = [spec('p1.mp3', 60), spec('p2.mp3', 90)];
+    const chapters = [
+      chapter({ index: 0, file_path: 'p1.mp3', start: 0, end: 60 }),
+      chapter({ index: 1, file_index: 1, file_path: 'p2.mp3', start: 0, end: 90 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([
+      { fileIndex: 0, startInFile: 0, endInFile: 0, title: 'ch' },
+      { fileIndex: 1, startInFile: 0, endInFile: 0, title: 'ch' },
+    ]);
+  });
+
+  it('handles multi-file books with embedded chapters (last chapter in each file → to end)', () => {
+    const specs = [spec('p1.m4b', 200), spec('p2.m4b', 200)];
+    const chapters = [
+      chapter({ index: 0, file_path: 'p1.m4b', start: 0, end: 100 }),
+      chapter({ index: 1, file_path: 'p1.m4b', start: 100, end: 200 }),
+      chapter({ index: 2, file_index: 1, file_path: 'p2.m4b', start: 0, end: 120 }),
+      chapter({ index: 3, file_index: 1, file_path: 'p2.m4b', start: 120, end: 200 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([
+      { fileIndex: 0, startInFile: 0, endInFile: 100, title: 'ch' },
+      { fileIndex: 0, startInFile: 100, endInFile: 0, title: 'ch' }, // last in p1 → to end
+      { fileIndex: 1, startInFile: 0, endInFile: 120, title: 'ch' },
+      { fileIndex: 1, startInFile: 120, endInFile: 0, title: 'ch' }, // last in p2 → to end
+    ]);
+  });
+
+  it('resolves fileIndex by file_path even when file_index is non-sequential', () => {
+    // tracks order [p2, p1]; chapters carry file_index that does NOT match.
+    const specs = [spec('p2.mp3', 50), spec('p1.mp3', 30)];
+    const chapters = [
+      chapter({ index: 0, file_index: 1, file_path: 'p2.mp3', start: 0, end: 50 }),
+      chapter({ index: 1, file_index: 0, file_path: 'p1.mp3', start: 0, end: 30 }),
+    ];
+    expect(buildChapterClips(specs, chapters).map((c) => c.fileIndex)).toEqual([0, 1]);
+  });
+
+  it('falls back to [] if any chapter cannot be mapped to a file (avoids a broken queue)', () => {
+    const specs = [spec('a.m4b', 100)];
+    const chapters = [
+      chapter({ index: 0, file_path: 'a.m4b', start: 0, end: 50 }),
+      chapter({ index: 1, file_index: 9, file_path: 'ghost.m4b', start: 50, end: 100 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([]);
+  });
+
+  it('buildBookQueue exposes chapterClips consistent with chapters', () => {
+    const book = makeBook({ rel_path: 'A/single.m4b', duration: 200 });
+    const chapterData: ChaptersResponse = {
+      library_id: 2,
+      path: 'A/single.m4b',
+      duration: 200,
+      is_folder: false,
+      files: [{ rel_path: 'A/single.m4b', seq: 1, duration: 200, format: 'm4b', size: 0 }],
+      chapters: [
+        chapter({ index: 0, file_path: 'A/single.m4b', start: 0, end: 100 }),
+        chapter({ index: 1, file_path: 'A/single.m4b', start: 100, end: 200 }),
+      ],
+    };
+    const q = buildBookQueue(fakeApi, 2, book, chapterData);
+    expect(q.chapterClips).toEqual([
+      { fileIndex: 0, startInFile: 0, endInFile: 100, title: 'ch' },
+      { fileIndex: 0, startInFile: 100, endInFile: 0, title: 'ch' },
+    ]);
   });
 });
 

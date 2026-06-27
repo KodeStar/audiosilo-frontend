@@ -2,7 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ApiClient, ApiError } from '@/api/client';
 import * as reachability from '@/api/reachability';
-import { flushQueue, type ProgressSave, saveProgress } from '@/playback/progress-sync';
+import type { Progress } from '@/api/types';
+import {
+  flushQueue,
+  loadInitialProgress,
+  type ProgressSave,
+  saveProgress,
+} from '@/playback/progress-sync';
 
 // babel-jest hoists jest.mock above the imports, so the module under test sees the
 // mock at import time (it calls onReconnect() and gates every save on isReachable()).
@@ -15,6 +21,7 @@ jest.mock('@/api/reachability', () => ({
 }));
 
 const QUEUE_KEY = 'audiosilo.progressQueue';
+const MIRROR_KEY = 'audiosilo.progressMirror';
 
 const save: ProgressSave = {
   libraryId: 1,
@@ -31,9 +38,37 @@ function fakeApi(saveImpl: () => Promise<void>): ApiClient {
   return { saveProgress: jest.fn(saveImpl) } as unknown as ApiClient;
 }
 
+/** An api whose getProgress resolves to the given value (null = no record) or rejects. */
+function fakeGetApi(getImpl: () => Promise<Progress | null>): ApiClient {
+  return {
+    getProgress: jest.fn(getImpl),
+    saveProgress: jest.fn(async () => {}),
+  } as unknown as ApiClient;
+}
+
+function makeProgress(p: Partial<Progress> = {}): Progress {
+  return {
+    library_id: 1,
+    path: 'A/Book',
+    position: 50,
+    duration: 100,
+    finished: false,
+    playback_speed: 1,
+    version: 0,
+    device_id: 'dev',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...p,
+  };
+}
+
 async function readQueue(): Promise<ProgressSave[]> {
   const raw = await AsyncStorage.getItem(QUEUE_KEY);
   return raw ? (JSON.parse(raw) as ProgressSave[]) : [];
+}
+
+async function readMirror(): Promise<Record<string, ProgressSave>> {
+  const raw = await AsyncStorage.getItem(MIRROR_KEY);
+  return raw ? (JSON.parse(raw) as Record<string, ProgressSave>) : {};
 }
 
 const reachable = reachability.isReachable as jest.Mock;
@@ -107,5 +142,97 @@ describe('progress-sync', () => {
     // Each queued save sent exactly once; the queue is drained, nothing lost.
     expect(ok.saveProgress).toHaveBeenCalledTimes(2);
     expect(await readQueue()).toHaveLength(0);
+  });
+
+  // --- durable mirror + resume lookup (never restart an in-progress book from 0) ---
+
+  it('writes the durable mirror on a successful (online) save', async () => {
+    const api = fakeApi(() => Promise.resolve());
+    await saveProgress(api, { ...save, position: 42 });
+    const mirror = await readMirror();
+    expect(mirror['1:A/Book']).toMatchObject({ position: 42 });
+  });
+
+  it('writes the durable mirror even when offline', async () => {
+    reachable.mockReturnValue(false);
+    const api = fakeApi(() => Promise.resolve());
+    await saveProgress(api, { ...save, position: 17 });
+    expect((await readMirror())['1:A/Book']).toMatchObject({ position: 17 });
+  });
+
+  it('keeps the mirror after the offline queue is flushed (never pruned on sync)', async () => {
+    reachable.mockReturnValue(false);
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 80 },
+    );
+    expect(await readQueue()).toHaveLength(1);
+
+    reachable.mockReturnValue(true);
+    await flushQueue(fakeApi(() => Promise.resolve()));
+    expect(await readQueue()).toHaveLength(0); // queue drained...
+    expect((await readMirror())['1:A/Book']).toMatchObject({ position: 80 }); // ...mirror remains
+  });
+
+  it('loadInitialProgress: returns server progress when reachable', async () => {
+    const api = fakeGetApi(() => Promise.resolve(makeProgress({ position: 60 })));
+    const r = await loadInitialProgress(api, 1, 'A/Book');
+    expect(r).toEqual({ kind: 'progress', progress: expect.objectContaining({ position: 60 }) });
+  });
+
+  it('loadInitialProgress: returns empty when the server has no record (HTTP 200, null)', async () => {
+    const api = fakeGetApi(() => Promise.resolve(null));
+    const r = await loadInitialProgress(api, 1, 'A/Book');
+    expect(r).toEqual({ kind: 'empty' });
+  });
+
+  it('loadInitialProgress: falls back to the mirror when the server is unreachable', async () => {
+    // Seed the mirror via a save, then make the fetch throw (offline/5xx).
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 75 },
+    );
+    const api = fakeGetApi(() => Promise.reject(new Error('network down')));
+    const r = await loadInitialProgress(api, 1, 'A/Book');
+    expect(r).toEqual({ kind: 'progress', progress: expect.objectContaining({ position: 75 }) });
+  });
+
+  it('loadInitialProgress: returns failed only when unreachable AND no local record', async () => {
+    const api = fakeGetApi(() => Promise.reject(new Error('network down')));
+    const r = await loadInitialProgress(api, 1, 'A/Book');
+    expect(r).toEqual({ kind: 'failed' });
+  });
+
+  it('loadInitialProgress: reconciles by updated_at — newer mirror wins over older server', async () => {
+    // Mirror is newer than what the server returns.
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      {
+        ...save,
+        position: 90,
+        updated_at: '2026-02-01T00:00:00Z',
+      },
+    );
+    const api = fakeGetApi(() =>
+      Promise.resolve(makeProgress({ position: 10, updated_at: '2026-01-01T00:00:00Z' })),
+    );
+    const r = await loadInitialProgress(api, 1, 'A/Book');
+    expect(r).toMatchObject({ kind: 'progress', progress: { position: 90 } });
+  });
+
+  it('loadInitialProgress: a newer server value wins over an older mirror', async () => {
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      {
+        ...save,
+        position: 5,
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    );
+    const api = fakeGetApi(() =>
+      Promise.resolve(makeProgress({ position: 95, updated_at: '2026-03-01T00:00:00Z' })),
+    );
+    const r = await loadInitialProgress(api, 1, 'A/Book');
+    expect(r).toMatchObject({ kind: 'progress', progress: { position: 95 } });
   });
 });

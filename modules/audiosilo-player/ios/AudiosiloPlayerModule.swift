@@ -22,6 +22,16 @@ struct ConfigRecord: Record {
   @Field var jumpBackward: Double = 15
 }
 
+/// Chapter clips passed by the shared bridge for the Android lock screen. iOS accepts
+/// them (so the `load` argument count matches) but ignores them — iOS plays file items
+/// and uses MPRemoteCommandCenter for lock-screen controls.
+struct ChapterRecord: Record {
+  @Field var fileIndex: Int = 0
+  @Field var startInFile: Double = 0
+  @Field var endInFile: Double = 0
+  @Field var title: String = ""
+}
+
 private extension Array {
   subscript(safe index: Int) -> Element? {
     indices.contains(index) ? self[index] : nil
@@ -564,7 +574,10 @@ public class AudiosiloPlayerModule: Module {
       self?.onMain { self?.ensureEngine().setConfig(config) }
     }
 
-    AsyncFunction("load") { [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double) in
+    // The 4th arg (chapters) is Android-only (clipped media items for the lock screen);
+    // iOS accepts it for bridge-arity parity and ignores it.
+    AsyncFunction("load") {
+      [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double, _: [ChapterRecord]?) in
       self?.onMain { self?.ensureEngine().load(tracks: tracks, startIndex: startIndex, position: position) }
     }
 

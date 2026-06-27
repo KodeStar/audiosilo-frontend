@@ -31,12 +31,35 @@ let wantsPlayback = false;
 let startingPlayback = false;
 /** Pending stall→error timer (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
+/** The whole-book position the current book resumed from, kept as a running high-water
+ * mark. `persist` refuses to save a position far below this unless the user deliberately
+ * seeked back (which lowers it) — so a slipped-through restart-at-0 can never overwrite
+ * real saved progress. Reset per book in `playBook`. */
+let resumeFloor = 0;
+/** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
+ * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
+ * at a stale 0. */
+let resumeLookupFailed = false;
+/** Captured so `retry()` can re-run the resume path after a lookup failure. */
+let lastPlayRequest: {
+  api: ApiClient;
+  libraryId: number;
+  book: Book;
+  chapterData?: ChaptersResponse;
+} | null = null;
 
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
 
 const SAVE_INTERVAL_MS = 15_000;
 const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
+const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect
+
+/** Lower the resume floor after a deliberate user seek/jump, so a legitimate backward
+ * move (or a restart) is allowed to save instead of being blocked by the guard. */
+function lowerFloorTo(bookPosition: number) {
+  if (Number.isFinite(bookPosition)) resumeFloor = Math.min(resumeFloor, Math.max(0, bookPosition));
+}
 
 const MIN_RATE = 0.5;
 const MAX_RATE = 2; // engines support more; the product caps speed at 2x
@@ -98,6 +121,13 @@ async function persist() {
   if (!apiRef || !nowPlaying) return;
   const position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
   if (position <= 0) return;
+  // Guard against a slipped-through restart corrupting real progress: a position far
+  // below the resume floor (without a deliberate backward seek, which lowers the floor)
+  // is treated as a spurious reset and not saved. The server is last-write-wins, so a
+  // small-position save with a newer timestamp would otherwise permanently overwrite the
+  // user's place.
+  if (position < resumeFloor - SLIP_TOLERANCE) return;
+  if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
   const total = nowPlaying.queue.total;
   await saveProgress(apiRef, {
     libraryId: nowPlaying.libraryId,
@@ -307,6 +337,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     cancelStallWatchdog(); // drop any stale stall timer from the previous book
     apiRef = api;
     deviceId = await getDeviceId();
+    lastPlayRequest = { api, libraryId, book, chapterData }; // so retry() can re-run resume
+    resumeLookupFailed = false;
 
     // Play from local files when the book is downloaded (works fully offline).
     const dl = useDownloads.getState().entries[downloadKey(libraryId, book.rel_path)];
@@ -324,16 +356,42 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     let startAt = startBookPosition ?? 0;
     let speed = clampRate(useSettings.getState().defaultRate);
     if (startBookPosition === undefined && startTrack === undefined) {
-      const saved = await loadInitialProgress(api, libraryId, book.rel_path);
-      if (saved && !saved.finished && saved.position > 0) startAt = saved.position;
-      if (saved?.playback_speed && saved.playback_speed > 0)
-        speed = clampRate(saved.playback_speed);
+      const r = await loadInitialProgress(api, libraryId, book.rel_path);
+      if (r.kind === 'progress') {
+        const p = r.progress;
+        if (!p.finished && p.position > 0) startAt = p.position;
+        if (p.playback_speed > 0) speed = clampRate(p.playback_speed);
+      } else if (r.kind === 'failed' && dl?.status !== 'downloaded') {
+        // Streaming book whose resume position couldn't be confirmed (server unreachable,
+        // no local record). Starting at 0 here would restart an in-progress book AND a
+        // later save could overwrite the real place. Fail safe: surface a recoverable
+        // error (the player offers Retry, which re-runs this lookup) instead of playing.
+        resumeLookupFailed = true;
+        set({
+          rate: speed,
+          nowPlaying: {
+            libraryId,
+            path: book.rel_path,
+            title: book.title,
+            author: book.author || book.narrator || '',
+            cover: local?.artwork ?? api.coverUrl(libraryId, book.rel_path),
+            queue,
+          },
+          snapshot: { ...INITIAL_SNAPSHOT, state: 'error', rate: speed },
+        });
+        return;
+      }
+      // kind 'empty' (server reachable, genuinely new) or 'failed' for a downloaded book
+      // (offline-first, never started) → startAt stays 0, which is correct.
     }
 
     const { index, positionInTrack } =
       startTrack !== undefined
         ? { index: Math.max(0, Math.min(startTrack, queue.tracks.length - 1)), positionInTrack: 0 }
         : locate(queue.offsets, startAt);
+    // The position we actually resumed from (covers resume, bookmark jump and startTrack);
+    // the save guard won't let progress regress below it without a deliberate seek.
+    resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
     set({
       rate: speed,
       nowPlaying: {
@@ -346,7 +404,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       },
     });
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
-    await svc.load(queue.tracks, index, positionInTrack);
+    await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
     await svc.setRate(speed);
     await svc.play();
     // The save loop is started by the engine 'playing' transition (see subscribe).
@@ -383,17 +441,28 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   },
 
   retry: async () => {
+    // If the failure was at the resume-lookup stage, re-run the resume path (re-fetch
+    // progress) rather than reloading at a stale 0 — this is the recovery for the
+    // fail-safe in playBook.
+    if (resumeLookupFailed && lastPlayRequest) {
+      const { api, libraryId, book, chapterData } = lastPlayRequest;
+      resumeLookupFailed = false;
+      await get().playBook(api, libraryId, book, chapterData);
+      return;
+    }
     const np = get().nowPlaying;
     if (!np) return;
-    // Rebuild the engine's items from the current track + position so a failed/
+    // Rebuild the engine's items from the known-good book position so a failed/
     // unreachable stream is re-requested (a dead AVPlayerItem can't recover via
-    // play() alone), then resume. The watchdog is armed from here, so even if the
-    // reload's event stream is noisy it still surfaces an error if it never plays.
+    // play() alone), then resume. Never reload below the resume floor, so a transient
+    // bad 0 in the snapshot can't be re-loaded. The watchdog is armed from here, so
+    // even if the reload's event stream is noisy it still surfaces an error if it
+    // never plays.
     beginPlaybackAttempt();
     const svc = await ensureService();
-    const index = get().snapshot.trackIndex;
-    const positionInTrack = Math.max(0, get().snapshot.position);
-    await svc.load(np.queue.tracks, index, positionInTrack);
+    const bookPos = Math.max(resumeFloor, selectBookPosition(get()));
+    const { index, positionInTrack } = locate(np.queue.offsets, bookPos);
+    await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips);
     await svc.setRate(get().rate);
     await svc.play();
   },
@@ -407,6 +476,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         : Math.max(0, bookPosition);
     const svc = await ensureService();
     const target = locate(np.queue.offsets, clamped);
+    lowerFloorTo(clamped); // a deliberate user seek may legitimately move backward
     if (target.index === get().snapshot.trackIndex) {
       await svc.seekTo(target.positionInTrack);
     } else {
@@ -420,6 +490,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const dur = get().snapshot.duration;
     const pos = Math.max(0, dur > 0 ? Math.min(positionInTrack, dur) : positionInTrack);
     const svc = await ensureService();
+    const np = get().nowPlaying;
+    if (np) lowerFloorTo(toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos));
     await svc.seekTo(pos);
     void persist();
   },
@@ -429,6 +501,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     if (!np) return;
     const i = Math.max(0, Math.min(index, np.queue.tracks.length - 1));
     const svc = await ensureService();
+    lowerFloorTo(toBookPosition(np.queue.offsets, i, 0));
     await svc.skipToTrack(i, 0);
     void persist();
   },
@@ -506,10 +579,10 @@ async function switchCurrentBookToLocal() {
     // Gapless: keep streaming until the local file is buffered at this position. The
     // swap can be refused (e.g. the local source isn't servable on web) — in that
     // case leave nowPlaying on the streaming queue so playback keeps going.
-    const swapped = await svc.swapTo(queue.tracks, index, positionInTrack);
+    const swapped = await svc.swapTo(queue.tracks, index, positionInTrack, queue.chapterClips);
     if (!swapped) return;
   } else {
-    await svc.load(queue.tracks, index, positionInTrack);
+    await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
     await svc.setRate(rate);
     if (wasPlaying) await svc.play();
   }

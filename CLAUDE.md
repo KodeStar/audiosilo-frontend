@@ -118,18 +118,38 @@ native passes `Authorization` headers. **This depends on a server change** in
   - **Interruption auto-resume.** Only resume on interruption `.ended` if we were
     actually playing when it began (`wasPlayingBeforeInterruption`) — otherwise the
     charging chime (a brief interruption) resumes a paused book.
-- **Android lock-screen controls are deliberately play/pause-only, no scrubber**
-  (`AudiosiloPlayerService.kt`). A Media3 `ForwardingPlayer` (`AudiobookPlayer`) applies
-  auto-rewind on every `play()` (so lock-screen resume rewinds too) and hides prev/next
-  (so "previous" can't restart a single-file book). The scrubber is hidden by restricting
-  the **media-notification controller** in `MediaSession.Callback.onConnect` (remove the
-  seek commands) — a whole-book scrubber is a foot-gun (a stray tap loses your place) and
-  there are no skip buttons to recover with. **Why no skip buttons:** media3-session ships
-  no skip drawables, so `ICON_SKIP_BACK/FORWARD` render icon-less and Android 16 drops
-  icon-less media actions. Don't re-add skip buttons without first shipping custom vector
-  icons AND verifying Android 16's media UI actually renders them. The in-app controller
-  keeps full seek commands, so the app's own seek bar is unaffected. iOS handles all this
-  natively (`preferredIntervals` + remote commands route through `play()`).
+- **Android lock screen = chapter controls (Audible parity)** (`AudiosiloPlayerService.kt`
+  + `AudiosiloPlayerModule.kt`). Each **chapter is a clipped `MediaItem`**
+  (`MediaItem.ClippingConfiguration`, built from the `chapters` arg to `load`), so the
+  system scrubber is **chapter-relative** and `COMMAND_SEEK_TO_*_MEDIA_ITEM` give
+  **prev/next chapter**; **30s skip buttons** use Media3's **predefined** `CommandButton`
+  icon constants (`ICON_SKIP_BACK_30`/`ICON_SKIP_FORWARD_30`, since Media3 **1.5.0** — no
+  app-shipped drawable, not icon-less, so the old "Android 16 drops icon-less actions"
+  problem is gone), wired as **custom session commands** (`setSessionCommand` +
+  `MediaSession.Callback.onCustomCommand` → `player.seekBack()/seekForward()`), **NOT**
+  `COMMAND_SEEK_BACK/FORWARD` — those map to the legacy `ACTION_REWIND`/`FAST_FORWARD` that
+  the modern Android media UI silently ignores (`dumpsys media_session` showed
+  `custom actions=[]` and no buttons). **Register them with `setCustomLayout`, NOT
+  `setMediaButtonPreferences`**: the slot-based preferences API caps the 1.5.1 notification
+  at 3 actions (drops the secondary slots — `dumpsys notification` showed `actions=3`),
+  whereas `setCustomLayout` makes the provider emit standard `[prev, play, next]` (auto, when
+  the seek-to-prev/next commands are available) **+** the custom skip buttons = all 5
+  actions, alongside the draggable chapter scrubber → the full lock-screen row
+  `[prev-ch] [scrubber] [next-ch] [back-30] [fwd-30]` (`dumpsys`: `actions=5`,
+  device-verified on a Pixel). The **app logo** is
+  the notification small icon (`DefaultMediaNotificationProvider.setSmallIcon` +
+  `android/.../res/drawable/ic_notification.xml`). `AudiobookPlayer` (a `ForwardingPlayer`)
+  still applies auto-rewind on every `play()` and hides prev/next **only when there's a
+  single item** (a chapterless single-file book, so "previous" can't restart it). **The JS
+  store + iOS stay file-based**: the Android module translates between its chapter clips and
+  the file-relative `(trackIndex, position)` the bridge reports (`ChapterMap`
+  `fileToItem`/`itemToFile`); `buildChapterClips` (`book-queue.ts`) returns `[]` for 0/1
+  chapters → one item per file (today's behavior). A `SimpleCache`/`CacheDataSource` keeps
+  clipped single-file **streaming** gapless (clips re-open the same URL) — gapless was
+  device-verified on a Pixel (no audible gap at chapter boundaries); the safety fallback if
+  a future device regresses is to make `buildChapterClips` return `[]` for single-file
+  books. iOS keeps `preferredIntervals` + a whole-file Now Playing scrubber (chapter parity
+  on iOS is a follow-up).
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
@@ -150,6 +170,16 @@ native passes `Authorization` headers. **This depends on a server change** in
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.
+- **Never restart an in-progress book from 0.** `loadInitialProgress` returns a
+  discriminated `ResumeLookup` (`progress`/`empty`/`failed`) reconciling the server, a
+  **durable local mirror** (`writeMirror`, never pruned on sync — survives a flaky resume
+  fetch), and the offline queue by `updated_at`. `playBook` resumes from `progress`; on
+  `failed` for a **streaming** book it sets an `error` (retry re-runs the lookup) instead
+  of silently starting at 0; `empty`/downloaded-`failed` start at 0 (genuinely new). A
+  **save guard** (`resumeFloor` in `store.ts`) refuses to persist a position far below
+  where we resumed unless a deliberate seek lowered the floor — so a slipped restart can't
+  overwrite real progress (the server is last-write-wins). This fixed the beta "book
+  restarted from the beginning" report.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
   **armed by the play/retry action, not by interpreting engine events** — this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and
