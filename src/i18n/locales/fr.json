@@ -68,6 +68,11 @@
       "message": "Votre code de récupération actuel cessera de fonctionner. Vous devrez enregistrer le nouveau partout où vous le conservez.",
       "confirm": "Le remplacer"
     },
+    "support": {
+      "label": "Soutenir",
+      "intro": "AudioSilo est auto-hébergé et gratuit. Si vous souhaitez soutenir son développement, vous pouvez contribuer via GitHub Sponsors.",
+      "cta": "Soutenir AudioSilo"
+    },
     "version": "AudioSilo v{{version}}"
   },
   "account": {
