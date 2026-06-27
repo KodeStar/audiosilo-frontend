@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import type { ApiClient } from '@/api/client';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 
-import type { PlaybackTrack } from './types';
+import type { PlaybackChapter, PlaybackTrack } from './types';
 
 export type BookQueue = {
   tracks: PlaybackTrack[];
@@ -12,6 +12,9 @@ export type BookQueue = {
   /** Total book duration (seconds). */
   total: number;
   chapters: Chapter[];
+  /** Per-chapter clips for the native engine's lock-screen chapter controls; `[]`
+   * when the book has 0/1 chapters (the engine then plays one item per file). */
+  chapterClips: PlaybackChapter[];
 };
 
 /** One distinct audio file of a book, in play order. */
@@ -62,6 +65,43 @@ export function chapterBookOffset(
     acc += files[i].duration > 0 ? files[i].duration : 0;
   }
   return acc + ch.start;
+}
+
+/** Index of the file a chapter plays from, within `specs`. Resolves by `file_path`
+ * first (a non-sequential `file_index` can't misplace it), falling back to a valid
+ * `file_index`; -1 when neither maps. */
+function fileIndexOf(specs: FileSpec[], ch: Chapter): number {
+  const byPath = specs.findIndex((s) => s.path === ch.file_path);
+  if (byPath >= 0) return byPath;
+  return ch.file_index >= 0 && ch.file_index < specs.length ? ch.file_index : -1;
+}
+
+/**
+ * Per-chapter clips for the native engine to turn into clipped media items, so the
+ * Android lock screen gets a chapter-relative scrubber and prev/next-chapter buttons.
+ * Each chapter maps to `(fileIndex, [startInFile, endInFile])`; the LAST chapter in a
+ * file clips "to end" (`endInFile = 0`) so an inaccurate final `end` can't cut off the
+ * file's tail. Returns `[]` when there are 0 or 1 chapters (the engine then plays one
+ * item per file — today's behavior), or if any chapter can't be mapped to a file (so a
+ * partial/broken clip queue never strands playback — fall back to file mode).
+ */
+export function buildChapterClips(specs: FileSpec[], chapters: Chapter[]): PlaybackChapter[] {
+  if (chapters.length <= 1) return [];
+  const clips: PlaybackChapter[] = [];
+  for (let i = 0; i < chapters.length; i++) {
+    const ch = chapters[i];
+    const fileIndex = fileIndexOf(specs, ch);
+    if (fileIndex < 0) return []; // unmappable chapter → safe fallback to file mode
+    const next = chapters[i + 1];
+    const lastInFile = !next || fileIndexOf(specs, next) !== fileIndex;
+    clips.push({
+      fileIndex,
+      startInFile: Math.max(0, ch.start),
+      endInFile: lastInFile ? 0 : Math.max(0, ch.end),
+      title: ch.title,
+    });
+  }
+  return clips;
 }
 
 /**
@@ -124,7 +164,7 @@ export function buildBookQueue(
   );
   const total = Math.max(book.duration > 0 ? book.duration : 0, acc, furthestEnd);
 
-  return { tracks, offsets, total, chapters };
+  return { tracks, offsets, total, chapters, chapterClips: buildChapterClips(specs, chapters) };
 }
 
 /** Distinct audio files referenced by a book's chapters, in play order, with a

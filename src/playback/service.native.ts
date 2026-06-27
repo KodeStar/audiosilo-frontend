@@ -4,6 +4,7 @@ import AudiosiloPlayer, { type NativeTrack } from '../../modules/audiosilo-playe
 
 import {
   INITIAL_SNAPSHOT,
+  type PlaybackChapter,
   type PlaybackConfig,
   type PlaybackService,
   type PlaybackSnapshot,
@@ -63,8 +64,16 @@ class NativePlaybackService implements PlaybackService {
     await AudiosiloPlayer.setConfig(config);
   }
 
-  async load(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number) {
-    await AudiosiloPlayer.load(tracks.map(toNativeTrack), startIndex, positionInTrack);
+  async load(
+    tracks: PlaybackTrack[],
+    startIndex: number,
+    positionInTrack: number,
+    chapters?: PlaybackChapter[],
+  ) {
+    // chapters are the per-chapter clips; the Android module builds clipped media items
+    // from them (iOS ignores the arg). PlaybackChapter and NativeChapter are the same
+    // shape, so they pass straight through.
+    await AudiosiloPlayer.load(tracks.map(toNativeTrack), startIndex, positionInTrack, chapters);
     this.update({
       trackIndex: startIndex,
       position: positionInTrack,

@@ -1,6 +1,7 @@
 import type { ApiClient } from '@/api/client';
-import type { Book } from '@/api/types';
+import type { Book, Progress } from '@/api/types';
 
+import type { ResumeLookup } from './progress-sync';
 import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 
 // --- Mocks -----------------------------------------------------------------
@@ -42,11 +43,14 @@ jest.mock('./service', () => ({
 // Spy on the progress-sync layer so we can assert what (if anything) gets saved,
 // and so playBook's resume/flush calls are inert.
 const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
+const mockLoadInitialProgress = jest.fn(
+  async (..._args: unknown[]): Promise<ResumeLookup> => ({ kind: 'empty' }),
+);
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
-  loadInitialProgress: jest.fn(async () => null),
+  loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
 }));
 
 // Keep React Query out of the unit test.
@@ -83,6 +87,21 @@ function makeBook(p: Partial<Book> = {}): Book {
     duration: 100, // single-file book, 100s total
     format: 'm4b',
     size: 0,
+    ...p,
+  };
+}
+
+function makeProgress(p: Partial<Progress> = {}): Progress {
+  return {
+    library_id: 2,
+    path: 'A/Book.m4b',
+    position: 0,
+    duration: 100,
+    finished: false,
+    playback_speed: 1,
+    version: 0,
+    device_id: 'dev',
+    updated_at: '2026-01-01T00:00:00Z',
     ...p,
   };
 }
@@ -456,5 +475,80 @@ describe('retry rebuilds the engine from the current spot', () => {
     (mockSvc.load as jest.Mock).mockClear();
     await usePlayer.getState().retry();
     expect(mockSvc.load).not.toHaveBeenCalled();
+  });
+});
+
+// --- resume safety: never silently restart an in-progress book from 0 ---------
+
+describe('resume never restarts an in-progress book from 0', () => {
+  it('resumes from saved progress (and speed) instead of 0', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 30, playback_speed: 1.5 }),
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    // No explicit start position → the resume lookup drives the start point.
+    await usePlayer.getState().playBook(fakeApi(), 2, makeBook(), undefined);
+    expect((mockSvc.load as jest.Mock).mock.calls[0][1]).toBe(0); // startIndex (single file)
+    expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(30); // positionInTrack
+    expect(usePlayer.getState().rate).toBe(1.5);
+  });
+
+  it('fails safe (error, no playback) when a streaming resume lookup fails', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().playBook(fakeApi(), 2, makeBook(), undefined);
+    // Must NOT restart at 0: surface an error and load nothing.
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.load).not.toHaveBeenCalled();
+  });
+
+  it('retry re-runs the resume lookup after a streaming resume failure', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
+    await usePlayer.getState().playBook(fakeApi(), 2, makeBook(), undefined);
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+
+    // The server recovers → retry re-fetches and resumes at the real position.
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 55 }),
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    expect(mockLoadInitialProgress).toHaveBeenCalledTimes(2);
+    expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(55); // positionInTrack
+  });
+
+  it('save guard: a position far below the resume floor is not persisted', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 300, duration: 1000 }),
+    });
+    await usePlayer.getState().playBook(fakeApi(), 2, makeBook({ duration: 1000 }), undefined);
+
+    // A spurious restart reports position 2 (≪ resumeFloor 300) → must not overwrite.
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 2, { duration: 1000 }));
+    pushSnapshot(snap('paused', 2, { duration: 1000 }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+  });
+
+  it('save guard: a low position IS persisted after a deliberate backward seek', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 300, duration: 1000 }),
+    });
+    await usePlayer.getState().playBook(fakeApi(), 2, makeBook({ duration: 1000 }), undefined);
+
+    // The user deliberately seeks back to 2 → the floor lowers, so saving is allowed.
+    await usePlayer.getState().seekBook(2);
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 2, { duration: 1000 }));
+    pushSnapshot(snap('paused', 2, { duration: 1000 }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockSaveProgress).toHaveBeenCalled();
   });
 });

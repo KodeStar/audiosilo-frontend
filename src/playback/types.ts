@@ -11,6 +11,22 @@ export type PlaybackTrack = {
   duration?: number;
 };
 
+/**
+ * A chapter clip for the native engine to play as a clipped media item — the basis
+ * for the Android lock screen's chapter-relative scrubber and prev/next-chapter
+ * buttons. `fileIndex` indexes into the `tracks` passed to `load`; `startInFile`/
+ * `endInFile` bound the clip within that file (`endInFile <= 0` ⇒ play to end of
+ * file). The whole-book timeline stays file-based in the store; the native module
+ * translates between its chapter items and the file-relative positions it reports.
+ * iOS and web ignore this (optional `load` arg).
+ */
+export type PlaybackChapter = {
+  fileIndex: number;
+  startInFile: number;
+  endInFile: number;
+  title: string;
+};
+
 export type PlaybackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 /** Engine status, expressed per-track (the store maps it to the whole-book timeline). */
@@ -51,7 +67,12 @@ export interface PlaybackService {
   setup(): Promise<void>;
   /** Apply runtime tunables (auto-rewind, skip intervals). */
   configure(config: PlaybackConfig): Promise<void>;
-  load(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number): Promise<void>;
+  load(
+    tracks: PlaybackTrack[],
+    startIndex: number,
+    positionInTrack: number,
+    chapters?: PlaybackChapter[],
+  ): Promise<void>;
   /**
    * Swap the queue to a new source as gaplessly as possible: keep the current
    * source playing until the new one is buffered and ready at `positionInTrack`,
@@ -61,7 +82,12 @@ export interface PlaybackService {
    * Resolves `true` if the swap happened, `false` if it was refused (e.g. the local
    * source can't be served) and the original source is still playing.
    */
-  swapTo?(tracks: PlaybackTrack[], startIndex: number, positionInTrack: number): Promise<boolean>;
+  swapTo?(
+    tracks: PlaybackTrack[],
+    startIndex: number,
+    positionInTrack: number,
+    chapters?: PlaybackChapter[],
+  ): Promise<boolean>;
   play(): Promise<void>;
   pause(): Promise<void>;
   /** Seek within the current track. */
