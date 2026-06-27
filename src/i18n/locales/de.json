@@ -68,6 +68,11 @@
       "message": "Dein aktueller Wiederherstellungscode funktioniert dann nicht mehr. Du musst den neuen überall dort speichern, wo du ihn aufbewahrst.",
       "confirm": "Ersetzen"
     },
+    "support": {
+      "label": "Unterstützen",
+      "intro": "AudioSilo wird selbst gehostet und ist kostenlos. Wenn du die Entwicklung unterstützen möchtest, kannst du über GitHub Sponsors beitragen.",
+      "cta": "AudioSilo unterstützen"
+    },
     "version": "AudioSilo v{{version}}"
   },
   "account": {

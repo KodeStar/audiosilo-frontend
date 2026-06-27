@@ -68,6 +68,11 @@
       "message": "Your current recovery code will stop working. You'll need to save the new one everywhere you keep it.",
       "confirm": "Replace it"
     },
+    "support": {
+      "label": "Support",
+      "intro": "AudioSilo is self-hosted and free. If you'd like to support its development, you can contribute on GitHub Sponsors.",
+      "cta": "Support AudioSilo"
+    },
     "version": "AudioSilo v{{version}}"
   },
   "account": {

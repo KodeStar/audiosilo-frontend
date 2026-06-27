@@ -22,6 +22,7 @@ import { TextField } from '@/components/ui/text-field';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { shareText } from '@/lib/share';
+import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -397,6 +398,24 @@ export default function SettingsScreen() {
             )}
           </Card>
         </View>
+
+        {/* Support is web/Android only — Apple disallows linking out to an external
+            developer-donation page, and the UK App Store is outside the US/EU
+            carve-outs that now permit it (see src/lib/support.ts). */}
+        {isSupportAvailable() ? (
+          <View className="gap-2">
+            <Text variant="label">{t('settings.support.label')}</Text>
+            <Card className="gap-3">
+              <Text variant="muted">{t('settings.support.intro')}</Text>
+              <Button
+                title={t('settings.support.cta')}
+                icon="heart"
+                variant="secondary"
+                onPress={() => void openSupport()}
+              />
+            </Card>
+          </View>
+        ) : null}
 
         <Text variant="caption" className="text-center">
           {t('settings.version', {

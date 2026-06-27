@@ -68,6 +68,11 @@
       "message": "Tu código de recuperación actual dejará de funcionar. Tendrás que guardar el nuevo en todos los lugares donde lo conserves.",
       "confirm": "Reemplazarlo"
     },
+    "support": {
+      "label": "Apoyar",
+      "intro": "AudioSilo es autoalojado y gratuito. Si quieres apoyar su desarrollo, puedes contribuir en GitHub Sponsors.",
+      "cta": "Apoyar AudioSilo"
+    },
     "version": "AudioSilo v{{version}}"
   },
   "account": {
