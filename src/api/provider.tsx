@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'r
 import { useSession, type Connection } from '@/stores/session';
 
 import { ApiClient } from './client';
-import { setReachabilityApi } from './reachability';
+import { onReconnect, setReachabilityApi } from './reachability';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,6 +14,15 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
   },
+});
+
+// When the server becomes reachable again, refetch so screens that errored or emptied
+// while offline repopulate on their own. Previously the offline banner cleared (it
+// reads reachability reactively) but the queries stayed in their failed/empty state
+// until the screen remounted — i.e. you had to navigate to another tab and back.
+// invalidateQueries only refetches currently-observed queries, so this is cheap.
+onReconnect(() => {
+  void queryClient.invalidateQueries();
 });
 
 type ApiRegistry = {
