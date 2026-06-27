@@ -8,6 +8,7 @@ import { ApiProvider } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
+import { useAppResume } from '@/lib/app-resume';
 import '@/lib/register-sw';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -43,6 +44,10 @@ export default function RootLayout() {
     void hydrateSettings();
     void hydrateDownloads();
   }, [hydrate, hydrateSettings, hydrateDownloads]);
+
+  // On returning to the foreground: refresh data, and (Android) reset to Home if the
+  // app was swiped away from recents. See @/lib/app-resume.
+  useAppResume();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

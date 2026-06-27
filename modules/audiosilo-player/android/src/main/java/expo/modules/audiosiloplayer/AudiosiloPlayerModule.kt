@@ -1,6 +1,7 @@
 package expo.modules.audiosiloplayer
 
 import android.content.ComponentName
+import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -109,6 +110,19 @@ class AudiosiloPlayerModule : Module() {
     Name("AudiosiloPlayer")
 
     Events("onState", "onProgress", "onTrackChange")
+
+    // True once if the app was swiped away from recents since the last check (set by
+    // the service's onTaskRemoved). Read+cleared synchronously so JS can decide, on
+    // foreground, whether to reset to Home. Synchronous Function: a single prefs read.
+    Function("consumeTaskRemoved") {
+      val prefs = context.getSharedPreferences(
+        AudiosiloPlayerService.PREFS,
+        Context.MODE_PRIVATE,
+      )
+      val removed = prefs.getBoolean(AudiosiloPlayerService.KEY_TASK_REMOVED, false)
+      if (removed) prefs.edit().putBoolean(AudiosiloPlayerService.KEY_TASK_REMOVED, false).apply()
+      removed
+    }
 
     AsyncFunction("setup") { promise: Promise ->
       handler.post { connect(promise) }

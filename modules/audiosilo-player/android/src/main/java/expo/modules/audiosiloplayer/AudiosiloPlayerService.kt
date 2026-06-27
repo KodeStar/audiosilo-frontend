@@ -243,6 +243,15 @@ class AudiosiloPlayerService : MediaSessionService() {
   override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
   override fun onTaskRemoved(rootIntent: Intent?) {
+    // The user swiped the app away from recents. Android usually keeps the (now
+    // task-less) process cached, so the next launch is a warm resume on the last
+    // route — and that restored screen renders blank on the new Activity. Record the
+    // dismissal so the JS layer can reset to Home on the next foreground, matching the
+    // iOS cold-start behavior the user expects. A plain app-switch never lands here.
+    getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putBoolean(KEY_TASK_REMOVED, true)
+      .apply()
     val player = mediaSession?.player
     if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
       stopSelf()
@@ -261,6 +270,12 @@ class AudiosiloPlayerService : MediaSessionService() {
   }
 
   companion object {
+    /** Shared prefs + key used to hand the "task swiped from recents" signal to the
+     * module (read+cleared by `consumeTaskRemoved`). The service and module live in
+     * the same process; prefs are the simplest durable channel between them. */
+    const val PREFS = "audiosilo.player"
+    const val KEY_TASK_REMOVED = "task_removed"
+
     @Volatile private var mediaCache: SimpleCache? = null
 
     /** Process-wide streaming cache (64 MB LRU). One SimpleCache instance may own a

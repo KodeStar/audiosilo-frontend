@@ -566,6 +566,11 @@ public class AudiosiloPlayerModule: Module {
 
     Events("onState", "onProgress", "onTrackChange")
 
+    // Android-only signal (swipe-from-recents → reset to Home on next foreground). iOS
+    // reliably terminates on swipe-away, so relaunch is already a cold start to Home;
+    // always false here for bridge parity.
+    Function("consumeTaskRemoved") { () -> Bool in false }
+
     AsyncFunction("setup") { [weak self] in
       self?.onMain { self?.ensureEngine() }
     }

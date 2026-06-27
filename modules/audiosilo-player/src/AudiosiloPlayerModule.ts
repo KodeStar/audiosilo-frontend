@@ -31,6 +31,11 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
   setRate(rate: number): Promise<void>;
   /** Stop playback and clear the queue. */
   reset(): Promise<void>;
+  /** Android: returns true (once, then clears) if the app was swiped away from
+   * recents since the last call — the JS layer uses it to reset to Home on the next
+   * foreground (Android keeps the dismissed process cached, so the next open is a
+   * warm resume on the last route). iOS cold-starts on relaunch, so it's always false. */
+  consumeTaskRemoved(): boolean;
 }
 
 export default requireNativeModule<AudiosiloPlayerModule>('AudiosiloPlayer');
