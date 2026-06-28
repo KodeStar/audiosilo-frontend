@@ -112,6 +112,9 @@ type PlayerState = {
   nowPlaying: NowPlaying | null;
   snapshot: PlaybackSnapshot;
   rate: number;
+  /** Whether the engine can show an OS audio-route / casting picker on this platform
+   * (set when the engine is created). Drives whether the player shows the cast button. */
+  canRoutePick: boolean;
 
   /** Start a book. Omit startBookPosition to resume from saved progress; pass
    * startTrack to begin at a specific file (used when file durations are
@@ -138,6 +141,9 @@ type PlayerState = {
   skipSeconds: (delta: number) => Promise<void>;
   setRate: (rate: number) => Promise<void>;
   stop: () => Promise<void>;
+  /** Present the OS audio-route / casting picker (AirPlay, Android output switcher, web
+   * Remote Playback). No-op if the engine doesn't support it. */
+  showRoutePicker: () => Promise<void>;
 };
 
 /** Persist the current whole-book position (offline-safe). */
@@ -362,6 +368,9 @@ async function ensureService(): Promise<PlaybackService> {
     }
   });
   service = svc;
+  // Expose whether this platform/engine can show an audio-route picker so the player
+  // can decide whether to render the cast button (web: only where the APIs exist).
+  usePlayer.setState({ canRoutePick: svc.canShowRoutePicker?.() ?? false });
   return svc;
 }
 
@@ -369,6 +378,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   nowPlaying: null,
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
+  canRoutePick: false,
 
   playBook: async (connectionId, libraryId, book, chapterData, startBookPosition, startTrack) => {
     // Resolve the client from the connection id (single source of truth), mirroring the
@@ -588,6 +598,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     invalidateProgressLists();
     if (service) await service.reset();
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
+  },
+
+  showRoutePicker: async () => {
+    const svc = service ?? (await ensureService());
+    await svc.showRoutePicker?.();
   },
 }));
 

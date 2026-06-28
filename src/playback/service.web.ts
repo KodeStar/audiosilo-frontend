@@ -20,6 +20,29 @@ export function isSwapReady(readyState: number, currentTime: number, target: num
 }
 
 /**
+ * Which OS output picker a media element can present, in priority order: Safari / iOS
+ * expose `webkitShowPlaybackTargetPicker` (AirPlay → HomePod, AirPlay speakers);
+ * Chromium exposes the Remote Playback API (`el.remote.prompt`, used for Cast). Anything
+ * else has no in-page picker. Pure + exported so the choice is unit-testable without a
+ * real <audio> element.
+ */
+export type RoutePickerKind = 'airplay' | 'remote' | 'none';
+export function routePickerKind(el: {
+  webkitShowPlaybackTargetPicker?: unknown;
+  remote?: { prompt?: unknown } | null;
+}): RoutePickerKind {
+  if (typeof el.webkitShowPlaybackTargetPicker === 'function') return 'airplay';
+  if (el.remote && typeof el.remote.prompt === 'function') return 'remote';
+  return 'none';
+}
+
+/** A media element augmented with the (non-standard) picker entry points. */
+type RoutePickerEl = {
+  webkitShowPlaybackTargetPicker?: () => void;
+  remote?: { prompt?: () => Promise<void> } | null;
+};
+
+/**
  * Web playback via a single HTML5 <audio> element. The token is already in the
  * track URL (query param), so Range requests (seek/scrub) work natively. The
  * queue is advanced manually on `ended`. Media Session API wires up OS / browser
@@ -266,6 +289,32 @@ class WebPlaybackService implements PlaybackService {
     this.index = 0;
     this.snapshot = { ...INITIAL_SNAPSHOT, rate: this.rate };
     this.emit();
+  }
+
+  canShowRoutePicker(): boolean {
+    if (typeof Audio === 'undefined') return false;
+    return routePickerKind(this.el() as unknown as RoutePickerEl) !== 'none';
+  }
+
+  async showRoutePicker(): Promise<boolean> {
+    const el = this.el() as unknown as RoutePickerEl;
+    switch (routePickerKind(el)) {
+      case 'airplay':
+        // Safari / iOS: opens the native AirPlay route sheet for this element.
+        el.webkitShowPlaybackTargetPicker?.();
+        return true;
+      case 'remote':
+        // Chromium: opens the Cast/Remote Playback chooser; rejects if the user
+        // dismisses it or there are no devices — neither is an error here.
+        try {
+          await el.remote?.prompt?.();
+          return true;
+        } catch {
+          return false;
+        }
+      default:
+        return false;
+    }
   }
 
   getSnapshot() {

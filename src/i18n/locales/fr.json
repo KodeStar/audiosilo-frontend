@@ -290,12 +290,20 @@
       "chapterNumber": "Chapitre {{number}}"
     },
     "bookmarks": {
+      "label": "Signets",
       "empty": "Aucun signet pour l'instant.",
       "saved": "Signet enregistré",
       "addAt": "Ajouter un signet à {{time}}"
     },
     "history": {
+      "label": "Historique d'écoute",
       "empty": "Aucun historique pour l'instant."
+    },
+    "notes": {
+      "label": "Notes"
+    },
+    "routePicker": {
+      "label": "AirPlay / Cast"
     },
     "sleepTimer": {
       "title": "Minuteur",

@@ -52,5 +52,6 @@ export const GLYPHS = [
   ['offline', 'light', 'faWifiSlash'],
   ['user', 'light', 'faUser'],
   ['heart', 'light', 'faHeart'],
+  ['airplay', 'light', 'faAirplayAudio'],
   ['heart-solid', 'solid', 'faHeart'],
 ];
