@@ -660,7 +660,11 @@ public class AudiosiloPlayerModule: Module {
     let picker = routePicker ?? AVRoutePickerView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
     routePicker = picker
     picker.prioritizesVideoDevices = false
-    if picker.superview == nil { window.addSubview(picker) }
+    // Re-parent to the *current* key window each time. The key window can change (return
+    // from background, scene reconnect, iPad multi-scene); triggering the button from a
+    // stale/background window won't present the sheet. addSubview moves it if needed, and
+    // is a no-op when it's already on this window.
+    if picker.superview !== window { window.addSubview(picker) }
     for case let button as UIButton in picker.subviews {
       button.sendActions(for: .touchUpInside)
       return true

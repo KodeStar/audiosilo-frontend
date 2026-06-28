@@ -300,9 +300,16 @@ class WebPlaybackService implements PlaybackService {
     const el = this.el() as unknown as RoutePickerEl;
     switch (routePickerKind(el)) {
       case 'airplay':
-        // Safari / iOS: opens the native AirPlay route sheet for this element.
-        el.webkitShowPlaybackTargetPicker?.();
-        return true;
+        // Safari / iOS: opens the native AirPlay route sheet for this element. Can throw
+        // (e.g. InvalidStateError when AirPlay can't be presented); treat that as "not
+        // shown" rather than letting it become an unhandled rejection (the caller uses
+        // `void showRoutePicker()`). Symmetric with the remote branch below.
+        try {
+          el.webkitShowPlaybackTargetPicker?.();
+          return true;
+        } catch {
+          return false;
+        }
       case 'remote':
         // Chromium: opens the Cast/Remote Playback chooser; rejects if the user
         // dismisses it or there are no devices — neither is an error here.

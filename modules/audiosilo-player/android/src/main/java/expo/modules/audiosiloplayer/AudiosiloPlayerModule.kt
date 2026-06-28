@@ -253,11 +253,16 @@ class AudiosiloPlayerModule : Module() {
    * whether anything was launched.
    */
   private fun openOutputSwitcher(): Boolean {
+    // Resolve the React context defensively: the `context` getter throws (requireNotNull)
+    // if it's gone during teardown, and this runs on the main looper outside Expo's promise
+    // wrapper — an uncaught throw here would crash and leave the JS promise unresolved.
+    // Bail to "nothing shown" instead.
+    val ctx = appContext.reactContext ?: return false
     val activity = appContext.currentActivity
-    val launchCtx = activity ?: context
+    val launchCtx = activity ?: ctx
     val attempts = listOf(
       Intent("com.android.settings.panel.action.MEDIA_OUTPUT")
-        .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", context.packageName),
+        .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", ctx.packageName),
       Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
     )
     for (intent in attempts) {
