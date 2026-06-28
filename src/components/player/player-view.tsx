@@ -308,7 +308,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
               >
                 <View className="w-[48px] h-[48px] rounded-full items-center relative justify-center bg-gray-400/30 overflow-hidden border-4 border-l-0 border-b-2 border-l-transparent border-gray-400/15">
                   <Icon
-                    className="-rotate-[141deg] absolute -top-0.5 -left-1"
+                    className="-rotate-[141deg] absolute top-0 -left-3"
                     name="triangle"
                     size={20}
                     color={'#9ca3af4d'}
@@ -359,7 +359,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
               >
                 <View className="w-[48px] h-[48px] rounded-full items-center relative justify-center bg-gray-400/30 overflow-hidden border-4 border-r-0 border-b-2 border-r-transparent border-gray-400/15 shadow-inner">
                   <Icon
-                    className="rotate-[141deg] absolute -top-0.5 -right-1"
+                    className="rotate-[141deg] absolute top-0 -right-3"
                     name="triangle"
                     size={20}
                     color={'#9ca3af4d'}
