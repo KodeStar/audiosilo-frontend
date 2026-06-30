@@ -1,4 +1,6 @@
-# This dev tool is installed ad-hoc with a FontAwesome Pro token; never commit its
-# install state — it would re-pin the private @fortawesome registry for everyone.
+# This dev tool is installed ad-hoc with a FontAwesome Pro token; never commit the
+# token or the install state — they would expose the token / re-pin the private
+# @fortawesome registry for everyone.
+.env
 node_modules/
 package-lock.json
