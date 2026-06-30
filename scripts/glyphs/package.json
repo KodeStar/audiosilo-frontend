@@ -1,0 +1,14 @@
+{
+  "name": "audiosilo-glyph-generator",
+  "private": true,
+  "type": "module",
+  "description": "Optional dev tool: resolves FontAwesome Pro icons to vendored SVG data (src/components/ui/icon-data.ts). Not part of the app build.",
+  "scripts": {
+    "gen": "node ./generate.mjs"
+  },
+  "dependencies": {
+    "@fortawesome/pro-light-svg-icons": "^7.2.0",
+    "@fortawesome/pro-regular-svg-icons": "^7.2.0",
+    "@fortawesome/pro-solid-svg-icons": "^7.2.0"
+  }
+}

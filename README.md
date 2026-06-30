@@ -9,14 +9,16 @@ See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the full stack;
 ## Prerequisites
 
 - **Node `24.16.0`** (pinned in [`.nvmrc`](.nvmrc); `nvm use`).
-- **FontAwesome Pro token** in a gitignored **`.env`** as
-  `FONTAWESOME_NPM_AUTH_TOKEN=...` (referenced by `.npmrc`). It must be in the
-  process env to install `@fortawesome/*`:
+- That's it — `npm install` pulls nothing private:
 
   ```sh
-  set -a; . ./.env; set +a
   npm install
   ```
+
+  Icons are FontAwesome Pro glyphs **vendored as plain SVG** in
+  [`src/components/ui/icon-data.ts`](src/components/ui/icon-data.ts), so building
+  the app needs **no FontAwesome token**. A token is only needed to add/regenerate
+  an icon — see [`scripts/glyphs/README.md`](scripts/glyphs/README.md).
 
 ## Develop
 
@@ -47,8 +49,7 @@ code as `*.test.ts`.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs typecheck + lint +
 **format (prettier `--check`, via `npm run format`)** + tests on every pull request
-and push to `main`, and **gates merges**. Its
-`npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` repo secret (the private icon
-registry). After changing dependencies, run `npm install` and **commit the
-updated `package-lock.json` in sync** — CI uses `npm ci` (frozen lockfile). The
-web-export image build ([`web.yml`](.github/workflows/web.yml)) stays separate.
+and push to `main`, and **gates merges**. After changing dependencies, run
+`npm install` and **commit the updated `package-lock.json` in sync** — CI uses
+`npm ci` (frozen lockfile). The web-export image build
+([`web.yml`](.github/workflows/web.yml)) stays separate.
