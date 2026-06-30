@@ -22,7 +22,10 @@ remaining track.
   module): **AVQueuePlayer** on iOS, **Media3/ExoPlayer** on Android. **HTML5 Audio +
   Media Session** on web. (This replaced react-native-track-player — that dep is gone;
   ignore any older doc that still names it.)
-- **FontAwesome Pro 7** icons via `@fortawesome/react-native-fontawesome` + `react-native-svg`.
+- **Icons**: FontAwesome Pro 7 glyphs **vendored as raw SVG** in
+  `src/components/ui/icon-data.ts` and drawn with `react-native-svg` — the app has
+  **no `@fortawesome/*` dependency** (so no token to build). To add/change an icon,
+  edit `scripts/glyphs/manifest.mjs` and regenerate (see `scripts/glyphs/README.md`).
 - **expo-secure-store** for the session token; **AsyncStorage** for everything else.
 
 ## ⚠️ Environment gotchas (read before running)
@@ -30,10 +33,11 @@ remaining track.
   uses `util.parseEnv` (Node ≥20.12) — older Node crashes once a `.env` exists.
   This machine's default `node` (`/usr/local/bin/node`) is old; use nvm's 24:
   `export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"` (or set the nvm default).
-- **FontAwesome Pro token** lives in a gitignored **`.env`** as
-  `FONTAWESOME_NPM_AUTH_TOKEN=...`; `.npmrc` references it. To (re)install any
-  `@fortawesome/*` package the token must be in the process env:
-  `set -a; . ./.env; set +a; npm install …`.
+- **No FontAwesome token needed to build.** Icons are vendored SVG
+  (`src/components/ui/icon-data.ts`), so `npm install` pulls nothing private. A
+  FontAwesome Pro token (`FONTAWESOME_NPM_AUTH_TOKEN`, in the gitignored `.env`) is
+  only needed to **add/regenerate** an icon via the isolated generator in
+  `scripts/glyphs/` (its own `package.json`/`.npmrc`) — see `scripts/glyphs/README.md`.
 - **Native runs need a dev build, not Expo Go** (the `audiosilo-player` module, svg,
   secure-store are native): `npx expo prebuild` then `npx expo run:ios` / `run:android`.
   **Editing native code under `modules/audiosilo-player/{ios,android}` requires a full
@@ -58,8 +62,8 @@ npx expo export -p web      # bundle smoke test (run after meaningful changes)
 
 **Before a change is done, run `npx tsc --noEmit && npm run lint && npm run format && npm test`**
 — CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all four (typecheck,
-lint, **prettier `--check`** via the `format` script, test) on every PR/push (its
-`npm ci` needs the `FONTAWESOME_NPM_AUTH_TOKEN` secret). `.nvmrc` pins Node `24.16.0`,
+lint, **prettier `--check`** via the `format` script, test) on every PR/push.
+`.nvmrc` pins Node `24.16.0`,
 which CI reads via `node-version-file`; keep the lockfile committed in sync (regenerate
 with `npm install` after changing deps).
 

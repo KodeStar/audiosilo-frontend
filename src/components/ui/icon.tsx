@@ -1,126 +1,22 @@
-import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
-import { faAlarmSnooze } from '@fortawesome/pro-light-svg-icons/faAlarmSnooze';
-import { faBook } from '@fortawesome/pro-light-svg-icons/faBook';
-import { faBookmark } from '@fortawesome/pro-light-svg-icons/faBookmark';
-import { faCheck } from '@fortawesome/pro-light-svg-icons/faCheck';
-import { faChevronDown } from '@fortawesome/pro-light-svg-icons/faChevronDown';
-import { faChevronRight } from '@fortawesome/pro-light-svg-icons/faChevronRight';
-import { faChevronUp } from '@fortawesome/pro-light-svg-icons/faChevronUp';
-import { faCircleStop } from '@fortawesome/pro-light-svg-icons/faCircleStop';
-import { faClock } from '@fortawesome/pro-light-svg-icons/faClock';
-import { faClockRotateLeft } from '@fortawesome/pro-light-svg-icons/faClockRotateLeft';
-import { faDownToLine } from '@fortawesome/pro-light-svg-icons/faDownToLine';
-import { faEllipsis } from '@fortawesome/pro-light-svg-icons/faEllipsis';
-import { faFolder } from '@fortawesome/pro-light-svg-icons/faFolder';
-import { faGear } from '@fortawesome/pro-light-svg-icons/faGear';
-import { faHeart } from '@fortawesome/pro-light-svg-icons/faHeart';
-import { faHouse } from '@fortawesome/pro-light-svg-icons/faHouse';
-import { faList } from '@fortawesome/pro-light-svg-icons/faList';
-import { faMagnifyingGlass } from '@fortawesome/pro-light-svg-icons/faMagnifyingGlass';
-import { faMinus } from '@fortawesome/pro-light-svg-icons/faMinus';
-import { faNoteSticky } from '@fortawesome/pro-light-svg-icons/faNoteSticky';
-import { faPlus } from '@fortawesome/pro-light-svg-icons/faPlus';
-import { faQrcode } from '@fortawesome/pro-light-svg-icons/faQrcode';
-import { faRectangleVerticalHistory } from '@fortawesome/pro-light-svg-icons/faRectangleVerticalHistory';
-import { faRightFromBracket } from '@fortawesome/pro-light-svg-icons/faRightFromBracket';
-import { faServer } from '@fortawesome/pro-light-svg-icons/faServer';
-import { faTrashCan } from '@fortawesome/pro-light-svg-icons/faTrashCan';
-import { faUser } from '@fortawesome/pro-light-svg-icons/faUser';
-import { faWifiSlash } from '@fortawesome/pro-light-svg-icons/faWifiSlash';
-import { faXmark } from '@fortawesome/pro-light-svg-icons/faXmark';
-import { faBackwardStep } from '@fortawesome/pro-regular-svg-icons/faBackwardStep';
-import { faForwardStep } from '@fortawesome/pro-regular-svg-icons/faForwardStep';
-import { faCirclePlay } from '@fortawesome/pro-solid-svg-icons/faCirclePlay';
-import { faHeart as faHeartSolid } from '@fortawesome/pro-solid-svg-icons/faHeart';
-import { faPause } from '@fortawesome/pro-solid-svg-icons/faPause';
-import { faPlay } from '@fortawesome/pro-solid-svg-icons/faPlay';
-import { faTriangle } from '@fortawesome/pro-solid-svg-icons/faTriangle';
-import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
 import { colors } from '@/theme/tokens';
 
-/**
- * Central icon abstraction. Screens import `<Icon name=... />` from here, never
- * an icon library directly, so the backend stays swappable. Backed by
- * FontAwesome Pro (light for chrome, solid for transport controls).
- */
-export type IconName =
-  | 'home'
-  | 'folder'
-  | 'search'
-  | 'settings'
-  | 'logout'
-  | 'play'
-  | 'pause'
-  | 'circle-play'
-  | 'next'
-  | 'prev'
-  | 'chevron-right'
-  | 'chevron-down'
-  | 'chevron-up'
-  | 'circle-stop'
-  | 'bookmark'
-  | 'clock'
-  | 'history'
-  | 'notes'
-  | 'trash'
-  | 'close'
-  | 'plus'
-  | 'minus'
-  | 'ellipsis'
-  | 'download'
-  | 'sleep'
-  | 'book'
-  | 'list'
-  | 'library'
-  | 'qrcode'
-  | 'server'
-  | 'check'
-  | 'offline'
-  | 'user'
-  | 'heart'
-  | 'triangle'
-  | 'heart-solid';
+import { ICON_DATA, type IconName } from './icon-data';
 
-const ICONS: Record<IconName, IconDefinition> = {
-  home: faHouse,
-  folder: faFolder,
-  search: faMagnifyingGlass,
-  settings: faGear,
-  logout: faRightFromBracket,
-  play: faPlay,
-  triangle: faTriangle,
-  pause: faPause,
-  'circle-play': faCirclePlay,
-  next: faForwardStep,
-  prev: faBackwardStep,
-  'chevron-right': faChevronRight,
-  'chevron-down': faChevronDown,
-  'chevron-up': faChevronUp,
-  'circle-stop': faCircleStop,
-  bookmark: faBookmark,
-  clock: faClock,
-  history: faClockRotateLeft,
-  notes: faNoteSticky,
-  trash: faTrashCan,
-  close: faXmark,
-  plus: faPlus,
-  minus: faMinus,
-  ellipsis: faEllipsis,
-  download: faDownToLine,
-  sleep: faAlarmSnooze,
-  book: faBook,
-  list: faList,
-  library: faRectangleVerticalHistory,
-  qrcode: faQrcode,
-  server: faServer,
-  check: faCheck,
-  offline: faWifiSlash,
-  user: faUser,
-  heart: faHeart,
-  'heart-solid': faHeartSolid,
-};
+/**
+ * Central icon abstraction. Screens import `<Icon name=… />` from here, never an
+ * icon library directly, so the backend stays swappable.
+ *
+ * Icons are vendored as raw SVG path data in `icon-data.ts` and drawn with
+ * react-native-svg — the app has NO FontAwesome dependency, so it builds without
+ * a FontAwesome Pro token. The glyphs still come from FontAwesome Pro (light for
+ * chrome, solid for transport controls); to add one, edit
+ * `scripts/glyphs/manifest.mjs` and regenerate `icon-data.ts`
+ * (see `scripts/glyphs/README.md`).
+ */
+export type { IconName };
 
 export type IconProps = {
   name: IconName;
@@ -130,6 +26,15 @@ export type IconProps = {
 };
 
 export function Icon({ name, size = 20, color = colors.dark.text, className }: IconProps) {
-  const icon = <FontAwesomeIcon icon={ICONS[name]} size={size} color={color} />;
+  const { width, height, path } = ICON_DATA[name];
+  // Match @fortawesome/react-native-fontawesome's rendering exactly: a square
+  // size×size box with the FA7 overflow viewBox expansion (minY −32, height +64)
+  // so paths that bleed past the nominal box aren't clipped, aspect ratio
+  // preserved (react-native-svg defaults to xMidYMid meet).
+  const icon = (
+    <Svg width={size} height={size} viewBox={`0 -32 ${width} ${height + 64}`}>
+      <Path d={path} fill={color} />
+    </Svg>
+  );
   return className ? <View className={className}>{icon}</View> : icon;
 }
