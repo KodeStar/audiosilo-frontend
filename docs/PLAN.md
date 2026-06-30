@@ -21,7 +21,7 @@ The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA
 ### Decisions locked (from user)
 - **Playback:** Hybrid behind one shared `PlaybackService` interface, HTML5 + Media Session on web. _(Originally planned on `react-native-track-player` 5.0.0-alpha; that proved unreliable on the new architecture, so native playback was rebuilt as a **custom local Expo module**, `modules/audiosilo-player` — AVQueuePlayer on iOS, Media3/ExoPlayer on Android. track-player is no longer a dependency.)_ Requires a dev build, not Expo Go.
 - **Scope:** Phased. Milestone 1 = scaffold + design system + connect/auth + browse + working player + progress sync. Features layered after.
-- **Icons:** FontAwesome Pro via npm auth token from the start.
+- **Icons:** FontAwesome Pro. _(Originally installed from the private npm registry via an auth token; the resolved SVG paths are now **vendored** in `src/components/ui/icon-data.ts` and drawn with `react-native-svg`, so the app no longer depends on `@fortawesome/*` or a token. FontAwesome is the design source only — regenerate via the isolated generator in `scripts/glyphs/`.)_
 - **Web media auth:** server accepts a `?token=` query param for media GETs (covers/stream) since browsers can't set an Authorization header on `<img>`/`<audio>`.
 
 ## Modernization mapping (old → new)
@@ -35,7 +35,7 @@ The **old client** at `~/dev/audiosilo-old` — a Nuxt 2 / Vue / Tailwind v2 PWA
 | `@nuxtjs/localforage` | AsyncStorage + expo-secure-store (token) |
 | `@nuxtjs/pwa` | Expo static web export + service worker + manifest (M4) |
 | Capacitor | Expo prebuild + EAS Build |
-| FA Pro Kit (CDN) | `@fortawesome/react-native-fontawesome` + pro `*-svg-icons` |
+| FA Pro Kit (CDN) | FontAwesome Pro glyphs vendored as SVG (`icon-data.ts`) + `react-native-svg` (no `@fortawesome/*` dep) |
 | HTML5 `<audio>` + Cache API | Hybrid: custom `audiosilo-player` native module (AVQueuePlayer / Media3) / HTML5 (web) |
 | Google Fonts Roboto | `@expo-google-fonts/roboto` |
 | Shake-to-cancel (DeviceMotion) | `expo-sensors` Accelerometer (M2) |

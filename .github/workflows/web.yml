@@ -3,8 +3,7 @@
 # /app/web. The static files are built with baseUrl=/web (app.json
 # experiments.baseUrl) so their asset URLs resolve under that subpath.
 #
-# Requires repo secret FONTAWESOME_NPM_AUTH_TOKEN (the @fortawesome registry, see
-# .npmrc). Pushes :latest for the default branch and the semver tag for v* tags.
+# Pushes :latest for the default branch and the semver tag for v* tags.
 name: web image
 
 on:
@@ -30,8 +29,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        env:
-          FONTAWESOME_NPM_AUTH_TOKEN: ${{ secrets.FONTAWESOME_NPM_AUTH_TOKEN }}
 
       - name: Export web build
         run: npx expo export --platform web --output-dir dist

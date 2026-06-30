@@ -21,12 +21,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # npm ci resolves the @fortawesome/pro-* packages from the private registry,
-      # so the token must be present (same secret as web.yml).
       - name: Install dependencies
         run: npm ci
-        env:
-          FONTAWESOME_NPM_AUTH_TOKEN: ${{ secrets.FONTAWESOME_NPM_AUTH_TOKEN }}
 
       - name: Typecheck
         run: npx tsc --noEmit
