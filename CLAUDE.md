@@ -35,8 +35,8 @@ remaining track.
   `export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"` (or set the nvm default).
 - **No FontAwesome token needed to build.** Icons are vendored SVG
   (`src/components/ui/icon-data.ts`), so `npm install` pulls nothing private. A
-  FontAwesome Pro token (`FONTAWESOME_NPM_AUTH_TOKEN`, in the gitignored `.env`) is
-  only needed to **add/regenerate** an icon via the isolated generator in
+  FontAwesome Pro token (`FONTAWESOME_NPM_AUTH_TOKEN`) is only needed to
+  **add/regenerate** an icon via the isolated generator in
   `scripts/glyphs/` (its own `package.json`/`.npmrc`) — see `scripts/glyphs/README.md`.
 - **Native runs need a dev build, not Expo Go** (the `audiosilo-player` module, svg,
   secure-store are native): `npx expo prebuild` then `npx expo run:ios` / `run:android`.
