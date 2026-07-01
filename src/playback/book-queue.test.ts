@@ -9,6 +9,7 @@ import {
   chapterCountdowns,
   type FileSpec,
   locate,
+  synthesizeChapters,
   toBookPosition,
 } from '@/playback/book-queue';
 
@@ -156,6 +157,87 @@ describe('buildBookQueue', () => {
     expect(q.tracks[0].url).toBe('file:///local/a.m4b');
     expect(q.tracks[0].headers).toBeUndefined();
   });
+
+  it('synthesizes virtual chapters for a long chapterless single file, without native clips', () => {
+    const book = makeBook({ rel_path: 'big.mp3', duration: 5400 }); // 90 min, no chapters
+    const q = buildBookQueue(fakeApi, 2, book);
+    expect(q.offsets).toEqual([0]); // still one track/file
+    expect(q.chapters.map((c) => c.book_offset)).toEqual([0, 1800, 3600]); // 30-min blocks
+    expect(q.chapters.every((c) => c.file_path === 'big.mp3')).toBe(true);
+    expect(q.total).toBe(5400);
+    expect(q.syntheticChapters).toBe(true);
+    // The key native-safety assertion: synthetic chapters never become clips, so the
+    // native engine still plays one whole-file item (today's behavior).
+    expect(q.chapterClips).toEqual([]);
+  });
+
+  it('does not synthesize for a short single file', () => {
+    const book = makeBook({ rel_path: 'small.mp3', duration: 600 }); // 10 min < threshold
+    const q = buildBookQueue(fakeApi, 2, book);
+    expect(q.chapters).toEqual([]);
+    expect(q.chapterClips).toEqual([]);
+    expect(q.syntheticChapters).toBe(false);
+  });
+
+  it('synthesizes over a lone whole-book chapter on a long single file', () => {
+    const book = makeBook({ rel_path: 'A/single.m4b', duration: 5400 });
+    const chapterData: ChaptersResponse = {
+      library_id: 2,
+      path: 'A/single.m4b',
+      duration: 5400,
+      is_folder: false,
+      files: [{ rel_path: 'A/single.m4b', seq: 1, duration: 5400, format: 'm4b', size: 0 }],
+      chapters: [chapter({ index: 0, file_path: 'A/single.m4b', start: 0, end: 5400 })],
+    };
+    const q = buildBookQueue(fakeApi, 2, book, chapterData);
+    expect(q.chapters).toHaveLength(3);
+    expect(q.chapters.every((c) => c.file_path === 'A/single.m4b')).toBe(true);
+    expect(q.syntheticChapters).toBe(true);
+    expect(q.chapterClips).toEqual([]); // input had ≤1 real chapter → no clips
+  });
+
+  it('leaves a real multi-chapter m4b untouched (real chapters + real clips)', () => {
+    const book = makeBook({ rel_path: 'A/single.m4b', duration: 5400 });
+    const chapterData: ChaptersResponse = {
+      library_id: 2,
+      path: 'A/single.m4b',
+      duration: 5400,
+      is_folder: false,
+      files: [{ rel_path: 'A/single.m4b', seq: 1, duration: 5400, format: 'm4b', size: 0 }],
+      chapters: [
+        chapter({ index: 0, title: 'One', file_path: 'A/single.m4b', start: 0, end: 1800 }),
+        chapter({ index: 1, title: 'Two', file_path: 'A/single.m4b', start: 1800, end: 3600 }),
+        chapter({ index: 2, title: 'Three', file_path: 'A/single.m4b', start: 3600, end: 5400 }),
+      ],
+    };
+    const q = buildBookQueue(fakeApi, 2, book, chapterData);
+    expect(q.chapters.map((c) => c.title)).toEqual(['One', 'Two', 'Three']);
+    expect(q.syntheticChapters).toBe(false);
+    expect(q.chapterClips).toHaveLength(3);
+  });
+
+  it('does not synthesize for a multi-file book with no chapters (offsets are the boundaries)', () => {
+    const book = makeBook({
+      rel_path: 'A/Book',
+      is_folder: true,
+      files: [
+        { rel_path: 'A/Book/01.mp3', seq: 1, duration: 1800, format: 'mp3', size: 5 },
+        { rel_path: 'A/Book/02.mp3', seq: 2, duration: 1800, format: 'mp3', size: 5 },
+      ],
+    });
+    const q = buildBookQueue(fakeApi, 2, book);
+    expect(q.chapters).toEqual([]);
+    expect(q.offsets).toEqual([0, 1800]); // per-file boundaries already navigable
+    expect(q.chapterClips).toEqual([]);
+    expect(q.syntheticChapters).toBe(false);
+  });
+
+  it('honors a custom interval when synthesizing', () => {
+    const book = makeBook({ rel_path: 'big.mp3', duration: 5400 });
+    const q = buildBookQueue(fakeApi, 2, book, undefined, undefined, 900); // 15-min blocks
+    expect(q.chapters.map((c) => c.book_offset)).toEqual([0, 900, 1800, 2700, 3600, 4500]);
+    expect(q.syntheticChapters).toBe(true);
+  });
 });
 
 describe('buildChapterClips', () => {
@@ -245,6 +327,42 @@ describe('buildChapterClips', () => {
       { fileIndex: 0, startInFile: 0, endInFile: 100, title: 'ch' },
       { fileIndex: 0, startInFile: 100, endInFile: 0, title: 'ch' },
     ]);
+  });
+});
+
+describe('synthesizeChapters', () => {
+  it('splits a long file into evenly-spaced blocks (title empty → "Chapter N" fallback)', () => {
+    const out = synthesizeChapters('big.mp3', 5400, 1800); // 90 min / 30 min = 3
+    expect(out).toHaveLength(3);
+    expect(out.map((c) => c.start)).toEqual([0, 1800, 3600]);
+    expect(out.map((c) => c.end)).toEqual([1800, 3600, 5400]);
+    expect(out.map((c) => c.book_offset)).toEqual([0, 1800, 3600]);
+    expect(out.map((c) => c.index)).toEqual([0, 1, 2]);
+    expect(
+      out.every((c) => c.title === '' && c.file_index === 0 && c.file_path === 'big.mp3'),
+    ).toBe(true);
+  });
+
+  it('clamps the final block to total with no zero-length trailing chapter', () => {
+    const out = synthesizeChapters('big.mp3', 5401, 1800); // just over 3 blocks
+    expect(out).toHaveLength(4);
+    expect(out[3].start).toBe(5400);
+    expect(out[3].end).toBe(5401);
+  });
+
+  it('produces no empty trailing chapter on an exact multiple', () => {
+    const out = synthesizeChapters('big.mp3', 3600, 1800); // exactly 2 blocks
+    expect(out).toHaveLength(2);
+    expect(out[1].end).toBe(3600);
+  });
+
+  it('returns [] below the 1.5× interval threshold', () => {
+    expect(synthesizeChapters('big.mp3', 2000, 1800)).toEqual([]); // < 2700
+    expect(synthesizeChapters('big.mp3', 0, 1800)).toEqual([]);
+  });
+
+  it('uses the default 30-minute interval when none is given', () => {
+    expect(synthesizeChapters('big.mp3', 5400)).toHaveLength(3);
   });
 });
 

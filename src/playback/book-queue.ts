@@ -15,7 +15,16 @@ export type BookQueue = {
   /** Per-chapter clips for the native engine's lock-screen chapter controls; `[]`
    * when the book has 0/1 chapters (the engine then plays one item per file). */
   chapterClips: PlaybackChapter[];
+  /** True when `chapters` are evenly-spaced markers synthesized for a long,
+   * chapterless single file (so prev/next-chapter and the seek bar work). These are
+   * deliberately NOT fed to `buildChapterClips`, so `chapterClips` stays `[]` and
+   * native playback is unchanged; a native-parity follow-up must opt in explicitly. */
+  syntheticChapters: boolean;
 };
+
+/** Default chapter length (seconds) used to synthesize markers for a long,
+ * chapterless single-file book. Overridable per call (a user setting). */
+export const DEFAULT_VIRTUAL_CHAPTER_INTERVAL = 30 * 60;
 
 /** One distinct audio file of a book, in play order. */
 export type FileSpec = { path: string; duration: number; size: number };
@@ -105,12 +114,49 @@ export function buildChapterClips(specs: FileSpec[], chapters: Chapter[]): Playb
 }
 
 /**
+ * Evenly-spaced virtual chapters for a long, chapterless single-file book, so
+ * prev/next-chapter and the chapter-relative seek bar have somewhere to go. Returns
+ * `ceil(total / interval)` chapters over the one file; the last ends exactly at
+ * `total` (the `ceil` + `min` avoids a zero-length trailing chapter on an exact
+ * multiple). Returns `[]` below `interval * 1.5` (splitting adds no value) — callers
+ * also gate, but self-guarding keeps this directly testable. `title: ''` renders as
+ * "Chapter N" via the existing i18n fallback. These are never passed to
+ * `buildChapterClips`, so they don't change native playback (see `BookQueue`).
+ */
+export function synthesizeChapters(
+  filePath: string,
+  total: number,
+  interval: number = DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
+): Chapter[] {
+  if (interval <= 0 || total <= interval * 1.5) return [];
+  const count = Math.ceil(total / interval);
+  const chapters: Chapter[] = [];
+  for (let i = 0; i < count; i++) {
+    const start = i * interval;
+    chapters.push({
+      index: i,
+      title: '',
+      file_index: 0,
+      file_path: filePath,
+      start,
+      end: Math.min(start + interval, total),
+      book_offset: start,
+    });
+  }
+  return chapters;
+}
+
+/**
  * Build the playable queue for a book. Each distinct audio file becomes one
  * track; chapters are markers laid over the whole-book timeline. A single
  * chaptered m4b yields one track with several chapters; a folder of mp3 parts
  * yields one track per file — both render identically downstream. When `local`
  * is supplied (the book is downloaded), each file's track points at its local
  * `file://` uri instead of the server stream.
+ *
+ * A long single file with no real chapters gets evenly-spaced synthetic chapters
+ * (`virtualChapterInterval`, default 30 min) so chapter navigation works; those
+ * synthetic chapters are kept out of `chapterClips` so native playback is unchanged.
  */
 export function buildBookQueue(
   api: ApiClient,
@@ -118,6 +164,7 @@ export function buildBookQueue(
   book: Book,
   chapterData?: ChaptersResponse,
   local?: { files: Map<string, string>; artwork?: string },
+  virtualChapterInterval: number = DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
 ): BookQueue {
   // Native engines authenticate via headers; web embeds the token in the URL.
   const headers = Platform.OS === 'web' ? undefined : api.authHeaders();
@@ -164,7 +211,31 @@ export function buildBookQueue(
   );
   const total = Math.max(book.duration > 0 ? book.duration : 0, acc, furthestEnd);
 
-  return { tracks, offsets, total, chapters, chapterClips: buildChapterClips(specs, chapters) };
+  // Clips come from the REAL chapters (empty/singleton here → `[]`); computing them
+  // before synthesizing is what keeps native playback unchanged for these books.
+  const chapterClips = buildChapterClips(specs, chapters);
+
+  // A long single file with no usable chapters (0, or a lone whole-book chapter) has
+  // one segment boundary at 0 → nowhere to skip forward, and "back" restarts. Overlay
+  // evenly-spaced virtual chapters so navigation works. `synthesizeChapters` owns the
+  // "long enough to bother" threshold, so `syntheticChapters` is derived from whether it
+  // actually produced any — one source of truth (no threshold to keep in sync), and the
+  // flag can never claim markers that don't exist (e.g. a 0/negative interval). Multi-
+  // file books already have per-file offsets as boundaries, so they're left alone.
+  const synthetic =
+    specs.length === 1 && chapters.length <= 1
+      ? synthesizeChapters(specs[0].path, total, virtualChapterInterval)
+      : [];
+  const finalChapters = synthetic.length > 0 ? synthetic : chapters;
+
+  return {
+    tracks,
+    offsets,
+    total,
+    chapters: finalChapters,
+    chapterClips,
+    syntheticChapters: synthetic.length > 0,
+  };
 }
 
 /** Distinct audio files referenced by a book's chapters, in play order, with a

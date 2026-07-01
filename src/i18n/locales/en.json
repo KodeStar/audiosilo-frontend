@@ -24,6 +24,7 @@
       "skipForward": "Skip forward",
       "defaultSpeed": "Default speed",
       "autoRewind": "Auto-rewind on resume",
+      "chapterLength": "Chapter length (unchaptered)",
       "off": "Off"
     },
     "account": {
