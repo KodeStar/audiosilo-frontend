@@ -24,6 +24,7 @@
       "skipForward": "Avancer",
       "defaultSpeed": "Vitesse par défaut",
       "autoRewind": "Retour arrière auto à la reprise",
+      "chapterLength": "Durée de chapitre (sans chapitres)",
       "off": "Désactivé"
     },
     "account": {

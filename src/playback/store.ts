@@ -350,7 +350,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
           }
         : undefined;
 
-    const queue = buildBookQueue(api, libraryId, book, chapterData, local);
+    const queue = buildBookQueue(
+      api,
+      libraryId,
+      book,
+      chapterData,
+      local,
+      useSettings.getState().virtualChapterInterval,
+    );
     const svc = await ensureService();
 
     let startAt = startBookPosition ?? 0;
@@ -570,6 +577,7 @@ async function switchCurrentBookToLocal() {
     dl.manifest.book,
     dl.manifest.chapters ?? undefined,
     local,
+    useSettings.getState().virtualChapterInterval,
   );
   const { index, positionInTrack } = locate(queue.offsets, bookPos);
   const wasPlaying = snapshot.state === 'playing';

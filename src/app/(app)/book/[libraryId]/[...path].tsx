@@ -167,7 +167,15 @@ export default function BookDetailScreen() {
     if (chapters.length > 0) {
       return chapters.map((ch) => {
         const file = files[ch.file_index];
-        const dim = isThisPlaying && activeIndex !== undefined && ch.index !== activeIndex;
+        // Dim only to single out the active chapter among several. With one row there's
+        // nothing to distinguish, and the player may report a *synthetic* chapter index
+        // (virtual chapters overlaid on an otherwise-chapterless single file) that maps
+        // to no real row — so never dim the lone row it would otherwise mismatch.
+        const dim =
+          chapters.length > 1 &&
+          isThisPlaying &&
+          activeIndex !== undefined &&
+          ch.index !== activeIndex;
         return fileRow(
           ch.index,
           ch.title || t('book.chapterFallback', { number: ch.index + 1 }),
