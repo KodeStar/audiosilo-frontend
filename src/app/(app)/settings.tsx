@@ -34,6 +34,7 @@ const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
 
 const sec = (v: number) => `${v}s`;
 const speed = (v: number) => `${Number(v.toFixed(2))}×`;
+const mins = (v: number) => `${Math.round(v / 60)}m`;
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
@@ -56,10 +57,12 @@ export default function SettingsScreen() {
   const skipBackward = useSettings((s) => s.skipBackward);
   const defaultRate = useSettings((s) => s.defaultRate);
   const autoRewindMax = useSettings((s) => s.autoRewindMax);
+  const virtualChapterInterval = useSettings((s) => s.virtualChapterInterval);
   const setSkipForward = useSettings((s) => s.setSkipForward);
   const setSkipBackward = useSettings((s) => s.setSkipBackward);
   const setDefaultRate = useSettings((s) => s.setDefaultRate);
   const setAutoRewindMax = useSettings((s) => s.setAutoRewindMax);
+  const setVirtualChapterInterval = useSettings((s) => s.setVirtualChapterInterval);
 
   // Set/change a password — the conventional way back in after a sign-out. A new
   // password must be a real one (min 8, matching the server); changing an existing
@@ -228,6 +231,17 @@ export default function SettingsScreen() {
                 min={0}
                 max={30}
                 format={secOrOff}
+              />
+            </View>
+            <View className="flex-row items-center justify-between">
+              <Text>{t('settings.playback.chapterLength')}</Text>
+              <Stepper
+                value={virtualChapterInterval}
+                onChange={setVirtualChapterInterval}
+                step={300}
+                min={300}
+                max={3600}
+                format={mins}
               />
             </View>
           </Card>

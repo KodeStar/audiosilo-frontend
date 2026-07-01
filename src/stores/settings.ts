@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { getItem, setItem } from '@/lib/storage';
+import { DEFAULT_VIRTUAL_CHAPTER_INTERVAL } from '@/playback/book-queue';
 
 const KEY = 'audiosilo.settings';
 
@@ -13,6 +14,9 @@ export type PlaybackSettings = {
   defaultRate: number;
   /** Max seconds to rewind when resuming after a pause (0 = disabled). */
   autoRewindMax: number;
+  /** Length (seconds) of the virtual chapters synthesized for a long, chapterless
+   * single-file book so chapter navigation works. */
+  virtualChapterInterval: number;
 };
 
 const DEFAULTS: PlaybackSettings = {
@@ -20,6 +24,7 @@ const DEFAULTS: PlaybackSettings = {
   skipBackward: 15,
   defaultRate: 1,
   autoRewindMax: 5,
+  virtualChapterInterval: DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
 };
 
 type SettingsState = PlaybackSettings & {
@@ -29,12 +34,19 @@ type SettingsState = PlaybackSettings & {
   setSkipBackward: (seconds: number) => void;
   setDefaultRate: (rate: number) => void;
   setAutoRewindMax: (seconds: number) => void;
+  setVirtualChapterInterval: (seconds: number) => void;
 };
 
 export const useSettings = create<SettingsState>()((set, get) => {
   const save = () => {
-    const { skipForward, skipBackward, defaultRate, autoRewindMax } = get();
-    void setItem(KEY, { skipForward, skipBackward, defaultRate, autoRewindMax });
+    const { skipForward, skipBackward, defaultRate, autoRewindMax, virtualChapterInterval } = get();
+    void setItem(KEY, {
+      skipForward,
+      skipBackward,
+      defaultRate,
+      autoRewindMax,
+      virtualChapterInterval,
+    });
   };
   return {
     ...DEFAULTS,
@@ -57,6 +69,10 @@ export const useSettings = create<SettingsState>()((set, get) => {
     },
     setAutoRewindMax: (autoRewindMax) => {
       set({ autoRewindMax });
+      save();
+    },
+    setVirtualChapterInterval: (virtualChapterInterval) => {
+      set({ virtualChapterInterval });
       save();
     },
   };

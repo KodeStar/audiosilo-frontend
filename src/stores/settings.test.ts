@@ -3,7 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSettings } from '@/stores/settings';
 
 const KEY = 'audiosilo.settings';
-const DEFAULTS = { skipForward: 30, skipBackward: 15, defaultRate: 1, autoRewindMax: 5 };
+const DEFAULTS = {
+  skipForward: 30,
+  skipBackward: 15,
+  defaultRate: 1,
+  autoRewindMax: 5,
+  virtualChapterInterval: 30 * 60,
+};
 
 const resetStore = () => useSettings.setState({ ...DEFAULTS, hydrated: false });
 
@@ -49,10 +55,16 @@ describe('settings store', () => {
     useSettings.getState().setSkipForward(60);
     expect(useSettings.getState().skipForward).toBe(60);
 
-    // The setter writes the merged object (all four keys), not just the changed one.
+    // The setter writes the merged object (all keys), not just the changed one.
     expect(AsyncStorage.setItem).toHaveBeenCalledWith(
       KEY,
-      JSON.stringify({ skipForward: 60, skipBackward: 15, defaultRate: 1, autoRewindMax: 5 }),
+      JSON.stringify({
+        skipForward: 60,
+        skipBackward: 15,
+        defaultRate: 1,
+        autoRewindMax: 5,
+        virtualChapterInterval: 30 * 60,
+      }),
     );
 
     // And the persisted value round-trips through hydrate.
