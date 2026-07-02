@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatCountdown } from '@/lib/format';
 import { chapterCountdowns } from '@/playback/book-queue';
+import { wallClockSeconds } from '@/playback/rate';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
@@ -28,6 +29,7 @@ export function SleepTimerButton() {
   const cancel = useSleepTimer((s) => s.cancel);
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const bookPosition = usePlayer(selectBookPosition);
+  const rate = usePlayer((s) => s.rate);
   const { scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
@@ -37,10 +39,16 @@ export function SleepTimerButton() {
     setOpen(false);
   };
 
-  // Show at least 5 chapters, extending until one passes the hour mark so the
-  // list spans a comparable range to the time presets (which top out at 60 min).
+  // Show at least 5 chapters, extending until one passes the 2-hour mark (an hour
+  // ran short on both listening time and chapter count). Wall-clock, so the window
+  // shrinks with speed — at 2x it spans ~2h of real time, ~4h of content.
   const countdowns = nowPlaying
-    ? chapterCountdowns(nowPlaying.queue.chapters, bookPosition, { minCount: 5, maxSeconds: 3600 })
+    ? chapterCountdowns(
+        nowPlaying.queue.chapters,
+        bookPosition,
+        { minCount: 5, maxSeconds: 7200 },
+        rate,
+      )
     : [];
   const total = nowPlaying?.queue.total ?? 0;
 
@@ -140,7 +148,9 @@ export function SleepTimerButton() {
                 className="flex-row items-center justify-between rounded-lg bg-white px-4 py-3 dark:bg-gray-860"
               >
                 <Text>{t('player.sleepTimer.endOfBook')}</Text>
-                <Text variant="caption">{formatCountdown(Math.max(0, total - bookPosition))}</Text>
+                <Text variant="caption">
+                  {formatCountdown(wallClockSeconds(total - bookPosition, rate))}
+                </Text>
               </Pressable>
             ) : (
               <Text variant="caption">{t('player.sleepTimer.noChapters')}</Text>

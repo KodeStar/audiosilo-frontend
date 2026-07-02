@@ -3,9 +3,14 @@
 // firing logic can be tested without the real playback engine.
 // Names must be `mock`-prefixed to be referenced inside the jest.mock factory.
 const mockPause = jest.fn(() => Promise.resolve());
-const mockPlayerState: { nowPlaying: { id: string } | null; pause: typeof mockPause } = {
+const mockPlayerState: {
+  nowPlaying: { id: string } | null;
+  pause: typeof mockPause;
+  rate: number;
+} = {
   nowPlaying: { id: 'book-1' },
   pause: mockPause,
+  rate: 1,
 };
 const mockBook = { position: 0 };
 
@@ -27,6 +32,7 @@ describe('sleep timer', () => {
     mockPause.mockClear();
     mockBook.position = 0;
     mockPlayerState.nowPlaying = { id: 'book-1' };
+    mockPlayerState.rate = 1;
     useSleepTimer.getState().cancel();
   });
 
@@ -72,6 +78,24 @@ describe('sleep timer', () => {
     expect(mockPause).toHaveBeenCalledTimes(1);
     expect(useSleepTimer.getState().active).toBe(false);
     expect(useSleepTimer.getState().pauseAtPosition).toBeNull();
+  });
+
+  it('scales the until-position countdown by the playback rate (wall-clock time)', () => {
+    mockBook.position = 100;
+    mockPlayerState.rate = 2; // 60s of remaining audio = 30s of real time at 2x
+    useSleepTimer.getState().startUntilPosition(160, 'End of Chapter 12');
+    // (160 - 100) / 2 = 30, not 60.
+    expect(useSleepTimer.getState().remaining).toBe(30);
+
+    // A tick keeps it in wall-clock terms too.
+    mockBook.position = 120;
+    jest.advanceTimersByTime(1_000);
+    expect(useSleepTimer.getState().remaining).toBe(20); // (160 - 120) / 2
+
+    // The pause still fires strictly by position, regardless of rate.
+    mockBook.position = 160;
+    jest.advanceTimersByTime(1_000);
+    expect(mockPause).toHaveBeenCalledTimes(1);
   });
 
   it('does not start an until-position timer when nothing is playing', () => {
