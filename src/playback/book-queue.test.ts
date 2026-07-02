@@ -402,6 +402,23 @@ describe('chapterCountdowns', () => {
     expect(out[1].untilEnd).toBe(230); // 320 - 90
   });
 
+  it('scales untilEnd by the playback rate (wall-clock), leaving endPosition alone', () => {
+    const out = chapterCountdowns(chapters, 90, undefined, 2);
+    expect(out[0].endPosition).toBe(200); // content position — unchanged by rate
+    expect(out[0].untilEnd).toBe(55); // (200 - 90) / 2
+    expect(out[1].untilEnd).toBe(115); // (320 - 90) / 2
+  });
+
+  it('applies rate to the maxSeconds window so it counts real listening time', () => {
+    // 20 × 10min content. At 1x the hour window keeps 7; at 2x an hour of real time
+    // spans 2h of content, so more chapters fit — the window is wall-clock.
+    const at1x = chapterCountdowns(evenChapters(20, 600), 0, { minCount: 5, maxSeconds: 3600 }, 1);
+    const at2x = chapterCountdowns(evenChapters(20, 600), 0, { minCount: 5, maxSeconds: 3600 }, 2);
+    expect(at1x).toHaveLength(7);
+    expect(at2x).toHaveLength(13); // ch ending at 13×600=7800s content = 3900s real, first past the hour
+    expect(at2x[12].untilEnd).toBe(3900);
+  });
+
   it('starts at the first chapter when before the first offset', () => {
     const out = chapterCountdowns(chapters, 0);
     expect(out.map((c) => c.chapter.index)).toEqual([0, 1, 2]);

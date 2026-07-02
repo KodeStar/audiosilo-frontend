@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
+import { wallClockSeconds } from '@/playback/rate';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import {
   selectBookPosition,
@@ -112,7 +113,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     ? trackPos
     : Math.max(0, Math.min(segLength, bookPosition - segStart));
   const segRemaining = Math.max(0, segLength - segElapsed);
-  const bookLeft = Math.max(0, total - bookPosition) / (rate > 0 ? rate : 1);
+  const bookLeft = wallClockSeconds(total - bookPosition, rate);
   const centerLabel = perTrack
     ? t('player.controls.fileOf', { current: trackIndex + 1, total: queue.tracks.length })
     : t('player.controls.timeLeft', { time: formatClock(bookLeft), rate: rateLabel });

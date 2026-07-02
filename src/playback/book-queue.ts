@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import type { ApiClient } from '@/api/client';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 
+import { wallClockSeconds } from './rate';
 import type { PlaybackChapter, PlaybackTrack } from './types';
 
 export type BookQueue = {
@@ -282,7 +283,8 @@ export type ChapterCountdown = {
   chapter: Chapter;
   /** Whole-book position (seconds) of this chapter's end. */
   endPosition: number;
-  /** Seconds from `bookPosition` until this chapter's end. */
+  /** Wall-clock seconds from `bookPosition` until this chapter's end, i.e.
+   * content-seconds remaining divided by the playback `rate`. */
   untilEnd: number;
 };
 
@@ -292,22 +294,31 @@ export type ChapterCountdown = {
  * the sleep timer's "end of chapter" picker. The first entry is always the
  * current chapter (the time left in it). Returns [] when there are no chapters.
  *
- * `limit` bounds how many options to show so the list mirrors the time presets
- * (which top out at an hour): keep chapters until one's countdown passes
- * `maxSeconds` (that chapter is the last kept, so the list always crosses the
- * threshold rather than stopping just short), but never fewer than `minCount`.
+ * `untilEnd` is wall-clock time, so `rate` (the current playback speed) scales it:
+ * at 2x, an hour of content is 30 minutes of real listening. This keeps the
+ * countdowns — and the `maxSeconds` window — honest about how long until sleep.
+ *
+ * `limit` bounds how many options to show so the list spans a useful range of
+ * upcoming chapters: keep chapters until one's countdown passes `maxSeconds`
+ * (that chapter is the last kept, so the list always crosses the threshold rather
+ * than stopping just short), but never fewer than `minCount`.
  */
 export function chapterCountdowns(
   chapters: Chapter[],
   bookPosition: number,
   limit?: { minCount: number; maxSeconds: number },
+  rate = 1,
 ): ChapterCountdown[] {
   if (chapters.length === 0) return [];
   const current = chapterAt(chapters, bookPosition);
   const from = current ? chapters.indexOf(current) : 0;
   const list = chapters.slice(Math.max(0, from)).map((ch) => {
     const endPosition = ch.book_offset + Math.max(0, ch.end - ch.start);
-    return { chapter: ch, endPosition, untilEnd: Math.max(0, endPosition - bookPosition) };
+    return {
+      chapter: ch,
+      endPosition,
+      untilEnd: wallClockSeconds(endPosition - bookPosition, rate),
+    };
   });
   if (!limit) return list;
   // First chapter whose countdown passes the threshold, kept inclusively as the
