@@ -54,7 +54,7 @@ export default function BookDetailScreen() {
   const paddingBottom = useMiniPlayerInset();
 
   if (isLoading) return <Spinner center />;
-  // Render whenever we have book data — including a downloaded book served from
+  // Render whenever we have book data - including a downloaded book served from
   // the seeded query cache while offline. Only error when there is no data.
   if (!book) {
     return (
@@ -91,7 +91,7 @@ export default function BookDetailScreen() {
   ];
 
   // Whole-book offset for a chapter (the server's book_offset is unreliable;
-  // recompute from the cumulative file durations — shared with book-queue).
+  // recompute from the cumulative file durations - shared with book-queue).
   const fileDurations = files.map((f) => ({ path: f.rel_path, duration: f.duration }));
   const chapterStart = (ch: Chapter) =>
     files.length > 0 ? chapterBookOffset(fileDurations, ch) : ch.book_offset;
@@ -124,7 +124,7 @@ export default function BookDetailScreen() {
 
   // A list row (chapter or file): a full-height blue block + book icon, the
   // duration/bitrate line, and a cached dot. The currently-playing row stays
-  // bright while the others dim — matching the old client (no pink highlight).
+  // bright while the others dim - matching the old client (no pink highlight).
   const fileRow = (
     key: string | number,
     name: string,
@@ -170,7 +170,7 @@ export default function BookDetailScreen() {
         // Dim only to single out the active chapter among several. With one row there's
         // nothing to distinguish, and the player may report a *synthetic* chapter index
         // (virtual chapters overlaid on an otherwise-chapterless single file) that maps
-        // to no real row — so never dim the lone row it would otherwise mismatch.
+        // to no real row - so never dim the lone row it would otherwise mismatch.
         const dim =
           chapters.length > 1 &&
           isThisPlaying &&

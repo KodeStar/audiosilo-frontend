@@ -10,7 +10,7 @@ import { ICON_DATA, type IconName } from './icon-data';
  * icon library directly, so the backend stays swappable.
  *
  * Icons are vendored as raw SVG path data in `icon-data.ts` and drawn with
- * react-native-svg — the app has NO FontAwesome dependency, so it builds without
+ * react-native-svg - the app has NO FontAwesome dependency, so it builds without
  * a FontAwesome Pro token. The glyphs still come from FontAwesome Pro (light for
  * chrome, solid for transport controls); to add one, edit
  * `scripts/glyphs/manifest.mjs` and regenerate `icon-data.ts`

@@ -312,7 +312,7 @@
     "downloads": "Téléchargements",
     "settings": "Réglages",
     "logout": "Déconnexion",
-    "offline": "Hors ligne — les modifications se synchronisent à la reconnexion",
+    "offline": "Hors ligne - les modifications se synchronisent à la reconnexion",
     "searchPlaceholder": "Rechercher…"
   },
   "ui": {

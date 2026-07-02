@@ -35,7 +35,7 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 /**
  * Restores the persisted language preference (default: follow the device) and
- * applies it to i18next before first paint — gating render until resolved, like
+ * applies it to i18next before first paint - gating render until resolved, like
  * {@link ThemeProvider}, so the UI never flashes the wrong language.
  */
 export function LanguageProvider({ children }: { children: ReactNode }) {

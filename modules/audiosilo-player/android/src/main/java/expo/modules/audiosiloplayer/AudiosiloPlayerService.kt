@@ -62,7 +62,7 @@ private const val SKIP_INCREMENT_MS = 30_000L
 
 /**
  * Wraps the ExoPlayer so audiobook behavior applies no matter where a command
- * originates (lock screen, notification, headset, or the JS bridge — all route through
+ * originates (lock screen, notification, headset, or the JS bridge - all route through
  * the session's player):
  *  - **Auto-rewind on resume** lives in [play] (not the JS bridge), so resuming from the
  *    lock screen rewinds too. [prepare] resets the baseline so a freshly-loaded book
@@ -134,7 +134,7 @@ class AudiosiloPlayerService : MediaSessionService() {
     // Cache streamed bytes so the repeated opens that chapter clips make over the SAME
     // single-file m4b reuse already-downloaded data + the parsed container header,
     // keeping chapter transitions gapless. Local (downloaded) file:// sources bypass
-    // this — DefaultDataSource routes them to the file data source, not the http upstream.
+    // this - DefaultDataSource routes them to the file data source, not the http upstream.
     val cacheFactory = CacheDataSource.Factory()
       .setCache(getCache(this))
       .setUpstreamDataSourceFactory(upstream)
@@ -165,7 +165,7 @@ class AudiosiloPlayerService : MediaSessionService() {
     )
 
     // App logo as the notification small icon (Media3's default is a generic glyph).
-    // Must be a white/transparent silhouette — the system tints it.
+    // Must be a white/transparent silhouette - the system tints it.
     setMediaNotificationProvider(
       DefaultMediaNotificationProvider.Builder(this).build().apply {
         setSmallIcon(R.drawable.ic_notification)
@@ -176,7 +176,7 @@ class AudiosiloPlayerService : MediaSessionService() {
       .setBitmapLoader(bitmapLoader)
       .setCallback(MediaCallback)
       // Use setCustomLayout (NOT setMediaButtonPreferences): the slot-based preferences
-      // capped the notification at 3 actions on 1.5.1 (it drops the secondary slots —
+      // capped the notification at 3 actions on 1.5.1 (it drops the secondary slots -
       // verified via dumpsys, actions=3). setCustomLayout makes the provider build
       // [prev, play/pause, next] (auto, from command availability) + the custom skip
       // buttons → all 5 actions, alongside the draggable chapter scrubber. (dumpsys: actions=5)
@@ -187,7 +187,7 @@ class AudiosiloPlayerService : MediaSessionService() {
   /**
    * The 30s skip buttons for the notification's custom layout. Media3's notification
    * provider builds the action row as **standard [prev, play/pause, next]** (auto-added
-   * from the player's available seek-to-prev/next commands — present for a chaptered book,
+   * from the player's available seek-to-prev/next commands - present for a chaptered book,
    * absent for a single-item/chapterless book) **plus the CUSTOM-command buttons** from the
    * custom layout. So we only declare the two skip buttons here and let prev/next-chapter
    * fill in automatically → the full `[prev] [play] [next] [back-30] [fwd-30]` row.
@@ -245,7 +245,7 @@ class AudiosiloPlayerService : MediaSessionService() {
   override fun onTaskRemoved(rootIntent: Intent?) {
     // The user swiped the app away from recents. Android usually keeps the (now
     // task-less) process cached, so the next launch is a warm resume on the last
-    // route — and that restored screen renders blank on the new Activity. Record the
+    // route - and that restored screen renders blank on the new Activity. Record the
     // dismissal so the JS layer can reset to Home on the next foreground, matching the
     // iOS cold-start behavior the user expects. A plain app-switch never lands here.
     getSharedPreferences(PREFS, Context.MODE_PRIVATE)

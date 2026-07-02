@@ -64,7 +64,7 @@ export default function SettingsScreen() {
   const setAutoRewindMax = useSettings((s) => s.setAutoRewindMax);
   const setVirtualChapterInterval = useSettings((s) => s.setVirtualChapterInterval);
 
-  // Set/change a password — the conventional way back in after a sign-out. A new
+  // Set/change a password - the conventional way back in after a sign-out. A new
   // password must be a real one (min 8, matching the server); changing an existing
   // password requires the current one so a stolen session can't silently replace
   // a known password.
@@ -91,7 +91,7 @@ export default function SettingsScreen() {
       try {
         void setUser(await api.me());
       } catch {
-        // ignore — the password change succeeded regardless
+        // ignore - the password change succeeded regardless
       }
       setPw('');
       setCurPw('');
@@ -413,7 +413,7 @@ export default function SettingsScreen() {
           </Card>
         </View>
 
-        {/* Support is web/Android only — Apple disallows linking out to an external
+        {/* Support is web/Android only - Apple disallows linking out to an external
             developer-donation page, and the UK App Store is outside the US/EU
             carve-outs that now permit it (see src/lib/support.ts). */}
         {isSupportAvailable() ? (

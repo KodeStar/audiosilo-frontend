@@ -37,7 +37,7 @@ function DesktopSearch() {
  * The desktop content column: a persistent search field above the routed page,
  * with the search results overlaying the page in place while typing. Used by the
  * app shell (home/library/etc.) and by the book screen (above its chapters list)
- * so the search bar is above the breadcrumbs everywhere — to the left of, never
+ * so the search bar is above the breadcrumbs everywhere - to the left of, never
  * across, any right-hand panel.
  */
 export function ContentColumn({ children }: { children: ReactNode }) {

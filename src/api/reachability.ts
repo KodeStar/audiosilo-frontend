@@ -7,7 +7,7 @@ import { ApiError, type ApiClient } from './client';
  * Tracks whether the audiosilo server is currently reachable, so the sync layer
  * can stop hammering a dead endpoint (offline, or the server is LAN-only and you've
  * left wifi). Starts optimistic; flips to `false` when a request fails with a
- * connection error (a fetch rejection — no HTTP response), and back to `true` when
+ * connection error (a fetch rejection - no HTTP response), and back to `true` when
  * a lightweight probe succeeds or the browser reports it's back online. While
  * offline, progress/history saves queue locally instead of firing at the network;
  * registered reconnect handlers (e.g. queue flush) run when it recovers.
@@ -57,7 +57,7 @@ function setOnline(online: boolean) {
 /**
  * Classify a thrown API error. An `ApiError` means the server answered (even a 500),
  * so it's reachable; a plain fetch rejection (or a `TimeoutError`) means it isn't.
- * Deliberate caller cancellations (`AbortError`) are ignored — only a `TimeoutError`,
+ * Deliberate caller cancellations (`AbortError`) are ignored - only a `TimeoutError`,
  * not an `AbortError`, marks the server unreachable.
  */
 export function noteError(e: unknown) {

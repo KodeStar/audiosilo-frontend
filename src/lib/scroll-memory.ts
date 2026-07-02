@@ -2,9 +2,9 @@
  * In-memory, per-route scroll offsets so a list returns to where the user left
  * it when they navigate back to it.
  *
- * The browse view fully unmounts on every navigation — the (app) group renders a
+ * The browse view fully unmounts on every navigation - the (app) group renders a
  * single `<Slot/>` (not a kept-alive stack), and breadcrumbs/rows navigate with
- * `push`, which remounts the parent fresh — so React Navigation can't restore
+ * `push`, which remounts the parent fresh - so React Navigation can't restore
  * scroll for us. We key the last offset by `(libraryId, path)` and re-apply it on
  * mount. Session-scoped: cleared on reload, never persisted.
  */
@@ -25,7 +25,7 @@ export function recallScroll(key: string): number {
   return offsets.get(key) ?? 0;
 }
 
-/** Forget every remembered offset — used when the user leaves the browsing
+/** Forget every remembered offset - used when the user leaves the browsing
  * section entirely, so re-entering the library starts fresh at the top. */
 export function clearScrollMemory(): void {
   offsets.clear();

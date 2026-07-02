@@ -32,7 +32,7 @@ export function BookRow({
     series: book.series,
     seriesIndex: book.series_index,
   });
-  // Where else this (de-duplicated) copy exists — other servers, else other
+  // Where else this (de-duplicated) copy exists - other servers, else other
   // libraries on this server. Shown on its own line so it isn't truncated.
   const alsoLabel = also?.length
     ? t('library.bookRow.alsoOn', { servers: also.map((a) => a.connectionName).join(', ') })

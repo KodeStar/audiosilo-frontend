@@ -31,7 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // The mini-player floats just above the bottom nav. The nav's rendered height
   // includes the bottom safe-area inset (iOS home indicator), so we measure it
-  // and offset the bar by that — a fixed offset left it hidden behind the nav on
+  // and offset the bar by that - a fixed offset left it hidden behind the nav on
   // iOS. Until the first layout, estimate from the inset so it never starts under.
   const insets = useSafeAreaInsets();
   const [navHeight, setNavHeight] = useState<number | null>(null);
@@ -45,12 +45,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // The book screen owns its own two-pane layout (chapters + a player/detail
   // panel) and renders its own content column, so the shell just gives it the
-  // sidebar — no full-width search bar across its panel, no duplicate player.
+  // sidebar - no full-width search bar across its panel, no duplicate player.
   const onBook = pathname.startsWith('/book');
 
   // Remembered browse scroll positions only make sense while moving within the
-  // library (drilling into folders/books and back). Leaving the section — Home,
-  // Settings, etc. — forgets them, so re-entering the library starts at the top.
+  // library (drilling into folders/books and back). Leaving the section - Home,
+  // Settings, etc. - forgets them, so re-entering the library starts at the top.
   const inBrowse = pathname.startsWith('/library') || onBook;
   useEffect(() => {
     if (!inBrowse) clearScrollMemory();
@@ -94,7 +94,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <OfflineBanner />
       <View className="flex-1">{children}</View>
       {/* Phone book screen has no inline player (that's the wide-only right panel),
-          so the mini player belongs here too — it self-hides when nothing's loaded.
+          so the mini player belongs here too - it self-hides when nothing's loaded.
           It floats above the nav (whose measured height feeds its bottom offset). */}
       <MiniPlayer bottomOffset={navOffset} />
       <SafeAreaView

@@ -1,6 +1,6 @@
 // Import the Accelerometer submodule directly rather than the `expo-sensors`
 // barrel: the barrel does `import * as Pedometer`, and Pedometer.ts resolves its
-// native module at load — which throws "Cannot find native module
+// native module at load - which throws "Cannot find native module
 // 'ExponentPedometer'" on builds that don't link it, crashing the whole player
 // for a sensor we never use.
 import Accelerometer from 'expo-sensors/build/Accelerometer';
@@ -36,7 +36,7 @@ export function useShakeToCancel() {
         }
       });
     } catch {
-      // sensor unavailable — shake-to-cancel disabled
+      // sensor unavailable - shake-to-cancel disabled
     }
     return () => sub?.remove();
   }, [active, cancel]);

@@ -3,7 +3,7 @@ import { handleForeground } from './app-resume';
 // babel-jest hoists jest.mock above the import, so app-resume sees these stubs at
 // import time. handleForeground is pure (deps injected), but the module pulls
 // expo-router, the query client, and the platform-resolved native task-removed
-// binding at import — stub them to stay hermetic across jest-expo's ios/android/web.
+// binding at import - stub them to stay hermetic across jest-expo's ios/android/web.
 jest.mock('expo-router', () => ({ router: { dismissAll: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/api/provider', () => ({ queryClient: { invalidateQueries: jest.fn() } }));
 jest.mock('./task-removed', () => ({ consumeTaskRemoved: jest.fn(() => false) }));

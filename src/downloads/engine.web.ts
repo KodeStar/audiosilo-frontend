@@ -5,7 +5,7 @@ import type { DownloadEngine, DownloadProgressCb } from './types';
 
 // Web downloads live in the Cache API under synthetic, same-origin "virtual" urls
 // inside the service-worker scope. The SW (public/sw.js) intercepts requests for
-// these urls and serves the cached bytes — with Range support — so a downloaded
+// these urls and serves the cached bytes - with Range support - so a downloaded
 // book plays in <audio> with no network. The store is engine-agnostic: it stores
 // the returned virtual url as the file's localUri exactly like a native file://.
 const MEDIA_CACHE = 'audiosilo-media-v1'; // keep in sync with public/sw.js
@@ -66,7 +66,7 @@ async function hasControllingSW(): Promise<boolean> {
 
 /** A Range request for an `_offline/` url only comes back 206 from our SW's media
  * handler; the network / SPA fallback for an unknown path won't. So a 206 confirms
- * the SW — not the server — answered with the cached bytes. */
+ * the SW - not the server - answered with the cached bytes. */
 async function servedBySW(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, { headers: { Range: 'bytes=0-0' } });
@@ -129,7 +129,7 @@ export const engine: DownloadEngine = {
     await cache.put(virtualUri, new Response(res.body.pipeThrough(counter), { headers }));
     // If the server sent no Content-Length, the entry was stored without one, so
     // totalBytesUsed() (which sums Content-Length across the cache) would count this
-    // book as 0 B. We now know its byte count — re-store with the header, streaming
+    // book as 0 B. We now know its byte count - re-store with the header, streaming
     // the cached body through (cache→cache, so still no full-blob buffer / OOM).
     if (total === 0 && received > 0) {
       const stored = await cache.match(virtualUri);

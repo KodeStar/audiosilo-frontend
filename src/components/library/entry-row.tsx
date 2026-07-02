@@ -23,7 +23,7 @@ export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: numb
   // Plain folders drill in; book folders and audio leaves open the book screen.
   const href =
     isDir && !entry.is_book ? libraryHref(libraryId, entry.path) : bookHref(libraryId, entry.path);
-  // Show what's on disk — the name the user gave the folder/file — as the title,
+  // Show what's on disk - the name the user gave the folder/file - as the title,
   // so sibling parts ("CD 1", "CD 2", …) stay distinct. The grabbed book metadata
   // (title, author) goes underneath when it adds something the name doesn't.
   const title = entry.name;
