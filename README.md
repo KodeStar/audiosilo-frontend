@@ -1,6 +1,6 @@
 # AudioSilo Frontend
 
-The audiobook **player** for [audiosilo-server](https://github.com/kodestar/audiosilo-server) —
+The audiobook **player** for [audiosilo-server](https://github.com/kodestar/audiosilo-server) -
 one Expo / React Native codebase shipping to **web PWA + iOS + Android**.
 
 See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the full stack;
@@ -9,7 +9,7 @@ See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the full stack;
 ## Prerequisites
 
 - **Node `24.16.0`** (pinned in [`.nvmrc`](.nvmrc); `nvm use`).
-- That's it — `npm install` pulls nothing private:
+- That's it - `npm install` pulls nothing private:
 
   ```sh
   npm install
@@ -18,7 +18,7 @@ See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the full stack;
   Icons are FontAwesome Pro glyphs **vendored as plain SVG** in
   [`src/components/ui/icon-data.ts`](src/components/ui/icon-data.ts), so building
   the app needs **no FontAwesome token**. A token is only needed to add/regenerate
-  an icon — see [`scripts/glyphs/README.md`](scripts/glyphs/README.md).
+  an icon - see [`scripts/glyphs/README.md`](scripts/glyphs/README.md).
 
 ## Develop
 
@@ -50,6 +50,6 @@ code as `*.test.ts`.
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs typecheck + lint +
 **format (prettier `--check`, via `npm run format`)** + tests on every pull request
 and push to `main`, and **gates merges**. After changing dependencies, run
-`npm install` and **commit the updated `package-lock.json` in sync** — CI uses
+`npm install` and **commit the updated `package-lock.json` in sync** - CI uses
 `npm ci` (frozen lockfile). The web-export image build
 ([`web.yml`](.github/workflows/web.yml)) stays separate.

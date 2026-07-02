@@ -2,10 +2,10 @@
  * AudioSilo service worker (hand-written, no build step).
  *
  * Two jobs:
- *  1. App shell — make the PWA installable and loadable offline: network-first for
+ *  1. App shell - make the PWA installable and loadable offline: network-first for
  *     navigations (falling back to a cached shell that boots the SPA), and
  *     stale-while-revalidate for the content-hashed Expo assets.
- *  2. Offline media — serve downloaded audio/cover files that the web download
+ *  2. Offline media - serve downloaded audio/cover files that the web download
  *     engine (src/downloads/engine.web.ts) stored in MEDIA_CACHE under synthetic
  *     `…/_offline/…` urls, honouring HTTP Range so <audio> can seek (and so Safari,
  *     which refuses a 200 for media, will play at all).
@@ -36,7 +36,7 @@ self.addEventListener('install', (event) => {
           // back to; hashed assets fill in at runtime on first online visit.
           await cache.add(new Request(self.registration.scope, { cache: 'reload' }));
         } catch {
-          // first install offline / root unreachable — runtime caching covers it
+          // first install offline / root unreachable - runtime caching covers it
         }
       }
       await self.skipWaiting();
@@ -71,6 +71,10 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigation(request));
   } else if (CACHEABLE.has(request.destination)) {
+    // Never persist token-bearing media (covers embed ?token=): the session token
+    // would be written into Cache Storage, and every entry turns into unreachable
+    // garbage the moment the token rotates. Let the browser fetch these directly.
+    if (url.searchParams.has('token')) return;
     event.respondWith(staleWhileRevalidate(request));
   }
   // else: let the browser handle it (API requests, server-streamed audio, …)
@@ -82,7 +86,9 @@ async function handleNavigation(request) {
   const cache = await caches.open(SHELL_CACHE);
   try {
     const fresh = await fetch(request);
-    cache.put(request, fresh.clone());
+    // Only cache a good response as the app shell - caching a transient 5xx would
+    // then be served for offline navigations instead of the shell fallback.
+    if (fresh.ok) cache.put(request, fresh.clone());
     return fresh;
   } catch {
     return (
@@ -123,7 +129,7 @@ async function serveMedia(request) {
 /**
  * Slice a fully-cached response to satisfy a `Range` request → 206 (or 416).
  * Slices the Blob lazily (`blob.slice` is O(1) and streams only the requested
- * bytes) rather than reading the whole file into an ArrayBuffer per request —
+ * bytes) rather than reading the whole file into an ArrayBuffer per request -
  * critical for large audiobooks, where the latter stalls seeks for seconds.
  */
 async function buildPartialResponse(response, rangeHeader) {

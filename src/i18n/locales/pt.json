@@ -49,7 +49,7 @@
         "label": "Código de recuperação",
         "set": "Definido",
         "notSet": "Não definido",
-        "hint": "Um código que guarda para iniciar sessão sozinho — sem precisar de um administrador.",
+        "hint": "Um código que guarda para iniciar sessão sozinho - sem precisar de um administrador.",
         "regenerate": "Regenerar código de recuperação",
         "generate": "Gerar código de recuperação"
       },
@@ -58,7 +58,7 @@
     "devices": {
       "label": "Dispositivos",
       "intro": "Associe outro telemóvel, tablet ou navegador a esta conta.",
-      "scanHint": "No outro dispositivo, abra o AudioSilo e leia este código — ou abra a ligação abaixo.",
+      "scanHint": "No outro dispositivo, abra o AudioSilo e leia este código - ou abra a ligação abaixo.",
       "add": "Adicionar um dispositivo",
       "share": "Partilhar ligação",
       "done": "Concluído",
@@ -105,14 +105,14 @@
       "connect": "Ligar",
       "enterAddress": "Introduz o endereço do teu servidor",
       "missingAddress": "Falta o endereço do servidor a esta ligação de emparelhamento. Introduze-o abaixo.",
-      "pairingFailed": "Falha no emparelhamento: {{message}}. O código pode ter expirado — pede um novo convite.",
+      "pairingFailed": "Falha no emparelhamento: {{message}}. O código pode ter expirado - pede um novo convite.",
       "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",
       "serverError": "O servidor respondeu com um erro: {{message}}",
       "reachError": "Não foi possível contactar esse servidor. Verifica o endereço e se está online.",
       "demoError": "Não foi possível iniciar a demonstração: {{message}}",
       "demoReachError": "Não foi possível contactar o servidor de demonstração.",
       "demoDivider": "servidor de demonstração",
-      "demoIntro": "Este servidor oferece uma demonstração para convidados — sem necessidade de conta.",
+      "demoIntro": "Este servidor oferece uma demonstração para convidados - sem necessidade de conta.",
       "tryDemo": "Experimentar a demonstração",
       "signInInstead": "Iniciar sessão em alternativa",
       "or": "ou",
@@ -312,7 +312,7 @@
     "downloads": "Transferências",
     "settings": "Definições",
     "logout": "Terminar sessão",
-    "offline": "Offline — as alterações sincronizam ao reconectar",
+    "offline": "Offline - as alterações sincronizam ao reconectar",
     "searchPlaceholder": "Pesquisar…"
   },
   "ui": {

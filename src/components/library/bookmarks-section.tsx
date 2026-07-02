@@ -12,8 +12,8 @@ import { colors } from '@/theme/tokens';
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
  *
  * Inline on the book screen it renders nothing when empty. The player sheet
- * passes `onAdd`/`emptyLabel` so it stays visible — an "add at current position"
- * button plus a placeholder — giving a way to both create and see bookmarks. */
+ * passes `onAdd`/`emptyLabel` so it stays visible - an "add at current position"
+ * button plus a placeholder - giving a way to both create and see bookmarks. */
 export function BookmarksSection({
   libraryId,
   path,

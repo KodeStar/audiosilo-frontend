@@ -16,8 +16,8 @@ import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 // `alsoMatch` keeps a tab highlighted on related routes that live outside its
-// own path — e.g. a book screen (`/book/...`) is reached through the library.
-// `labelKey` is the i18n key suffix under `nav.` — resolved with `t()` at render
+// own path - e.g. a book screen (`/book/...`) is reached through the library.
+// `labelKey` is the i18n key suffix under `nav.` - resolved with `t()` at render
 // since this is a module-level static array (no hook in scope here).
 type NavItem = {
   href: Href;
@@ -38,7 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
     alsoMatch: ['/book'],
   },
   // Downloads need offline storage: always on native; on web wherever the service
-  // worker + Cache API are available (a secure context — https or localhost).
+  // worker + Cache API are available (a secure context - https or localhost).
   ...(engine.supported
     ? [
         {

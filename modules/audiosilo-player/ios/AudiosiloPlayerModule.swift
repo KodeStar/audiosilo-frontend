@@ -23,7 +23,7 @@ struct ConfigRecord: Record {
 }
 
 /// Chapter clips passed by the shared bridge for the Android lock screen. iOS accepts
-/// them (so the `load` argument count matches) but ignores them — iOS plays file items
+/// them (so the `load` argument count matches) but ignores them - iOS plays file items
 /// and uses MPRemoteCommandCenter for lock-screen controls.
 struct ChapterRecord: Record {
   @Field var fileIndex: Int = 0
@@ -73,12 +73,12 @@ final class AudioEngine: NSObject {
   /// 0 = none. Seeking a not-yet-ready AVPlayerItem is silently dropped, so the
   /// resume/skip seek is deferred until .readyToPlay (see applyPendingSeek).
   private var pendingSeek: Double = 0
-  /// A play() was requested while a pendingSeek was still in flight — start the
+  /// A play() was requested while a pendingSeek was still in flight - start the
   /// instant the seek lands, so audio never briefly begins at 0.
   private var wantsPlay = false
   /// Observes the current item's readiness to run the deferred start seek.
   private var startObs: NSKeyValueObservation?
-  /// Whether playback was active when an audio-session interruption began — only
+  /// Whether playback was active when an audio-session interruption began - only
   /// then do we auto-resume on .ended (so the charging chime can't resume a book
   /// the user had paused).
   private var wasPlayingBeforeInterruption = false
@@ -102,7 +102,7 @@ final class AudioEngine: NSObject {
       try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
       try session.setActive(true)
     } catch {
-      // best effort — playback still works without long-form policy
+      // best effort - playback still works without long-form policy
     }
   }
 
@@ -157,8 +157,8 @@ final class AudioEngine: NSObject {
     }
     currentIndex = startIndex
     // Defer the start seek until the item is actually ready. Seeking a freshly
-    // created AVPlayerItem before .readyToPlay is silently dropped — especially
-    // for streaming assets — which made resume play the book from 0.
+    // created AVPlayerItem before .readyToPlay is silently dropped - especially
+    // for streaming assets - which made resume play the book from 0.
     pendingSeek = max(0, position)
     applyPendingSeek()
     reassertRateWhenReady()
@@ -204,7 +204,7 @@ final class AudioEngine: NSObject {
   }
 
   /// AVPlayer can silently drop a `rate` set on a not-yet-ready item back to 1.0 once
-  /// that item becomes ready — which made the chosen speed revert to 1x when a
+  /// that item becomes ready - which made the chosen speed revert to 1x when a
   /// mid-playback download swap replaced the streaming item with the local file (the
   /// JS state still showed the old speed because the engine never reads `rate` back).
   /// Watch the freshly-current item and re-assert the intended rate once it's ready.
@@ -225,7 +225,7 @@ final class AudioEngine: NSObject {
   /// Watch the current item for a fatal `.failed` status and report it as a sustained
   /// `loading` to JS. A failed item parks the player at `.paused`, which would look
   /// like a user pause; reporting `loading` instead lets the shared JS stall watchdog
-  /// promote it to `error` after the same grace as a mid-stream stall — uniform, and
+  /// promote it to `error` after the same grace as a mid-stream stall - uniform, and
   /// never instant (an instant error caused a rapid-retry race). Re-attach on every
   /// current-item change (skip/advance/rebuild).
   private func observeItemFailure() {
@@ -245,7 +245,7 @@ final class AudioEngine: NSObject {
   @objc private func handleItemFailedToEnd(_ n: Notification) {
     // A stream that was playing and then became unreachable mid-item fires this
     // rather than flipping `.status` to `.failed`. Report a sustained `loading` so the
-    // shared JS stall watchdog surfaces `error` after its grace — every failure path
+    // shared JS stall watchdog surfaces `error` after its grace - every failure path
     // converges on the same consistent, non-instant feedback.
     guard !rebuilding else { return }
     DispatchQueue.main.async { self.send("onState", ["state": "loading"]) }
@@ -275,7 +275,7 @@ final class AudioEngine: NSObject {
 
   func play() {
     // Reclaim the audio session so we're the active Now Playing app when (re)starting
-    // — another app may have taken it since we last played.
+    // - another app may have taken it since we last played.
     try? AVAudioSession.sharedInstance().setActive(true)
     if autoRewindMax > 0, let p = pausedAt, let item = player.currentItem {
       let elapsed = Date().timeIntervalSince(p)
@@ -286,7 +286,7 @@ final class AudioEngine: NSObject {
       }
     }
     pausedAt = nil
-    // A resume/skip seek hasn't landed yet — start the moment it does, so playback
+    // A resume/skip seek hasn't landed yet - start the moment it does, so playback
     // begins at the saved position instead of at 0.
     if pendingSeek > 0 {
       wantsPlay = true
@@ -380,11 +380,11 @@ final class AudioEngine: NSObject {
       case .waitingToPlayAtSpecifiedRate:
         // Wants to play but can't (buffering / underrun). With
         // automaticallyWaitsToMinimizeStalling on (the default), this is where a
-        // stalled stream lands — report 'loading'; the shared JS stall watchdog
+        // stalled stream lands - report 'loading'; the shared JS stall watchdog
         // promotes a stall that doesn't recover within its grace to 'error'.
         state = "loading"
       case .paused:
-        // A failed item also parks the player at .paused — keep reporting 'loading'
+        // A failed item also parks the player at .paused - keep reporting 'loading'
         // there so the JS watchdog treats it as a dead stream, not a user pause.
         if p.currentItem?.status == .failed {
           state = "loading"
@@ -416,7 +416,7 @@ final class AudioEngine: NSObject {
     timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
       // Don't report progress while a (re)load is in flight: a fresh AVPlayerItem
       // reads currentTime() == 0 until it's ready AND the deferred resume seek has
-      // applied. Emitting that 0 would clobber the saved position in JS — which made
+      // applied. Emitting that 0 would clobber the saved position in JS - which made
       // a retry after a failed reload resume the book from the start.
       guard let self = self,
             self.pendingSeek == 0,
@@ -453,7 +453,7 @@ final class AudioEngine: NSObject {
       // Only auto-resume if we were actually playing when the interruption began.
       // The charging chime (and other brief system sounds) fire an interruption
       // whose .ended carries .shouldResume; without this guard that resumes a book
-      // the user had paused — e.g. playback starting when the phone is plugged in.
+      // the user had paused - e.g. playback starting when the phone is plugged in.
       guard wasPlayingBeforeInterruption else { return }
       if let optsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt,
          AVAudioSession.InterruptionOptions(rawValue: optsRaw).contains(.shouldResume) {
@@ -478,7 +478,7 @@ final class AudioEngine: NSObject {
     UIApplication.shared.beginReceivingRemoteControlEvents()
     let cc = MPRemoteCommandCenter.shared()
     // A single earbud/headset press is a *toggle*, but iOS/AVRCP delivers it as a
-    // discrete Play OR Pause chosen from iOS's own notion of our play state — which
+    // discrete Play OR Pause chosen from iOS's own notion of our play state - which
     // on iOS a third-party app can't correct (MPNowPlayingInfoCenter.playbackState is
     // entitlement-gated and silently ignored, so iOS infers the state itself and can
     // get stuck on "paused"). When it guesses wrong it sends Play while we're already

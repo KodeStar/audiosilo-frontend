@@ -23,7 +23,7 @@ module.exports = [
   },
   {
     // Build output, native projects, generated types and root tooling configs
-    // aren't app source — keep them out of linting.
+    // aren't app source - keep them out of linting.
     ignores: [
       'dist/',
       '.expo/',

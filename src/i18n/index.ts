@@ -13,7 +13,7 @@ import pt from './locales/pt.json';
  * the rest are LTR translations (no RTL handling this pass). The in-app Settings
  * language picker derives its options from this list.
  *
- * NOTE: `app.json`'s `locales` is a SEPARATE, hand-maintained list — it points at
+ * NOTE: `app.json`'s `locales` is a SEPARATE, hand-maintained list - it points at
  * native-metadata files (`./assets/locales/<code>.json`, distinct from these UI
  * catalogs) and notably omits `en`. It does NOT read from SUPPORTED_LANGUAGES.
  * To add a language you must touch BOTH places: drop a `locales/<code>.json`,

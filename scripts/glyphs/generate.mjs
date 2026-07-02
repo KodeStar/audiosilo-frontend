@@ -1,6 +1,6 @@
 // Resolves the glyphs listed in manifest.mjs to raw SVG path data and writes the
 // vendored, committed src/components/ui/icon-data.ts. This is the ONLY place that
-// reads FontAwesome — the app itself never imports @fortawesome/*.
+// reads FontAwesome - the app itself never imports @fortawesome/*.
 //
 //   cd scripts/glyphs && npm install && npm run gen
 //
@@ -26,7 +26,7 @@ const PKG = {
 };
 
 // A FontAwesome name needs quoting as an object key only when it isn't a bare
-// identifier — matches Prettier's `quoteProps: "as-needed"` so the output passes
+// identifier - matches Prettier's `quoteProps: "as-needed"` so the output passes
 // `prettier --check` straight out of the generator.
 const key = (name) => (/^[A-Za-z_$][\w$]*$/.test(name) ? name : `'${name}'`);
 
@@ -37,7 +37,7 @@ const entries = GLYPHS.map(([name, weight, faName]) => {
   if (!def?.icon) throw new Error(`${name}: could not load ${faName} from ${pkg}`);
   const [width, height, , , path] = def.icon;
   if (Array.isArray(path)) {
-    throw new Error(`${name}: ${faName} is a multi-path (duotone) icon — not supported`);
+    throw new Error(`${name}: ${faName} is a multi-path (duotone) icon - not supported`);
   }
   if (/['\\]/.test(path)) throw new Error(`${name}: ${faName} path needs escaping`);
   return (
@@ -50,7 +50,7 @@ const entries = GLYPHS.map(([name, weight, faName]) => {
 });
 
 const file =
-  `// AUTO-GENERATED — do not edit by hand.\n` +
+  `// AUTO-GENERATED - do not edit by hand.\n` +
   `// Source: FontAwesome Pro 7 glyphs listed in scripts/glyphs/manifest.mjs.\n` +
   `// Regenerate:  cd scripts/glyphs && npm install && npm run gen   (see scripts/glyphs/README.md)\n` +
   `//\n` +

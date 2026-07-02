@@ -201,7 +201,7 @@ describe('fileName extension handling (observed via the relocated uri)', () => {
   });
 
   it('adds no extension when the only dot is in a parent dir, not the filename', async () => {
-    // 'a.b/track' — the dot precedes the last slash, so it is not an extension.
+    // 'a.b/track' - the dot precedes the last slash, so it is not an extension.
     expect(await relocatedNameFor('a.b/track')).toBe('0');
   });
 });
@@ -232,7 +232,7 @@ describe('hydrate pruning', () => {
     expect(await readPersisted()).toEqual({});
   });
 
-  it('prunes a partial (not-yet-downloaded) entry — partials never survive a relaunch', async () => {
+  it('prunes a partial (not-yet-downloaded) entry - partials never survive a relaunch', async () => {
     const key = downloadKey(2, 'A/Book');
     await seed({ [key]: downloadedEntry({ status: 'downloading', progress: 0.4 }) });
 

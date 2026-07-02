@@ -1,4 +1,4 @@
-// AUTO-GENERATED — do not edit by hand.
+// AUTO-GENERATED - do not edit by hand.
 // Source: FontAwesome Pro 7 glyphs listed in scripts/glyphs/manifest.mjs.
 // Regenerate:  cd scripts/glyphs && npm install && npm run gen   (see scripts/glyphs/README.md)
 //

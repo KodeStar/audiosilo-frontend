@@ -33,7 +33,7 @@ let startingPlayback = false;
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 /** The whole-book position the current book resumed from, kept as a running high-water
  * mark. `persist` refuses to save a position far below this unless the user deliberately
- * seeked back (which lowers it) — so a slipped-through restart-at-0 can never overwrite
+ * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
  * real saved progress. Reset per book in `playBook`. */
 let resumeFloor = 0;
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
@@ -102,7 +102,7 @@ type PlayerState = {
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
-  /** Re-load the current track at the current position and resume — recovery after
+  /** Re-load the current track at the current position and resume - recovery after
    * the engine reports an `error` (e.g. the stream became unreachable). */
   retry: () => Promise<void>;
   seekBook: (bookPosition: number) => Promise<void>;
@@ -160,7 +160,7 @@ function stopSaveLoop() {
   }
 }
 
-/** Capture the current position then stop the periodic save loop — shared by the
+/** Capture the current position then stop the periodic save loop - shared by the
  * engine's terminal states (pause/end/error) and the stall watchdog. Refreshes the
  * progress lists on both outcomes so a queued-offline save still re-reads server state. */
 function haltAndPersist() {
@@ -169,9 +169,9 @@ function haltAndPersist() {
 }
 
 /** Surface an `error` if we wanted to play but haven't reached `playing` within the
- * grace — a dead/stalled stream then offers a retry instead of an endless spinner. The
+ * grace - a dead/stalled stream then offers a retry instead of an endless spinner. The
  * watchdog is armed by the play/retry actions (and by a mid-playback stall's `loading`),
- * NOT by trying to interpret the native bridge's noisy resume/retry event stream — so no
+ * NOT by trying to interpret the native bridge's noisy resume/retry event stream - so no
  * event ordering can prevent it from firing. Idempotent: one fixed window per attempt;
  * only reaching `playing` (or a user pause/stop) cancels it. The fire test is simply
  * "not playing", so it doesn't matter what transient state the bridge left us in. Lives
@@ -250,8 +250,8 @@ async function ensureService(): Promise<PlaybackService> {
     // Collapse the native bridge's noisy resume/retry event stream to a spinner. While
     // starting (after a play/retry, before we reach `playing`), the only real outcomes
     // are `playing` (success) and `error` (the watchdog gave up); every transient the
-    // bridge emits while rebuilding the queue — `ready`, `paused`, `idle`, `ended`,
-    // `loading` — is "still connecting" → `loading`. This is what makes the spinner and
+    // bridge emits while rebuilding the queue - `ready`, `paused`, `idle`, `ended`,
+    // `loading` - is "still connecting" → `loading`. This is what makes the spinner and
     // watchdog robust regardless of event ordering (the spurious `paused` used to clear
     // intent and strand the spinner). A genuine user/lock-screen pause arrives AFTER
     // `playing` (startingPlayback already false), so it stays `paused`. Outside a fresh
@@ -260,7 +260,7 @@ async function ensureService(): Promise<PlaybackService> {
     if (startingPlayback && state !== 'playing' && state !== 'error') state = 'loading';
     else if (state === 'ready' && wantsPlayback) state = 'loading';
     // When we're NOT intending to play (no attempt in flight), an engine `loading`
-    // is not "connecting" — it's a stalled/failed item we have no watchdog for
+    // is not "connecting" - it's a stalled/failed item we have no watchdog for
     // (the watchdog only arms while wantsPlayback). iOS reports a failed item as
     // `loading` even while the user has the book paused; left as `loading` it would
     // strand an endless spinner with no retry. Read it as `paused` so the play
@@ -269,7 +269,7 @@ async function ensureService(): Promise<PlaybackService> {
     const snapshot: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
     const prev = usePlayer.getState().snapshot;
     // After the stall watchdog (or an engine error) surfaces an `error`, the engine
-    // keeps re-reporting around the dead stream — iOS: frozen `onProgress` ticks
+    // keeps re-reporting around the dead stream - iOS: frozen `onProgress` ticks
     // carrying `loading`; Android: `onPlayerError` then `STATE_IDLE` → `idle`, plus its
     // own progress ticks. Any of those would overwrite the `error` and drop the UI back
     // to a spinner/play button (the flash→spinner loop seen on Android). So once we're
@@ -292,30 +292,33 @@ async function ensureService(): Promise<PlaybackService> {
     }
     // Drive the periodic progress save off the real play state: it runs only while
     // actually playing, so we don't keep re-saving the same position every 15s
-    // after pause/stop/end — including a lock-screen pause or a book that simply
+    // after pause/stop/end - including a lock-screen pause or a book that simply
     // finishes, neither of which calls stop().
     if (snapshot.state !== prev.state) {
       // A lock-screen play/pause arrives here (the engine state), not through the store
-      // actions — so keep intent + the start window in sync with it.
+      // actions - so keep intent + the start window in sync with it.
       if (snapshot.state === 'playing') {
-        // Reached playback — the stream is alive and we're no longer "connecting".
+        // Reached playback - the stream is alive and we're no longer "connecting".
         wantsPlayback = true;
         startingPlayback = false;
         cancelStallWatchdog();
         startSaveLoop();
       } else if (snapshot.state === 'loading') {
         // A mid-playback stall (or the ongoing start attempt): arm the watchdog so a
-        // buffer that outlasts the grace surfaces an error. Idempotent — already armed
+        // buffer that outlasts the grace surfaces an error. Idempotent - already armed
         // when an attempt began. Only when we intend to play.
         if (wantsPlayback) armStallWatchdog();
       } else if (
         snapshot.state === 'paused' ||
         snapshot.state === 'ended' ||
-        snapshot.state === 'error'
+        snapshot.state === 'error' ||
+        snapshot.state === 'idle'
       ) {
         // Genuine terminal (a start-window transient was normalized to `loading`
-        // above): a real pause, a finished book, or a dead stream the web/Android
-        // engines report directly. Clear intent, halt the loop.
+        // above): a real pause, a finished book, a dead stream the web/Android engines
+        // report directly, or Android's STATE_IDLE after a stop-like failure. All must
+        // clear intent and halt the loop - an unhandled `idle` would otherwise leave the
+        // 15s save loop re-persisting the same position forever.
         wantsPlayback = false;
         startingPlayback = false;
         cancelStallWatchdog();
@@ -335,6 +338,12 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   playBook: async (api, libraryId, book, chapterData, startBookPosition, startTrack) => {
     endHistory(); // flush any prior book's listening span before switching
     cancelStallWatchdog(); // drop any stale stall timer from the previous book
+    // Stop the prior book's periodic save loop before we switch nowPlaying: otherwise
+    // a 15s tick (or the engine's continued ticks after an early return below) would
+    // map the OLD engine position through the NEW book's queue and persist it under the
+    // new book's path - corrupting the new book's progress. The loop restarts on the
+    // engine's next `playing` transition for this book.
+    stopSaveLoop();
     apiRef = api;
     deviceId = await getDeviceId();
     lastPlayRequest = { api, libraryId, book, chapterData }; // so retry() can re-run resume
@@ -374,6 +383,13 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         // later save could overwrite the real place. Fail safe: surface a recoverable
         // error (the player offers Retry, which re-runs this lookup) instead of playing.
         resumeLookupFailed = true;
+        // Fully stop the previous book first: clear playback intent (so the error hold
+        // in `subscribe` isn't defeated by leftover `wantsPlayback`) and reset the engine
+        // (so the previous book's audio + ticks stop). Without this the old book keeps
+        // playing while the UI shows the new one, and its ticks save under the new path.
+        wantsPlayback = false;
+        startingPlayback = false;
+        await svc.reset();
         set({
           rate: speed,
           nowPlaying: {
@@ -449,7 +465,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
   retry: async () => {
     // If the failure was at the resume-lookup stage, re-run the resume path (re-fetch
-    // progress) rather than reloading at a stale 0 — this is the recovery for the
+    // progress) rather than reloading at a stale 0 - this is the recovery for the
     // fail-safe in playBook.
     if (resumeLookupFailed && lastPlayRequest) {
       const { api, libraryId, book, chapterData } = lastPlayRequest;
@@ -552,8 +568,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 /**
  * Hot-swap the currently-playing book onto its local files the moment its download
  * finishes, preserving position + play state. `playBook` already prefers local when
- * a book is downloaded *before* playback starts; this covers the other order —
- * downloading while it streams — so playback keeps going when the network drops
+ * a book is downloaded *before* playback starts; this covers the other order -
+ * downloading while it streams - so playback keeps going when the network drops
  * instead of dying with the live stream. Shared by web + native.
  */
 async function switchCurrentBookToLocal() {
@@ -585,7 +601,7 @@ async function switchCurrentBookToLocal() {
 
   if (svc.swapTo) {
     // Gapless: keep streaming until the local file is buffered at this position. The
-    // swap can be refused (e.g. the local source isn't servable on web) — in that
+    // swap can be refused (e.g. the local source isn't servable on web) - in that
     // case leave nowPlaying on the streaming queue so playback keeps going.
     const swapped = await svc.swapTo(queue.tracks, index, positionInTrack, queue.chapterClips);
     if (!swapped) return;

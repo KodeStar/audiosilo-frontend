@@ -312,7 +312,7 @@
     "downloads": "Download",
     "settings": "Impostazioni",
     "logout": "Esci",
-    "offline": "Offline — le modifiche si sincronizzano alla riconnessione",
+    "offline": "Offline - le modifiche si sincronizzano alla riconnessione",
     "searchPlaceholder": "Cerca…"
   },
   "ui": {

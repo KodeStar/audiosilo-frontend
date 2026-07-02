@@ -159,7 +159,7 @@ export function DownloadControl({
 
 /** The in-flight download progress bar, shown only while downloading/queued.
  * Pairs with the compact DownloadControl button (which handles cancel), so it
- * carries no controls of its own — just the percentage and bar. */
+ * carries no controls of its own - just the percentage and bar. */
 export function DownloadProgress({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
   const { status, progress, bytes, totalBytes } = useDownloadControls(libraryId, path);

@@ -20,7 +20,7 @@ export default function ConnectServerScreen() {
   const { t } = useTranslation();
   // A copy-invite link or pairing QR opens this screen with a single-use pairing
   // `token` (and, on native, the `server` it belongs to). When present we exchange
-  // it for a session automatically — no server address or code to type.
+  // it for a session automatically - no server address or code to type.
   const { token, server } = useLocalSearchParams<{ token?: string; server?: string }>();
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const setSession = useSession((s) => s.setSession);

@@ -7,7 +7,7 @@ import { BASE_URL, IS_DEV } from './base-url';
 // secure context (https or localhost), so this no-ops elsewhere.
 //
 // In dev we still register (localhost is secure) but pass `?dev=1` so the worker
-// only serves downloaded media and leaves the app shell alone — otherwise its
+// only serves downloaded media and leaves the app shell alone - otherwise its
 // asset caching would fight Metro's hot reloading.
 
 export function registerServiceWorker() {

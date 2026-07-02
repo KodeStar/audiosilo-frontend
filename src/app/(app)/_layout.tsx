@@ -14,7 +14,7 @@ export default function AppGroupLayout() {
   const api = useOptionalApi();
 
   // Backfill the cached user's account flags (has_password/has_recovery) for a
-  // session persisted before those flags existed — fresh logins already carry
+  // session persisted before those flags existed - fresh logins already carry
   // them, so we only spend the round-trip when they're missing, and read the
   // user via getState() so this runs once per auth rather than on every change.
   // Best-effort: real auth failures are surfaced by the regular request flows.

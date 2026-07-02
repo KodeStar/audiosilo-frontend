@@ -4,7 +4,7 @@ import type { FsEntry } from '@/api/types';
 export type AlphaSection = { letter: string; data: FsEntry[] };
 
 /** The A–Z jump-rail letters. The '#' bucket (non-Latin/digits/symbols) is a real
- * section but is omitted from the rail to save vertical space — it stays reachable
+ * section but is omitted from the rail to save vertical space - it stays reachable
  * by scrolling, and a tapped letter with no later match snaps to it. */
 export const RAIL_LETTERS: string[] = Array.from({ length: 26 }, (_, i) =>
   String.fromCharCode(65 + i),
@@ -47,7 +47,7 @@ export function groupByLetter(entries: FsEntry[]): AlphaSection[] {
     .map((letter) => ({ letter, data: buckets.get(letter) as FsEntry[] }));
 }
 
-/** Letters that have at least one entry — drives which rail letters are active. */
+/** Letters that have at least one entry - drives which rail letters are active. */
 export function presentLetters(sections: AlphaSection[]): Set<string> {
   return new Set(sections.map((s) => s.letter));
 }

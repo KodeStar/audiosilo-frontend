@@ -134,8 +134,8 @@ class WebPlaybackService implements PlaybackService {
 
     // Downloaded files live behind synthetic `…/_offline/…` urls that only resolve
     // when our service worker is controlling this page (it serves them from the
-    // Cache API). If it isn't — unsupported, registration delayed/failed, or a
-    // non-PWA first load that hasn't been claimed yet — the url 404s. Switching to a
+    // Cache API). If it isn't - unsupported, registration delayed/failed, or a
+    // non-PWA first load that hasn't been claimed yet - the url 404s. Switching to a
     // dead source would stop playback with no way to resume, so refuse the swap and
     // keep streaming; a later open of the book will pick up the local copy.
     if (
@@ -148,7 +148,7 @@ class WebPlaybackService implements PlaybackService {
     const wasPlaying = this.snapshot.state === 'playing';
 
     // Buffer the new (local) source on a separate element while the current one
-    // keeps playing, then switch — so there's no silent gap while it loads/seeks.
+    // keeps playing, then switch - so there's no silent gap while it loads/seeks.
     const pending = this.createAudio();
     pending.src = track.url;
     pending.playbackRate = this.rate;
@@ -183,7 +183,7 @@ class WebPlaybackService implements PlaybackService {
       setTimeout(() => done(false), 8000); // never hang; a slow load counts as a failed swap
     });
 
-    // The local source never became playable — discard it and keep streaming rather
+    // The local source never became playable - discard it and keep streaming rather
     // than cutting the live element over to a dead one.
     if (!ready) {
       pending.pause();

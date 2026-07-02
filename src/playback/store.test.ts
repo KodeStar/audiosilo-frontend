@@ -190,7 +190,7 @@ describe('save loop lifecycle', () => {
     await Promise.resolve();
 
     // The terminal 'error' state (web engine on a dead stream) must capture position
-    // and halt the loop — exactly like pause/ended.
+    // and halt the loop - exactly like pause/ended.
     mockSaveProgress.mockClear();
     pushSnapshot(snap('error', 50));
     await Promise.resolve();
@@ -304,8 +304,8 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     // User pauses, then the engine reports buffering while parked (e.g. ExoPlayer
     // STATE_BUFFERING with playWhenReady=false, or iOS reporting a failed item as
     // `loading` while paused). With no intent to play, a `loading` is read as
-    // `paused` — the play button stays usable instead of stranding an endless
-    // spinner with no watchdog — and it is never promoted to an error.
+    // `paused` - the play button stays usable instead of stranding an endless
+    // spinner with no watchdog - and it is never promoted to an error.
     pushSnapshot(snap('paused', 30));
     await Promise.resolve();
     pushSnapshot(snap('loading', 30));
@@ -319,7 +319,7 @@ describe('stall watchdog promotes a stuck loading to error', () => {
   it("shows a spinner for 'ready' while intending to play, and still errors if it never plays", async () => {
     await startBook(makeBook(), 0); // playBook sets wantsPlayback = true
     // The engine reports the track loaded-but-not-yet-playing. Because we intend to
-    // play, this must surface as 'loading' (spinner) and arm the watchdog — not strand
+    // play, this must surface as 'loading' (spinner) and arm the watchdog - not strand
     // the UI at an idle play button (the cause of the "press play, nothing happens"
     // two-press bug: retry's load() emitted 'ready' which landed as the final state).
     pushSnapshot(snap('ready', 50));
@@ -335,7 +335,7 @@ describe('stall watchdog promotes a stuck loading to error', () => {
   it('treats a transient paused during the start window as loading (not a real pause)', async () => {
     await startBook(makeBook(), 0); // startingPlayback = true, wantsPlayback = true
     // The native bridge emits a spurious 'paused' while rebuilding the queue on start.
-    // Because we're still connecting, it must read as a spinner and keep the watchdog —
+    // Because we're still connecting, it must read as a spinner and keep the watchdog -
     // not clear our intent and strand the UI (the actual device bug: the spinner showed
     // but never armed the watchdog, so it spun forever).
     pushSnapshot(snap('paused', 50));
@@ -348,7 +348,7 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('error');
   });
 
-  it('keeps a real pause (after playback started) as paused — no spinner, no error', async () => {
+  it('keeps a real pause (after playback started) as paused - no spinner, no error', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 30)); // reaching 'playing' ends the start window
     await Promise.resolve();
@@ -501,6 +501,32 @@ describe('resume never restarts an in-progress book from 0', () => {
     // Must NOT restart at 0: surface an error and load nothing.
     expect(usePlayer.getState().snapshot.state).toBe('error');
     expect(mockSvc.load).not.toHaveBeenCalled();
+  });
+
+  it('switching from a playing book to a failed-resume book stops the old book and saves nothing under the new path', async () => {
+    // Book A is playing with its save loop running.
+    await startBook(makeBook({ rel_path: 'A/BookA.m4b' }), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+
+    (mockSvc.reset as jest.Mock).mockClear();
+    // Switch to book B, whose streaming resume lookup fails.
+    mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
+    await usePlayer
+      .getState()
+      .playBook(fakeApi(), 2, makeBook({ rel_path: 'B/BookB.m4b' }), undefined);
+
+    // The previous book's engine is torn down and the UI shows B in error.
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(usePlayer.getState().nowPlaying?.path).toBe('B/BookB.m4b');
+
+    // The old save loop is stopped, so a 15s tick must not persist A's position under
+    // B's path (the corruption this fix prevents).
+    mockSaveProgress.mockClear();
+    jest.advanceTimersByTime(15_000);
+    await Promise.resolve();
+    expect(mockSaveProgress).not.toHaveBeenCalled();
   });
 
   it('retry re-runs the resume lookup after a streaming resume failure', async () => {
