@@ -1,8 +1,15 @@
 import { create } from 'zustand';
 
+import { wallClockSeconds } from './rate';
 import { selectBookPosition, usePlayer } from './store';
 
 let interval: ReturnType<typeof setInterval> | null = null;
+
+/** Whole seconds of real time until the book reaches `target`, for display: the
+ * content gap (`target - pos`) converted at the playback `rate`, then rounded. */
+function remainingSeconds(target: number, pos: number, rate?: number): number {
+  return Math.round(wallClockSeconds(target - pos, rate));
+}
 
 function stopInterval() {
   if (interval) {
@@ -62,7 +69,9 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => ({
       label,
       endsAt: null,
       pauseAtPosition: position,
-      remaining: Math.max(0, Math.round(position - pos)),
+      // The pause fires by position, but the displayed countdown is wall-clock:
+      // content-seconds remaining shrink by the playback rate (2x → half the time).
+      remaining: remainingSeconds(position, pos, player.rate),
     });
     startInterval();
   },
@@ -100,7 +109,7 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => ({
     }
     if (pauseAtPosition !== null) {
       const pos = selectBookPosition(player);
-      set({ remaining: Math.max(0, Math.round(pauseAtPosition - pos)) });
+      set({ remaining: remainingSeconds(pauseAtPosition, pos, player.rate) });
       if (pos >= pauseAtPosition) {
         void player.pause();
         get().cancel();
