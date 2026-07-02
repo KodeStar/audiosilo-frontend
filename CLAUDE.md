@@ -72,6 +72,18 @@ with `npm install` after changing deps).
 > exports, stale docs, untested modules) a full review found. Especially: change
 > the wire format → change **both** repos **and** add a test on both sides.
 
+## Documentation
+
+The product docs live in [`../audiosilo-docs`](../audiosilo-docs/) (Docusaurus:
+User Guide + Developer Docs, generated screenshots). **Updating them is part of
+Definition of Done**: a change here that touches player behaviour, screens/
+strings, or the wire contract updates the affected pages in the same logical
+change — for this repo that's chiefly `docs-users/listening/**` and
+`docs-developers/frontend/**`, plus regenerated `web-player/` screenshots
+(`audiosilo-docs/screenshots/run.sh`) when the UI changes. Mapping table:
+`audiosilo-docs/docs-developers/contributing/documentation.md`. Docs gate:
+`npm run build` in audiosilo-docs.
+
 ## Architecture & conventions
 
 **Path is identity.** All content is addressed by `(library_id, rel_path)`, never
@@ -92,11 +104,13 @@ accepts either. Sign-out is guarded (`src/lib/recovery.ts` `needsRecoveryWarning
 a user with neither credential is warned and offered a recovery code before their only
 way in is revoked (`src/components/account/sign-out-confirm.tsx`).
 
-**Media auth differs by platform** (`src/api/client.ts` `mediaTokenQuery`): web
-embeds `?token=` in cover/stream URLs (`<img>`/`<audio>` can't set headers);
-native passes `Authorization` headers. **This depends on a server change** in
-`audiosilo-server` `internal/api/middleware.go` — `bearerToken` falls back to a
-`token` query param for media GETs.
+**Media auth rides in the URL on every platform** (`src/api/client.ts`
+`mediaTokenQuery`): cover/stream URLs embed `?token=` everywhere (`<img>`/
+`<audio>` can't set headers on web, and native image/player components don't
+reliably forward custom headers); native *additionally* sends the
+`Authorization` header belt-and-braces. **This depends on the server's**
+`internal/api/middleware.go` — `bearerToken` accepts a `token` query param for
+media GETs only.
 
 **Playback (`src/playback/`)** — the fiddly part:
 - `PlaybackService` interface (`types.ts`). Metro resolves the engine per platform:
