@@ -113,6 +113,8 @@ export class ApiClient {
 
       if (res.status === 204) return undefined as T;
       const text = await res.text();
+      // statusText is '' (not null) under HTTP/2, so use || to reach the fallback.
+      const fallbackMsg = res.statusText || 'Request failed';
       let data: unknown;
       try {
         data = text ? JSON.parse(text) : undefined;
@@ -120,12 +122,11 @@ export class ApiClient {
         // A non-JSON body (e.g. an HTML 502/503 from a reverse proxy) must not surface
         // as a SyntaxError - callers branch on ApiError/its status (isUnrecoverable,
         // sign-in, reachability), so preserve the HTTP status instead.
-        throw new ApiError(res.status, res.statusText || 'Request failed');
+        throw new ApiError(res.status, fallbackMsg);
       }
       if (!res.ok) {
         const msg = (data as { error?: string } | undefined)?.error;
-        // statusText is '' (not null) under HTTP/2, so use || to reach the fallback.
-        throw new ApiError(res.status, msg || res.statusText || 'Request failed');
+        throw new ApiError(res.status, msg || fallbackMsg);
       }
       return data as T;
     } catch (e) {

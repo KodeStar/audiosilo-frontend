@@ -97,14 +97,16 @@ function fileIndexOf(specs: FileSpec[], ch: Chapter): number {
  */
 export function buildChapterClips(specs: FileSpec[], chapters: Chapter[]): PlaybackChapter[] {
   if (chapters.length <= 1) return [];
+  // Resolve each chapter's file once up front - the loop needs both a chapter's index
+  // and the next one's, so looking up inline would scan the specs twice per chapter.
+  const fileIndices = chapters.map((ch) => fileIndexOf(specs, ch));
   const clips: PlaybackChapter[] = [];
   const coveredFiles = new Set<number>();
   for (let i = 0; i < chapters.length; i++) {
     const ch = chapters[i];
-    const fileIndex = fileIndexOf(specs, ch);
+    const fileIndex = fileIndices[i];
     if (fileIndex < 0) return []; // unmappable chapter → safe fallback to file mode
-    const next = chapters[i + 1];
-    const lastInFile = !next || fileIndexOf(specs, next) !== fileIndex;
+    const lastInFile = i + 1 >= chapters.length || fileIndices[i + 1] !== fileIndex;
     // A non-final in-file chapter with a non-positive span has unusable clip bounds:
     // endInFile <= 0 is read by the native layer as "to end of file", so this clip
     // would swallow the rest of the file and the following clips would replay it. Bad

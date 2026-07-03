@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { useOptionalApi } from '@/api/provider';
-import { usePlayer } from '@/playback/store';
+import { stopPlaybackForServer } from '@/playback/store';
 import { accountFlagsKnown, needsRecoveryWarning } from '@/lib/recovery';
 import { useSession } from '@/stores/session';
 
@@ -26,11 +26,13 @@ export function useSignOut() {
 
   const signOut = useCallback(async () => {
     setConfirmVisible(false);
-    // Stop playback before revoking the token. This persists the final position while
-    // the token is still valid, then silences the audio and tears down the engine -
-    // otherwise the book keeps playing (and the save loop keeps hitting the now-revoked
-    // token) with no mini-player in the connect screen to stop it.
-    await usePlayer.getState().stop();
+    // Stop playback before revoking the token, when the playing book came from this
+    // connection. This persists the final position while the token is still valid, then
+    // silences the audio and tears down the engine - otherwise the book keeps playing
+    // (and the save loop keeps hitting the now-revoked token) with no mini-player in
+    // the connect screen to stop it. A book playing through another connection keeps
+    // going; its token stays valid.
+    if (api) await stopPlaybackForServer(api);
     try {
       await api?.logout();
     } catch {

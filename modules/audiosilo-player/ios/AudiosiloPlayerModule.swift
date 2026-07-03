@@ -252,26 +252,15 @@ final class AudioEngine: NSObject {
     }
   }
 
-  @objc private func handleItemFailedToEnd(_ n: Notification) {
-    // A stream that was playing and then became unreachable mid-item fires this
-    // rather than flipping `.status` to `.failed`. Report a sustained `loading` so the
-    // shared JS stall watchdog surfaces `error` after its grace - every failure path
-    // converges on the same consistent, non-instant feedback.
-    // The observers are registered with object:nil (they fire for ANY item), so filter
-    // to the current item - a stale/queued item tearing down must not be attributed to
-    // the live stream and trip a spurious error. Capture n.object now, compare on main.
-    let item = n.object as? AVPlayerItem
-    DispatchQueue.main.async {
-      guard !self.rebuilding, item === self.player.currentItem else { return }
-      self.send("onState", ["state": "loading"])
-    }
-  }
-
-  /// Fired when playback stalls mid-item (buffer underrun). Report `loading`; the
-  /// shared JS stall watchdog promotes a stall that doesn't recover within its grace
-  /// to `error`. Filtered to the current item (see handleItemFailedToEnd) since the
-  /// observer fires for any item.
-  @objc private func handlePlaybackStalled(_ n: Notification) {
+  /// Shared handler for both mid-item trouble notifications: `failedToPlayToEndTime`
+  /// (a stream that was playing became unreachable - fires instead of flipping
+  /// `.status` to `.failed`) and `playbackStalled` (buffer underrun). Report a
+  /// sustained `loading` so the shared JS stall watchdog surfaces `error` after its
+  /// grace - every failure path converges on the same consistent, non-instant feedback.
+  /// The observers are registered with object:nil (they fire for ANY item), so filter
+  /// to the current item - a stale/queued item tearing down must not be attributed to
+  /// the live stream and trip a spurious error. Capture n.object now, compare on main.
+  @objc private func reportLoadingIfCurrent(_ n: Notification) {
     let item = n.object as? AVPlayerItem
     DispatchQueue.main.async {
       guard !self.rebuilding, item === self.player.currentItem else { return }
@@ -464,9 +453,9 @@ final class AudioEngine: NSObject {
                    name: AVAudioSession.interruptionNotification, object: nil)
     nc.addObserver(self, selector: #selector(handleRouteChange(_:)),
                    name: AVAudioSession.routeChangeNotification, object: nil)
-    nc.addObserver(self, selector: #selector(handleItemFailedToEnd(_:)),
+    nc.addObserver(self, selector: #selector(reportLoadingIfCurrent(_:)),
                    name: AVPlayerItem.failedToPlayToEndTimeNotification, object: nil)
-    nc.addObserver(self, selector: #selector(handlePlaybackStalled(_:)),
+    nc.addObserver(self, selector: #selector(reportLoadingIfCurrent(_:)),
                    name: AVPlayerItem.playbackStalledNotification, object: nil)
   }
 

@@ -52,20 +52,15 @@ object AuthHolder {
  * User-configurable playback tunables, shared from the Expo module's `setConfig` to the
  * player: the auto-rewind window (read live by [AudiobookPlayer.play] so a resume from
  * anywhere, the lock screen included, rewinds by the current Settings value) and the
- * lock-screen skip intervals (read live by [AudiosiloPlayerService.MediaCallback]).
+ * skip intervals (read live by [AudiobookPlayer.seekBack]/[AudiobookPlayer.seekForward]).
  */
 object PlayerConfig {
   @Volatile var autoRewindMaxMs: Long = 0
-  // Lock-screen skip amounts (ms). The seek honors these immediately; the notification
-  // glyphs (nearest predefined ICON_SKIP_*) are chosen when the layout is built at start.
+  // Skip amounts (ms). The seek honors these immediately; the notification glyphs
+  // (nearest predefined ICON_SKIP_*) are chosen when the layout is built at start.
   @Volatile var jumpForwardMs: Long = 30_000
   @Volatile var jumpBackwardMs: Long = 15_000
 }
-
-/** Default ExoPlayer seek increment. The lock-screen skip buttons no longer use it (they
- * seek by the configurable [PlayerConfig] intervals - see [AudiosiloPlayerService.MediaCallback]);
- * kept only as the player's built-in increment default. */
-private const val SKIP_INCREMENT_MS = 30_000L
 
 /**
  * Wraps the ExoPlayer so audiobook behavior applies no matter where a command
@@ -78,6 +73,9 @@ private const val SKIP_INCREMENT_MS = 30_000L
  *    multi-file book) → the lock screen gets prev/next-chapter buttons. With a single
  *    item (a chapterless single-file book) they're hidden so a tap can't "restart the
  *    only book".
+ *  - **Configurable skips**: [seekBack]/[seekForward] seek by the live [PlayerConfig]
+ *    intervals instead of ExoPlayer's build-time increments, so the lock-screen skip
+ *    buttons (and any other controller) honor the Settings value.
  */
 private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
   private var pausedAt: Long = 0L
@@ -104,7 +102,7 @@ private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
     val maxMs = PlayerConfig.autoRewindMaxMs
     if (maxMs > 0 && pausedAt > 0L) {
       val rewind = minOf(maxMs, System.currentTimeMillis() - pausedAt)
-      if (rewind > 500) seekTo(maxOf(0L, currentPosition - rewind))
+      if (rewind > 500) seekBackBy(rewind)
     }
     pausedAt = 0L
     super.play()
@@ -114,6 +112,22 @@ private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
     pausedAt = System.currentTimeMillis()
     super.pause()
   }
+
+  // Seek by the user-configured Settings intervals (live from PlayerConfig), clamped
+  // within the current item/clip - NOT ExoPlayer's build-time fixed increment, which
+  // ignored the Settings value (the lock screen always jumped 30s). The increment
+  // getters report the same values so anything displaying them stays truthful.
+  override fun getSeekBackIncrement(): Long = PlayerConfig.jumpBackwardMs
+  override fun getSeekForwardIncrement(): Long = PlayerConfig.jumpForwardMs
+
+  override fun seekBack() = seekBackBy(PlayerConfig.jumpBackwardMs)
+
+  override fun seekForward() {
+    val max = if (duration != C.TIME_UNSET) duration else Long.MAX_VALUE
+    seekTo(minOf(max, currentPosition + PlayerConfig.jumpForwardMs))
+  }
+
+  private fun seekBackBy(ms: Long) = seekTo(maxOf(0L, currentPosition - ms))
 }
 
 /**
@@ -160,8 +174,6 @@ class AudiosiloPlayerService : MediaSessionService() {
       .setMediaSourceFactory(mediaSourceFactory)
       .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
       .setHandleAudioBecomingNoisy(true)
-      .setSeekBackIncrementMs(SKIP_INCREMENT_MS)
-      .setSeekForwardIncrementMs(SKIP_INCREMENT_MS)
       .build()
     val player = AudiobookPlayer(exoPlayer)
 
@@ -219,7 +231,7 @@ class AudiosiloPlayerService : MediaSessionService() {
 
   /** Nearest predefined Media3 skip glyph for a configured interval. Media3 ships only
    * 5/10/15/30s icons, so an off-scale value shows the closest one; the actual seek uses
-   * the exact configured amount (see [MediaCallback.onCustomCommand]). */
+   * the exact configured amount (see [AudiobookPlayer.seekBack]/[AudiobookPlayer.seekForward]). */
   private fun skipIcon(ms: Long, forward: Boolean): Int {
     val sec = ms / 1000
     return when {
@@ -232,8 +244,9 @@ class AudiosiloPlayerService : MediaSessionService() {
 
   /**
    * Grants the custom skip commands to connecting controllers (so the buttons are enabled)
-   * and runs them as the player's own 30s seek (clip-bounded → stays within the chapter,
-   * which is fine; prev/next chapter cross boundaries).
+   * and runs them as the player's own seek ([AudiobookPlayer.seekBack]/[seekForward], the
+   * live Settings intervals; clip-bounded → stays within the chapter, which is fine -
+   * prev/next chapter cross boundaries).
    */
   private object MediaCallback : MediaSession.Callback {
     override fun onConnect(
@@ -255,16 +268,10 @@ class AudiosiloPlayerService : MediaSessionService() {
       customCommand: SessionCommand,
       args: Bundle,
     ): ListenableFuture<SessionResult> {
-      val p = session.player
       when (customCommand.customAction) {
-        // Seek by the user-configured interval (live from PlayerConfig), clamped within the
-        // current item/clip - NOT the player's fixed seekBack/Forward increment, which
-        // ignored the Settings value (the lock screen always jumped 30s).
-        CMD_SEEK_BACK -> p.seekTo((p.currentPosition - PlayerConfig.jumpBackwardMs).coerceAtLeast(0L))
-        CMD_SEEK_FORWARD -> {
-          val dur = if (p.duration != C.TIME_UNSET) p.duration else Long.MAX_VALUE
-          p.seekTo((p.currentPosition + PlayerConfig.jumpForwardMs).coerceAtMost(dur))
-        }
+        // AudiobookPlayer overrides these to seek by the live user-configured intervals.
+        CMD_SEEK_BACK -> session.player.seekBack()
+        CMD_SEEK_FORWARD -> session.player.seekForward()
       }
       return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }

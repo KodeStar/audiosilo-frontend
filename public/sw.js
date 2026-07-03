@@ -16,6 +16,9 @@
 
 const SHELL_CACHE = 'audiosilo-shell-v1';
 const MEDIA_CACHE = 'audiosilo-media-v1'; // keep in sync with engine.web.ts
+// The media-auth query param (keep in sync with client.ts `mediaTokenQuery`): its
+// presence marks a token-bearing URL that must never be written into Cache Storage.
+const TOKEN_PARAM = 'token';
 
 // Registered with `?dev=1` under the Metro dev server. In dev we only serve offline
 // media (so downloads are testable via `npm run web`) and never cache the app shell,
@@ -74,7 +77,7 @@ self.addEventListener('fetch', (event) => {
     // Never persist token-bearing media (covers embed ?token=): the session token
     // would be written into Cache Storage, and every entry turns into unreachable
     // garbage the moment the token rotates. Let the browser fetch these directly.
-    if (url.searchParams.has('token')) return;
+    if (url.searchParams.has(TOKEN_PARAM)) return;
     event.respondWith(staleWhileRevalidate(request));
   }
   // else: let the browser handle it (API requests, server-streamed audio, …)

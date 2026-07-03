@@ -59,28 +59,24 @@ class ConfigRecord : Record {
 private class ChapterMap(val clips: List<ChapterRecord>) {
   /** (fileIndex, seconds-within-file) → (clip item index, clip-relative ms). */
   fun fileToItem(fileIndex: Int, fileRelSec: Double): Pair<Int, Long> {
-    var firstOfFile = -1
-    var floorOfFile = -1 // latest clip of this file that starts at or before the target
+    // Fallback candidate: the latest clip of this file that starts at or before the
+    // target, else the file's first clip (when the target precedes every clip).
+    var candidate = -1
     for (i in clips.indices) {
       val c = clips[i]
       if (c.fileIndex != fileIndex) continue
-      if (firstOfFile < 0) firstOfFile = i
-      val end = if (c.endInFile > 0) c.endInFile else Double.MAX_VALUE
+      val end = if (c.endInFile > c.startInFile) c.endInFile else Double.MAX_VALUE
       if (fileRelSec >= c.startInFile && fileRelSec < end) {
         return Pair(i, (((fileRelSec - c.startInFile) * 1000).toLong()).coerceAtLeast(0L))
       }
-      if (c.startInFile <= fileRelSec) floorOfFile = i
+      if (candidate < 0 || c.startInFile <= fileRelSec) candidate = i
     }
     // Position not inside any clip of that file (a gap between chapters, or rounding past
-    // the last boundary). Snap to the clip it falls at/after (floorOfFile) and measure the
-    // offset against THAT clip's start - measuring against the file's first clip seeked
-    // into the wrong chapter's content. Clamp within the chosen clip so we never cross its
-    // clipped end. Before the first clip → the first clip at position 0.
-    val idx = when {
-      floorOfFile >= 0 -> floorOfFile
-      firstOfFile >= 0 -> firstOfFile
-      else -> 0
-    }
+    // the last boundary). Snap to the candidate and measure the offset against THAT
+    // clip's start - measuring against the file's first clip seeked into the wrong
+    // chapter's content. Clamp within the chosen clip so we never cross its clipped end;
+    // before the first clip the negative offset clamps to 0 (the clip's start).
+    val idx = candidate.coerceAtLeast(0)
     val clip = clips.getOrNull(idx)
     val start = clip?.startInFile ?: 0.0
     val clipLenMs = clip?.let {
