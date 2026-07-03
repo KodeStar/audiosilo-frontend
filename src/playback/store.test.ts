@@ -59,7 +59,7 @@ jest.mock('@/api/provider', () => ({
 }));
 
 /* eslint-disable import/first */
-import { usePlayer } from './store';
+import { stopPlaybackForServer, usePlayer } from './store';
 /* eslint-enable import/first */
 
 // --- Fixtures --------------------------------------------------------------
@@ -576,5 +576,37 @@ describe('resume never restarts an in-progress book from 0', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(mockSaveProgress).toHaveBeenCalled();
+  });
+});
+
+describe('stopPlaybackForServer (the token-revoking teardown rule)', () => {
+  const apiFor = (baseUrl: string): ApiClient =>
+    ({ ...fakeApi(), baseUrl }) as unknown as ApiClient;
+
+  it('stops playback when the playing book came from that server', async () => {
+    await usePlayer.getState().playBook(apiFor('https://a.example'), 2, makeBook(), undefined, 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+
+    (mockSvc.reset as jest.Mock).mockClear();
+    // A DIFFERENT client instance for the same server must still match - the provider
+    // rebuilds ApiClient instances whenever the connection list changes, so the helper
+    // matches by baseUrl, not identity.
+    await stopPlaybackForServer(apiFor('https://a.example'));
+
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('leaves a book from another server playing (its token stays valid)', async () => {
+    await usePlayer.getState().playBook(apiFor('https://a.example'), 2, makeBook(), undefined, 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+
+    (mockSvc.reset as jest.Mock).mockClear();
+    await stopPlaybackForServer(apiFor('https://b.example'));
+
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).not.toBeNull();
   });
 });

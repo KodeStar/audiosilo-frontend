@@ -183,8 +183,7 @@ function armStallWatchdog() {
     if (!wantsPlayback) return; // attempt abandoned (user paused/stopped)
     const { snapshot } = usePlayer.getState();
     if (snapshot.state === 'playing') return; // we made it
-    wantsPlayback = false;
-    startingPlayback = false;
+    clearPlaybackIntent();
     usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
     haltAndPersist();
   }, STALL_GRACE_MS);
@@ -204,6 +203,16 @@ function cancelStallWatchdog() {
     clearTimeout(stallTimer);
     stallTimer = null;
   }
+}
+
+/** Abandon the playback attempt/intent - the inverse of `beginPlaybackAttempt`. Shared
+ * by every path that settles into not-playing (user pause/stop, the engine's terminal
+ * states, the watchdog firing, a failed resume lookup) so no site can forget a piece
+ * of the intent state. */
+function clearPlaybackIntent() {
+  wantsPlayback = false;
+  startingPlayback = false;
+  cancelStallWatchdog();
 }
 
 /** Mark the start of a listening span when playback begins. */
@@ -308,20 +317,15 @@ async function ensureService(): Promise<PlaybackService> {
         // buffer that outlasts the grace surfaces an error. Idempotent - already armed
         // when an attempt began. Only when we intend to play.
         if (wantsPlayback) armStallWatchdog();
-      } else if (
-        snapshot.state === 'paused' ||
-        snapshot.state === 'ended' ||
-        snapshot.state === 'error' ||
-        snapshot.state === 'idle'
-      ) {
-        // Genuine terminal (a start-window transient was normalized to `loading`
+      } else {
+        // Any other settled state (a start-window transient was normalized to `loading`
         // above): a real pause, a finished book, a dead stream the web/Android engines
-        // report directly, or Android's STATE_IDLE after a stop-like failure. All must
-        // clear intent and halt the loop - an unhandled `idle` would otherwise leave the
-        // 15s save loop re-persisting the same position forever.
-        wantsPlayback = false;
-        startingPlayback = false;
-        cancelStallWatchdog();
+        // report directly, Android's STATE_IDLE after a stop-like failure, or a stray
+        // `ready`. All clear intent and halt the loop. Deliberately NOT an enumerated
+        // state list - that list kept coming up short (an unhandled `idle` left the 15s
+        // save loop re-persisting the same position forever); like the error hold above,
+        // anything that isn't `playing`/`loading` settles playback.
+        clearPlaybackIntent();
         haltAndPersist();
       }
     }
@@ -367,6 +371,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       local,
       useSettings.getState().virtualChapterInterval,
     );
+    const nowPlaying: NowPlaying = {
+      libraryId,
+      path: book.rel_path,
+      title: book.title,
+      author: book.author || book.narrator || '',
+      cover: local?.artwork ?? api.coverUrl(libraryId, book.rel_path),
+      queue,
+    };
     const svc = await ensureService();
 
     let startAt = startBookPosition ?? 0;
@@ -387,19 +399,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         // in `subscribe` isn't defeated by leftover `wantsPlayback`) and reset the engine
         // (so the previous book's audio + ticks stop). Without this the old book keeps
         // playing while the UI shows the new one, and its ticks save under the new path.
-        wantsPlayback = false;
-        startingPlayback = false;
+        clearPlaybackIntent();
         await svc.reset();
         set({
           rate: speed,
-          nowPlaying: {
-            libraryId,
-            path: book.rel_path,
-            title: book.title,
-            author: book.author || book.narrator || '',
-            cover: local?.artwork ?? api.coverUrl(libraryId, book.rel_path),
-            queue,
-          },
+          nowPlaying,
           snapshot: { ...INITIAL_SNAPSHOT, state: 'error', rate: speed },
         });
         return;
@@ -415,17 +419,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // The position we actually resumed from (covers resume, bookmark jump and startTrack);
     // the save guard won't let progress regress below it without a deliberate seek.
     resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
-    set({
-      rate: speed,
-      nowPlaying: {
-        libraryId,
-        path: book.rel_path,
-        title: book.title,
-        author: book.author || book.narrator || '',
-        cover: local?.artwork ?? api.coverUrl(libraryId, book.rel_path),
-        queue,
-      },
-    });
+    set({ rate: speed, nowPlaying });
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
     await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
     await svc.setRate(speed);
@@ -441,9 +435,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // or mid-playback stall) cancels the attempt instead of re-arming a new one.
     const st = get().snapshot.state;
     if (st === 'playing' || st === 'loading') {
-      wantsPlayback = false;
-      startingPlayback = false;
-      cancelStallWatchdog();
+      clearPlaybackIntent();
       await svc.pause();
     } else {
       beginPlaybackAttempt();
@@ -452,9 +444,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   },
 
   pause: async () => {
-    wantsPlayback = false;
-    startingPlayback = false;
-    cancelStallWatchdog();
+    clearPlaybackIntent();
     const svc = await ensureService();
     // Also pause while still `loading`: an in-flight start would otherwise resolve
     // to `playing` and silently defeat the pause (e.g. the sleep timer firing while
@@ -554,9 +544,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   },
 
   stop: async () => {
-    wantsPlayback = false;
-    startingPlayback = false;
-    cancelStallWatchdog();
+    clearPlaybackIntent();
     stopSaveLoop();
     await persist();
     invalidateProgressLists();
@@ -564,6 +552,20 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
 }));
+
+/**
+ * Stop playback (persisting the final position) when the playing book was loaded
+ * through the given connection's client. Sign-out and connection-removal both revoke
+ * that connection's token, and the stop must come first so the final save still
+ * authenticates - this is the shared teardown rule for every token-revoking path
+ * (use-sign-out.ts, connections-section.tsx). Books playing through another connection
+ * keep going: their token stays valid. Matched by server (`baseUrl`), not client
+ * instance - the provider rebuilds ApiClient instances whenever the connection list
+ * changes, so instance equality would silently skip the stop.
+ */
+export async function stopPlaybackForServer(api: ApiClient): Promise<void> {
+  if (apiRef?.baseUrl === api.baseUrl) await usePlayer.getState().stop();
+}
 
 /**
  * Hot-swap the currently-playing book onto its local files the moment its download
