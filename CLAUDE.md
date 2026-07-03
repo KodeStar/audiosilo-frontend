@@ -130,9 +130,13 @@ media GETs only.
     (`pendingSeek`/`applyPendingSeek`), with play gated (`wantsPlay`) so audio never
     briefly starts at 0. Android doesn't have this - Media3's `setMediaItems(items,
     startIndex, startPositionMs)` honors the start natively.
-  - **Now Playing focus / "pause needs two presses".** `MPNowPlayingInfoCenter.
-    playbackState` must be kept in sync (`syncPlaybackState`); leaving it `.unknown`
-    makes iOS spend the first remote/earbud press claiming now-playing focus.
+  - **Single earbud press / "pause needs two presses".** `MPNowPlayingInfoCenter.
+    playbackState` is entitlement-gated and silently ignored for third-party apps, so
+    iOS infers our play state itself and can get stuck (sending Play while we're already
+    playing, so the press no-ops). Fix: route the play, pause AND toggle remote commands
+    all through one real-transport-state `togglePlayback()` (reads
+    `player.timeControlStatus`), so a single press always flips playback. (There is no
+    `syncPlaybackState` - that was an earlier, abandoned approach.)
   - **Interruption auto-resume.** Only resume on interruption `.ended` if we were
     actually playing when it began (`wasPlayingBeforeInterruption`) - otherwise the
     charging chime (a brief interruption) resumes a paused book.

@@ -82,6 +82,11 @@ final class AudioEngine: NSObject {
   /// then do we auto-resume on .ended (so the charging chime can't resume a book
   /// the user had paused).
   private var wasPlayingBeforeInterruption = false
+  /// Retained handler tokens for the shared MPRemoteCommandCenter so deinit can remove
+  /// them. The center is an app-wide singleton that retains each added block for the
+  /// app's lifetime; without removal a recreated engine leaks its predecessor's handlers
+  /// (they linger as [weak self] no-ops on the shared center). Paired with their command.
+  private var commandTargets: [(command: MPRemoteCommand, target: Any)] = []
   private let send: (String, [String: Any]) -> Void
 
   init(send: @escaping (String, [String: Any]) -> Void) {
@@ -186,6 +191,11 @@ final class AudioEngine: NSObject {
   }
 
   private func performPendingSeek(on item: AVPlayerItem) {
+    // A deferred readiness callback hops to main async, so a newer load() can swap the
+    // current item before it runs. Ignore a stale item: proceeding would invalidate the
+    // NEW load's startObs and consume its pendingSeek, then seek the old item - leaving
+    // the new book stuck at 0 (its deferred resume seek never fires).
+    guard item === player.currentItem else { return }
     startObs?.invalidate()
     startObs = nil
     guard pendingSeek > 0 else { return }
@@ -247,16 +257,26 @@ final class AudioEngine: NSObject {
     // rather than flipping `.status` to `.failed`. Report a sustained `loading` so the
     // shared JS stall watchdog surfaces `error` after its grace - every failure path
     // converges on the same consistent, non-instant feedback.
-    guard !rebuilding else { return }
-    DispatchQueue.main.async { self.send("onState", ["state": "loading"]) }
+    // The observers are registered with object:nil (they fire for ANY item), so filter
+    // to the current item - a stale/queued item tearing down must not be attributed to
+    // the live stream and trip a spurious error. Capture n.object now, compare on main.
+    let item = n.object as? AVPlayerItem
+    DispatchQueue.main.async {
+      guard !self.rebuilding, item === self.player.currentItem else { return }
+      self.send("onState", ["state": "loading"])
+    }
   }
 
   /// Fired when playback stalls mid-item (buffer underrun). Report `loading`; the
   /// shared JS stall watchdog promotes a stall that doesn't recover within its grace
-  /// to `error`.
+  /// to `error`. Filtered to the current item (see handleItemFailedToEnd) since the
+  /// observer fires for any item.
   @objc private func handlePlaybackStalled(_ n: Notification) {
-    guard !rebuilding else { return }
-    send("onState", ["state": "loading"])
+    let item = n.object as? AVPlayerItem
+    DispatchQueue.main.async {
+      guard !self.rebuilding, item === self.player.currentItem else { return }
+      self.send("onState", ["state": "loading"])
+    }
   }
 
   // MARK: Transport
@@ -371,42 +391,52 @@ final class AudioEngine: NSObject {
   // MARK: Observers
 
   private func observePlayer() {
+    // Both KVO callbacks can fire on an internal AVFoundation thread. Hop to main
+    // before touching engine state (currentIndex, queued, Now Playing) so they stay
+    // serialized with the main-thread mutators (rebuildQueue/skip); otherwise
+    // currentIndex tears. This mirrors the item observers, which already hop. Re-reading
+    // p.* on main also avoids acting on a value already superseded by a newer rebuild
+    // (e.g. the transient nil currentItem during removeAllItems).
     statusObs = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
-      guard let self = self, !self.rebuilding else { return }
-      let state: String
-      switch p.timeControlStatus {
-      case .playing:
-        state = "playing"
-      case .waitingToPlayAtSpecifiedRate:
-        // Wants to play but can't (buffering / underrun). With
-        // automaticallyWaitsToMinimizeStalling on (the default), this is where a
-        // stalled stream lands - report 'loading'; the shared JS stall watchdog
-        // promotes a stall that doesn't recover within its grace to 'error'.
-        state = "loading"
-      case .paused:
-        // A failed item also parks the player at .paused - keep reporting 'loading'
-        // there so the JS watchdog treats it as a dead stream, not a user pause.
-        if p.currentItem?.status == .failed {
+      DispatchQueue.main.async {
+        guard let self = self, !self.rebuilding else { return }
+        let state: String
+        switch p.timeControlStatus {
+        case .playing:
+          state = "playing"
+        case .waitingToPlayAtSpecifiedRate:
+          // Wants to play but can't (buffering / underrun). With
+          // automaticallyWaitsToMinimizeStalling on (the default), this is where a
+          // stalled stream lands - report 'loading'; the shared JS stall watchdog
+          // promotes a stall that doesn't recover within its grace to 'error'.
           state = "loading"
-        } else {
-          state = (p.currentItem == nil && !self.tracks.isEmpty) ? "ended" : "paused"
+        case .paused:
+          // A failed item also parks the player at .paused - keep reporting 'loading'
+          // there so the JS watchdog treats it as a dead stream, not a user pause.
+          if p.currentItem?.status == .failed {
+            state = "loading"
+          } else {
+            state = (p.currentItem == nil && !self.tracks.isEmpty) ? "ended" : "paused"
+          }
+        @unknown default:
+          state = "paused"
         }
-      @unknown default:
-        state = "paused"
+        self.send("onState", ["state": state])
       }
-      self.send("onState", ["state": state])
     }
     itemObs = player.observe(\.currentItem, options: [.new]) { [weak self] p, _ in
-      guard let self = self, !self.rebuilding else { return }
-      if let cur = p.currentItem, let match = self.queued.first(where: { $0.item === cur }) {
-        self.observeItemFailure() // re-attach to the now-current item
-        if match.index != self.currentIndex {
-          self.currentIndex = match.index
-          self.updateNowPlayingInfo()
-          self.send("onTrackChange", ["index": self.currentIndex])
+      DispatchQueue.main.async {
+        guard let self = self, !self.rebuilding else { return }
+        if let cur = p.currentItem, let match = self.queued.first(where: { $0.item === cur }) {
+          self.observeItemFailure() // re-attach to the now-current item
+          if match.index != self.currentIndex {
+            self.currentIndex = match.index
+            self.updateNowPlayingInfo()
+            self.send("onTrackChange", ["index": self.currentIndex])
+          }
+        } else if p.currentItem == nil && !self.tracks.isEmpty {
+          self.send("onState", ["state": "ended"])
         }
-      } else if p.currentItem == nil && !self.tracks.isEmpty {
-        self.send("onState", ["state": "ended"])
       }
     }
   }
@@ -473,6 +503,12 @@ final class AudioEngine: NSObject {
 
   // MARK: Remote commands / Now Playing
 
+  /// Add a remote-command handler and retain its token so deinit can remove it.
+  private func addCommand(_ command: MPRemoteCommand,
+                          _ handler: @escaping (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus) {
+    commandTargets.append((command, command.addTarget(handler: handler)))
+  }
+
   private func setupRemoteCommands() {
     // Receive hardware remote-control events (Bluetooth/AVRCP earbud, wired headset).
     UIApplication.shared.beginReceivingRemoteControlEvents()
@@ -485,28 +521,28 @@ final class AudioEngine: NSObject {
     // playing, so the press no-ops and the user has to press a second time. Routing
     // Play, Pause and Toggle all through one real-state toggle makes a single press
     // always flip playback, regardless of what iOS believes.
-    cc.playCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
-    cc.pauseCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
-    cc.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
+    addCommand(cc.playCommand) { [weak self] _ in self?.togglePlayback(); return .success }
+    addCommand(cc.pauseCommand) { [weak self] _ in self?.togglePlayback(); return .success }
+    addCommand(cc.togglePlayPauseCommand) { [weak self] _ in self?.togglePlayback(); return .success }
     cc.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForward)]
-    cc.skipForwardCommand.addTarget { [weak self] event in
+    addCommand(cc.skipForwardCommand) { [weak self] event in
       guard let self = self else { return .commandFailed }
       self.seek(by: (event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpForward)
       return .success
     }
     cc.skipBackwardCommand.preferredIntervals = [NSNumber(value: jumpBackward)]
-    cc.skipBackwardCommand.addTarget { [weak self] event in
+    addCommand(cc.skipBackwardCommand) { [weak self] event in
       guard let self = self else { return .commandFailed }
       self.seek(by: -((event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpBackward))
       return .success
     }
-    cc.changePlaybackPositionCommand.addTarget { [weak self] event in
+    addCommand(cc.changePlaybackPositionCommand) { [weak self] event in
       guard let self = self, let e = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
       self.seek(to: e.positionTime)
       return .success
     }
-    cc.nextTrackCommand.addTarget { [weak self] _ in self?.skipToNext(); return .success }
-    cc.previousTrackCommand.addTarget { [weak self] _ in self?.skipToPrevious(); return .success }
+    addCommand(cc.nextTrackCommand) { [weak self] _ in self?.skipToNext(); return .success }
+    addCommand(cc.previousTrackCommand) { [weak self] _ in self?.skipToPrevious(); return .success }
   }
 
   private func updateNowPlayingInfo() {
@@ -549,9 +585,13 @@ final class AudioEngine: NSObject {
 
   deinit {
     if let timeObserver = timeObserver { player.removeTimeObserver(timeObserver) }
+    statusObs?.invalidate()
+    itemObs?.invalidate()
     itemStatusObs?.invalidate()
     failureObs?.invalidate()
     startObs?.invalidate()
+    for (command, target) in commandTargets { command.removeTarget(target) }
+    commandTargets.removeAll()
     NotificationCenter.default.removeObserver(self)
   }
 }

@@ -60,6 +60,7 @@ private class ChapterMap(val clips: List<ChapterRecord>) {
   /** (fileIndex, seconds-within-file) → (clip item index, clip-relative ms). */
   fun fileToItem(fileIndex: Int, fileRelSec: Double): Pair<Int, Long> {
     var firstOfFile = -1
+    var floorOfFile = -1 // latest clip of this file that starts at or before the target
     for (i in clips.indices) {
       val c = clips[i]
       if (c.fileIndex != fileIndex) continue
@@ -68,12 +69,24 @@ private class ChapterMap(val clips: List<ChapterRecord>) {
       if (fileRelSec >= c.startInFile && fileRelSec < end) {
         return Pair(i, (((fileRelSec - c.startInFile) * 1000).toLong()).coerceAtLeast(0L))
       }
+      if (c.startInFile <= fileRelSec) floorOfFile = i
     }
-    // Position not inside any clip of that file (e.g. rounding past the last boundary):
-    // land at the first clip of the file, else the very first clip.
-    val idx = if (firstOfFile >= 0) firstOfFile else 0
-    val start = clips.getOrNull(idx)?.startInFile ?: 0.0
-    return Pair(idx, (((fileRelSec - start) * 1000).toLong()).coerceAtLeast(0L))
+    // Position not inside any clip of that file (a gap between chapters, or rounding past
+    // the last boundary). Snap to the clip it falls at/after (floorOfFile) and measure the
+    // offset against THAT clip's start - measuring against the file's first clip seeked
+    // into the wrong chapter's content. Clamp within the chosen clip so we never cross its
+    // clipped end. Before the first clip → the first clip at position 0.
+    val idx = when {
+      floorOfFile >= 0 -> floorOfFile
+      firstOfFile >= 0 -> firstOfFile
+      else -> 0
+    }
+    val clip = clips.getOrNull(idx)
+    val start = clip?.startInFile ?: 0.0
+    val clipLenMs = clip?.let {
+      if (it.endInFile > it.startInFile) ((it.endInFile - it.startInFile) * 1000).toLong() else Long.MAX_VALUE
+    } ?: Long.MAX_VALUE
+    return Pair(idx, (((fileRelSec - start) * 1000).toLong()).coerceIn(0L, clipLenMs))
   }
 
   /** (clip item index, clip-relative ms) → (fileIndex, seconds-within-file). */
@@ -130,9 +143,12 @@ class AudiosiloPlayerModule : Module() {
 
     AsyncFunction("setConfig") { config: ConfigRecord ->
       // Auto-rewind is applied natively (AudiobookPlayer) so it covers lock-screen resumes
-      // too. The lock-screen 30s skip buttons use the player's fixed seek increments
-      // (set on the ExoPlayer), so skip intervals aren't plumbed here.
+      // too. The jump intervals feed the lock-screen skip buttons - the seek amount is read
+      // live in the service's custom-command handler; the notification glyphs pick up a
+      // changed value on the next service start (nearest predefined ICON_SKIP_*).
       PlayerConfig.autoRewindMaxMs = (config.autoRewindMax * 1000).toLong()
+      PlayerConfig.jumpForwardMs = (config.jumpForward * 1000).toLong()
+      PlayerConfig.jumpBackwardMs = (config.jumpBackward * 1000).toLong()
     }
 
     AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double, chapters: List<ChapterRecord>? ->
@@ -237,7 +253,9 @@ class AudiosiloPlayerModule : Module() {
         val c = future.get()
         controller = c
         attachListener(c)
-        startProgressLoop()
+        // The loop is play-state-driven (onIsPlayingChanged). If we reconnected to a
+        // service that is already playing, kick it off now since no transition will fire.
+        if (c.isPlaying) startProgressLoop()
         promise.resolve(null)
       } catch (e: Exception) {
         promise.reject("ERR_MEDIA_CONTROLLER", "Failed to connect to media session", e)
@@ -248,8 +266,22 @@ class AudiosiloPlayerModule : Module() {
   private fun attachListener(c: MediaController) {
     c.addListener(object : Player.Listener {
       override fun onPlaybackStateChanged(playbackState: Int) = emitState()
-      override fun onIsPlayingChanged(isPlaying: Boolean) = emitState()
+      override fun onIsPlayingChanged(isPlaying: Boolean) {
+        emitState()
+        // Tick progress only while actually playing - a paused audiobook can sit for hours,
+        // and emitting every second wakes JS for no position change (battery). Emit one
+        // final sample on pause; paused seeks still report via onPositionDiscontinuity.
+        if (isPlaying) startProgressLoop() else {
+          emitProgress()
+          stopProgressLoop()
+        }
+      }
       override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = emitState()
+      override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+      ) = emitProgress()
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         // Report the FILE index. In chapter mode several consecutive items belong to the
         // same file; emitTrackChange dedupes, so this only fires when the file changes.
@@ -284,31 +316,35 @@ class AudiosiloPlayerModule : Module() {
     }
   }
 
+  /** Emit one progress sample (file-relative position + FILE duration). Safe to call in
+   * any state; driven by the play-time loop and by onPositionDiscontinuity (paused seeks). */
+  private fun emitProgress() {
+    val c = controller ?: return
+    if (c.mediaItemCount == 0) return
+    val map = chapterMap
+    if (map != null) {
+      // Translate the engine's clip position back to a file-relative position +
+      // the FILE duration, so the JS store's file-based timeline math is unchanged.
+      val (fileIndex, fileSec) = map.itemToFile(c.currentMediaItemIndex, c.currentPosition)
+      val dur = fileDurations.getOrElse(fileIndex) { 0.0 }
+      sendEvent("onProgress", mapOf("position" to fileSec, "duration" to dur))
+    } else {
+      val pos = c.currentPosition / 1000.0
+      val dur = if (c.duration > 0) c.duration / 1000.0 else 0.0
+      sendEvent("onProgress", mapOf("position" to pos, "duration" to dur))
+    }
+  }
+
   private fun startProgressLoop() {
     stopProgressLoop()
     val runnable = object : Runnable {
       override fun run() {
-        controller?.let { c ->
-          if (c.mediaItemCount > 0) {
-            val map = chapterMap
-            if (map != null) {
-              // Translate the engine's clip position back to a file-relative position +
-              // the FILE duration, so the JS store's file-based timeline math is unchanged.
-              val (fileIndex, fileSec) = map.itemToFile(c.currentMediaItemIndex, c.currentPosition)
-              val dur = fileDurations.getOrElse(fileIndex) { 0.0 }
-              sendEvent("onProgress", mapOf("position" to fileSec, "duration" to dur))
-            } else {
-              val pos = c.currentPosition / 1000.0
-              val dur = if (c.duration > 0) c.duration / 1000.0 else 0.0
-              sendEvent("onProgress", mapOf("position" to pos, "duration" to dur))
-            }
-          }
-        }
+        emitProgress()
         handler.postDelayed(this, 1000)
       }
     }
     progressRunnable = runnable
-    handler.postDelayed(runnable, 1000)
+    handler.post(runnable) // emit immediately, then every second while playing
   }
 
   private fun stopProgressLoop() {

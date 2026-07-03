@@ -138,8 +138,8 @@
       "closeLabel": "Close scanner",
       "invalidCode": "That QR code isn't an AudioSilo pairing code.",
       "permissionTitle": "Camera access needed",
-      "permissionMessage": "Allow camera access to scan your server's pairing QR code.",
-      "allowCamera": "Allow camera",
+      "permissionDenied": "AudioSilo needs camera access to scan your server's pairing QR code.",
+      "tryAgain": "Try again",
       "openSettings": "Open settings",
       "aimHint": "Point your camera at the pairing QR on your server's connect page."
     }

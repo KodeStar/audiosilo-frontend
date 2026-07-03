@@ -138,8 +138,8 @@
       "closeLabel": "Fechar o leitor",
       "invalidCode": "Esse código QR não é um código de emparelhamento do AudioSilo.",
       "permissionTitle": "É necessário acesso à câmara",
-      "permissionMessage": "Permite o acesso à câmara para ler o código QR de emparelhamento do teu servidor.",
-      "allowCamera": "Permitir a câmara",
+      "permissionDenied": "O AudioSilo precisa de acesso à câmara para ler o código QR de emparelhamento do teu servidor.",
+      "tryAgain": "Tentar novamente",
       "openSettings": "Abrir definições",
       "aimHint": "Aponta a câmara para o código QR de emparelhamento na página de ligação do teu servidor."
     }
