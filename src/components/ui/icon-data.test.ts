@@ -12,7 +12,7 @@ describe('icon-data (vendored FontAwesome SVG)', () => {
     const { width, height, path } = ICON_DATA[name];
     expect(width).toBeGreaterThan(0);
     expect(height).toBeGreaterThan(0);
-    // A non-empty path that starts with a moveto — i.e. real SVG data, not a stub.
+    // A non-empty path that starts with a moveto - i.e. real SVG data, not a stub.
     expect(path).toMatch(/^[Mm]/);
     // No quotes/backslashes: icon.tsx inlines these as `d=` and the generator
     // single-quotes them, so either would corrupt the file.

@@ -1,6 +1,6 @@
 import { getLocale } from '@/i18n/locale';
 
-/** "12h 30m" / "45m" / "30s" — compact total-duration label. */
+/** "12h 30m" / "45m" / "30s" - compact total-duration label. */
 export function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0) return '';
   const total = Math.round(seconds);
@@ -11,7 +11,7 @@ export function formatDuration(seconds?: number): string {
   return `${total}s`;
 }
 
-/** "1:02:03" / "2:05" — transport clock. */
+/** "1:02:03" / "2:05" - transport clock. */
 export function formatClock(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
   const h = Math.floor(total / 3600);
@@ -22,7 +22,7 @@ export function formatClock(seconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/** "1.2 GB" / "340 MB" / "12 KB" — human-readable file size. The number is
+/** "1.2 GB" / "340 MB" / "12 KB" - human-readable file size. The number is
  * locale-formatted (e.g. "1,2 GB" in de); the unit symbols are universal. */
 export function formatBytes(bytes?: number, locale: string = getLocale()): string {
   if (!bytes || bytes <= 0) return '0 B';
@@ -41,7 +41,7 @@ export function formatBitrate(sizeBytes?: number, durationSec?: number): string 
   return kbps > 0 ? `${kbps}kbps` : '';
 }
 
-/** "8m52s" / "1h33m" / "45s" — compact spoken-style duration (per old client). */
+/** "8m52s" / "1h33m" / "45s" - compact spoken-style duration (per old client). */
 export function formatDurationFull(seconds?: number): string {
   if (!seconds || seconds <= 0) return '';
   const t = Math.round(seconds);
@@ -53,7 +53,7 @@ export function formatDurationFull(seconds?: number): string {
   return `${s}s`;
 }
 
-/** "5m 12s" / "1h 5m" / "45s" — the two most-significant units of a short
+/** "5m 12s" / "1h 5m" / "45s" - the two most-significant units of a short
  * duration, spaced. Used by the sleep timer's end-of-chapter countdown list. */
 export function formatCountdown(seconds: number): string {
   const t = Math.max(0, Math.round(seconds));
@@ -65,9 +65,9 @@ export function formatCountdown(seconds: number): string {
   return `${s}s`;
 }
 
-/** "now" / "3 days ago" / "2 months ago" — coarse relative time from an RFC3339
+/** "now" / "3 days ago" / "2 months ago" - coarse relative time from an RFC3339
  * timestamp. Uses `Intl.RelativeTimeFormat` (locale-formatted, `numeric: 'auto'`
- * yields "yesterday"/"last month") where available — web and Node — but Hermes
+ * yields "yesterday"/"last month") where available - web and Node - but Hermes
  * (React Native) does NOT ship `Intl.RelativeTimeFormat`, so we fall back to a
  * plain English formatter rather than crashing. Empty when the input is missing
  * or unparseable. */

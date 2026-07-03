@@ -138,8 +138,8 @@
       "closeLabel": "Fermer le scanner",
       "invalidCode": "Ce code QR n'est pas un code d'association AudioSilo.",
       "permissionTitle": "Accès à la caméra requis",
-      "permissionMessage": "Autorisez l'accès à la caméra pour scanner le code QR d'association de votre serveur.",
-      "allowCamera": "Autoriser la caméra",
+      "permissionDenied": "AudioSilo a besoin d'accéder à la caméra pour scanner le code QR d'association de votre serveur.",
+      "tryAgain": "Réessayer",
       "openSettings": "Ouvrir les réglages",
       "aimHint": "Pointez votre caméra vers le code QR d'association sur la page de connexion de votre serveur."
     }
@@ -312,7 +312,7 @@
     "downloads": "Téléchargements",
     "settings": "Réglages",
     "logout": "Déconnexion",
-    "offline": "Hors ligne — les modifications se synchronisent à la reconnexion",
+    "offline": "Hors ligne - les modifications se synchronisent à la reconnexion",
     "searchPlaceholder": "Rechercher…"
   },
   "ui": {

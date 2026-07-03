@@ -29,6 +29,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import java.io.File
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 // Custom session commands for the 30s skip buttons. They must be CUSTOM actions (not the
@@ -49,20 +50,21 @@ object AuthHolder {
 
 /**
  * User-configurable playback tunables, shared from the Expo module's `setConfig` to the
- * player. Just the auto-rewind window, read live by [AudiobookPlayer.play] so a resume
- * from anywhere (the lock screen included) rewinds by the current Settings value.
+ * player: the auto-rewind window (read live by [AudiobookPlayer.play] so a resume from
+ * anywhere, the lock screen included, rewinds by the current Settings value) and the
+ * skip intervals (read live by [AudiobookPlayer.seekBack]/[AudiobookPlayer.seekForward]).
  */
 object PlayerConfig {
   @Volatile var autoRewindMaxMs: Long = 0
+  // Skip amounts (ms). The seek honors these immediately; the notification glyphs
+  // (nearest predefined ICON_SKIP_*) are chosen when the layout is built at start.
+  @Volatile var jumpForwardMs: Long = 30_000
+  @Volatile var jumpBackwardMs: Long = 15_000
 }
-
-/** Lock-screen 30s skip increment (both directions). Fixed (matches the ICON_SKIP_*_30
- * glyphs); the in-app controller still uses the user's configurable intervals. */
-private const val SKIP_INCREMENT_MS = 30_000L
 
 /**
  * Wraps the ExoPlayer so audiobook behavior applies no matter where a command
- * originates (lock screen, notification, headset, or the JS bridge — all route through
+ * originates (lock screen, notification, headset, or the JS bridge - all route through
  * the session's player):
  *  - **Auto-rewind on resume** lives in [play] (not the JS bridge), so resuming from the
  *    lock screen rewinds too. [prepare] resets the baseline so a freshly-loaded book
@@ -71,6 +73,9 @@ private const val SKIP_INCREMENT_MS = 30_000L
  *    multi-file book) → the lock screen gets prev/next-chapter buttons. With a single
  *    item (a chapterless single-file book) they're hidden so a tap can't "restart the
  *    only book".
+ *  - **Configurable skips**: [seekBack]/[seekForward] seek by the live [PlayerConfig]
+ *    intervals instead of ExoPlayer's build-time increments, so the lock-screen skip
+ *    buttons (and any other controller) honor the Settings value.
  */
 private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
   private var pausedAt: Long = 0L
@@ -97,7 +102,7 @@ private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
     val maxMs = PlayerConfig.autoRewindMaxMs
     if (maxMs > 0 && pausedAt > 0L) {
       val rewind = minOf(maxMs, System.currentTimeMillis() - pausedAt)
-      if (rewind > 500) seekTo(maxOf(0L, currentPosition - rewind))
+      if (rewind > 500) seekBackBy(rewind)
     }
     pausedAt = 0L
     super.play()
@@ -107,6 +112,22 @@ private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
     pausedAt = System.currentTimeMillis()
     super.pause()
   }
+
+  // Seek by the user-configured Settings intervals (live from PlayerConfig), clamped
+  // within the current item/clip - NOT ExoPlayer's build-time fixed increment, which
+  // ignored the Settings value (the lock screen always jumped 30s). The increment
+  // getters report the same values so anything displaying them stays truthful.
+  override fun getSeekBackIncrement(): Long = PlayerConfig.jumpBackwardMs
+  override fun getSeekForwardIncrement(): Long = PlayerConfig.jumpForwardMs
+
+  override fun seekBack() = seekBackBy(PlayerConfig.jumpBackwardMs)
+
+  override fun seekForward() {
+    val max = if (duration != C.TIME_UNSET) duration else Long.MAX_VALUE
+    seekTo(minOf(max, currentPosition + PlayerConfig.jumpForwardMs))
+  }
+
+  private fun seekBackBy(ms: Long) = seekTo(maxOf(0L, currentPosition - ms))
 }
 
 /**
@@ -121,6 +142,8 @@ private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
 @androidx.annotation.OptIn(UnstableApi::class)
 class AudiosiloPlayerService : MediaSessionService() {
   private var mediaSession: MediaSession? = null
+  /** Single-thread artwork loader executor; retained so onDestroy can shut it down. */
+  private var bitmapExecutor: ExecutorService? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -134,7 +157,7 @@ class AudiosiloPlayerService : MediaSessionService() {
     // Cache streamed bytes so the repeated opens that chapter clips make over the SAME
     // single-file m4b reuse already-downloaded data + the parsed container header,
     // keeping chapter transitions gapless. Local (downloaded) file:// sources bypass
-    // this — DefaultDataSource routes them to the file data source, not the http upstream.
+    // this - DefaultDataSource routes them to the file data source, not the http upstream.
     val cacheFactory = CacheDataSource.Factory()
       .setCache(getCache(this))
       .setUpstreamDataSourceFactory(upstream)
@@ -151,21 +174,20 @@ class AudiosiloPlayerService : MediaSessionService() {
       .setMediaSourceFactory(mediaSourceFactory)
       .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
       .setHandleAudioBecomingNoisy(true)
-      .setSeekBackIncrementMs(SKIP_INCREMENT_MS)
-      .setSeekForwardIncrementMs(SKIP_INCREMENT_MS)
       .build()
     val player = AudiobookPlayer(exoPlayer)
 
-    // Authenticated artwork loader (uses the same headers as the stream).
+    // Authenticated artwork loader (uses the same headers as the stream). Retain the
+    // executor so onDestroy can shut it down - an unmanaged newSingleThreadExecutor leaks
+    // its non-daemon thread when the service dies.
+    val executor = Executors.newSingleThreadExecutor()
+    bitmapExecutor = executor
     val bitmapLoader = CacheBitmapLoader(
-      DataSourceBitmapLoader(
-        MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
-        dataSourceFactory,
-      ),
+      DataSourceBitmapLoader(MoreExecutors.listeningDecorator(executor), dataSourceFactory),
     )
 
     // App logo as the notification small icon (Media3's default is a generic glyph).
-    // Must be a white/transparent silhouette — the system tints it.
+    // Must be a white/transparent silhouette - the system tints it.
     setMediaNotificationProvider(
       DefaultMediaNotificationProvider.Builder(this).build().apply {
         setSmallIcon(R.drawable.ic_notification)
@@ -176,7 +198,7 @@ class AudiosiloPlayerService : MediaSessionService() {
       .setBitmapLoader(bitmapLoader)
       .setCallback(MediaCallback)
       // Use setCustomLayout (NOT setMediaButtonPreferences): the slot-based preferences
-      // capped the notification at 3 actions on 1.5.1 (it drops the secondary slots —
+      // capped the notification at 3 actions on 1.5.1 (it drops the secondary slots -
       // verified via dumpsys, actions=3). setCustomLayout makes the provider build
       // [prev, play/pause, next] (auto, from command availability) + the custom skip
       // buttons → all 5 actions, alongside the draggable chapter scrubber. (dumpsys: actions=5)
@@ -187,7 +209,7 @@ class AudiosiloPlayerService : MediaSessionService() {
   /**
    * The 30s skip buttons for the notification's custom layout. Media3's notification
    * provider builds the action row as **standard [prev, play/pause, next]** (auto-added
-   * from the player's available seek-to-prev/next commands — present for a chaptered book,
+   * from the player's available seek-to-prev/next commands - present for a chaptered book,
    * absent for a single-item/chapterless book) **plus the CUSTOM-command buttons** from the
    * custom layout. So we only declare the two skip buttons here and let prev/next-chapter
    * fill in automatically → the full `[prev] [play] [next] [back-30] [fwd-30]` row.
@@ -197,20 +219,34 @@ class AudiosiloPlayerService : MediaSessionService() {
    * UI ignores. Predefined `ICON_SKIP_*_30` icons render without an app-shipped drawable.
    */
   private fun mediaButtons(): List<CommandButton> = listOf(
-    CommandButton.Builder(CommandButton.ICON_SKIP_BACK_30)
+    CommandButton.Builder(skipIcon(PlayerConfig.jumpBackwardMs, forward = false))
       .setSessionCommand(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
-      .setDisplayName("Back 30 seconds")
+      .setDisplayName("Back ${PlayerConfig.jumpBackwardMs / 1000} seconds")
       .build(),
-    CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_30)
+    CommandButton.Builder(skipIcon(PlayerConfig.jumpForwardMs, forward = true))
       .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
-      .setDisplayName("Forward 30 seconds")
+      .setDisplayName("Forward ${PlayerConfig.jumpForwardMs / 1000} seconds")
       .build(),
   )
 
+  /** Nearest predefined Media3 skip glyph for a configured interval. Media3 ships only
+   * 5/10/15/30s icons, so an off-scale value shows the closest one; the actual seek uses
+   * the exact configured amount (see [AudiobookPlayer.seekBack]/[AudiobookPlayer.seekForward]). */
+  private fun skipIcon(ms: Long, forward: Boolean): Int {
+    val sec = ms / 1000
+    return when {
+      sec <= 7 -> if (forward) CommandButton.ICON_SKIP_FORWARD_5 else CommandButton.ICON_SKIP_BACK_5
+      sec <= 12 -> if (forward) CommandButton.ICON_SKIP_FORWARD_10 else CommandButton.ICON_SKIP_BACK_10
+      sec <= 22 -> if (forward) CommandButton.ICON_SKIP_FORWARD_15 else CommandButton.ICON_SKIP_BACK_15
+      else -> if (forward) CommandButton.ICON_SKIP_FORWARD_30 else CommandButton.ICON_SKIP_BACK_30
+    }
+  }
+
   /**
    * Grants the custom skip commands to connecting controllers (so the buttons are enabled)
-   * and runs them as the player's own 30s seek (clip-bounded → stays within the chapter,
-   * which is fine; prev/next chapter cross boundaries).
+   * and runs them as the player's own seek ([AudiobookPlayer.seekBack]/[seekForward], the
+   * live Settings intervals; clip-bounded → stays within the chapter, which is fine -
+   * prev/next chapter cross boundaries).
    */
   private object MediaCallback : MediaSession.Callback {
     override fun onConnect(
@@ -233,6 +269,7 @@ class AudiosiloPlayerService : MediaSessionService() {
       args: Bundle,
     ): ListenableFuture<SessionResult> {
       when (customCommand.customAction) {
+        // AudiobookPlayer overrides these to seek by the live user-configured intervals.
         CMD_SEEK_BACK -> session.player.seekBack()
         CMD_SEEK_FORWARD -> session.player.seekForward()
       }
@@ -245,7 +282,7 @@ class AudiosiloPlayerService : MediaSessionService() {
   override fun onTaskRemoved(rootIntent: Intent?) {
     // The user swiped the app away from recents. Android usually keeps the (now
     // task-less) process cached, so the next launch is a warm resume on the last
-    // route — and that restored screen renders blank on the new Activity. Record the
+    // route - and that restored screen renders blank on the new Activity. Record the
     // dismissal so the JS layer can reset to Home on the next foreground, matching the
     // iOS cold-start behavior the user expects. A plain app-switch never lands here.
     getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -264,6 +301,8 @@ class AudiosiloPlayerService : MediaSessionService() {
       release()
     }
     mediaSession = null
+    bitmapExecutor?.shutdown()
+    bitmapExecutor = null
     // The cache is a process-lifetime singleton (a SimpleCache instance owns its folder);
     // don't release it here, or a service restart couldn't reopen the same folder.
     super.onDestroy()

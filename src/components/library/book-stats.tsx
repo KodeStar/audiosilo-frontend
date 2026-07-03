@@ -34,7 +34,7 @@ function Divider() {
 
 /**
  * The three-up stat strip on the book overview: a favourite toggle, the download
- * size over its format, and the total length — split by hairline dividers and
+ * size over its format, and the total length - split by hairline dividers and
  * spread across the full width. Shared by the phone and wide (detail-panel)
  * overviews so they stay consistent.
  */

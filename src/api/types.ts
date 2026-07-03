@@ -1,7 +1,7 @@
 /**
  * TypeScript mirrors of the audiosilo-server JSON API shapes
  * (github.com/kodestar/audiosilo-server). Content is addressed by
- * (library_id, path) — never a database id.
+ * (library_id, path) - never a database id.
  */
 
 export type Capabilities = {
@@ -57,9 +57,9 @@ export type PairingPayload = {
   server_name: string;
   base_url: string;
   pairing_token: string;
-  /** audiosilo://connect?server=<base>&token=<pairing_token> — custom-scheme "Open in app" link. */
+  /** audiosilo://connect?server=<base>&token=<pairing_token> - custom-scheme "Open in app" link. */
   uri: string;
-  /** https://<base>/web/connect?token=<pairing_token> — encoded in the QR. */
+  /** https://<base>/web/connect?token=<pairing_token> - encoded in the QR. */
   web_url: string;
   qr_png_data_uri: string;
   links: { web: string; admin: string; ios?: string; android?: string };
@@ -73,7 +73,7 @@ export type Library = {
   root: string;
   default_view: LibraryView;
   /** Display order (lower first). Also the tiebreaker when the same book exists in
-   * more than one library — the earlier library's copy wins de-duplication. */
+   * more than one library - the earlier library's copy wins de-duplication. */
   sort_order: number;
 };
 
@@ -93,7 +93,7 @@ export type FsEntry = {
   series_index?: number;
   duration?: number;
   /** Per-folder detection override ("book" | "collection"); empty when auto-detected.
-   * An admin-console concern — the player browses read-only — but mirrored for completeness. */
+   * An admin-console concern - the player browses read-only - but mirrored for completeness. */
   override?: string;
 };
 
@@ -151,7 +151,7 @@ export type Book = {
   files?: BookFile[];
   chapters?: Chapter[];
   /** Groups copies of the same logical book (across libraries, and later servers)
-   * so a client can collapse duplicates. A display-grouping HINT, not an identity —
+   * so a client can collapse duplicates. A display-grouping HINT, not an identity -
    * never key durable state on it. Present on de-duplicated lists (search/recent). */
   dedup_key?: string;
   /** Whether the book has more than one audio file (a multipart book). Used to rank
@@ -162,7 +162,7 @@ export type Book = {
   other_locations?: BookLocation[];
 };
 
-/** One copy of a book in a particular library — the non-winning copies behind a
+/** One copy of a book in a particular library - the non-winning copies behind a
  * de-duplicated search/recent result. */
 export type BookLocation = {
   library_id: number;

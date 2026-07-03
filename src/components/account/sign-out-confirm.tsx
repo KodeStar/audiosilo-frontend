@@ -8,7 +8,7 @@ import { Text } from '@/components/ui/text';
 /**
  * Confirmation shown before signing out a user who has no durable way back in (no
  * password and no recovery code). It offers to set a recovery credential instead
- * of stranding them. Presentational only — the caller decides what each action
+ * of stranding them. Presentational only - the caller decides what each action
  * does (both the Settings screen and the sidebar mint and reveal a recovery code).
  */
 export function SignOutConfirm({

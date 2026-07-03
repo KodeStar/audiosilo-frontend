@@ -34,7 +34,7 @@ import { colors } from '@/theme/tokens';
 /**
  * The full transport for the currently-playing book, driven by the player store.
  * Rendered inside the player modal (phone) and as the right-hand panel on the
- * desktop book screen — identical everywhere except the close button, which the
+ * desktop book screen - identical everywhere except the close button, which the
  * phone modal supplies via `onClose` (the desktop panel has nothing to close).
  *
  * The top toolbar's right side is the home for player actions (bookmark,
@@ -93,7 +93,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const total = queue.total;
   const rateLabel = `${Number(rate.toFixed(2))}×`;
   // When file durations are unknown (total 0), the whole-book timeline isn't
-  // reliable — drive the UI from the engine's current-track position/duration
+  // reliable - drive the UI from the engine's current-track position/duration
   // and navigate per-file instead.
   const perTrack = total <= 0;
   // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
@@ -191,20 +191,20 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
 
       {/* Middle (flex-1, centered): fills the space between header and footer and
           centers the cover + transport as a group. flex-1 here stretches the
-          *container*, not the content — justify-center keeps the cover/title/
+          *container*, not the content - justify-center keeps the cover/title/
           controls tightly grouped and absorbs the leftover space symmetrically,
           so the layout looks the same regardless of viewport height (web window
-          vs tall phone). The inner transport stays content-sized — a flex-1
+          vs tall phone). The inner transport stays content-sized - a flex-1
           child here would collapse on iOS (Yoga). */}
       <View className="flex-1 justify-center items-center p-8 ">
         {/* Cover fills the space; falls back to the title when there's no art.
             One unified card: cover flush at the rounded top, transport in the
             padded body. Shadow in light mode; in dark mode (where a shadow is
-            invisible) a subtle border gives the edge — the codebase convention
+            invisible) a subtle border gives the edge - the codebase convention
             (see ui/card.tsx).
 
             Background: native (iOS/Android) derives a view's drop shadow from the
-            alpha mask of its *content*, not its border box — so a translucent
+            alpha mask of its *content*, not its border box - so a translucent
             bg (black/5) makes shadow-lg hug only the opaque cover, not the whole
             card. Use an opaque surface on native (matching the black/5 ~ white/5
             tint over the gray-200/gray-800 page) so the shadow wraps the full
@@ -234,7 +234,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
           </View>
 
           {/* Transport: fills the card body (w-full) so the seek bar and controls
-            span the same width on web and native — without it the row shrink-wraps
+            span the same width on web and native - without it the row shrink-wraps
             and renders as a narrow column inset in the card on mobile. */}
           <View className="w-full p-4">
             <View className="w-full flex flex-row items-center justify-between">
@@ -376,7 +376,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
         </View>
       </View>
       {/* Footer (auto height): the secondary action row. Sits at the bottom
-          because the middle above is flex-1 — no mt-auto hack needed. */}
+          because the middle above is flex-1 - no mt-auto hack needed. */}
       <View className="flex-row items-center justify-between px-8 py-2">
         <SpeedButton />
         <Pressable onPress={() => setSheet('history')} hitSlop={8} className="items-center gap-0.5">

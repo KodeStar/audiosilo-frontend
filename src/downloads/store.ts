@@ -46,7 +46,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       // document-container path can change between installs/launches (notably dev
       // rebuilds), which leaves the persisted absolute uris stale even though the
       // files are still on disk. Without this the existence check below fails and
-      // the book is dropped *and deleted* — the download vanishes after a rebuild.
+      // the book is dropped *and deleted* - the download vanishes after a rebuild.
       const e = relocateEntry(raw);
       // Only fully-downloaded books survive a relaunch; our engine can't resume a
       // download interrupted by an app kill, so partials are dropped + cleaned up.
@@ -66,7 +66,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     set({ entries: cleaned, hydrated: true, supported: engine.supported });
     await persist();
 
-    // On web, having the Cache API isn't enough — offline files only play if the
+    // On web, having the Cache API isn't enough - offline files only play if the
     // service worker is actually controlling the page and serving them. Probe the
     // real path (no real download needed) and downgrade `supported` if it can't, so
     // the UI hides downloads instead of offering ones that won't play offline.
@@ -227,7 +227,7 @@ async function runOne(key: string) {
       );
     } catch (e) {
       if (isAbort(e)) throw e; // a cancel during cover download still cancels the book
-      // otherwise the cover is optional — carry on without it
+      // otherwise the cover is optional - carry on without it
     }
 
     const files: DownloadedFile[] = [];
@@ -268,7 +268,7 @@ async function runOne(key: string) {
     if (engine.verify && files.length > 0 && !(await engine.verify(files[0].localUri))) {
       patchEntry(key, {
         status: 'error',
-        error: 'Saved, but offline playback isn’t ready yet — reload the app, then retry.',
+        error: 'Saved, but offline playback isn’t ready yet - reload the app, then retry.',
         progress: 1,
         bytes: priorBytes,
         manifest,
@@ -283,7 +283,7 @@ async function runOne(key: string) {
   } catch (e) {
     void engine.removeBook(libraryId, path);
     if (isAbort(e)) {
-      removeEntry(key); // cancelled — drop the partial entry
+      removeEntry(key); // cancelled - drop the partial entry
     } else {
       patchEntry(key, {
         status: 'error',

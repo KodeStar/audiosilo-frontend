@@ -11,7 +11,7 @@ import { chapterAt } from '@/playback/book-queue';
 import { colors } from '@/theme/tokens';
 
 /** Recent listening spans for a book. Each span shows its START (▶) and END (⏸)
- * positions, both independently tappable, so you can jump to either — the end is
+ * positions, both independently tappable, so you can jump to either - the end is
  * "where I left off" (handy recovery), the start replays the span. When `chapters`
  * (carrying whole-book offsets) are supplied, each position is also labelled with
  * its chapter, which is far easier to read than a raw timestamp. The footer shows

@@ -23,7 +23,7 @@ struct ConfigRecord: Record {
 }
 
 /// Chapter clips passed by the shared bridge for the Android lock screen. iOS accepts
-/// them (so the `load` argument count matches) but ignores them — iOS plays file items
+/// them (so the `load` argument count matches) but ignores them - iOS plays file items
 /// and uses MPRemoteCommandCenter for lock-screen controls.
 struct ChapterRecord: Record {
   @Field var fileIndex: Int = 0
@@ -73,15 +73,20 @@ final class AudioEngine: NSObject {
   /// 0 = none. Seeking a not-yet-ready AVPlayerItem is silently dropped, so the
   /// resume/skip seek is deferred until .readyToPlay (see applyPendingSeek).
   private var pendingSeek: Double = 0
-  /// A play() was requested while a pendingSeek was still in flight — start the
+  /// A play() was requested while a pendingSeek was still in flight - start the
   /// instant the seek lands, so audio never briefly begins at 0.
   private var wantsPlay = false
   /// Observes the current item's readiness to run the deferred start seek.
   private var startObs: NSKeyValueObservation?
-  /// Whether playback was active when an audio-session interruption began — only
+  /// Whether playback was active when an audio-session interruption began - only
   /// then do we auto-resume on .ended (so the charging chime can't resume a book
   /// the user had paused).
   private var wasPlayingBeforeInterruption = false
+  /// Retained handler tokens for the shared MPRemoteCommandCenter so deinit can remove
+  /// them. The center is an app-wide singleton that retains each added block for the
+  /// app's lifetime; without removal a recreated engine leaks its predecessor's handlers
+  /// (they linger as [weak self] no-ops on the shared center). Paired with their command.
+  private var commandTargets: [(command: MPRemoteCommand, target: Any)] = []
   private let send: (String, [String: Any]) -> Void
 
   init(send: @escaping (String, [String: Any]) -> Void) {
@@ -102,7 +107,7 @@ final class AudioEngine: NSObject {
       try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
       try session.setActive(true)
     } catch {
-      // best effort — playback still works without long-form policy
+      // best effort - playback still works without long-form policy
     }
   }
 
@@ -157,8 +162,8 @@ final class AudioEngine: NSObject {
     }
     currentIndex = startIndex
     // Defer the start seek until the item is actually ready. Seeking a freshly
-    // created AVPlayerItem before .readyToPlay is silently dropped — especially
-    // for streaming assets — which made resume play the book from 0.
+    // created AVPlayerItem before .readyToPlay is silently dropped - especially
+    // for streaming assets - which made resume play the book from 0.
     pendingSeek = max(0, position)
     applyPendingSeek()
     reassertRateWhenReady()
@@ -186,6 +191,11 @@ final class AudioEngine: NSObject {
   }
 
   private func performPendingSeek(on item: AVPlayerItem) {
+    // A deferred readiness callback hops to main async, so a newer load() can swap the
+    // current item before it runs. Ignore a stale item: proceeding would invalidate the
+    // NEW load's startObs and consume its pendingSeek, then seek the old item - leaving
+    // the new book stuck at 0 (its deferred resume seek never fires).
+    guard item === player.currentItem else { return }
     startObs?.invalidate()
     startObs = nil
     guard pendingSeek > 0 else { return }
@@ -204,7 +214,7 @@ final class AudioEngine: NSObject {
   }
 
   /// AVPlayer can silently drop a `rate` set on a not-yet-ready item back to 1.0 once
-  /// that item becomes ready — which made the chosen speed revert to 1x when a
+  /// that item becomes ready - which made the chosen speed revert to 1x when a
   /// mid-playback download swap replaced the streaming item with the local file (the
   /// JS state still showed the old speed because the engine never reads `rate` back).
   /// Watch the freshly-current item and re-assert the intended rate once it's ready.
@@ -225,7 +235,7 @@ final class AudioEngine: NSObject {
   /// Watch the current item for a fatal `.failed` status and report it as a sustained
   /// `loading` to JS. A failed item parks the player at `.paused`, which would look
   /// like a user pause; reporting `loading` instead lets the shared JS stall watchdog
-  /// promote it to `error` after the same grace as a mid-stream stall — uniform, and
+  /// promote it to `error` after the same grace as a mid-stream stall - uniform, and
   /// never instant (an instant error caused a rapid-retry race). Re-attach on every
   /// current-item change (skip/advance/rebuild).
   private func observeItemFailure() {
@@ -242,21 +252,20 @@ final class AudioEngine: NSObject {
     }
   }
 
-  @objc private func handleItemFailedToEnd(_ n: Notification) {
-    // A stream that was playing and then became unreachable mid-item fires this
-    // rather than flipping `.status` to `.failed`. Report a sustained `loading` so the
-    // shared JS stall watchdog surfaces `error` after its grace — every failure path
-    // converges on the same consistent, non-instant feedback.
-    guard !rebuilding else { return }
-    DispatchQueue.main.async { self.send("onState", ["state": "loading"]) }
-  }
-
-  /// Fired when playback stalls mid-item (buffer underrun). Report `loading`; the
-  /// shared JS stall watchdog promotes a stall that doesn't recover within its grace
-  /// to `error`.
-  @objc private func handlePlaybackStalled(_ n: Notification) {
-    guard !rebuilding else { return }
-    send("onState", ["state": "loading"])
+  /// Shared handler for both mid-item trouble notifications: `failedToPlayToEndTime`
+  /// (a stream that was playing became unreachable - fires instead of flipping
+  /// `.status` to `.failed`) and `playbackStalled` (buffer underrun). Report a
+  /// sustained `loading` so the shared JS stall watchdog surfaces `error` after its
+  /// grace - every failure path converges on the same consistent, non-instant feedback.
+  /// The observers are registered with object:nil (they fire for ANY item), so filter
+  /// to the current item - a stale/queued item tearing down must not be attributed to
+  /// the live stream and trip a spurious error. Capture n.object now, compare on main.
+  @objc private func reportLoadingIfCurrent(_ n: Notification) {
+    let item = n.object as? AVPlayerItem
+    DispatchQueue.main.async {
+      guard !self.rebuilding, item === self.player.currentItem else { return }
+      self.send("onState", ["state": "loading"])
+    }
   }
 
   // MARK: Transport
@@ -275,7 +284,7 @@ final class AudioEngine: NSObject {
 
   func play() {
     // Reclaim the audio session so we're the active Now Playing app when (re)starting
-    // — another app may have taken it since we last played.
+    // - another app may have taken it since we last played.
     try? AVAudioSession.sharedInstance().setActive(true)
     if autoRewindMax > 0, let p = pausedAt, let item = player.currentItem {
       let elapsed = Date().timeIntervalSince(p)
@@ -286,7 +295,7 @@ final class AudioEngine: NSObject {
       }
     }
     pausedAt = nil
-    // A resume/skip seek hasn't landed yet — start the moment it does, so playback
+    // A resume/skip seek hasn't landed yet - start the moment it does, so playback
     // begins at the saved position instead of at 0.
     if pendingSeek > 0 {
       wantsPlay = true
@@ -371,42 +380,52 @@ final class AudioEngine: NSObject {
   // MARK: Observers
 
   private func observePlayer() {
+    // Both KVO callbacks can fire on an internal AVFoundation thread. Hop to main
+    // before touching engine state (currentIndex, queued, Now Playing) so they stay
+    // serialized with the main-thread mutators (rebuildQueue/skip); otherwise
+    // currentIndex tears. This mirrors the item observers, which already hop. Re-reading
+    // p.* on main also avoids acting on a value already superseded by a newer rebuild
+    // (e.g. the transient nil currentItem during removeAllItems).
     statusObs = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
-      guard let self = self, !self.rebuilding else { return }
-      let state: String
-      switch p.timeControlStatus {
-      case .playing:
-        state = "playing"
-      case .waitingToPlayAtSpecifiedRate:
-        // Wants to play but can't (buffering / underrun). With
-        // automaticallyWaitsToMinimizeStalling on (the default), this is where a
-        // stalled stream lands — report 'loading'; the shared JS stall watchdog
-        // promotes a stall that doesn't recover within its grace to 'error'.
-        state = "loading"
-      case .paused:
-        // A failed item also parks the player at .paused — keep reporting 'loading'
-        // there so the JS watchdog treats it as a dead stream, not a user pause.
-        if p.currentItem?.status == .failed {
+      DispatchQueue.main.async {
+        guard let self = self, !self.rebuilding else { return }
+        let state: String
+        switch p.timeControlStatus {
+        case .playing:
+          state = "playing"
+        case .waitingToPlayAtSpecifiedRate:
+          // Wants to play but can't (buffering / underrun). With
+          // automaticallyWaitsToMinimizeStalling on (the default), this is where a
+          // stalled stream lands - report 'loading'; the shared JS stall watchdog
+          // promotes a stall that doesn't recover within its grace to 'error'.
           state = "loading"
-        } else {
-          state = (p.currentItem == nil && !self.tracks.isEmpty) ? "ended" : "paused"
+        case .paused:
+          // A failed item also parks the player at .paused - keep reporting 'loading'
+          // there so the JS watchdog treats it as a dead stream, not a user pause.
+          if p.currentItem?.status == .failed {
+            state = "loading"
+          } else {
+            state = (p.currentItem == nil && !self.tracks.isEmpty) ? "ended" : "paused"
+          }
+        @unknown default:
+          state = "paused"
         }
-      @unknown default:
-        state = "paused"
+        self.send("onState", ["state": state])
       }
-      self.send("onState", ["state": state])
     }
     itemObs = player.observe(\.currentItem, options: [.new]) { [weak self] p, _ in
-      guard let self = self, !self.rebuilding else { return }
-      if let cur = p.currentItem, let match = self.queued.first(where: { $0.item === cur }) {
-        self.observeItemFailure() // re-attach to the now-current item
-        if match.index != self.currentIndex {
-          self.currentIndex = match.index
-          self.updateNowPlayingInfo()
-          self.send("onTrackChange", ["index": self.currentIndex])
+      DispatchQueue.main.async {
+        guard let self = self, !self.rebuilding else { return }
+        if let cur = p.currentItem, let match = self.queued.first(where: { $0.item === cur }) {
+          self.observeItemFailure() // re-attach to the now-current item
+          if match.index != self.currentIndex {
+            self.currentIndex = match.index
+            self.updateNowPlayingInfo()
+            self.send("onTrackChange", ["index": self.currentIndex])
+          }
+        } else if p.currentItem == nil && !self.tracks.isEmpty {
+          self.send("onState", ["state": "ended"])
         }
-      } else if p.currentItem == nil && !self.tracks.isEmpty {
-        self.send("onState", ["state": "ended"])
       }
     }
   }
@@ -416,7 +435,7 @@ final class AudioEngine: NSObject {
     timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
       // Don't report progress while a (re)load is in flight: a fresh AVPlayerItem
       // reads currentTime() == 0 until it's ready AND the deferred resume seek has
-      // applied. Emitting that 0 would clobber the saved position in JS — which made
+      // applied. Emitting that 0 would clobber the saved position in JS - which made
       // a retry after a failed reload resume the book from the start.
       guard let self = self,
             self.pendingSeek == 0,
@@ -434,9 +453,9 @@ final class AudioEngine: NSObject {
                    name: AVAudioSession.interruptionNotification, object: nil)
     nc.addObserver(self, selector: #selector(handleRouteChange(_:)),
                    name: AVAudioSession.routeChangeNotification, object: nil)
-    nc.addObserver(self, selector: #selector(handleItemFailedToEnd(_:)),
+    nc.addObserver(self, selector: #selector(reportLoadingIfCurrent(_:)),
                    name: AVPlayerItem.failedToPlayToEndTimeNotification, object: nil)
-    nc.addObserver(self, selector: #selector(handlePlaybackStalled(_:)),
+    nc.addObserver(self, selector: #selector(reportLoadingIfCurrent(_:)),
                    name: AVPlayerItem.playbackStalledNotification, object: nil)
   }
 
@@ -453,7 +472,7 @@ final class AudioEngine: NSObject {
       // Only auto-resume if we were actually playing when the interruption began.
       // The charging chime (and other brief system sounds) fire an interruption
       // whose .ended carries .shouldResume; without this guard that resumes a book
-      // the user had paused — e.g. playback starting when the phone is plugged in.
+      // the user had paused - e.g. playback starting when the phone is plugged in.
       guard wasPlayingBeforeInterruption else { return }
       if let optsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt,
          AVAudioSession.InterruptionOptions(rawValue: optsRaw).contains(.shouldResume) {
@@ -473,40 +492,46 @@ final class AudioEngine: NSObject {
 
   // MARK: Remote commands / Now Playing
 
+  /// Add a remote-command handler and retain its token so deinit can remove it.
+  private func addCommand(_ command: MPRemoteCommand,
+                          _ handler: @escaping (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus) {
+    commandTargets.append((command, command.addTarget(handler: handler)))
+  }
+
   private func setupRemoteCommands() {
     // Receive hardware remote-control events (Bluetooth/AVRCP earbud, wired headset).
     UIApplication.shared.beginReceivingRemoteControlEvents()
     let cc = MPRemoteCommandCenter.shared()
     // A single earbud/headset press is a *toggle*, but iOS/AVRCP delivers it as a
-    // discrete Play OR Pause chosen from iOS's own notion of our play state — which
+    // discrete Play OR Pause chosen from iOS's own notion of our play state - which
     // on iOS a third-party app can't correct (MPNowPlayingInfoCenter.playbackState is
     // entitlement-gated and silently ignored, so iOS infers the state itself and can
     // get stuck on "paused"). When it guesses wrong it sends Play while we're already
     // playing, so the press no-ops and the user has to press a second time. Routing
     // Play, Pause and Toggle all through one real-state toggle makes a single press
     // always flip playback, regardless of what iOS believes.
-    cc.playCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
-    cc.pauseCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
-    cc.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePlayback(); return .success }
+    addCommand(cc.playCommand) { [weak self] _ in self?.togglePlayback(); return .success }
+    addCommand(cc.pauseCommand) { [weak self] _ in self?.togglePlayback(); return .success }
+    addCommand(cc.togglePlayPauseCommand) { [weak self] _ in self?.togglePlayback(); return .success }
     cc.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForward)]
-    cc.skipForwardCommand.addTarget { [weak self] event in
+    addCommand(cc.skipForwardCommand) { [weak self] event in
       guard let self = self else { return .commandFailed }
       self.seek(by: (event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpForward)
       return .success
     }
     cc.skipBackwardCommand.preferredIntervals = [NSNumber(value: jumpBackward)]
-    cc.skipBackwardCommand.addTarget { [weak self] event in
+    addCommand(cc.skipBackwardCommand) { [weak self] event in
       guard let self = self else { return .commandFailed }
       self.seek(by: -((event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpBackward))
       return .success
     }
-    cc.changePlaybackPositionCommand.addTarget { [weak self] event in
+    addCommand(cc.changePlaybackPositionCommand) { [weak self] event in
       guard let self = self, let e = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
       self.seek(to: e.positionTime)
       return .success
     }
-    cc.nextTrackCommand.addTarget { [weak self] _ in self?.skipToNext(); return .success }
-    cc.previousTrackCommand.addTarget { [weak self] _ in self?.skipToPrevious(); return .success }
+    addCommand(cc.nextTrackCommand) { [weak self] _ in self?.skipToNext(); return .success }
+    addCommand(cc.previousTrackCommand) { [weak self] _ in self?.skipToPrevious(); return .success }
   }
 
   private func updateNowPlayingInfo() {
@@ -549,9 +574,13 @@ final class AudioEngine: NSObject {
 
   deinit {
     if let timeObserver = timeObserver { player.removeTimeObserver(timeObserver) }
+    statusObs?.invalidate()
+    itemObs?.invalidate()
     itemStatusObs?.invalidate()
     failureObs?.invalidate()
     startObs?.invalidate()
+    for (command, target) in commandTargets { command.removeTarget(target) }
+    commandTargets.removeAll()
     NotificationCenter.default.removeObserver(self)
   }
 }

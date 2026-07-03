@@ -9,7 +9,7 @@ import { shareText } from '@/lib/share';
 /**
  * Shows a freshly minted recovery code in an always-on-top dialog so the one-time
  * secret can't scroll off-screen or be missed below the fold. The server never
- * returns it again, so dismissing the dialog is the only way to clear it — by
+ * returns it again, so dismissing the dialog is the only way to clear it - by
  * which point the user has had the chance to copy or share it.
  */
 export function RecoveryCodeModal({ code, onClose }: { code: string | null; onClose: () => void }) {

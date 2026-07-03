@@ -35,7 +35,7 @@ export default function PlayerScreen() {
   const chaptersQuery = useChapters(libraryId, path);
   const chapterData = chaptersQuery.data;
 
-  // Start playback once the book AND its chapters/files have loaded — otherwise
+  // Start playback once the book AND its chapters/files have loaded - otherwise
   // multi-file/folder books would fall back to streaming the folder path and
   // chapters would be missing. Start point priority: explicit position (bookmark
   // jump) > resume. If this book is already playing, only honor an explicit jump.
@@ -45,7 +45,7 @@ export default function PlayerScreen() {
     const hasPos = posParam !== undefined && !Number.isNaN(posParam);
     const trackParam = track !== undefined ? Number(track) : undefined;
     const hasTrack = trackParam !== undefined && !Number.isNaN(trackParam);
-    // Compare against the book's canonical rel_path — playBook stores that as
+    // Compare against the book's canonical rel_path - playBook stores that as
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
     // playBook every render (hammering getProgress + restarting playback).

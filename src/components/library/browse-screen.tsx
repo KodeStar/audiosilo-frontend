@@ -89,7 +89,7 @@ export function BrowseScreen() {
 
   // Flatten sections into rows; record each section's header row index (the A–Z
   // rail's scroll target) and the cumulative pixel offset of every row (so
-  // getItemLayout — and thus the rail jump — is exact).
+  // getItemLayout - and thus the rail jump - is exact).
   const { rows, headerRows, offsets } = useMemo(() => {
     const rows: Row[] = [];
     const headerRows: number[] = [];

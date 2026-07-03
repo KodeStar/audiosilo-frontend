@@ -203,7 +203,7 @@ describe('progress-sync', () => {
     expect(r).toEqual({ kind: 'failed' });
   });
 
-  it('loadInitialProgress: reconciles by updated_at — newer mirror wins over older server', async () => {
+  it('loadInitialProgress: reconciles by updated_at - newer mirror wins over older server', async () => {
     // Mirror is newer than what the server returns.
     await saveProgress(
       fakeApi(() => Promise.resolve()),

@@ -6,7 +6,7 @@ export type DownloadStatus = 'queued' | 'downloading' | 'downloaded' | 'error';
 export type DownloadedFile = { relPath: string; localUri: string };
 
 /**
- * Offline source of truth for a downloaded book — everything the playback layer
+ * Offline source of truth for a downloaded book - everything the playback layer
  * needs to build the queue and render the player with no network: the book +
  * chapters metadata, the local audio files (in play order), and a local cover.
  */
@@ -55,14 +55,14 @@ export interface DownloadEngine {
   /** Whether a previously downloaded local file still exists on disk. */
   fileExists(localUri: string): Promise<boolean>;
   /**
-   * Whether a just-downloaded file can actually be *played back offline* right now —
+   * Whether a just-downloaded file can actually be *played back offline* right now -
    * stronger than `fileExists`. On web, having bytes in the cache isn't enough: the
    * service worker has to be controlling the page to serve them, so this exercises
    * the real offline path. Omitted where presence implies playability (native disk).
    */
   verify?(localUri: string): Promise<boolean>;
   /**
-   * Whether offline playback works *at all* in this environment — a self-test that
+   * Whether offline playback works *at all* in this environment - a self-test that
    * needs no real download (web: round-trips a throwaway file through the service
    * worker). Lets the UI hide downloads up front rather than only failing after one.
    * Omitted where `supported` already implies it (native).

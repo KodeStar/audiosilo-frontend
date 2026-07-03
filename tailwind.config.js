@@ -6,7 +6,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Brand accent — Tailwind pink-600, ported from the old client.
+        // Brand accent - Tailwind pink-600, ported from the old client.
         primary: {
           DEFAULT: '#db2777',
           50: '#fdf2f8',

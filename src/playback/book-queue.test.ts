@@ -128,7 +128,7 @@ describe('buildBookQueue', () => {
     // No explicit files list: tracks derive from the distinct chapter file_paths in
     // first-seen order [p2, p1] → offsets [0, 50]. The chapters carry file_index
     // values that DON'T match that track order, so a correct build must locate each
-    // chapter's offset by its file_path (its real track), not by file_index — keying
+    // chapter's offset by its file_path (its real track), not by file_index - keying
     // by file_index here would place the p2 chapter on p1's offset and vice-versa.
     const book = makeBook({
       rel_path: 'A/Book',
@@ -309,6 +309,29 @@ describe('buildChapterClips', () => {
     expect(buildChapterClips(specs, chapters)).toEqual([]);
   });
 
+  it('falls back to [] when a non-final in-file chapter has a non-positive span (bad metadata)', () => {
+    // The middle chapter has end <= start; endInFile 0 would be read as "to end of
+    // file", swallowing the rest and making the third clip replay it.
+    const specs = [spec('a.m4b', 300)];
+    const chapters = [
+      chapter({ index: 0, file_path: 'a.m4b', start: 0, end: 100 }),
+      chapter({ index: 1, file_path: 'a.m4b', start: 100, end: 0 }),
+      chapter({ index: 2, file_path: 'a.m4b', start: 200, end: 300 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([]);
+  });
+
+  it('falls back to [] when a file has no chapters covering it (specs/chapters mismatch)', () => {
+    // p2.mp3 is a real track but no chapter references it; its positions would fall
+    // through the native fileToItem fallback into p1's clip.
+    const specs = [spec('p1.mp3', 60), spec('p2.mp3', 90)];
+    const chapters = [
+      chapter({ index: 0, file_path: 'p1.mp3', start: 0, end: 30 }),
+      chapter({ index: 1, file_path: 'p1.mp3', start: 30, end: 60 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([]);
+  });
+
   it('buildBookQueue exposes chapterClips consistent with chapters', () => {
     const book = makeBook({ rel_path: 'A/single.m4b', duration: 200 });
     const chapterData: ChaptersResponse = {
@@ -404,14 +427,14 @@ describe('chapterCountdowns', () => {
 
   it('scales untilEnd by the playback rate (wall-clock), leaving endPosition alone', () => {
     const out = chapterCountdowns(chapters, 90, undefined, 2);
-    expect(out[0].endPosition).toBe(200); // content position — unchanged by rate
+    expect(out[0].endPosition).toBe(200); // content position - unchanged by rate
     expect(out[0].untilEnd).toBe(55); // (200 - 90) / 2
     expect(out[1].untilEnd).toBe(115); // (320 - 90) / 2
   });
 
   it('applies rate to the maxSeconds window so it counts real listening time', () => {
     // 20 × 10min content. At 1x the hour window keeps 7; at 2x an hour of real time
-    // spans 2h of content, so more chapters fit — the window is wall-clock.
+    // spans 2h of content, so more chapters fit - the window is wall-clock.
     const at1x = chapterCountdowns(evenChapters(20, 600), 0, { minCount: 5, maxSeconds: 3600 }, 1);
     const at2x = chapterCountdowns(evenChapters(20, 600), 0, { minCount: 5, maxSeconds: 3600 }, 2);
     expect(at1x).toHaveLength(7);
@@ -439,11 +462,11 @@ describe('chapterCountdowns', () => {
     // 12 × 10min: countdowns 10,20,…,120min. First over 60min is the 70-min one.
     const out = chapterCountdowns(evenChapters(12, 600), 0, { minCount: 5, maxSeconds: 3600 });
     expect(out).toHaveLength(7);
-    expect(out[6].untilEnd).toBe(4200); // 70 min — the chapter that crosses the hour
+    expect(out[6].untilEnd).toBe(4200); // 70 min - the chapter that crosses the hour
   });
 
   it('never shows fewer than minCount even when the hour is reached sooner', () => {
-    // 10 × 20min: 20,40,60,80,… — the hour is crossed at the 4th, but min is 5.
+    // 10 × 20min: 20,40,60,80,… - the hour is crossed at the 4th, but min is 5.
     const out = chapterCountdowns(evenChapters(10, 1200), 0, { minCount: 5, maxSeconds: 3600 });
     expect(out).toHaveLength(5);
   });

@@ -12,7 +12,7 @@ export type PlaybackTrack = {
 };
 
 /**
- * A chapter clip for the native engine to play as a clipped media item — the basis
+ * A chapter clip for the native engine to play as a clipped media item - the basis
  * for the Android lock screen's chapter-relative scrubber and prev/next-chapter
  * buttons. `fileIndex` indexes into the `tracks` passed to `load`; `startInFile`/
  * `endInFile` bound the clip within that file (`endInFile <= 0` ⇒ play to end of
@@ -77,7 +77,7 @@ export interface PlaybackService {
    * Swap the queue to a new source as gaplessly as possible: keep the current
    * source playing until the new one is buffered and ready at `positionInTrack`,
    * then switch. Used to move a streaming book onto its just-downloaded local files
-   * without an audible gap. Optional — callers fall back to `load` + `play`.
+   * without an audible gap. Optional - callers fall back to `load` + `play`.
    *
    * Resolves `true` if the swap happened, `false` if it was refused (e.g. the local
    * source can't be served) and the original source is still playing.
