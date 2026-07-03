@@ -105,7 +105,7 @@
       "connect": "Ligar",
       "enterAddress": "Introduz o endereço do teu servidor",
       "missingAddress": "Falta o endereço do servidor a esta ligação de emparelhamento. Introduze-o abaixo.",
-      "pairingFailed": "Falha no emparelhamento: {{message}}. O código pode ter expirado - pede um novo convite.",
+      "pairingFailed": "Falha no emparelhamento: {{message}}. Também podes ligar-te introduzindo o teu código de convite no ecrã de início de sessão.",
       "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",
       "serverError": "O servidor respondeu com um erro: {{message}}",
       "reachError": "Não foi possível contactar esse servidor. Verifica o endereço e se está online.",
