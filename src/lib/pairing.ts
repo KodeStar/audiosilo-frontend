@@ -33,8 +33,9 @@ function queryParam(query: string, key: string): string | null {
   return null;
 }
 
-// parsePairingScan extracts the server base URL and single-use pairing token from
-// the text encoded in a server's pairing QR. The QR carries the web handoff URL
+// parsePairingScan extracts the server base URL and pairing token from the text
+// encoded in a server's pairing QR (token redeemability follows its origin - see
+// the PairingPayload doc in api/types.ts). The QR carries the web handoff URL
 // `https://<base>/web/connect?token=<token>` (audiosilo-server internal/api/qr.go);
 // we also accept the custom-scheme deep link `audiosilo://connect?server=&token=`.
 // Returns null when the text is not a recognizable pairing payload.

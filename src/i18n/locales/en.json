@@ -105,7 +105,7 @@
       "connect": "Connect",
       "enterAddress": "Enter your server address",
       "missingAddress": "This pairing link is missing its server address. Enter it below.",
-      "pairingFailed": "Pairing failed: {{message}}. The code may have expired - ask for a new invite.",
+      "pairingFailed": "Pairing failed: {{message}}. You can also connect by entering your invite code on the sign-in screen.",
       "pairingReachError": "Could not reach the server to finish pairing.",
       "serverError": "Server responded with an error: {{message}}",
       "reachError": "Could not reach that server. Check the address and that it is online.",

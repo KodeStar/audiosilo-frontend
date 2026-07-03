@@ -18,9 +18,10 @@ import { useSession } from '@/stores/session';
 
 export default function ConnectServerScreen() {
   const { t } = useTranslation();
-  // A copy-invite link or pairing QR opens this screen with a single-use pairing
-  // `token` (and, on native, the `server` it belongs to). When present we exchange
-  // it for a session automatically - no server address or code to type.
+  // A copy-invite link or pairing QR opens this screen with a pairing `token`
+  // (and, on native, the `server` it belongs to). When present we exchange it for
+  // a session automatically - no server address or code to type. The token's
+  // redeemability follows its origin - see the PairingPayload doc in api/types.ts.
   const { token, server } = useLocalSearchParams<{ token?: string; server?: string }>();
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const setSession = useSession((s) => s.setSession);

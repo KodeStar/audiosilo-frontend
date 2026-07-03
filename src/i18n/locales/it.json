@@ -105,7 +105,7 @@
       "connect": "Connetti",
       "enterAddress": "Inserisci l'indirizzo del tuo server",
       "missingAddress": "A questo link di abbinamento manca l'indirizzo del server. Inseriscilo qui sotto.",
-      "pairingFailed": "Abbinamento non riuscito: {{message}}. Il codice potrebbe essere scaduto: richiedi un nuovo invito.",
+      "pairingFailed": "Abbinamento non riuscito: {{message}}. Puoi anche connetterti inserendo il tuo codice di invito nella schermata di accesso.",
       "pairingReachError": "Impossibile raggiungere il server per completare l'abbinamento.",
       "serverError": "Il server ha risposto con un errore: {{message}}",
       "reachError": "Impossibile raggiungere quel server. Controlla l'indirizzo e che sia online.",
