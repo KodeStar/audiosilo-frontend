@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { stopPlaybackForServer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
@@ -21,12 +22,13 @@ export function ConnectionsSection() {
   const remove = useSession((s) => s.removeConnection);
   const { clients } = useApiRegistry();
 
-  const onRemove = (id: string) => {
-    // Best-effort server-side logout for that connection, then forget it locally.
-    void clients
-      .get(id)
-      ?.logout()
-      .catch(() => {});
+  const onRemove = async (id: string) => {
+    const client = clients.get(id);
+    // Same teardown rule as sign-out (use-sign-out.ts): stop playback first when this
+    // connection is the one playing, so the final position persists while the token is
+    // still valid. Then best-effort server-side logout, and forget it locally.
+    if (client) await stopPlaybackForServer(client);
+    void client?.logout().catch(() => {});
     void remove(id);
   };
 
@@ -57,7 +59,7 @@ export function ConnectionsSection() {
                 {active ? <Icon name="check" size={16} color={colors.primary} /> : null}
               </Pressable>
               <Pressable
-                onPress={() => onRemove(c.id)}
+                onPress={() => void onRemove(c.id)}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={t('account.connections.remove', { name: c.name })}

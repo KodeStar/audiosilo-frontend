@@ -19,7 +19,7 @@ export const queryClient = new QueryClient({
 // When the server becomes reachable again, refetch so screens that errored or emptied
 // while offline repopulate on their own. Previously the offline banner cleared (it
 // reads reachability reactively) but the queries stayed in their failed/empty state
-// until the screen remounted — i.e. you had to navigate to another tab and back.
+// until the screen remounted - i.e. you had to navigate to another tab and back.
 // invalidateQueries only refetches currently-observed queries, so this is cheap.
 onReconnect(() => {
   void queryClient.invalidateQueries();
@@ -44,7 +44,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
   const activeId = useSession((s) => s.activeConnectionId);
 
-  // Build the clients only when the connections change — switching the active
+  // Build the clients only when the connections change - switching the active
   // connection must not tear down and recreate every ApiClient (it would drop
   // in-flight reachability probes and force-refetch every query).
   const clients = useMemo<Map<string, ApiClient>>(() => {

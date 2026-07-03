@@ -6,7 +6,7 @@ import { colors } from '@/theme/tokens';
 
 // Customises the static HTML shell Expo emits for every web route. This is where
 // the PWA install metadata and favicon live. Links use absolute, base-prefixed
-// hrefs so they resolve from nested routes too — empty base in dev (served at root),
+// hrefs so they resolve from nested routes too - empty base in dev (served at root),
 // "/web" in the production export (see base-url.ts).
 
 // Paint the document backdrop dark (the dark-mode-first default) before React

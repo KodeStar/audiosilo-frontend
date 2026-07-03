@@ -27,7 +27,7 @@ export type Connection = {
   user: User;
 };
 
-/** Connection metadata persisted to AsyncStorage (token excluded — see secure-store). */
+/** Connection metadata persisted to AsyncStorage (token excluded - see secure-store). */
 type PersistedConnection = Omit<Connection, 'token'>;
 
 type SessionState = {

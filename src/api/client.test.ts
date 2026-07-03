@@ -89,7 +89,7 @@ describe('ApiClient', () => {
     const tc = c.streamUrl(3, 'A/Book', false, { transcode: true, t: 42 });
     expect(tc).toMatch(/transcode=1/);
     expect(tc).toMatch(/[?&]t=42/);
-    // t=0 (start of file) is omitted — same as no offset, so a seek re-request is unambiguous.
+    // t=0 (start of file) is omitted - same as no offset, so a seek re-request is unambiguous.
     expect(c.streamUrl(3, 'A/Book', false, { transcode: true, t: 0 })).not.toMatch(/[?&]t=/);
   });
 

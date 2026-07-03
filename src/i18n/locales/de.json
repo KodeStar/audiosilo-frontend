@@ -138,8 +138,8 @@
       "closeLabel": "Scanner schließen",
       "invalidCode": "Dieser QR-Code ist kein AudioSilo-Kopplungscode.",
       "permissionTitle": "Kamerazugriff erforderlich",
-      "permissionMessage": "Erlaube den Kamerazugriff, um den Kopplungs-QR-Code deines Servers zu scannen.",
-      "allowCamera": "Kamera erlauben",
+      "permissionDenied": "AudioSilo benötigt Kamerazugriff, um den Kopplungs-QR-Code deines Servers zu scannen.",
+      "tryAgain": "Erneut versuchen",
       "openSettings": "Einstellungen öffnen",
       "aimHint": "Richte deine Kamera auf den Kopplungs-QR-Code auf der Verbindungsseite deines Servers."
     }

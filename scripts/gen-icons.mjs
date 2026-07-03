@@ -4,7 +4,7 @@
 // src/components/brand/logo.tsx (the same mark the in-app <Logo> draws), so the
 // brand never drifts between the UI and the launcher/tab icons. Run with:
 //   npm run gen:icons
-// Requires `sharp` (devDependency) — it rasterises SVG with no system deps.
+// Requires `sharp` (devDependency) - it rasterises SVG with no system deps.
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -66,13 +66,13 @@ async function emitPng(rel, opts, size) {
 }
 
 // Icon recipes -------------------------------------------------------------
-// pad is tight (0.06) so the mark fills the icon like the original client's —
+// pad is tight (0.06) so the mark fills the icon like the original client's -
 // the old 0.12 left a fat margin that read as a small logo on a launcher.
 const appIcon = { bg: '#ffffff', pad: 0.06 }; // opaque (iOS requires it)
 const maskable = { bg: '#ffffff', pad: 0.22 }; // extra safe-zone padding
 const onBlue = { bg: null, fill: '#ffffff', pad: 0.26 }; // white mark over the splash blue
 const adaptiveFg = { bg: null, pad: 0.28 }; // transparent; composited over the adaptive bg
-const faviconOpts = { bg: null, pad: 0.06 }; // transparent, tight — reads well in a tab
+const faviconOpts = { bg: null, pad: 0.06 }; // transparent, tight - reads well in a tab
 
 // Committed master SVGs (handy reference / favicon source).
 await emitSvg('assets/icon-src/icon.svg', master({ ...appIcon, size: 512 }));

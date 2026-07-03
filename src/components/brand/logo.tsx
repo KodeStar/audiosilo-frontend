@@ -16,7 +16,7 @@ export function Logo({ size = 28, color = colors.primary }: { size?: number; col
   return (
     <Svg width={size * ASPECT} height={size} viewBox={VIEW_BOX}>
       {/* Rotate the path 180° about the viewBox centre via the SVG transform
-          attribute — a string, which renders on web (react-native-svg-web) and
+          attribute - a string, which renders on web (react-native-svg-web) and
           native alike. The previous `<G rotation originX originY>` props threw on
           web. */}
       <Path d={PATH} fill={color} transform={`rotate(180, ${CENTER_X}, ${CENTER_Y})`} />

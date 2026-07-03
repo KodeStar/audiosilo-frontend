@@ -1,19 +1,20 @@
 import { useCallback, useState } from 'react';
 
 import { useOptionalApi } from '@/api/provider';
+import { stopPlaybackForServer } from '@/playback/store';
 import { accountFlagsKnown, needsRecoveryWarning } from '@/lib/recovery';
 import { useSession } from '@/stores/session';
 
 /**
  * The single guarded sign-out chokepoint. Every place that signs the user out
  * goes through `requestSignOut` so the "you have no way back in" warning can't be
- * forgotten by a new call site — the footgun is owned here, not re-implemented in
+ * forgotten by a new call site - the footgun is owned here, not re-implemented in
  * each screen.
  *
  * `requestSignOut` decides on the freshest account flags it can get: a session
  * persisted before `has_password`/`has_recovery` existed has them `undefined`, so
  * we fetch `/me` once before deciding rather than guessing. When the server is
- * unreachable we fall back to whatever we have and don't warn — offline there's no
+ * unreachable we fall back to whatever we have and don't warn - offline there's no
  * way to mint a recovery code anyway, so a warning would be a dead end.
  */
 export function useSignOut() {
@@ -25,6 +26,13 @@ export function useSignOut() {
 
   const signOut = useCallback(async () => {
     setConfirmVisible(false);
+    // Stop playback before revoking the token, when the playing book came from this
+    // connection. This persists the final position while the token is still valid, then
+    // silences the audio and tears down the engine - otherwise the book keeps playing
+    // (and the save loop keeps hitting the now-revoked token) with no mini-player in
+    // the connect screen to stop it. A book playing through another connection keeps
+    // going; its token stays valid.
+    if (api) await stopPlaybackForServer(api);
     try {
       await api?.logout();
     } catch {

@@ -19,7 +19,7 @@ const QUEUE_KEY = 'audiosilo.progressQueue';
 const DEVICE_KEY = 'audiosilo.deviceId';
 // Durable, never-pruned mirror of the last-known progress per (library, path). Unlike
 // the offline queue (cleared once a save syncs), this survives sync so a returning
-// listener can resume even when the server momentarily can't be reached — the fix for
+// listener can resume even when the server momentarily can't be reached - the fix for
 // "an in-progress book restarted from 0 because the resume fetch failed".
 const MIRROR_KEY = 'audiosilo.progressMirror';
 
@@ -91,7 +91,7 @@ export async function loadInitialProgress(
     server = await api.getProgress(libraryId, path); // null = HTTP 200, no record (new book)
     serverOk = true;
   } catch (e) {
-    noteError(e); // offline or unreachable — reconcile with local sources below
+    noteError(e); // offline or unreachable - reconcile with local sources below
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
   // so a locally-newer offline advance isn't regressed by a stale server read).
@@ -195,7 +195,7 @@ function isUnrecoverable(e: unknown): boolean {
  * is left 0 so the server reconciles by (updated_at, version). */
 export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<void> {
   // Always record the latest position in the durable mirror, independent of the network
-  // outcome — this is what a future resume falls back to when the server can't be reached.
+  // outcome - this is what a future resume falls back to when the server can't be reached.
   await writeMirror(save);
   // Server known to be unreachable: queue locally without hitting the network, so
   // the 15s save loop doesn't fire a doomed request every tick while offline.
@@ -216,7 +216,7 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
     noteSuccess();
     void flushQueue(api);
   } catch (e) {
-    if (isUnrecoverable(e)) return; // auth/forbidden — don't retry forever
+    if (isUnrecoverable(e)) return; // auth/forbidden - don't retry forever
     noteError(e); // a connection error flips us offline (stops further attempts)
     await enqueue(save);
   }
@@ -269,11 +269,11 @@ export async function flushQueue(api: ApiClient): Promise<void> {
         if (isUnrecoverable(e)) continue; // drop; can't ever succeed
         noteError(e);
         if (!isReachable()) {
-          // Connection dropped mid-flush — keep this and everything after it.
+          // Connection dropped mid-flush - keep this and everything after it.
           remaining.push(...queue.slice(i));
           break;
         }
-        remaining.push(save); // transient server error — retry next time
+        remaining.push(save); // transient server error - retry next time
       }
     }
     await setItem(QUEUE_KEY, remaining);

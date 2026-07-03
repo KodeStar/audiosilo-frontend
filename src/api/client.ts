@@ -113,9 +113,20 @@ export class ApiClient {
 
       if (res.status === 204) return undefined as T;
       const text = await res.text();
-      const data = text ? JSON.parse(text) : undefined;
+      // statusText is '' (not null) under HTTP/2, so use || to reach the fallback.
+      const fallbackMsg = res.statusText || 'Request failed';
+      let data: unknown;
+      try {
+        data = text ? JSON.parse(text) : undefined;
+      } catch {
+        // A non-JSON body (e.g. an HTML 502/503 from a reverse proxy) must not surface
+        // as a SyntaxError - callers branch on ApiError/its status (isUnrecoverable,
+        // sign-in, reachability), so preserve the HTTP status instead.
+        throw new ApiError(res.status, fallbackMsg);
+      }
       if (!res.ok) {
-        throw new ApiError(res.status, data?.error ?? res.statusText ?? 'Request failed');
+        const msg = (data as { error?: string } | undefined)?.error;
+        throw new ApiError(res.status, msg || fallbackMsg);
       }
       return data as T;
     } catch (e) {
@@ -169,7 +180,7 @@ export class ApiClient {
   // --- Self-service recovery (authed) --------------------------------------
   // Set/change your own password and mint a durable recovery code, so a
   // signed-out user can get back in without an admin. A recovery code redeems
-  // through the normal connect flow (redeemCode → exchange) — it is just an auth
+  // through the normal connect flow (redeemCode → exchange) - it is just an auth
   // code the user owns. Changing an existing password requires the current one
   // (pass currentPassword); setting a first password does not. The password can't
   // be empty (clearing is admin-only).
@@ -222,7 +233,7 @@ export class ApiClient {
 
   // --- Media URLs ----------------------------------------------------------
   // The token rides in the media URL on every platform (the server accepts
-  // `?token=` for media GETs). Web requires this — browsers can't set an
+  // `?token=` for media GETs). Web requires this - browsers can't set an
   // Authorization header on <img>/<audio>. Native uses the same mechanism for a
   // single uniform path, so cover/stream auth never depends on whether a given
   // library (expo-image, the native player module) forwards custom request

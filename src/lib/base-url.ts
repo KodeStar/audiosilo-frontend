@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
  * Production web exports are served under `EXPO_BASE_URL` (the Go server mounts the
  * player at `/web`), so asset/manifest/service-worker urls must be prefixed with it.
  * The Metro dev server (`expo start --web`), however, serves everything at the root
- * and ignores `baseUrl` — so in development the base must be empty, or links like
+ * and ignores `baseUrl` - so in development the base must be empty, or links like
  * `/web/manifest.json` 404. Hence the NODE_ENV split rather than EXPO_BASE_URL alone.
  */
 export const BASE_URL =

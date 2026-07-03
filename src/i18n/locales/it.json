@@ -138,8 +138,8 @@
       "closeLabel": "Chiudi lo scanner",
       "invalidCode": "Quel codice QR non è un codice di abbinamento AudioSilo.",
       "permissionTitle": "Accesso alla fotocamera necessario",
-      "permissionMessage": "Consenti l'accesso alla fotocamera per scansionare il codice QR di abbinamento del tuo server.",
-      "allowCamera": "Consenti la fotocamera",
+      "permissionDenied": "AudioSilo ha bisogno dell'accesso alla fotocamera per scansionare il codice QR di abbinamento del tuo server.",
+      "tryAgain": "Riprova",
       "openSettings": "Apri le impostazioni",
       "aimHint": "Inquadra con la fotocamera il codice QR di abbinamento nella pagina di connessione del tuo server."
     }
@@ -312,7 +312,7 @@
     "downloads": "Download",
     "settings": "Impostazioni",
     "logout": "Esci",
-    "offline": "Offline — le modifiche si sincronizzano alla riconnessione",
+    "offline": "Offline - le modifiche si sincronizzano alla riconnessione",
     "searchPlaceholder": "Cerca…"
   },
   "ui": {

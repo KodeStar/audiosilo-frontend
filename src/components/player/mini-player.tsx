@@ -38,7 +38,7 @@ export function useMiniPlayerInset(): number {
 }
 
 /** Docked transport bar shown whenever something is loaded. Tap to open the full
- * player. It floats just above the bottom nav — `bottomOffset` is the nav's
+ * player. It floats just above the bottom nav - `bottomOffset` is the nav's
  * measured height (which on iOS includes the home-indicator safe-area inset, so a
  * fixed offset would leave the bar hidden behind it). Content scrolls behind it;
  * screens reserve room with `useMiniPlayerInset()`. */

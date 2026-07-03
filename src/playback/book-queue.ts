@@ -31,7 +31,7 @@ export const DEFAULT_VIRTUAL_CHAPTER_INTERVAL = 30 * 60;
 export type FileSpec = { path: string; duration: number; size: number };
 
 /**
- * The distinct audio files that make up a book, in play order — the single
+ * The distinct audio files that make up a book, in play order - the single
  * source of truth for both playback (`buildBookQueue`) and offline downloads, so
  * download order ≡ play order. Prefers an explicit file list; falls back to the
  * files referenced by the chapters; finally the book path itself. This must never
@@ -57,7 +57,7 @@ export function bookFileSpecs(book: Book, chapterData?: ChaptersResponse): FileS
  * `file_index` fallback) so a non-sequential `file_index` can't misplace a
  * chapter. Shared by the playback queue and the book screen's chapter list so
  * both agree on the timeline (the server's `book_offset` is unreliable for some
- * on-demand-indexed books — it comes back 0 for every chapter).
+ * on-demand-indexed books - it comes back 0 for every chapter).
  */
 export function chapterBookOffset(
   files: { path: string; duration: number }[],
@@ -66,7 +66,7 @@ export function chapterBookOffset(
   const byPath = files.findIndex((f) => f.path === ch.file_path);
   // Fall back to `file_index` only when it's a real index; an out-of-range index
   // (stale chapter metadata that also fails the path match) would otherwise sum
-  // EVERY file's duration and roughly double the book's computed length — degrade
+  // EVERY file's duration and roughly double the book's computed length - degrade
   // to 0 preceding files instead, as the old `offsets[file_index] ?? 0` did.
   const inRange = ch.file_index >= 0 && ch.file_index < files.length;
   const upto = byPath >= 0 ? byPath : inRange ? ch.file_index : 0;
@@ -92,25 +92,38 @@ function fileIndexOf(specs: FileSpec[], ch: Chapter): number {
  * Each chapter maps to `(fileIndex, [startInFile, endInFile])`; the LAST chapter in a
  * file clips "to end" (`endInFile = 0`) so an inaccurate final `end` can't cut off the
  * file's tail. Returns `[]` when there are 0 or 1 chapters (the engine then plays one
- * item per file — today's behavior), or if any chapter can't be mapped to a file (so a
- * partial/broken clip queue never strands playback — fall back to file mode).
+ * item per file - today's behavior), or if any chapter can't be mapped to a file (so a
+ * partial/broken clip queue never strands playback - fall back to file mode).
  */
 export function buildChapterClips(specs: FileSpec[], chapters: Chapter[]): PlaybackChapter[] {
   if (chapters.length <= 1) return [];
+  // Resolve each chapter's file once up front - the loop needs both a chapter's index
+  // and the next one's, so looking up inline would scan the specs twice per chapter.
+  const fileIndices = chapters.map((ch) => fileIndexOf(specs, ch));
   const clips: PlaybackChapter[] = [];
+  const coveredFiles = new Set<number>();
   for (let i = 0; i < chapters.length; i++) {
     const ch = chapters[i];
-    const fileIndex = fileIndexOf(specs, ch);
+    const fileIndex = fileIndices[i];
     if (fileIndex < 0) return []; // unmappable chapter → safe fallback to file mode
-    const next = chapters[i + 1];
-    const lastInFile = !next || fileIndexOf(specs, next) !== fileIndex;
+    const lastInFile = i + 1 >= chapters.length || fileIndices[i + 1] !== fileIndex;
+    // A non-final in-file chapter with a non-positive span has unusable clip bounds:
+    // endInFile <= 0 is read by the native layer as "to end of file", so this clip
+    // would swallow the rest of the file and the following clips would replay it. Bad
+    // metadata like this → bail to safe file mode rather than a broken clip queue.
+    if (!lastInFile && ch.end <= ch.start) return [];
     clips.push({
       fileIndex,
       startInFile: Math.max(0, ch.start),
       endInFile: lastInFile ? 0 : Math.max(0, ch.end),
       title: ch.title,
     });
+    coveredFiles.add(fileIndex);
   }
+  // Every file must be covered by at least one chapter. An uncovered file's positions
+  // would fall through the native fileToItem fallback into a different file's clip, so
+  // a specs/chapters mismatch → safe file mode.
+  if (coveredFiles.size !== specs.length) return [];
   return clips;
 }
 
@@ -119,7 +132,7 @@ export function buildChapterClips(specs: FileSpec[], chapters: Chapter[]): Playb
  * prev/next-chapter and the chapter-relative seek bar have somewhere to go. Returns
  * `ceil(total / interval)` chapters over the one file; the last ends exactly at
  * `total` (the `ceil` + `min` avoids a zero-length trailing chapter on an exact
- * multiple). Returns `[]` below `interval * 1.5` (splitting adds no value) — callers
+ * multiple). Returns `[]` below `interval * 1.5` (splitting adds no value) - callers
  * also gate, but self-guarding keeps this directly testable. `title: ''` renders as
  * "Chapter N" via the existing i18n fallback. These are never passed to
  * `buildChapterClips`, so they don't change native playback (see `BookQueue`).
@@ -151,7 +164,7 @@ export function synthesizeChapters(
  * Build the playable queue for a book. Each distinct audio file becomes one
  * track; chapters are markers laid over the whole-book timeline. A single
  * chaptered m4b yields one track with several chapters; a folder of mp3 parts
- * yields one track per file — both render identically downstream. When `local`
+ * yields one track per file - both render identically downstream. When `local`
  * is supplied (the book is downloaded), each file's track points at its local
  * `file://` uri instead of the server stream.
  *
@@ -220,7 +233,7 @@ export function buildBookQueue(
   // one segment boundary at 0 → nowhere to skip forward, and "back" restarts. Overlay
   // evenly-spaced virtual chapters so navigation works. `synthesizeChapters` owns the
   // "long enough to bother" threshold, so `syntheticChapters` is derived from whether it
-  // actually produced any — one source of truth (no threshold to keep in sync), and the
+  // actually produced any - one source of truth (no threshold to keep in sync), and the
   // flag can never claim markers that don't exist (e.g. a 0/negative interval). Multi-
   // file books already have per-file offsets as boundaries, so they're left alone.
   const synthetic =
@@ -290,13 +303,13 @@ export type ChapterCountdown = {
 
 /**
  * The current chapter and the ones after it, each annotated with the whole-book
- * position of its end and the time from `bookPosition` until that end — drives
+ * position of its end and the time from `bookPosition` until that end - drives
  * the sleep timer's "end of chapter" picker. The first entry is always the
  * current chapter (the time left in it). Returns [] when there are no chapters.
  *
  * `untilEnd` is wall-clock time, so `rate` (the current playback speed) scales it:
  * at 2x, an hour of content is 30 minutes of real listening. This keeps the
- * countdowns — and the `maxSeconds` window — honest about how long until sleep.
+ * countdowns - and the `maxSeconds` window - honest about how long until sleep.
  *
  * `limit` bounds how many options to show so the list spans a useful range of
  * upcoming chapters: keep chapters until one's countdown passes `maxSeconds`

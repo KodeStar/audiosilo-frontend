@@ -5,9 +5,9 @@ import { View } from 'react-native';
 import { Text } from './text';
 
 /**
- * 1:1 cover art with a graceful fallback. When there is no source — or the image
+ * 1:1 cover art with a graceful fallback. When there is no source - or the image
  * fails to load (e.g. the book has no embedded art and no folder cover, so the
- * cover endpoint 404s) — it shows the book's title and author instead of a blank
+ * cover endpoint 404s) - it shows the book's title and author instead of a blank
  * square. `source` accepts an authenticated expo-image source (uri + headers).
  */
 export function Cover({
@@ -24,7 +24,7 @@ export function Cover({
   size?: number;
 }) {
   // Track which source URI failed (rather than a bare boolean) so the error state
-  // resets automatically when the source changes — list rows recycle covers.
+  // resets automatically when the source changes - list rows recycle covers.
   const [failedKey, setFailedKey] = useState<string | undefined>(undefined);
   const key = typeof source === 'string' ? source : source?.uri;
   const failed = key !== undefined && failedKey === key;

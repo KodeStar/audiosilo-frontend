@@ -21,7 +21,7 @@ export const unstable_settings = {
 
 /**
  * The navigator, themed. Lives below ThemeProvider so it can paint each native
- * screen's container with the resolved background — otherwise stack and modal
+ * screen's container with the resolved background - otherwise stack and modal
  * transitions (and the swipe-back gesture) flash the default white card.
  */
 function RootNavigator() {

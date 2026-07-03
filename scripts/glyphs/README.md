@@ -6,7 +6,7 @@ committed [`src/components/ui/icon-data.ts`](../../src/components/ui/icon-data.t
 
 It is the **only** place AudioSilo touches FontAwesome. The app renders the
 vendored paths with `react-native-svg` ([`icon.tsx`](../../src/components/ui/icon.tsx))
-and has **no `@fortawesome/*` dependency** — so building, installing, testing, and
+and has **no `@fortawesome/*` dependency** - so building, installing, testing, and
 shipping the app needs **no FontAwesome Pro token**. Only regenerating the glyphs
 (i.e. adding or changing an icon) does.
 
@@ -30,7 +30,7 @@ shipping the app needs **no FontAwesome Pro token**. Only regenerating the glyph
    ```
 
 4. Commit the updated `icon-data.ts`. **Do not** commit this folder's `.env`,
-   `node_modules`, or `package-lock.json` (all gitignored) — the token is private and
+   `node_modules`, or `package-lock.json` (all gitignored) - the token is private and
    the install state would re-pin the private registry for everyone.
 
 The generator output is already Prettier-formatted; the repo gate

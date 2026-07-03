@@ -1,4 +1,4 @@
-# AudioSilo Frontend — project guide
+# AudioSilo Frontend - project guide
 
 The audiobook **player** frontend for **audiosilo-server** (a self-hosted Go
 audiobook server at `~/dev/audiosilo/audiosilo-server`). One Expo / React Native codebase
@@ -6,7 +6,7 @@ shipping to **web PWA + iOS + Android**. Design is ported from the old Nuxt
 client at `~/dev/audiosilo-old` (pink-accented, Roboto, dark-mode-first).
 
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
-**M3 (offline downloads)** shipped (`src/downloads/` — `engine.native.ts`/
+**M3 (offline downloads)** shipped (`src/downloads/` - `engine.native.ts`/
 `engine.web.ts`/`store.ts`, a `(app)/downloads` route, and the
 `download-control`/`download-badge` components); **M4 (PWA / service worker)**
 shipped (`public/sw.js`, `public/manifest.json`, `src/lib/register-sw{,.web}.ts`).
@@ -20,28 +20,28 @@ remaining track.
 - **TanStack Query** (server state) + **Zustand** (session + player state).
 - **Custom native playback module** (`modules/audiosilo-player`, a local Expo
   module): **AVQueuePlayer** on iOS, **Media3/ExoPlayer** on Android. **HTML5 Audio +
-  Media Session** on web. (This replaced react-native-track-player — that dep is gone;
+  Media Session** on web. (This replaced react-native-track-player - that dep is gone;
   ignore any older doc that still names it.)
 - **Icons**: FontAwesome Pro 7 glyphs **vendored as raw SVG** in
-  `src/components/ui/icon-data.ts` and drawn with `react-native-svg` — the app has
+  `src/components/ui/icon-data.ts` and drawn with `react-native-svg` - the app has
   **no `@fortawesome/*` dependency** (so no token to build). To add/change an icon,
   edit `scripts/glyphs/manifest.mjs` and regenerate (see `scripts/glyphs/README.md`).
 - **expo-secure-store** for the session token; **AsyncStorage** for everything else.
 
 ## ⚠️ Environment gotchas (read before running)
 - **Node 24 required.** RN 0.85 needs ≥20.19.4, and the Expo CLI's env-file loader
-  uses `util.parseEnv` (Node ≥20.12) — older Node crashes once a `.env` exists.
+  uses `util.parseEnv` (Node ≥20.12) - older Node crashes once a `.env` exists.
   This machine's default `node` (`/usr/local/bin/node`) is old; use nvm's 24:
   `export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"` (or set the nvm default).
 - **No FontAwesome token needed to build.** Icons are vendored SVG
   (`src/components/ui/icon-data.ts`), so `npm install` pulls nothing private. A
   FontAwesome Pro token (`FONTAWESOME_NPM_AUTH_TOKEN`) is only needed to
   **add/regenerate** an icon via the isolated generator in
-  `scripts/glyphs/` (its own `package.json`/`.npmrc`) — see `scripts/glyphs/README.md`.
+  `scripts/glyphs/` (its own `package.json`/`.npmrc`) - see `scripts/glyphs/README.md`.
 - **Native runs need a dev build, not Expo Go** (the `audiosilo-player` module, svg,
   secure-store are native): `npx expo prebuild` then `npx expo run:ios` / `run:android`.
   **Editing native code under `modules/audiosilo-player/{ios,android}` requires a full
-  rebuild** (`run:ios`/`run:android`) — a Metro/JS reload won't pick it up.
+  rebuild** (`run:ios`/`run:android`) - a Metro/JS reload won't pick it up.
 - **Web dev needs CORS**: set `cors_origins` in the server config to the web origin
   (e.g. `http://localhost:8081`), or serve same-origin. Self-signed TLS may need
   trusting / `tls.mode: autocert`.
@@ -61,13 +61,13 @@ npx expo export -p web      # bundle smoke test (run after meaningful changes)
 ```
 
 **Before a change is done, run `npx tsc --noEmit && npm run lint && npm run format && npm test`**
-— CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all four (typecheck,
+- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all four (typecheck,
 lint, **prettier `--check`** via the `format` script, test) on every PR/push.
 `.nvmrc` pins Node `24.16.0`,
 which CI reads via `node-version-file`; keep the lockfile committed in sync (regenerate
 with `npm install` after changing deps).
 
-> Before adding code, read the workspace **[CODE-HEALTH.md](../CODE-HEALTH.md)** —
+> Before adding code, read the workspace **[CODE-HEALTH.md](../CODE-HEALTH.md)** -
 > Definition of Done + the recurring drift patterns (wire-contract drift, dead
 > exports, stale docs, untested modules) a full review found. Especially: change
 > the wire format → change **both** repos **and** add a test on both sides.
@@ -78,7 +78,7 @@ The product docs live in [`../audiosilo-docs`](../audiosilo-docs/) (Docusaurus:
 User Guide + Developer Docs, generated screenshots). **Updating them is part of
 Definition of Done**: a change here that touches player behaviour, screens/
 strings, or the wire contract updates the affected pages in the same logical
-change — for this repo that's chiefly `docs-users/listening/**` and
+change - for this repo that's chiefly `docs-users/listening/**` and
 `docs-developers/frontend/**`, plus regenerated `web-player/` screenshots
 (`audiosilo-docs/screenshots/run.sh`) when the UI changes. Mapping table:
 `audiosilo-docs/docs-developers/contributing/documentation.md`. Docs gate:
@@ -98,7 +98,7 @@ link is `audiosilo://connect?server=<base>&token=<pairing_token>`.
 **Self-service recovery.** `User` carries `has_password`/`has_recovery`. A signed-in
 user can set a password (`client.setPassword`) and/or mint a durable **recovery code**
 (`client.generateRecoveryCode`) from Settings so they can get back in after signing out
-without an admin. A recovery code is just an auth code the user owns — it redeems through
+without an admin. A recovery code is just an auth code the user owns - it redeems through
 the same `redeemCode → exchange` path as an invite, so the connect screen's code field
 accepts either. Sign-out is guarded (`src/lib/recovery.ts` `needsRecoveryWarning`):
 a user with neither credential is warned and offered a recovery code before their only
@@ -109,47 +109,51 @@ way in is revoked (`src/components/account/sign-out-confirm.tsx`).
 `<audio>` can't set headers on web, and native image/player components don't
 reliably forward custom headers); native *additionally* sends the
 `Authorization` header belt-and-braces. **This depends on the server's**
-`internal/api/middleware.go` — `bearerToken` accepts a `token` query param for
+`internal/api/middleware.go` - `bearerToken` accepts a `token` query param for
 media GETs only.
 
-**Playback (`src/playback/`)** — the fiddly part:
+**Playback (`src/playback/`)** - the fiddly part:
 - `PlaybackService` interface (`types.ts`). Metro resolves the engine per platform:
   `service.web.ts` (HTML5 + Media Session) / `service.native.ts`, which is a thin
   bridge to the **custom native module** `modules/audiosilo-player` (AVQueuePlayer on
-  iOS, Media3/ExoPlayer on Android — that module owns the audio session, background
+  iOS, Media3/ExoPlayer on Android - that module owns the audio session, background
   audio, lock-screen/remote commands, gapless multi-file playback, and pitch-corrected
   speed). `service.ts` is a throwing fallback for tsc only. (There is **no**
-  `register.native.ts` and no react-native-track-player — both are gone; the native
+  `register.native.ts` and no react-native-track-player - both are gone; the native
   module registers its own background service.)
 - **The native module is where the OS-integration bugs live**, and it can only be
   validated by a device rebuild. Known iOS gotchas now handled in
   `AudiosiloPlayerModule.swift` (read its comments before touching it):
   - **Seek before ready.** Seeking a freshly-created `AVPlayerItem` before it reaches
-    `.readyToPlay` is silently dropped (esp. streaming) — this made resume start from
+    `.readyToPlay` is silently dropped (esp. streaming) - this made resume start from
     0. The resume/skip start position is **deferred** until `.readyToPlay`
     (`pendingSeek`/`applyPendingSeek`), with play gated (`wantsPlay`) so audio never
-    briefly starts at 0. Android doesn't have this — Media3's `setMediaItems(items,
+    briefly starts at 0. Android doesn't have this - Media3's `setMediaItems(items,
     startIndex, startPositionMs)` honors the start natively.
-  - **Now Playing focus / "pause needs two presses".** `MPNowPlayingInfoCenter.
-    playbackState` must be kept in sync (`syncPlaybackState`); leaving it `.unknown`
-    makes iOS spend the first remote/earbud press claiming now-playing focus.
+  - **Single earbud press / "pause needs two presses".** `MPNowPlayingInfoCenter.
+    playbackState` is entitlement-gated and silently ignored for third-party apps, so
+    iOS infers our play state itself and can get stuck (sending Play while we're already
+    playing, so the press no-ops). Fix: route the play, pause AND toggle remote commands
+    all through one real-transport-state `togglePlayback()` (reads
+    `player.timeControlStatus`), so a single press always flips playback. (There is no
+    `syncPlaybackState` - that was an earlier, abandoned approach.)
   - **Interruption auto-resume.** Only resume on interruption `.ended` if we were
-    actually playing when it began (`wasPlayingBeforeInterruption`) — otherwise the
+    actually playing when it began (`wasPlayingBeforeInterruption`) - otherwise the
     charging chime (a brief interruption) resumes a paused book.
 - **Android lock screen = chapter controls (Audible parity)** (`AudiosiloPlayerService.kt`
   + `AudiosiloPlayerModule.kt`). Each **chapter is a clipped `MediaItem`**
   (`MediaItem.ClippingConfiguration`, built from the `chapters` arg to `load`), so the
   system scrubber is **chapter-relative** and `COMMAND_SEEK_TO_*_MEDIA_ITEM` give
   **prev/next chapter**; **30s skip buttons** use Media3's **predefined** `CommandButton`
-  icon constants (`ICON_SKIP_BACK_30`/`ICON_SKIP_FORWARD_30`, since Media3 **1.5.0** — no
+  icon constants (`ICON_SKIP_BACK_30`/`ICON_SKIP_FORWARD_30`, since Media3 **1.5.0** - no
   app-shipped drawable, not icon-less, so the old "Android 16 drops icon-less actions"
   problem is gone), wired as **custom session commands** (`setSessionCommand` +
   `MediaSession.Callback.onCustomCommand` → `player.seekBack()/seekForward()`), **NOT**
-  `COMMAND_SEEK_BACK/FORWARD` — those map to the legacy `ACTION_REWIND`/`FAST_FORWARD` that
+  `COMMAND_SEEK_BACK/FORWARD` - those map to the legacy `ACTION_REWIND`/`FAST_FORWARD` that
   the modern Android media UI silently ignores (`dumpsys media_session` showed
   `custom actions=[]` and no buttons). **Register them with `setCustomLayout`, NOT
   `setMediaButtonPreferences`**: the slot-based preferences API caps the 1.5.1 notification
-  at 3 actions (drops the secondary slots — `dumpsys notification` showed `actions=3`),
+  at 3 actions (drops the secondary slots - `dumpsys notification` showed `actions=3`),
   whereas `setCustomLayout` makes the provider emit standard `[prev, play, next]` (auto, when
   the seek-to-prev/next commands are available) **+** the custom skip buttons = all 5
   actions, alongside the draggable chapter scrubber → the full lock-screen row
@@ -163,7 +167,7 @@ media GETs only.
   the file-relative `(trackIndex, position)` the bridge reports (`ChapterMap`
   `fileToItem`/`itemToFile`); `buildChapterClips` (`book-queue.ts`) returns `[]` for 0/1
   chapters → one item per file (today's behavior). A `SimpleCache`/`CacheDataSource` keeps
-  clipped single-file **streaming** gapless (clips re-open the same URL) — gapless was
+  clipped single-file **streaming** gapless (clips re-open the same URL) - gapless was
   device-verified on a Pixel (no audible gap at chapter boundaries); the safety fallback if
   a future device regresses is to make `buildChapterClips` return `[]` for single-file
   books. iOS keeps `preferredIntervals` + a whole-file Now Playing scrubber (chapter parity
@@ -172,34 +176,34 @@ media GETs only.
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
-  — without it a stale path fails the existence check and the book is dropped *and
+  - without it a stale path fails the existence check and the book is dropped *and
   deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
   `engine.localUri` in agreement.
 - **Stream the file, not the book.** A track URL must be a real audio file
-  (a chapter's `file_path` or a `BookFile.rel_path`) — **never** a folder/book path.
+  (a chapter's `file_path` or a `BookFile.rel_path`) - **never** a folder/book path.
   `book-queue.ts` builds tracks from `files`, else derives distinct files from the
   chapters' `file_path`, else a single-file book path.
 - **Whole-book timeline.** The engine works per-track; `store.ts` maps
   `(trackIndex, position)` ↔ whole-book position via cumulative `offsets`, and
   overlays chapters by `book_offset`. The full player's seek bar is **chapter-relative**.
 - **Start playback only after chapters/files have loaded** (the player gates on
-  `useChapters` settling) — starting early made multi-file books stream the folder
+  `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.
 - **Never restart an in-progress book from 0.** `loadInitialProgress` returns a
   discriminated `ResumeLookup` (`progress`/`empty`/`failed`) reconciling the server, a
-  **durable local mirror** (`writeMirror`, never pruned on sync — survives a flaky resume
+  **durable local mirror** (`writeMirror`, never pruned on sync - survives a flaky resume
   fetch), and the offline queue by `updated_at`. `playBook` resumes from `progress`; on
   `failed` for a **streaming** book it sets an `error` (retry re-runs the lookup) instead
   of silently starting at 0; `empty`/downloaded-`failed` start at 0 (genuinely new). A
   **save guard** (`resumeFloor` in `store.ts`) refuses to persist a position far below
-  where we resumed unless a deliberate seek lowered the floor — so a slipped restart can't
+  where we resumed unless a deliberate seek lowered the floor - so a slipped restart can't
   overwrite real progress (the server is last-write-wins). This fixed the beta "book
   restarted from the beginning" report.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
-  **armed by the play/retry action, not by interpreting engine events** — this is the key
+  **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and
   out-of-order (see below). `beginPlaybackAttempt()` (called from `playBook`/`retry`/
   `toggle`-play) sets `wantsPlayback` + `startingPlayback` and starts a `STALL_GRACE_MS`
@@ -209,7 +213,7 @@ media GETs only.
   test is simply "not playing", so no transient state can prevent it.
 - **Why not interpret engine events:** `service.native.ts` keeps ONE merged snapshot and
   re-emits it on every event, and iOS delivers `timeControlStatus`/status KVO
-  asynchronously — so on a resume/retry the store sees a jumble of `ready`, frozen
+  asynchronously - so on a resume/retry the store sees a jumble of `ready`, frozen
   `onProgress` ticks carrying `loading`, and a spurious `paused` (an async `.paused` from
   the queue rebuild that escapes the native `rebuilding` guard). Trying to drive the
   spinner/watchdog by reacting to those individually failed three different ways (error
@@ -221,27 +225,27 @@ media GETs only.
   still reads as `paused`.
 - The synthesized `error` is also **held** against the engine's continued re-reports:
   `subscribe` drops EVERY incoming state except `playing` while `prev` is `error` and no
-  retry is in flight. This is suppress-all-but-`playing`, not an allow-list — enumerating
+  retry is in flight. This is suppress-all-but-`playing`, not an allow-list - enumerating
   the noisy states bit us repeatedly (iOS frozen `onProgress` ticks carrying `loading`;
   Android `onPlayerError` → `STATE_IDLE` → `idle` plus its own ticks → a flash→spinner
   loop). It's released by a retry (`wantsPlayback` true) or a genuine `playing`. The
-  engines only report raw transport state — iOS reports `loading` on a `.waiting`/`.failed`/stall
+  engines only report raw transport state - iOS reports `loading` on a `.waiting`/`.failed`/stall
   (it does **not** decide `error` itself); web/Android may emit a real `error` directly
   (the watchdog is then a backstop for a buffer that never resolves). Recovery is
-  `retry()` (reloads the track — a dead source can't resume via `play()` alone). Keep this
+  `retry()` (reloads the track - a dead source can't resume via `play()` alone). Keep this
   one place; don't re-add a native timer.
 
-**Tests** — new logic ships with a unit test. Pure, framework-free modules get
+**Tests** - new logic ships with a unit test. Pure, framework-free modules get
 direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
 `progress-sync.ts`, `src/stores/*` (see the co-located `*.test.ts`). Keep logic out
 of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo (jest 29)
-+ @testing-library/react-native 14** — matchers are built in (no `jest-native`);
++ @testing-library/react-native 14** - matchers are built in (no `jest-native`);
 `jest.setup.ts` provides in-memory mocks for `expo-secure-store` + AsyncStorage,
 and tests mock `fetch` / `@/api/reachability` as needed. Flip `Platform.OS` at
 runtime to cover web-vs-native branches.
 
 **Styling**: use `className` on core RN components (NativeWind). Never import an
-icon lib directly — use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text via
+icon lib directly - use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text via
 `<Text variant=... />`. Tokens: primary `#db2777`; grays `750/840/860`; Roboto
 weights as `font-roboto-{light,medium,semibold,bold}` (plain `font-sans` = regular).
 Raw color values for native props in `src/theme/tokens.ts`.

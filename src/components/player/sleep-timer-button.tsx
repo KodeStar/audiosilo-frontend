@@ -41,7 +41,7 @@ export function SleepTimerButton() {
 
   // Show at least 5 chapters, extending until one passes the 2-hour mark (an hour
   // ran short on both listening time and chapter count). Wall-clock, so the window
-  // shrinks with speed — at 2x it spans ~2h of real time, ~4h of content.
+  // shrinks with speed - at 2x it spans ~2h of real time, ~4h of content.
   const countdowns = nowPlaying
     ? chapterCountdowns(
         nowPlaying.queue.chapters,
@@ -114,7 +114,7 @@ export function SleepTimerButton() {
             </Text>
             {countdowns.length > 0 ? (
               // Cap height on the wrapper View (not the ScrollView itself) so the
-              // list scrolls instead of pushing the sheet off-screen — the same
+              // list scrolls instead of pushing the sheet off-screen - the same
               // pattern the player's history/notes sheet uses.
               <View className="max-h-72">
                 <ScrollView contentContainerClassName="gap-2" keyboardShouldPersistTaps="handled">

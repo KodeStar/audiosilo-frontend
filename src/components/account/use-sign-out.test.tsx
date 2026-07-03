@@ -12,6 +12,10 @@ jest.mock('@/stores/session', () => ({
   useSession: (selector: (s: unknown) => unknown) => selector(mockSessionState),
 }));
 
+// signOut stops playback for the connection being revoked; mock the player store so
+// this test (focused on the recovery-warning decision) doesn't pull in the native engine.
+jest.mock('@/playback/store', () => ({ stopPlaybackForServer: jest.fn(async () => {}) }));
+
 // eslint-disable-next-line import/first
 import { useSignOut } from './use-sign-out';
 
