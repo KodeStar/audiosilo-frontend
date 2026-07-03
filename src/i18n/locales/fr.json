@@ -105,7 +105,7 @@
       "connect": "Se connecter",
       "enterAddress": "Saisissez l'adresse de votre serveur",
       "missingAddress": "Ce lien d'association ne comporte pas l'adresse du serveur. Saisissez-la ci-dessous.",
-      "pairingFailed": "Échec de l'association : {{message}}. Le code a peut-être expiré : demandez une nouvelle invitation.",
+      "pairingFailed": "Échec de l'association : {{message}}. Vous pouvez aussi vous connecter en saisissant votre code d'invitation sur l'écran de connexion.",
       "pairingReachError": "Impossible de joindre le serveur pour terminer l'association.",
       "serverError": "Le serveur a répondu par une erreur : {{message}}",
       "reachError": "Impossible de joindre ce serveur. Vérifiez l'adresse et qu'il est en ligne.",

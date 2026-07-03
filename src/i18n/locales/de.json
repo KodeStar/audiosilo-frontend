@@ -105,7 +105,7 @@
       "connect": "Verbinden",
       "enterAddress": "Gib deine Serveradresse ein",
       "missingAddress": "Bei diesem Kopplungslink fehlt die Serveradresse. Gib sie unten ein.",
-      "pairingFailed": "Kopplung fehlgeschlagen: {{message}}. Der Code ist möglicherweise abgelaufen – fordere eine neue Einladung an.",
+      "pairingFailed": "Kopplung fehlgeschlagen: {{message}}. Du kannst dich auch verbinden, indem du deinen Einladungscode auf dem Anmeldebildschirm eingibst.",
       "pairingReachError": "Der Server konnte nicht erreicht werden, um die Kopplung abzuschließen.",
       "serverError": "Der Server hat mit einem Fehler geantwortet: {{message}}",
       "reachError": "Dieser Server konnte nicht erreicht werden. Überprüfe die Adresse und ob er online ist.",

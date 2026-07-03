@@ -105,7 +105,7 @@
       "connect": "Conectar",
       "enterAddress": "Introduce la dirección de tu servidor",
       "missingAddress": "A este enlace de vinculación le falta la dirección del servidor. Introdúcela a continuación.",
-      "pairingFailed": "Error de vinculación: {{message}}. Es posible que el código haya caducado; solicita una nueva invitación.",
+      "pairingFailed": "Error de vinculación: {{message}}. También puedes conectarte introduciendo tu código de invitación en la pantalla de inicio de sesión.",
       "pairingReachError": "No se pudo contactar con el servidor para completar la vinculación.",
       "serverError": "El servidor respondió con un error: {{message}}",
       "reachError": "No se pudo contactar con ese servidor. Comprueba la dirección y que esté en línea.",

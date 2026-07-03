@@ -33,11 +33,13 @@ function queryParam(query: string, key: string): string | null {
   return null;
 }
 
-// parsePairingScan extracts the server base URL and single-use pairing token from
-// the text encoded in a server's pairing QR. The QR carries the web handoff URL
-// `https://<base>/web/connect?token=<token>` (audiosilo-server internal/api/qr.go);
-// we also accept the custom-scheme deep link `audiosilo://connect?server=&token=`.
-// Returns null when the text is not a recognizable pairing payload.
+// parsePairingScan extracts the server base URL and pairing token from the text
+// encoded in a server's pairing QR (an invite-derived token honors the invite's
+// uses/expiry; Settings-pair and demo tokens are single-use). The QR carries the
+// web handoff URL `https://<base>/web/connect?token=<token>` (audiosilo-server
+// internal/api/qr.go); we also accept the custom-scheme deep link
+// `audiosilo://connect?server=&token=`. Returns null when the text is not a
+// recognizable pairing payload.
 export function parsePairingScan(raw: string): { base: string; token: string } | null {
   const text = raw.trim();
   const query = text.split('?')[1] ?? '';

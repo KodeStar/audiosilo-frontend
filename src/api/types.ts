@@ -52,7 +52,9 @@ export type DemoSession = AuthSession & {
   pairing: PairingPayload;
 };
 
-/** Response of /auth/redeem and /auth/pair. */
+/** Response of /auth/redeem and /auth/pair. A token redeemed from an invite is
+ * as redeemable as the invite (its uses/expiry govern how many devices can
+ * exchange it); /auth/pair and demo tokens are single-use. */
 export type PairingPayload = {
   server_name: string;
   base_url: string;
@@ -63,6 +65,10 @@ export type PairingPayload = {
   web_url: string;
   qr_png_data_uri: string;
   links: { web: string; admin: string; ios?: string; android?: string };
+  /** Parent invite's expiry, when redeemed from one (advisory). */
+  code_expires_at?: string;
+  /** Devices the parent invite can still pair; absent = unlimited or not invite-derived (advisory). */
+  uses_remaining?: number;
 };
 
 export type LibraryView = 'filesystem' | 'computed' | 'hybrid';
