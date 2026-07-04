@@ -380,11 +380,9 @@ export async function flushConnection(connectionId: string): Promise<void> {
   if (!client) return; // already gone - nothing routable to flush
   await withQueueLock(async () => {
     const queue = await readQueue();
-    // Split into this connection's saves and the rest in one pass.
-    const mine: ProgressSave[] = [];
-    const others: ProgressSave[] = [];
-    for (const s of queue) (s.connectionId === connectionId ? mine : others).push(s);
+    const mine = queue.filter((s) => s.connectionId === connectionId);
     if (mine.length === 0) return;
+    const others = queue.filter((s) => s.connectionId !== connectionId);
     const remaining = await flushGroup(connectionId, client, mine);
     await setItem(QUEUE_KEY, [...others, ...remaining]);
   });

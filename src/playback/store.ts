@@ -7,6 +7,7 @@ import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 import { downloadKey, useDownloads } from '@/downloads/store';
+import type { DownloadManifest } from '@/downloads/types';
 import { useSettings } from '@/stores/settings';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
@@ -19,6 +20,19 @@ import {
 } from './progress-sync';
 import { createPlaybackService } from './service';
 import { INITIAL_SNAPSHOT, type PlaybackService, type PlaybackSnapshot } from './types';
+
+/** The `local` files map + artwork a downloaded book plays from, derived from its
+ * manifest. Shared by `playBook` (downloaded-before-play) and `switchCurrentBookToLocal`
+ * (downloaded-while-streaming), whose `buildBookQueue` calls take the same shape. */
+function localFromManifest(manifest: DownloadManifest): {
+  files: Map<string, string>;
+  artwork?: string;
+} {
+  return {
+    files: new Map(manifest.files.map((f) => [f.relPath, f.localUri] as const)),
+    artwork: manifest.coverUri ?? undefined,
+  };
+}
 
 let service: PlaybackService | null = null;
 let apiRef: ApiClient | null = null;
@@ -363,13 +377,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
     // Play from local files when the book is downloaded (works fully offline).
     const dl = useDownloads.getState().entries[downloadKey(connectionId, libraryId, book.rel_path)];
-    const local =
-      dl?.status === 'downloaded'
-        ? {
-            files: new Map(dl.manifest.files.map((f) => [f.relPath, f.localUri] as const)),
-            artwork: dl.manifest.coverUri ?? undefined,
-          }
-        : undefined;
+    const local = dl?.status === 'downloaded' ? localFromManifest(dl.manifest) : undefined;
 
     // A fully-downloaded book plays entirely from `local` files, so it can start even when
     // the connection is gone (e.g. its secure-store token failed to hydrate this launch,
@@ -631,10 +639,7 @@ async function switchCurrentBookToLocal() {
   if (nowPlaying.queue.tracks.every((t) => localUris.has(t.url))) return;
 
   const bookPos = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
-  const local = {
-    files: new Map(dl.manifest.files.map((f) => [f.relPath, f.localUri] as const)),
-    artwork: dl.manifest.coverUri ?? undefined,
-  };
+  const local = localFromManifest(dl.manifest);
   const queue = buildBookQueue(
     apiRef,
     nowPlaying.libraryId,
