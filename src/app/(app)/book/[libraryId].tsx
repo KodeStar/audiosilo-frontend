@@ -6,6 +6,7 @@ import { useBook, useChapters, useLibraries } from '@/api/hooks';
 import { useApi, useScopedCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
 import { ContentColumn } from '@/components/layout/content-column';
+import { ContentScope } from '@/components/layout/content-scope';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
 import { BookVersions } from '@/components/library/book-versions';
@@ -30,7 +31,18 @@ import { colors } from '@/theme/tokens';
 
 const WIDE_BREAKPOINT = 1024;
 
+// Scope to the route's OWN `?connection=` (read from the local param, reliable on a cold
+// deep link) so the body + its sections resolve to that server. The body consumes the
+// scope via `useScopedCid()`, so it lives in a child component of `<ContentScope>`.
 export default function BookDetailScreen() {
+  return (
+    <ContentScope>
+      <BookDetailContent />
+    </ContentScope>
+  );
+}
+
+function BookDetailContent() {
   const { t } = useTranslation();
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;

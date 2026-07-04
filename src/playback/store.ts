@@ -360,19 +360,6 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // Resolve the client from the connection id (single source of truth), mirroring the
     // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
     const api = resolveClient(connectionId);
-    if (!api) return; // connection removed between render and tap; nothing to play
-    endHistory(); // flush any prior book's listening span before switching
-    cancelStallWatchdog(); // drop any stale stall timer from the previous book
-    // Stop the prior book's periodic save loop before we switch nowPlaying: otherwise
-    // a 15s tick (or the engine's continued ticks after an early return below) would
-    // map the OLD engine position through the NEW book's queue and persist it under the
-    // new book's path - corrupting the new book's progress. The loop restarts on the
-    // engine's next `playing` transition for this book.
-    stopSaveLoop();
-    apiRef = api;
-    deviceId = await getDeviceId();
-    lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
-    resumeLookupFailed = false;
 
     // Play from local files when the book is downloaded (works fully offline).
     const dl = useDownloads.getState().entries[downloadKey(connectionId, libraryId, book.rel_path)];
@@ -383,6 +370,25 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
             artwork: dl.manifest.coverUri ?? undefined,
           }
         : undefined;
+
+    // A fully-downloaded book plays entirely from `local` files, so it can start even when
+    // the connection is gone (e.g. its secure-store token failed to hydrate this launch,
+    // dropping it from the session while its download entry survives). Only a book that
+    // still needs the server (not downloaded) requires a live client.
+    if (!api && !local) return; // connection gone and nothing local; nothing to play
+
+    endHistory(); // flush any prior book's listening span before switching
+    cancelStallWatchdog(); // drop any stale stall timer from the previous book
+    // Stop the prior book's periodic save loop before we switch nowPlaying: otherwise
+    // a 15s tick (or the engine's continued ticks after an early return below) would
+    // map the OLD engine position through the NEW book's queue and persist it under the
+    // new book's path - corrupting the new book's progress. The loop restarts on the
+    // engine's next `playing` transition for this book.
+    stopSaveLoop();
+    apiRef = api; // null for an offline downloaded book => persist()/history no-op (no server)
+    deviceId = await getDeviceId();
+    lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
+    resumeLookupFailed = false;
 
     const queue = buildBookQueue(
       api,
@@ -398,7 +404,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       path: book.rel_path,
       title: book.title,
       author: book.author || book.narrator || '',
-      cover: local?.artwork ?? api.coverUrl(libraryId, book.rel_path),
+      // A downloaded book uses its local cover; with no client and no local cover there's
+      // simply no cover (offline, connection gone) - the player falls back to a placeholder.
+      cover: local?.artwork ?? api?.coverUrl(libraryId, book.rel_path) ?? '',
       queue,
     };
     const svc = await ensureService();

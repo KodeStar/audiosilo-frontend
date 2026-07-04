@@ -11,6 +11,7 @@ import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
 import { SignOutConfirm } from '@/components/account/sign-out-confirm';
 import { useRecoveryCode } from '@/components/account/use-recovery-code';
 import { useSignOut } from '@/components/account/use-sign-out';
+import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
@@ -31,8 +32,19 @@ const PW_MIN = 8;
  * `useServerInfo()`/the account hooks all resolve to *this* server - managing one
  * connection's account never touches another's. Reached from the Settings → Servers
  * list. Settings itself keeps only app-level preferences.
+ *
+ * The `?connection=` scope comes from this route's OWN local param (reliable on a cold
+ * deep link); the body reads it via `useScopedCid()`, so it's a child of `<ContentScope>`.
  */
 export default function AccountScreen() {
+  return (
+    <ContentScope>
+      <AccountContent />
+    </ContentScope>
+  );
+}
+
+function AccountContent() {
   const { t } = useTranslation();
   const cid = useScopedCid();
   const api = useOptionalApi();

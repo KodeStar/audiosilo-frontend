@@ -59,14 +59,18 @@ jest.mock('@/api/provider', () => ({
 }));
 
 // playBook resolves its ApiClient from the connection id via resolveClient(); return a
-// fake so saves/history/cover URLs work without a real session.
+// fake so saves/history/cover URLs work without a real session. Exposed as a jest.fn so a
+// test can force `null` (a connection whose token failed to hydrate - see the offline
+// downloaded-book case). clearAllMocks() keeps this default implementation.
+const fakeClient = {
+  coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+  streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
+  authHeaders: () => ({ Authorization: 'Bearer x' }),
+  addHistory: jest.fn(async () => {}),
+};
+const mockResolveClient = jest.fn((_cid: string): typeof fakeClient | null => fakeClient);
 jest.mock('@/api/connection-clients', () => ({
-  resolveClient: jest.fn(() => ({
-    coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
-    streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
-    authHeaders: () => ({ Authorization: 'Bearer x' }),
-    addHistory: jest.fn(async () => {}),
-  })),
+  resolveClient: (cid: string) => mockResolveClient(cid),
   sessionReady: jest.fn(() => true),
 }));
 
@@ -687,5 +691,61 @@ describe('connection scoping', () => {
     // Still streaming through c1, its queue untouched.
     expect(usePlayer.getState().nowPlaying?.connectionId).toBe('c1');
     expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).not.toBe('file:///c2/0.m4b');
+  });
+});
+
+// --- offline playback of a downloaded book whose connection is gone ----------------
+// A connection whose secure-store token fails to hydrate is dropped from the session, so
+// resolveClient() returns null - but downloads.hydrate keeps its entry. A fully-local
+// book needs no server, so playBook must still play it.
+
+describe('plays a downloaded book whose connection is gone', () => {
+  function seedDownloaded(cid: string) {
+    const manifest: DownloadManifest = {
+      book: makeBook(),
+      chapters: null,
+      files: [{ relPath: 'A/Book.m4b', localUri: 'file:///dl/0.m4b' }],
+      coverUri: 'file:///dl/cover.jpg',
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    const entry: DownloadEntry = {
+      connectionId: cid,
+      libraryId: 2,
+      path: 'A/Book.m4b',
+      title: 'A Book',
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest,
+    };
+    useDownloads.setState({ entries: { [`${cid}:2:A/Book.m4b`]: entry } });
+  }
+
+  it('loads the local files (not a stream URL) when resolveClient returns null', async () => {
+    seedDownloaded('gone');
+    mockResolveClient.mockReturnValueOnce(null); // connection dropped from the session
+    (mockSvc.load as jest.Mock).mockClear();
+
+    await usePlayer.getState().playBook('gone', 2, makeBook(), undefined);
+
+    // It did NOT bail: the engine loaded the book, pointing at the local file.
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    const tracks = (mockSvc.load as jest.Mock).mock.calls[0][0] as { url: string }[];
+    expect(tracks[0].url).toBe('file:///dl/0.m4b');
+    // nowPlaying is set, scoped to the (missing) connection, with the downloaded cover.
+    expect(usePlayer.getState().nowPlaying?.connectionId).toBe('gone');
+    expect(usePlayer.getState().nowPlaying?.cover).toBe('file:///dl/cover.jpg');
+  });
+
+  it('still bails when the connection is gone AND the book is not downloaded (streaming needs a client)', async () => {
+    mockResolveClient.mockReturnValueOnce(null);
+    (mockSvc.load as jest.Mock).mockClear();
+
+    await usePlayer.getState().playBook('gone', 2, makeBook(), undefined);
+
+    // No local files + no client => nothing to play; the online/streaming path is unchanged.
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
   });
 });

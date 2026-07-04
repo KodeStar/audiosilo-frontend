@@ -1,31 +1,12 @@
-import { Redirect, Slot, useGlobalSearchParams } from 'expo-router';
-import { useEffect, type ReactNode } from 'react';
+import { Redirect, Slot } from 'expo-router';
+import { useEffect } from 'react';
 
-import { ConnectionScope, useOptionalApi } from '@/api/provider';
+import { useOptionalApi } from '@/api/provider';
 import { AppShell } from '@/components/layout/app-shell';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
-import { connectionParam } from '@/lib/paths';
 import { accountFlagsKnown } from '@/lib/recovery';
 import { useSession } from '@/stores/session';
-
-/**
- * Publishes the `?connection=` query param (carried by every content link - see
- * `paths.ts`) as the connection scope for the screens under it, so a book/library/
- * account resolves to *that* server's hooks rather than the default connection.
- * Content routes are flat with the connection in the query (not a `/s/[connectionId]/`
- * segment) because `router.push` can't resolve a tap into a route nested under a
- * dynamic layout. Aggregated screens (Home/Search) carry no `connection`, so the scope
- * is '' and they use the default. Redirects home if the id isn't a known connection, so
- * `useApi()` under the scope never throws on a stale link to a removed/unpaired server.
- */
-function ContentScope({ children }: { children: ReactNode }) {
-  const { connection } = useGlobalSearchParams<{ connection?: string | string[] }>();
-  const cid = connectionParam(connection);
-  const known = useSession((s) => !cid || s.connections.some((c) => c.id === cid));
-  if (!known) return <Redirect href="/" />;
-  return <ConnectionScope connectionId={cid}>{children}</ConnectionScope>;
-}
 
 export default function AppGroupLayout() {
   const status = useSession((s) => s.status);
@@ -63,11 +44,13 @@ export default function AppGroupLayout() {
     return <Redirect href="/connect" />;
   }
 
+  // Each content screen (book/library/account) scopes ITSELF to its `?connection=` via
+  // `<ContentScope>` from its own local param (reliable on a cold deep link, unlike a
+  // layout-level global param). Aggregated screens (Home/Search) carry no connection and
+  // default to the fallback scope, so nothing is wrapped here.
   return (
     <AppShell>
-      <ContentScope>
-        <Slot />
-      </ContentScope>
+      <Slot />
     </AppShell>
   );
 }

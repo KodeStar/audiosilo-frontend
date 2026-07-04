@@ -83,21 +83,26 @@ async function readQueue(): Promise<ProgressSave[]> {
 }
 
 export async function loadInitialProgress(
-  api: ApiClient,
+  api: ApiClient | null,
   connectionId: string,
   libraryId: number,
   path: string,
 ): Promise<ResumeLookup> {
   let serverOk = false;
   let server: Progress | null = null;
-  try {
-    server = await api.getProgress(libraryId, path); // null = HTTP 200, no record (new book)
-    serverOk = true;
-  } catch (e) {
-    // Reachability is per-connection, so note the failure against THIS book's own
-    // server (it drives that connection's banner + probe). The local mirror/queue
-    // fallback below keys off `serverOk`, not this call.
-    noteError(connectionId, e);
+  // `api` is null when a downloaded book is played with no live connection (its token
+  // failed to hydrate). There's no server to ask, so skip the fetch and resume from the
+  // durable mirror / offline queue below - exactly the unreachable-server path.
+  if (api) {
+    try {
+      server = await api.getProgress(libraryId, path); // null = HTTP 200, no record (new book)
+      serverOk = true;
+    } catch (e) {
+      // Reachability is per-connection, so note the failure against THIS book's own
+      // server (it drives that connection's banner + probe). The local mirror/queue
+      // fallback below keys off `serverOk`, not this call.
+      noteError(connectionId, e);
+    }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
   // so a locally-newer offline advance isn't regressed by a stale server read).

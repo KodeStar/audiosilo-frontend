@@ -6,6 +6,7 @@ import { FlatList, type ListRenderItem, Pressable, type ViewToken, View } from '
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
+import { ContentScope } from '@/components/layout/content-scope';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
@@ -45,8 +46,19 @@ type Row = { type: 'header'; letter: string } | { type: 'entry'; entry: FsEntry 
  * of author folders stays fast and fully reachable. Large folders get a type-to-
  * filter box and an A–Z jump rail; the folder-vs-file distinction stays clear from
  * each row's pink-folder / blue-book icon.
+ *
+ * Scopes to the route's OWN `?connection=` (local param, reliable on a cold deep link);
+ * the body consumes it via `useScopedCid()`, so it's a child of `<ContentScope>`.
  */
 export function BrowseScreen() {
+  return (
+    <ContentScope>
+      <BrowseContent />
+    </ContentScope>
+  );
+}
+
+function BrowseContent() {
   const { t } = useTranslation();
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
