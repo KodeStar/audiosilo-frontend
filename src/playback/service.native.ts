@@ -104,6 +104,13 @@ class NativePlaybackService implements PlaybackService {
     await AudiosiloPlayer.reset();
     this.update({ ...INITIAL_SNAPSHOT, rate: this.snapshot.rate });
   }
+  // The native picker is a system UI affordance, always available on iOS/Android.
+  canShowRoutePicker() {
+    return true;
+  }
+  async showRoutePicker() {
+    return AudiosiloPlayer.showRoutePicker();
+  }
   getSnapshot() {
     return this.snapshot;
   }

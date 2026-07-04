@@ -290,12 +290,20 @@
       "chapterNumber": "Kapitel {{number}}"
     },
     "bookmarks": {
+      "label": "Lesezeichen",
       "empty": "Noch keine Lesezeichen.",
       "saved": "Lesezeichen gespeichert",
       "addAt": "Lesezeichen bei {{time}} hinzufügen"
     },
     "history": {
+      "label": "Wiedergabeverlauf",
       "empty": "Noch kein Verlauf."
+    },
+    "notes": {
+      "label": "Notizen"
+    },
+    "routePicker": {
+      "label": "AirPlay / Cast"
     },
     "sleepTimer": {
       "title": "Sleep-Timer",

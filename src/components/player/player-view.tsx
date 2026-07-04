@@ -37,8 +37,9 @@ import { colors } from '@/theme/tokens';
  * desktop book screen - identical everywhere except the close button, which the
  * phone modal supplies via `onClose` (the desktop panel has nothing to close).
  *
- * The top toolbar's right side is the home for player actions (bookmark,
- * history, notes, speed, sleep) and where new ones should be added.
+ * Secondary actions live in two rows: the header's right side holds notes +
+ * bookmarks; the footer holds speed, history, the AirPlay/cast route picker, and
+ * the sleep timer.
  */
 export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
@@ -70,6 +71,8 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const seekInTrack = usePlayer((s) => s.seekInTrack);
   const goToTrack = usePlayer((s) => s.goToTrack);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
+  const canRoutePick = usePlayer((s) => s.canRoutePick);
+  const showRoutePicker = usePlayer((s) => s.showRoutePicker);
   const skipForward = useSettings((s) => s.skipForward);
   const skipBackward = useSettings((s) => s.skipBackward);
   const sleepActive = useSleepTimer((s) => s.active);
@@ -188,9 +191,20 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
         ) : null}
         <View className="ml-auto flex-row items-center gap-4">
           <Pressable
+            onPress={() => setSheet('notes')}
+            hitSlop={8}
+            className="h-8 w-8 items-center justify-center"
+            accessibilityRole="button"
+            accessibilityLabel={t('player.notes.label')}
+          >
+            <Icon name="notes" size={20} color={neutral} />
+          </Pressable>
+          <Pressable
             onPress={() => setSheet('bookmarks')}
             hitSlop={8}
             className="h-8 w-8 items-center justify-center"
+            accessibilityRole="button"
+            accessibilityLabel={t('player.bookmarks.label')}
           >
             <Icon name="bookmark" size={20} color={neutral} />
           </Pressable>
@@ -387,12 +401,32 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
           because the middle above is flex-1 - no mt-auto hack needed. */}
       <View className="flex-row items-center justify-between px-8 py-2">
         <SpeedButton />
-        <Pressable onPress={() => setSheet('history')} hitSlop={8} className="items-center gap-0.5">
+        <Pressable
+          onPress={() => setSheet('history')}
+          hitSlop={8}
+          className="items-center gap-0.5"
+          accessibilityRole="button"
+          accessibilityLabel={t('player.history.label')}
+        >
           <Icon name="history" size={20} color={neutral} />
         </Pressable>
-        <Pressable onPress={() => setSheet('notes')} hitSlop={8} className="items-center gap-0.5">
-          <Icon name="notes" size={20} color={neutral} />
-        </Pressable>
+        {/* AirPlay / cast: send audio to a HomePod, Bluetooth speaker (e.g. an Echo) or
+            Cast device. Shown only where the engine can present a picker (always on
+            native; on web where the platform exposes AirPlay / Remote Playback). A
+            spacer keeps the row balanced when it's hidden. */}
+        {canRoutePick ? (
+          <Pressable
+            onPress={() => void showRoutePicker()}
+            hitSlop={8}
+            className="items-center gap-0.5"
+            accessibilityRole="button"
+            accessibilityLabel={t('player.routePicker.label')}
+          >
+            <Icon name="airplay" size={20} color={neutral} />
+          </Pressable>
+        ) : (
+          <View className="w-5" />
+        )}
         <SleepTimerButton />
       </View>
 

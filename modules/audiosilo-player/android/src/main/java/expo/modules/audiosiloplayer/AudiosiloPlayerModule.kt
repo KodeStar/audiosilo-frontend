@@ -2,9 +2,11 @@ package expo.modules.audiosiloplayer
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -231,9 +233,49 @@ class AudiosiloPlayerModule : Module() {
       }
     }
 
+    // Open the system media-output switcher so the user can send audio elsewhere
+    // (Bluetooth — e.g. an Echo paired as a speaker — or a Cast target). Resolves true
+    // if a chooser was launched. The standalone in-app affordance complements the
+    // output-switcher chip Media3 already puts in the media notification.
+    AsyncFunction("showRoutePicker") { promise: Promise ->
+      handler.post { promise.resolve(openOutputSwitcher()) }
+    }
+
     OnDestroy {
       handler.post { releaseController() }
     }
+  }
+
+  /**
+   * Launch the system media-output chooser. The MEDIA_OUTPUT settings panel (the same
+   * switcher the media notification surfaces) is the lightest path and needs no extra
+   * SDK; not every OEM/ROM exposes it, so fall back to Bluetooth settings. Returns
+   * whether anything was launched.
+   */
+  private fun openOutputSwitcher(): Boolean {
+    // Resolve the React context defensively: the `context` getter throws (requireNotNull)
+    // if it's gone during teardown, and this runs on the main looper outside Expo's promise
+    // wrapper — an uncaught throw here would crash and leave the JS promise unresolved.
+    // Bail to "nothing shown" instead.
+    val ctx = appContext.reactContext ?: return false
+    val activity = appContext.currentActivity
+    val launchCtx = activity ?: ctx
+    val attempts = listOf(
+      Intent("com.android.settings.panel.action.MEDIA_OUTPUT")
+        .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", ctx.packageName),
+      Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+    )
+    for (intent in attempts) {
+      // Starting an Activity from a non-Activity context requires its own task.
+      if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      try {
+        launchCtx.startActivity(intent)
+        return true
+      } catch (_: Exception) {
+        // unsupported on this device — try the next fallback
+      }
+    }
+    return false
   }
 
   private fun connect(promise: Promise) {

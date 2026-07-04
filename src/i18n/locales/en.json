@@ -290,12 +290,20 @@
       "chapterNumber": "Chapter {{number}}"
     },
     "bookmarks": {
+      "label": "Bookmarks",
       "empty": "No bookmarks yet.",
       "saved": "Bookmark saved",
       "addAt": "Add bookmark at {{time}}"
     },
     "history": {
+      "label": "Listening history",
       "empty": "No history yet."
+    },
+    "notes": {
+      "label": "Notes"
+    },
+    "routePicker": {
+      "label": "AirPlay or Cast"
     },
     "sleepTimer": {
       "title": "Sleep timer",

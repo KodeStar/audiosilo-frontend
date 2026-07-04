@@ -290,12 +290,20 @@
       "chapterNumber": "Capitolo {{number}}"
     },
     "bookmarks": {
+      "label": "Segnalibri",
       "empty": "Ancora nessun segnalibro.",
       "saved": "Segnalibro salvato",
       "addAt": "Aggiungi segnalibro a {{time}}"
     },
     "history": {
+      "label": "Cronologia d'ascolto",
       "empty": "Ancora nessuna cronologia."
+    },
+    "notes": {
+      "label": "Note"
+    },
+    "routePicker": {
+      "label": "AirPlay / Cast"
     },
     "sleepTimer": {
       "title": "Timer di spegnimento",

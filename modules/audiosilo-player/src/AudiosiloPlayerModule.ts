@@ -31,6 +31,10 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
   setRate(rate: number): Promise<void>;
   /** Stop playback and clear the queue. */
   reset(): Promise<void>;
+  /** Present the OS audio-route picker so the user can send playback elsewhere: the
+   * AirPlay route sheet on iOS (→ HomePod, AirPlay speakers), the media-output switcher
+   * on Android (→ Bluetooth e.g. an Echo, Cast devices). Resolves true if one was shown. */
+  showRoutePicker(): Promise<boolean>;
   /** Android: returns true (once, then clears) if the app was swiped away from
    * recents since the last call - the JS layer uses it to reset to Home on the next
    * foreground (Android keeps the dismissed process cached, so the next open is a

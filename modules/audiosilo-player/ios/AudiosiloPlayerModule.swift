@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import AVFoundation
+import AVKit
 import MediaPlayer
 import UIKit
 
@@ -589,6 +590,10 @@ final class AudioEngine: NSObject {
 
 public class AudiosiloPlayerModule: Module {
   private var engine: AudioEngine?
+  /// A reusable AirPlay route picker kept off-screen. AVRoutePickerView has no public
+  /// "present" API — the system sheet is opened by tapping the view's internal button —
+  /// so we hold one in the window and trigger it programmatically (see presentRoutePicker).
+  private var routePicker: AVRoutePickerView?
 
   public func definition() -> ModuleDefinition {
     Name("AudiosiloPlayer")
@@ -624,6 +629,15 @@ public class AudiosiloPlayerModule: Module {
     AsyncFunction("setRate") { [weak self] (rate: Double) in self?.onMain { self?.engine?.setRate(rate) } }
     AsyncFunction("reset") { [weak self] in self?.onMain { self?.engine?.reset() } }
 
+    // Opens the AirPlay route sheet so the user can send audio to a HomePod / AirPlay
+    // speaker. AVQueuePlayer follows the chosen route automatically (the audio session is
+    // already .playback/.longFormAudio). Resolves true once the picker has been triggered.
+    // Uses a Promise so it resolves AFTER the main-thread hop (AVRoutePickerView is UIKit).
+    AsyncFunction("showRoutePicker") { [weak self] (promise: Promise) in
+      guard let self = self else { promise.resolve(false); return }
+      self.onMain { promise.resolve(self.presentRoutePicker()) }
+    }
+
     OnDestroy { [weak self] in
       self?.onMain {
         self?.engine?.reset()
@@ -635,6 +649,34 @@ public class AudiosiloPlayerModule: Module {
   /// AVFoundation / MPRemoteCommandCenter must be touched on the main thread.
   private func onMain(_ work: @escaping () -> Void) {
     if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+  }
+
+  /// Trigger the AirPlay route picker. AVRoutePickerView exposes no programmatic
+  /// "present"; the documented approach is to host the view and send its internal
+  /// UIButton a touch. We keep one off-screen in the key window and reuse it. Must run
+  /// on the main thread. Returns whether the trigger fired.
+  private func presentRoutePicker() -> Bool {
+    guard let window = Self.keyWindow() else { return false }
+    let picker = routePicker ?? AVRoutePickerView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
+    routePicker = picker
+    picker.prioritizesVideoDevices = false
+    // Re-parent to the *current* key window each time. The key window can change (return
+    // from background, scene reconnect, iPad multi-scene); triggering the button from a
+    // stale/background window won't present the sheet. addSubview moves it if needed, and
+    // is a no-op when it's already on this window.
+    if picker.superview !== window { window.addSubview(picker) }
+    for case let button as UIButton in picker.subviews {
+      button.sendActions(for: .touchUpInside)
+      return true
+    }
+    return false
+  }
+
+  private static func keyWindow() -> UIWindow? {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap { $0.windows }
+      .first { $0.isKeyWindow }
   }
 
   @discardableResult
