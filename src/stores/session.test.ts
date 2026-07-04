@@ -93,6 +93,19 @@ describe('session store (multi-connection)', () => {
     expect(s.connections[0].serverUrl).toBe('https://a.example'); // URL refreshed, no orphan
   });
 
+  it('rejects a blank server_id instead of filing the connection under an empty id', async () => {
+    await expect(
+      useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: '', token: 't', user: mkUser('a') }),
+    ).rejects.toThrow(/server_id/);
+    // Threw before mutating state: no half-built connection under an empty id, and
+    // nothing written to storage.
+    expect(useSession.getState().connections).toHaveLength(0);
+    expect(await AsyncStorage.getItem('audiosilo.connections')).toBeNull();
+    expect(await SecureStore.getItemAsync('audiosilo.token.')).toBeNull();
+  });
+
   it('logout removes the default connection, falling back to another', async () => {
     await useSession
       .getState()

@@ -85,6 +85,13 @@ export interface DownloadEngine {
   localUri?(connectionId: string, libraryId: number, path: string, fileName: string): string;
   /** Delete a book's directory and all its files. */
   removeBook(connectionId: string, libraryId: number, path: string): Promise<void>;
+  /**
+   * Delete EVERY downloaded file, across every connection. Used once by the
+   * storage-version reset: the pre-scoping on-disk layout has no `<connectionId>`
+   * segment, so `removeBook` can't locate those files - without a wholesale wipe they
+   * would orphan on disk (and keep inflating `totalBytesUsed`) forever.
+   */
+  clearAll?(): Promise<void>;
   /** Total bytes used by all downloads. */
   totalBytesUsed(): Promise<number>;
 }

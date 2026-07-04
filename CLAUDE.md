@@ -97,11 +97,13 @@ path)`, not just `(library_id, path)`. Without the connection id two servers'
 libraries bleed together and the offline queue could replay one server's positions
 onto another. The seam is `src/api/connection-clients.ts` - framework-free modules
 (progress-sync, the downloads store) resolve a connection id to its `ApiClient`
-(`resolveClient`), gate on the session having hydrated (`sessionReady`/
-`whenSessionReady`) before reading storage, and pick the legacy-migration adoption
-target (`adoptionTarget`) without importing React; removing/signing out of a
-connection **purges** its scoped state through the `onConnectionRemoved` registry
-in `src/stores/session.ts`. See `src/api/client.ts` + `src/api/types.ts`.
+(`resolveClient`) and gate on the session having hydrated (`sessionReady`) before
+reading storage, without importing React; removing/signing out of a connection
+**purges** its scoped state through the `onConnectionRemoved` registry in
+`src/stores/session.ts`. Client state left incompatible by the id scheme moving to the
+server-minted `server_id` (a `STORAGE_VERSION` bump) is cleared once, before any store
+hydrates, by `resetStaleStorage()` (the user re-pairs). See `src/api/client.ts` +
+`src/api/types.ts`.
 
 **API envelopes** (from the Go handlers): auth returns `{ token, user }`; `/me`
 returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cursor }`,
@@ -194,10 +196,11 @@ media GETs only.
   `engine.localUri` in agreement. **Files are stored per-connection**: native
   `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
-  `downloadKey(connectionId, libraryId, path)`. On first hydrate of this build,
-  `engine.migrateLegacyBook` moves any pre-scoping download once into the adoption
-  connection (or deletes it when there's none), and `onConnectionRemoved` deletes a
-  removed server's downloaded files.
+  `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
+  `server_id` id scheme) can't be re-keyed, so the one-time `resetStaleStorage()` bump
+  clears the registry and `engine.clearAll()` wipes the whole downloads root once (run
+  from `_layout.tsx` before the stores hydrate). `onConnectionRemoved` deletes a removed
+  server's downloaded files.
 - **Stream the file, not the book.** A track URL must be a real audio file
   (a chapter's `file_path` or a `BookFile.rel_path`) - **never** a folder/book path.
   `book-queue.ts` builds tracks from `files`, else derives distinct files from the

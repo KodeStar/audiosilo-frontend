@@ -6,6 +6,13 @@ export function segmentsToPath(seg?: string | string[]): string {
   return (Array.isArray(seg) ? seg : [seg]).join('/');
 }
 
+/** The single connection id carried by a route's `?connection=` query param, normalized
+ * to a string ('' when absent). One definition so the `(app)` scope layout and the
+ * offline banner read the param the same way (Expo Router can hand back `string[]`). */
+export function connectionParam(connection?: string | string[]): string {
+  return Array.isArray(connection) ? (connection[0] ?? '') : (connection ?? '');
+}
+
 /** Last path segment, for breadcrumb/title display. */
 export function pathLeaf(relPath: string): string {
   const parts = relPath.split('/').filter(Boolean);
@@ -55,10 +62,13 @@ export function accountHref(connectionId: string): Href {
 }
 
 /** The full-screen player modal for a book. The player is a root modal (outside any
- * scope), so it carries the connection as a param. */
+ * scope), so it carries the connection as a param - under the SAME `connection` name the
+ * content routes use, so while the modal is presented the still-mounted `(app)` scope
+ * layout keeps resolving to this book's server (a different name flipped it to the
+ * default connection and fired background fetches against the wrong server). */
 export function playerHref(connectionId: string, libraryId: number, relPath: string): Href {
   return {
     pathname: '/player',
-    params: { connectionId, libraryId: String(libraryId), path: relPath },
+    params: { connection: connectionId, libraryId: String(libraryId), path: relPath },
   };
 }

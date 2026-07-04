@@ -5,6 +5,7 @@ import { ConnectionScope, useOptionalApi } from '@/api/provider';
 import { AppShell } from '@/components/layout/app-shell';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
+import { connectionParam } from '@/lib/paths';
 import { accountFlagsKnown } from '@/lib/recovery';
 import { useSession } from '@/stores/session';
 
@@ -20,7 +21,7 @@ import { useSession } from '@/stores/session';
  */
 function ContentScope({ children }: { children: ReactNode }) {
   const { connection } = useGlobalSearchParams<{ connection?: string | string[] }>();
-  const cid = Array.isArray(connection) ? (connection[0] ?? '') : (connection ?? '');
+  const cid = connectionParam(connection);
   const known = useSession((s) => !cid || s.connections.some((c) => c.id === cid));
   if (!known) return <Redirect href="/" />;
   return <ConnectionScope connectionId={cid}>{children}</ConnectionScope>;

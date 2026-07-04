@@ -92,6 +92,15 @@ export const engine: DownloadEngine = {
     }
   },
 
+  async clearAll() {
+    try {
+      const root = rootDir();
+      if (root.exists) root.delete();
+    } catch {
+      // best-effort: orphaned files are non-fatal, just wasted space
+    }
+  },
+
   async totalBytesUsed() {
     try {
       const root = rootDir();

@@ -12,13 +12,13 @@ import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
   const {
-    connectionId,
+    connection: connectionId,
     libraryId: libParam,
     path: pathParam,
     position,
     track,
   } = useLocalSearchParams<{
-    connectionId?: string;
+    connection?: string;
     libraryId?: string;
     path?: string | string[];
     position?: string;

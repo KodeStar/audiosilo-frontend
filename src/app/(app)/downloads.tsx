@@ -21,8 +21,9 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
   // connection's client for the cover, and fall back to the locally-cached cover when
   // it isn't connected/available.
   const api = useOptionalApi(entry.connectionId);
-  // openPlayer makes this download's server active before routing, so the player
-  // chrome + playback read from the right connection.
+  // openPlayer routes to the player modal carrying this download's connection as a
+  // param, so the player chrome + playback read from the right server (no active-
+  // connection flip - the connection travels in the route).
   const { openPlayer } = useOpen();
   const remove = () =>
     void useDownloads.getState().remove(entry.connectionId, entry.libraryId, entry.path);

@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { anyOffline, useReachability } from '@/api/reachability';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { connectionParam } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
 
 function Bar({ label }: { label: string }) {
@@ -31,7 +32,7 @@ export function OfflineBanner() {
   const { t } = useTranslation();
   const online = useReachability((s) => s.online);
   const { connection } = useGlobalSearchParams<{ connection?: string | string[] }>();
-  const scopeCid = Array.isArray(connection) ? (connection[0] ?? '') : (connection ?? '');
+  const scopeCid = connectionParam(connection);
 
   if (scopeCid) {
     const reachable = online[scopeCid] ?? true;

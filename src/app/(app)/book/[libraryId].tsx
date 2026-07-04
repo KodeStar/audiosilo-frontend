@@ -115,7 +115,7 @@ export default function BookDetailScreen() {
       router.push({
         pathname: '/player',
         params: {
-          connectionId: cid,
+          connection: cid,
           libraryId: String(libraryId),
           path,
           ...(target.position !== undefined

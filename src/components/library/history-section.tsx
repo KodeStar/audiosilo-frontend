@@ -54,7 +54,7 @@ export function HistorySection({
   const jump = (position: number) =>
     router.push({
       pathname: '/player',
-      params: { connectionId: cid, libraryId: String(libraryId), path, position: String(position) },
+      params: { connection: cid, libraryId: String(libraryId), path, position: String(position) },
     });
 
   const labelAt = (pos: number): string => {

@@ -211,6 +211,15 @@ export const engine: DownloadEngine = {
     }
   },
 
+  async clearAll() {
+    if (!supported) return;
+    try {
+      await caches.delete(MEDIA_CACHE); // drop the whole media cache in one shot
+    } catch {
+      // best-effort: orphaned bytes are non-fatal, just wasted quota
+    }
+  },
+
   async totalBytesUsed() {
     try {
       const cache = await caches.open(MEDIA_CACHE);

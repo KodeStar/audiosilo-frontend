@@ -50,7 +50,7 @@ export function onReconnect(cb: (connectionId: string) => void): () => void {
   return () => reconnectHandlers.delete(cb);
 }
 
-export function setOnline(connectionId: string, online: boolean) {
+function setOnline(connectionId: string, online: boolean) {
   const current = useReachability.getState().online;
   const prev = current[connectionId] ?? true;
   if (prev === online) {

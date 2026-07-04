@@ -44,18 +44,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname, setQuery]);
 
   // Content routes are flat (`/book/[libraryId]`, `/library/[libraryId]`), so the
-  // pathname is the logical content path (the connection rides in a query param).
-  const path = pathname;
-
+  // pathname is already the logical content path (the connection rides in a query param).
+  //
   // The book screen owns its own two-pane layout (chapters + a player/detail
   // panel) and renders its own content column, so the shell just gives it the
   // sidebar - no full-width search bar across its panel, no duplicate player.
-  const onBook = path.startsWith('/book');
+  const onBook = pathname.startsWith('/book');
 
   // Remembered browse scroll positions only make sense while moving within the
   // library (drilling into folders/books and back). Leaving the section - Home,
   // Settings, etc. - forgets them, so re-entering the library starts at the top.
-  const inBrowse = path.startsWith('/library') || onBook;
+  const inBrowse = pathname.startsWith('/library') || onBook;
   useEffect(() => {
     if (!inBrowse) clearScrollMemory();
   }, [inBrowse]);

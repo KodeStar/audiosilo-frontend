@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { ApiError } from '@/api/client';
 import type { User } from '@/api/types';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { getItem, removeItem, setItem } from '@/lib/storage';
@@ -36,24 +37,32 @@ const SCOPED_STORAGE_KEYS = [
 /**
  * One-time reset of client state left incompatible by a `STORAGE_VERSION` bump. MUST be
  * awaited before session/downloads/progress hydrate (see `_layout.tsx`), so no store
- * loads records keyed on the old, now-invalid connection ids. A no-op once the current
+ * loads records keyed on the old, now-invalid connection ids. Returns `true` when it
+ * actually performed a reset (so the caller can also wipe the orphaned on-disk download
+ * files, which live outside AsyncStorage). A no-op returning `false` once the current
  * version has been recorded (every launch after the first post-upgrade one).
+ *
+ * The secure-store deletes are best-effort (`.catch`): a locked/unavailable keychain
+ * must not reject the whole reset - that would leave `VERSION_KEY` unrecorded and, worse,
+ * abort the caller's hydration (the app would hang on 'loading' forever). Losing a stale
+ * token is harmless; the connection metadata it belonged to is being cleared anyway.
  */
-export async function resetStaleStorage(): Promise<void> {
+export async function resetStaleStorage(): Promise<boolean> {
   const version = await getItem<number>(VERSION_KEY);
-  if (version === STORAGE_VERSION) return;
+  if (version === STORAGE_VERSION) return false;
   // Best-effort delete of each old connection's token, then every incompatible key.
   const meta = (await getItem<PersistedConnection[]>(CONNECTIONS_KEY)) ?? [];
-  await Promise.all(meta.map((m) => deleteSecure(tokenKey(m.id))));
+  await Promise.all(meta.map((m) => deleteSecure(tokenKey(m.id)).catch(() => undefined)));
   await Promise.all([
     removeItem(CONNECTIONS_KEY),
     removeItem(DEFAULT_KEY),
     removeItem(LEGACY_SERVER),
     removeItem(LEGACY_USER),
-    deleteSecure(LEGACY_TOKEN),
+    deleteSecure(LEGACY_TOKEN).catch(() => undefined),
     ...SCOPED_STORAGE_KEYS.map((k) => removeItem(k)),
   ]);
   await setItem(VERSION_KEY, STORAGE_VERSION);
+  return true;
 }
 
 export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated';
@@ -178,6 +187,12 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   setSession: async ({ serverUrl, serverId, token, user, name }) => {
+    // The connection id IS the server-minted server_id: it keys every per-server store
+    // (downloads, the progress mirror/queue, the query cache, scroll memory, the
+    // secure-store token). A blank id would file distinct servers under one shared bucket
+    // and make the default `useApi('')` throw, so refuse it loudly (the connect/sign-in
+    // flows surface this ApiError) rather than silently corrupt scoped state.
+    if (!serverId) throw new ApiError(0, 'Server did not return an id (server_id).');
     const existing = get().connections;
     // Dedupe by the server's stable identity, so re-pairing the same server - even at a
     // different URL - updates its connection (and refreshes the URL) instead of adding a

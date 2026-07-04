@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
+import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
@@ -40,14 +41,32 @@ export default function RootLayout() {
   const hydrateSettings = useSettings((s) => s.hydrate);
   const hydrateDownloads = useDownloads((s) => s.hydrate);
   useEffect(() => {
-    // Clear any state left incompatible by a storage-version bump BEFORE the stores read
-    // it, so none loads records keyed on now-invalid connection ids. A no-op after the
-    // first post-upgrade launch.
-    void resetStaleStorage().then(() => {
+    void (async () => {
+      // Clear any state left incompatible by a storage-version bump BEFORE the stores
+      // read it, so none loads records keyed on now-invalid connection ids. A no-op
+      // after the first post-upgrade launch. Guarded so a keychain/storage hiccup can
+      // never skip hydration below - that would strand the app on 'loading' forever
+      // (and defeat hydrate()'s own fail-safe).
+      let didReset = false;
+      try {
+        didReset = await resetStaleStorage();
+      } catch (e) {
+        console.warn('[storage] stale-state reset failed', e);
+      }
+      // On the id-scheme bump the pre-scoping downloaded files are orphaned on disk
+      // (their old paths lack the connectionId segment removeBook now needs), so wipe
+      // the whole downloads root once - otherwise they leak, uncounted-for, forever.
+      if (didReset && engine.clearAll) {
+        try {
+          await engine.clearAll();
+        } catch {
+          // best-effort; orphaned files are non-fatal
+        }
+      }
       void hydrate();
       void hydrateSettings();
       void hydrateDownloads();
-    });
+    })();
   }, [hydrate, hydrateSettings, hydrateDownloads]);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
