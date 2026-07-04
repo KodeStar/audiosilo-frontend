@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBook, useChapters } from '@/api/hooks';
-import { useApi } from '@/api/provider';
+import { useActiveCid, useApi } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
 import { Spinner } from '@/components/ui/spinner';
 import { segmentsToPath } from '@/lib/paths';
@@ -25,6 +25,7 @@ export default function PlayerScreen() {
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
   const api = useApi();
+  const cid = useActiveCid();
   const insets = useSafeAreaInsets();
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
@@ -49,7 +50,11 @@ export default function PlayerScreen() {
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
     // playBook every render (hammering getProgress + restarting playback).
-    if (nowPlaying?.libraryId === libraryId && nowPlaying?.path === book.rel_path) {
+    if (
+      nowPlaying?.connectionId === cid &&
+      nowPlaying?.libraryId === libraryId &&
+      nowPlaying?.path === book.rel_path
+    ) {
       if (hasPos) void seekBook(posParam);
       else if (hasTrack) void goToTrack(trackParam);
       return;
@@ -57,9 +62,10 @@ export default function PlayerScreen() {
     const startAt = hasPos ? posParam : undefined;
     void usePlayer
       .getState()
-      .playBook(api, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
+      .playBook(api, cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
   }, [
     api,
+    cid,
     book,
     chapterData,
     chaptersQuery.isLoading,

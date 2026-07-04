@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
+import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
@@ -17,6 +18,7 @@ import { colors } from '@/theme/tokens';
 export function BookmarksSection({
   libraryId,
   path,
+  connectionId,
   emptyLabel,
   onAdd,
   adding,
@@ -24,23 +26,33 @@ export function BookmarksSection({
 }: {
   libraryId: number;
   path: string;
+  /** Source connection; defaults to the active one (the book screen). The player
+   * passes the playing book's connection so it addresses the right server. */
+  connectionId?: string;
   emptyLabel?: string;
   onAdd?: () => void;
   adding?: boolean;
   addLabel?: string;
 }) {
   const { t } = useTranslation();
-  const { data: bookmarks } = useBookmarks(libraryId, path);
-  const del = useDeleteBookmark(libraryId, path);
+  const { data: bookmarks } = useBookmarks(libraryId, path, connectionId);
+  const del = useDeleteBookmark(libraryId, path, connectionId);
+  const setActive = useSession((s) => s.setActiveConnection);
 
   const empty = !bookmarks || bookmarks.length === 0;
   if (empty && !onAdd && !emptyLabel) return null;
 
-  const jump = (position: number) =>
+  const jump = async (position: number) => {
+    // The player screen operates on the ACTIVE connection, so make this bookmark's
+    // connection active before opening it - otherwise a bookmark for a book playing
+    // through a non-active connection would open the wrong server's book. (On the book
+    // screen connectionId is omitted and this is a no-op.)
+    if (connectionId) await setActive(connectionId);
     router.push({
       pathname: '/player',
       params: { libraryId: String(libraryId), path, position: String(position) },
     });
+  };
 
   return (
     <View className="gap-2">
@@ -61,7 +73,7 @@ export function BookmarksSection({
         >
           <Pressable
             className="flex-1 flex-row items-center gap-3"
-            onPress={() => jump(bm.position)}
+            onPress={() => void jump(bm.position)}
           >
             <Icon name="bookmark" size={16} color={colors.primary} />
             <View className="flex-1">

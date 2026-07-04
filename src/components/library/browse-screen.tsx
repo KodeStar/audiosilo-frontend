@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, type ListRenderItem, Pressable, type ViewToken, View } from 'react-native';
 
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
+import { useActiveCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -53,6 +54,7 @@ export function BrowseScreen() {
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
+  const cid = useActiveCid();
 
   const { data: libraries } = useLibraries();
   const { data, isLoading, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -66,7 +68,7 @@ export function BrowseScreen() {
   // pixel offset, which is reliable on a virtualized list.
   const listRef = useRef<FlatList<Row>>(null);
   const restoredRef = useRef(false);
-  const key = scrollKey(libraryId, path);
+  const key = scrollKey(cid, libraryId, path);
   const keyRef = useRef(key);
   useEffect(() => {
     keyRef.current = key;

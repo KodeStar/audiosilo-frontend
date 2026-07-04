@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 
-import { useSession, type Connection } from '@/stores/session';
+import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { ApiClient } from './client';
 import { onReconnect, setReachabilityApi } from './reachability';
@@ -14,6 +14,13 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
   },
+});
+
+// Evict the removed server's cached data (every query key leads with its connection
+// id). Matching by `includes(id)` could in theory also match a same-string path
+// segment, but that would only evict one extra entry - harmless, it just refetches.
+onConnectionRemoved((id) => {
+  queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(id) });
 });
 
 // When the server becomes reachable again, refetch so screens that errored or emptied
@@ -74,20 +81,68 @@ export function useApiRegistry(): ApiRegistry {
   return useContext(ApiContext);
 }
 
-/** The ApiClient for a connection (defaults to the active one). Throws if none. */
+/** The active connection id (`''` when none) - the fallback cid for chrome that isn't
+ * scoped to a specific server (the sidebar, the connect flow default). */
+export function useActiveCid(): string {
+  return useSession((s) => s.activeConnectionId) ?? '';
+}
+
+/**
+ * The connection a subtree of content is scoped to (the server whose library/book you
+ * are viewing), supplied by the `s/[connectionId]` route layout via `ConnectionScope`.
+ * `''` outside any scope (chrome, aggregated Home/Search). Content screens read the
+ * scope instead of the global active connection.
+ */
+const ConnectionScopeContext = createContext<string>('');
+
+/** Wrap a subtree so its content hooks resolve to `connectionId` (used by the
+ * `s/[connectionId]` route layout). */
+export function ConnectionScope({
+  connectionId,
+  children,
+}: {
+  connectionId: string;
+  children: ReactNode;
+}) {
+  return (
+    <ConnectionScopeContext.Provider value={connectionId}>
+      {children}
+    </ConnectionScopeContext.Provider>
+  );
+}
+
+/** The nearest route scope's connection id, or `''` outside any scope. */
+export function useScopedCid(): string {
+  return useContext(ConnectionScopeContext);
+}
+
+/**
+ * The connection id to use for content: an explicit `connectionId` wins (a card passing
+ * its own server), else the nearest route scope, else the active connection. One
+ * definition so the resolution order can't drift across call sites.
+ */
+export function useCid(connectionId?: string): string {
+  const scope = useScopedCid();
+  const active = useActiveCid();
+  return connectionId ?? (scope || active);
+}
+
+/** The ApiClient for a connection (explicit id → route scope → active). Throws if none. */
 export function useApi(connectionId?: string): ApiClient {
-  const { clients, activeId } = useContext(ApiContext);
-  const client = clients.get(connectionId ?? activeId ?? '') ?? null;
+  const { clients } = useContext(ApiContext);
+  const cid = useCid(connectionId);
+  const client = clients.get(cid) ?? null;
   if (!client) {
     throw new Error('useApi() requires a configured server connection');
   }
   return client;
 }
 
-/** Like useApi but returns null instead of throwing (defaults to active). */
+/** Like useApi but returns null instead of throwing (explicit id → route scope → active). */
 export function useOptionalApi(connectionId?: string): ApiClient | null {
-  const { clients, activeId } = useContext(ApiContext);
-  return clients.get(connectionId ?? activeId ?? '') ?? null;
+  const { clients } = useContext(ApiContext);
+  const cid = useCid(connectionId);
+  return clients.get(cid) ?? null;
 }
 
 /** Every connection paired with its client, in user-defined order. */

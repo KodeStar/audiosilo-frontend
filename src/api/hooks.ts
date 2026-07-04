@@ -8,24 +8,31 @@ import {
 
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
-import { useSession } from '@/stores/session';
 
-import { useApi, useApis, useOptionalApi } from './provider';
+import { useActiveCid, useApi, useApis, useOptionalApi } from './provider';
 import type { Book, Favourite, Library, Progress } from './types';
 
-/** Centralized query keys so mutations can invalidate precisely. */
+/** Centralized query keys so mutations can invalidate precisely. Every key leads with
+ * the connection id (`cid`) so two servers with the same (libraryId, path) never share
+ * a cache entry; the shape is unified with the cross-connection fan-out hooks below so
+ * the single- and multi-server views share one cache. */
 export const qk = {
-  server: () => ['server'] as const,
-  libraries: () => ['libraries'] as const,
-  browse: (lib: number, path: string) => ['browse', lib, path] as const,
-  item: (lib: number, path: string) => ['item', lib, path] as const,
-  chapters: (lib: number, path: string) => ['chapters', lib, path] as const,
-  allProgress: () => ['progress', 'all'] as const,
-  progress: (lib: number, path: string) => ['progress', lib, path] as const,
-  bookmarks: (lib: number, path: string) => ['bookmarks', lib, path] as const,
-  notes: (lib: number, path: string) => ['notes', lib, path] as const,
-  history: (lib: number, path: string) => ['history', lib, path] as const,
+  server: (cid: string) => ['server', cid] as const,
+  libraries: (cid: string) => ['libraries', cid] as const,
+  browse: (cid: string, lib: number, path: string) => ['browse', cid, lib, path] as const,
+  item: (cid: string, lib: number, path: string) => ['item', cid, lib, path] as const,
+  chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path] as const,
+  allProgress: (cid: string) => ['progress', 'all', cid] as const,
+  progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path] as const,
+  bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
+  notes: (cid: string, lib: number, path: string) => ['notes', cid, lib, path] as const,
+  history: (cid: string, lib: number, path: string) => ['history', cid, lib, path] as const,
+  /** Prefix matching every history key of a connection (invalidation). */
+  historyAll: (cid: string) => ['history', cid] as const,
   favourites: (connectionId: string) => ['favourites', connectionId] as const,
+  search: (cid: string, q: string) => ['search', cid, q] as const,
+  recent: (cid: string, limit: number) => ['books', 'recent', cid, limit] as const,
+  copies: (cid: string, key: string) => ['copies', cid, key] as const,
 };
 
 /** The connected server's identity/capabilities (incl. its release version).
@@ -33,8 +40,9 @@ export const qk = {
  * like the sidebar that can render before/without a connection. */
 export function useServerInfo() {
   const api = useOptionalApi();
+  const cid = useActiveCid();
   return useQuery({
-    queryKey: qk.server(),
+    queryKey: qk.server(cid),
     queryFn: ({ signal }) => api!.serverInfo(signal),
     enabled: !!api,
     staleTime: 5 * 60_000, // the server version doesn't change within a session
@@ -43,7 +51,8 @@ export function useServerInfo() {
 
 export function useLibraries() {
   const api = useApi();
-  return useQuery({ queryKey: qk.libraries(), queryFn: () => api.libraries() });
+  const cid = useActiveCid();
+  return useQuery({ queryKey: qk.libraries(cid), queryFn: () => api.libraries() });
 }
 
 /** Server page size for the folder browse view (the server caps a page at 500). */
@@ -55,8 +64,9 @@ const BROWSE_PAGE_SIZE = 500;
  * entry folder is two requests; cached by React Query). */
 export function useBrowseInfinite(libraryId: number, path: string) {
   const api = useApi();
+  const cid = useActiveCid();
   return useInfiniteQuery({
-    queryKey: qk.browse(libraryId, path),
+    queryKey: qk.browse(cid, libraryId, path),
     queryFn: ({ pageParam, signal }) =>
       api.browse(libraryId, path, pageParam, BROWSE_PAGE_SIZE, signal),
     initialPageParam: 0,
@@ -66,8 +76,9 @@ export function useBrowseInfinite(libraryId: number, path: string) {
 
 export function useBook(libraryId: number, path: string) {
   const api = useApi();
+  const cid = useActiveCid();
   return useQuery({
-    queryKey: qk.item(libraryId, path),
+    queryKey: qk.item(cid, libraryId, path),
     queryFn: ({ signal }) => api.item(libraryId, path, signal),
     enabled: path.length > 0,
   });
@@ -75,8 +86,9 @@ export function useBook(libraryId: number, path: string) {
 
 export function useChapters(libraryId: number, path: string) {
   const api = useApi();
+  const cid = useActiveCid();
   return useQuery({
-    queryKey: qk.chapters(libraryId, path),
+    queryKey: qk.chapters(cid, libraryId, path),
     queryFn: ({ signal }) => api.chapters(libraryId, path, signal),
     enabled: path.length > 0,
   });
@@ -86,6 +98,8 @@ export function useChapters(libraryId: number, path: string) {
  * it reconciles with playback progress, then refreshes the home lists. */
 export function useMarkFinished(connectionId?: string) {
   const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: {
@@ -96,6 +110,7 @@ export function useMarkFinished(connectionId?: string) {
       playback_speed?: number;
     }) => {
       await saveProgress(api, {
+        connectionId: cid,
         libraryId: p.libraryId,
         path: p.path,
         position: p.position,
@@ -107,75 +122,94 @@ export function useMarkFinished(connectionId?: string) {
       });
     },
     onSuccess: (_data, p) => {
-      qc.invalidateQueries({ queryKey: qk.allProgress() });
-      qc.invalidateQueries({ queryKey: qk.progress(p.libraryId, p.path) });
+      qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
+      qc.invalidateQueries({ queryKey: qk.progress(cid, p.libraryId, p.path) });
     },
   });
 }
 
 // --- Bookmarks -------------------------------------------------------------
-export function useBookmarks(libraryId: number, path: string) {
-  const api = useApi();
+// Each of these takes an optional `connectionId` (defaults to the active connection):
+// the player can drive bookmarks/notes/history for a book that is playing through a
+// connection the user has since switched away from, so it must address that book's own
+// server, not whatever is active. The book screen omits it (it operates on the active
+// connection). Same shape as useMarkFinished/useToggleFavourite.
+export function useBookmarks(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   return useQuery({
-    queryKey: qk.bookmarks(libraryId, path),
+    queryKey: qk.bookmarks(cid, libraryId, path),
     queryFn: () => api.bookmarks(libraryId, path),
     enabled: path.length > 0,
   });
 }
 
-export function useAddBookmark(libraryId: number, path: string) {
-  const api = useApi();
+export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: { position: number; note?: string }) =>
       api.addBookmark(libraryId, path, vars.position, vars.note ?? ''),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(libraryId, path) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(cid, libraryId, path) }),
   });
 }
 
-export function useDeleteBookmark(libraryId: number, path: string) {
-  const api = useApi();
+export function useDeleteBookmark(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteBookmark(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(libraryId, path) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(cid, libraryId, path) }),
   });
 }
 
 // --- Notes -----------------------------------------------------------------
-export function useNotes(libraryId: number, path: string) {
-  const api = useApi();
+export function useNotes(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   return useQuery({
-    queryKey: qk.notes(libraryId, path),
+    queryKey: qk.notes(cid, libraryId, path),
     queryFn: () => api.notes(libraryId, path),
     enabled: path.length > 0,
   });
 }
 
-export function useAddNote(libraryId: number, path: string) {
-  const api = useApi();
+export function useAddNote(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: { body: string; position?: number }) =>
       api.addNote(libraryId, path, vars.body, vars.position ?? 0),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(libraryId, path) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(cid, libraryId, path) }),
   });
 }
 
-export function useDeleteNote(libraryId: number, path: string) {
-  const api = useApi();
+export function useDeleteNote(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteNote(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(libraryId, path) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(cid, libraryId, path) }),
   });
 }
 
 // --- History ---------------------------------------------------------------
-export function useHistory(libraryId: number, path: string) {
-  const api = useApi();
+export function useHistory(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const activeId = useActiveCid();
+  const cid = connectionId ?? activeId;
   return useQuery({
-    queryKey: qk.history(libraryId, path),
+    queryKey: qk.history(cid, libraryId, path),
     queryFn: () => api.history(libraryId, path),
     enabled: path.length > 0,
   });
@@ -186,7 +220,7 @@ export function useHistory(libraryId: number, path: string) {
  * call). Feeds the per-row hearts, the Favourites shelf, and the home section. */
 export function useFavourites() {
   const api = useApi();
-  const activeId = useSession((s) => s.activeConnectionId) ?? '';
+  const activeId = useActiveCid();
   return useQuery({
     queryKey: qk.favourites(activeId),
     queryFn: ({ signal }) => api.favourites(signal),
@@ -199,7 +233,7 @@ export function useFavourites() {
  * (which fills in server-derived fields like is_book/title for a fresh add). */
 export function useToggleFavourite(connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useSession((s) => s.activeConnectionId) ?? '';
+  const activeId = useActiveCid();
   const cid = connectionId ?? activeId;
   const qc = useQueryClient();
   return useMutation({
@@ -251,7 +285,7 @@ export function useLibrariesAll() {
   const apis = useApis();
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: ['libraries', connection.id] as const,
+      queryKey: qk.libraries(connection.id),
       queryFn: () => client.libraries(),
     })),
     combine: (results) => ({
@@ -279,7 +313,7 @@ export function useSearchAll(query: string) {
   };
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: ['search', connection.id, q] as const,
+      queryKey: qk.search(connection.id, q),
       queryFn: ({ signal }: { signal: AbortSignal }) => client.search(q, 50, signal),
       enabled: q.length > 0,
     })),
@@ -299,7 +333,7 @@ export function useRecentAll(limit = 48) {
   };
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: ['books', 'recent', connection.id, limit] as const,
+      queryKey: qk.recent(connection.id, limit),
       queryFn: ({ signal }: { signal: AbortSignal }) => client.recentBooks(limit, signal),
     })),
     combine: (results) => ({
@@ -337,7 +371,7 @@ export function useAllProgressAll() {
   const apis = useApis();
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: ['progress', 'all', connection.id] as const,
+      queryKey: qk.allProgress(connection.id),
       queryFn: () => client.allProgress(),
     })),
     combine: (results) => ({
@@ -403,7 +437,7 @@ export function useBookCopies(book: Book | undefined) {
   const title = book?.title ?? '';
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: ['copies', connection.id, key] as const,
+      queryKey: qk.copies(connection.id, key),
       queryFn: ({ signal }: { signal: AbortSignal }) => client.search(title, 50, signal),
       enabled: !!book && title.trim().length > 0,
     })),

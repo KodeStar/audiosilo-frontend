@@ -80,7 +80,13 @@
     "connections": {
       "label": "Servidores",
       "remove": "Remover {{name}}",
-      "add": "Adicionar um servidor"
+      "add": "Adicionar um servidor",
+      "removeConfirm": {
+        "title": "Remover {{name}}?",
+        "confirm": "Remover servidor",
+        "message_one": "Isto elimina {{count}} livro descarregado neste dispositivo e qualquer progresso ainda não sincronizado.",
+        "message_other": "Isto elimina {{count}} livros descarregados neste dispositivo e qualquer progresso ainda não sincronizado."
+      }
     },
     "recoveryModal": {
       "title": "Código de recuperação",
@@ -91,7 +97,9 @@
       "title": "Terminar sessão?",
       "warning": "Não tem qualquer palavra-passe nem código de recuperação definido. Sem um deles, vai precisar de um novo convite do seu administrador para iniciar sessão novamente neste servidor.",
       "setRecovery": "Definir um código de recuperação",
-      "confirm": "Terminar sessão mesmo assim"
+      "confirm": "Terminar sessão mesmo assim",
+      "downloadsWarning_one": "Terminar sessão também elimina {{count}} livro descarregado deste servidor neste dispositivo.",
+      "downloadsWarning_other": "Terminar sessão também elimina {{count}} livros descarregados deste servidor neste dispositivo."
     },
     "recovery": {
       "generateError": "Não foi possível gerar um código de recuperação."

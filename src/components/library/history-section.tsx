@@ -20,16 +20,20 @@ import { colors } from '@/theme/tokens';
 export function HistorySection({
   libraryId,
   path,
+  connectionId,
   emptyLabel,
   chapters,
 }: {
   libraryId: number;
   path: string;
+  /** Source connection; defaults to the active one. The player passes the playing
+   * book's connection so history addresses the right server. */
+  connectionId?: string;
   emptyLabel?: string;
   chapters?: Chapter[];
 }) {
   const { t } = useTranslation();
-  const { data: history } = useHistory(libraryId, path);
+  const { data: history } = useHistory(libraryId, path, connectionId);
 
   if (!history || history.length === 0) {
     // Inline (book screen) hides entirely when empty; the player sheet passes an

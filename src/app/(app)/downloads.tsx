@@ -1,38 +1,42 @@
-import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { useApi } from '@/api/provider';
+import { useOptionalApi } from '@/api/provider';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { EmptyNote } from '@/components/ui/query-state';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
-import { useDownloads } from '@/downloads/store';
+import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
+import { useOpen } from '@/lib/open';
 import { colors } from '@/theme/tokens';
 
 function DownloadRow({ entry }: { entry: DownloadEntry }) {
   const { t } = useTranslation();
-  const api = useApi();
-  const remove = () => void useDownloads.getState().remove(entry.libraryId, entry.path);
+  // Each row belongs to its OWN connection (downloads span every server); resolve that
+  // connection's client for the cover, and fall back to the locally-cached cover when
+  // it isn't connected/available.
+  const api = useOptionalApi(entry.connectionId);
+  // openPlayer makes this download's server active before routing, so the player
+  // chrome + playback read from the right connection.
+  const { openPlayer } = useOpen();
+  const remove = () =>
+    void useDownloads.getState().remove(entry.connectionId, entry.libraryId, entry.path);
   const coverSource = entry.manifest.coverUri
     ? entry.manifest.coverUri
-    : { uri: api.coverUrl(entry.libraryId, entry.path), headers: api.authHeaders() };
+    : api
+      ? { uri: api.coverUrl(entry.libraryId, entry.path), headers: api.authHeaders() }
+      : null;
 
   return (
     <View className="flex-row items-center gap-3 rounded-lg bg-white p-2 dark:border dark:border-gray-860 dark:bg-gray-840">
       <Pressable
         className="flex-1 flex-row items-center gap-3 active:opacity-80"
-        onPress={() =>
-          router.push({
-            pathname: '/player',
-            params: { libraryId: String(entry.libraryId), path: entry.path },
-          })
-        }
+        onPress={() => void openPlayer(entry.connectionId, entry.libraryId, entry.path)}
       >
         <Cover source={coverSource} label={entry.title} rounded="rounded-md" size={52} />
         <View className="flex-1 gap-1">
@@ -105,7 +109,12 @@ export default function DownloadsScreen() {
       ) : list.length === 0 ? (
         <EmptyNote message={t('downloads.empty')} />
       ) : (
-        list.map((entry) => <DownloadRow key={`${entry.libraryId}:${entry.path}`} entry={entry} />)
+        list.map((entry) => (
+          <DownloadRow
+            key={downloadKey(entry.connectionId, entry.libraryId, entry.path)}
+            entry={entry}
+          />
+        ))
       )}
     </ScrollView>
   );

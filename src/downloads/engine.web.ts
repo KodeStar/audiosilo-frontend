@@ -32,9 +32,11 @@ function slug(path: string): string {
   return `${base || 'book'}-${hash(path)}`;
 }
 
-/** Same-origin, in-scope url prefix for a book's files (ends with `/`). */
-function bookPrefix(libraryId: number, path: string): string {
-  return `${location.origin}${BASE}/_offline/${libraryId}/${slug(path)}/`;
+/** Same-origin, in-scope url prefix for a book's files (ends with `/`). The extra
+ * `<connectionId>` segment scopes downloads per server; public/sw.js matches these
+ * by `includes('/_offline/')`, so the extra segment needs no service-worker change. */
+function bookPrefix(connectionId: string, libraryId: number, path: string): string {
+  return `${location.origin}${BASE}/_offline/${connectionId}/${libraryId}/${slug(path)}/`;
 }
 
 /** Resolve true once our service worker controls this page (it serves the cached
@@ -93,6 +95,7 @@ export const engine: DownloadEngine = {
   supported,
 
   async downloadFile(
+    connectionId,
     libraryId,
     path,
     fileName,
@@ -124,7 +127,7 @@ export const engine: DownloadEngine = {
     };
     if (total > 0) headers['Content-Length'] = String(total);
 
-    const virtualUri = bookPrefix(libraryId, path) + fileName;
+    const virtualUri = bookPrefix(connectionId, libraryId, path) + fileName;
     const cache = await caches.open(MEDIA_CACHE);
     await cache.put(virtualUri, new Response(res.body.pipeThrough(counter), { headers }));
     // If the server sent no Content-Length, the entry was stored without one, so
@@ -152,6 +155,12 @@ export const engine: DownloadEngine = {
     } catch {
       return false;
     }
+  },
+
+  // The virtual cache url for a stored file, recomputed from (connectionId, libraryId,
+  // path, fileName) - deterministic, so a stored entry always resolves to the same url.
+  localUri(connectionId, libraryId, path, fileName) {
+    return bookPrefix(connectionId, libraryId, path) + fileName;
   },
 
   async verify(localUri) {
@@ -189,10 +198,10 @@ export const engine: DownloadEngine = {
     }
   },
 
-  async removeBook(libraryId, path) {
+  async removeBook(connectionId, libraryId, path) {
     try {
       const cache = await caches.open(MEDIA_CACHE);
-      const prefix = bookPrefix(libraryId, path);
+      const prefix = bookPrefix(connectionId, libraryId, path);
       const keys = await cache.keys();
       await Promise.all(
         keys.filter((req) => req.url.startsWith(prefix)).map((req) => cache.delete(req)),

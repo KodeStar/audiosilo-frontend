@@ -75,7 +75,7 @@ export function BookRow({
         ) : null}
       </View>
       {book.duration ? <Text variant="caption">{formatDuration(book.duration)}</Text> : null}
-      <DownloadBadge libraryId={book.library_id} path={book.rel_path} />
+      <DownloadBadge connectionId={connectionId} libraryId={book.library_id} path={book.rel_path} />
       <Icon name="chevron-right" size={14} />
     </Pressable>
   );

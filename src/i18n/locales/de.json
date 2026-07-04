@@ -80,7 +80,13 @@
     "connections": {
       "label": "Server",
       "remove": "{{name}} entfernen",
-      "add": "Server hinzufügen"
+      "add": "Server hinzufügen",
+      "removeConfirm": {
+        "title": "{{name}} entfernen?",
+        "confirm": "Server entfernen",
+        "message_one": "Dadurch wird {{count}} auf diesem Gerät heruntergeladenes Buch gelöscht, ebenso wie noch nicht synchronisierter Fortschritt.",
+        "message_other": "Dadurch werden {{count}} auf diesem Gerät heruntergeladene Bücher gelöscht, ebenso wie noch nicht synchronisierter Fortschritt."
+      }
     },
     "recoveryModal": {
       "title": "Wiederherstellungscode",
@@ -91,7 +97,9 @@
       "title": "Abmelden?",
       "warning": "Du hast weder ein Passwort noch einen Wiederherstellungscode festgelegt. Ohne eines davon brauchst du eine neue Einladung von deinem Administrator, um dich wieder bei diesem Server anzumelden.",
       "setRecovery": "Wiederherstellungscode festlegen",
-      "confirm": "Trotzdem abmelden"
+      "confirm": "Trotzdem abmelden",
+      "downloadsWarning_one": "Beim Abmelden wird außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladenes Buch gelöscht.",
+      "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht."
     },
     "recovery": {
       "generateError": "Wiederherstellungscode konnte nicht generiert werden."

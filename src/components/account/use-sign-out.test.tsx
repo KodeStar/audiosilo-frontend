@@ -7,17 +7,26 @@ jest.mock('@/api/provider', () => ({ useOptionalApi: () => mockApi }));
 
 // The session store is driven directly here: the mock runs the selector against a
 // controlled state object so each test sets the user + spies on logout/setUser.
-let mockSessionState: { user: User | null; setUser: jest.Mock; logout: jest.Mock };
+let mockSessionState: {
+  user: User | null;
+  setUser: jest.Mock;
+  logout: jest.Mock;
+  activeConnectionId: string | null;
+};
 jest.mock('@/stores/session', () => ({
   useSession: (selector: (s: unknown) => unknown) => selector(mockSessionState),
 }));
 
-// signOut stops playback for the connection being revoked; mock the player store so
-// this test (focused on the recovery-warning decision) doesn't pull in the native engine.
-jest.mock('@/playback/store', () => ({ stopPlaybackForServer: jest.fn(async () => {}) }));
+// signOut runs the shared token-revoking teardown (playback stop + queued-progress
+// flush); mock the player store so this test (focused on the recovery-warning
+// decision) doesn't pull in the native engine.
+jest.mock('@/playback/store', () => ({ teardownBeforeTokenRevoke: jest.fn(async () => {}) }));
 
-// eslint-disable-next-line import/first
+/* eslint-disable import/first */
+import { teardownBeforeTokenRevoke } from '@/playback/store';
+
 import { useSignOut } from './use-sign-out';
+/* eslint-enable import/first */
 
 // renderHook is incompatible with this jest-expo + React 19 setup, so mount a probe
 // component (render works) that re-captures the hook value on every render. The
@@ -54,6 +63,7 @@ beforeEach(() => {
     user: null,
     setUser: jest.fn(),
     logout: jest.fn().mockResolvedValue(undefined),
+    activeConnectionId: 'c1',
   };
 });
 
@@ -80,6 +90,9 @@ describe('useSignOut', () => {
 
     await waitFor(() => expect(mockSessionState.logout).toHaveBeenCalled());
     expect(hook().confirmVisible).toBe(false);
+    // Before revoking the token: the shared teardown (stop playback + flush the
+    // queued progress that removing the connection would purge).
+    expect(teardownBeforeTokenRevoke).toHaveBeenCalledWith('c1');
   });
 
   it('refreshes unknown flags from /me before deciding (and warns when stranded)', async () => {

@@ -1,14 +1,17 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useApiRegistry } from '@/api/provider';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { stopPlaybackForServer } from '@/playback/store';
-import { useSession } from '@/stores/session';
+import { downloadedCountFor, useDownloads } from '@/downloads/store';
+import { teardownBeforeTokenRevoke } from '@/playback/store';
+import { useSession, type Connection } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
 /** Settings section to manage server connections: switch the active one, remove a
@@ -21,15 +24,28 @@ export function ConnectionsSection() {
   const setActive = useSession((s) => s.setActiveConnection);
   const remove = useSession((s) => s.removeConnection);
   const { clients } = useApiRegistry();
+  // Removing a connection purges its downloads (they become unreachable once its id is
+  // gone), so a connection with downloaded books gets a confirm step first. The count
+  // is snapshotted at tap time (no store subscription: the whole section would
+  // otherwise re-render on every download progress tick).
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    connection: Connection;
+    downloadCount: number;
+  } | null>(null);
 
-  const onRemove = async (id: string) => {
+  const performRemove = async (id: string) => {
     const client = clients.get(id);
-    // Same teardown rule as sign-out (use-sign-out.ts): stop playback first when this
-    // connection is the one playing, so the final position persists while the token is
-    // still valid. Then best-effort server-side logout, and forget it locally.
-    if (client) await stopPlaybackForServer(client);
+    // Shared token-revoking teardown (playback stop + queued-progress flush), then
+    // best-effort server-side logout, and forget it locally.
+    await teardownBeforeTokenRevoke(id);
     void client?.logout().catch(() => {});
     void remove(id);
+  };
+
+  const onRemove = (c: Connection) => {
+    const count = downloadedCountFor(useDownloads.getState().entries, c.id);
+    if (count > 0) setPendingRemoval({ connection: c, downloadCount: count });
+    else void performRemove(c.id);
   };
 
   return (
@@ -59,7 +75,7 @@ export function ConnectionsSection() {
                 {active ? <Icon name="check" size={16} color={colors.primary} /> : null}
               </Pressable>
               <Pressable
-                onPress={() => void onRemove(c.id)}
+                onPress={() => onRemove(c)}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={t('account.connections.remove', { name: c.name })}
@@ -77,6 +93,24 @@ export function ConnectionsSection() {
           onPress={() => router.push('/connect?add=1')}
         />
       </Card>
+
+      <ConfirmDialog
+        visible={pendingRemoval !== null}
+        title={t('account.connections.removeConfirm.title', {
+          name: pendingRemoval?.connection.name ?? '',
+        })}
+        message={t('account.connections.removeConfirm.message', {
+          count: pendingRemoval?.downloadCount ?? 0,
+        })}
+        confirmLabel={t('account.connections.removeConfirm.confirm')}
+        confirmIcon="trash"
+        onConfirm={() => {
+          const c = pendingRemoval?.connection;
+          setPendingRemoval(null);
+          if (c) void performRemove(c.id);
+        }}
+        onCancel={() => setPendingRemoval(null)}
+      />
     </View>
   );
 }

@@ -49,6 +49,7 @@ const mockLoadInitialProgress = jest.fn(
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),
+  flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
 }));
@@ -59,7 +60,11 @@ jest.mock('@/api/provider', () => ({
 }));
 
 /* eslint-disable import/first */
-import { stopPlaybackForServer, usePlayer } from './store';
+import { useDownloads } from '@/downloads/store';
+import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
+
+import { flushConnection } from './progress-sync';
+import { stopPlaybackForConnection, teardownBeforeTokenRevoke, usePlayer } from './store';
 /* eslint-enable import/first */
 
 // --- Fixtures --------------------------------------------------------------
@@ -110,9 +115,10 @@ function snap(state: PlaybackState, position: number, extra: Partial<PlaybackSna
   return { state, trackIndex: 0, position, duration: 100, rate: 1, ...extra } as PlaybackSnapshot;
 }
 
-/** Start a book so `nowPlaying` + the engine subscription are wired up. */
-async function startBook(book: Book = makeBook(), startPos = 0) {
-  await usePlayer.getState().playBook(fakeApi(), 2, book, undefined, startPos);
+/** Start a book so `nowPlaying` + the engine subscription are wired up. Loaded
+ * through connection `c1` unless a test overrides it. */
+async function startBook(book: Book = makeBook(), startPos = 0, cid = 'c1') {
+  await usePlayer.getState().playBook(fakeApi(), cid, 2, book, undefined, startPos);
 }
 
 beforeEach(() => {
@@ -121,6 +127,10 @@ beforeEach(() => {
   // Reset the public store state between tests (module-level service/timer are
   // singletons; resetting nowPlaying + snapshot is enough to isolate behaviour).
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL }, rate: 1 });
+  // Clear the downloads registry (a shared singleton) so a leftover entry from the
+  // hot-swap test can't affect another test's download lookup. nowPlaying is already
+  // null above, so the store's useDownloads.subscribe hot-swap listener no-ops here.
+  useDownloads.setState({ entries: {} });
 });
 
 afterEach(() => {
@@ -488,7 +498,7 @@ describe('resume never restarts an in-progress book from 0', () => {
     });
     (mockSvc.load as jest.Mock).mockClear();
     // No explicit start position → the resume lookup drives the start point.
-    await usePlayer.getState().playBook(fakeApi(), 2, makeBook(), undefined);
+    await usePlayer.getState().playBook(fakeApi(), 'c1', 2, makeBook(), undefined);
     expect((mockSvc.load as jest.Mock).mock.calls[0][1]).toBe(0); // startIndex (single file)
     expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(30); // positionInTrack
     expect(usePlayer.getState().rate).toBe(1.5);
@@ -497,7 +507,7 @@ describe('resume never restarts an in-progress book from 0', () => {
   it('fails safe (error, no playback) when a streaming resume lookup fails', async () => {
     mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
     (mockSvc.load as jest.Mock).mockClear();
-    await usePlayer.getState().playBook(fakeApi(), 2, makeBook(), undefined);
+    await usePlayer.getState().playBook(fakeApi(), 'c1', 2, makeBook(), undefined);
     // Must NOT restart at 0: surface an error and load nothing.
     expect(usePlayer.getState().snapshot.state).toBe('error');
     expect(mockSvc.load).not.toHaveBeenCalled();
@@ -514,7 +524,7 @@ describe('resume never restarts an in-progress book from 0', () => {
     mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
     await usePlayer
       .getState()
-      .playBook(fakeApi(), 2, makeBook({ rel_path: 'B/BookB.m4b' }), undefined);
+      .playBook(fakeApi(), 'c1', 2, makeBook({ rel_path: 'B/BookB.m4b' }), undefined);
 
     // The previous book's engine is torn down and the UI shows B in error.
     expect(mockSvc.reset).toHaveBeenCalled();
@@ -531,7 +541,7 @@ describe('resume never restarts an in-progress book from 0', () => {
 
   it('retry re-runs the resume lookup after a streaming resume failure', async () => {
     mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
-    await usePlayer.getState().playBook(fakeApi(), 2, makeBook(), undefined);
+    await usePlayer.getState().playBook(fakeApi(), 'c1', 2, makeBook(), undefined);
     expect(usePlayer.getState().snapshot.state).toBe('error');
 
     // The server recovers → retry re-fetches and resumes at the real position.
@@ -550,7 +560,9 @@ describe('resume never restarts an in-progress book from 0', () => {
       kind: 'progress',
       progress: makeProgress({ position: 300, duration: 1000 }),
     });
-    await usePlayer.getState().playBook(fakeApi(), 2, makeBook({ duration: 1000 }), undefined);
+    await usePlayer
+      .getState()
+      .playBook(fakeApi(), 'c1', 2, makeBook({ duration: 1000 }), undefined);
 
     // A spurious restart reports position 2 (≪ resumeFloor 300) → must not overwrite.
     mockSaveProgress.mockClear();
@@ -566,7 +578,9 @@ describe('resume never restarts an in-progress book from 0', () => {
       kind: 'progress',
       progress: makeProgress({ position: 300, duration: 1000 }),
     });
-    await usePlayer.getState().playBook(fakeApi(), 2, makeBook({ duration: 1000 }), undefined);
+    await usePlayer
+      .getState()
+      .playBook(fakeApi(), 'c1', 2, makeBook({ duration: 1000 }), undefined);
 
     // The user deliberately seeks back to 2 → the floor lowers, so saving is allowed.
     await usePlayer.getState().seekBook(2);
@@ -579,34 +593,103 @@ describe('resume never restarts an in-progress book from 0', () => {
   });
 });
 
-describe('stopPlaybackForServer (the token-revoking teardown rule)', () => {
-  const apiFor = (baseUrl: string): ApiClient =>
-    ({ ...fakeApi(), baseUrl }) as unknown as ApiClient;
-
-  it('stops playback when the playing book came from that server', async () => {
-    await usePlayer.getState().playBook(apiFor('https://a.example'), 2, makeBook(), undefined, 0);
+describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
+  it('stops playback when the playing book came from that connection', async () => {
+    await usePlayer.getState().playBook(fakeApi(), 'c1', 2, makeBook(), undefined, 0);
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
 
     (mockSvc.reset as jest.Mock).mockClear();
-    // A DIFFERENT client instance for the same server must still match - the provider
-    // rebuilds ApiClient instances whenever the connection list changes, so the helper
-    // matches by baseUrl, not identity.
-    await stopPlaybackForServer(apiFor('https://a.example'));
+    // Matched by the stable connection id (nowPlaying.connectionId), so it works
+    // regardless of ApiClient instances being rebuilt when the connection list changes.
+    await stopPlaybackForConnection('c1');
 
     expect(mockSvc.reset).toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toBeNull();
   });
 
-  it('leaves a book from another server playing (its token stays valid)', async () => {
-    await usePlayer.getState().playBook(apiFor('https://a.example'), 2, makeBook(), undefined, 0);
+  it('teardownBeforeTokenRevoke stops playback and flushes the connection being revoked', async () => {
+    await usePlayer.getState().playBook(fakeApi(), 'c1', 2, makeBook(), undefined, 0);
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
 
     (mockSvc.reset as jest.Mock).mockClear();
-    await stopPlaybackForServer(apiFor('https://b.example'));
+    await teardownBeforeTokenRevoke('c1');
+
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    // Flushes THIS connection specifically (bypasses the active-only reachability gate
+    // that flushQueue honors), so its queued saves land before removal purges them.
+    expect(flushConnection).toHaveBeenCalledWith('c1');
+  });
+
+  it('leaves a book from another connection playing (its token stays valid)', async () => {
+    await usePlayer.getState().playBook(fakeApi(), 'c1', 2, makeBook(), undefined, 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+
+    (mockSvc.reset as jest.Mock).mockClear();
+    await stopPlaybackForConnection('c2');
 
     expect(mockSvc.reset).not.toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).not.toBeNull();
+  });
+});
+
+// --- per-connection scoping of saves + the download hot-swap -----------------
+
+describe('connection scoping', () => {
+  it('persist stamps the connectionId of the loaded connection into the save', async () => {
+    await usePlayer.getState().playBook(fakeApi(), 'c9', 2, makeBook(), undefined, 0);
+
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 40));
+    pushSnapshot(snap('paused', 40));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ connectionId: 'c9', position: 40 });
+  });
+
+  it('does NOT hot-swap when a download completes for the same (lib,path) under a DIFFERENT connection', async () => {
+    // Book is playing through connection c1.
+    await usePlayer.getState().playBook(fakeApi(), 'c1', 2, makeBook(), undefined, 0);
+    pushSnapshot(snap('playing', 10));
+    await Promise.resolve();
+
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.setRate as jest.Mock).mockClear();
+
+    // A download for the SAME (libraryId, path) but a DIFFERENT connection (c2) finishes.
+    const manifest: DownloadManifest = {
+      book: makeBook(),
+      chapters: null,
+      files: [{ relPath: 'A/Book.m4b', localUri: 'file:///c2/0.m4b' }],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    const c2Entry: DownloadEntry = {
+      connectionId: 'c2',
+      libraryId: 2,
+      path: 'A/Book.m4b',
+      title: 'A Book',
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest,
+    };
+    // The subscribe listener sees prev (no entry) → downloaded, but the key is scoped to
+    // c2, not the playing book's c1, so switchCurrentBookToLocal must not fire.
+    useDownloads.setState({ entries: { 'c2:2:A/Book.m4b': c2Entry } });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // No swap onto the other connection's local files (no reload past the initial play).
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    // Still streaming through c1, its queue untouched.
+    expect(usePlayer.getState().nowPlaying?.connectionId).toBe('c1');
+    expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).not.toBe('file:///c2/0.m4b');
   });
 });

@@ -32,3 +32,8 @@ export function libraryHref(libraryId: number, relPath = ''): Href {
 export function bookHref(libraryId: number, relPath: string): Href {
   return `/book/${libraryId}/${encodePathSegments(relPath)}` as Href;
 }
+
+/** The full-screen player modal for a book. */
+export function playerHref(libraryId: number, relPath: string): Href {
+  return { pathname: '/player', params: { libraryId: String(libraryId), path: relPath } };
+}

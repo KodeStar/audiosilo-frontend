@@ -73,7 +73,7 @@ export function GridCard({
           </Text>
         </View>
         <View className="pt-0.5">
-          <DownloadBadge libraryId={libraryId} path={path} />
+          <DownloadBadge connectionId={connectionId} libraryId={libraryId} path={path} />
         </View>
       </View>
       {footer}

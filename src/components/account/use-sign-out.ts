@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { useOptionalApi } from '@/api/provider';
-import { stopPlaybackForServer } from '@/playback/store';
+import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { accountFlagsKnown, needsRecoveryWarning } from '@/lib/recovery';
 import { useSession } from '@/stores/session';
 
@@ -22,24 +22,25 @@ export function useSignOut() {
   const user = useSession((s) => s.user);
   const setUser = useSession((s) => s.setUser);
   const logout = useSession((s) => s.logout);
+  const activeConnectionId = useSession((s) => s.activeConnectionId);
   const [confirmVisible, setConfirmVisible] = useState(false);
 
   const signOut = useCallback(async () => {
     setConfirmVisible(false);
-    // Stop playback before revoking the token, when the playing book came from this
-    // connection. This persists the final position while the token is still valid, then
-    // silences the audio and tears down the engine - otherwise the book keeps playing
-    // (and the save loop keeps hitting the now-revoked token) with no mini-player in
-    // the connect screen to stop it. A book playing through another connection keeps
+    // Shared token-revoking teardown: stop playback through this connection (persisting
+    // the final position while the token is still valid - otherwise the book keeps
+    // playing with no mini-player in the connect screen to stop it) and replay its
+    // queued progress (removing the connection below purges those saves, so this is
+    // the last chance to land them). A book playing through another connection keeps
     // going; its token stays valid.
-    if (api) await stopPlaybackForServer(api);
+    if (activeConnectionId) await teardownBeforeTokenRevoke(activeConnectionId);
     try {
       await api?.logout();
     } catch {
       // ignore; clear locally regardless
     }
     await logout();
-  }, [api, logout]);
+  }, [api, activeConnectionId, logout]);
 
   const requestSignOut = useCallback(async () => {
     let current = user;

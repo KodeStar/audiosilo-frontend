@@ -47,7 +47,12 @@ export default function SignInScreen() {
   }
 
   const finish = async (session: AuthSession) => {
-    await setSession({ serverUrl: pendingServerUrl, token: session.token, user: session.user });
+    await setSession({
+      serverUrl: pendingServerUrl,
+      serverId: session.server_id,
+      token: session.token,
+      user: session.user,
+    });
     router.replace('/');
   };
 

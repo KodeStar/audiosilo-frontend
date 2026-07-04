@@ -86,9 +86,22 @@ change - for this repo that's chiefly `docs-users/listening/**` and
 
 ## Architecture & conventions
 
-**Path is identity.** All content is addressed by `(library_id, rel_path)`, never
-a DB id. Every content call passes `?path=<rel_path>`; persist client state keyed
-by `(library_id, path)`. See `src/api/client.ts` + `src/api/types.ts`.
+**Path is identity, scoped by connection.** All content is addressed by
+`(library_id, rel_path)`, never a DB id, and every content call passes
+`?path=<rel_path>`. But the app is **multi-connection** (signed in to several
+servers at once, and two servers can each have a "library 1"), so **durable/cache
+client state is additionally scoped by connection id**: React Query keys (`qk.*`),
+the downloads registry + on-disk/Cache-API files, the progress mirror + offline
+replay queue, and browse scroll memory all key on `(connectionId, library_id,
+path)`, not just `(library_id, path)`. Without the connection id two servers'
+libraries bleed together and the offline queue could replay one server's positions
+onto another. The seam is `src/api/connection-clients.ts` - framework-free modules
+(progress-sync, the downloads store) resolve a connection id to its `ApiClient`
+(`resolveClient`), gate on the session having hydrated (`sessionReady`/
+`whenSessionReady`) before reading storage, and pick the legacy-migration adoption
+target (`adoptionTarget`) without importing React; removing/signing out of a
+connection **purges** its scoped state through the `onConnectionRemoved` registry
+in `src/stores/session.ts`. See `src/api/client.ts` + `src/api/types.ts`.
 
 **API envelopes** (from the Go handlers): auth returns `{ token, user }`; `/me`
 returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cursor }`,
@@ -178,7 +191,13 @@ media GETs only.
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
   - without it a stale path fails the existence check and the book is dropped *and
   deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
-  `engine.localUri` in agreement.
+  `engine.localUri` in agreement. **Files are stored per-connection**: native
+  `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
+  `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
+  `downloadKey(connectionId, libraryId, path)`. On first hydrate of this build,
+  `engine.migrateLegacyBook` moves any pre-scoping download once into the adoption
+  connection (or deletes it when there's none), and `onConnectionRemoved` deletes a
+  removed server's downloaded files.
 - **Stream the file, not the book.** A track URL must be a real audio file
   (a chapter's `file_path` or a `BookFile.rel_path`) - **never** a folder/book path.
   `book-queue.ts` builds tracks from `files`, else derives distinct files from the

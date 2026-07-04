@@ -26,11 +26,21 @@ function NoteMarkdown({ body }: { body: string }) {
 }
 
 /** Free-form markdown notes for a book: add, render, delete. */
-export function NotesSection({ libraryId, path }: { libraryId: number; path: string }) {
+export function NotesSection({
+  libraryId,
+  path,
+  connectionId,
+}: {
+  libraryId: number;
+  path: string;
+  /** Source connection; defaults to the active one. The player passes the playing
+   * book's connection so notes address the right server. */
+  connectionId?: string;
+}) {
   const { t } = useTranslation();
-  const { data: notes } = useNotes(libraryId, path);
-  const add = useAddNote(libraryId, path);
-  const del = useDeleteNote(libraryId, path);
+  const { data: notes } = useNotes(libraryId, path, connectionId);
+  const add = useAddNote(libraryId, path, connectionId);
+  const del = useDeleteNote(libraryId, path, connectionId);
   const [draft, setDraft] = useState('');
 
   const onAdd = () => {

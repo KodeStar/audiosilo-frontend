@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { useApi } from '@/api/provider';
+import { useActiveCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 
 import { useDownloadEntry, useDownloads } from './store';
@@ -25,22 +25,23 @@ export function useDownloadControls(
   book?: Book,
   chapterData?: ChaptersResponse,
 ): DownloadControls {
-  const api = useApi();
-  const entry = useDownloadEntry(libraryId, path);
+  // The book screen operates on the active connection, so downloads scope to it.
+  const cid = useActiveCid();
+  const entry = useDownloadEntry(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
   // serve offline media), not just the static Cache-API capability.
   const supported = useDownloads((s) => s.supported);
 
   const start = useCallback(() => {
-    if (book) useDownloads.getState().download(api, libraryId, book, chapterData);
-  }, [api, libraryId, book, chapterData]);
+    if (book) useDownloads.getState().download(cid, libraryId, book, chapterData);
+  }, [cid, libraryId, book, chapterData]);
   const cancel = useCallback(
-    () => useDownloads.getState().cancel(libraryId, path),
-    [libraryId, path],
+    () => useDownloads.getState().cancel(cid, libraryId, path),
+    [cid, libraryId, path],
   );
   const remove = useCallback(
-    () => void useDownloads.getState().remove(libraryId, path),
-    [libraryId, path],
+    () => void useDownloads.getState().remove(cid, libraryId, path),
+    [cid, libraryId, path],
   );
 
   return {

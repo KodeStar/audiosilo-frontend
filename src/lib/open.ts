@@ -1,6 +1,6 @@
 import { type Href, router } from 'expo-router';
 
-import { bookHref, libraryHref } from '@/lib/paths';
+import { bookHref, libraryHref, playerHref } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 /**
@@ -24,5 +24,7 @@ export function useOpen() {
       go(connectionId, libraryHref(libraryId, path)),
     openBook: (connectionId: string, libraryId: number, path: string) =>
       go(connectionId, bookHref(libraryId, path)),
+    openPlayer: (connectionId: string, libraryId: number, path: string) =>
+      go(connectionId, playerHref(libraryId, path)),
   };
 }

@@ -49,7 +49,12 @@ export default function ConnectServerScreen() {
       try {
         const session = await new ApiClient(base).exchange(token, getDeviceName());
         if (cancelled) return;
-        await setSession({ serverUrl: base, token: session.token, user: session.user });
+        await setSession({
+          serverUrl: base,
+          serverId: session.server_id,
+          token: session.token,
+          user: session.user,
+        });
         router.replace('/');
       } catch (e) {
         if (cancelled) return;
@@ -103,7 +108,12 @@ export default function ConnectServerScreen() {
     setDemoLoading(true);
     try {
       const demo = await new ApiClient(demoBase).demoSession(getDeviceName());
-      await setSession({ serverUrl: demoBase, token: demo.token, user: demo.user });
+      await setSession({
+        serverUrl: demoBase,
+        serverId: demo.server_id,
+        token: demo.token,
+        user: demo.user,
+      });
       router.replace('/');
     } catch (e) {
       setError(

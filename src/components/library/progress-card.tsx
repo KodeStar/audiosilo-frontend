@@ -105,7 +105,6 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
   const { t } = useTranslation();
   const api = useApi(item.connectionId);
   const setActive = useSession((s) => s.setActiveConnection);
-  const activeConnectionId = useSession((s) => s.activeConnectionId);
   const { width: screenWidth } = useWindowDimensions();
   const wide = screenWidth >= WIDE_BREAKPOINT;
 
@@ -116,7 +115,7 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
   const position = usePlayer((s) => {
     const np = s.nowPlaying;
     const isThis =
-      item.connectionId === activeConnectionId &&
+      np?.connectionId === item.connectionId &&
       np?.libraryId === item.library_id &&
       np?.path === item.path;
     return isThis ? selectBookPosition(s) : item.position;
@@ -139,12 +138,17 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
       return;
     }
     const current = usePlayer.getState().nowPlaying;
-    if (current?.libraryId === item.library_id && current?.path === item.path) return;
+    if (
+      current?.connectionId === item.connectionId &&
+      current?.libraryId === item.library_id &&
+      current?.path === item.path
+    )
+      return;
     const [book, chapterData] = await Promise.all([
       api.item(item.library_id, item.path),
       api.chapters(item.library_id, item.path),
     ]);
-    await usePlayer.getState().playBook(api, item.library_id, book, chapterData);
+    await usePlayer.getState().playBook(api, item.connectionId, item.library_id, book, chapterData);
   };
 
   return (

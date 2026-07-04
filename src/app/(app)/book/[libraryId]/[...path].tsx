@@ -41,6 +41,7 @@ export default function BookDetailScreen() {
   const path = segmentsToPath(pathParam);
   const api = useApi();
   const activeConnectionId = useSession((s) => s.activeConnectionId);
+  const cid = activeConnectionId ?? '';
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
 
@@ -50,7 +51,7 @@ export default function BookDetailScreen() {
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
-  const downloadEntry = useDownloadEntry(libraryId, path);
+  const downloadEntry = useDownloadEntry(cid, libraryId, path);
   const paddingBottom = useMiniPlayerInset();
 
   if (isLoading) return <Spinner center />;
@@ -73,7 +74,10 @@ export default function BookDetailScreen() {
   const chapters = chapterData?.chapters ?? [];
   const files = chapterData?.files ?? [];
   const listLabel = chapters.length > 0 ? t('book.chaptersTitle') : t('book.filesTitle');
-  const isThisPlaying = nowPlaying?.libraryId === libraryId && nowPlaying?.path === book.rel_path;
+  const isThisPlaying =
+    nowPlaying?.connectionId === cid &&
+    nowPlaying?.libraryId === libraryId &&
+    nowPlaying?.path === book.rel_path;
   const activeIndex = isThisPlaying ? currentChapter?.index : undefined;
   const downloaded = downloadEntry?.status === 'downloaded';
 
@@ -106,7 +110,7 @@ export default function BookDetailScreen() {
     if (wide) {
       void usePlayer
         .getState()
-        .playBook(api, libraryId, book, chapterData, target.position, target.track);
+        .playBook(api, cid, libraryId, book, chapterData, target.position, target.track);
     } else {
       router.push({
         pathname: '/player',

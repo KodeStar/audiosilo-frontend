@@ -10,7 +10,7 @@ import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
 import '@/lib/register-sw';
-import { useSession } from '@/stores/session';
+import { resetStaleStorage, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { ThemeProvider, useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
@@ -40,9 +40,14 @@ export default function RootLayout() {
   const hydrateSettings = useSettings((s) => s.hydrate);
   const hydrateDownloads = useDownloads((s) => s.hydrate);
   useEffect(() => {
-    void hydrate();
-    void hydrateSettings();
-    void hydrateDownloads();
+    // Clear any state left incompatible by a storage-version bump BEFORE the stores read
+    // it, so none loads records keyed on now-invalid connection ids. A no-op after the
+    // first post-upgrade launch.
+    void resetStaleStorage().then(() => {
+      void hydrate();
+      void hydrateSettings();
+      void hydrateDownloads();
+    });
   }, [hydrate, hydrateSettings, hydrateDownloads]);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
+import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
@@ -8,7 +9,13 @@ import { downloadKey, useDownloads } from '@/downloads/store';
 import { useSettings } from '@/stores/settings';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
-import { flushQueue, getDeviceId, loadInitialProgress, saveProgress } from './progress-sync';
+import {
+  flushConnection,
+  flushQueue,
+  getDeviceId,
+  loadInitialProgress,
+  saveProgress,
+} from './progress-sync';
 import { createPlaybackService } from './service';
 import { INITIAL_SNAPSHOT, type PlaybackService, type PlaybackSnapshot } from './types';
 
@@ -43,6 +50,7 @@ let resumeLookupFailed = false;
 /** Captured so `retry()` can re-run the resume path after a lookup failure. */
 let lastPlayRequest: {
   api: ApiClient;
+  connectionId: string;
   libraryId: number;
   book: Book;
   chapterData?: ChaptersResponse;
@@ -76,6 +84,8 @@ function currentConfig() {
 }
 
 export type NowPlaying = {
+  /** The connection this book is playing through (scopes saves + download lookups). */
+  connectionId: string;
   libraryId: number;
   path: string;
   title: string;
@@ -91,9 +101,11 @@ type PlayerState = {
 
   /** Start a book. Omit startBookPosition to resume from saved progress; pass
    * startTrack to begin at a specific file (used when file durations are
-   * unknown, so a whole-book position can't address a track). */
+   * unknown, so a whole-book position can't address a track). `connectionId` is the
+   * server this book is loaded through - it scopes saves, downloads and invalidations. */
   playBook: (
     api: ApiClient,
+    connectionId: string,
     libraryId: number,
     book: Book,
     chapterData?: ChaptersResponse,
@@ -130,6 +142,7 @@ async function persist() {
   if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
   const total = nowPlaying.queue.total;
   await saveProgress(apiRef, {
+    connectionId: nowPlaying.connectionId,
     libraryId: nowPlaying.libraryId,
     path: nowPlaying.path,
     position,
@@ -146,7 +159,11 @@ async function persist() {
  * playing book while it plays; this refreshes the other cards (finished state,
  * other-device progress) once it stops, without invalidating on every 15s save. */
 function invalidateProgressLists() {
-  void queryClient.invalidateQueries({ queryKey: ['progress', 'all'] });
+  // The playing book's connection scopes the invalidation (stop() invalidates
+  // before it nulls nowPlaying, so the id is still in hand at every call site).
+  const cid = usePlayer.getState().nowPlaying?.connectionId;
+  if (!cid) return;
+  void queryClient.invalidateQueries({ queryKey: qk.allProgress(cid) });
 }
 
 function startSaveLoop() {
@@ -241,7 +258,7 @@ function endHistory() {
       started_at: new Date(start.at).toISOString(),
       ended_at: new Date().toISOString(),
     })
-    .then(() => queryClient.invalidateQueries({ queryKey: ['history'] }))
+    .then(() => queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) }))
     .catch((err) => {
       noteError(err);
       console.warn('[history] failed to save listening span', err);
@@ -339,7 +356,15 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
 
-  playBook: async (api, libraryId, book, chapterData, startBookPosition, startTrack) => {
+  playBook: async (
+    api,
+    connectionId,
+    libraryId,
+    book,
+    chapterData,
+    startBookPosition,
+    startTrack,
+  ) => {
     endHistory(); // flush any prior book's listening span before switching
     cancelStallWatchdog(); // drop any stale stall timer from the previous book
     // Stop the prior book's periodic save loop before we switch nowPlaying: otherwise
@@ -350,11 +375,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     stopSaveLoop();
     apiRef = api;
     deviceId = await getDeviceId();
-    lastPlayRequest = { api, libraryId, book, chapterData }; // so retry() can re-run resume
+    lastPlayRequest = { api, connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
     resumeLookupFailed = false;
 
     // Play from local files when the book is downloaded (works fully offline).
-    const dl = useDownloads.getState().entries[downloadKey(libraryId, book.rel_path)];
+    const dl = useDownloads.getState().entries[downloadKey(connectionId, libraryId, book.rel_path)];
     const local =
       dl?.status === 'downloaded'
         ? {
@@ -372,6 +397,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       useSettings.getState().virtualChapterInterval,
     );
     const nowPlaying: NowPlaying = {
+      connectionId,
       libraryId,
       path: book.rel_path,
       title: book.title,
@@ -384,7 +410,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     let startAt = startBookPosition ?? 0;
     let speed = clampRate(useSettings.getState().defaultRate);
     if (startBookPosition === undefined && startTrack === undefined) {
-      const r = await loadInitialProgress(api, libraryId, book.rel_path);
+      const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
       if (r.kind === 'progress') {
         const p = r.progress;
         if (!p.finished && p.position > 0) startAt = p.position;
@@ -425,7 +451,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     await svc.setRate(speed);
     await svc.play();
     // The save loop is started by the engine 'playing' transition (see subscribe).
-    void flushQueue(api);
+    void flushQueue();
   },
 
   toggle: async () => {
@@ -458,9 +484,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // progress) rather than reloading at a stale 0 - this is the recovery for the
     // fail-safe in playBook.
     if (resumeLookupFailed && lastPlayRequest) {
-      const { api, libraryId, book, chapterData } = lastPlayRequest;
+      const { api, connectionId, libraryId, book, chapterData } = lastPlayRequest;
       resumeLookupFailed = false;
-      await get().playBook(api, libraryId, book, chapterData);
+      await get().playBook(api, connectionId, libraryId, book, chapterData);
       return;
     }
     const np = get().nowPlaying;
@@ -555,16 +581,29 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
 /**
  * Stop playback (persisting the final position) when the playing book was loaded
- * through the given connection's client. Sign-out and connection-removal both revoke
- * that connection's token, and the stop must come first so the final save still
- * authenticates - this is the shared teardown rule for every token-revoking path
- * (use-sign-out.ts, connections-section.tsx). Books playing through another connection
- * keep going: their token stays valid. Matched by server (`baseUrl`), not client
- * instance - the provider rebuilds ApiClient instances whenever the connection list
- * changes, so instance equality would silently skip the stop.
+ * through the given connection. Books playing through another connection keep going:
+ * their token stays valid. Matched by the stable connection id, so it works regardless
+ * of ApiClient instances being rebuilt when the connection list changes.
  */
-export async function stopPlaybackForServer(api: ApiClient): Promise<void> {
-  if (apiRef?.baseUrl === api.baseUrl) await usePlayer.getState().stop();
+export async function stopPlaybackForConnection(connectionId: string): Promise<void> {
+  if (usePlayer.getState().nowPlaying?.connectionId === connectionId)
+    await usePlayer.getState().stop();
+}
+
+/**
+ * The shared teardown rule for every token-revoking path (sign-out in
+ * use-sign-out.ts, remove-connection in connections-section.tsx): stop playback
+ * through the connection first, so the final position persists while its token is
+ * still valid, then flush THIS connection's offline replay queue so its queued saves
+ * land before the connection (and with it, those saves) is purged. Uses
+ * `flushConnection`, not `flushQueue`: the latter no-ops while the ACTIVE server is
+ * offline, which would skip this last-chance sync when removing a still-reachable
+ * background connection. One helper so a new step can't be added to one path and
+ * forgotten in the other.
+ */
+export async function teardownBeforeTokenRevoke(connectionId: string): Promise<void> {
+  await stopPlaybackForConnection(connectionId);
+  await flushConnection(connectionId).catch(() => undefined);
 }
 
 /**
@@ -577,7 +616,10 @@ export async function stopPlaybackForServer(api: ApiClient): Promise<void> {
 async function switchCurrentBookToLocal() {
   const { nowPlaying, snapshot, rate } = usePlayer.getState();
   if (!nowPlaying || !apiRef) return;
-  const dl = useDownloads.getState().entries[downloadKey(nowPlaying.libraryId, nowPlaying.path)];
+  const dl =
+    useDownloads.getState().entries[
+      downloadKey(nowPlaying.connectionId, nowPlaying.libraryId, nowPlaying.path)
+    ];
   if (dl?.status !== 'downloaded' || dl.manifest.files.length === 0) return;
 
   // Already playing from local? (every track points at a downloaded uri) → nothing to do.
@@ -625,7 +667,9 @@ async function switchCurrentBookToLocal() {
 useDownloads.subscribe((state, prev) => {
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
-  const key = downloadKey(np.libraryId, np.path);
+  // Scope by the playing book's own connection so a completing download on ANOTHER
+  // server with the same (libraryId, path) can't hot-swap this book to its files.
+  const key = downloadKey(np.connectionId, np.libraryId, np.path);
   if (state.entries[key]?.status === 'downloaded' && prev.entries[key]?.status !== 'downloaded') {
     void switchCurrentBookToLocal();
   }

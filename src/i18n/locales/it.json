@@ -80,7 +80,13 @@
     "connections": {
       "label": "Server",
       "remove": "Rimuovi {{name}}",
-      "add": "Aggiungi un server"
+      "add": "Aggiungi un server",
+      "removeConfirm": {
+        "title": "Rimuovere {{name}}?",
+        "confirm": "Rimuovi server",
+        "message_one": "Questo elimina {{count}} libro scaricato su questo dispositivo e ogni progresso non ancora sincronizzato.",
+        "message_other": "Questo elimina {{count}} libri scaricati su questo dispositivo e ogni progresso non ancora sincronizzato."
+      }
     },
     "recoveryModal": {
       "title": "Codice di recupero",
@@ -91,7 +97,9 @@
       "title": "Disconnettersi?",
       "warning": "Non hai impostato alcuna password né codice di recupero. Senza uno dei due, ti servirà un nuovo invito dal tuo amministratore per accedere di nuovo a questo server.",
       "setRecovery": "Imposta un codice di recupero",
-      "confirm": "Disconnetti comunque"
+      "confirm": "Disconnetti comunque",
+      "downloadsWarning_one": "Disconnettendoti verrà eliminato anche {{count}} libro scaricato da questo server su questo dispositivo.",
+      "downloadsWarning_other": "Disconnettendoti verranno eliminati anche {{count}} libri scaricati da questo server su questo dispositivo."
     },
     "recovery": {
       "generateError": "Impossibile generare un codice di recupero."

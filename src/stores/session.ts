@@ -11,12 +11,64 @@ const CONNECTIONS_KEY = 'audiosilo.connections';
 const ACTIVE_KEY = 'audiosilo.activeConnection';
 const tokenKey = (id: string) => `audiosilo.token.${id}`;
 
-// Legacy single-session keys, migrated into one connection on first hydrate.
+// Pre-multi-server single-session keys, cleared by the storage reset below.
 const LEGACY_SERVER = 'audiosilo.serverUrl';
 const LEGACY_TOKEN = 'audiosilo.token';
 const LEGACY_USER = 'audiosilo.user';
 
+// Bumped when a change makes previously-persisted client state incompatible. v2:
+// connection ids became the server-minted `server_id` (were random and device-local),
+// so old connections and their per-server state can't be re-keyed and are cleared once
+// (the user re-pairs). `resetStaleStorage()` runs, awaited, before any store hydrates.
+const VERSION_KEY = 'audiosilo.storageVersion';
+const STORAGE_VERSION = 2;
+// Per-server scoped storage owned by other stores, cleared alongside connections on an
+// incompatible upgrade. Duplicated here so the reset is self-contained and can run
+// before those stores hydrate (avoiding a store loading orphaned, wrongly-keyed data).
+const SCOPED_STORAGE_KEYS = [
+  'audiosilo.downloads',
+  'audiosilo.progressMirror',
+  'audiosilo.progressQueue',
+];
+
+/**
+ * One-time reset of client state left incompatible by a `STORAGE_VERSION` bump. MUST be
+ * awaited before session/downloads/progress hydrate (see `_layout.tsx`), so no store
+ * loads records keyed on the old, now-invalid connection ids. A no-op once the current
+ * version has been recorded (every launch after the first post-upgrade one).
+ */
+export async function resetStaleStorage(): Promise<void> {
+  const version = await getItem<number>(VERSION_KEY);
+  if (version === STORAGE_VERSION) return;
+  // Best-effort delete of each old connection's token, then every incompatible key.
+  const meta = (await getItem<PersistedConnection[]>(CONNECTIONS_KEY)) ?? [];
+  await Promise.all(meta.map((m) => deleteSecure(tokenKey(m.id))));
+  await Promise.all([
+    removeItem(CONNECTIONS_KEY),
+    removeItem(ACTIVE_KEY),
+    removeItem(LEGACY_SERVER),
+    removeItem(LEGACY_USER),
+    deleteSecure(LEGACY_TOKEN),
+    ...SCOPED_STORAGE_KEYS.map((k) => removeItem(k)),
+  ]);
+  await setItem(VERSION_KEY, STORAGE_VERSION);
+}
+
 export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated';
+
+// Owners of connection-scoped state (downloads, the progress mirror/queue, the
+// query cache, scroll memory) register a cleanup here so `removeConnection` can
+// purge it. Removing a connection orphans its scoped state forever (re-adding a
+// server mints a new id), so each owner must drop the removed id's records. This
+// registry lives here - rather than session.ts importing those modules directly -
+// because they import the session store, and a direct import would cycle.
+const removalCleanups = new Set<(id: string) => void | Promise<void>>();
+
+/** Register a purge run when a connection is removed. Returns an unsubscribe fn. */
+export function onConnectionRemoved(fn: (id: string) => void | Promise<void>): () => void {
+  removalCleanups.add(fn);
+  return () => removalCleanups.delete(fn);
+}
 
 /** One signed-in server. `token` is held in memory; persisted to secure-store. */
 export type Connection = {
@@ -40,11 +92,13 @@ type SessionState = {
   user: User | null;
   activeServerUrl: string | null;
 
-  /** Restore persisted connections on app start (migrating any legacy session). */
+  /** Restore persisted connections on app start. */
   hydrate: () => Promise<void>;
-  /** Add (or update, matched by server URL) a connection and make it active. */
+  /** Add (or update, matched by the server's stable `serverId`) a connection and make
+   * it the default. Returns the connection id (= serverId). */
   setSession: (s: {
     serverUrl: string;
+    serverId: string;
     token: string;
     user: User;
     name?: string;
@@ -62,14 +116,6 @@ type SessionState = {
 
 function hostName(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || url;
-}
-
-function newId(existing: Connection[]): string {
-  let id = '';
-  do {
-    id = Math.random().toString(36).slice(2, 10);
-  } while (existing.some((c) => c.id === id));
-  return id;
 }
 
 /** Derive the active-connection mirror fields from the connection list. */
@@ -97,67 +143,54 @@ export const useSession = create<SessionState>()((set, get) => ({
   activeServerUrl: null,
 
   hydrate: async () => {
-    const [meta, activeId] = await Promise.all([
-      getItem<PersistedConnection[]>(CONNECTIONS_KEY),
-      getItem<string>(ACTIVE_KEY),
-    ]);
-
-    if (meta && meta.length) {
-      const withTokens = await Promise.all(
-        meta.map(async (m) => {
-          const token = await getSecure(tokenKey(m.id));
-          return token ? ({ ...m, token } as Connection) : null;
-        }),
-      );
-      const connections = withTokens.filter((c): c is Connection => c !== null);
-      set({ connections, ...mirror(connections, activeId ?? null) });
-      return;
-    }
-
-    // Migrate a pre-multi-connection single session, if present.
-    const [legacyServer, legacyToken, legacyUser] = await Promise.all([
-      getItem<string>(LEGACY_SERVER),
-      getSecure(LEGACY_TOKEN),
-      getItem<User>(LEGACY_USER),
-    ]);
-    if (legacyServer && legacyToken && legacyUser) {
-      const conn: Connection = {
-        id: newId([]),
-        serverUrl: legacyServer,
-        name: hostName(legacyServer),
-        token: legacyToken,
-        user: legacyUser,
-      };
-      await setSecure(tokenKey(conn.id), legacyToken);
-      await persist([conn], conn.id);
-      await Promise.all([
-        deleteSecure(LEGACY_TOKEN),
-        removeItem(LEGACY_SERVER),
-        removeItem(LEGACY_USER),
+    try {
+      const [meta, activeId] = await Promise.all([
+        getItem<PersistedConnection[]>(CONNECTIONS_KEY),
+        getItem<string>(ACTIVE_KEY),
       ]);
-      set({ connections: [conn], ...mirror([conn], conn.id) });
-      return;
-    }
 
-    set({ status: 'unauthenticated' });
+      if (meta && meta.length) {
+        const withTokens = await Promise.all(
+          meta.map(async (m) => {
+            const token = await getSecure(tokenKey(m.id));
+            return token ? ({ ...m, token } as Connection) : null;
+          }),
+        );
+        const connections = withTokens.filter((c): c is Connection => c !== null);
+        set({ connections, ...mirror(connections, activeId ?? null) });
+        return;
+      }
+
+      set({ status: 'unauthenticated' });
+    } catch (e) {
+      // Fail safe: never leave status stuck on 'loading' (that would hang sessionReady()
+      // consumers and the offline-replay flush forever). Surface as unauthenticated; the
+      // persisted connections are untouched, so a future clean launch restores them.
+      console.warn('[session] hydrate failed', e);
+      set({ status: 'unauthenticated' });
+    }
   },
 
-  setSession: async ({ serverUrl, token, user, name }) => {
+  setSession: async ({ serverUrl, serverId, token, user, name }) => {
     const existing = get().connections;
-    const prior = existing.find((c) => c.serverUrl === serverUrl);
-    const id = prior?.id ?? newId(existing);
+    // Dedupe by the server's stable identity, so re-pairing the same server - even at a
+    // different URL - updates its connection (and refreshes the URL) instead of adding a
+    // duplicate.
+    const prior = existing.find((c) => c.id === serverId);
     const conn: Connection = {
-      id,
+      id: serverId,
       serverUrl,
       name: name ?? prior?.name ?? hostName(serverUrl),
       token,
       user,
     };
-    const connections = prior ? existing.map((c) => (c.id === id ? conn : c)) : [...existing, conn];
-    await setSecure(tokenKey(id), token);
-    await persist(connections, id);
-    set({ connections, pendingServerUrl: null, ...mirror(connections, id) });
-    return id;
+    const connections = prior
+      ? existing.map((c) => (c.id === serverId ? conn : c))
+      : [...existing, conn];
+    await setSecure(tokenKey(serverId), token);
+    await persist(connections, serverId);
+    set({ connections, pendingServerUrl: null, ...mirror(connections, serverId) });
+    return serverId;
   },
 
   setPendingServerUrl: async (url) => set({ pendingServerUrl: url }),
@@ -183,6 +216,14 @@ export const useSession = create<SessionState>()((set, get) => ({
     await deleteSecure(tokenKey(id));
     await persist(next, nextActive);
     set({ connections: next, ...mirror(next, nextActive) });
+    // Purge the removed connection's scoped state (downloads, progress mirror/queue,
+    // query cache, scroll memory). A failing cleanup must never block removal, so run
+    // them all and only warn on rejection.
+    const results = await Promise.allSettled([...removalCleanups].map((fn) => fn(id)));
+    for (const r of results) {
+      if (r.status === 'rejected')
+        console.warn('[session] connection-removed cleanup failed', r.reason);
+    }
   },
 
   logout: async () => {

@@ -1,33 +1,27 @@
 import { ApiError, type ApiClient } from '@/api/client';
-import {
-  getReachabilityApi,
-  isReachable,
-  noteError,
-  noteSuccess,
-  onReconnect,
-} from '@/api/reachability';
+import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { isReachable, noteError, noteSuccess, onReconnect } from '@/api/reachability';
 import type { Progress } from '@/api/types';
+import { contentKey } from '@/lib/content-key';
 import { getItem, setItem } from '@/lib/storage';
+import { onConnectionRemoved, useSession } from '@/stores/session';
 
-// When the server comes back, replay anything that piled up while it was away.
-onReconnect(() => {
-  const api = getReachabilityApi();
-  if (api) void flushQueue(api);
-});
+// When the server comes back, replay anything that piled up while it was away. The
+// flush resolves each entry to its own connection's client, so it needs no api arg.
+onReconnect(() => void flushQueue());
 
 const QUEUE_KEY = 'audiosilo.progressQueue';
 const DEVICE_KEY = 'audiosilo.deviceId';
-// Durable, never-pruned mirror of the last-known progress per (library, path). Unlike
-// the offline queue (cleared once a save syncs), this survives sync so a returning
-// listener can resume even when the server momentarily can't be reached - the fix for
-// "an in-progress book restarted from 0 because the resume fetch failed".
+// Durable, never-pruned mirror of the last-known progress per (connection, library,
+// path). Unlike the offline queue (cleared once a save syncs), this survives sync so a
+// returning listener can resume even when the server momentarily can't be reached - the
+// fix for "an in-progress book restarted from 0 because the resume fetch failed".
 const MIRROR_KEY = 'audiosilo.progressMirror';
 
 let deviceIdCache: string | null = null;
 
-function mirrorKey(libraryId: number, path: string): string {
-  return `${libraryId}:${path}`;
-}
+/** Composite storage key scoping a book to the connection it belongs to. */
+const scopeKey = contentKey;
 
 /** Stable per-install device id, sent with progress for last-write-wins. */
 export async function getDeviceId(): Promise<string> {
@@ -42,6 +36,8 @@ export async function getDeviceId(): Promise<string> {
 }
 
 export type ProgressSave = {
+  /** Which server this save belongs to (never replay it against another). */
+  connectionId: string;
   libraryId: number;
   path: string;
   position: number;
@@ -80,8 +76,19 @@ function newest(a: Progress | null, b: Progress | null): Progress | null {
   return timeOf(b) > timeOf(a) ? b : a;
 }
 
+/** The durable mirror map (keyed by `scopeKey`). */
+async function readMirrorMap(): Promise<Record<string, ProgressSave>> {
+  return (await getItem<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
+}
+
+/** The offline replay queue. */
+async function readQueue(): Promise<ProgressSave[]> {
+  return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
+}
+
 export async function loadInitialProgress(
   api: ApiClient,
+  connectionId: string,
   libraryId: number,
   path: string,
 ): Promise<ResumeLookup> {
@@ -91,14 +98,17 @@ export async function loadInitialProgress(
     server = await api.getProgress(libraryId, path); // null = HTTP 200, no record (new book)
     serverOk = true;
   } catch (e) {
-    noteError(e); // offline or unreachable - reconcile with local sources below
+    // Only the active connection drives the global reachability banner; a non-active
+    // book's failed resume fetch must not flip the active server offline. The local
+    // mirror/queue fallback below keys off `serverOk`, not this call.
+    if (connectionId === useSession.getState().activeConnectionId) noteError(e);
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
   // so a locally-newer offline advance isn't regressed by a stale server read).
-  if (serverOk && server) await writeMirror(progressToSave(libraryId, path, server));
+  if (serverOk && server) await writeMirror(progressToSave(connectionId, libraryId, path, server));
 
-  const mirror = mirrorAsProgress(libraryId, path, await readMirror(libraryId, path));
-  const queued = await pendingProgressFor(libraryId, path);
+  const mirror = mirrorAsProgress(libraryId, path, await readMirror(connectionId, libraryId, path));
+  const queued = await pendingProgressFor(connectionId, libraryId, path);
   const best = newest(newest(server, mirror), queued);
 
   if (best) return { kind: 'progress', progress: best };
@@ -126,8 +136,14 @@ function mirrorAsProgress(
     : null;
 }
 
-function progressToSave(libraryId: number, path: string, p: Progress): ProgressSave {
+function progressToSave(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  p: Progress,
+): ProgressSave {
   return {
+    connectionId,
     libraryId,
     path,
     position: p.position,
@@ -153,8 +169,8 @@ function withMirrorLock<T>(fn: () => Promise<T>): Promise<T> {
 /** Upsert the durable mirror, keeping the newest record by `updated_at`. */
 export async function writeMirror(save: ProgressSave): Promise<void> {
   await withMirrorLock(async () => {
-    const map = (await getItem<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
-    const key = mirrorKey(save.libraryId, save.path);
+    const map = await readMirrorMap();
+    const key = scopeKey(save.connectionId, save.libraryId, save.path);
     const existing = map[key];
     if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
       map[key] = save;
@@ -163,16 +179,26 @@ export async function writeMirror(save: ProgressSave): Promise<void> {
   });
 }
 
-export async function readMirror(libraryId: number, path: string): Promise<ProgressSave | null> {
-  const map = (await getItem<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
-  return map[mirrorKey(libraryId, path)] ?? null;
+export async function readMirror(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<ProgressSave | null> {
+  const map = await readMirrorMap();
+  return map[scopeKey(connectionId, libraryId, path)] ?? null;
 }
 
 /** Reconstruct progress from the offline replay queue, so a downloaded book
  * resumes at the right spot when the server can't be reached. */
-async function pendingProgressFor(libraryId: number, path: string): Promise<Progress | null> {
-  const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
-  const save = queue.find((s) => s.libraryId === libraryId && s.path === path);
+async function pendingProgressFor(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<Progress | null> {
+  const queue = await readQueue();
+  const save = queue.find(
+    (s) => s.connectionId === connectionId && s.libraryId === libraryId && s.path === path,
+  );
   if (!save) return null;
   return {
     library_id: libraryId,
@@ -194,6 +220,11 @@ function isUnrecoverable(e: unknown): boolean {
 /** Save progress now; if the network fails, queue it for later replay. version
  * is left 0 so the server reconciles by (updated_at, version). */
 export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<void> {
+  // Global reachability tracks only the ACTIVE server, so a non-active connection's
+  // save success/failure must not flip the active connection's banner (same rule the
+  // flushQueue groups follow). A book keeps playing on a connection the user switched
+  // away from, and its 15s save loop lands here.
+  const isActive = save.connectionId === useSession.getState().activeConnectionId;
   // Always record the latest position in the durable mirror, independent of the network
   // outcome - this is what a future resume falls back to when the server can't be reached.
   await writeMirror(save);
@@ -213,11 +244,11 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
       device_id: save.device_id,
       updated_at: save.updated_at,
     });
-    noteSuccess();
-    void flushQueue(api);
+    if (isActive) noteSuccess();
+    void flushQueue();
   } catch (e) {
     if (isUnrecoverable(e)) return; // auth/forbidden - don't retry forever
-    noteError(e); // a connection error flips us offline (stops further attempts)
+    if (isActive) noteError(e); // a connection error flips us offline (stops further attempts)
     await enqueue(save);
   }
 }
@@ -237,45 +268,150 @@ function withQueueLock<T>(fn: () => Promise<T>): Promise<T> {
 
 async function enqueue(save: ProgressSave): Promise<void> {
   await withQueueLock(async () => {
-    const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
-    // Keep only the latest pending save per (library, path).
-    const next = queue.filter((s) => !(s.libraryId === save.libraryId && s.path === save.path));
+    const queue = await readQueue();
+    // Keep only the latest pending save per (connection, library, path).
+    const next = queue.filter(
+      (s) =>
+        !(
+          s.connectionId === save.connectionId &&
+          s.libraryId === save.libraryId &&
+          s.path === save.path
+        ),
+    );
     next.push(save);
     await setItem(QUEUE_KEY, next);
   });
 }
 
-/** Replay queued saves (call on reconnect / app open). */
-export async function flushQueue(api: ApiClient): Promise<void> {
-  if (!isReachable()) return; // wait for reconnect rather than fail item by item
-  await withQueueLock(async () => {
-    const queue = (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
-    if (queue.length === 0) return;
-    const remaining: ProgressSave[] = [];
-    for (let i = 0; i < queue.length; i++) {
-      const save = queue[i];
-      try {
-        await api.saveProgress(save.libraryId, save.path, {
-          position: save.position,
-          duration: save.duration,
-          finished: save.finished,
-          playback_speed: save.playback_speed,
-          version: 0,
-          device_id: save.device_id,
-          updated_at: save.updated_at,
-        });
-        noteSuccess();
-      } catch (e) {
-        if (isUnrecoverable(e)) continue; // drop; can't ever succeed
-        noteError(e);
-        if (!isReachable()) {
-          // Connection dropped mid-flush - keep this and everything after it.
-          remaining.push(...queue.slice(i));
-          break;
-        }
-        remaining.push(save); // transient server error - retry next time
-      }
+/**
+ * Replay one connection's queued saves in order through its client. Returns the saves
+ * that must stay queued (unflushed). Only the ACTIVE connection drives the global
+ * reachability banner, so a non-active server's success/failure is not noted.
+ */
+async function flushGroup(
+  cid: string,
+  client: ApiClient,
+  saves: ProgressSave[],
+  activeId: string | null,
+): Promise<ProgressSave[]> {
+  const remaining: ProgressSave[] = [];
+  // Stop the group only when the server is UNREACHABLE (no point hammering the rest of
+  // it); a per-save server error still lets the rest of the group through.
+  let stop = false;
+  for (const save of saves) {
+    if (stop) {
+      remaining.push(save);
+      continue;
     }
-    await setItem(QUEUE_KEY, remaining);
+    try {
+      await client.saveProgress(save.libraryId, save.path, {
+        position: save.position,
+        duration: save.duration,
+        finished: save.finished,
+        playback_speed: save.playback_speed,
+        version: 0,
+        device_id: save.device_id,
+        updated_at: save.updated_at,
+      });
+      if (cid === activeId) noteSuccess();
+    } catch (e) {
+      if (isUnrecoverable(e)) continue; // 4xx: drop, can't ever succeed
+      if (cid === activeId) noteError(e);
+      remaining.push(save); // keep it to retry next time
+      // An `ApiError` means the server ANSWERED (even a 500), so the failure is specific
+      // to this save - keep flushing the rest of the group past it rather than blocking
+      // every later book behind one poison entry. A non-`ApiError` is a connection/
+      // network failure: the server is unreachable, so stop and retry the group later.
+      if (!(e instanceof ApiError)) stop = true;
+    }
+  }
+  return remaining;
+}
+
+/**
+ * Replay queued saves (call on reconnect / app open / after a successful save). Each
+ * entry replays through ITS OWN connection's client, so a save captured on server B
+ * can never be written to server A. Grouped by connection preserving order; the
+ * groups run concurrently (they touch disjoint servers), so one dead/slow server
+ * can't delay every other server's replay by its full timeout.
+ */
+export async function flushQueue(): Promise<void> {
+  if (!isReachable()) return; // wait for reconnect rather than fail item by item
+  // Load-bearing guard: a flush racing session hydrate would resolve every entry's
+  // client to null (the connection list is still empty) and drop the whole queue as
+  // unroutable. Wait until the session is ready so entries route to a real client.
+  if (!sessionReady()) return;
+  await withQueueLock(async () => {
+    const queue = await readQueue();
+    if (queue.length === 0) return;
+    const activeId = useSession.getState().activeConnectionId;
+
+    // Group by connection, preserving order.
+    const groups = new Map<string, ProgressSave[]>();
+    for (const save of queue) {
+      const g = groups.get(save.connectionId);
+      if (g) g.push(save);
+      else groups.set(save.connectionId, [save]);
+    }
+
+    const remainingByGroup = await Promise.all(
+      [...groups].map(async ([cid, saves]) => {
+        const client = resolveClient(cid);
+        if (!client) return []; // connection removed - unroutable, drop the whole group
+        return flushGroup(cid, client, saves, activeId);
+      }),
+    );
+    await setItem(QUEUE_KEY, remainingByGroup.flat());
   });
 }
+
+/**
+ * Best-effort flush of ONE connection's queued saves, BYPASSING the global (active-only)
+ * reachability gate. Used by the token-revoking teardown (sign-out / remove-connection)
+ * just before a connection is purged: its queued saves are about to be deleted, so we
+ * attempt to land them even when the ACTIVE server is offline - the connection being
+ * removed may itself be reachable (e.g. removing a background server while the active
+ * one is down). `flushQueue` deliberately no-ops while the active server is unreachable,
+ * which would otherwise skip this last-chance sync and lose the saves on purge. If the
+ * connection is genuinely unreachable the attempt fails and the saves stay queued (then
+ * get purged - an offline server's unsynced saves are unrecoverable either way).
+ */
+export async function flushConnection(connectionId: string): Promise<void> {
+  if (!sessionReady()) return;
+  const client = resolveClient(connectionId);
+  if (!client) return; // already gone - nothing routable to flush
+  await withQueueLock(async () => {
+    const queue = await readQueue();
+    const mine = queue.filter((s) => s.connectionId === connectionId);
+    if (mine.length === 0) return;
+    const others = queue.filter((s) => s.connectionId !== connectionId);
+    const activeId = useSession.getState().activeConnectionId;
+    const remaining = await flushGroup(connectionId, client, mine, activeId);
+    await setItem(QUEUE_KEY, [...others, ...remaining]);
+  });
+}
+
+// Removing a connection orphans its scoped state forever (re-adding mints a new id),
+// so drop its mirror records and queued saves here.
+onConnectionRemoved(async (id) => {
+  // The mirror and queue take independent locks and touch disjoint storage keys, so
+  // purge them concurrently rather than serializing the two storage round-trips.
+  await Promise.all([
+    withMirrorLock(async () => {
+      const map = await readMirrorMap();
+      let changed = false;
+      for (const [key, save] of Object.entries(map)) {
+        if (save.connectionId === id) {
+          delete map[key];
+          changed = true;
+        }
+      }
+      if (changed) await setItem(MIRROR_KEY, map);
+    }),
+    withQueueLock(async () => {
+      const queue = await readQueue();
+      const next = queue.filter((s) => s.connectionId !== id);
+      if (next.length !== queue.length) await setItem(QUEUE_KEY, next);
+    }),
+  ]);
+});
