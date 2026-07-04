@@ -17,10 +17,9 @@ const reset = () =>
   useSession.setState({
     status: 'loading',
     connections: [],
-    activeConnectionId: null,
+    defaultConnectionId: null,
     pendingServerUrl: null,
     user: null,
-    activeServerUrl: null,
   });
 
 // Exercises the real session store over the in-memory storage mocks (jest.setup).
@@ -66,7 +65,8 @@ describe('session store (multi-connection)', () => {
       .getState()
       .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 'tokB', user: mkUser('b') });
     expect(useSession.getState().connections).toHaveLength(2);
-    expect(useSession.getState().activeServerUrl).toBe('https://b'); // last added is default
+    expect(useSession.getState().defaultConnectionId).toBe('srv-b'); // last added is the default
+    expect(useSession.getState().user?.username).toBe('b'); // mirror follows the default
 
     reset();
     await useSession.getState().hydrate();
@@ -93,29 +93,18 @@ describe('session store (multi-connection)', () => {
     expect(s.connections[0].serverUrl).toBe('https://a.example'); // URL refreshed, no orphan
   });
 
-  it('switches the active connection', async () => {
-    const idA = await useSession
-      .getState()
-      .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't', user: mkUser('a') });
-    await useSession
-      .getState()
-      .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 't', user: mkUser('b') });
-    await useSession.getState().setActiveConnection(idA);
-    expect(useSession.getState().activeServerUrl).toBe('https://a');
-    expect(useSession.getState().user?.username).toBe('a');
-  });
-
-  it('logout removes the active connection, falling back to another', async () => {
+  it('logout removes the default connection, falling back to another', async () => {
     await useSession
       .getState()
       .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't', user: mkUser('a') });
     await useSession
       .getState()
       .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 't', user: mkUser('b') });
-    await useSession.getState().logout(); // removes b (active)
+    await useSession.getState().logout(); // removes b (the default = last added)
     const s = useSession.getState();
     expect(s.connections).toHaveLength(1);
-    expect(s.activeServerUrl).toBe('https://a');
+    expect(s.defaultConnectionId).toBe('srv-a'); // falls back to the remaining one
+    expect(s.user?.username).toBe('a'); // mirror follows the new default
     expect(s.status).toBe('authenticated');
     await useSession.getState().logout(); // removes the last one
     expect(useSession.getState().status).toBe('unauthenticated');

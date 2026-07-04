@@ -37,13 +37,11 @@ onReconnect((connectionId) => {
 type ApiRegistry = {
   clients: Map<string, ApiClient>;
   connections: Connection[];
-  activeId: string | null;
 };
 
 const ApiContext = createContext<ApiRegistry>({
   clients: new Map(),
   connections: [],
-  activeId: null,
 });
 
 /** A connection paired with its API client. */
@@ -51,10 +49,9 @@ export type ApiConnection = { connection: Connection; client: ApiClient };
 
 export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
-  const activeId = useSession((s) => s.activeConnectionId);
 
-  // Build the clients only when the connections change - switching the active
-  // connection must not tear down and recreate every ApiClient (it would drop
+  // Build the clients only when the connections change - re-rendering for an
+  // unrelated reason must not tear down and recreate every ApiClient (it would drop
   // in-flight reachability probes and force-refetch every query).
   const clients = useMemo<Map<string, ApiClient>>(() => {
     const map = new Map<string, ApiClient>();
@@ -62,10 +59,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
     return map;
   }, [connections]);
 
-  const registry = useMemo<ApiRegistry>(
-    () => ({ clients, connections, activeId }),
-    [clients, connections, activeId],
-  );
+  const registry = useMemo<ApiRegistry>(() => ({ clients, connections }), [clients, connections]);
 
   // Give the reachability layer every connection's client, so it can probe any offline
   // server (not just the active one) and recover them independently.
@@ -84,17 +78,17 @@ export function useApiRegistry(): ApiRegistry {
   return useContext(ApiContext);
 }
 
-/** The active connection id (`''` when none) - the fallback cid for chrome that isn't
+/** The default connection id (`''` when none) - the fallback cid for chrome that isn't
  * scoped to a specific server (the sidebar, the connect flow default). */
-export function useActiveCid(): string {
-  return useSession((s) => s.activeConnectionId) ?? '';
+export function useDefaultCid(): string {
+  return useSession((s) => s.defaultConnectionId) ?? '';
 }
 
 /**
  * The connection a subtree of content is scoped to (the server whose library/book you
  * are viewing), supplied by the `s/[connectionId]` route layout via `ConnectionScope`.
  * `''` outside any scope (chrome, aggregated Home/Search). Content screens read the
- * scope instead of the global active connection.
+ * scope instead of the global default connection.
  */
 const ConnectionScopeContext = createContext<string>('');
 
@@ -121,16 +115,16 @@ export function useScopedCid(): string {
 
 /**
  * The connection id to use for content: an explicit `connectionId` wins (a card passing
- * its own server), else the nearest route scope, else the active connection. One
+ * its own server), else the nearest route scope, else the default connection. One
  * definition so the resolution order can't drift across call sites.
  */
 export function useCid(connectionId?: string): string {
   const scope = useScopedCid();
-  const active = useActiveCid();
-  return connectionId ?? (scope || active);
+  const fallback = useDefaultCid();
+  return connectionId ?? (scope || fallback);
 }
 
-/** The ApiClient for a connection (explicit id → route scope → active). Throws if none. */
+/** The ApiClient for a connection (explicit id → route scope → default). Throws if none. */
 export function useApi(connectionId?: string): ApiClient {
   const { clients } = useContext(ApiContext);
   const cid = useCid(connectionId);
@@ -141,7 +135,7 @@ export function useApi(connectionId?: string): ApiClient {
   return client;
 }
 
-/** Like useApi but returns null instead of throwing (explicit id → route scope → active). */
+/** Like useApi but returns null instead of throwing (explicit id → route scope → default). */
 export function useOptionalApi(connectionId?: string): ApiClient | null {
   const { clients } = useContext(ApiContext);
   const cid = useCid(connectionId);

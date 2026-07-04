@@ -8,7 +8,9 @@ import { getItem, removeItem, setItem } from '@/lib/storage';
 // Connection metadata is kept in AsyncStorage; each connection's token lives in
 // secure-store under its own key.
 const CONNECTIONS_KEY = 'audiosilo.connections';
-const ACTIVE_KEY = 'audiosilo.activeConnection';
+// The default connection's id. The string is the legacy `activeConnection` name, kept
+// stable so an existing install's persisted default survives the active→default rename.
+const DEFAULT_KEY = 'audiosilo.activeConnection';
 const tokenKey = (id: string) => `audiosilo.token.${id}`;
 
 // Pre-multi-server single-session keys, cleared by the storage reset below.
@@ -45,7 +47,7 @@ export async function resetStaleStorage(): Promise<void> {
   await Promise.all(meta.map((m) => deleteSecure(tokenKey(m.id))));
   await Promise.all([
     removeItem(CONNECTIONS_KEY),
-    removeItem(ACTIVE_KEY),
+    removeItem(DEFAULT_KEY),
     removeItem(LEGACY_SERVER),
     removeItem(LEGACY_USER),
     deleteSecure(LEGACY_TOKEN),
@@ -85,12 +87,16 @@ type PersistedConnection = Omit<Connection, 'token'>;
 type SessionState = {
   status: SessionStatus;
   connections: Connection[];
-  activeConnectionId: string | null;
+  /** The default connection: where the connect flow lands and the fallback content
+   * scope for chrome/aggregated screens (via `useCid()`). It no longer drives content -
+   * each content screen carries its own connection in the route - so there's no
+   * user-facing "switch active"; the default is simply the most recently paired
+   * connection (or the first remaining one after a removal). */
+  defaultConnectionId: string | null;
   /** The server URL being connected to during the connect → sign-in handoff. */
   pendingServerUrl: string | null;
-  /** Mirrors of the active connection, for ergonomic selectors. */
+  /** Mirror of the default connection's user, for ergonomic selectors. */
   user: User | null;
-  activeServerUrl: string | null;
 
   /** Restore persisted connections on app start. */
   hydrate: () => Promise<void>;
@@ -106,14 +112,13 @@ type SessionState = {
   /** Remember the server URL mid-connect, before authenticating. */
   setPendingServerUrl: (url: string) => Promise<void>;
   /** Update a specific connection's user (a `/me` refresh after a password/recovery
-   * change lands on the connection it was made against, not whatever is active). */
+   * change lands on the connection it was made against, not whatever is default). */
   setConnectionUser: (id: string, user: User) => Promise<void>;
-  /** Update the active connection's user (sugar over `setConnectionUser`). */
+  /** Update the default connection's user (sugar over `setConnectionUser`). */
   setUser: (user: User) => Promise<void>;
-  setActiveConnection: (id: string) => Promise<void>;
   /** Remove one connection (deleting its token). */
   removeConnection: (id: string) => Promise<void>;
-  /** Sign out of the active connection (remove it). */
+  /** Sign out of the default connection (remove it). */
   logout: () => Promise<void>;
 };
 
@@ -121,35 +126,33 @@ function hostName(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || url;
 }
 
-/** Derive the active-connection mirror fields from the connection list. */
-function mirror(connections: Connection[], activeId: string | null) {
-  const active = connections.find((c) => c.id === activeId) ?? connections[0] ?? null;
+/** Derive the default-connection mirror fields from the connection list. */
+function mirror(connections: Connection[], defaultId: string | null) {
+  const def = connections.find((c) => c.id === defaultId) ?? connections[0] ?? null;
   return {
-    activeConnectionId: active?.id ?? null,
-    user: active?.user ?? null,
-    activeServerUrl: active?.serverUrl ?? null,
+    defaultConnectionId: def?.id ?? null,
+    user: def?.user ?? null,
     status: (connections.length ? 'authenticated' : 'unauthenticated') as SessionStatus,
   };
 }
 
-async function persist(connections: Connection[], activeId: string | null) {
+async function persist(connections: Connection[], defaultId: string | null) {
   const meta: PersistedConnection[] = connections.map(({ token: _t, ...rest }) => rest);
-  await Promise.all([setItem(CONNECTIONS_KEY, meta), setItem(ACTIVE_KEY, activeId)]);
+  await Promise.all([setItem(CONNECTIONS_KEY, meta), setItem(DEFAULT_KEY, defaultId)]);
 }
 
 export const useSession = create<SessionState>()((set, get) => ({
   status: 'loading',
   connections: [],
-  activeConnectionId: null,
+  defaultConnectionId: null,
   pendingServerUrl: null,
   user: null,
-  activeServerUrl: null,
 
   hydrate: async () => {
     try {
-      const [meta, activeId] = await Promise.all([
+      const [meta, defaultId] = await Promise.all([
         getItem<PersistedConnection[]>(CONNECTIONS_KEY),
-        getItem<string>(ACTIVE_KEY),
+        getItem<string>(DEFAULT_KEY),
       ]);
 
       if (meta && meta.length) {
@@ -160,7 +163,7 @@ export const useSession = create<SessionState>()((set, get) => ({
           }),
         );
         const connections = withTokens.filter((c): c is Connection => c !== null);
-        set({ connections, ...mirror(connections, activeId ?? null) });
+        set({ connections, ...mirror(connections, defaultId ?? null) });
         return;
       }
 
@@ -199,32 +202,25 @@ export const useSession = create<SessionState>()((set, get) => ({
   setPendingServerUrl: async (url) => set({ pendingServerUrl: url }),
 
   setConnectionUser: async (id, user) => {
-    const { connections, activeConnectionId } = get();
+    const { connections, defaultConnectionId } = get();
     if (!connections.some((c) => c.id === id)) return;
     const next = connections.map((c) => (c.id === id ? { ...c, user } : c));
-    await persist(next, activeConnectionId);
-    set({ connections: next, ...mirror(next, activeConnectionId) });
+    await persist(next, defaultConnectionId);
+    set({ connections: next, ...mirror(next, defaultConnectionId) });
   },
 
   setUser: async (user) => {
-    const { activeConnectionId } = get();
-    if (activeConnectionId) await get().setConnectionUser(activeConnectionId, user);
-  },
-
-  setActiveConnection: async (id) => {
-    const { connections } = get();
-    if (!connections.some((c) => c.id === id)) return;
-    await setItem(ACTIVE_KEY, id);
-    set(mirror(connections, id));
+    const { defaultConnectionId } = get();
+    if (defaultConnectionId) await get().setConnectionUser(defaultConnectionId, user);
   },
 
   removeConnection: async (id) => {
-    const { connections, activeConnectionId } = get();
+    const { connections, defaultConnectionId } = get();
     const next = connections.filter((c) => c.id !== id);
-    const nextActive = activeConnectionId === id ? (next[0]?.id ?? null) : activeConnectionId;
+    const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
     await deleteSecure(tokenKey(id));
-    await persist(next, nextActive);
-    set({ connections: next, ...mirror(next, nextActive) });
+    await persist(next, nextDefault);
+    set({ connections: next, ...mirror(next, nextDefault) });
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory). A failing cleanup must never block removal, so run
     // them all and only warn on rejection.
@@ -236,7 +232,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   logout: async () => {
-    const { activeConnectionId } = get();
-    if (activeConnectionId) await get().removeConnection(activeConnectionId);
+    const { defaultConnectionId } = get();
+    if (defaultConnectionId) await get().removeConnection(defaultConnectionId);
   },
 }));

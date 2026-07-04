@@ -46,7 +46,10 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
   const toggle = usePlayer((s) => s.toggle);
-  const api = useApi();
+  // The cover URL embeds the playing book's own server auth (`?token=`); its request
+  // headers must match that connection too, not whatever happens to be default - the
+  // mini-player can outlive a switch away from the connection the book plays through.
+  const api = useApi(nowPlaying?.connectionId);
   const { scheme } = useTheme();
 
   if (!nowPlaying) return null;
