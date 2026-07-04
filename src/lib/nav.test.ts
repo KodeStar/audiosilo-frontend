@@ -1,4 +1,4 @@
-import { contentPath, isActiveNav, matchesPath } from './nav';
+import { contentPath, isActiveNav, matchesPath, scopeConnectionId } from './nav';
 
 describe('matchesPath', () => {
   it('matches root only on an exact "/"', () => {
@@ -52,6 +52,20 @@ describe('contentPath', () => {
     expect(contentPath('/')).toBe('/');
     expect(contentPath('/library')).toBe('/library');
     expect(contentPath('/settings')).toBe('/settings');
+  });
+});
+
+describe('scopeConnectionId', () => {
+  it('extracts the connection id from a scoped path', () => {
+    expect(scopeConnectionId('/s/abc/library/5')).toBe('abc');
+    expect(scopeConnectionId('/s/abc/book/1/Author/Book')).toBe('abc');
+    expect(scopeConnectionId('/s/abc')).toBe('abc');
+  });
+
+  it('returns empty for unscoped (aggregated) paths', () => {
+    expect(scopeConnectionId('/')).toBe('');
+    expect(scopeConnectionId('/library')).toBe('');
+    expect(scopeConnectionId('/settings')).toBe('');
   });
 });
 

@@ -1,62 +1,100 @@
 import { ApiError, TimeoutError } from '@/api/client';
-import { noteError, noteSuccess, onReconnect, useReachability } from '@/api/reachability';
+import {
+  anyOffline,
+  isReachable,
+  noteError,
+  noteSuccess,
+  onReconnect,
+  useReachability,
+} from '@/api/reachability';
 
-// Exercises the pure reachability state machine. `setOnline` is module-private, so we
-// drive transitions through the public `noteError` (-> offline) / `noteSuccess`
-// (-> online) and read the store via getState(). Fake timers keep the offline probe's
-// setInterval from leaking between tests.
-describe('reachability state machine', () => {
+// Exercises the per-connection reachability state machine. `setOnline` is driven through
+// the public `noteError` (-> offline) / `noteSuccess` (-> online) per connection id.
+// Fake timers keep the offline probe's setInterval from leaking between tests.
+describe('per-connection reachability state machine', () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    // Reset to the optimistic default. Going offline starts a probe interval;
-    // returning to online (which we do here) stops it via stopProbe.
-    useReachability.setState({ online: true });
+    useReachability.setState({ online: {} });
   });
 
   afterEach(() => {
-    // Ensure any probe interval started during a test is cleared, then drop timers.
-    useReachability.setState({ online: true });
+    // Clear any state so the probe interval (started when a connection went offline)
+    // stops, then drop timers.
+    useReachability.setState({ online: {} });
     jest.clearAllTimers();
     jest.useRealTimers();
   });
 
+  it('treats an unknown connection as reachable (optimistic default)', () => {
+    expect(isReachable('c1')).toBe(true);
+  });
+
   it('stays online for an ApiError (the server answered)', () => {
-    noteError(new ApiError(503, 'unavailable'));
-    expect(useReachability.getState().online).toBe(true);
+    noteError('c1', new ApiError(503, 'unavailable'));
+    expect(isReachable('c1')).toBe(true);
   });
 
   it('is a no-op for an AbortError (deliberate cancellation)', () => {
     const abort = new Error('aborted');
     abort.name = 'AbortError';
-    noteError(abort);
-    expect(useReachability.getState().online).toBe(true);
+    noteError('c1', abort);
+    expect(isReachable('c1')).toBe(true);
   });
 
-  it('flips offline for a TimeoutError', () => {
-    noteError(new TimeoutError(5000));
-    expect(useReachability.getState().online).toBe(false);
+  it('flips a connection offline for a TimeoutError', () => {
+    noteError('c1', new TimeoutError(5000));
+    expect(isReachable('c1')).toBe(false);
   });
 
-  it('flips offline for a generic connection error', () => {
-    noteError(new Error('Network request failed'));
-    expect(useReachability.getState().online).toBe(false);
+  it('flips a connection offline for a generic connection error', () => {
+    noteError('c1', new Error('Network request failed'));
+    expect(isReachable('c1')).toBe(false);
   });
 
-  it('fires registered onReconnect handlers exactly once on the offline->online edge', () => {
+  it('marks only the failing connection offline, not its siblings', () => {
+    noteError('c1', new Error('down'));
+    expect(isReachable('c1')).toBe(false);
+    expect(isReachable('c2')).toBe(true); // unaffected
+  });
+
+  it('anyOffline reflects whether any connection is down', () => {
+    expect(anyOffline(useReachability.getState().online)).toBe(false);
+    noteError('c1', new Error('down'));
+    expect(anyOffline(useReachability.getState().online)).toBe(true);
+    noteSuccess('c1');
+    expect(anyOffline(useReachability.getState().online)).toBe(false);
+  });
+
+  it('fires onReconnect with the recovered connection id, exactly once per edge', () => {
     const handler = jest.fn();
     const unsubscribe = onReconnect(handler);
 
-    noteError(new Error('down')); // online -> offline
-    expect(useReachability.getState().online).toBe(false);
+    noteError('c1', new Error('down')); // online -> offline
+    expect(isReachable('c1')).toBe(false);
     expect(handler).not.toHaveBeenCalled();
 
-    noteSuccess(); // offline -> online edge
-    expect(useReachability.getState().online).toBe(true);
+    noteSuccess('c1'); // offline -> online edge
+    expect(isReachable('c1')).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('c1');
 
     // A redundant online->online call must not re-fire the handler.
-    noteSuccess();
+    noteSuccess('c1');
     expect(handler).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+  });
+
+  it('reconnect edges are independent per connection', () => {
+    const handler = jest.fn();
+    const unsubscribe = onReconnect(handler);
+
+    noteError('c1', new Error('down'));
+    noteError('c2', new Error('down'));
+    noteSuccess('c2'); // only c2 recovers
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('c2');
+    expect(isReachable('c1')).toBe(false);
 
     unsubscribe();
   });

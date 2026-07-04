@@ -1,14 +1,13 @@
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { isReachable, noteError, noteSuccess, onReconnect } from '@/api/reachability';
+import { isReachable, noteError, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { getItem, setItem } from '@/lib/storage';
-import { onConnectionRemoved, useSession } from '@/stores/session';
+import { onConnectionRemoved } from '@/stores/session';
 
-// When the server comes back, replay anything that piled up while it was away. The
-// flush resolves each entry to its own connection's client, so it needs no api arg.
-onReconnect(() => void flushQueue());
+// Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
+// `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
 
 const QUEUE_KEY = 'audiosilo.progressQueue';
 const DEVICE_KEY = 'audiosilo.deviceId';
@@ -98,10 +97,10 @@ export async function loadInitialProgress(
     server = await api.getProgress(libraryId, path); // null = HTTP 200, no record (new book)
     serverOk = true;
   } catch (e) {
-    // Only the active connection drives the global reachability banner; a non-active
-    // book's failed resume fetch must not flip the active server offline. The local
-    // mirror/queue fallback below keys off `serverOk`, not this call.
-    if (connectionId === useSession.getState().activeConnectionId) noteError(e);
+    // Reachability is per-connection, so note the failure against THIS book's own
+    // server (it drives that connection's banner + probe). The local mirror/queue
+    // fallback below keys off `serverOk`, not this call.
+    noteError(connectionId, e);
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
   // so a locally-newer offline advance isn't regressed by a stale server read).
@@ -220,17 +219,15 @@ function isUnrecoverable(e: unknown): boolean {
 /** Save progress now; if the network fails, queue it for later replay. version
  * is left 0 so the server reconciles by (updated_at, version). */
 export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<void> {
-  // Global reachability tracks only the ACTIVE server, so a non-active connection's
-  // save success/failure must not flip the active connection's banner (same rule the
-  // flushQueue groups follow). A book keeps playing on a connection the user switched
-  // away from, and its 15s save loop lands here.
-  const isActive = save.connectionId === useSession.getState().activeConnectionId;
+  // Reachability is per-connection: this save's success/failure notes ONLY its own
+  // server. A book keeps playing on a connection the user has navigated away from, and
+  // its 15s save loop lands here without touching any other server's state.
   // Always record the latest position in the durable mirror, independent of the network
   // outcome - this is what a future resume falls back to when the server can't be reached.
   await writeMirror(save);
-  // Server known to be unreachable: queue locally without hitting the network, so
-  // the 15s save loop doesn't fire a doomed request every tick while offline.
-  if (!isReachable()) {
+  // This server known to be unreachable: queue locally without hitting the network, so
+  // the 15s save loop doesn't fire a doomed request every tick while it's offline.
+  if (!isReachable(save.connectionId)) {
     await enqueue(save);
     return;
   }
@@ -244,11 +241,11 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
       device_id: save.device_id,
       updated_at: save.updated_at,
     });
-    if (isActive) noteSuccess();
+    noteSuccess(save.connectionId);
     void flushQueue();
   } catch (e) {
     if (isUnrecoverable(e)) return; // auth/forbidden - don't retry forever
-    if (isActive) noteError(e); // a connection error flips us offline (stops further attempts)
+    noteError(save.connectionId, e); // a connection error flips this server offline
     await enqueue(save);
   }
 }
@@ -285,14 +282,13 @@ async function enqueue(save: ProgressSave): Promise<void> {
 
 /**
  * Replay one connection's queued saves in order through its client. Returns the saves
- * that must stay queued (unflushed). Only the ACTIVE connection drives the global
- * reachability banner, so a non-active server's success/failure is not noted.
+ * that must stay queued (unflushed). Success/failure is noted against THIS connection's
+ * own reachability (per-connection banner + probe).
  */
 async function flushGroup(
   cid: string,
   client: ApiClient,
   saves: ProgressSave[],
-  activeId: string | null,
 ): Promise<ProgressSave[]> {
   const remaining: ProgressSave[] = [];
   // Stop the group only when the server is UNREACHABLE (no point hammering the rest of
@@ -313,10 +309,10 @@ async function flushGroup(
         device_id: save.device_id,
         updated_at: save.updated_at,
       });
-      if (cid === activeId) noteSuccess();
+      noteSuccess(cid);
     } catch (e) {
       if (isUnrecoverable(e)) continue; // 4xx: drop, can't ever succeed
-      if (cid === activeId) noteError(e);
+      noteError(cid, e);
       remaining.push(save); // keep it to retry next time
       // An `ApiError` means the server ANSWERED (even a 500), so the failure is specific
       // to this save - keep flushing the rest of the group past it rather than blocking
@@ -336,7 +332,6 @@ async function flushGroup(
  * can't delay every other server's replay by its full timeout.
  */
 export async function flushQueue(): Promise<void> {
-  if (!isReachable()) return; // wait for reconnect rather than fail item by item
   // Load-bearing guard: a flush racing session hydrate would resolve every entry's
   // client to null (the connection list is still empty) and drop the whole queue as
   // unroutable. Wait until the session is ready so entries route to a real client.
@@ -344,7 +339,6 @@ export async function flushQueue(): Promise<void> {
   await withQueueLock(async () => {
     const queue = await readQueue();
     if (queue.length === 0) return;
-    const activeId = useSession.getState().activeConnectionId;
 
     // Group by connection, preserving order.
     const groups = new Map<string, ProgressSave[]>();
@@ -356,9 +350,10 @@ export async function flushQueue(): Promise<void> {
 
     const remainingByGroup = await Promise.all(
       [...groups].map(async ([cid, saves]) => {
+        if (!isReachable(cid)) return saves; // this server known down; keep its saves queued
         const client = resolveClient(cid);
         if (!client) return []; // connection removed - unroutable, drop the whole group
-        return flushGroup(cid, client, saves, activeId);
+        return flushGroup(cid, client, saves);
       }),
     );
     await setItem(QUEUE_KEY, remainingByGroup.flat());
@@ -366,15 +361,16 @@ export async function flushQueue(): Promise<void> {
 }
 
 /**
- * Best-effort flush of ONE connection's queued saves, BYPASSING the global (active-only)
- * reachability gate. Used by the token-revoking teardown (sign-out / remove-connection)
- * just before a connection is purged: its queued saves are about to be deleted, so we
- * attempt to land them even when the ACTIVE server is offline - the connection being
- * removed may itself be reachable (e.g. removing a background server while the active
- * one is down). `flushQueue` deliberately no-ops while the active server is unreachable,
- * which would otherwise skip this last-chance sync and lose the saves on purge. If the
- * connection is genuinely unreachable the attempt fails and the saves stay queued (then
- * get purged - an offline server's unsynced saves are unrecoverable either way).
+ * Flush exactly ONE connection's queued saves through its client, regardless of that
+ * connection's recorded reachability. Two callers:
+ *  - reconnect (`provider.tsx onReconnect`): the connection just came back, so replay
+ *    its backlog immediately;
+ *  - teardown (sign-out / remove-connection): its queued saves are about to be purged,
+ *    so make a last-chance attempt to land them even if it's marked offline (the server
+ *    being removed may itself still be reachable). If it's genuinely unreachable the
+ *    attempt fails and the saves stay queued (then get purged - an offline server's
+ *    unsynced saves are unrecoverable either way).
+ * Unlike `flushQueue`, it does NOT skip on `isReachable(cid)`; it always tries.
  */
 export async function flushConnection(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
@@ -385,8 +381,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
     const mine = queue.filter((s) => s.connectionId === connectionId);
     if (mine.length === 0) return;
     const others = queue.filter((s) => s.connectionId !== connectionId);
-    const activeId = useSession.getState().activeConnectionId;
-    const remaining = await flushGroup(connectionId, client, mine, activeId);
+    const remaining = await flushGroup(connectionId, client, mine);
     await setItem(QUEUE_KEY, [...others, ...remaining]);
   });
 }

@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 
+import { flushConnection } from '@/playback/progress-sync';
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { ApiClient } from './client';
-import { onReconnect, setReachabilityApi } from './reachability';
+import { onReconnect, setReachabilityClients } from './reachability';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,13 +24,14 @@ onConnectionRemoved((id) => {
   queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(id) });
 });
 
-// When the server becomes reachable again, refetch so screens that errored or emptied
-// while offline repopulate on their own. Previously the offline banner cleared (it
-// reads reachability reactively) but the queries stayed in their failed/empty state
-// until the screen remounted - i.e. you had to navigate to another tab and back.
-// invalidateQueries only refetches currently-observed queries, so this is cheap.
-onReconnect(() => {
-  void queryClient.invalidateQueries();
+// When a connection becomes reachable again, refetch that connection's queries (so
+// screens that errored or emptied while it was offline repopulate on their own) and
+// replay its queued progress saves. invalidateQueries only refetches currently-observed
+// queries, so this is cheap; every query key leads with its connection id, so the
+// predicate scopes the refetch to the recovered server.
+onReconnect((connectionId) => {
+  void queryClient.invalidateQueries({ predicate: (q) => q.queryKey.includes(connectionId) });
+  void flushConnection(connectionId);
 });
 
 type ApiRegistry = {
@@ -65,9 +67,10 @@ export function ApiProvider({ children }: { children: ReactNode }) {
     [clients, connections, activeId],
   );
 
-  // Keep the reachability probe pointed at the active connection's client.
+  // Give the reachability layer every connection's client, so it can probe any offline
+  // server (not just the active one) and recover them independently.
   useEffect(() => {
-    setReachabilityApi(registry.clients.get(registry.activeId ?? '') ?? null);
+    setReachabilityClients(registry.clients);
   }, [registry]);
 
   return (

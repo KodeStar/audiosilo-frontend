@@ -321,6 +321,7 @@
     "settings": "Einstellungen",
     "logout": "Abmelden",
     "offline": "Offline – Änderungen werden bei erneuter Verbindung synchronisiert",
+    "someOffline": "Einige Server offline",
     "searchPlaceholder": "Suchen…"
   },
   "ui": {

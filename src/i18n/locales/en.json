@@ -321,6 +321,7 @@
     "settings": "Settings",
     "logout": "Logout",
     "offline": "Offline - changes sync when reconnected",
+    "someOffline": "Some servers offline",
     "searchPlaceholder": "Search…"
   },
   "ui": {

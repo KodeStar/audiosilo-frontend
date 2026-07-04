@@ -618,8 +618,8 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 
     expect(mockSvc.reset).toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toBeNull();
-    // Flushes THIS connection specifically (bypasses the active-only reachability gate
-    // that flushQueue honors), so its queued saves land before removal purges them.
+    // Flushes THIS connection specifically (unlike flushQueue, it doesn't skip on the
+    // connection's reachability), so its queued saves land before removal purges them.
     expect(flushConnection).toHaveBeenCalledWith('c1');
   });
 

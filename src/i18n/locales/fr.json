@@ -321,6 +321,7 @@
     "settings": "Réglages",
     "logout": "Déconnexion",
     "offline": "Hors ligne - les modifications se synchronisent à la reconnexion",
+    "someOffline": "Certains serveurs hors ligne",
     "searchPlaceholder": "Rechercher…"
   },
   "ui": {

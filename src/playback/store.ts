@@ -246,11 +246,12 @@ function endHistory() {
   const start = historyStart;
   historyStart = null;
   if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
-  // Listening spans are best-effort; don't fire at a server we know is unreachable.
-  if (!isReachable()) return;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
+  // Listening spans are best-effort; don't fire at a server we know is unreachable
+  // (reachability is per-connection, so key it on the playing book's own server).
+  if (!isReachable(np.connectionId)) return;
   void apiRef
     .addHistory(np.libraryId, np.path, {
       from_pos: start.position,
@@ -260,7 +261,7 @@ function endHistory() {
     })
     .then(() => queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) }))
     .catch((err) => {
-      noteError(err);
+      noteError(np.connectionId, err);
       console.warn('[history] failed to save listening span', err);
     });
 }

@@ -321,6 +321,7 @@
     "settings": "Definições",
     "logout": "Terminar sessão",
     "offline": "Offline - as alterações sincronizam ao reconectar",
+    "someOffline": "Alguns servidores offline",
     "searchPlaceholder": "Pesquisar…"
   },
   "ui": {

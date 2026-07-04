@@ -321,6 +321,7 @@
     "settings": "Impostazioni",
     "logout": "Esci",
     "offline": "Offline - le modifiche si sincronizzano alla riconnessione",
+    "someOffline": "Alcuni server offline",
     "searchPlaceholder": "Cerca…"
   },
   "ui": {

@@ -20,6 +20,15 @@ export function contentPath(pathname: string): string {
   return m ? (m[1] ?? '/') : pathname;
 }
 
+/** The connection id a scoped content path is under (`/s/<connectionId>/…`), or '' when
+ * the path isn't connection-scoped (Home, Search, Settings, aggregated Library). Lets
+ * chrome above the route scope (e.g. the offline banner) tell which server, if any, the
+ * current screen belongs to. */
+export function scopeConnectionId(pathname: string): string {
+  const m = pathname.match(/^\/s\/([^/]+)/);
+  return m ? m[1] : '';
+}
+
 export function isActiveNav(
   pathname: string,
   item: { match: string; alsoMatch?: string[] },

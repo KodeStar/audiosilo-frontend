@@ -4,7 +4,7 @@ import { ApiClient, ApiError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import * as reachability from '@/api/reachability';
 import type { Progress } from '@/api/types';
-import { onConnectionRemoved, useSession } from '@/stores/session';
+import { onConnectionRemoved } from '@/stores/session';
 
 import {
   flushConnection,
@@ -15,13 +15,13 @@ import {
 } from '@/playback/progress-sync';
 
 // babel-jest hoists jest.mock above the imports, so the module under test sees the
-// mock at import time (it calls onReconnect() and gates every save on isReachable()).
+// mock at import time (it gates every save on isReachable(cid) and notes success/failure
+// against each save's own connection). isReachable ignores its cid arg here and returns
+// the mocked value, so a test toggles reachability for the single connection it exercises.
 jest.mock('@/api/reachability', () => ({
   isReachable: jest.fn(() => true),
   noteError: jest.fn(),
   noteSuccess: jest.fn(),
-  onReconnect: jest.fn(() => () => {}),
-  getReachabilityApi: jest.fn(() => null),
 }));
 
 // The connection-clients seam is what makes progress bleed-proof: every queued save
@@ -32,12 +32,9 @@ jest.mock('@/api/connection-clients', () => ({
   sessionReady: jest.fn(() => true),
 }));
 
-// progress-sync registers an onConnectionRemoved purge at import time and reads
-// useSession.getState().activeConnectionId inside flushQueue (to scope noteSuccess/
-// noteError to the active connection only).
+// progress-sync registers an onConnectionRemoved purge at import time.
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
-  useSession: { getState: jest.fn(() => ({ activeConnectionId: 'c1' })) },
 }));
 
 const QUEUE_KEY = 'audiosilo.progressQueue';
@@ -101,7 +98,6 @@ async function readMirror(): Promise<Record<string, ProgressSave>> {
 const reachable = reachability.isReachable as jest.Mock;
 const mockResolveClient = resolveClient as jest.Mock;
 const mockSessionReady = sessionReady as jest.Mock;
-const mockGetState = useSession.getState as jest.Mock;
 
 /** Route resolveClient(cid) to a canned client per connection id (unknown → null). */
 function routeClients(map: Record<string, ApiClient | null>) {
@@ -112,12 +108,11 @@ describe('progress-sync', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     jest.clearAllMocks();
-    reachable.mockReturnValue(true);
+    reachable.mockReset().mockReturnValue(true);
     // clearAllMocks wipes call logs but keeps implementations; reset the seam mocks
     // to their defaults so a per-test override can't leak into the next test.
     mockResolveClient.mockReset().mockReturnValue(null);
     mockSessionReady.mockReset().mockReturnValue(true);
-    mockGetState.mockReset().mockReturnValue({ activeConnectionId: 'c1' });
   });
 
   it('saves straight to the server when reachable', async () => {
@@ -327,17 +322,17 @@ describe('progress-sync', () => {
 
   // --- flushConnection: last-chance drain of one connection before it's purged --------
 
-  it('flushConnection drains a connection even while the active server is offline', async () => {
-    // Two connections queued saves while offline; c1 is active, c2 is a background server.
+  it('flushConnection drains one connection even while it is marked offline', async () => {
+    // Two connections queued saves while offline.
     reachable.mockReturnValue(false);
     const offline = fakeApi(() => Promise.resolve());
     await saveProgress(offline, { ...save, connectionId: 'c1', position: 11 });
     await saveProgress(offline, { ...save, connectionId: 'c2', position: 22 });
     expect(await readQueue()).toHaveLength(2);
 
-    // Active (c1) still offline so flushQueue() would no-op, but c2 (the connection being
-    // torn down) is reachable. flushConnection must bypass the active-only gate and drain
-    // ONLY c2, leaving c1's queued save intact.
+    // Every connection still marked offline so flushQueue() would skip them all, but
+    // flushConnection does NOT gate on isReachable - it drains ONLY c2 (the connection
+    // being torn down / just reconnected), leaving c1's queued save intact.
     reachable.mockReturnValue(false);
     const c2 = fakeApi(() => Promise.resolve());
     routeClients({ c2 });
@@ -358,37 +353,30 @@ describe('progress-sync', () => {
     expect(await readQueue()).toHaveLength(1); // not dropped - can't sync, keep it
   });
 
-  // --- reachability is scoped to the active connection (no cross-server banner bleed) ---
-  // A book keeps playing on a connection the user switched away from; its 15s save loop
-  // hits saveProgress. Global reachability tracks only the ACTIVE server, so a non-active
-  // connection's outcome must not flip the active connection's banner. (activeConnectionId
-  // is mocked to 'c1' via the useSession mock above.)
+  // --- reachability is per-connection (each save notes only its OWN server) -----------
+  // A book keeps playing on a connection the user navigated away from; its 15s save loop
+  // hits saveProgress. Each save notes success/failure against ITS OWN connection, so one
+  // server's outage never flips another's banner.
 
-  it('a non-active connection failed save does not flip the banner; the active one does', async () => {
+  it('a failed save notes the error against its own connection', async () => {
     reachable.mockReturnValue(true);
     const failing = fakeApi(() => Promise.reject(new Error('server B down')));
-    await saveProgress(failing, { ...save, connectionId: 'c2' }); // non-active
-    expect(reachability.noteError).not.toHaveBeenCalled();
-    await saveProgress(failing, { ...save, connectionId: 'c1' }); // active
-    expect(reachability.noteError).toHaveBeenCalledTimes(1);
+    await saveProgress(failing, { ...save, connectionId: 'c2' });
+    expect(reachability.noteError).toHaveBeenCalledWith('c2', expect.any(Error));
   });
 
-  it('a non-active connection success does not clobber the active offline state', async () => {
+  it('a successful save notes success against its own connection', async () => {
     reachable.mockReturnValue(true);
     const ok = fakeApi(() => Promise.resolve());
-    await saveProgress(ok, { ...save, connectionId: 'c2' }); // non-active
-    expect(reachability.noteSuccess).not.toHaveBeenCalled();
-    await saveProgress(ok, { ...save, connectionId: 'c1' }); // active
-    expect(reachability.noteSuccess).toHaveBeenCalled();
+    await saveProgress(ok, { ...save, connectionId: 'c2' });
+    expect(reachability.noteSuccess).toHaveBeenCalledWith('c2');
   });
 
-  it('loadInitialProgress only flips the banner for the active connection', async () => {
+  it("loadInitialProgress notes a fetch failure against the book's own connection", async () => {
     reachable.mockReturnValue(true);
     const down = fakeGetApi(() => Promise.reject(new Error('server B down')));
-    await loadInitialProgress(down, 'c2', 1, 'A/Book'); // non-active
-    expect(reachability.noteError).not.toHaveBeenCalled();
-    await loadInitialProgress(down, 'c1', 1, 'A/Book'); // active
-    expect(reachability.noteError).toHaveBeenCalledTimes(1);
+    await loadInitialProgress(down, 'c2', 1, 'A/Book');
+    expect(reachability.noteError).toHaveBeenCalledWith('c2', expect.any(Error));
   });
 
   // --- durable mirror + resume lookup (never restart an in-progress book from 0) ---
