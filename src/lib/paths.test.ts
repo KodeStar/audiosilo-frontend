@@ -74,25 +74,40 @@ describe('parentPath', () => {
   });
 });
 
+// The hrefs are FLAT routes (OBJECT form: route pattern + params) with the connection
+// and library-relative path both as QUERY params. An imperative `router.push` can't
+// resolve a tap into a route nested under a dynamic layout segment (it lands on the
+// scope group's first child, `account`); flat routes + a query param push correctly.
+// Expo Router builds the URL from the pattern + params.
 describe('libraryHref', () => {
-  it('returns the bare, connection-scoped library route at the root', () => {
-    expect(libraryHref('c1', 7)).toBe('/s/c1/library/7');
-    expect(libraryHref('c1', 7, '')).toBe('/s/c1/library/7');
+  it('omits path at the library root', () => {
+    const expected = {
+      pathname: '/library/[libraryId]',
+      params: { libraryId: '7', connection: 'c1' },
+    };
+    expect(libraryHref('c1', 7)).toEqual(expected);
+    expect(libraryHref('c1', 7, '')).toEqual(expected);
   });
 
-  it('appends encoded path segments for a sub-path', () => {
-    expect(libraryHref('c1', 7, 'Author/Book Title')).toBe('/s/c1/library/7/Author/Book%20Title');
+  it('carries a sub-path as the `path` query param', () => {
+    expect(libraryHref('c1', 7, 'Author/Book Title')).toEqual({
+      pathname: '/library/[libraryId]',
+      params: { libraryId: '7', connection: 'c1', path: 'Author/Book Title' },
+    });
   });
 });
 
 describe('bookHref', () => {
-  it('builds an encoded, connection-scoped book route', () => {
-    expect(bookHref('c1', 3, 'Author/Book Title')).toBe('/s/c1/book/3/Author/Book%20Title');
+  it('carries connection + path as query params on the flat book route', () => {
+    expect(bookHref('c1', 3, 'Author/Book Title')).toEqual({
+      pathname: '/book/[libraryId]',
+      params: { libraryId: '3', connection: 'c1', path: 'Author/Book Title' },
+    });
   });
 });
 
 describe('accountHref', () => {
-  it('builds the connection-scoped account route', () => {
-    expect(accountHref('c1')).toBe('/s/c1/account');
+  it('builds the flat account route with the connection query param', () => {
+    expect(accountHref('c1')).toEqual({ pathname: '/account', params: { connection: 'c1' } });
   });
 });

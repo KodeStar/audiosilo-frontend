@@ -17,7 +17,7 @@ import { useSession, type Connection } from '@/stores/session';
 /** Settings section to manage server connections: open one to manage its account,
  * remove a connection, or add another. Content from every connection appears in the
  * unified Home/Search; tapping a row opens that server's per-connection account
- * screen (`/s/<id>/account`). */
+ * screen (`/account?connection=<id>`). */
 export function ConnectionsSection() {
   const { t } = useTranslation();
   const connections = useSession((s) => s.connections);

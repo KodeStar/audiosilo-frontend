@@ -1,4 +1,4 @@
-import { contentPath, isActiveNav, matchesPath, scopeConnectionId } from './nav';
+import { isActiveNav, matchesPath } from './nav';
 
 describe('matchesPath', () => {
   it('matches root only on an exact "/"', () => {
@@ -38,45 +38,14 @@ describe('isActiveNav', () => {
   });
 });
 
-describe('contentPath', () => {
-  it('strips a leading connection scope', () => {
-    expect(contentPath('/s/abc/library/5')).toBe('/library/5');
-    expect(contentPath('/s/abc/book/1/Author/Book')).toBe('/book/1/Author/Book');
-  });
-
-  it('maps a bare scope to root', () => {
-    expect(contentPath('/s/abc')).toBe('/');
-  });
-
-  it('passes unscoped paths through unchanged', () => {
-    expect(contentPath('/')).toBe('/');
-    expect(contentPath('/library')).toBe('/library');
-    expect(contentPath('/settings')).toBe('/settings');
-  });
-});
-
-describe('scopeConnectionId', () => {
-  it('extracts the connection id from a scoped path', () => {
-    expect(scopeConnectionId('/s/abc/library/5')).toBe('abc');
-    expect(scopeConnectionId('/s/abc/book/1/Author/Book')).toBe('abc');
-    expect(scopeConnectionId('/s/abc')).toBe('abc');
-  });
-
-  it('returns empty for unscoped (aggregated) paths', () => {
-    expect(scopeConnectionId('/')).toBe('');
-    expect(scopeConnectionId('/library')).toBe('');
-    expect(scopeConnectionId('/settings')).toBe('');
-  });
-});
-
-describe('isActiveNav on scoped content paths', () => {
+describe('isActiveNav on flat content paths', () => {
   const library = { match: '/library', alsoMatch: ['/book'] };
 
-  it('keeps Library active inside a scoped library route', () => {
-    expect(isActiveNav(contentPath('/s/abc/library/5'), library)).toBe(true);
+  it('keeps Library active inside a library route (connection rides in the query)', () => {
+    expect(isActiveNav('/library/5', library)).toBe(true);
   });
 
-  it('keeps Library active on a scoped book route (via alsoMatch)', () => {
-    expect(isActiveNav(contentPath('/s/abc/book/1/Author/Book'), library)).toBe(true);
+  it('keeps Library active on a book route (via alsoMatch)', () => {
+    expect(isActiveNav('/book/1', library)).toBe(true);
   });
 });

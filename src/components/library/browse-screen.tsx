@@ -54,8 +54,8 @@ export function BrowseScreen() {
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
-  // This screen lives under the `s/[connectionId]` scope, so browse/scroll/hrefs all
-  // resolve to that server rather than the global "active" connection.
+  // The connection rides in the `?connection=` query param; the `(app)` layout publishes
+  // it as the scope, so browse/scroll/hrefs all resolve to that server (not the default).
   const cid = useScopedCid();
 
   const { data: libraries } = useLibraries();

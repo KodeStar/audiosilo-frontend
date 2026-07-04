@@ -26,11 +26,11 @@ import { useSession } from '@/stores/session';
 const PW_MIN = 8;
 
 /**
- * Per-connection account screen (`/s/<connectionId>/account`). Lives inside the
- * connection route scope, so `useOptionalApi()`/`useServerInfo()`/the account hooks
- * all resolve to *this* server - managing one connection's account never touches
- * another's. Reached from the Settings → Servers list. Settings itself keeps only
- * app-level preferences.
+ * Per-connection account screen (`/account?connection=<cid>`). The `(app)` layout reads
+ * that query param and publishes the connection scope, so `useOptionalApi()`/
+ * `useServerInfo()`/the account hooks all resolve to *this* server - managing one
+ * connection's account never touches another's. Reached from the Settings → Servers
+ * list. Settings itself keeps only app-level preferences.
  */
 export default function AccountScreen() {
   const { t } = useTranslation();

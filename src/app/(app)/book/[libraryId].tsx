@@ -39,8 +39,8 @@ export default function BookDetailScreen() {
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
   const api = useApi();
-  // This screen lives under the `s/[connectionId]` scope, so its content resolves to
-  // that server (not the global "active" one).
+  // The connection rides in the `?connection=` query param; the `(app)` layout publishes
+  // it as the scope, so this screen's content resolves to that server (not the default).
   const cid = useScopedCid();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;

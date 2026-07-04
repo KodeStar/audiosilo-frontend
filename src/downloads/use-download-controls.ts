@@ -25,7 +25,7 @@ export function useDownloadControls(
   book?: Book,
   chapterData?: ChaptersResponse,
 ): DownloadControls {
-  // The book screen lives under the `s/[connectionId]` scope, so downloads scope to it.
+  // The book screen's connection scope (from its `?connection=` query param) keys downloads.
   const cid = useScopedCid();
   const entry = useDownloadEntry(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't

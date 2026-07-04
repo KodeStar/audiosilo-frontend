@@ -76,7 +76,7 @@ export function useBrowseInfinite(libraryId: number, path: string) {
 
 // `useBook`/`useChapters` take an optional `connectionId` so the player (a root modal
 // outside any route scope) can address the playing book's own server; content screens
-// under `s/[connectionId]` omit it and resolve to their route scope.
+// omit it and resolve to their route scope (the `?connection=` query param).
 export function useBook(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);

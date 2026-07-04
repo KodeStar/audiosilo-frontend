@@ -86,14 +86,14 @@ export function useDefaultCid(): string {
 
 /**
  * The connection a subtree of content is scoped to (the server whose library/book you
- * are viewing), supplied by the `s/[connectionId]` route layout via `ConnectionScope`.
- * `''` outside any scope (chrome, aggregated Home/Search). Content screens read the
- * scope instead of the global default connection.
+ * are viewing), supplied by the `(app)` layout via `ConnectionScope` from the content
+ * route's `?connection=` query param. `''` outside any scope (chrome, aggregated
+ * Home/Search). Content screens read the scope instead of the global default connection.
  */
 const ConnectionScopeContext = createContext<string>('');
 
-/** Wrap a subtree so its content hooks resolve to `connectionId` (used by the
- * `s/[connectionId]` route layout). */
+/** Wrap a subtree so its content hooks resolve to `connectionId` (used by the `(app)`
+ * layout, which sources it from the content route's `?connection=` query param). */
 export function ConnectionScope({
   connectionId,
   children,

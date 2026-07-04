@@ -9,26 +9,6 @@ export function matchesPath(pathname: string, match: string): boolean {
   return match === '/' ? pathname === '/' : pathname === match || pathname.startsWith(`${match}/`);
 }
 
-/**
- * Strip a leading connection scope (`/s/<connectionId>`) so tab-active matching and
- * section detection operate on the logical content path regardless of which server's
- * scope it sits under: `/s/abc/library/5` → `/library/5`, `/s/abc` → `/`. Unscoped
- * paths (`/`, `/settings`, `/library`) pass through unchanged.
- */
-export function contentPath(pathname: string): string {
-  const m = pathname.match(/^\/s\/[^/]+(\/.*)?$/);
-  return m ? (m[1] ?? '/') : pathname;
-}
-
-/** The connection id a scoped content path is under (`/s/<connectionId>/…`), or '' when
- * the path isn't connection-scoped (Home, Search, Settings, aggregated Library). Lets
- * chrome above the route scope (e.g. the offline banner) tell which server, if any, the
- * current screen belongs to. */
-export function scopeConnectionId(pathname: string): string {
-  const m = pathname.match(/^\/s\/([^/]+)/);
-  return m ? m[1] : '';
-}
-
 export function isActiveNav(
   pathname: string,
   item: { match: string; alsoMatch?: string[] },

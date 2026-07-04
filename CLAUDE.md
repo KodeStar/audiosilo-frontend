@@ -271,9 +271,17 @@ Raw color values for native props in `src/theme/tokens.ts`.
 
 **Routing**: `src/app/(app)/*` is the authenticated shell (guarded in its
 `_layout.tsx`); `src/app/connect/*` is onboarding; `src/app/player.tsx` is a modal.
-Library browse uses `library/[libraryId]/index.tsx` (root) + `library/[libraryId]/[...path].tsx`
-(sub-path), both re-exporting `src/components/library/browse-screen.tsx`; book detail
-is `book/[libraryId]/[...path].tsx`. Path helpers in `src/lib/paths.ts`.
+Content routes are **flat** - `library/[libraryId].tsx` (re-exports
+`src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -
+and carry **both the connection and the library-relative path as query params**
+(`/book/[libraryId]?connection=<cid>&path=<rel>`). The connection is NOT a
+`/s/[connectionId]/` route segment: `router.push` (React Navigation's `linkTo`) can't
+resolve a tap into a route nested under a dynamic layout segment - it lands on the
+group's first child - whereas a flat route + query param pushes correctly (a direct URL
+load worked either way via `getStateFromPath`, which is why the bug only bit in-app
+navigation). The `(app)/_layout.tsx` reads `?connection=` and republishes it as the
+`ConnectionScope` the content hooks read via `useScopedCid()`. Path helpers +
+the full rationale are in `src/lib/paths.ts`.
 
 ## Layout
 ```

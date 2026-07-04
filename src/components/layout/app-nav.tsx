@@ -6,7 +6,7 @@ import { Brand } from '@/components/brand/brand';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
-import { contentPath, isActiveNav } from '@/lib/nav';
+import { isActiveNav } from '@/lib/nav';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -57,7 +57,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
     return (
       <View className="flex-row border-t border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800">
         {NAV_ITEMS.map((item) => {
-          const active = isActiveNav(contentPath(pathname), item);
+          const active = isActiveNav(pathname, item);
           return (
             <Link key={item.match} href={item.href} asChild>
               <Pressable className="flex-1 items-center justify-center gap-1 py-2.5">
@@ -88,7 +88,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       </View>
       <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {
-          const active = isActiveNav(contentPath(pathname), item);
+          const active = isActiveNav(pathname, item);
           return (
             <Link key={item.match} href={item.href} asChild>
               <Pressable

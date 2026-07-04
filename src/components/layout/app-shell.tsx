@@ -5,7 +5,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
-import { contentPath } from '@/lib/nav';
 import { clearScrollMemory } from '@/lib/scroll-memory';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
@@ -44,9 +43,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     setQuery('');
   }, [pathname, setQuery]);
 
-  // Match on the logical content path, stripping the `/s/<connectionId>` scope that
-  // content routes now carry, so these checks don't need to know about the segment.
-  const path = contentPath(pathname);
+  // Content routes are flat (`/book/[libraryId]`, `/library/[libraryId]`), so the
+  // pathname is the logical content path (the connection rides in a query param).
+  const path = pathname;
 
   // The book screen owns its own two-pane layout (chapters + a player/detail
   // panel) and renders its own content column, so the shell just gives it the

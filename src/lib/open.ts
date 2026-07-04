@@ -4,9 +4,9 @@ import { bookHref, libraryHref, playerHref } from '@/lib/paths';
 
 /**
  * Navigation that targets a specific connection. The connection travels *with* the
- * content in the route (`/s/<cid>/…`), so opening across servers is a plain push -
- * there is no global "active" connection to flip first. The `s/[connectionId]` route
- * layout publishes the connection to the content hooks underneath.
+ * content as a `?connection=` query param on a flat route (see `paths.ts`), so opening
+ * across servers is a plain push - there is no global "active" connection to flip first.
+ * The `(app)` layout reads that query param and publishes it to the content hooks below.
  */
 export function useOpen() {
   const go = (href: Href) => router.push(href);
