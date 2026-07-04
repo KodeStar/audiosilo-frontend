@@ -37,6 +37,12 @@ export function bookHref(connectionId: string, libraryId: number, relPath: strin
   return `/s/${connectionId}/book/${libraryId}/${encodePathSegments(relPath)}` as Href;
 }
 
+/** A connection's per-server account screen (`/s/<cid>/account`), in the route scope
+ * so its account hooks resolve to that server. Reached from the connections list. */
+export function accountHref(connectionId: string): Href {
+  return `/s/${connectionId}/account` as Href;
+}
+
 /** The full-screen player modal for a book. The player is a root modal (outside any
  * scope), so it carries the connection as a param. */
 export function playerHref(connectionId: string, libraryId: number, relPath: string): Href {

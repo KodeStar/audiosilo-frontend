@@ -9,7 +9,7 @@ import {
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
 
-import { useActiveCid, useApi, useApis, useCid, useOptionalApi } from './provider';
+import { useApi, useApis, useCid, useOptionalApi } from './provider';
 import type { Book, Favourite, Library, Progress } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. Every key leads with
@@ -35,12 +35,12 @@ export const qk = {
   copies: (cid: string, key: string) => ['copies', cid, key] as const,
 };
 
-/** The connected server's identity/capabilities (incl. its release version).
- * Tolerates an unconfigured server (returns disabled) so it is safe in chrome
- * like the sidebar that can render before/without a connection. */
+/** The scoped connection's server identity/capabilities (incl. its release version).
+ * Resolves via `useCid()` (route scope → active), so the per-connection account screen
+ * gets *its* server's version. Tolerates an unconfigured server (returns disabled). */
 export function useServerInfo() {
   const api = useOptionalApi();
-  const cid = useActiveCid();
+  const cid = useCid();
   return useQuery({
     queryKey: qk.server(cid),
     queryFn: ({ signal }) => api!.serverInfo(signal),

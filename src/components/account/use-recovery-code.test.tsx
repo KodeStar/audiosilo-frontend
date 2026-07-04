@@ -5,7 +5,12 @@ import type { User } from '@/api/types';
 const mockApi = { generateRecoveryCode: jest.fn(), me: jest.fn() };
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => mockApi }));
 
-let mockSessionState: { user: User | null; setUser: jest.Mock };
+// useRecoveryCode(connectionId) reads its user from the `connections` list and refreshes
+// it via setConnectionUser, so the mock state seeds a connection carrying the user.
+let mockSessionState: {
+  connections: { id: string; user: User | null }[];
+  setConnectionUser: jest.Mock;
+};
 jest.mock('@/stores/session', () => ({
   useSession: (selector: (s: unknown) => unknown) => selector(mockSessionState),
 }));
@@ -38,17 +43,21 @@ const user = (over: Partial<User>): User => ({
   ...over,
 });
 
+const seed = (u: User | null) => {
+  mockSessionState = { connections: [{ id: 'c1', user: u }], setConnectionUser: jest.fn() };
+};
+
 beforeEach(() => {
   mockApi.generateRecoveryCode.mockReset();
   mockApi.me.mockReset();
-  mockSessionState = { user: user({}), setUser: jest.fn() };
+  seed(user({}));
 });
 
 describe('useRecoveryCode', () => {
   it('mints immediately when the user has no existing code', async () => {
     mockApi.generateRecoveryCode.mockResolvedValue('REC-123');
     mockApi.me.mockResolvedValue(user({ has_recovery: true }));
-    const hook = await mountHook(() => useRecoveryCode());
+    const hook = await mountHook(() => useRecoveryCode('c1'));
 
     await act(async () => {
       hook().requestGenerate();
@@ -56,13 +65,14 @@ describe('useRecoveryCode', () => {
 
     await waitFor(() => expect(hook().code).toBe('REC-123'));
     expect(hook().confirmRegen).toBe(false);
-    expect(mockSessionState.setUser).toHaveBeenCalled(); // refreshed has_recovery
+    // refreshed has_recovery against this connection
+    expect(mockSessionState.setConnectionUser).toHaveBeenCalledWith('c1', expect.anything());
   });
 
   it('confirms before replacing an existing code', async () => {
-    mockSessionState.user = user({ has_recovery: true });
+    seed(user({ has_recovery: true }));
     mockApi.generateRecoveryCode.mockResolvedValue('REC-NEW');
-    const hook = await mountHook(() => useRecoveryCode());
+    const hook = await mountHook(() => useRecoveryCode('c1'));
 
     await act(async () => {
       hook().requestGenerate();
@@ -80,7 +90,7 @@ describe('useRecoveryCode', () => {
 
   it('surfaces an error when minting fails (and mints no code)', async () => {
     mockApi.generateRecoveryCode.mockRejectedValue(new Error('nope'));
-    const hook = await mountHook(() => useRecoveryCode());
+    const hook = await mountHook(() => useRecoveryCode('c1'));
 
     await act(async () => {
       hook().requestGenerate();

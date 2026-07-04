@@ -2,11 +2,6 @@ import { Link, usePathname, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import { useServerInfo } from '@/api/hooks';
-import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
-import { SignOutConfirm } from '@/components/account/sign-out-confirm';
-import { useRecoveryCode } from '@/components/account/use-recovery-code';
-import { useSignOut } from '@/components/account/use-sign-out';
 import { Brand } from '@/components/brand/brand';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
@@ -57,12 +52,6 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const { scheme } = useTheme();
-  const { data: server } = useServerInfo();
-  // Sign-out is guarded centrally (useSignOut) so the strand-the-user warning
-  // can't be skipped here; the recovery hook lets the warning mint + reveal a code
-  // in place rather than dead-ending the user on the Settings screen.
-  const signOut = useSignOut();
-  const recovery = useRecoveryCode();
 
   if (orientation === 'bottom') {
     return (
@@ -93,7 +82,9 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   return (
     <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800 after:content-[''] after:border-r after:absolute after:right-0 after:h-full after:border-gray-300 after:dark:border-gray-860">
       <View className="p-5 border-b border-gray-100 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-b after:absolute after:bottom-0 after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860">
-        <Brand size={50} showVersion version={server?.version} />
+        {/* App build version, not a server's - account/server details are per-connection
+            on each connection's account screen (reached from Settings → Servers). */}
+        <Brand size={50} showVersion />
       </View>
       <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {
@@ -121,25 +112,6 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       </View>
 
       <View className="flex-1" />
-
-      <Pressable
-        onPress={() => void signOut.requestSignOut()}
-        className="flex-row items-center gap-3 border-t border-gray-100 px-6 py-5 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-t after:absolute after:top-[-2px] after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860"
-      >
-        <Icon name="logout" size={20} color={colors[scheme].text} />
-        <Text className="text-base text-gray-600 dark:text-gray-300">{t('nav.logout')}</Text>
-      </Pressable>
-
-      <SignOutConfirm
-        visible={signOut.confirmVisible}
-        onCancel={() => signOut.setConfirmVisible(false)}
-        onSignOut={signOut.signOut}
-        onSetRecovery={() => {
-          signOut.setConfirmVisible(false);
-          recovery.requestGenerate();
-        }}
-      />
-      <RecoveryCodeModal code={recovery.code} onClose={() => recovery.setCode(null)} />
     </View>
   );
 }

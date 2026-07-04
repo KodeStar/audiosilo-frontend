@@ -79,6 +79,7 @@
   "account": {
     "connections": {
       "label": "Server",
+      "manage": "{{name}} verwalten",
       "remove": "{{name}} entfernen",
       "add": "Server hinzufügen",
       "removeConfirm": {

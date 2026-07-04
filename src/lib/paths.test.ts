@@ -1,4 +1,5 @@
 import {
+  accountHref,
   bookHref,
   encodePathSegments,
   libraryHref,
@@ -87,5 +88,11 @@ describe('libraryHref', () => {
 describe('bookHref', () => {
   it('builds an encoded, connection-scoped book route', () => {
     expect(bookHref('c1', 3, 'Author/Book Title')).toBe('/s/c1/book/3/Author/Book%20Title');
+  });
+});
+
+describe('accountHref', () => {
+  it('builds the connection-scoped account route', () => {
+    expect(accountHref('c1')).toBe('/s/c1/account');
   });
 });

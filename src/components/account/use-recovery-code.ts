@@ -6,8 +6,9 @@ import i18n from '@/i18n';
 import { useSession } from '@/stores/session';
 
 /**
- * Mint (or replace) the signed-in user's durable recovery code. Shared by the
- * Settings screen and the sign-out warning so both reveal the code the same way.
+ * Mint (or replace) a connection's user's durable recovery code, scoped to the
+ * passed `connectionId`. Shared by the per-connection account screen and the
+ * sign-out warning so both reveal the code the same way.
  *
  * Generating *replaces* any existing code server-side, so `requestGenerate`
  * confirms first when the user already has one (the caller renders a confirmation
@@ -15,10 +16,10 @@ import { useSession } from '@/stores/session';
  * always-visible dialog; the follow-up `/me` refresh of `has_recovery` is
  * best-effort and never reported as a generation failure.
  */
-export function useRecoveryCode() {
-  const api = useOptionalApi();
-  const user = useSession((s) => s.user);
-  const setUser = useSession((s) => s.setUser);
+export function useRecoveryCode(connectionId: string) {
+  const api = useOptionalApi(connectionId);
+  const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user ?? null);
+  const setConnectionUser = useSession((s) => s.setConnectionUser);
   const [code, setCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export function useRecoveryCode() {
       const minted = await api.generateRecoveryCode();
       setCode(minted);
       try {
-        void setUser(await api.me()); // refresh has_recovery (best-effort)
+        void setConnectionUser(connectionId, await api.me()); // refresh has_recovery (best-effort)
       } catch {
         // the code was minted regardless; a stale flag is harmless
       }
@@ -41,7 +42,7 @@ export function useRecoveryCode() {
     } finally {
       setBusy(false);
     }
-  }, [api, setUser]);
+  }, [api, connectionId, setConnectionUser]);
 
   const requestGenerate = useCallback(() => {
     if (user?.has_recovery) setConfirmRegen(true);

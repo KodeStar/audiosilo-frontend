@@ -105,7 +105,10 @@ type SessionState = {
   }) => Promise<string>;
   /** Remember the server URL mid-connect, before authenticating. */
   setPendingServerUrl: (url: string) => Promise<void>;
-  /** Update the active connection's user. */
+  /** Update a specific connection's user (a `/me` refresh after a password/recovery
+   * change lands on the connection it was made against, not whatever is active). */
+  setConnectionUser: (id: string, user: User) => Promise<void>;
+  /** Update the active connection's user (sugar over `setConnectionUser`). */
   setUser: (user: User) => Promise<void>;
   setActiveConnection: (id: string) => Promise<void>;
   /** Remove one connection (deleting its token). */
@@ -195,11 +198,17 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   setPendingServerUrl: async (url) => set({ pendingServerUrl: url }),
 
-  setUser: async (user) => {
+  setConnectionUser: async (id, user) => {
     const { connections, activeConnectionId } = get();
-    const next = connections.map((c) => (c.id === activeConnectionId ? { ...c, user } : c));
+    if (!connections.some((c) => c.id === id)) return;
+    const next = connections.map((c) => (c.id === id ? { ...c, user } : c));
     await persist(next, activeConnectionId);
     set({ connections: next, ...mirror(next, activeConnectionId) });
+  },
+
+  setUser: async (user) => {
+    const { activeConnectionId } = get();
+    if (activeConnectionId) await get().setConnectionUser(activeConnectionId, user);
   },
 
   setActiveConnection: async (id) => {
