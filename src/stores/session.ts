@@ -125,10 +125,10 @@ type SessionState = {
   setConnectionUser: (id: string, user: User) => Promise<void>;
   /** Update the default connection's user (sugar over `setConnectionUser`). */
   setUser: (user: User) => Promise<void>;
-  /** Remove one connection (deleting its token). */
+  /** Remove one connection (deleting its token). Sign-out goes through this (via
+   * `teardownBeforeTokenRevoke` first - see `use-sign-out.ts`), so there is no separate
+   * `logout()`: it would revoke the token without the pre-revoke stop-playback + flush. */
   removeConnection: (id: string) => Promise<void>;
-  /** Sign out of the default connection (remove it). */
-  logout: () => Promise<void>;
 };
 
 function hostName(url: string): string {
@@ -244,10 +244,5 @@ export const useSession = create<SessionState>()((set, get) => ({
       if (r.status === 'rejected')
         console.warn('[session] connection-removed cleanup failed', r.reason);
     }
-  },
-
-  logout: async () => {
-    const { defaultConnectionId } = get();
-    if (defaultConnectionId) await get().removeConnection(defaultConnectionId);
   },
 }));

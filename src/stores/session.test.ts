@@ -106,20 +106,24 @@ describe('session store (multi-connection)', () => {
     expect(await SecureStore.getItemAsync('audiosilo.token.')).toBeNull();
   });
 
-  it('logout removes the default connection, falling back to another', async () => {
+  it('removing the default connection falls back to another, then to unauthenticated', async () => {
+    // Sign-out routes through removeConnection (after teardownBeforeTokenRevoke), not a
+    // separate logout() - so this covers removing whichever connection is the default.
     await useSession
       .getState()
       .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't', user: mkUser('a') });
     await useSession
       .getState()
       .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 't', user: mkUser('b') });
-    await useSession.getState().logout(); // removes b (the default = last added)
+    const removeDefault = () =>
+      useSession.getState().removeConnection(useSession.getState().defaultConnectionId!);
+    await removeDefault(); // removes b (the default = last added)
     const s = useSession.getState();
     expect(s.connections).toHaveLength(1);
     expect(s.defaultConnectionId).toBe('srv-a'); // falls back to the remaining one
     expect(s.user?.username).toBe('a'); // mirror follows the new default
     expect(s.status).toBe('authenticated');
-    await useSession.getState().logout(); // removes the last one
+    await removeDefault(); // removes the last one
     expect(useSession.getState().status).toBe('unauthenticated');
   });
 
