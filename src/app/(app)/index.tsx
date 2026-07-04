@@ -11,7 +11,6 @@ import {
   type SourcedFavourite,
   type SourcedProgress,
 } from '@/api/hooks';
-import { useApi } from '@/api/provider';
 import { Grid, GRID_GAP, GridCard, gridColumns } from '@/components/library/poster-grid';
 import { ProgressCard, progressKey } from '@/components/library/progress-card';
 import { HorizontalShelf, SHELF_CARD_WIDTH } from '@/components/library/shelf';
@@ -66,7 +65,6 @@ const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.p
 
 export default function HomeScreen() {
   const { t } = useTranslation();
-  const api = useApi();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
   const { progress, isLoading, error } = useAllProgressAll();
@@ -87,10 +85,10 @@ export default function HomeScreen() {
   const visibleFavourites = favouritesExpanded ? favouriteBooks : favouriteBooks.slice(0, columns);
   const favouritesHasMore = favouriteBooks.length > columns;
 
-  // Replay any saves captured while offline.
+  // Replay any saves captured while offline (each entry routes to its own server).
   useEffect(() => {
-    void flushQueue(api);
-  }, [api]);
+    void flushQueue();
+  }, []);
 
   const { inProgress, finished } = useMemo(() => {
     const sorted = [...progress].sort((a, b) => b.updated_at.localeCompare(a.updated_at));

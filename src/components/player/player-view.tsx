@@ -44,7 +44,6 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
-  const api = useApi();
   const [sheet, setSheet] = useState<'history' | 'notes' | 'bookmarks' | 'chapters' | null>(null);
   // Brief "saved" confirmation after adding a bookmark; the ref lets a rapid
   // second add reset the timer instead of stacking timeouts.
@@ -52,6 +51,11 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
+  // Resolve the PLAYING book's connection, not the active one: a book keeps playing
+  // through a connection the user has switched away from, and bookmarks/notes/history +
+  // the cover auth must address that book's own server. Falls back to the active client
+  // while nowPlaying is briefly null (loading).
+  const api = useApi(nowPlaying?.connectionId);
   const bookPosition = usePlayer(selectBookPosition);
   const currentChapter = usePlayer(selectCurrentChapter);
   const isPlaying = usePlayer(selectIsPlaying);
@@ -73,7 +77,11 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   useShakeToCancel();
   // Keyed to the playing book; placeholders keep hook order stable before the
   // early return below (nowPlaying is null only briefly while loading).
-  const addBookmark = useAddBookmark(nowPlaying?.libraryId ?? -1, nowPlaying?.path ?? '');
+  const addBookmark = useAddBookmark(
+    nowPlaying?.libraryId ?? -1,
+    nowPlaying?.path ?? '',
+    nowPlaying?.connectionId,
+  );
 
   const onAddBookmark = () =>
     addBookmark.mutate(
@@ -89,7 +97,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
 
   if (!nowPlaying) return <Spinner center />;
 
-  const { queue, title, cover, libraryId, path } = nowPlaying;
+  const { queue, title, cover, libraryId, path, connectionId } = nowPlaying;
   const total = queue.total;
   const rateLabel = `${Number(rate.toFixed(2))}×`;
   // When file durations are unknown (total 0), the whole-book timeline isn't
@@ -399,6 +407,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 <BookmarksSection
                   libraryId={libraryId}
                   path={path}
+                  connectionId={connectionId}
                   emptyLabel={t('player.bookmarks.empty')}
                   onAdd={onAddBookmark}
                   adding={addBookmark.isPending}
@@ -413,11 +422,14 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 <HistorySection
                   libraryId={libraryId}
                   path={path}
+                  connectionId={connectionId}
                   emptyLabel={t('player.history.empty')}
                   chapters={queue.chapters}
                 />
               ) : null}
-              {sheet === 'notes' ? <NotesSection libraryId={libraryId} path={path} /> : null}
+              {sheet === 'notes' ? (
+                <NotesSection libraryId={libraryId} path={path} connectionId={connectionId} />
+              ) : null}
             </ScrollView>
             {/* Floats over the section's top-left title; titles are left-aligned
                 so it never overlaps. Rendered last so it sits above the

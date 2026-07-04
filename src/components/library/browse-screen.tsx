@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, type ListRenderItem, Pressable, type ViewToken, View } from 'react-native';
 
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
+import { useScopedCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
+import { ContentScope } from '@/components/layout/content-scope';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
@@ -44,8 +46,19 @@ type Row = { type: 'header'; letter: string } | { type: 'entry'; entry: FsEntry 
  * of author folders stays fast and fully reachable. Large folders get a type-to-
  * filter box and an A–Z jump rail; the folder-vs-file distinction stays clear from
  * each row's pink-folder / blue-book icon.
+ *
+ * Scopes to the route's OWN `?connection=` (local param, reliable on a cold deep link);
+ * the body consumes it via `useScopedCid()`, so it's a child of `<ContentScope>`.
  */
 export function BrowseScreen() {
+  return (
+    <ContentScope>
+      <BrowseContent />
+    </ContentScope>
+  );
+}
+
+function BrowseContent() {
   const { t } = useTranslation();
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
@@ -53,6 +66,9 @@ export function BrowseScreen() {
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
+  // The connection rides in the `?connection=` query param; the `(app)` layout publishes
+  // it as the scope, so browse/scroll/hrefs all resolve to that server (not the default).
+  const cid = useScopedCid();
 
   const { data: libraries } = useLibraries();
   const { data, isLoading, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -66,7 +82,7 @@ export function BrowseScreen() {
   // pixel offset, which is reliable on a virtualized list.
   const listRef = useRef<FlatList<Row>>(null);
   const restoredRef = useRef(false);
-  const key = scrollKey(libraryId, path);
+  const key = scrollKey(cid, libraryId, path);
   const keyRef = useRef(key);
   useEffect(() => {
     keyRef.current = key;
@@ -122,7 +138,7 @@ export function BrowseScreen() {
     {
       label: libraryName,
       active: segments.length === 0,
-      onPress: segments.length === 0 ? undefined : () => router.push(libraryHref(libraryId)),
+      onPress: segments.length === 0 ? undefined : () => router.push(libraryHref(cid, libraryId)),
     },
     ...segments.map((seg, i) => {
       const isLast = i === segments.length - 1;
@@ -130,7 +146,7 @@ export function BrowseScreen() {
       return {
         label: seg,
         active: isLast,
-        onPress: isLast ? undefined : () => router.push(libraryHref(libraryId, sub)),
+        onPress: isLast ? undefined : () => router.push(libraryHref(cid, libraryId, sub)),
       } satisfies Crumb;
     }),
   ];
@@ -171,7 +187,7 @@ export function BrowseScreen() {
       </View>
     ) : (
       <View style={{ height: ENTRY_H }} className="px-4 lg:px-8">
-        <EntryRow entry={item.entry} libraryId={libraryId} />
+        <EntryRow entry={item.entry} connectionId={cid} libraryId={libraryId} />
       </View>
     );
 

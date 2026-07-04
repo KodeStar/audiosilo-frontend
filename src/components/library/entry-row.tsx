@@ -11,8 +11,18 @@ import { bookHref, libraryHref } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
 
 /** One row in the filesystem browse view: a folder (pink block, drill in) or an
- * audio file (blue block, opens the book). Ported from the old client's list. */
-export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: number }) {
+ * audio file (blue block, opens the book). Ported from the old client's list.
+ * `connectionId` is the browse scope's server, so drilling in / opening a book
+ * stays on the same connection. */
+export function EntryRow({
+  entry,
+  connectionId,
+  libraryId,
+}: {
+  entry: FsEntry;
+  connectionId: string;
+  libraryId: number;
+}) {
   const { t } = useTranslation();
   const isDir = entry.is_dir;
   const { data: favourites } = useFavourites();
@@ -22,7 +32,9 @@ export function EntryRow({ entry, libraryId }: { entry: FsEntry; libraryId: numb
   );
   // Plain folders drill in; book folders and audio leaves open the book screen.
   const href =
-    isDir && !entry.is_book ? libraryHref(libraryId, entry.path) : bookHref(libraryId, entry.path);
+    isDir && !entry.is_book
+      ? libraryHref(connectionId, libraryId, entry.path)
+      : bookHref(connectionId, libraryId, entry.path);
   // Show what's on disk - the name the user gave the folder/file - as the title,
   // so sibling parts ("CD 1", "CD 2", …) stay distinct. The grabbed book metadata
   // (title, author) goes underneath when it adds something the name doesn't.

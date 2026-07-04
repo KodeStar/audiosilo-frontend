@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
@@ -8,12 +7,12 @@ import { useApi } from '@/api/provider';
 import { GridCard } from '@/components/library/poster-grid';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { bookHref, parentPath, pathLeaf } from '@/lib/paths';
+import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -21,7 +20,7 @@ const WIDE_BREAKPOINT = 1024;
 
 /** Stable list key for a progress entry across connections. */
 export const progressKey = (it: SourcedProgress) =>
-  `${it.connectionId}:${it.library_id}:${it.path}`;
+  contentKey(it.connectionId, it.library_id, it.path);
 
 /** Overflow menu for an in-progress book: mark finished, or jump to the
  * containing folder ("more in series"). */
@@ -104,8 +103,7 @@ function MenuRow({
 export function ProgressCard({ item, width }: { item: SourcedProgress; width: number }) {
   const { t } = useTranslation();
   const api = useApi(item.connectionId);
-  const setActive = useSession((s) => s.setActiveConnection);
-  const activeConnectionId = useSession((s) => s.activeConnectionId);
+  const { openBook, openPlayer } = useOpen();
   const { width: screenWidth } = useWindowDimensions();
   const wide = screenWidth >= WIDE_BREAKPOINT;
 
@@ -116,35 +114,37 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
   const position = usePlayer((s) => {
     const np = s.nowPlaying;
     const isThis =
-      item.connectionId === activeConnectionId &&
+      np?.connectionId === item.connectionId &&
       np?.libraryId === item.library_id &&
       np?.path === item.path;
     return isThis ? selectBookPosition(s) : item.position;
   });
   const { fraction, remaining } = progressFractionRemaining(position, item.duration);
 
-  // Make this item's server active first (so the player chrome reads from it),
-  // then on phone open the full-screen player modal, or on desktop resume in the
-  // persistent player panel (fetch via the item's connection, start playback).
+  // On phone open the full-screen player modal (scoped to this item's connection),
+  // or on desktop resume in the persistent player panel (fetch via the item's
+  // connection, start playback). The connection travels in the route, so there is
+  // no active-connection flip.
   const play = async () => {
-    await setActive(item.connectionId);
     if (!wide) {
       // Land on the book page underneath the player (like tapping the cover does),
       // so closing the player returns there instead of back to Home.
-      router.push(bookHref(item.library_id, item.path));
-      router.push({
-        pathname: '/player',
-        params: { libraryId: String(item.library_id), path: item.path },
-      });
+      openBook(item.connectionId, item.library_id, item.path);
+      openPlayer(item.connectionId, item.library_id, item.path);
       return;
     }
     const current = usePlayer.getState().nowPlaying;
-    if (current?.libraryId === item.library_id && current?.path === item.path) return;
+    if (
+      current?.connectionId === item.connectionId &&
+      current?.libraryId === item.library_id &&
+      current?.path === item.path
+    )
+      return;
     const [book, chapterData] = await Promise.all([
       api.item(item.library_id, item.path),
       api.chapters(item.library_id, item.path),
     ]);
-    await usePlayer.getState().playBook(api, item.library_id, book, chapterData);
+    await usePlayer.getState().playBook(item.connectionId, item.library_id, book, chapterData);
   };
 
   return (

@@ -14,6 +14,10 @@ export type Capabilities = {
 
 export type ServerInfo = {
   name: string;
+  /** Stable per-install identity minted once by the server. The client uses it as a
+   * connection's id and keys all per-server state on it, so a server keeps its
+   * identity across URL changes and remove/re-add. */
+  server_id: string;
   version: string;
   api: string;
   capabilities: Capabilities;
@@ -40,9 +44,11 @@ export type User = {
   is_demo?: boolean;
 };
 
-/** Response of /auth/exchange and /auth/login. The token is the session secret. */
+/** Response of /auth/exchange and /auth/login. The token is the session secret;
+ * `server_id` is the paired server's stable identity (adopted as the connection id). */
 export type AuthSession = {
   token: string;
+  server_id: string;
   user: User;
 };
 

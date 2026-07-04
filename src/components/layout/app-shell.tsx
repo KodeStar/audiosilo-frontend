@@ -43,6 +43,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     setQuery('');
   }, [pathname, setQuery]);
 
+  // Content routes are flat (`/book/[libraryId]`, `/library/[libraryId]`), so the
+  // pathname is already the logical content path (the connection rides in a query param).
+  //
   // The book screen owns its own two-pane layout (chapters + a player/detail
   // panel) and renders its own content column, so the shell just gives it the
   // sidebar - no full-width search bar across its panel, no duplicate player.

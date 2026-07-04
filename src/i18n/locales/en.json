@@ -79,8 +79,15 @@
   "account": {
     "connections": {
       "label": "Servers",
+      "manage": "Manage {{name}}",
       "remove": "Remove {{name}}",
-      "add": "Add a server"
+      "add": "Add a server",
+      "removeConfirm": {
+        "title": "Remove {{name}}?",
+        "confirm": "Remove server",
+        "message_one": "This deletes {{count}} downloaded book on this device and any progress that hasn't synced yet.",
+        "message_other": "This deletes {{count}} downloaded books on this device and any progress that hasn't synced yet."
+      }
     },
     "recoveryModal": {
       "title": "Recovery code",
@@ -91,7 +98,9 @@
       "title": "Sign out?",
       "warning": "You don’t have a password or recovery code set. Without one you’ll need a new invite from your admin to sign back in on this server.",
       "setRecovery": "Set a recovery code",
-      "confirm": "Sign out anyway"
+      "confirm": "Sign out anyway",
+      "downloadsWarning_one": "Signing out also deletes {{count}} book downloaded from this server on this device.",
+      "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device."
     },
     "recovery": {
       "generateError": "Could not generate a recovery code."
@@ -313,6 +322,7 @@
     "settings": "Settings",
     "logout": "Logout",
     "offline": "Offline - changes sync when reconnected",
+    "someOffline": "Some servers offline",
     "searchPlaceholder": "Search…"
   },
   "ui": {

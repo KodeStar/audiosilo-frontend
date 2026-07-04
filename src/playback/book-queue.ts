@@ -171,18 +171,24 @@ export function synthesizeChapters(
  * A long single file with no real chapters gets evenly-spaced synthetic chapters
  * (`virtualChapterInterval`, default 30 min) so chapter navigation works; those
  * synthetic chapters are kept out of `chapterClips` so native playback is unchanged.
+ *
+ * `api` may be null: a fully-downloaded book plays entirely from `local` files, so it can
+ * be built with no server client (its connection may be gone, e.g. a token that failed to
+ * hydrate). Every server-derived value - stream URLs, auth headers, the remote cover - is
+ * only reached for a track WITHOUT a local file, which a downloaded book never has.
  */
 export function buildBookQueue(
-  api: ApiClient,
+  api: ApiClient | null,
   libraryId: number,
   book: Book,
   chapterData?: ChaptersResponse,
   local?: { files: Map<string, string>; artwork?: string },
   virtualChapterInterval: number = DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
 ): BookQueue {
-  // Native engines authenticate via headers; web embeds the token in the URL.
-  const headers = Platform.OS === 'web' ? undefined : api.authHeaders();
-  const artwork = local?.artwork ?? api.coverUrl(libraryId, book.rel_path);
+  // Native engines authenticate via headers; web embeds the token in the URL. No client
+  // (offline downloaded book) => no headers needed, since every track is a local file.
+  const headers = api && Platform.OS !== 'web' ? api.authHeaders() : undefined;
+  const artwork = local?.artwork ?? api?.coverUrl(libraryId, book.rel_path);
 
   const rawChapters = chapterData?.chapters ?? book.chapters ?? [];
   const specs = bookFileSpecs(book, chapterData);
@@ -191,7 +197,10 @@ export function buildBookQueue(
     const localUri = local?.files.get(s.path);
     return {
       id: `${libraryId}:${s.path}`,
-      url: localUri ?? api.streamUrl(libraryId, s.path),
+      // A downloaded book has a local uri for every file; the `api?.streamUrl` fallback is
+      // only for streaming (api present). The final `?? ''` is unreachable for a book the
+      // caller vetted as playable (downloaded => all-local, or streaming => api present).
+      url: localUri ?? api?.streamUrl(libraryId, s.path) ?? '',
       headers: localUri ? undefined : headers,
       title: book.title,
       album: book.series || book.title,

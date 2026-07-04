@@ -37,3 +37,15 @@ describe('isActiveNav', () => {
     expect(isActiveNav('/', { match: '/settings' })).toBe(false);
   });
 });
+
+describe('isActiveNav on flat content paths', () => {
+  const library = { match: '/library', alsoMatch: ['/book'] };
+
+  it('keeps Library active inside a library route (connection rides in the query)', () => {
+    expect(isActiveNav('/library/5', library)).toBe(true);
+  });
+
+  it('keeps Library active on a book route (via alsoMatch)', () => {
+    expect(isActiveNav('/book/1', library)).toBe(true);
+  });
+});

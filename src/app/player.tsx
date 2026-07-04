@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBook, useChapters } from '@/api/hooks';
-import { useApi } from '@/api/provider';
+import { useCid } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
 import { Spinner } from '@/components/ui/spinner';
 import { segmentsToPath } from '@/lib/paths';
@@ -12,11 +12,13 @@ import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
   const {
+    connection: connectionId,
     libraryId: libParam,
     path: pathParam,
     position,
     track,
   } = useLocalSearchParams<{
+    connection?: string;
     libraryId?: string;
     path?: string | string[];
     position?: string;
@@ -24,15 +26,18 @@ export default function PlayerScreen() {
   }>();
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
-  const api = useApi();
+  // The player is a root modal (outside any route scope), so the connection it plays
+  // rides in as a param; fall back to the active connection when opened bare (the
+  // mini-player just re-shows nowPlaying).
+  const cid = useCid(connectionId);
   const insets = useSafeAreaInsets();
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
-  const { data: book } = useBook(libraryId, path);
-  const chaptersQuery = useChapters(libraryId, path);
+  const { data: book } = useBook(libraryId, path, connectionId);
+  const chaptersQuery = useChapters(libraryId, path, connectionId);
   const chapterData = chaptersQuery.data;
 
   // Start playback once the book AND its chapters/files have loaded - otherwise
@@ -49,7 +54,11 @@ export default function PlayerScreen() {
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
     // playBook every render (hammering getProgress + restarting playback).
-    if (nowPlaying?.libraryId === libraryId && nowPlaying?.path === book.rel_path) {
+    if (
+      nowPlaying?.connectionId === cid &&
+      nowPlaying?.libraryId === libraryId &&
+      nowPlaying?.path === book.rel_path
+    ) {
       if (hasPos) void seekBook(posParam);
       else if (hasTrack) void goToTrack(trackParam);
       return;
@@ -57,9 +66,9 @@ export default function PlayerScreen() {
     const startAt = hasPos ? posParam : undefined;
     void usePlayer
       .getState()
-      .playBook(api, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
+      .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
   }, [
-    api,
+    cid,
     book,
     chapterData,
     chaptersQuery.isLoading,

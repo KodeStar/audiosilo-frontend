@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -7,7 +6,6 @@ import { DownloadBadge } from '@/components/library/download-badge';
 import { Cover } from '@/components/ui/cover';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
-import { bookHref } from '@/lib/paths';
 
 // Grid sizing: pick as many columns as fit at a comfortable minimum card width,
 // then divide the measured row width evenly (numeric widths avoid the flex-gap
@@ -45,18 +43,15 @@ export function GridCard({
   title: string;
   width: number;
   footer?: ReactNode;
-  /** Source connection; when set, opening switches to it first (cross-server). */
-  connectionId?: string;
+  /** The book's source connection; opening routes into that server's scope. Every
+   * GridCard comes from a connection-tagged list, so this is always known. */
+  connectionId: string;
 }) {
   const api = useApi(connectionId);
   const { openBook } = useOpen();
   return (
     <Pressable
-      onPress={() =>
-        connectionId
-          ? void openBook(connectionId, libraryId, path)
-          : router.push(bookHref(libraryId, path))
-      }
+      onPress={() => openBook(connectionId, libraryId, path)}
       style={{ width }}
       className="gap-2 rounded-lg border p-4 border-gray-200 bg-gray-50 shadow-sm dark:border-gray-860 dark:bg-gray-840 dark:shadow-none active:opacity-80"
     >
@@ -73,7 +68,7 @@ export function GridCard({
           </Text>
         </View>
         <View className="pt-0.5">
-          <DownloadBadge libraryId={libraryId} path={path} />
+          <DownloadBadge connectionId={connectionId} libraryId={libraryId} path={path} />
         </View>
       </View>
       {footer}

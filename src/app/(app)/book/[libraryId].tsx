@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { useBook, useChapters, useLibraries } from '@/api/hooks';
-import { useApi } from '@/api/provider';
+import { useApi, useScopedCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
 import { ContentColumn } from '@/components/layout/content-column';
+import { ContentScope } from '@/components/layout/content-scope';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
 import { BookVersions } from '@/components/library/book-versions';
@@ -26,12 +27,22 @@ import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
-import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
 const WIDE_BREAKPOINT = 1024;
 
+// Scope to the route's OWN `?connection=` (read from the local param, reliable on a cold
+// deep link) so the body + its sections resolve to that server. The body consumes the
+// scope via `useScopedCid()`, so it lives in a child component of `<ContentScope>`.
 export default function BookDetailScreen() {
+  return (
+    <ContentScope>
+      <BookDetailContent />
+    </ContentScope>
+  );
+}
+
+function BookDetailContent() {
   const { t } = useTranslation();
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
@@ -40,7 +51,9 @@ export default function BookDetailScreen() {
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
   const api = useApi();
-  const activeConnectionId = useSession((s) => s.activeConnectionId);
+  // The connection rides in the `?connection=` query param; the `(app)` layout publishes
+  // it as the scope, so this screen's content resolves to that server (not the default).
+  const cid = useScopedCid();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
 
@@ -50,7 +63,7 @@ export default function BookDetailScreen() {
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
-  const downloadEntry = useDownloadEntry(libraryId, path);
+  const downloadEntry = useDownloadEntry(cid, libraryId, path);
   const paddingBottom = useMiniPlayerInset();
 
   if (isLoading) return <Spinner center />;
@@ -73,17 +86,20 @@ export default function BookDetailScreen() {
   const chapters = chapterData?.chapters ?? [];
   const files = chapterData?.files ?? [];
   const listLabel = chapters.length > 0 ? t('book.chaptersTitle') : t('book.filesTitle');
-  const isThisPlaying = nowPlaying?.libraryId === libraryId && nowPlaying?.path === book.rel_path;
+  const isThisPlaying =
+    nowPlaying?.connectionId === cid &&
+    nowPlaying?.libraryId === libraryId &&
+    nowPlaying?.path === book.rel_path;
   const activeIndex = isThisPlaying ? currentChapter?.index : undefined;
   const downloaded = downloadEntry?.status === 'downloaded';
 
   const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? t('book.libraryFallback');
   const segments = path.split('/').filter(Boolean);
   const crumbs: Crumb[] = [
-    { label: libraryName, onPress: () => router.push(libraryHref(libraryId)) },
+    { label: libraryName, onPress: () => router.push(libraryHref(cid, libraryId)) },
     ...segments.slice(0, -1).map((seg, i) => ({
       label: seg,
-      onPress: () => router.push(libraryHref(libraryId, segments.slice(0, i + 1).join('/'))),
+      onPress: () => router.push(libraryHref(cid, libraryId, segments.slice(0, i + 1).join('/'))),
     })),
     // The active crumb is the on-disk folder/file name (matching the other path
     // crumbs and the browse view); the book's title is shown in the header below.
@@ -106,11 +122,12 @@ export default function BookDetailScreen() {
     if (wide) {
       void usePlayer
         .getState()
-        .playBook(api, libraryId, book, chapterData, target.position, target.track);
+        .playBook(cid, libraryId, book, chapterData, target.position, target.track);
     } else {
       router.push({
         pathname: '/player',
         params: {
+          connection: cid,
           libraryId: String(libraryId),
           path,
           ...(target.position !== undefined
@@ -214,7 +231,7 @@ export default function BookDetailScreen() {
         <ContentColumn>
           <ScrollView className="flex-1" contentContainerClassName="gap-4 p-8 pt-2">
             <BreadCrumbs crumbs={crumbs} />
-            <BookVersions book={book} connectionId={activeConnectionId} />
+            <BookVersions book={book} connectionId={cid} />
             <DownloadControl
               libraryId={libraryId}
               path={path}
@@ -278,7 +295,7 @@ export default function BookDetailScreen() {
     >
       <BreadCrumbs crumbs={crumbs} />
 
-      <BookVersions book={book} connectionId={activeConnectionId} />
+      <BookVersions book={book} connectionId={cid} />
 
       <View className="gap-4">
         <View className="w-full max-w-[240px] self-center">

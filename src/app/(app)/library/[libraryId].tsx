@@ -1,4 +1,4 @@
 import { BrowseScreen } from '@/components/library/browse-screen';
 
-// Nested folders: /library/:libraryId/a/b/c
+// Library root: /library/:libraryId?connection=:connectionId (flat route + query scope)
 export default BrowseScreen;

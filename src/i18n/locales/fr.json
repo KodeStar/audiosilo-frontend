@@ -79,8 +79,15 @@
   "account": {
     "connections": {
       "label": "Serveurs",
+      "manage": "Gérer {{name}}",
       "remove": "Supprimer {{name}}",
-      "add": "Ajouter un serveur"
+      "add": "Ajouter un serveur",
+      "removeConfirm": {
+        "title": "Supprimer {{name}} ?",
+        "confirm": "Supprimer le serveur",
+        "message_one": "Cela supprime {{count}} livre téléchargé sur cet appareil ainsi que toute progression pas encore synchronisée.",
+        "message_other": "Cela supprime {{count}} livres téléchargés sur cet appareil ainsi que toute progression pas encore synchronisée."
+      }
     },
     "recoveryModal": {
       "title": "Code de récupération",
@@ -91,7 +98,9 @@
       "title": "Se déconnecter ?",
       "warning": "Vous n’avez défini ni mot de passe ni code de récupération. Sans cela, il vous faudra une nouvelle invitation de votre administrateur pour vous reconnecter à ce serveur.",
       "setRecovery": "Définir un code de récupération",
-      "confirm": "Se déconnecter quand même"
+      "confirm": "Se déconnecter quand même",
+      "downloadsWarning_one": "La déconnexion supprimera aussi {{count}} livre téléchargé depuis ce serveur sur cet appareil.",
+      "downloadsWarning_other": "La déconnexion supprimera aussi {{count}} livres téléchargés depuis ce serveur sur cet appareil."
     },
     "recovery": {
       "generateError": "Impossible de générer un code de récupération."
@@ -313,6 +322,7 @@
     "settings": "Réglages",
     "logout": "Déconnexion",
     "offline": "Hors ligne - les modifications se synchronisent à la reconnexion",
+    "someOffline": "Certains serveurs hors ligne",
     "searchPlaceholder": "Rechercher…"
   },
   "ui": {

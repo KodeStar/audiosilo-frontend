@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useBookmarks, useDeleteBookmark } from '@/api/hooks';
+import { useCid } from '@/api/provider';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
@@ -17,6 +18,7 @@ import { colors } from '@/theme/tokens';
 export function BookmarksSection({
   libraryId,
   path,
+  connectionId,
   emptyLabel,
   onAdd,
   adding,
@@ -24,23 +26,30 @@ export function BookmarksSection({
 }: {
   libraryId: number;
   path: string;
+  /** Source connection; defaults to the active one (the book screen). The player
+   * passes the playing book's connection so it addresses the right server. */
+  connectionId?: string;
   emptyLabel?: string;
   onAdd?: () => void;
   adding?: boolean;
   addLabel?: string;
 }) {
   const { t } = useTranslation();
-  const { data: bookmarks } = useBookmarks(libraryId, path);
-  const del = useDeleteBookmark(libraryId, path);
+  const { data: bookmarks } = useBookmarks(libraryId, path, connectionId);
+  const del = useDeleteBookmark(libraryId, path, connectionId);
+  // The book this bookmark belongs to: the passed connection (player sheet) or the
+  // route scope (book screen). The player carries it as a param.
+  const cid = useCid(connectionId);
 
   const empty = !bookmarks || bookmarks.length === 0;
   if (empty && !onAdd && !emptyLabel) return null;
 
-  const jump = (position: number) =>
+  const jump = (position: number) => {
     router.push({
       pathname: '/player',
-      params: { libraryId: String(libraryId), path, position: String(position) },
+      params: { connection: cid, libraryId: String(libraryId), path, position: String(position) },
     });
+  };
 
   return (
     <View className="gap-2">
@@ -61,7 +70,7 @@ export function BookmarksSection({
         >
           <Pressable
             className="flex-1 flex-row items-center gap-3"
-            onPress={() => jump(bm.position)}
+            onPress={() => void jump(bm.position)}
           >
             <Icon name="bookmark" size={16} color={colors.primary} />
             <View className="flex-1">

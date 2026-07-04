@@ -46,7 +46,12 @@ export default function DemoScreen() {
         const demo = await new ApiClient(base).demoSession(getDeviceName());
         if (cancelled) return;
         setPairing(demo.pairing);
-        await setSession({ serverUrl: base, token: demo.token, user: demo.user });
+        await setSession({
+          serverUrl: base,
+          serverId: demo.server_id,
+          token: demo.token,
+          user: demo.user,
+        });
       } catch (e) {
         if (cancelled) return;
         setError(

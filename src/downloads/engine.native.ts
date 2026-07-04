@@ -24,8 +24,8 @@ function rootDir(): Directory {
   return new Directory(Paths.document, ROOT);
 }
 
-function bookDir(libraryId: number, path: string): Directory {
-  return new Directory(Paths.document, ROOT, String(libraryId), slug(path));
+function bookDir(connectionId: string, libraryId: number, path: string): Directory {
+  return new Directory(Paths.document, ROOT, connectionId, String(libraryId), slug(path));
 }
 
 function ensureDir(dir: Directory) {
@@ -47,6 +47,7 @@ export const engine: DownloadEngine = {
   supported: true,
 
   async downloadFile(
+    connectionId,
     libraryId,
     path,
     fileName,
@@ -54,7 +55,7 @@ export const engine: DownloadEngine = {
     onProgress?: DownloadProgressCb,
     signal?: AbortSignal,
   ) {
-    const dir = bookDir(libraryId, path);
+    const dir = bookDir(connectionId, libraryId, path);
     ensureDir(dir);
     const dest = new File(dir, fileName);
     if (dest.exists) dest.delete();
@@ -76,18 +77,27 @@ export const engine: DownloadEngine = {
   },
 
   // Recompute the absolute uri from the live document root + deterministic
-  // (libraryId, path) layout, so a stored uri whose container path has since
-  // changed still resolves to the file on disk.
-  localUri(libraryId, path, fileName) {
-    return new File(bookDir(libraryId, path), fileName).uri;
+  // (connectionId, libraryId, path) layout, so a stored uri whose container path has
+  // since changed still resolves to the file on disk.
+  localUri(connectionId, libraryId, path, fileName) {
+    return new File(bookDir(connectionId, libraryId, path), fileName).uri;
   },
 
-  async removeBook(libraryId, path) {
+  async removeBook(connectionId, libraryId, path) {
     try {
-      const dir = bookDir(libraryId, path);
+      const dir = bookDir(connectionId, libraryId, path);
       if (dir.exists) dir.delete();
     } catch {
       // best-effort cleanup
+    }
+  },
+
+  async clearAll() {
+    try {
+      const root = rootDir();
+      if (root.exists) root.delete();
+    } catch {
+      // best-effort: orphaned files are non-fatal, just wasted space
     }
   },
 

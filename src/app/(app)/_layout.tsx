@@ -44,6 +44,10 @@ export default function AppGroupLayout() {
     return <Redirect href="/connect" />;
   }
 
+  // Each content screen (book/library/account) scopes ITSELF to its `?connection=` via
+  // `<ContentScope>` from its own local param (reliable on a cold deep link, unlike a
+  // layout-level global param). Aggregated screens (Home/Search) carry no connection and
+  // default to the fallback scope, so nothing is wrapped here.
   return (
     <AppShell>
       <Slot />

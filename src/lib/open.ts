@@ -1,28 +1,22 @@
 import { type Href, router } from 'expo-router';
 
-import { bookHref, libraryHref } from '@/lib/paths';
-import { useSession } from '@/stores/session';
+import { bookHref, libraryHref, playerHref } from '@/lib/paths';
 
 /**
- * Navigation that targets a specific connection. The browse/book/player screens
- * operate on the *active* connection, so to open content from another server we
- * switch the active connection first, then route. This keeps the single-server
- * screens, hooks and playback working unchanged while the aggregated Home/Search
- * surfaces span every connection.
+ * Navigation that targets a specific connection. The connection travels *with* the
+ * content as a `?connection=` query param on a flat route (see `paths.ts`), so opening
+ * across servers is a plain push - there is no global "active" connection to flip first.
+ * The `(app)` layout reads that query param and publishes it to the content hooks below.
  */
 export function useOpen() {
-  const setActive = useSession((s) => s.setActiveConnection);
-  const activeId = useSession((s) => s.activeConnectionId);
-
-  const go = async (connectionId: string, href: Href) => {
-    if (connectionId !== activeId) await setActive(connectionId);
-    router.push(href);
-  };
+  const go = (href: Href) => router.push(href);
 
   return {
     openLibrary: (connectionId: string, libraryId: number, path = '') =>
-      go(connectionId, libraryHref(libraryId, path)),
+      go(libraryHref(connectionId, libraryId, path)),
     openBook: (connectionId: string, libraryId: number, path: string) =>
-      go(connectionId, bookHref(libraryId, path)),
+      go(bookHref(connectionId, libraryId, path)),
+    openPlayer: (connectionId: string, libraryId: number, path: string) =>
+      go(playerHref(connectionId, libraryId, path)),
   };
 }
