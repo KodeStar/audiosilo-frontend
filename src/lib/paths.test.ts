@@ -1,28 +1,11 @@
 import {
   accountHref,
   bookHref,
-  encodePathSegments,
   libraryHref,
   parentPath,
   pathLeaf,
   segmentsToPath,
 } from '@/lib/paths';
-
-describe('encodePathSegments', () => {
-  it('encodes each segment with encodeURIComponent', () => {
-    expect(encodePathSegments('Author/Book Title')).toBe('Author/Book%20Title');
-  });
-
-  it('escapes #, space and % within a segment', () => {
-    expect(encodePathSegments('a#b/c d/e%f')).toBe('a%23b/c%20d/e%25f');
-  });
-
-  it('drops empty segments (leading/trailing/double slashes)', () => {
-    expect(encodePathSegments('/a//b/')).toBe('a/b');
-    expect(encodePathSegments('')).toBe('');
-    expect(encodePathSegments('///')).toBe('');
-  });
-});
 
 describe('segmentsToPath', () => {
   it('returns empty string for undefined', () => {

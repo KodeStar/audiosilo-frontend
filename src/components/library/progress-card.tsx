@@ -7,6 +7,7 @@ import { useApi } from '@/api/provider';
 import { GridCard } from '@/components/library/poster-grid';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { parentPath, pathLeaf } from '@/lib/paths';
@@ -19,7 +20,7 @@ const WIDE_BREAKPOINT = 1024;
 
 /** Stable list key for a progress entry across connections. */
 export const progressKey = (it: SourcedProgress) =>
-  `${it.connectionId}:${it.library_id}:${it.path}`;
+  contentKey(it.connectionId, it.library_id, it.path);
 
 /** Overflow menu for an in-progress book: mark finished, or jump to the
  * containing folder ("more in series"). */
@@ -143,7 +144,7 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
       api.item(item.library_id, item.path),
       api.chapters(item.library_id, item.path),
     ]);
-    await usePlayer.getState().playBook(api, item.connectionId, item.library_id, book, chapterData);
+    await usePlayer.getState().playBook(item.connectionId, item.library_id, book, chapterData);
   };
 
   return (

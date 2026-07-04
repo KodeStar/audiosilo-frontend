@@ -19,9 +19,6 @@ const MIRROR_KEY = 'audiosilo.progressMirror';
 
 let deviceIdCache: string | null = null;
 
-/** Composite storage key scoping a book to the connection it belongs to. */
-const scopeKey = contentKey;
-
 /** Stable per-install device id, sent with progress for last-write-wins. */
 export async function getDeviceId(): Promise<string> {
   if (deviceIdCache) return deviceIdCache;
@@ -75,7 +72,7 @@ function newest(a: Progress | null, b: Progress | null): Progress | null {
   return timeOf(b) > timeOf(a) ? b : a;
 }
 
-/** The durable mirror map (keyed by `scopeKey`). */
+/** The durable mirror map (keyed by `contentKey`). */
 async function readMirrorMap(): Promise<Record<string, ProgressSave>> {
   return (await getItem<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
 }
@@ -169,7 +166,7 @@ function withMirrorLock<T>(fn: () => Promise<T>): Promise<T> {
 export async function writeMirror(save: ProgressSave): Promise<void> {
   await withMirrorLock(async () => {
     const map = await readMirrorMap();
-    const key = scopeKey(save.connectionId, save.libraryId, save.path);
+    const key = contentKey(save.connectionId, save.libraryId, save.path);
     const existing = map[key];
     if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
       map[key] = save;
@@ -184,7 +181,7 @@ export async function readMirror(
   path: string,
 ): Promise<ProgressSave | null> {
   const map = await readMirrorMap();
-  return map[scopeKey(connectionId, libraryId, path)] ?? null;
+  return map[contentKey(connectionId, libraryId, path)] ?? null;
 }
 
 /** Reconstruct progress from the offline replay queue, so a downloaded book

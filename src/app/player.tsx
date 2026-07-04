@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBook, useChapters } from '@/api/hooks';
-import { useApi, useCid } from '@/api/provider';
+import { useCid } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
 import { Spinner } from '@/components/ui/spinner';
 import { segmentsToPath } from '@/lib/paths';
@@ -29,7 +29,6 @@ export default function PlayerScreen() {
   // The player is a root modal (outside any route scope), so the connection it plays
   // rides in as a param; fall back to the active connection when opened bare (the
   // mini-player just re-shows nowPlaying).
-  const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const insets = useSafeAreaInsets();
 
@@ -67,9 +66,8 @@ export default function PlayerScreen() {
     const startAt = hasPos ? posParam : undefined;
     void usePlayer
       .getState()
-      .playBook(api, cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
+      .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
   }, [
-    api,
     cid,
     book,
     chapterData,

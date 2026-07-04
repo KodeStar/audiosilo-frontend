@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
 
@@ -447,7 +448,7 @@ export function useBookCopies(book: Book | undefined) {
           size?: number,
           multiFile?: boolean,
         ) => {
-          const k = `${conn.id}:${libraryId}:${path}`;
+          const k = contentKey(conn.id, libraryId, path);
           if (seen.has(k)) return;
           seen.add(k);
           copies.push({

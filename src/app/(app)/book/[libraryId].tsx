@@ -110,7 +110,7 @@ export default function BookDetailScreen() {
     if (wide) {
       void usePlayer
         .getState()
-        .playBook(api, cid, libraryId, book, chapterData, target.position, target.track);
+        .playBook(cid, libraryId, book, chapterData, target.position, target.track);
     } else {
       router.push({
         pathname: '/player',

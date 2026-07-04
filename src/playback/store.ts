@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
+import { resolveClient } from '@/api/connection-clients';
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
@@ -49,7 +50,6 @@ let resumeFloor = 0;
 let resumeLookupFailed = false;
 /** Captured so `retry()` can re-run the resume path after a lookup failure. */
 let lastPlayRequest: {
-  api: ApiClient;
   connectionId: string;
   libraryId: number;
   book: Book;
@@ -104,7 +104,6 @@ type PlayerState = {
    * unknown, so a whole-book position can't address a track). `connectionId` is the
    * server this book is loaded through - it scopes saves, downloads and invalidations. */
   playBook: (
-    api: ApiClient,
     connectionId: string,
     libraryId: number,
     book: Book,
@@ -357,15 +356,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
 
-  playBook: async (
-    api,
-    connectionId,
-    libraryId,
-    book,
-    chapterData,
-    startBookPosition,
-    startTrack,
-  ) => {
+  playBook: async (connectionId, libraryId, book, chapterData, startBookPosition, startTrack) => {
+    // Resolve the client from the connection id (single source of truth), mirroring the
+    // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
+    const api = resolveClient(connectionId);
+    if (!api) return; // connection removed between render and tap; nothing to play
     endHistory(); // flush any prior book's listening span before switching
     cancelStallWatchdog(); // drop any stale stall timer from the previous book
     // Stop the prior book's periodic save loop before we switch nowPlaying: otherwise
@@ -376,7 +371,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     stopSaveLoop();
     apiRef = api;
     deviceId = await getDeviceId();
-    lastPlayRequest = { api, connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
+    lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
     resumeLookupFailed = false;
 
     // Play from local files when the book is downloaded (works fully offline).
@@ -485,9 +480,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // progress) rather than reloading at a stale 0 - this is the recovery for the
     // fail-safe in playBook.
     if (resumeLookupFailed && lastPlayRequest) {
-      const { api, connectionId, libraryId, book, chapterData } = lastPlayRequest;
+      const { connectionId, libraryId, book, chapterData } = lastPlayRequest;
       resumeLookupFailed = false;
-      await get().playBook(api, connectionId, libraryId, book, chapterData);
+      await get().playBook(connectionId, libraryId, book, chapterData);
       return;
     }
     const np = get().nowPlaying;

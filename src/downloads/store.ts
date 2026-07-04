@@ -64,7 +64,8 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
         (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
           Boolean,
         );
-      // Key on the (now-scoped) connectionId so an adopted legacy entry re-keys.
+      // Key on the entry's own connection-scoped id (stale un-scoped entries from before
+      // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
       const key = downloadKey(e.connectionId, e.libraryId, e.path);
       if (present) {
         cleaned[key] = e;
