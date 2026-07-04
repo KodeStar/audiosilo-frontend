@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useBookmarks, useDeleteBookmark } from '@/api/hooks';
+import { useCid } from '@/api/provider';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
-import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
@@ -37,20 +37,17 @@ export function BookmarksSection({
   const { t } = useTranslation();
   const { data: bookmarks } = useBookmarks(libraryId, path, connectionId);
   const del = useDeleteBookmark(libraryId, path, connectionId);
-  const setActive = useSession((s) => s.setActiveConnection);
+  // The book this bookmark belongs to: the passed connection (player sheet) or the
+  // route scope (book screen). The player carries it as a param.
+  const cid = useCid(connectionId);
 
   const empty = !bookmarks || bookmarks.length === 0;
   if (empty && !onAdd && !emptyLabel) return null;
 
-  const jump = async (position: number) => {
-    // The player screen operates on the ACTIVE connection, so make this bookmark's
-    // connection active before opening it - otherwise a bookmark for a book playing
-    // through a non-active connection would open the wrong server's book. (On the book
-    // screen connectionId is omitted and this is a no-op.)
-    if (connectionId) await setActive(connectionId);
+  const jump = (position: number) => {
     router.push({
       pathname: '/player',
-      params: { libraryId: String(libraryId), path, position: String(position) },
+      params: { connectionId: cid, libraryId: String(libraryId), path, position: String(position) },
     });
   };
 

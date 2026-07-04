@@ -1,4 +1,4 @@
-import { isActiveNav, matchesPath } from './nav';
+import { contentPath, isActiveNav, matchesPath } from './nav';
 
 describe('matchesPath', () => {
   it('matches root only on an exact "/"', () => {
@@ -35,5 +35,34 @@ describe('isActiveNav', () => {
   it('handles items with no alsoMatch', () => {
     expect(isActiveNav('/settings', { match: '/settings' })).toBe(true);
     expect(isActiveNav('/', { match: '/settings' })).toBe(false);
+  });
+});
+
+describe('contentPath', () => {
+  it('strips a leading connection scope', () => {
+    expect(contentPath('/s/abc/library/5')).toBe('/library/5');
+    expect(contentPath('/s/abc/book/1/Author/Book')).toBe('/book/1/Author/Book');
+  });
+
+  it('maps a bare scope to root', () => {
+    expect(contentPath('/s/abc')).toBe('/');
+  });
+
+  it('passes unscoped paths through unchanged', () => {
+    expect(contentPath('/')).toBe('/');
+    expect(contentPath('/library')).toBe('/library');
+    expect(contentPath('/settings')).toBe('/settings');
+  });
+});
+
+describe('isActiveNav on scoped content paths', () => {
+  const library = { match: '/library', alsoMatch: ['/book'] };
+
+  it('keeps Library active inside a scoped library route', () => {
+    expect(isActiveNav(contentPath('/s/abc/library/5'), library)).toBe(true);
+  });
+
+  it('keeps Library active on a scoped book route (via alsoMatch)', () => {
+    expect(isActiveNav(contentPath('/s/abc/book/1/Author/Book'), library)).toBe(true);
   });
 });

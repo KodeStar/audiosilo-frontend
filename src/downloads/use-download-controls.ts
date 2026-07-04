@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { useActiveCid } from '@/api/provider';
+import { useScopedCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 
 import { useDownloadEntry, useDownloads } from './store';
@@ -25,8 +25,8 @@ export function useDownloadControls(
   book?: Book,
   chapterData?: ChaptersResponse,
 ): DownloadControls {
-  // The book screen operates on the active connection, so downloads scope to it.
-  const cid = useActiveCid();
+  // The book screen lives under the `s/[connectionId]` scope, so downloads scope to it.
+  const cid = useScopedCid();
   const entry = useDownloadEntry(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
   // serve offline media), not just the static Cache-API capability.

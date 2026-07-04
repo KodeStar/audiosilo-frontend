@@ -9,6 +9,17 @@ export function matchesPath(pathname: string, match: string): boolean {
   return match === '/' ? pathname === '/' : pathname === match || pathname.startsWith(`${match}/`);
 }
 
+/**
+ * Strip a leading connection scope (`/s/<connectionId>`) so tab-active matching and
+ * section detection operate on the logical content path regardless of which server's
+ * scope it sits under: `/s/abc/library/5` → `/library/5`, `/s/abc` → `/`. Unscoped
+ * paths (`/`, `/settings`, `/library`) pass through unchanged.
+ */
+export function contentPath(pathname: string): string {
+  const m = pathname.match(/^\/s\/[^/]+(\/.*)?$/);
+  return m ? (m[1] ?? '/') : pathname;
+}
+
 export function isActiveNav(
   pathname: string,
   item: { match: string; alsoMatch?: string[] },

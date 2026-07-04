@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, type ListRenderItem, Pressable, type ViewToken, View } from 'react-native';
 
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
-import { useActiveCid } from '@/api/provider';
+import { useScopedCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -54,7 +54,9 @@ export function BrowseScreen() {
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
-  const cid = useActiveCid();
+  // This screen lives under the `s/[connectionId]` scope, so browse/scroll/hrefs all
+  // resolve to that server rather than the global "active" connection.
+  const cid = useScopedCid();
 
   const { data: libraries } = useLibraries();
   const { data, isLoading, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -124,7 +126,7 @@ export function BrowseScreen() {
     {
       label: libraryName,
       active: segments.length === 0,
-      onPress: segments.length === 0 ? undefined : () => router.push(libraryHref(libraryId)),
+      onPress: segments.length === 0 ? undefined : () => router.push(libraryHref(cid, libraryId)),
     },
     ...segments.map((seg, i) => {
       const isLast = i === segments.length - 1;
@@ -132,7 +134,7 @@ export function BrowseScreen() {
       return {
         label: seg,
         active: isLast,
-        onPress: isLast ? undefined : () => router.push(libraryHref(libraryId, sub)),
+        onPress: isLast ? undefined : () => router.push(libraryHref(cid, libraryId, sub)),
       } satisfies Crumb;
     }),
   ];
@@ -173,7 +175,7 @@ export function BrowseScreen() {
       </View>
     ) : (
       <View style={{ height: ENTRY_H }} className="px-4 lg:px-8">
-        <EntryRow entry={item.entry} libraryId={libraryId} />
+        <EntryRow entry={item.entry} connectionId={cid} libraryId={libraryId} />
       </View>
     );
 

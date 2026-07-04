@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBook, useChapters } from '@/api/hooks';
-import { useActiveCid, useApi } from '@/api/provider';
+import { useApi, useCid } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
 import { Spinner } from '@/components/ui/spinner';
 import { segmentsToPath } from '@/lib/paths';
@@ -12,11 +12,13 @@ import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
   const {
+    connectionId,
     libraryId: libParam,
     path: pathParam,
     position,
     track,
   } = useLocalSearchParams<{
+    connectionId?: string;
     libraryId?: string;
     path?: string | string[];
     position?: string;
@@ -24,16 +26,19 @@ export default function PlayerScreen() {
   }>();
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
-  const api = useApi();
-  const cid = useActiveCid();
+  // The player is a root modal (outside any route scope), so the connection it plays
+  // rides in as a param; fall back to the active connection when opened bare (the
+  // mini-player just re-shows nowPlaying).
+  const api = useApi(connectionId);
+  const cid = useCid(connectionId);
   const insets = useSafeAreaInsets();
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
-  const { data: book } = useBook(libraryId, path);
-  const chaptersQuery = useChapters(libraryId, path);
+  const { data: book } = useBook(libraryId, path, connectionId);
+  const chaptersQuery = useChapters(libraryId, path, connectionId);
   const chapterData = chaptersQuery.data;
 
   // Start playback once the book AND its chapters/files have loaded - otherwise

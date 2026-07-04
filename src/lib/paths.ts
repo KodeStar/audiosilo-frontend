@@ -24,16 +24,24 @@ export function parentPath(relPath: string): string {
   return parts.join('/');
 }
 
-export function libraryHref(libraryId: number, relPath = ''): Href {
+// Content routes carry the connection they belong to in the path (`/s/<cid>/…`),
+// so a book/library opens on its own server without flipping a global "active"
+// connection - the `s/[connectionId]` route layout publishes it to the hooks below.
+export function libraryHref(connectionId: string, libraryId: number, relPath = ''): Href {
   const enc = encodePathSegments(relPath);
-  return (enc ? `/library/${libraryId}/${enc}` : `/library/${libraryId}`) as Href;
+  const base = `/s/${connectionId}/library/${libraryId}`;
+  return (enc ? `${base}/${enc}` : base) as Href;
 }
 
-export function bookHref(libraryId: number, relPath: string): Href {
-  return `/book/${libraryId}/${encodePathSegments(relPath)}` as Href;
+export function bookHref(connectionId: string, libraryId: number, relPath: string): Href {
+  return `/s/${connectionId}/book/${libraryId}/${encodePathSegments(relPath)}` as Href;
 }
 
-/** The full-screen player modal for a book. */
-export function playerHref(libraryId: number, relPath: string): Href {
-  return { pathname: '/player', params: { libraryId: String(libraryId), path: relPath } };
+/** The full-screen player modal for a book. The player is a root modal (outside any
+ * scope), so it carries the connection as a param. */
+export function playerHref(connectionId: string, libraryId: number, relPath: string): Href {
+  return {
+    pathname: '/player',
+    params: { connectionId, libraryId: String(libraryId), path: relPath },
+  };
 }

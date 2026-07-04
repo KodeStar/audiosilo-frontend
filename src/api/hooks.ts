@@ -9,7 +9,7 @@ import {
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, saveProgress } from '@/playback/progress-sync';
 
-import { useActiveCid, useApi, useApis, useOptionalApi } from './provider';
+import { useActiveCid, useApi, useApis, useCid, useOptionalApi } from './provider';
 import type { Book, Favourite, Library, Progress } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. Every key leads with
@@ -51,7 +51,7 @@ export function useServerInfo() {
 
 export function useLibraries() {
   const api = useApi();
-  const cid = useActiveCid();
+  const cid = useCid();
   return useQuery({ queryKey: qk.libraries(cid), queryFn: () => api.libraries() });
 }
 
@@ -64,7 +64,7 @@ const BROWSE_PAGE_SIZE = 500;
  * entry folder is two requests; cached by React Query). */
 export function useBrowseInfinite(libraryId: number, path: string) {
   const api = useApi();
-  const cid = useActiveCid();
+  const cid = useCid();
   return useInfiniteQuery({
     queryKey: qk.browse(cid, libraryId, path),
     queryFn: ({ pageParam, signal }) =>
@@ -74,9 +74,12 @@ export function useBrowseInfinite(libraryId: number, path: string) {
   });
 }
 
-export function useBook(libraryId: number, path: string) {
-  const api = useApi();
-  const cid = useActiveCid();
+// `useBook`/`useChapters` take an optional `connectionId` so the player (a root modal
+// outside any route scope) can address the playing book's own server; content screens
+// under `s/[connectionId]` omit it and resolve to their route scope.
+export function useBook(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const cid = useCid(connectionId);
   return useQuery({
     queryKey: qk.item(cid, libraryId, path),
     queryFn: ({ signal }) => api.item(libraryId, path, signal),
@@ -84,9 +87,9 @@ export function useBook(libraryId: number, path: string) {
   });
 }
 
-export function useChapters(libraryId: number, path: string) {
-  const api = useApi();
-  const cid = useActiveCid();
+export function useChapters(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const cid = useCid(connectionId);
   return useQuery({
     queryKey: qk.chapters(cid, libraryId, path),
     queryFn: ({ signal }) => api.chapters(libraryId, path, signal),
@@ -98,8 +101,7 @@ export function useChapters(libraryId: number, path: string) {
  * it reconciles with playback progress, then refreshes the home lists. */
 export function useMarkFinished(connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: {
@@ -136,8 +138,7 @@ export function useMarkFinished(connectionId?: string) {
 // connection). Same shape as useMarkFinished/useToggleFavourite.
 export function useBookmarks(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   return useQuery({
     queryKey: qk.bookmarks(cid, libraryId, path),
     queryFn: () => api.bookmarks(libraryId, path),
@@ -147,8 +148,7 @@ export function useBookmarks(libraryId: number, path: string, connectionId?: str
 
 export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: { position: number; note?: string }) =>
@@ -159,8 +159,7 @@ export function useAddBookmark(libraryId: number, path: string, connectionId?: s
 
 export function useDeleteBookmark(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteBookmark(id),
@@ -171,8 +170,7 @@ export function useDeleteBookmark(libraryId: number, path: string, connectionId?
 // --- Notes -----------------------------------------------------------------
 export function useNotes(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   return useQuery({
     queryKey: qk.notes(cid, libraryId, path),
     queryFn: () => api.notes(libraryId, path),
@@ -182,8 +180,7 @@ export function useNotes(libraryId: number, path: string, connectionId?: string)
 
 export function useAddNote(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: { body: string; position?: number }) =>
@@ -194,8 +191,7 @@ export function useAddNote(libraryId: number, path: string, connectionId?: strin
 
 export function useDeleteNote(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteNote(id),
@@ -206,8 +202,7 @@ export function useDeleteNote(libraryId: number, path: string, connectionId?: st
 // --- History ---------------------------------------------------------------
 export function useHistory(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   return useQuery({
     queryKey: qk.history(cid, libraryId, path),
     queryFn: () => api.history(libraryId, path),
@@ -220,11 +215,11 @@ export function useHistory(libraryId: number, path: string, connectionId?: strin
  * call). Feeds the per-row hearts, the Favourites shelf, and the home section. */
 export function useFavourites() {
   const api = useApi();
-  const activeId = useActiveCid();
+  const cid = useCid();
   return useQuery({
-    queryKey: qk.favourites(activeId),
+    queryKey: qk.favourites(cid),
     queryFn: ({ signal }) => api.favourites(signal),
-    enabled: !!activeId,
+    enabled: !!cid,
   });
 }
 
@@ -233,8 +228,7 @@ export function useFavourites() {
  * (which fills in server-derived fields like is_book/title for a fresh add). */
 export function useToggleFavourite(connectionId?: string) {
   const api = useApi(connectionId);
-  const activeId = useActiveCid();
-  const cid = connectionId ?? activeId;
+  const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ libraryId, path, on }: { libraryId: number; path: string; on: boolean }) =>

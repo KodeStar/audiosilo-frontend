@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useHistory } from '@/api/hooks';
+import { useCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
@@ -34,6 +35,9 @@ export function HistorySection({
 }) {
   const { t } = useTranslation();
   const { data: history } = useHistory(libraryId, path, connectionId);
+  // The book's own connection: passed in (player sheet) or the route scope (book
+  // screen). The player carries it as a param.
+  const cid = useCid(connectionId);
 
   if (!history || history.length === 0) {
     // Inline (book screen) hides entirely when empty; the player sheet passes an
@@ -50,7 +54,7 @@ export function HistorySection({
   const jump = (position: number) =>
     router.push({
       pathname: '/player',
-      params: { libraryId: String(libraryId), path, position: String(position) },
+      params: { connectionId: cid, libraryId: String(libraryId), path, position: String(position) },
     });
 
   const labelAt = (pos: number): string => {

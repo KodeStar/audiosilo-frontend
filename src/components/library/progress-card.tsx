@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
@@ -10,10 +9,9 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { bookHref, parentPath, pathLeaf } from '@/lib/paths';
+import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -104,7 +102,7 @@ function MenuRow({
 export function ProgressCard({ item, width }: { item: SourcedProgress; width: number }) {
   const { t } = useTranslation();
   const api = useApi(item.connectionId);
-  const setActive = useSession((s) => s.setActiveConnection);
+  const { openBook, openPlayer } = useOpen();
   const { width: screenWidth } = useWindowDimensions();
   const wide = screenWidth >= WIDE_BREAKPOINT;
 
@@ -122,19 +120,16 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
   });
   const { fraction, remaining } = progressFractionRemaining(position, item.duration);
 
-  // Make this item's server active first (so the player chrome reads from it),
-  // then on phone open the full-screen player modal, or on desktop resume in the
-  // persistent player panel (fetch via the item's connection, start playback).
+  // On phone open the full-screen player modal (scoped to this item's connection),
+  // or on desktop resume in the persistent player panel (fetch via the item's
+  // connection, start playback). The connection travels in the route, so there is
+  // no active-connection flip.
   const play = async () => {
-    await setActive(item.connectionId);
     if (!wide) {
       // Land on the book page underneath the player (like tapping the cover does),
       // so closing the player returns there instead of back to Home.
-      router.push(bookHref(item.library_id, item.path));
-      router.push({
-        pathname: '/player',
-        params: { libraryId: String(item.library_id), path: item.path },
-      });
+      openBook(item.connectionId, item.library_id, item.path);
+      openPlayer(item.connectionId, item.library_id, item.path);
       return;
     }
     const current = usePlayer.getState().nowPlaying;

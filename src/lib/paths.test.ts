@@ -74,18 +74,18 @@ describe('parentPath', () => {
 });
 
 describe('libraryHref', () => {
-  it('returns the bare library route at the root', () => {
-    expect(libraryHref(7)).toBe('/library/7');
-    expect(libraryHref(7, '')).toBe('/library/7');
+  it('returns the bare, connection-scoped library route at the root', () => {
+    expect(libraryHref('c1', 7)).toBe('/s/c1/library/7');
+    expect(libraryHref('c1', 7, '')).toBe('/s/c1/library/7');
   });
 
   it('appends encoded path segments for a sub-path', () => {
-    expect(libraryHref(7, 'Author/Book Title')).toBe('/library/7/Author/Book%20Title');
+    expect(libraryHref('c1', 7, 'Author/Book Title')).toBe('/s/c1/library/7/Author/Book%20Title');
   });
 });
 
 describe('bookHref', () => {
-  it('builds an encoded book route', () => {
-    expect(bookHref(3, 'Author/Book Title')).toBe('/book/3/Author/Book%20Title');
+  it('builds an encoded, connection-scoped book route', () => {
+    expect(bookHref('c1', 3, 'Author/Book Title')).toBe('/s/c1/book/3/Author/Book%20Title');
   });
 });
