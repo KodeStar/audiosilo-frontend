@@ -6,7 +6,15 @@
  */
 export const colors = {
   primary: '#db2777', // pink-600
-  blue: '#3b82f6', // blue-500 - chapters/files (distinct from pink folders)
+  // LEGACY: the loud blue that filled chapter/file tiles. The design refresh
+  // demotes it (books/chapters distinguish by icon + subtle tint, not a filled
+  // block); screens migrate off it in later tasks. Kept until then - still
+  // referenced by existing code. Prefer the semantic tokens below for new work.
+  blue: '#3b82f6', // blue-500
+  // Semantic status colors, mirroring tailwind.config.js `danger`/`success` for
+  // native props (icon fills, ActivityIndicator, svg) that need a raw string.
+  danger: '#ef4444', // red-500 (DEFAULT) - see tailwind danger.600/700 for light-surface text
+  success: '#22c55e', // green-500 (DEFAULT) - downloaded/done indicators
   white: '#ffffff',
   light: {
     bg: '#e5e7eb', // gray-200

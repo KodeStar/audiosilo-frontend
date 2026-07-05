@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 
 import { useMarkFinished, type SourcedProgress } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { GridCard } from '@/components/library/poster-grid';
 import { Icon } from '@/components/ui/icon';
+import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
+import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
@@ -16,14 +18,12 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
-const WIDE_BREAKPOINT = 1024;
-
 /** Stable list key for a progress entry across connections. */
 export const progressKey = (it: SourcedProgress) =>
   contentKey(it.connectionId, it.library_id, it.path);
 
 /** Overflow menu for an in-progress book: mark finished, or jump to the
- * containing folder ("more in series"). */
+ * containing folder ("more in series"). Presented as a bottom Sheet. */
 function ProgressMenu({ item }: { item: SourcedProgress }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -49,29 +49,30 @@ function ProgressMenu({ item }: { item: SourcedProgress }) {
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} hitSlop={8} className="px-1 active:opacity-60">
-        <Icon name="ellipsis" size={22} color={neutral} />
+      <Pressable
+        onPress={() => setOpen(true)}
+        hitSlop={8}
+        className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+        accessibilityRole="button"
+        accessibilityLabel={t('library.progressCard.moreActions')}
+      >
+        <Icon name="ellipsis" size={20} color={neutral} />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
-          <Pressable
-            className="gap-1 rounded-t-2xl bg-gray-100 p-2 pb-6 dark:bg-gray-840"
-            onPress={() => {}}
-          >
-            <MenuRow
-              icon="check"
-              label={t('library.progressCard.markFinished')}
-              onPress={onMarkFinished}
-            />
-            <MenuRow
-              icon="library"
-              label={t('library.progressCard.moreInSeries')}
-              onPress={onMoreInSeries}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <Sheet visible={open} onClose={() => setOpen(false)} title={pathLeaf(item.path)}>
+        <View className="gap-1 px-2 pb-4 pt-1">
+          <MenuRow
+            icon="check"
+            label={t('library.progressCard.markFinished')}
+            onPress={onMarkFinished}
+          />
+          <MenuRow
+            icon="library"
+            label={t('library.progressCard.moreInSeries')}
+            onPress={onMoreInSeries}
+          />
+        </View>
+      </Sheet>
     </>
   );
 }
@@ -90,6 +91,7 @@ function MenuRow({
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
       className="flex-row items-center gap-3 rounded-lg px-4 py-3 active:bg-gray-200 dark:active:bg-gray-860"
     >
       <Icon name={icon} size={20} color={neutral} />
@@ -156,27 +158,36 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
       width={width}
       footer={
         !item.finished ? (
-          <View className="gap-1">
-            <View className="flex-row items-center gap-2">
-              <View className="h-1 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+          <View className="gap-1.5">
+            <View className="flex-row items-center gap-2.5">
+              <View className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-300 dark:bg-gray-750">
                 <View
                   className="h-full rounded-full bg-primary"
                   style={{ width: `${fraction * 100}%` }}
                 />
               </View>
-              <Pressable onPress={() => void play()} hitSlop={8} className="active:opacity-60">
-                <Icon name="circle-play" size={26} color={colors.primary} />
+              <Pressable
+                onPress={() => void play()}
+                hitSlop={8}
+                className="h-9 w-9 items-center justify-center rounded-full bg-primary pl-0.5 active:opacity-80"
+                accessibilityRole="button"
+                accessibilityLabel={t('library.progressCard.resume')}
+              >
+                <Icon name="play" size={15} color={colors.white} />
               </Pressable>
               <ProgressMenu item={item} />
             </View>
             {remaining > 0 ? (
-              <Text variant="caption">
+              <Text variant="caption" style={{ fontVariant: ['tabular-nums'] }}>
                 {t('library.progressCard.timeLeft', { duration: formatDuration(remaining) })}
               </Text>
             ) : null}
           </View>
         ) : (
-          <Text variant="caption">{t('library.progressCard.finished')}</Text>
+          <View className="flex-row items-center gap-1.5">
+            <Icon name="check" size={13} color={colors.primary} />
+            <Text variant="caption">{t('library.progressCard.finished')}</Text>
+          </View>
         )
       }
     />

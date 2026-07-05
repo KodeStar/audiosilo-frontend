@@ -163,6 +163,7 @@
     "collapse": "Einklappen",
     "added": "Hinzugefügt {{when}}",
     "progressError": "Dein Fortschritt konnte nicht geladen werden.",
+    "continueEmptyTitle": "Nichts angefangen",
     "continueEmpty": "Starte ein Buch und es erscheint hier.",
     "recentError": "Neue Bücher konnten nicht geladen werden."
   },
@@ -173,7 +174,9 @@
       "noMatches": "Keine Treffer in diesem Ordner.",
       "filterPlaceholder": "Diesen Ordner filtern…",
       "openError": "Dieser Ordner konnte nicht geöffnet werden.",
-      "jumpTo": "Zu {{letter}} springen"
+      "jumpTo": "Zu {{letter}} springen",
+      "emptyHint": "In diesem Ordner gibt es nichts zum Abspielen.",
+      "noMatchesHint": "Versuche einen anderen Suchbegriff."
     },
     "bookRow": {
       "alsoOn": "Auch auf {{servers}}",
@@ -186,6 +189,8 @@
     "progressCard": {
       "markFinished": "Als abgeschlossen markieren",
       "moreInSeries": "Mehr aus der Reihe",
+      "resume": "Fortsetzen",
+      "moreActions": "Weitere Aktionen",
       "timeLeft": "{{duration}} übrig",
       "finished": "Abgeschlossen"
     },
@@ -196,14 +201,16 @@
     "notes": {
       "title": "Notizen",
       "placeholder": "Notiz hinzufügen (Markdown unterstützt)…",
-      "add": "Notiz hinzufügen"
+      "add": "Notiz hinzufügen",
+      "delete": "Notiz löschen"
     },
     "history": {
       "title": "Verlauf"
     },
     "bookmarks": {
       "title": "Lesezeichen",
-      "add": "Lesezeichen hinzufügen"
+      "add": "Lesezeichen hinzufügen",
+      "delete": "Lesezeichen löschen"
     },
     "versions": {
       "choose": "Eine Version wählen",
@@ -239,9 +246,12 @@
       "added": "Hinzugefügt {{when}}",
       "loadError": "Konnte nicht geladen werden.",
       "noBooks": "Noch keine Bücher.",
+      "noBooksHint": "Bücher, die du zu deiner Bibliothek hinzufügst, erscheinen hier.",
       "noFinished": "Noch keine abgeschlossenen Bücher.",
+      "noFinishedHint": "Schließe ein Buch ab und es erscheint hier.",
       "loadLibrariesError": "Bibliotheken konnten nicht geladen werden.",
-      "noLibraries": "Mit deinem Konto wurde noch keine Bibliothek geteilt."
+      "noLibraries": "Mit deinem Konto wurde noch keine Bibliothek geteilt.",
+      "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben."
     },
     "favourites": {
       "title": "Favoriten",
@@ -257,10 +267,16 @@
     "downloaded": "Heruntergeladen",
     "failed": "Download fehlgeschlagen",
     "unsupported": "Offline-Downloads sind in diesem Browser nicht verfügbar. Verwende die installierte App oder eine sichere (https) Verbindung.",
-    "empty": "Lade ein Buch über seine Detailseite herunter, um es offline zu hören."
+    "unsupportedTitle": "Downloads nicht verfügbar",
+    "empty": "Lade ein Buch über seine Detailseite herunter, um es offline zu hören.",
+    "emptyTitle": "Noch keine Downloads",
+    "remove": "{{title}} entfernen"
   },
   "search": {
     "placeholder": "Titel, Autoren, Reihen suchen…",
+    "promptTitle": "Finde dein nächstes Hörbuch",
+    "noResultsTitle": "Keine Ergebnisse",
+    "clear": "Suche löschen",
     "prompt": "Suche nach Titeln, Autoren und Reihen.",
     "failed": "Suche fehlgeschlagen.",
     "noResults": "Keine Ergebnisse für „{{query}}“."
@@ -282,7 +298,14 @@
       "fileOf": "Datei {{current}} von {{total}}",
       "fileNumber": "Datei {{number}}",
       "timeLeft": "{{time}} übrig ({{rate}})",
-      "showChapters": "Kapitel anzeigen"
+      "showChapters": "Kapitel anzeigen",
+      "close": "Schließen",
+      "previous": "Vorheriges Kapitel",
+      "next": "Nächstes Kapitel",
+      "play": "Wiedergabe",
+      "pause": "Pause",
+      "skipBack": "{{seconds}} Sekunden zurückspringen",
+      "skipForward": "{{seconds}} Sekunden vorspringen"
     },
     "chapters": {
       "chaptersTitle": "Kapitel",
@@ -320,6 +343,9 @@
     },
     "speed": {
       "title": "Wiedergabegeschwindigkeit"
+    },
+    "seek": {
+      "label": "Wiedergabeposition"
     }
   },
   "nav": {

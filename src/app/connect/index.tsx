@@ -148,7 +148,9 @@ export default function ConnectServerScreen() {
           <Text className="font-roboto-bold text-3xl text-primary">AudioSilo</Text>
           <Text variant="muted">{t('connect.server.subtitle')}</Text>
         </View>
-        {pairError ? <Text className="text-center text-sm text-red-500">{pairError}</Text> : null}
+        {pairError ? (
+          <Text className="text-center text-sm text-danger-600 dark:text-danger">{pairError}</Text>
+        ) : null}
         <View>
           <TextField
             label={t('connect.server.addressLabel')}

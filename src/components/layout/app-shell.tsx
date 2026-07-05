@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
+import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { clearScrollMemory } from '@/lib/scroll-memory';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
@@ -13,8 +14,6 @@ import { AppHeader } from './app-header';
 import { NavBar } from './app-nav';
 import { ContentColumn } from './content-column';
 import { OfflineBanner } from './offline-banner';
-
-const WIDE_BREAKPOINT = 1024;
 
 /**
  * Responsive chrome around the routed screen:

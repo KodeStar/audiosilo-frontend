@@ -96,7 +96,7 @@ export default function DemoScreen() {
 
         {error ? (
           <View className="items-center gap-4">
-            <Text className="text-center text-sm text-red-500">{error}</Text>
+            <Text className="text-center text-sm text-danger-600 dark:text-danger">{error}</Text>
             <Button title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
           </View>
         ) : !pairing ? (

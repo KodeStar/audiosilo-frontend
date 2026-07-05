@@ -1,12 +1,14 @@
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useApi } from '@/api/provider';
 import type { Book } from '@/api/types';
+import { DownloadBadge } from '@/components/library/download-badge';
+import { CoverFrame } from '@/components/library/poster-grid';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { DownloadBadge } from '@/components/library/download-badge';
 import { bookSubtitle, formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 
@@ -43,17 +45,20 @@ export function BookRow({
       : null;
 
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={() => void openBook(connectionId, book.library_id, book.rel_path)}
-      className="flex-row items-center gap-3 rounded-lg bg-white p-2 active:opacity-80 dark:border dark:border-gray-860 dark:bg-gray-840"
+      accessibilityRole="button"
+      className="flex-row items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-2 hover:bg-gray-100 dark:border-gray-860 dark:bg-gray-840 dark:hover:bg-gray-800"
     >
-      <Cover
-        source={{ uri: api.coverUrl(book.library_id, book.rel_path), headers: api.authHeaders() }}
-        label={book.title}
-        sublabel={book.author}
-        rounded="rounded-md"
-        size={64}
-      />
+      <CoverFrame>
+        <Cover
+          source={{ uri: api.coverUrl(book.library_id, book.rel_path), headers: api.authHeaders() }}
+          label={book.title}
+          sublabel={book.author}
+          rounded="rounded-none"
+          size={64}
+        />
+      </CoverFrame>
       <View className="flex-1">
         <Text variant="subtitle" numberOfLines={1}>
           {book.title}
@@ -74,9 +79,13 @@ export function BookRow({
           </Text>
         ) : null}
       </View>
-      {book.duration ? <Text variant="caption">{formatDuration(book.duration)}</Text> : null}
+      {book.duration ? (
+        <Text variant="caption" style={{ fontVariant: ['tabular-nums'] }}>
+          {formatDuration(book.duration)}
+        </Text>
+      ) : null}
       <DownloadBadge connectionId={connectionId} libraryId={book.library_id} path={book.rel_path} />
       <Icon name="chevron-right" size={14} />
-    </Pressable>
+    </AnimatedPressable>
   );
 }

@@ -10,8 +10,8 @@ import { colors } from '@/theme/tokens';
 
 function Bar({ label }: { label: string }) {
   return (
-    <View className="flex-row items-center justify-center gap-2 bg-gray-300 py-1.5 dark:bg-gray-840">
-      <Icon name="offline" size={13} color={colors.dark.textMuted} />
+    <View className="flex-row items-center justify-center gap-2 border-b border-gray-200 bg-gray-100 py-1.5 dark:border-gray-750 dark:bg-gray-860">
+      <Icon name="offline" size={12} color={colors.dark.textMuted} />
       <Text variant="caption">{label}</Text>
     </View>
   );

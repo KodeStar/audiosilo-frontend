@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useBookCopies, useSourceLabeller } from '@/api/hooks';
 import type { Book } from '@/api/types';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatBytes } from '@/lib/format';
@@ -42,12 +43,12 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
 
   return (
     <View className="gap-1">
-      <Pressable
+      <AnimatedPressable
         onPress={() => setOpen((v) => !v)}
         accessibilityRole="button"
         accessibilityLabel={t('library.versions.choose')}
         hitSlop={6}
-        className="flex-row items-center gap-3 rounded-lg bg-gray-100 px-4 py-3 active:opacity-70 dark:bg-gray-840"
+        className="flex-row items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
       >
         <Icon name="server" size={16} color={colors.primary} />
         <View className="flex-1">
@@ -59,7 +60,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
           </Text>
         </View>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} />
-      </Pressable>
+      </AnimatedPressable>
 
       {open
         ? others.map((c) => {
@@ -72,11 +73,11 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
               .filter(Boolean)
               .join(' · ');
             return (
-              <Pressable
+              <AnimatedPressable
                 key={`${c.connectionId}:${c.libraryId}:${c.path}`}
                 onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
                 accessibilityRole="button"
-                className="ml-3 flex-row items-center gap-3 rounded-lg bg-gray-50 p-3 active:opacity-80 dark:border dark:border-gray-860 dark:bg-gray-840"
+                className="ml-3 flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
               >
                 <Icon name="chevron-right" size={14} color={colors.primary} />
                 <View className="flex-1">
@@ -89,7 +90,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
                     </Text>
                   ) : null}
                 </View>
-              </Pressable>
+              </AnimatedPressable>
             );
           })
         : null}

@@ -1,19 +1,25 @@
 import { Link } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useFavourites, useToggleFavourite } from '@/api/hooks';
 import type { FsEntry } from '@/api/types';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { bookHref, libraryHref } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
 
-/** One row in the filesystem browse view: a folder (pink block, drill in) or an
- * audio file (blue block, opens the book). Ported from the old client's list.
- * `connectionId` is the browse scope's server, so drilling in / opening a book
- * stays on the same connection. */
+// A quiet surface row: soft shadow in light, hairline border in dark. The loud
+// filled folder/book blocks are demoted to a tinted glyph tile - folders keep a
+// pink identity (primary/10), books/files a harmonized low-alpha blue tint.
+const ROW_SURFACE =
+  'rounded-xl bg-white shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+
+/** One row in the filesystem browse view: a folder (pink glyph tile, drill in) or
+ * an audio file (blue glyph tile, opens the book). `connectionId` is the browse
+ * scope's server, so drilling in / opening a book stays on the same connection. */
 export function EntryRow({
   entry,
   connectionId,
@@ -50,17 +56,24 @@ export function EntryRow({
 
   // The heart must NOT be inside the Link: a nested press bubbles to the Link's
   // anchor on web and navigates into the row. So the navigable area (icon + text
-  // + chevron) and the heart are siblings within the card.
+  // + chevron) and the heart are siblings within the row.
   return (
-    <View className="my-1 w-full flex-row items-center overflow-hidden rounded-lg bg-gray-50 shadow-sm dark:border dark:border-gray-900 dark:bg-gray-840 dark:shadow-none">
+    <View className="my-1 w-full flex-row items-center gap-2">
       <Link href={href} asChild>
-        <Pressable className="flex-1 flex-row pr-4 items-center self-stretch active:opacity-80">
+        <AnimatedPressable
+          accessibilityRole="link"
+          className={`flex-1 flex-row items-center gap-3 px-3 py-2 ${ROW_SURFACE}`}
+        >
           <View
-            className={`min-h-[3.5rem] items-center justify-center self-stretch px-4 ${isDir ? 'bg-primary' : 'bg-blue-500'}`}
+            className={`h-10 w-10 items-center justify-center rounded-lg ${isDir ? 'bg-primary/10' : 'bg-blue-500/10 dark:bg-blue-500/15'}`}
           >
-            <Icon name={isDir ? 'folder' : 'book'} size={20} color={colors.white} />
+            <Icon
+              name={isDir ? 'folder' : 'book'}
+              size={18}
+              color={isDir ? colors.primary : colors.blue}
+            />
           </View>
-          <View className="flex-1 px-5 py-2">
+          <View className="flex-1">
             <Text variant="subtitle" numberOfLines={1}>
               {title}
             </Text>
@@ -70,24 +83,24 @@ export function EntryRow({
               </Text>
             ) : null}
           </View>
-          <Icon name="chevron-right" size={16} className="mr-2" />
-        </Pressable>
+          <Icon name="chevron-right" size={16} />
+        </AnimatedPressable>
       </Link>
-      <Pressable
+      <AnimatedPressable
         onPress={() => toggleFavourite.mutate({ libraryId, path: entry.path, on: !isFavourite })}
-        hitSlop={10}
+        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={
           isFavourite ? t('library.favourite.remove') : t('library.favourite.add')
         }
-        className="self-stretch justify-center px-4 active:opacity-60 bg-black/5 dark:bg-black/15"
+        className={`h-11 w-11 items-center justify-center ${ROW_SURFACE}`}
       >
         <Icon
           name={isFavourite ? 'heart-solid' : 'heart'}
           size={18}
           color={isFavourite ? colors.primary : undefined}
         />
-      </Pressable>
+      </AnimatedPressable>
     </View>
   );
 }

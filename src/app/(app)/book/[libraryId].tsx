@@ -1,6 +1,14 @@
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import {
+  type ImageStyle,
+  Platform,
+  ScrollView,
+  type TextStyle,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
 import { useBook, useChapters, useLibraries } from '@/api/hooks';
 import { useApi, useScopedCid } from '@/api/provider';
@@ -15,21 +23,86 @@ import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
+import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { chapterBookOffset } from '@/playback/book-queue';
+import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
 import { colors } from '@/theme/tokens';
 
-const WIDE_BREAKPOINT = 1024;
+// Chapter/file durations read as figures - lock them to tabular (monospaced) digits.
+const tabular: TextStyle = { fontVariant: ['tabular-nums'] };
+
+// react-native-web honours a CSS `filter`; RN's ImageStyle type doesn't model it,
+// so cast. Native ignores this branch (it uses expo-image `blurRadius` instead).
+const WEB_BLUR = { filter: 'blur(60px)' } as unknown as ImageStyle;
+
+// The cover art rounded corner + hairline border + soft shadow, applied wherever
+// the hero cover appears so dark covers separate from dark surfaces.
+const COVER_FRAME = 'overflow-hidden rounded-lg border border-black/10 dark:border-white/10';
+
+/**
+ * Atmosphere band: an oversized, heavily blurred rendition of the cover sitting
+ * behind the identity block, under a theme-toned scrim so text always passes
+ * contrast. Native uses expo-image `blurRadius`; web uses a CSS `filter` (RN's
+ * blurRadius is a no-op there). Renders nothing without a cover.
+ */
+function HeroBackdrop({ uri, headers }: { uri?: string; headers?: Record<string, string> }) {
+  if (!uri) return null;
+  const web = Platform.OS === 'web';
+  return (
+    <View pointerEvents="none" className="absolute inset-0 overflow-hidden">
+      <Image
+        source={{ uri, headers }}
+        style={[
+          { position: 'absolute', top: '-20%', left: '-20%', width: '140%', height: '140%' },
+          web ? WEB_BLUR : null,
+        ]}
+        blurRadius={web ? 0 : 60}
+        contentFit="cover"
+        transition={200}
+      />
+      <View className="absolute inset-0 bg-gray-200/80 dark:bg-gray-900/80" />
+    </View>
+  );
+}
+
+/** Loading placeholder shaped like the final layout: a cover block, title lines,
+ * a stat strip and a few chapter rows - no centered spinner. */
+function BookSkeleton({ paddingBottom }: { paddingBottom: number }) {
+  return (
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="gap-6 p-4"
+      contentContainerStyle={{ paddingBottom }}
+    >
+      <View className="items-center gap-4">
+        <Skeleton className="aspect-square w-full max-w-[240px] rounded-lg" />
+        <View className="w-full items-center gap-2">
+          <Skeleton className="h-4 w-1/2 rounded" />
+          <Skeleton className="h-6 w-3/4 rounded" />
+        </View>
+      </View>
+      <Skeleton className="h-20 w-full rounded-xl" />
+      <Skeleton className="h-12 w-full rounded-lg" />
+      <View className="gap-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-14 w-full rounded-xl" />
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
 
 // Scope to the route's OWN `?connection=` (read from the local param, reliable on a cold
 // deep link) so the body + its sections resolve to that server. The body consumes the
@@ -66,7 +139,7 @@ function BookDetailContent() {
   const downloadEntry = useDownloadEntry(cid, libraryId, path);
   const paddingBottom = useMiniPlayerInset();
 
-  if (isLoading) return <Spinner center />;
+  if (isLoading) return <BookSkeleton paddingBottom={paddingBottom} />;
   // Render whenever we have book data - including a downloaded book served from
   // the seeded query cache while offline. Only error when there is no data.
   if (!book) {
@@ -83,6 +156,8 @@ function BookDetailContent() {
       : book.series
     : '';
   const coverUrl = api.coverUrl(libraryId, path);
+  const coverHeaders = api.authHeaders();
+  const coverSource = { uri: coverUrl, headers: coverHeaders };
   const chapters = chapterData?.chapters ?? [];
   const files = chapterData?.files ?? [];
   const listLabel = chapters.length > 0 ? t('book.chaptersTitle') : t('book.filesTitle');
@@ -139,67 +214,86 @@ function BookDetailContent() {
     }
   };
 
-  // A list row (chapter or file): a full-height blue block + book icon, the
-  // duration/bitrate line, and a cached dot. The currently-playing row stays
-  // bright while the others dim - matching the old client (no pink highlight).
+  // A quiet chapter/file row: a numbered tile (or a play glyph on a pink tile when
+  // this row is the one currently playing), the title, a tabular duration/bitrate
+  // line, and a small success check when the book is downloaded. The blue block is
+  // gone; the currently-playing row lifts to a soft primary tint.
   const fileRow = (
     key: string | number,
     name: string,
     durationSec: number,
     bitrate: string,
     onPress: () => void,
-    dim: boolean,
+    index: number,
+    active: boolean,
   ) => (
-    <Pressable
+    <AnimatedPressable
       key={key}
       onPress={onPress}
-      className={`my-1 w-full flex-row items-center overflow-hidden rounded-lg bg-gray-50 shadow-sm active:opacity-80 dark:border dark:border-gray-900 dark:bg-gray-840 dark:shadow-none ${
-        dim ? 'opacity-50' : ''
+      accessibilityRole="button"
+      className={`my-1 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
+        active
+          ? 'bg-primary/10 dark:bg-primary/15'
+          : 'bg-white shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none'
       }`}
     >
-      <View className="min-h-[3.5rem] items-center justify-center self-stretch bg-blue-500 px-4">
-        <Icon name="book" size={20} color={colors.white} />
-      </View>
-      <View className="flex-1 flex-row items-center justify-between">
-        <View className="flex-1 px-5 py-2">
-          <Text variant="subtitle" numberOfLines={1}>
-            {name}
+      <View
+        className={`h-9 w-9 items-center justify-center rounded-lg ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-800'}`}
+      >
+        {active ? (
+          <Icon name="play" size={13} color={colors.white} />
+        ) : (
+          <Text
+            className="text-sm font-roboto-semibold text-gray-500 dark:text-gray-400"
+            style={tabular}
+          >
+            {index}
           </Text>
-          <Text variant="caption">
-            {`${t('book.duration', { value: formatDurationFull(durationSec) })}${
-              bitrate ? `   ${t('book.bitrate', { value: bitrate })}` : ''
-            }`}
-          </Text>
-        </View>
-        <View className="px-4">
-          <View
-            className={`h-3.5 w-3.5 rounded-full ${downloaded ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-800'}`}
-          />
-        </View>
+        )}
       </View>
-    </Pressable>
+      <View className="flex-1">
+        <Text
+          variant="subtitle"
+          numberOfLines={1}
+          className={active ? 'text-primary dark:text-primary-400' : ''}
+        >
+          {prettifyChapterTitle(name)}
+        </Text>
+        <Text variant="caption" style={tabular}>
+          {`${t('book.duration', { value: formatDurationFull(durationSec) })}${
+            bitrate ? `   ${t('book.bitrate', { value: bitrate })}` : ''
+          }`}
+        </Text>
+      </View>
+      {downloaded ? (
+        <View className="h-5 w-5 items-center justify-center rounded-full bg-success/15">
+          <Icon name="check" size={11} color={colors.success} />
+        </View>
+      ) : null}
+    </AnimatedPressable>
   );
 
   const renderRows = () => {
     if (chapters.length > 0) {
-      return chapters.map((ch) => {
-        const file = files[ch.file_index];
-        // Dim only to single out the active chapter among several. With one row there's
-        // nothing to distinguish, and the player may report a *synthetic* chapter index
-        // (virtual chapters overlaid on an otherwise-chapterless single file) that maps
-        // to no real row - so never dim the lone row it would otherwise mismatch.
-        const dim =
+      return chapters.map((ch, i) => {
+        // Highlight only the active chapter among several. With one row there's
+        // nothing to distinguish, and the player may report a *synthetic* chapter
+        // index (virtual chapters overlaid on an otherwise-chapterless single file)
+        // that maps to no real row - so never highlight the lone row.
+        const active =
           chapters.length > 1 &&
           isThisPlaying &&
           activeIndex !== undefined &&
-          ch.index !== activeIndex;
+          ch.index === activeIndex;
+        const file = files[ch.file_index];
         return fileRow(
           ch.index,
           ch.title || t('book.chapterFallback', { number: ch.index + 1 }),
           Math.max(0, ch.end - ch.start),
           formatBitrate(file?.size, file?.duration),
           () => goPlay({ position: chapterStart(ch) }),
-          dim,
+          i + 1,
+          active,
         );
       });
     }
@@ -210,6 +304,7 @@ function BookDetailContent() {
         f.duration,
         formatBitrate(f.size, f.duration),
         () => goPlay({ track: i }),
+        i + 1,
         false,
       ),
     );
@@ -218,7 +313,7 @@ function BookDetailContent() {
   const hasList = chapters.length > 0 || files.length > 0;
   const fileList = hasList ? (
     <View>
-      <Text className="mb-2 text-xl font-roboto-bold text-gray-700 dark:text-gray-100">
+      <Text variant="heading" className="mb-2">
         {listLabel}
       </Text>
       {renderRows()}
@@ -246,40 +341,44 @@ function BookDetailContent() {
           </ScrollView>
         </ContentColumn>
 
-        <View className="w-[380px] border-l border-gray-100 dark:border-gray-750">
+        <View className="w-[380px] overflow-hidden border-l border-gray-100 dark:border-gray-750">
           {isThisPlaying ? (
             <PlayerView />
           ) : (
-            <View className="flex-1 items-center justify-center gap-6 p-6">
-              <View className="aspect-square w-full max-w-[300px]">
-                <Cover
-                  source={{ uri: coverUrl, headers: api.authHeaders() }}
-                  label={book.title}
-                  sublabel={book.author}
+            <View className="flex-1 items-center justify-center">
+              <HeroBackdrop uri={coverUrl} headers={coverHeaders} />
+              <View className="w-full items-center gap-6 p-6">
+                <View className={`aspect-square w-full max-w-[300px] shadow-lg ${COVER_FRAME}`}>
+                  <Cover source={coverSource} label={book.title} sublabel={book.author} />
+                </View>
+                <View className="items-center gap-1">
+                  {book.author ? (
+                    <Text variant="muted" className="text-center opacity-80">
+                      {t('book.byAuthor', { author: book.author })}
+                    </Text>
+                  ) : null}
+                  <Text variant="title" className="text-center" numberOfLines={2}>
+                    {book.title}
+                  </Text>
+                  {seriesLabel ? (
+                    <Text variant="muted" className="text-center">
+                      {seriesLabel}
+                    </Text>
+                  ) : null}
+                </View>
+                <BookStats libraryId={libraryId} path={path} book={book} />
+                <Button
+                  title={t('book.listen')}
+                  icon="play"
+                  className="w-full"
+                  onPress={() => goPlay({})}
                 />
-              </View>
-              <View className="items-center gap-1">
-                {book.author ? (
-                  <Text variant="muted" className="text-center opacity-80">
-                    {t('book.byAuthor', { author: book.author })}
-                  </Text>
-                ) : null}
-                <Text variant="title" className="text-center" numberOfLines={2}>
-                  {book.title}
-                </Text>
-                {seriesLabel ? (
+                {book.narrator ? (
                   <Text variant="muted" className="text-center">
-                    {seriesLabel}
+                    {t('book.narratedBy', { narrator: book.narrator })}
                   </Text>
                 ) : null}
               </View>
-              <BookStats libraryId={libraryId} path={path} book={book} />
-              <Button title={t('book.listen')} icon="play" onPress={() => goPlay({})} />
-              {book.narrator ? (
-                <Text variant="muted" className="text-center">
-                  {t('book.narratedBy', { narrator: book.narrator })}
-                </Text>
-              ) : null}
             </View>
           )}
         </View>
@@ -297,33 +396,33 @@ function BookDetailContent() {
 
       <BookVersions book={book} connectionId={cid} />
 
-      <View className="gap-4">
-        <View className="w-full max-w-[240px] self-center">
-          <Cover
-            source={{ uri: coverUrl, headers: api.authHeaders() }}
-            label={book.title}
-            sublabel={book.author}
-          />
-        </View>
-        <View className="gap-1">
-          {book.author ? (
-            <Text variant="body" className="text-center opacity-80">
-              {t('book.byAuthor', { author: book.author })}
+      <View className="overflow-hidden rounded-2xl">
+        <HeroBackdrop uri={coverUrl} headers={coverHeaders} />
+        <View className="items-center gap-4 p-5">
+          <View className={`w-full max-w-[240px] shadow-lg ${COVER_FRAME}`}>
+            <Cover source={coverSource} label={book.title} sublabel={book.author} />
+          </View>
+          <View className="w-full gap-1">
+            {book.author ? (
+              <Text variant="body" className="text-center opacity-80">
+                {t('book.byAuthor', { author: book.author })}
+              </Text>
+            ) : null}
+            <Text variant="heading" className="text-center">
+              {book.title}
             </Text>
-          ) : null}
-          <Text variant="heading" className="text-center">
-            {book.title}
-          </Text>
-          {seriesLabel ? (
-            <Text variant="muted" className="text-center">
-              {seriesLabel}
-            </Text>
-          ) : null}
+            {seriesLabel ? (
+              <Text variant="muted" className="text-center">
+                {seriesLabel}
+              </Text>
+            ) : null}
+          </View>
+          <BookStats libraryId={libraryId} path={path} book={book} />
         </View>
+      </View>
 
-        <BookStats libraryId={libraryId} path={path} book={book} />
-
-        <View className="mt-1 flex-row gap-2">
+      <View className="gap-3">
+        <View className="flex-row gap-2">
           <Button
             title={t('book.listen')}
             icon="play"

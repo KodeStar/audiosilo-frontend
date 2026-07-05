@@ -163,6 +163,7 @@
     "collapse": "Réduire",
     "added": "Ajouté {{when}}",
     "progressError": "Impossible de charger ta progression.",
+    "continueEmptyTitle": "Rien en cours",
     "continueEmpty": "Commence un livre et il apparaîtra ici.",
     "recentError": "Impossible de charger les nouveaux livres."
   },
@@ -173,7 +174,9 @@
       "noMatches": "Aucun résultat dans ce dossier.",
       "filterPlaceholder": "Filtrer ce dossier…",
       "openError": "Impossible d’ouvrir ce dossier.",
-      "jumpTo": "Aller à {{letter}}"
+      "jumpTo": "Aller à {{letter}}",
+      "emptyHint": "Il n'y a rien à écouter dans ce dossier.",
+      "noMatchesHint": "Essayez un autre terme de recherche."
     },
     "bookRow": {
       "alsoOn": "Aussi sur {{servers}}",
@@ -186,6 +189,8 @@
     "progressCard": {
       "markFinished": "Marquer comme terminé",
       "moreInSeries": "Plus dans la série",
+      "resume": "Reprendre",
+      "moreActions": "Plus d’actions",
       "timeLeft": "{{duration}} restant",
       "finished": "Terminé"
     },
@@ -196,14 +201,16 @@
     "notes": {
       "title": "Notes",
       "placeholder": "Ajouter une note (markdown pris en charge)…",
-      "add": "Ajouter une note"
+      "add": "Ajouter une note",
+      "delete": "Supprimer la note"
     },
     "history": {
       "title": "Historique"
     },
     "bookmarks": {
       "title": "Signets",
-      "add": "Ajouter un signet"
+      "add": "Ajouter un signet",
+      "delete": "Supprimer le signet"
     },
     "versions": {
       "choose": "Choisir une version",
@@ -239,9 +246,12 @@
       "added": "Ajouté {{when}}",
       "loadError": "Impossible de charger.",
       "noBooks": "Aucun livre pour l’instant.",
+      "noBooksHint": "Les livres que vous ajoutez à votre bibliothèque apparaissent ici.",
       "noFinished": "Aucun livre terminé pour l’instant.",
+      "noFinishedHint": "Terminez un livre et il apparaîtra ici.",
       "loadLibrariesError": "Impossible de charger les bibliothèques.",
-      "noLibraries": "Aucune bibliothèque n’est encore partagée avec ton compte."
+      "noLibraries": "Aucune bibliothèque n’est encore partagée avec ton compte.",
+      "noLibrariesHint": "Demandez au propriétaire du serveur de vous en partager une."
     },
     "favourites": {
       "title": "Favoris",
@@ -257,10 +267,16 @@
     "downloaded": "Téléchargé",
     "failed": "Échec du téléchargement",
     "unsupported": "Les téléchargements hors connexion ne sont pas disponibles dans ce navigateur. Utilise l'application installée ou une connexion sécurisée (https).",
-    "empty": "Télécharge un livre depuis sa page de détails pour l'écouter hors connexion."
+    "unsupportedTitle": "Téléchargements indisponibles",
+    "empty": "Télécharge un livre depuis sa page de détails pour l'écouter hors connexion.",
+    "emptyTitle": "Aucun téléchargement",
+    "remove": "Supprimer {{title}}"
   },
   "search": {
     "placeholder": "Rechercher des titres, auteurs, séries…",
+    "promptTitle": "Trouvez votre prochaine écoute",
+    "noResultsTitle": "Aucun résultat",
+    "clear": "Effacer la recherche",
     "prompt": "Recherche des titres, auteurs et séries.",
     "failed": "La recherche a échoué.",
     "noResults": "Aucun résultat pour « {{query}} »."
@@ -282,7 +298,14 @@
       "fileOf": "Fichier {{current}} sur {{total}}",
       "fileNumber": "Fichier {{number}}",
       "timeLeft": "{{time}} restant ({{rate}})",
-      "showChapters": "Afficher les chapitres"
+      "showChapters": "Afficher les chapitres",
+      "close": "Fermer",
+      "previous": "Chapitre précédent",
+      "next": "Chapitre suivant",
+      "play": "Lecture",
+      "pause": "Pause",
+      "skipBack": "Reculer de {{seconds}} secondes",
+      "skipForward": "Avancer de {{seconds}} secondes"
     },
     "chapters": {
       "chaptersTitle": "Chapitres",
@@ -320,6 +343,9 @@
     },
     "speed": {
       "title": "Vitesse de lecture"
+    },
+    "seek": {
+      "label": "Position de lecture"
     }
   },
   "nav": {

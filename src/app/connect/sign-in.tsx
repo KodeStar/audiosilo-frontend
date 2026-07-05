@@ -1,12 +1,13 @@
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiClient, ApiError } from '@/api/client';
 import type { AuthSession } from '@/api/types';
 import { Button } from '@/components/ui/button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { getDeviceName } from '@/lib/device';
@@ -86,27 +87,15 @@ export default function SignInScreen() {
           {serverName ? <Text variant="muted">{serverName}</Text> : null}
         </View>
 
-        <View className="flex-row gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-840">
-          {modes.map((m) => {
-            const active = mode === m.value;
-            return (
-              <Pressable
-                key={m.value}
-                onPress={() => {
-                  setMode(m.value);
-                  setError(null);
-                }}
-                className={`flex-1 items-center rounded-md px-3 py-2 ${active ? 'bg-primary' : ''}`}
-              >
-                <Text
-                  className={`font-roboto-medium ${active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}
-                >
-                  {m.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentedControl
+          options={modes}
+          value={mode}
+          onChange={(m) => {
+            setMode(m);
+            setError(null);
+          }}
+          grow
+        />
 
         {mode === 'code' ? (
           <TextField
@@ -143,7 +132,9 @@ export default function SignInScreen() {
           </View>
         )}
 
-        {error ? <Text className="text-sm text-red-500">{error}</Text> : null}
+        {error ? (
+          <Text className="text-center text-sm text-danger-600 dark:text-danger">{error}</Text>
+        ) : null}
 
         <Button
           title={mode === 'code' ? t('connect.signIn.connect') : t('connect.signIn.submit')}

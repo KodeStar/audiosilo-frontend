@@ -1,17 +1,19 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useApiRegistry } from '@/api/provider';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
 import { accountHref } from '@/lib/paths';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
+import { useTheme } from '@/theme/theme-provider';
+import { colors } from '@/theme/tokens';
 import { useSession, type Connection } from '@/stores/session';
 
 /** Settings section to manage server connections: open one to manage its account,
@@ -20,6 +22,7 @@ import { useSession, type Connection } from '@/stores/session';
  * screen (`/account?connection=<id>`). */
 export function ConnectionsSection() {
   const { t } = useTranslation();
+  const { scheme } = useTheme();
   const connections = useSession((s) => s.connections);
   const remove = useSession((s) => s.removeConnection);
   const { clients } = useApiRegistry();
@@ -50,16 +53,19 @@ export function ConnectionsSection() {
   return (
     <View className="gap-2">
       <Text variant="label">{t('account.connections.label')}</Text>
-      <Card className="gap-1">
+      <View className="gap-2">
         {connections.map((c) => (
-          <View key={c.id} className="flex-row items-center gap-1">
-            <Pressable
+          <View
+            key={c.id}
+            className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none"
+          >
+            <AnimatedPressable
               onPress={() => router.push(accountHref(c.id))}
               accessibilityRole="button"
               accessibilityLabel={t('account.connections.manage', { name: c.name })}
-              className="flex-1 flex-row items-center gap-3 rounded-md px-3 py-2 active:opacity-70"
+              className="flex-1 flex-row items-center gap-3 rounded-xl px-3 py-3"
             >
-              <Icon name="server" size={16} />
+              <Icon name="server" size={18} color={colors[scheme].textMuted} />
               <View className="flex-1">
                 <Text variant="subtitle" numberOfLines={1}>
                   {c.name}
@@ -68,17 +74,17 @@ export function ConnectionsSection() {
                   {c.user.username} · {c.serverUrl}
                 </Text>
               </View>
-              <Icon name="chevron-right" size={16} />
-            </Pressable>
-            <Pressable
+              <Icon name="chevron-right" size={16} color={colors[scheme].textMuted} />
+            </AnimatedPressable>
+            <AnimatedPressable
               onPress={() => onRemove(c)}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={t('account.connections.remove', { name: c.name })}
-              className="px-3 py-2 active:opacity-60"
+              className="h-9 w-9 items-center justify-center rounded-full active:bg-danger/10"
             >
-              <Icon name="trash" size={16} />
-            </Pressable>
+              <Icon name="trash" size={16} color={colors.danger} />
+            </AnimatedPressable>
           </View>
         ))}
         <Button
@@ -87,7 +93,7 @@ export function ConnectionsSection() {
           variant="secondary"
           onPress={() => router.push('/connect?add=1')}
         />
-      </Card>
+      </View>
 
       <ConfirmDialog
         visible={pendingRemoval !== null}
