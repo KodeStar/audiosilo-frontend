@@ -56,25 +56,21 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
 
   if (orientation === 'bottom') {
     return (
-      <View className="flex-row border-t border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800">
+      // Extra top padding balances the home-indicator safe-area inset the shell
+      // adds below the row, so the icons aren't crammed against the top edge.
+      <View className="flex-row border-t border-gray-100 bg-gray-200 pt-3 dark:border-gray-750 dark:bg-gray-800">
         {NAV_ITEMS.map((item) => {
           const active = isActiveNav(pathname, item);
           const label = t(`nav.${item.labelKey}`);
           return (
             <Link key={item.match} href={item.href} asChild>
               <AnimatedPressable
-                className="relative flex-1 items-center justify-center gap-1 py-2.5"
+                className="relative flex-1 items-center justify-center gap-1 py-1.5"
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={label}
               >
-                {/* Primary indicator bar centered above the icon on the active tab.
-                    Absolutely positioned so it never changes the measured nav height. */}
-                {active ? (
-                  <View className="absolute inset-x-0 top-1 items-center">
-                    <View className="h-1 w-4 rounded-full bg-primary" />
-                  </View>
-                ) : null}
+                {/* Active tab reads through color alone - primary icon + label, no pill. */}
                 <Icon
                   name={item.icon}
                   size={24}

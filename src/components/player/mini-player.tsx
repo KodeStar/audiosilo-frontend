@@ -16,8 +16,10 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { formatDuration } from '@/lib/format';
 import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
+import { wallClockSeconds } from '@/playback/rate';
 import {
   selectBookPosition,
   selectCurrentChapter,
@@ -25,34 +27,34 @@ import {
   usePlayer,
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { colors } from '@/theme/tokens';
+import { useTheme } from '@/theme/theme-provider';
+import { colors, tabularNums } from '@/theme/tokens';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
-const COVER_SIZE = 56;
-/** Approximate rendered height of the docked bar (cover 56 + 2px hairline + 1px borders). */
-const MINI_PLAYER_HEIGHT = 60;
-/** Gap kept between the floating bar and the nav below it. */
-const MINI_PLAYER_GAP = 8;
+const COVER_SIZE = 64;
+/** Approximate rendered height of the docked bar (cover 64 + 2px progress hairline). */
+const MINI_PLAYER_HEIGHT = 66;
 /** The base bottom padding the scroll screens already carry (their `p-4`). */
 const BASE_CONTENT_PADDING = 16;
 
 /**
  * Bottom padding a scrollable phone screen should give its scroll content so the
- * last row clears the floating mini-player. The bar is absolutely positioned and
+ * last row clears the docked mini-player. The bar is absolutely positioned and
  * content scrolls *behind* it, so without this the final items sit underneath it.
  * Returns just the normal base padding when nothing is docked, or on wide layouts
- * where the player is a side panel rather than a floating bar.
+ * where the player is a side panel rather than a docked bar.
  */
 export function useMiniPlayerInset(): number {
   const docked = usePlayer((s) => s.nowPlaying != null);
   const { width } = useWindowDimensions();
   const floating = docked && width < WIDE_BREAKPOINT;
-  return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0);
+  return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT : 0);
 }
 
-/** The 2px whole-book progress hairline along the bar's top edge. It subscribes to
- * the per-tick playback position on its own, so only this leaf re-renders each tick -
- * the always-mounted bar around it reconciles just on play/pause/track changes. */
+/** The 2px whole-book progress hairline along the bar's BOTTOM edge, so it sits
+ * flush on top of the nav bar below. It subscribes to the per-tick playback
+ * position on its own, so only this leaf re-renders each tick - the always-mounted
+ * bar around it reconciles just on play/pause/track changes. */
 function ProgressHairline({ total }: { total: number }) {
   const bookPosition = usePlayer(selectBookPosition);
   const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
@@ -63,8 +65,25 @@ function ProgressHairline({ total }: { total: number }) {
   );
 }
 
+/** "5h 27m left (1.4×)" - wall-clock time remaining at the current speed, with the
+ * speed modifier appended. A leaf so only this line re-renders as the position
+ * ticks (it reads the live whole-book position + rate from the store). */
+function TimeLeft({ total }: { total: number }) {
+  const { t } = useTranslation();
+  const position = usePlayer(selectBookPosition);
+  const rate = usePlayer((s) => s.rate);
+  const remaining = wallClockSeconds(total - position, rate);
+  if (remaining <= 0) return null;
+  const rateLabel = `${Number(rate.toFixed(2))}×`;
+  return (
+    <Text variant="caption" numberOfLines={1} style={tabularNums}>
+      {t('player.controls.timeLeft', { time: formatDuration(remaining), rate: rateLabel })}
+    </Text>
+  );
+}
+
 /** Docked transport bar shown whenever something is loaded. Tap to open the full
- * player. It floats just above the bottom nav - `bottomOffset` is the nav's
+ * player. It sits flush on top of the bottom nav - `bottomOffset` is the nav's
  * measured height (which on iOS includes the home-indicator safe-area inset, so a
  * fixed offset would leave the bar hidden behind it). Content scrolls behind it;
  * screens reserve room with `useMiniPlayerInset()`. */
@@ -74,7 +93,8 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   const currentChapter = usePlayer(selectCurrentChapter);
   const toggle = usePlayer((s) => s.toggle);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
-  const skipForward = useSettings((s) => s.skipForward);
+  const skipBackward = useSettings((s) => s.skipBackward);
+  const { scheme } = useTheme();
   // The cover URL embeds the playing book's own server auth (`?token=`); its request
   // headers must match that connection too, not whatever happens to be default - the
   // mini-player can outlive a switch away from the connection the book plays through.
@@ -116,24 +136,20 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
 
   return (
     <Animated.View
-      style={[
-        { position: 'absolute', left: 8, right: 8, bottom: bottomOffset + MINI_PLAYER_GAP },
-        entranceStyle,
-      ]}
+      style={[{ position: 'absolute', left: 0, right: 0, bottom: bottomOffset }, entranceStyle]}
     >
-      {/* Fully opaque so scrolling covers never bleed through the bar. A translucent
-          fill (with a backdrop-blur that some engines ignore) let the list show
-          through - the bar reads as a solid surface floating over the content. */}
+      {/* Fully opaque so scrolling covers never bleed through the bar. Flush full
+          width and docked directly on top of the nav below - a top hairline border
+          separates it from the scrolling content, the progress bar (below) from the
+          nav. */}
       <AnimatedPressable
         onPress={() => router.push('/player')}
-        className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50 shadow-lg dark:border-gray-750 dark:bg-gray-840"
+        className="overflow-hidden border-t border-gray-100 bg-gray-50 dark:border-gray-750 dark:bg-gray-840"
         accessibilityRole="button"
         accessibilityLabel={nowPlaying.title}
       >
-        <ProgressHairline total={nowPlaying.queue.total} />
         {/* Cover sits flush against the bar's left edge, full content-row height - the
-            artwork anchors the bar. The container's overflow-hidden rounds the outer
-            corners, so the cover itself is square (rounded-none). */}
+            artwork anchors the bar. */}
         <View className="flex-row items-stretch bg-gray-50 dark:bg-gray-840">
           <Cover
             source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
@@ -141,7 +157,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
             rounded="rounded-none"
             size={COVER_SIZE}
           />
-          <View className="flex-1 flex-row items-center gap-2 px-3">
+          <View className="flex-1 flex-row items-center gap-3 px-3">
             <View className="flex-1">
               <Text variant="subtitle" numberOfLines={1}>
                 {nowPlaying.title}
@@ -151,29 +167,33 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
                   {caption}
                 </Text>
               ) : null}
+              <TimeLeft total={nowPlaying.queue.total} />
             </View>
             <SkipButton
-              direction="forward"
-              seconds={skipForward}
-              onPress={() => void skipSeconds(skipForward)}
-              color={colors.primary}
-              fontSize={13}
-              className="h-10 w-10 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
-              accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
+              direction="back"
+              seconds={skipBackward}
+              onPress={() => void skipSeconds(-skipBackward)}
+              color={colors[scheme].textMuted}
+              fontSize={12}
+              className="px-1 items-center justify-center"
+              accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
             />
             <AnimatedPressable
               onPress={() => void toggle()}
               hitSlop={8}
-              className="h-10 w-10 items-center justify-center"
+              className={`h-10 w-10 items-center justify-center rounded-full bg-primary ${
+                isPlaying ? '' : 'pl-0.5'
+              }`}
               accessibilityRole="button"
               accessibilityLabel={
                 isPlaying ? t('player.controls.pause') : t('player.controls.play')
               }
             >
-              <Icon name={isPlaying ? 'pause' : 'play'} size={22} color={colors.primary} />
+              <Icon name={isPlaying ? 'pause' : 'play'} size={18} color={colors.white} />
             </AnimatedPressable>
           </View>
         </View>
+        <ProgressHairline total={nowPlaying.queue.total} />
       </AnimatedPressable>
     </Animated.View>
   );
