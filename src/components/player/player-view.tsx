@@ -438,8 +438,8 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 seconds={skipBackward}
                 onPress={() => void skipSeconds(-skipBackward)}
                 color={neutral}
-                glyphSize={38}
-                className="h-12 w-12 items-center justify-center rounded-full"
+                glyphSize={30}
+                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
               />
 
@@ -485,8 +485,8 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 seconds={skipForward}
                 onPress={() => void skipSeconds(skipForward)}
                 color={neutral}
-                glyphSize={38}
-                className="h-12 w-12 items-center justify-center rounded-full"
+                glyphSize={30}
+                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
               />
 

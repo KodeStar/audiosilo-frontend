@@ -152,7 +152,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
               onPress={() => void skipSeconds(skipForward)}
               color={colors.primary}
               glyphSize={26}
-              className="h-10 w-10 items-center justify-center"
+              className="h-10 w-10 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
               accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
             />
             <AnimatedPressable
