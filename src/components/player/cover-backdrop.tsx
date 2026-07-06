@@ -1,4 +1,5 @@
 import { Image, type ImageSource } from 'expo-image';
+import { useId } from 'react';
 import { Platform, type ViewStyle, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -35,6 +36,11 @@ const WEB_FILTER_LIGHT = {
  */
 export function CoverBackdrop({ source }: { source?: ImageSource | null }) {
   const { scheme } = useTheme();
+  // Unique per instance: SVG def ids are document-global on web, so a fixed id would
+  // collide when two backdrops mount at once (e.g. a book page behind an open player
+  // modal), making both `url(#id)` fills resolve to the first def. Strip characters
+  // React's useId emits (colons) that aren't valid in a `url(#...)` fragment.
+  const fadeId = `coverBackdropFade-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (!source) return null;
   const dark = scheme === 'dark';
   const native = Platform.OS !== 'web';
@@ -69,13 +75,13 @@ export function CoverBackdrop({ source }: { source?: ImageSource | null }) {
           background so the band's bottom edge melts into the page (no hard line). */}
       <Svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
         <Defs>
-          <LinearGradient id="coverBackdropFade" x1="0" y1="0" x2="0" y2="1">
+          <LinearGradient id={fadeId} x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={bg} stopOpacity={0} />
             <Stop offset="0.4" stopColor={bg} stopOpacity={0} />
             <Stop offset="1" stopColor={bg} stopOpacity={1} />
           </LinearGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#coverBackdropFade)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${fadeId})`} />
       </Svg>
     </View>
   );

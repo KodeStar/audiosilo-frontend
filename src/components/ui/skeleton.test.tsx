@@ -1,7 +1,15 @@
 import { act, render, screen } from '@testing-library/react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+// theme-provider side-effect-imports global.css (unparseable in Node); stub the hook
+// (Skeleton reads `scheme` for its raw fill color).
+jest.mock('@/theme/theme-provider', () => ({
+  useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
+}));
+
+/* eslint-disable import/first */
 import { Skeleton, SkeletonText } from './skeleton';
+/* eslint-enable import/first */
 
 async function mount(ui: React.ReactElement) {
   await act(async () => {

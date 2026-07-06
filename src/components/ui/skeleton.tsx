@@ -1,6 +1,5 @@
-import { cssInterop } from 'nativewind';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -10,13 +9,19 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-// Interop'd animated View so `className` (the shape/color) applies alongside the
-// animated opacity. See animated-pressable.tsx for why registration is needed.
-const AnimatedView = Animated.createAnimatedComponent(View);
-cssInterop(AnimatedView, { className: 'style' });
+import { useTheme } from '@/theme/theme-provider';
 
 const PULSE_MS = 1000;
 const DIM = 0.55;
+
+// The fill color as a raw value (gray-300 light / gray-750 dark). It rides on the
+// inner animated layer as an explicit style, NOT a className: passing a
+// `useAnimatedStyle` result to a `cssInterop`'d (className-driven) component makes
+// NativeWind's native interop drop the className-resolved styles entirely (the same
+// regression that forced animated-pressable.native.tsx). So the shape/size stay on a
+// plain interop'd `View` (no animated style) and only the opacity pulse - with the
+// fill baked in as a raw color - lives on the inner `Animated.View`.
+const FILL = { light: '#d1d5db', dark: '#2c3340' } as const;
 
 export type SkeletonProps = {
   /** Shape utilities for the placeholder, e.g. "h-4 w-32 rounded-md". */
@@ -26,11 +31,12 @@ export type SkeletonProps = {
 
 /**
  * A theme-aware placeholder block that gently pulses its opacity (~1s loop,
- * 0.55<->1). Pass `className` for the shape; the base fill is
- * `bg-gray-300 dark:bg-gray-750`. Reduced motion renders it static.
+ * 0.55<->1). Pass `className` for the shape (size + rounding). Reduced motion
+ * renders it static.
  */
 export function Skeleton({ className, testID }: SkeletonProps) {
   const reduced = useReducedMotion();
+  const { scheme } = useTheme();
   const opacity = useSharedValue(1);
 
   useEffect(() => {
@@ -47,12 +53,12 @@ export function Skeleton({ className, testID }: SkeletonProps) {
 
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
+  // Outer: shape/size via className only (no animated style -> native interop keeps
+  // it). Inner: the pulsing fill, clipped to the outer's rounding by overflow-hidden.
   return (
-    <AnimatedView
-      testID={testID}
-      style={style}
-      className={`bg-gray-300 dark:bg-gray-750 ${className ?? ''}`}
-    />
+    <View testID={testID} className={`overflow-hidden ${className ?? ''}`}>
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: FILL[scheme] }, style]} />
+    </View>
   );
 }
 

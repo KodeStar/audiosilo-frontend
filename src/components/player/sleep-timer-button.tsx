@@ -12,6 +12,7 @@ import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { wallClockSeconds } from '@/playback/rate';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectBookPosition, usePlayer } from '@/playback/store';
+import { useTheme } from '@/theme/theme-provider';
 import { colors, tabularNums } from '@/theme/tokens';
 
 const PRESETS = [5, 10, 15, 20, 30, 45, 60];
@@ -23,8 +24,12 @@ const PRESETS = [5, 10, 15, 20, 30, 45, 60];
  */
 export function SleepTimerButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
+  const { scheme } = useTheme();
   const active = useSleepTimer((s) => s.active);
   const remaining = useSleepTimer((s) => s.remaining);
+  // Match the sibling footer icons' theme-aware neutral (history/airplay use the
+  // same `textStrong`); a hardcoded dark color washed out on the light footer.
+  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
 
   return (
     <AnimatedPressable
@@ -34,7 +39,7 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={t('player.sleepTimer.title')}
     >
-      <Icon name="sleep" size={20} color={active ? colors.primary : colors.dark.text} />
+      <Icon name="sleep" size={20} color={active ? colors.primary : neutral} />
       {active && remaining !== null ? (
         <RNText className="font-sans text-sm text-primary" style={tabularNums}>
           {formatClock(remaining)}

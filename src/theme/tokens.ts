@@ -39,6 +39,9 @@ export const colors = {
 /**
  * Tabular (monospaced) numerals for `style=` on native/`<Text>` - locks figures to
  * a fixed advance so a value doesn't jitter as its digit count changes (clocks,
- * durations, counts). NativeWind screens can use `className="tabular-nums"` instead.
+ * durations, counts). Prefer this token over `className="tabular-nums"`: the Tailwind
+ * class compiles to `font-variant-numeric: var(--tw-numeric-spacing)`, which
+ * NativeWind's native interop does not translate into RN's `fontVariant`, so the class
+ * is a no-op on iOS/Android (figures still jitter there).
  */
 export const tabularNums = { fontVariant: ['tabular-nums' as const] };

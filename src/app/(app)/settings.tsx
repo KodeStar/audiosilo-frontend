@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, Text as RNText, View } from 'react-native';
 
-import { ConnectionsSection } from '@/components/account/connections-section';
+import { ConnectionsSection, useConnectionRemoval } from '@/components/account/connections-section';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
@@ -88,129 +88,137 @@ export default function SettingsScreen() {
 
   const paddingBottom = useMiniPlayerInset();
 
+  // The remove-connection confirm dialog is rendered at screen level (below, outside
+  // the ScrollView): a ModalCard/OverlayHost renders in place and must not be mounted
+  // inside a scroll container.
+  const connectionRemoval = useConnectionRemoval();
+
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerClassName="gap-6 p-4 lg:px-8"
-      contentContainerStyle={{ paddingBottom }}
-    >
-      <Text variant="heading">{t('settings.title')}</Text>
+    <>
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="gap-6 p-4 lg:px-8"
+        contentContainerStyle={{ paddingBottom }}
+      >
+        <Text variant="heading">{t('settings.title')}</Text>
 
-      <ConnectionsSection />
+        <ConnectionsSection onRemove={connectionRemoval.onRemove} />
 
-      <Section title={t('settings.appearance.label')}>
-        <SegmentedControl options={appearanceOptions} value={pref} onChange={setPref} grow />
-      </Section>
+        <Section title={t('settings.appearance.label')}>
+          <SegmentedControl options={appearanceOptions} value={pref} onChange={setPref} grow />
+        </Section>
 
-      <Section title={t('settings.language.label')}>
-        {/* A long, wrapping list, so it stays a pill group rather than a single-row
+        <Section title={t('settings.language.label')}>
+          {/* A long, wrapping list, so it stays a pill group rather than a single-row
             segmented control - but the pills share the SegmentedControl idiom (a quiet
             track with the active option filled in primary). */}
-        <View className="flex-row flex-wrap gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-840">
-          {languages.map((o) => {
-            const active = langPref === o.value;
-            return (
-              <AnimatedPressable
-                key={o.value}
-                onPress={() => setLangPref(o.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={o.label}
-                className={`items-center rounded-md px-3 py-1.5 ${active ? 'bg-primary' : ''}`}
-              >
-                {/* Raw RN Text with the full explicit class string: the themed
+          <View className="flex-row flex-wrap gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-840">
+            {languages.map((o) => {
+              const active = langPref === o.value;
+              return (
+                <AnimatedPressable
+                  key={o.value}
+                  onPress={() => setLangPref(o.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={o.label}
+                  className={`items-center rounded-md px-3 py-1.5 ${active ? 'bg-primary' : ''}`}
+                >
+                  {/* Raw RN Text with the full explicit class string: the themed
                     <Text> body variant injects its own text-color class, which
                     NativeWind's class merge doesn't override last-wins with an
                     appended text-white, so the active label rendered gray-on-pink
                     (matches SegmentedControl's approach). */}
-                <RNText
-                  className={`font-roboto-medium text-sm ${
-                    active ? 'text-white' : 'text-gray-500 dark:text-gray-400'
-                  }`}
-                >
-                  {o.label}
-                </RNText>
-              </AnimatedPressable>
-            );
-          })}
-        </View>
-      </Section>
+                  <RNText
+                    className={`font-roboto-medium text-sm ${
+                      active ? 'text-white' : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    {o.label}
+                  </RNText>
+                </AnimatedPressable>
+              );
+            })}
+          </View>
+        </Section>
 
-      <Section title={t('settings.playback.label')}>
-        <View className="overflow-hidden rounded-lg bg-white shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
-          <StepperRow label={t('settings.playback.skipBack')} first>
-            <Stepper
-              value={skipBackward}
-              onChange={setSkipBackward}
-              step={5}
-              min={5}
-              max={120}
-              format={sec}
-            />
-          </StepperRow>
-          <StepperRow label={t('settings.playback.skipForward')}>
-            <Stepper
-              value={skipForward}
-              onChange={setSkipForward}
-              step={5}
-              min={5}
-              max={120}
-              format={sec}
-            />
-          </StepperRow>
-          <StepperRow label={t('settings.playback.defaultSpeed')}>
-            <Stepper
-              value={defaultRate}
-              onChange={setDefaultRate}
-              step={0.05}
-              min={0.5}
-              max={2}
-              format={speed}
-            />
-          </StepperRow>
-          <StepperRow label={t('settings.playback.autoRewind')}>
-            <Stepper
-              value={autoRewindMax}
-              onChange={setAutoRewindMax}
-              step={5}
-              min={0}
-              max={30}
-              format={secOrOff}
-            />
-          </StepperRow>
-          <StepperRow label={t('settings.playback.chapterLength')}>
-            <Stepper
-              value={virtualChapterInterval}
-              onChange={setVirtualChapterInterval}
-              step={300}
-              min={300}
-              max={3600}
-              format={mins}
-            />
-          </StepperRow>
-        </View>
-      </Section>
+        <Section title={t('settings.playback.label')}>
+          <View className="overflow-hidden rounded-lg bg-white shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+            <StepperRow label={t('settings.playback.skipBack')} first>
+              <Stepper
+                value={skipBackward}
+                onChange={setSkipBackward}
+                step={5}
+                min={5}
+                max={120}
+                format={sec}
+              />
+            </StepperRow>
+            <StepperRow label={t('settings.playback.skipForward')}>
+              <Stepper
+                value={skipForward}
+                onChange={setSkipForward}
+                step={5}
+                min={5}
+                max={120}
+                format={sec}
+              />
+            </StepperRow>
+            <StepperRow label={t('settings.playback.defaultSpeed')}>
+              <Stepper
+                value={defaultRate}
+                onChange={setDefaultRate}
+                step={0.05}
+                min={0.5}
+                max={2}
+                format={speed}
+              />
+            </StepperRow>
+            <StepperRow label={t('settings.playback.autoRewind')}>
+              <Stepper
+                value={autoRewindMax}
+                onChange={setAutoRewindMax}
+                step={5}
+                min={0}
+                max={30}
+                format={secOrOff}
+              />
+            </StepperRow>
+            <StepperRow label={t('settings.playback.chapterLength')}>
+              <Stepper
+                value={virtualChapterInterval}
+                onChange={setVirtualChapterInterval}
+                step={300}
+                min={300}
+                max={3600}
+                format={mins}
+              />
+            </StepperRow>
+          </View>
+        </Section>
 
-      {/* Support is web/Android only - Apple disallows linking out to an external
+        {/* Support is web/Android only - Apple disallows linking out to an external
           developer-donation page, and the UK App Store is outside the US/EU
           carve-outs that now permit it (see src/lib/support.ts). */}
-      {isSupportAvailable() ? (
-        <Section title={t('settings.support.label')}>
-          <Card className="gap-3">
-            <Text variant="muted">{t('settings.support.intro')}</Text>
-            <Button
-              title={t('settings.support.cta')}
-              icon="heart"
-              variant="secondary"
-              onPress={() => void openSupport()}
-            />
-          </Card>
-        </Section>
-      ) : null}
+        {isSupportAvailable() ? (
+          <Section title={t('settings.support.label')}>
+            <Card className="gap-3">
+              <Text variant="muted">{t('settings.support.intro')}</Text>
+              <Button
+                title={t('settings.support.cta')}
+                icon="heart"
+                variant="secondary"
+                onPress={() => void openSupport()}
+              />
+            </Card>
+          </Section>
+        ) : null}
 
-      <Text variant="caption" className="text-center">
-        {t('settings.version', { version: APP_VERSION })}
-      </Text>
-    </ScrollView>
+        <Text variant="caption" className="text-center">
+          {t('settings.version', { version: APP_VERSION })}
+        </Text>
+      </ScrollView>
+      {connectionRemoval.dialog}
+    </>
   );
 }

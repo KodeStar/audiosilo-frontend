@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -16,20 +16,25 @@ import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 import { useSession, type Connection } from '@/stores/session';
 
-/** Settings section to manage server connections: open one to manage its account,
- * remove a connection, or add another. Content from every connection appears in the
- * unified Home/Search; tapping a row opens that server's per-connection account
- * screen (`/account?connection=<id>`). */
-export function ConnectionsSection() {
+/**
+ * The remove-connection flow, split into a hook so its confirm dialog can be rendered
+ * at SCREEN level by the owning screen. `ConnectionsSection` lives inside the settings
+ * `ScrollView`, but `ConfirmDialog` -> `ModalCard` -> `OverlayHost` renders IN PLACE and
+ * must NOT be mounted inside a scroll container (an absolute/flex backdrop positions
+ * against the scroll content, not the viewport, so the dialog renders mis-sized and
+ * wedged into the scroll flow instead of covering the screen). So the screen calls this
+ * hook, threads `onRemove` into the section, and renders `dialog` as a SIBLING of the
+ * ScrollView.
+ *
+ * Removing a connection purges its downloads (unreachable once its id is gone), so a
+ * connection with downloaded books gets a confirm step first. The count is snapshotted
+ * at tap time (no store subscription: the whole section would otherwise re-render on
+ * every download progress tick).
+ */
+export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dialog: ReactNode } {
   const { t } = useTranslation();
-  const { scheme } = useTheme();
-  const connections = useSession((s) => s.connections);
   const remove = useSession((s) => s.removeConnection);
   const { clients } = useApiRegistry();
-  // Removing a connection purges its downloads (they become unreachable once its id is
-  // gone), so a connection with downloaded books gets a confirm step first. The count
-  // is snapshotted at tap time (no store subscription: the whole section would
-  // otherwise re-render on every download progress tick).
   const [pendingRemoval, setPendingRemoval] = useState<{
     connection: Connection;
     downloadCount: number;
@@ -49,6 +54,40 @@ export function ConnectionsSection() {
     if (count > 0) setPendingRemoval({ connection: c, downloadCount: count });
     else void performRemove(c.id);
   };
+
+  const dialog = (
+    <ConfirmDialog
+      visible={pendingRemoval !== null}
+      title={t('account.connections.removeConfirm.title', {
+        name: pendingRemoval?.connection.name ?? '',
+      })}
+      message={t('account.connections.removeConfirm.message', {
+        count: pendingRemoval?.downloadCount ?? 0,
+      })}
+      confirmLabel={t('account.connections.removeConfirm.confirm')}
+      confirmIcon="trash"
+      onConfirm={() => {
+        const c = pendingRemoval?.connection;
+        setPendingRemoval(null);
+        if (c) void performRemove(c.id);
+      }}
+      onCancel={() => setPendingRemoval(null)}
+    />
+  );
+
+  return { onRemove, dialog };
+}
+
+/** Settings section to manage server connections: open one to manage its account,
+ * remove a connection, or add another. Content from every connection appears in the
+ * unified Home/Search; tapping a row opens that server's per-connection account
+ * screen (`/account?connection=<id>`). The remove flow's confirm dialog is owned by
+ * `useConnectionRemoval` and rendered by the screen at top level (a Sheet/ModalCard must
+ * not live inside this scrolled section); this section just invokes `onRemove`. */
+export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => void }) {
+  const { t } = useTranslation();
+  const { scheme } = useTheme();
+  const connections = useSession((s) => s.connections);
 
   return (
     <View className="gap-2">
@@ -94,24 +133,6 @@ export function ConnectionsSection() {
           onPress={() => router.push('/connect?add=1')}
         />
       </View>
-
-      <ConfirmDialog
-        visible={pendingRemoval !== null}
-        title={t('account.connections.removeConfirm.title', {
-          name: pendingRemoval?.connection.name ?? '',
-        })}
-        message={t('account.connections.removeConfirm.message', {
-          count: pendingRemoval?.downloadCount ?? 0,
-        })}
-        confirmLabel={t('account.connections.removeConfirm.confirm')}
-        confirmIcon="trash"
-        onConfirm={() => {
-          const c = pendingRemoval?.connection;
-          setPendingRemoval(null);
-          if (c) void performRemove(c.id);
-        }}
-        onCancel={() => setPendingRemoval(null)}
-      />
     </View>
   );
 }

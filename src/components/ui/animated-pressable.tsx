@@ -30,7 +30,7 @@ export type AnimatedPressableProps = PressableProps & { className?: string };
  * accessibility props and the caller's own onPressIn/onPressOut.
  */
 export const AnimatedPressable = forwardRef<View, AnimatedPressableProps>(
-  function AnimatedPressable({ onPressIn, onPressOut, ...props }, ref) {
+  function AnimatedPressable({ onPressIn, onPressOut, style, ...props }, ref) {
     const reduced = useReducedMotion();
     const pressed = useSharedValue(0);
 
@@ -39,10 +39,14 @@ export const AnimatedPressable = forwardRef<View, AnimatedPressableProps>(
       transform: reduced ? [] : [{ scale: 1 - pressed.value * 0.03 }],
     }));
 
+    // Merge (not clobber) a caller-supplied `style`: destructure it out of props and
+    // put it AFTER the animated style so both apply. Spreading `{...props}` with a
+    // `style` in it would instead override `animatedStyle` and silently kill the press
+    // feedback - and it must match the .native variant's merge contract (drop-in).
     return (
       <AnimatedPressableBase
         ref={ref}
-        style={animatedStyle}
+        style={[animatedStyle, style]}
         onPressIn={(e) => {
           pressed.value = withTiming(1, { duration: PRESS_IN_MS, easing: Easing.out(Easing.ease) });
           onPressIn?.(e);

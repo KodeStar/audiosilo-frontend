@@ -74,13 +74,15 @@ export function SeekBar({
         runOnJS(preview)(null);
       });
 
-    const tap = Gesture.Tap()
-      .maxDuration(250)
-      .onEnd((e) => {
-        const f = clampFrac(width.value > 0 ? e.x / width.value : 0);
-        posFrac.value = f;
-        runOnJS(commit)(f);
-      });
+    // Use gesture-handler's default tap window (500ms) rather than a tight 250ms cap:
+    // a deliberate, slightly-slow press-and-release with no drag should still seek
+    // (like the old Pressable onPress). A too-short cap on a motionless press activates
+    // neither Tap nor Pan, so the tap would silently no-op.
+    const tap = Gesture.Tap().onEnd((e) => {
+      const f = clampFrac(width.value > 0 ? e.x / width.value : 0);
+      posFrac.value = f;
+      runOnJS(commit)(f);
+    });
 
     return Gesture.Race(pan, tap);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shared values are stable refs

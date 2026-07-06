@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, Text as RNText, useWindowDimensions, View } from 'react-native';
 import Animated, {
@@ -203,11 +203,20 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     transform: [{ translateY: (1 - transportV.value) * 12 }],
   }));
 
+  // Stable cover source. api.authHeaders() returns a fresh object each call, and this
+  // view re-renders on every playback tick, so building this inline would hand expo-image
+  // a new `source` reference every tick (to both the blurred backdrop and the foreground
+  // cover), defeating source caching. Memoize on the URI + client.
+  const coverUri = nowPlaying?.cover;
+  const coverSource = useMemo(
+    () => (coverUri ? { uri: coverUri, headers: api.authHeaders() } : null),
+    [coverUri, api],
+  );
+
   if (!nowPlaying) return <Spinner center />;
 
-  const { queue, title, author, cover, libraryId, path, connectionId } = nowPlaying;
+  const { queue, title, author, libraryId, path, connectionId } = nowPlaying;
   const total = queue.total;
-  const coverSource = cover ? { uri: cover, headers: api.authHeaders() } : null;
   const rateLabel = `${Number(rate.toFixed(2))}×`;
   // When file durations are unknown (total 0), the whole-book timeline isn't
   // reliable - drive the UI from the engine's current-track position/duration
@@ -555,6 +564,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             libraryId={libraryId}
             path={path}
             connectionId={connectionId}
+            hideHeader
             emptyLabel={t('player.bookmarks.empty')}
             onAdd={onAddBookmark}
             adding={addBookmark.isPending}
@@ -582,6 +592,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             libraryId={libraryId}
             path={path}
             connectionId={connectionId}
+            hideHeader
             emptyLabel={t('player.history.empty')}
             chapters={queue.chapters}
           />
@@ -599,7 +610,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
           contentContainerClassName="px-4 pb-4"
           keyboardShouldPersistTaps="handled"
         >
-          <NotesSection libraryId={libraryId} path={path} connectionId={connectionId} />
+          <NotesSection libraryId={libraryId} path={path} connectionId={connectionId} hideHeader />
         </ScrollView>
       </Sheet>
 

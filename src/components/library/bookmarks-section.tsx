@@ -30,6 +30,7 @@ export function BookmarksSection({
   onAdd,
   adding,
   addLabel,
+  hideHeader,
 }: {
   libraryId: number;
   path: string;
@@ -40,6 +41,9 @@ export function BookmarksSection({
   onAdd?: () => void;
   adding?: boolean;
   addLabel?: string;
+  /** Suppress the internal heading when the caller already provides one (the player
+   * sheet's own title bar), so the sheet doesn't show two stacked headings. */
+  hideHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const { data: bookmarks } = useBookmarks(libraryId, path, connectionId);
@@ -60,7 +64,7 @@ export function BookmarksSection({
 
   return (
     <View className="gap-2">
-      <SectionHeader title={t('library.bookmarks.title')} />
+      {hideHeader ? null : <SectionHeader title={t('library.bookmarks.title')} />}
       {onAdd ? (
         <Button
           title={addLabel ?? t('library.bookmarks.add')}

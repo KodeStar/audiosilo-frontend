@@ -14,7 +14,7 @@ import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
 
 function DownloadRow({ entry }: { entry: DownloadEntry }) {
   const { t } = useTranslation();
@@ -48,7 +48,7 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
             {entry.title}
           </Text>
           {entry.status === 'downloaded' ? (
-            <Text variant="caption" className="tabular-nums">
+            <Text variant="caption" style={tabularNums}>
               {entry.totalBytes > 0 ? formatBytes(entry.totalBytes) : t('downloads.downloaded')}
             </Text>
           ) : entry.status === 'error' ? (
@@ -110,7 +110,7 @@ export default function DownloadsScreen() {
       <View className="flex-row items-center justify-between">
         <Text variant="heading">{t('downloads.title')}</Text>
         {supported && totalBytes > 0 ? (
-          <Text variant="muted" className="tabular-nums">
+          <Text variant="muted" style={tabularNums}>
             {t('downloads.storageUsed', { size: formatBytes(totalBytes) })}
           </Text>
         ) : null}
