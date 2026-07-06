@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { type TextStyle, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useFavourites, useToggleFavourite } from '@/api/hooks';
 import type { Book } from '@/api/types';
@@ -7,10 +7,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatBytes, formatDuration } from '@/lib/format';
-import { colors } from '@/theme/tokens';
-
-// Times and sizes read as figures, so lock them to tabular (monospaced) digits.
-const tabular: TextStyle = { fontVariant: ['tabular-nums'] };
+import { colors, tabularNums } from '@/theme/tokens';
 
 // A fixed-height top slot keeps the heart icon and the value text on the same
 // baseline so every column's label sits on one line.
@@ -21,7 +18,7 @@ function Stat({ value, label }: { value: string; label: string }) {
   return (
     <View className="flex-1 items-center gap-1 px-2">
       <View className={topSlot}>
-        <Text variant="heading" numberOfLines={1} style={tabular}>
+        <Text variant="heading" numberOfLines={1} style={tabularNums}>
           {value}
         </Text>
       </View>

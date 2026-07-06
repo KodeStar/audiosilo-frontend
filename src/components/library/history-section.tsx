@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { type TextStyle, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useHistory } from '@/api/hooks';
 import { useCid } from '@/api/provider';
@@ -12,9 +12,7 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatDuration } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
-import { colors } from '@/theme/tokens';
-
-const tabular: TextStyle = { fontVariant: ['tabular-nums'] };
+import { colors, tabularNums } from '@/theme/tokens';
 
 /** Recent listening spans for a book. Each span shows its START (▶) and END (⏸)
  * positions, both independently tappable, so you can jump to either - the end is
@@ -82,7 +80,7 @@ export function HistorySection({
           >
             <View className="flex-row items-center gap-2">
               <Icon name="clock" size={13} color={colors.primary} />
-              <Text variant="caption" style={tabular}>
+              <Text variant="caption" style={tabularNums}>
                 {new Date(h.started_at).toLocaleString()}
               </Text>
             </View>
@@ -94,7 +92,7 @@ export function HistorySection({
               accessibilityRole="button"
             >
               <Icon name="pause" size={13} color={colors.primary} />
-              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabular}>
+              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabularNums}>
                 {labelAt(h.to_pos)}
               </Text>
             </AnimatedPressable>
@@ -104,12 +102,12 @@ export function HistorySection({
               accessibilityRole="button"
             >
               <Icon name="play" size={13} />
-              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabular}>
+              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabularNums}>
                 {labelAt(h.from_pos)}
               </Text>
             </AnimatedPressable>
             {wall > 0 ? (
-              <Text variant="caption" style={tabular}>
+              <Text variant="caption" style={tabularNums}>
                 {t('book.duration', { value: formatDuration(wall) })}
                 {speed > 0 ? ` · ${Number(speed.toFixed(2))}×` : ''}
               </Text>

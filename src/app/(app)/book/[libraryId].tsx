@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, type TextStyle, useWindowDimensions, View } from 'react-native';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { useBook, useChapters, useLibraries } from '@/api/hooks';
 import { useApi, useScopedCid } from '@/api/provider';
@@ -31,26 +31,11 @@ import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
-import { colors } from '@/theme/tokens';
-
-// Chapter/file durations read as figures - lock them to tabular (monospaced) digits.
-const tabular: TextStyle = { fontVariant: ['tabular-nums'] };
+import { colors, tabularNums } from '@/theme/tokens';
 
 // The cover art rounded corner + hairline border + soft shadow, applied wherever
 // the hero cover appears so dark covers separate from dark surfaces.
 const COVER_FRAME = 'overflow-hidden rounded-lg border border-black/10 dark:border-white/10';
-
-/**
- * Atmosphere band behind the book identity block: the art-directed `CoverBackdrop`
- * - an oversized, blurred, desaturated glow of the cover that dissolves into the
- * base background at its lower edge, so text sits on the plain page, not a slab.
- * Shared with the player so both places read the same. Renders nothing without a
- * cover.
- */
-function HeroBackdrop({ uri, headers }: { uri?: string; headers?: Record<string, string> }) {
-  if (!uri) return null;
-  return <CoverBackdrop source={{ uri, headers }} />;
-}
 
 /** Loading placeholder shaped like the final layout: a cover block, title lines,
  * a stat strip and a few chapter rows - no centered spinner. */
@@ -220,7 +205,7 @@ function BookDetailContent() {
         ) : (
           <Text
             className="text-sm font-roboto-semibold text-gray-500 dark:text-gray-400"
-            style={tabular}
+            style={tabularNums}
           >
             {index}
           </Text>
@@ -234,7 +219,7 @@ function BookDetailContent() {
         >
           {prettifyChapterTitle(name)}
         </Text>
-        <Text variant="caption" style={tabular}>
+        <Text variant="caption" style={tabularNums}>
           {`${t('book.duration', { value: formatDurationFull(durationSec) })}${
             bitrate ? `   ${t('book.bitrate', { value: bitrate })}` : ''
           }`}
@@ -321,7 +306,7 @@ function BookDetailContent() {
             <PlayerView />
           ) : (
             <View className="flex-1 items-center justify-center">
-              <HeroBackdrop uri={coverUrl} headers={coverHeaders} />
+              <CoverBackdrop source={coverSource} />
               <View className="w-full items-center gap-6 p-6">
                 <View className={`aspect-square w-full max-w-[300px] shadow-lg ${COVER_FRAME}`}>
                   <Cover source={coverSource} label={book.title} sublabel={book.author} />
@@ -372,7 +357,7 @@ function BookDetailContent() {
       <BookVersions book={book} connectionId={cid} />
 
       <View className="overflow-hidden rounded-2xl">
-        <HeroBackdrop uri={coverUrl} headers={coverHeaders} />
+        <CoverBackdrop source={coverSource} />
         <View className="items-center gap-4 p-5">
           <View className={`w-full max-w-[240px] shadow-lg ${COVER_FRAME}`}>
             <Cover source={coverSource} label={book.title} sublabel={book.author} />

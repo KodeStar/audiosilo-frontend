@@ -56,6 +56,21 @@ export function Skeleton({ className, testID }: SkeletonProps) {
   );
 }
 
+/**
+ * The app's most common loading silhouette: a short stack of full-width
+ * elevated-row placeholders (matching the quiet surface rows used across the
+ * Libraries/Favourites lists). `count` defaults to 4.
+ */
+export function RowSkeletonList({ count = 4 }: { count?: number }) {
+  return (
+    <View className="gap-2 pt-1">
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className="h-14 w-full rounded-xl" />
+      ))}
+    </View>
+  );
+}
+
 export type SkeletonTextProps = {
   /** Number of lines (default 2); the last is rendered shorter. */
   lines?: number;

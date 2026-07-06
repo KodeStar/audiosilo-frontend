@@ -15,7 +15,7 @@ import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
 
 /** Stable list key for a progress entry across connections. */
 export const progressKey = (it: SourcedProgress) =>
@@ -204,7 +204,7 @@ export function ProgressCard({
               ) : null}
             </View>
             {remaining > 0 ? (
-              <Text variant="caption" style={{ fontVariant: ['tabular-nums'] }}>
+              <Text variant="caption" style={tabularNums}>
                 {t('library.progressCard.timeLeft', { duration: formatDuration(remaining) })}
               </Text>
             ) : null}

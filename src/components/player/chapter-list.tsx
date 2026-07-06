@@ -5,14 +5,12 @@ import { Icon } from '@/components/ui/icon';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
 
 /** One row in the chapter/file picker. `sublabel` carries an optional time. */
 export type ChapterItem = { key: string; label: string; sublabel?: string };
 
 const ROW_H = 56;
-/** Tabular numerals so times/numbers line up column-wise. */
-const TABULAR = { fontVariant: ['tabular-nums' as const] };
 
 /**
  * The player's chapter (or file) list, shown in the shared bottom `Sheet` (which
@@ -63,7 +61,7 @@ export function ChapterListSheet({
                 {current ? (
                   <Icon name="play" size={12} color={colors.primary} />
                 ) : (
-                  <Text variant="caption" style={TABULAR}>
+                  <Text variant="caption" style={tabularNums}>
                     {index + 1}
                   </Text>
                 )}
@@ -77,7 +75,7 @@ export function ChapterListSheet({
               {item.sublabel ? (
                 <Text
                   variant="caption"
-                  style={TABULAR}
+                  style={tabularNums}
                   className={current ? 'text-primary' : undefined}
                 >
                   {item.sublabel}

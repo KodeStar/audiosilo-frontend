@@ -8,7 +8,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
-import { Skeleton } from '@/components/ui/skeleton';
+import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
 import { colors } from '@/theme/tokens';
@@ -73,13 +73,7 @@ export default function LibrariesScreen() {
         {t('library.list.title')}
       </Text>
 
-      {isLoading ? (
-        <View className="gap-2 pt-1">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-xl" />
-          ))}
-        </View>
-      ) : null}
+      {isLoading ? <RowSkeletonList /> : null}
       {error ? <ErrorNote message={t('library.list.loadLibrariesError')} /> : null}
 
       <FavouritesShelfRow />

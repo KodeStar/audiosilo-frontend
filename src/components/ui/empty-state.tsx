@@ -25,7 +25,7 @@ export type EmptyStateProps = {
  */
 export function EmptyState({ icon = 'inbox', title, hint, action, className }: EmptyStateProps) {
   const { scheme } = useTheme();
-  const iconColor = scheme === 'dark' ? colors.dark.textMuted : colors.light.textMuted;
+  const iconColor = colors[scheme].textMuted;
 
   return (
     <View className={`items-center justify-center gap-3 px-6 py-12 ${className ?? ''}`}>

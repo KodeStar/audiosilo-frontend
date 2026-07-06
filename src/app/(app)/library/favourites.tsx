@@ -6,7 +6,7 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
-import { Skeleton } from '@/components/ui/skeleton';
+import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useOpen } from '@/lib/open';
@@ -109,13 +109,7 @@ export default function FavouritesScreen() {
         {t('library.favourites.title')}
       </Text>
 
-      {isLoading ? (
-        <View className="gap-2 pt-1">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-xl" />
-          ))}
-        </View>
-      ) : null}
+      {isLoading ? <RowSkeletonList /> : null}
       {!isLoading && favourites.length === 0 ? (
         <EmptyState
           icon="heart"

@@ -35,3 +35,10 @@ export const colors = {
     border: '#2c3340', // gray-750
   },
 } as const;
+
+/**
+ * Tabular (monospaced) numerals for `style=` on native/`<Text>` - locks figures to
+ * a fixed advance so a value doesn't jitter as its digit count changes (clocks,
+ * durations, counts). NativeWind screens can use `className="tabular-nums"` instead.
+ */
+export const tabularNums = { fontVariant: ['tabular-nums' as const] };

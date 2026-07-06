@@ -43,10 +43,7 @@ import {
 import { useShakeToCancel } from '@/playback/use-shake-to-cancel';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
-
-/** Tabular numerals so times line up and don't jitter as digits change. */
-const TABULAR = { fontVariant: ['tabular-nums' as const] };
+import { colors, tabularNums } from '@/theme/tokens';
 
 type PlayerSheet = 'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | null;
 
@@ -349,7 +346,10 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 {/* Raw RN Text + explicit classes: the themed <Text> variant injects
                     its own text color, which NativeWind won't reliably override with an
                     appended one - so a specific color must not go through <Text>. */}
-                <RNText className="font-sans text-xs text-white dark:text-white" style={TABULAR}>
+                <RNText
+                  className="font-sans text-xs text-white dark:text-white"
+                  style={tabularNums}
+                >
                   {formatClock(sleepRemaining)}
                 </RNText>
               </View>
@@ -394,13 +394,13 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
               onScrub={setScrubPreview}
             />
             <View className="flex-row items-center justify-between">
-              <Text variant="caption" style={TABULAR}>
+              <Text variant="caption" style={tabularNums}>
                 {formatClock(segElapsed)}
               </Text>
-              <Text variant="caption" className="flex-1 text-center" style={TABULAR}>
+              <Text variant="caption" className="flex-1 text-center" style={tabularNums}>
                 {centerLabel}
               </Text>
-              <Text variant="caption" style={TABULAR}>
+              <Text variant="caption" style={tabularNums}>
                 -{formatClock(segRemaining)}
               </Text>
             </View>
@@ -438,7 +438,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 seconds={skipBackward}
                 onPress={() => void skipSeconds(-skipBackward)}
                 color={neutral}
-                glyphSize={30}
+                fontSize={15}
                 className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
               />
@@ -485,7 +485,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 seconds={skipForward}
                 onPress={() => void skipSeconds(skipForward)}
                 color={neutral}
-                glyphSize={30}
+                fontSize={15}
                 className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
               />

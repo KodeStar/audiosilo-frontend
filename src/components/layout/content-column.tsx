@@ -22,7 +22,7 @@ function DesktopSearch() {
   const query = useSearchStore((s) => s.query);
   const setQuery = useSearchStore((s) => s.setQuery);
   const [focused, setFocused] = useState(false);
-  const muted = scheme === 'dark' ? colors.dark.textMuted : colors.light.textMuted;
+  const muted = colors[scheme].textMuted;
   return (
     <View className="relative justify-center">
       <View className="absolute bottom-0 left-4 top-0 z-10 justify-center">

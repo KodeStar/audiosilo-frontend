@@ -11,7 +11,7 @@ import { Icon } from '@/components/ui/icon';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
 
 // Quiet row surface shared by the section's list items.
 const ROW =
@@ -81,7 +81,7 @@ export function BookmarksSection({
           >
             <Icon name="bookmark" size={16} color={colors.primary} />
             <View className="flex-1">
-              <Text variant="subtitle" style={{ fontVariant: ['tabular-nums'] }}>
+              <Text variant="subtitle" style={tabularNums}>
                 {formatClock(bm.position)}
               </Text>
               {bm.note ? (

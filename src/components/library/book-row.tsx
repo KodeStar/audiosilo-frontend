@@ -11,6 +11,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle, formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
+import { tabularNums } from '@/theme/tokens';
 
 /** A book result row (search lists) linking to its detail screen on the given
  * connection. `also` names other servers that also have this (de-duplicated) book. */
@@ -80,7 +81,7 @@ export function BookRow({
         ) : null}
       </View>
       {book.duration ? (
-        <Text variant="caption" style={{ fontVariant: ['tabular-nums'] }}>
+        <Text variant="caption" style={tabularNums}>
           {formatDuration(book.duration)}
         </Text>
       ) : null}

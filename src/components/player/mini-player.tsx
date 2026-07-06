@@ -50,6 +50,19 @@ export function useMiniPlayerInset(): number {
   return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0);
 }
 
+/** The 2px whole-book progress hairline along the bar's top edge. It subscribes to
+ * the per-tick playback position on its own, so only this leaf re-renders each tick -
+ * the always-mounted bar around it reconciles just on play/pause/track changes. */
+function ProgressHairline({ total }: { total: number }) {
+  const bookPosition = usePlayer(selectBookPosition);
+  const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
+  return (
+    <View className="h-0.5 bg-gray-300 dark:bg-gray-750">
+      <View className="h-full bg-primary" style={{ width: `${fraction * 100}%` }} />
+    </View>
+  );
+}
+
 /** Docked transport bar shown whenever something is loaded. Tap to open the full
  * player. It floats just above the bottom nav - `bottomOffset` is the nav's
  * measured height (which on iOS includes the home-indicator safe-area inset, so a
@@ -58,7 +71,6 @@ export function useMiniPlayerInset(): number {
 export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
-  const bookPosition = usePlayer(selectBookPosition);
   const currentChapter = usePlayer(selectCurrentChapter);
   const toggle = usePlayer((s) => s.toggle);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
@@ -92,9 +104,6 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
 
   if (!nowPlaying) return null;
 
-  const total = nowPlaying.queue.total;
-  const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
-
   // Muted caption line: the current chapter (prettified, like the full player) when the
   // book carries chapters, else the author. Display-only - reads from the store.
   const chapterLabel = currentChapter
@@ -121,10 +130,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
         accessibilityRole="button"
         accessibilityLabel={nowPlaying.title}
       >
-        {/* 2px whole-book progress hairline along the top edge. */}
-        <View className="h-0.5 bg-gray-300 dark:bg-gray-750">
-          <View className="h-full bg-primary" style={{ width: `${fraction * 100}%` }} />
-        </View>
+        <ProgressHairline total={nowPlaying.queue.total} />
         {/* Cover sits flush against the bar's left edge, full content-row height - the
             artwork anchors the bar. The container's overflow-hidden rounds the outer
             corners, so the cover itself is square (rounded-none). */}
@@ -151,7 +157,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
               seconds={skipForward}
               onPress={() => void skipSeconds(skipForward)}
               color={colors.primary}
-              glyphSize={26}
+              fontSize={13}
               className="h-10 w-10 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
               accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
             />

@@ -12,10 +12,9 @@ import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { wallClockSeconds } from '@/playback/rate';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
 
 const PRESETS = [5, 10, 15, 20, 30, 45, 60];
-const TABULAR = { fontVariant: ['tabular-nums' as const] };
 
 /**
  * Sleep-timer trigger. Shows the current remaining time when active. The sheet
@@ -37,7 +36,7 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
     >
       <Icon name="sleep" size={20} color={active ? colors.primary : colors.dark.text} />
       {active && remaining !== null ? (
-        <RNText className="font-sans text-sm text-primary" style={TABULAR}>
+        <RNText className="font-sans text-sm text-primary" style={tabularNums}>
           {formatClock(remaining)}
         </RNText>
       ) : null}
@@ -45,8 +44,23 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-/** The sleep-timer presets / end-of-chapter sheet, controlled by the player. */
+/**
+ * The sleep-timer presets / end-of-chapter sheet, controlled by the player.
+ * The body (which subscribes to the per-tick playback position and recomputes the
+ * chapter countdowns) lives in a child of `Sheet`, so it only mounts while the sheet
+ * is open - `Sheet` renders no children when closed, so the countdown scan and its
+ * per-tick re-render don't run for the whole session behind a closed sheet.
+ */
 export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Sheet inline visible={visible} onClose={onClose} title={t('player.sleepTimer.title')}>
+      <SleepSheetBody onClose={onClose} />
+    </Sheet>
+  );
+}
+
+function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const chapterLabel = (ch: Chapter) =>
     prettifyChapterTitle(ch.title || t('player.chapters.chapterNumber', { number: ch.index + 1 }));
@@ -78,93 +92,91 @@ export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: ()
   const total = nowPlaying?.queue.total ?? 0;
 
   return (
-    <Sheet inline visible={visible} onClose={onClose} title={t('player.sleepTimer.title')}>
-      <View className="gap-3 px-4 pb-4">
-        {active ? (
-          <View className="flex-row items-center justify-between rounded-lg bg-primary/10 px-3 py-2">
-            <RNText className="font-sans text-base text-primary">
-              {label || t('player.sleepTimer.running')}
+    <View className="gap-3 px-4 pb-4">
+      {active ? (
+        <View className="flex-row items-center justify-between rounded-lg bg-primary/10 px-3 py-2">
+          <RNText className="font-sans text-base text-primary">
+            {label || t('player.sleepTimer.running')}
+          </RNText>
+          {remaining !== null ? (
+            <RNText className="font-roboto-semibold text-base text-primary" style={tabularNums}>
+              {formatClock(remaining)}
             </RNText>
-            {remaining !== null ? (
-              <RNText className="font-roboto-semibold text-base text-primary" style={TABULAR}>
-                {formatClock(remaining)}
-              </RNText>
-            ) : null}
-          </View>
-        ) : null}
-
-        <Text variant="label">{t('player.sleepTimer.timeSection')}</Text>
-        <View className="flex-row flex-wrap gap-2">
-          {PRESETS.map((m) => (
-            <AnimatedPressable
-              key={m}
-              onPress={() => pick(() => startDuration(m))}
-              className="rounded-full bg-gray-100 px-4 py-2 dark:bg-gray-860"
-              accessibilityRole="button"
-            >
-              <Text style={TABULAR}>{t('player.sleepTimer.minutes', { count: m })}</Text>
-            </AnimatedPressable>
-          ))}
+          ) : null}
         </View>
+      ) : null}
 
-        <Text variant="label">{t('player.sleepTimer.endOfChapterSection')}</Text>
-        {countdowns.length > 0 ? (
-          // Cap on the wrapper View (not the ScrollView) so the list scrolls
-          // instead of pushing the sheet off-screen.
-          <View className="max-h-72">
-            <ScrollView contentContainerClassName="gap-2" keyboardShouldPersistTaps="handled">
-              {countdowns.map((c, i) => (
-                <AnimatedPressable
-                  key={c.chapter.index}
-                  onPress={() =>
-                    pick(() =>
-                      startUntilPosition(
-                        c.endPosition,
-                        t('player.sleepTimer.endOf', { chapter: chapterLabel(c.chapter) }),
-                      ),
-                    )
-                  }
-                  className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
-                  accessibilityRole="button"
-                >
-                  <Text numberOfLines={1} className="flex-1 pr-3">
-                    {chapterLabel(c.chapter)}
-                    {i === 0 ? t('player.sleepTimer.current') : ''}
-                  </Text>
-                  <Text variant="caption" style={TABULAR}>
-                    {formatCountdown(c.untilEnd)}
-                  </Text>
-                </AnimatedPressable>
-              ))}
-            </ScrollView>
-          </View>
-        ) : nowPlaying ? (
+      <Text variant="label">{t('player.sleepTimer.timeSection')}</Text>
+      <View className="flex-row flex-wrap gap-2">
+        {PRESETS.map((m) => (
           <AnimatedPressable
-            onPress={() => pick(() => startUntilPosition(total, t('player.sleepTimer.endOfBook')))}
-            className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
+            key={m}
+            onPress={() => pick(() => startDuration(m))}
+            className="rounded-full bg-gray-100 px-4 py-2 dark:bg-gray-860"
             accessibilityRole="button"
           >
-            <Text>{t('player.sleepTimer.endOfBook')}</Text>
-            <Text variant="caption" style={TABULAR}>
-              {formatCountdown(wallClockSeconds(total - bookPosition, rate))}
-            </Text>
+            <Text style={tabularNums}>{t('player.sleepTimer.minutes', { count: m })}</Text>
           </AnimatedPressable>
-        ) : (
-          <Text variant="caption">{t('player.sleepTimer.noChapters')}</Text>
-        )}
-
-        {active ? (
-          <AnimatedPressable
-            onPress={() => pick(cancel)}
-            className="mt-1 items-center rounded-lg bg-primary px-4 py-3"
-            accessibilityRole="button"
-          >
-            <RNText className="font-roboto-semibold text-base text-white dark:text-white">
-              {t('player.sleepTimer.cancel')}
-            </RNText>
-          </AnimatedPressable>
-        ) : null}
+        ))}
       </View>
-    </Sheet>
+
+      <Text variant="label">{t('player.sleepTimer.endOfChapterSection')}</Text>
+      {countdowns.length > 0 ? (
+        // Cap on the wrapper View (not the ScrollView) so the list scrolls
+        // instead of pushing the sheet off-screen.
+        <View className="max-h-72">
+          <ScrollView contentContainerClassName="gap-2" keyboardShouldPersistTaps="handled">
+            {countdowns.map((c, i) => (
+              <AnimatedPressable
+                key={c.chapter.index}
+                onPress={() =>
+                  pick(() =>
+                    startUntilPosition(
+                      c.endPosition,
+                      t('player.sleepTimer.endOf', { chapter: chapterLabel(c.chapter) }),
+                    ),
+                  )
+                }
+                className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
+                accessibilityRole="button"
+              >
+                <Text numberOfLines={1} className="flex-1 pr-3">
+                  {chapterLabel(c.chapter)}
+                  {i === 0 ? t('player.sleepTimer.current') : ''}
+                </Text>
+                <Text variant="caption" style={tabularNums}>
+                  {formatCountdown(c.untilEnd)}
+                </Text>
+              </AnimatedPressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : nowPlaying ? (
+        <AnimatedPressable
+          onPress={() => pick(() => startUntilPosition(total, t('player.sleepTimer.endOfBook')))}
+          className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
+          accessibilityRole="button"
+        >
+          <Text>{t('player.sleepTimer.endOfBook')}</Text>
+          <Text variant="caption" style={tabularNums}>
+            {formatCountdown(wallClockSeconds(total - bookPosition, rate))}
+          </Text>
+        </AnimatedPressable>
+      ) : (
+        <Text variant="caption">{t('player.sleepTimer.noChapters')}</Text>
+      )}
+
+      {active ? (
+        <AnimatedPressable
+          onPress={() => pick(cancel)}
+          className="mt-1 items-center rounded-lg bg-primary px-4 py-3"
+          accessibilityRole="button"
+        >
+          <RNText className="font-roboto-semibold text-base text-white dark:text-white">
+            {t('player.sleepTimer.cancel')}
+          </RNText>
+        </AnimatedPressable>
+      ) : null}
+    </View>
   );
 }
