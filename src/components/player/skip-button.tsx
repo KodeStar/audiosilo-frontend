@@ -1,20 +1,18 @@
-import { Text as RNText, View } from 'react-native';
+import { Text as RNText } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Icon } from '@/components/ui/icon';
 
-/** Tabular numerals so the digit doesn't jitter as it centers in the glyph. */
+/** Tabular numerals so the label doesn't jitter between one- and two-digit values. */
 const TABULAR = { fontVariant: ['tabular-nums' as const] };
 
 /**
- * A directional skip control: an Audible-style circular arrow (clockwise for
- * forward, counter-clockwise for back) with the skip amount in seconds nested in
- * its centre. The bare "30s" text used before said nothing about direction; the
- * rotate glyph makes forward-vs-back read at a glance.
- *
- * The seconds number sits absolutely centred over the glyph, nudged down a hair so
- * it lands inside the ring (whose opening/arrowhead is at the top). The label font
- * scales with the glyph. Callers own the tap target size + accessibility label.
+ * A directional skip control rendered as plain signed text: back reads `-15s`,
+ * forward reads `+30s` (`${sign}${seconds}s`). The sign carries the direction, so
+ * it reads at a glance without a glyph - the earlier circular-arrow glyph overlapped
+ * the seconds and read as clutter. The label uses the app's semibold Roboto and the
+ * caller-provided color; callers own the tap-target size (via `className`) and the
+ * accessibility label. `glyphSize` is kept as the type scale knob (mini player passes
+ * a smaller value, the full transport a larger one).
  */
 export function SkipButton({
   direction,
@@ -37,9 +35,10 @@ export function SkipButton({
   hitSlop?: number;
   accessibilityLabel: string;
 }) {
-  // Number sized to sit inside the ring; the glyph's usable interior is ~40% of
-  // its box, so ~0.42x reads cleanly for one- or two-digit values.
-  const fontSize = Math.round(glyphSize * 0.42);
+  // Scale the label off the same knob the glyph used, so the mini player stays
+  // compact and the full transport reads larger.
+  const fontSize = Math.round(glyphSize * 0.5);
+  const label = `${direction === 'back' ? '-' : '+'}${seconds}s`;
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -49,38 +48,15 @@ export function SkipButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >
-      <View
-        style={{
-          width: glyphSize,
-          height: glyphSize,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+      {/* Raw RN Text + explicit color: the themed <Text> variant injects its own
+          color, which NativeWind won't reliably override with the caller's. */}
+      <RNText
+        allowFontScaling={false}
+        className="font-roboto-semibold"
+        style={[{ fontSize, lineHeight: fontSize + 2, color }, TABULAR]}
       >
-        <Icon
-          name={direction === 'forward' ? 'rotate-right' : 'rotate-left'}
-          size={glyphSize}
-          color={color}
-        />
-        <RNText
-          allowFontScaling={false}
-          className="font-roboto-semibold"
-          style={[
-            {
-              position: 'absolute',
-              top: glyphSize * 0.5 - fontSize * 0.62,
-              width: glyphSize,
-              textAlign: 'center',
-              fontSize,
-              lineHeight: fontSize + 1,
-              color,
-            },
-            TABULAR,
-          ]}
-        >
-          {seconds}
-        </RNText>
-      </View>
+        {label}
+      </RNText>
     </AnimatedPressable>
   );
 }
