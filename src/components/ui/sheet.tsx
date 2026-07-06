@@ -159,8 +159,9 @@ export function Sheet({
     return () => sub.remove();
   }, [inline, visible, onClose]);
 
-  // Fades to bg-black/40 (0.4) at fully open, not solid black.
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.4 }));
+  // Fades to a 0.55 black scrim at fully open (not solid) - dim enough that the
+  // content behind reads as pushed-back backdrop rather than "showing through".
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.55 }));
   const panelStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.value) * panelHeight.value }],
   }));

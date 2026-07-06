@@ -5,6 +5,7 @@ import { Text as RNText, View } from 'react-native';
 import { Brand } from '@/components/brand/brand';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
+import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
 import { isActiveNav } from '@/lib/nav';
 import { useTheme } from '@/theme/theme-provider';
@@ -95,13 +96,13 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   }
 
   return (
-    <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800">
-      <View className="px-6 py-7">
+    <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800 after:content-[''] after:border-r after:absolute after:right-0 after:h-full after:border-gray-300 after:dark:border-gray-860">
+      <View className="p-5 border-b border-gray-100 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-b after:absolute after:bottom-0 after:left-0 after:w-full after:border-gray-300 after:dark:border-gray-860">
         {/* App build version, not a server's - account/server details are per-connection
             on each connection's account screen (reached from Settings → Servers). */}
         <Brand size={50} showVersion />
       </View>
-      <View className="gap-1 px-4">
+      <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {
           const active = isActiveNav(pathname, item);
           const label = t(`nav.${item.labelKey}`);
@@ -111,30 +112,17 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={label}
-                className={`relative flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
+                className={`relative flex-row items-center gap-3 rounded-lg border px-4 py-3 ${
                   active
-                    ? 'bg-white shadow-sm dark:bg-gray-750 dark:shadow-none'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-840'
+                    ? 'border-gray-200 bg-gray-50 shadow-sm dark:border-gray-860 dark:bg-gray-840 dark:shadow-none'
+                    : 'border-transparent active:bg-gray-50 dark:active:bg-gray-840'
                 }`}
               >
-                {/* 3px rounded primary accent hugging the pill's left inside edge. */}
                 {active ? (
-                  <View className="absolute bottom-2 left-1 top-2 w-[3px] rounded-full bg-primary" />
+                  <View className="absolute -left-[1px] -bottom-[1px] top-0 w-1.5 rounded-tl-lg rounded-bl-lg bg-primary" />
                 ) : null}
-                <Icon
-                  name={item.icon}
-                  size={22}
-                  color={active ? colors.primary : colors[scheme].textMuted}
-                />
-                <RNText
-                  className={`text-base ${
-                    active
-                      ? 'font-roboto-semibold text-primary'
-                      : 'font-roboto-regular text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  {label}
-                </RNText>
+                <Icon name={item.icon} size={24} color={colors[scheme].text} />
+                <Text className="text-base text-gray-600 dark:text-gray-300">{label}</Text>
               </AnimatedPressable>
             </Link>
           );

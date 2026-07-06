@@ -1,8 +1,7 @@
-import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Text as RNText, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -12,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useApi } from '@/api/provider';
+import { SkipButton } from '@/components/player/skip-button';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
@@ -25,10 +25,7 @@ import {
   usePlayer,
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
-
-const NATIVE_BLUR = Platform.OS !== 'web';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
 const COVER_SIZE = 56;
@@ -70,7 +67,6 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   // headers must match that connection too, not whatever happens to be default - the
   // mini-player can outlive a switch away from the connection the book plays through.
   const api = useApi(nowPlaying?.connectionId);
-  const { scheme } = useTheme();
   const { t } = useTranslation();
   const reduced = useReducedMotion();
 
@@ -96,13 +92,6 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
 
   if (!nowPlaying) return null;
 
-  // The translucency that lets the blur show through differs by platform: on
-  // native a real BlurView sits behind a light tint; on web `backdrop-blur-sm`
-  // (a CSS backdrop-filter, native-ignored) blurs behind a denser `/90` fill.
-  const fill = NATIVE_BLUR
-    ? 'bg-gray-50/60 dark:bg-gray-840/60'
-    : 'bg-gray-50/90 dark:bg-gray-840/90';
-
   const total = nowPlaying.queue.total;
   const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
 
@@ -115,7 +104,6 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
       )
     : '';
   const caption = chapterLabel || nowPlaying.author;
-  const skipForwardLabel = `${skipForward}s`;
 
   return (
     <Animated.View
@@ -124,20 +112,15 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
         entranceStyle,
       ]}
     >
+      {/* Fully opaque so scrolling covers never bleed through the bar. A translucent
+          fill (with a backdrop-blur that some engines ignore) let the list show
+          through - the bar reads as a solid surface floating over the content. */}
       <AnimatedPressable
         onPress={() => router.push('/player')}
-        className="overflow-hidden rounded-lg border border-gray-100 dark:border-gray-750"
+        className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50 shadow-lg dark:border-gray-750 dark:bg-gray-840"
         accessibilityRole="button"
         accessibilityLabel={nowPlaying.title}
       >
-        {NATIVE_BLUR ? (
-          <BlurView
-            intensity={40}
-            tint={scheme === 'dark' ? 'dark' : 'light'}
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-          />
-        ) : null}
         {/* 2px whole-book progress hairline along the top edge. */}
         <View className="h-0.5 bg-gray-300 dark:bg-gray-750">
           <View className="h-full bg-primary" style={{ width: `${fraction * 100}%` }} />
@@ -145,7 +128,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
         {/* Cover sits flush against the bar's left edge, full content-row height - the
             artwork anchors the bar. The container's overflow-hidden rounds the outer
             corners, so the cover itself is square (rounded-none). */}
-        <View className={`flex-row items-stretch backdrop-blur-sm ${fill}`}>
+        <View className="flex-row items-stretch bg-gray-50 dark:bg-gray-840">
           <Cover
             source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
             label={nowPlaying.title}
@@ -163,17 +146,15 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
                 </Text>
               ) : null}
             </View>
-            <AnimatedPressable
+            <SkipButton
+              direction="forward"
+              seconds={skipForward}
               onPress={() => void skipSeconds(skipForward)}
-              hitSlop={8}
+              color={colors.primary}
+              glyphSize={26}
               className="h-10 w-10 items-center justify-center"
-              accessibilityRole="button"
               accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
-            >
-              <RNText className="font-roboto-semibold text-[13px] text-primary">
-                {skipForwardLabel}
-              </RNText>
-            </AnimatedPressable>
+            />
             <AnimatedPressable
               onPress={() => void toggle()}
               hitSlop={8}

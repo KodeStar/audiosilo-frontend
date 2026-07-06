@@ -11,6 +11,10 @@ import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
 import '@/lib/register-sw';
+// Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
+// (which nests illegally and hits an older-Safari flex bug). All top-level imports
+// evaluate before the first render, so this patches RNW in time. No-op on native.
+import '@/lib/rnw-button-fix';
 import { resetStaleStorage, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { ThemeProvider, useTheme } from '@/theme/theme-provider';

@@ -28,6 +28,8 @@ export const GLYPHS = [
   ['triangle', 'solid', 'faTriangle'],
   ['next', 'regular', 'faForwardStep'],
   ['prev', 'regular', 'faBackwardStep'],
+  ['rotate-right', 'regular', 'faRotateRight'],
+  ['rotate-left', 'regular', 'faRotateLeft'],
   ['chevron-right', 'light', 'faChevronRight'],
   ['chevron-down', 'light', 'faChevronDown'],
   ['chevron-up', 'light', 'faChevronUp'],

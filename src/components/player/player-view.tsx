@@ -9,6 +9,7 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { useAddBookmark } from '@/api/hooks';
@@ -19,6 +20,7 @@ import { NotesSection } from '@/components/library/notes-section';
 import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { SeekBar } from '@/components/player/seek-bar';
+import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -106,6 +108,9 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const { scheme } = useTheme();
   const { height } = useWindowDimensions();
+  // The player fills the screen edge-to-edge (backdrop under the status bar); the
+  // top controls + footer pad themselves clear of the notch / home indicator.
+  const insets = useSafeAreaInsets();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
   const [sheet, setSheet] = useState<PlayerSheet>(null);
   // Live scrub preview (segment-relative seconds) while dragging the seek bar; the
@@ -286,8 +291,6 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     if (c) void seekBook(c.book_offset);
   };
 
-  const skipBackLabel = `${skipBackward}s`;
-  const skipForwardLabel = `${skipForward}s`;
   const sheetMax = Math.round(height * 0.7);
 
   return (
@@ -295,8 +298,9 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
       <CoverBackdrop source={coverSource} />
 
       {/* Header (auto height). The close button is mobile-only; the right side is
-          the shared action area (notes + bookmarks). */}
-      <View className="flex-row items-center px-4 py-2">
+          the shared action area (notes + bookmarks). Padded below the status-bar
+          inset so it clears the notch (the backdrop paints under it). */}
+      <View className="flex-row items-center px-4 py-2" style={{ paddingTop: insets.top + 8 }}>
         {onClose ? (
           <AnimatedPressable
             onPress={onClose}
@@ -429,17 +433,15 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 <Icon name="prev" size={22} color={neutral} />
               </AnimatedPressable>
 
-              <AnimatedPressable
+              <SkipButton
+                direction="back"
+                seconds={skipBackward}
                 onPress={() => void skipSeconds(-skipBackward)}
-                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
-                hitSlop={8}
-                accessibilityRole="button"
+                color={neutral}
+                glyphSize={38}
+                className="h-12 w-12 items-center justify-center rounded-full"
                 accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
-              >
-                <Text variant="subtitle" style={TABULAR}>
-                  {skipBackLabel}
-                </Text>
-              </AnimatedPressable>
+              />
 
               <AnimatedPressable
                 onPress={() => (isError ? void retry() : void toggle())}
@@ -478,17 +480,15 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 )}
               </AnimatedPressable>
 
-              <AnimatedPressable
+              <SkipButton
+                direction="forward"
+                seconds={skipForward}
                 onPress={() => void skipSeconds(skipForward)}
-                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
-                hitSlop={8}
-                accessibilityRole="button"
+                color={neutral}
+                glyphSize={38}
+                className="h-12 w-12 items-center justify-center rounded-full"
                 accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
-              >
-                <Text variant="subtitle" style={TABULAR}>
-                  {skipForwardLabel}
-                </Text>
-              </AnimatedPressable>
+              />
 
               <AnimatedPressable
                 onPress={goNext}
@@ -504,8 +504,12 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
         </Animated.View>
       </View>
 
-      {/* Footer (auto height): the secondary action row. */}
-      <View className="flex-row items-center justify-between px-8 py-2">
+      {/* Footer (auto height): the secondary action row. Padded past the home
+          indicator so the controls clear it. */}
+      <View
+        className="flex-row items-center justify-between px-8 py-2"
+        style={{ paddingBottom: insets.bottom + 8 }}
+      >
         <SpeedButton onPress={() => setSheet('speed')} />
         <AnimatedPressable
           onPress={() => setSheet('history')}
