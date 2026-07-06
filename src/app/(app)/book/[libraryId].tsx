@@ -1,14 +1,6 @@
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import {
-  type ImageStyle,
-  Platform,
-  ScrollView,
-  type TextStyle,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { ScrollView, type TextStyle, useWindowDimensions, View } from 'react-native';
 
 import { useBook, useChapters, useLibraries } from '@/api/hooks';
 import { useApi, useScopedCid } from '@/api/provider';
@@ -21,6 +13,7 @@ import { BookVersions } from '@/components/library/book-versions';
 import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
+import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -43,38 +36,20 @@ import { colors } from '@/theme/tokens';
 // Chapter/file durations read as figures - lock them to tabular (monospaced) digits.
 const tabular: TextStyle = { fontVariant: ['tabular-nums'] };
 
-// react-native-web honours a CSS `filter`; RN's ImageStyle type doesn't model it,
-// so cast. Native ignores this branch (it uses expo-image `blurRadius` instead).
-const WEB_BLUR = { filter: 'blur(60px)' } as unknown as ImageStyle;
-
 // The cover art rounded corner + hairline border + soft shadow, applied wherever
 // the hero cover appears so dark covers separate from dark surfaces.
 const COVER_FRAME = 'overflow-hidden rounded-lg border border-black/10 dark:border-white/10';
 
 /**
- * Atmosphere band: an oversized, heavily blurred rendition of the cover sitting
- * behind the identity block, under a theme-toned scrim so text always passes
- * contrast. Native uses expo-image `blurRadius`; web uses a CSS `filter` (RN's
- * blurRadius is a no-op there). Renders nothing without a cover.
+ * Atmosphere band behind the book identity block: the art-directed `CoverBackdrop`
+ * - an oversized, blurred, desaturated glow of the cover that dissolves into the
+ * base background at its lower edge, so text sits on the plain page, not a slab.
+ * Shared with the player so both places read the same. Renders nothing without a
+ * cover.
  */
 function HeroBackdrop({ uri, headers }: { uri?: string; headers?: Record<string, string> }) {
   if (!uri) return null;
-  const web = Platform.OS === 'web';
-  return (
-    <View pointerEvents="none" className="absolute inset-0 overflow-hidden">
-      <Image
-        source={{ uri, headers }}
-        style={[
-          { position: 'absolute', top: '-20%', left: '-20%', width: '140%', height: '140%' },
-          web ? WEB_BLUR : null,
-        ]}
-        blurRadius={web ? 0 : 60}
-        contentFit="cover"
-        transition={200}
-      />
-      <View className="absolute inset-0 bg-gray-200/80 dark:bg-gray-900/80" />
-    </View>
-  );
+  return <CoverBackdrop source={{ uri, headers }} />;
 }
 
 /** Loading placeholder shaped like the final layout: a cover block, title lines,

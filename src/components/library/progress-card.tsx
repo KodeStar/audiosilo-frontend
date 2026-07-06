@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 
@@ -22,18 +21,31 @@ import { colors } from '@/theme/tokens';
 export const progressKey = (it: SourcedProgress) =>
   contentKey(it.connectionId, it.library_id, it.path);
 
-/** Overflow menu for an in-progress book: mark finished, or jump to the
- * containing folder ("more in series"). Presented as a bottom Sheet. */
-function ProgressMenu({ item }: { item: SourcedProgress }) {
+/**
+ * Overflow menu for an in-progress book: mark finished, or jump to the containing
+ * folder ("more in series"). Presented as a bottom Sheet.
+ *
+ * The Sheet is lifted OUT of the card and rendered here so it can be mounted at
+ * screen level (a Sheet/OverlayHost renders in place - it must never live inside a
+ * card/Pressable, or it would be clipped to the card). The owning screen keeps a
+ * `menuItem` state, the card's "..." button sets it via `ProgressCard`'s `onMenu`,
+ * and the screen renders one `ProgressMenuSheet` at its root. Visible while `item`
+ * is non-null; renders nothing when null.
+ */
+export function ProgressMenuSheet({
+  item,
+  onClose,
+}: {
+  item: SourcedProgress | null;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const markFinished = useMarkFinished(item.connectionId);
+  const markFinished = useMarkFinished(item?.connectionId);
   const { openLibrary } = useOpen();
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.text : colors.light.textMuted;
 
   const onMarkFinished = () => {
-    setOpen(false);
+    onClose();
+    if (!item) return;
     markFinished.mutate({
       libraryId: item.library_id,
       path: item.path,
@@ -43,37 +55,26 @@ function ProgressMenu({ item }: { item: SourcedProgress }) {
     });
   };
   const onMoreInSeries = () => {
-    setOpen(false);
+    onClose();
+    if (!item) return;
     void openLibrary(item.connectionId, item.library_id, parentPath(item.path));
   };
 
   return (
-    <>
-      <Pressable
-        onPress={() => setOpen(true)}
-        hitSlop={8}
-        className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
-        accessibilityRole="button"
-        accessibilityLabel={t('library.progressCard.moreActions')}
-      >
-        <Icon name="ellipsis" size={20} color={neutral} />
-      </Pressable>
-
-      <Sheet visible={open} onClose={() => setOpen(false)} title={pathLeaf(item.path)}>
-        <View className="gap-1 px-2 pb-4 pt-1">
-          <MenuRow
-            icon="check"
-            label={t('library.progressCard.markFinished')}
-            onPress={onMarkFinished}
-          />
-          <MenuRow
-            icon="library"
-            label={t('library.progressCard.moreInSeries')}
-            onPress={onMoreInSeries}
-          />
-        </View>
-      </Sheet>
-    </>
+    <Sheet visible={item != null} onClose={onClose} title={item ? pathLeaf(item.path) : ''}>
+      <View className="gap-1 px-2 pb-4 pt-1">
+        <MenuRow
+          icon="check"
+          label={t('library.progressCard.markFinished')}
+          onPress={onMarkFinished}
+        />
+        <MenuRow
+          icon="library"
+          label={t('library.progressCard.moreInSeries')}
+          onPress={onMoreInSeries}
+        />
+      </View>
+    </Sheet>
   );
 }
 
@@ -101,9 +102,24 @@ function MenuRow({
 }
 
 /** A poster card for an in-progress / finished book, with a live-updating progress
- * bar and "time left". Shared by the Home shelves and the /browse page. */
-export function ProgressCard({ item, width }: { item: SourcedProgress; width: number }) {
+ * bar and "time left". Shared by the Home shelves and the /browse page.
+ *
+ * The overflow ("...") button is presentational: it calls `onMenu(item)` so the
+ * OWNING SCREEN can present a `ProgressMenuSheet` at screen level (the Sheet must not
+ * live inside this card - it renders in place and would be clipped). When `onMenu` is
+ * omitted the button is hidden. */
+export function ProgressCard({
+  item,
+  width,
+  onMenu,
+}: {
+  item: SourcedProgress;
+  width: number;
+  onMenu?: (item: SourcedProgress) => void;
+}) {
   const { t } = useTranslation();
+  const { scheme } = useTheme();
+  const menuColor = scheme === 'dark' ? colors.dark.text : colors.light.textMuted;
   const api = useApi(item.connectionId);
   const { openBook, openPlayer } = useOpen();
   const { width: screenWidth } = useWindowDimensions();
@@ -175,7 +191,17 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
               >
                 <Icon name="play" size={15} color={colors.white} />
               </Pressable>
-              <ProgressMenu item={item} />
+              {onMenu ? (
+                <Pressable
+                  onPress={() => onMenu(item)}
+                  hitSlop={8}
+                  className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+                  accessibilityRole="button"
+                  accessibilityLabel={t('library.progressCard.moreActions')}
+                >
+                  <Icon name="ellipsis" size={20} color={menuColor} />
+                </Pressable>
+              ) : null}
             </View>
             {remaining > 0 ? (
               <Text variant="caption" style={{ fontVariant: ['tabular-nums'] }}>

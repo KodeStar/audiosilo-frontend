@@ -75,7 +75,7 @@ describe('Sheet', () => {
     expect(screen.queryByText('Sheet body')).toBeNull();
   });
 
-  it('presents inside an RN Modal by default and routes hardware-back via onRequestClose', async () => {
+  it('presents in hosted mode by default (no RN Modal) and routes Android hardware-back to onClose', async () => {
     const prevOS = Platform.OS;
     Platform.OS = 'android';
     const addSpy = jest.spyOn(BackHandler, 'addEventListener');
@@ -88,18 +88,16 @@ describe('Sheet', () => {
         </Sheet>,
       );
 
-      // Default (Modal) mode hosts the overlay in a visible transparent Modal (the
-      // Sheet's root node).
-      const modal = screen.root;
-      expect(modal?.type).toBe('Modal');
-      expect(modal?.props.transparent).toBe(true);
-      expect(modal?.props.visible).toBe(true);
+      // There is no RN Modal anymore: the overlay is handed to an OverlayHost, which
+      // renders it in place. Either way, no Modal host node.
+      expect(screen.root?.type).not.toBe('Modal');
       expect(screen.getByText('Sheet body')).toBeTruthy();
-      // ...and must NOT register the manual BackHandler (the Modal swallows the key
-      // and delivers it through onRequestClose instead, so we'd otherwise double-fire).
-      expect(addSpy).not.toHaveBeenCalled();
-      // Hardware-back is wired to our close handler via the Modal's onRequestClose.
-      expect(modal?.props.onRequestClose).toBe(onClose);
+      // Hosted mode: the OverlayHost owns Android hardware-back (the Sheet's own manual
+      // handler stays inline-only, so there's exactly one registration). Pressing it closes.
+      expect(addSpy).toHaveBeenCalledWith('hardwareBackPress', expect.any(Function));
+      const handler = addSpy.mock.calls[0][1] as () => boolean;
+      expect(handler()).toBe(true);
+      expect(onClose).toHaveBeenCalledTimes(1);
     } finally {
       addSpy.mockRestore();
       Platform.OS = prevOS;
@@ -166,5 +164,27 @@ describe('Sheet', () => {
       </Sheet>,
     );
     expect(screen.queryByText('Sheet body')).toBeNull();
+  });
+
+  it('mounts on open even when it started closed (open derives from the prop, not state)', async () => {
+    // Starting closed must not flash-mount (the wasVisible guard), and a later open
+    // must mount the content. The old render-phase mount machine could drop the
+    // open under React 19 concurrent replays; opening now depends only on `visible`.
+    const onClose = jest.fn();
+    const { rerender } = await mount(
+      <Sheet visible={false} onClose={onClose}>
+        <Text>Sheet body</Text>
+      </Sheet>,
+    );
+    expect(screen.queryByText('Sheet body')).toBeNull();
+
+    await act(async () => {
+      rerender(
+        <Sheet visible onClose={onClose}>
+          <Text>Sheet body</Text>
+        </Sheet>,
+      );
+    });
+    expect(screen.getByText('Sheet body')).toBeTruthy();
   });
 });

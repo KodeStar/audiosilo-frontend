@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, Text as RNText, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -17,13 +17,22 @@ import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { WIDE_BREAKPOINT } from '@/lib/layout';
-import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
+import { prettifyChapterTitle } from '@/playback/prettify-title';
+import {
+  selectBookPosition,
+  selectCurrentChapter,
+  selectIsPlaying,
+  usePlayer,
+} from '@/playback/store';
+import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 const NATIVE_BLUR = Platform.OS !== 'web';
 
-/** Approximate rendered height of the docked bar (cover 40 + py-2 + borders). */
+/** Height of the flush cover square, which is also the bar's content-row height. */
+const COVER_SIZE = 56;
+/** Approximate rendered height of the docked bar (cover 56 + 2px hairline + 1px borders). */
 const MINI_PLAYER_HEIGHT = 60;
 /** Gap kept between the floating bar and the nav below it. */
 const MINI_PLAYER_GAP = 8;
@@ -53,7 +62,10 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
   const bookPosition = usePlayer(selectBookPosition);
+  const currentChapter = usePlayer(selectCurrentChapter);
   const toggle = usePlayer((s) => s.toggle);
+  const skipSeconds = usePlayer((s) => s.skipSeconds);
+  const skipForward = useSettings((s) => s.skipForward);
   // The cover URL embeds the playing book's own server auth (`?token=`); its request
   // headers must match that connection too, not whatever happens to be default - the
   // mini-player can outlive a switch away from the connection the book plays through.
@@ -94,6 +106,17 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   const total = nowPlaying.queue.total;
   const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
 
+  // Muted caption line: the current chapter (prettified, like the full player) when the
+  // book carries chapters, else the author. Display-only - reads from the store.
+  const chapterLabel = currentChapter
+    ? prettifyChapterTitle(
+        currentChapter.title ||
+          t('player.chapters.chapterNumber', { number: currentChapter.index + 1 }),
+      )
+    : '';
+  const caption = chapterLabel || nowPlaying.author;
+  const skipForwardLabel = `${skipForward}s`;
+
   return (
     <Animated.View
       style={[
@@ -119,34 +142,50 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
         <View className="h-0.5 bg-gray-300 dark:bg-gray-750">
           <View className="h-full bg-primary" style={{ width: `${fraction * 100}%` }} />
         </View>
-        <View className={`flex-row items-center gap-3 px-3 py-2 backdrop-blur-sm ${fill}`}>
-          <View className="h-10 w-10">
-            <Cover
-              source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
-              label={nowPlaying.title}
-              rounded="rounded-md"
-              size={40}
-            />
-          </View>
-          <View className="flex-1">
-            <Text variant="subtitle" numberOfLines={1}>
-              {nowPlaying.title}
-            </Text>
-            {nowPlaying.author ? (
-              <Text variant="caption" numberOfLines={1}>
-                {nowPlaying.author}
+        {/* Cover sits flush against the bar's left edge, full content-row height - the
+            artwork anchors the bar. The container's overflow-hidden rounds the outer
+            corners, so the cover itself is square (rounded-none). */}
+        <View className={`flex-row items-stretch backdrop-blur-sm ${fill}`}>
+          <Cover
+            source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
+            label={nowPlaying.title}
+            rounded="rounded-none"
+            size={COVER_SIZE}
+          />
+          <View className="flex-1 flex-row items-center gap-2 px-3">
+            <View className="flex-1">
+              <Text variant="subtitle" numberOfLines={1}>
+                {nowPlaying.title}
               </Text>
-            ) : null}
+              {caption ? (
+                <Text variant="caption" numberOfLines={1}>
+                  {caption}
+                </Text>
+              ) : null}
+            </View>
+            <AnimatedPressable
+              onPress={() => void skipSeconds(skipForward)}
+              hitSlop={8}
+              className="h-10 w-10 items-center justify-center"
+              accessibilityRole="button"
+              accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
+            >
+              <RNText className="font-roboto-semibold text-[13px] text-primary">
+                {skipForwardLabel}
+              </RNText>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={() => void toggle()}
+              hitSlop={8}
+              className="h-10 w-10 items-center justify-center"
+              accessibilityRole="button"
+              accessibilityLabel={
+                isPlaying ? t('player.controls.pause') : t('player.controls.play')
+              }
+            >
+              <Icon name={isPlaying ? 'pause' : 'play'} size={22} color={colors.primary} />
+            </AnimatedPressable>
           </View>
-          <AnimatedPressable
-            onPress={() => void toggle()}
-            hitSlop={12}
-            className="h-10 w-10 items-center justify-center"
-            accessibilityRole="button"
-            accessibilityLabel={isPlaying ? t('player.controls.pause') : t('player.controls.play')}
-          >
-            <Icon name={isPlaying ? 'pause' : 'play'} size={22} color={colors.primary} />
-          </AnimatedPressable>
         </View>
       </AnimatedPressable>
     </Animated.View>

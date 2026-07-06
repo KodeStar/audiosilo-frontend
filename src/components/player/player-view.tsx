@@ -1,6 +1,14 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, Text as RNText, useWindowDimensions, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { useAddBookmark } from '@/api/hooks';
@@ -39,6 +47,48 @@ import { colors } from '@/theme/tokens';
 const TABULAR = { fontVariant: ['tabular-nums' as const] };
 
 type PlayerSheet = 'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | null;
+
+/** Duration of the play/pause icon morph. */
+const MORPH_MS = 140;
+
+/**
+ * The play/pause glyph inside the big pink button, crossfading + scaling (0.8->1)
+ * between the two icons when playback flips - a small tactile "morph" rather than a
+ * hard swap. Both glyphs are stacked and their opacity/scale driven by one shared
+ * value (0 = play, 1 = pause). Reduced-motion collapses to an instant swap. The
+ * button's loading state renders a Spinner instead of this, so that path is
+ * untouched.
+ */
+function PlayPauseIcon({ playing }: { playing: boolean }) {
+  const reduced = useReducedMotion();
+  const p = useSharedValue(playing ? 1 : 0);
+  useEffect(() => {
+    const to = playing ? 1 : 0;
+    p.value = reduced
+      ? to
+      : withTiming(to, { duration: MORPH_MS, easing: Easing.out(Easing.ease) });
+  }, [playing, reduced, p]);
+
+  const playStyle = useAnimatedStyle(() => ({
+    opacity: 1 - p.value,
+    transform: [{ scale: 0.8 + 0.2 * (1 - p.value) }],
+  }));
+  const pauseStyle = useAnimatedStyle(() => ({
+    opacity: p.value,
+    transform: [{ scale: 0.8 + 0.2 * p.value }],
+  }));
+
+  return (
+    <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[{ position: 'absolute' }, playStyle]}>
+        <Icon name="play" size={28} color={colors.white} />
+      </Animated.View>
+      <Animated.View style={[{ position: 'absolute' }, pauseStyle]}>
+        <Icon name="pause" size={28} color={colors.white} />
+      </Animated.View>
+    </View>
+  );
+}
 
 /**
  * The full transport for the currently-playing book, driven by the player store.
@@ -112,6 +162,44 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
         },
       },
     );
+
+  // Entrance: once the view mounts with a loaded book, the cover scales up + fades
+  // in, and the title / transport rise + fade with a slight stagger. Fires a single
+  // time (guarded by `entered`), not on every track change - the view stays mounted
+  // as tracks change. Reduced-motion snaps straight to the resting state.
+  const reduced = useReducedMotion();
+  const entered = useRef(false);
+  const hasBook = !!nowPlaying;
+  const coverV = useSharedValue(reduced ? 1 : 0);
+  const titleV = useSharedValue(reduced ? 1 : 0);
+  const transportV = useSharedValue(reduced ? 1 : 0);
+  useEffect(() => {
+    if (!hasBook || entered.current) return;
+    entered.current = true;
+    if (reduced) {
+      coverV.value = 1;
+      titleV.value = 1;
+      transportV.value = 1;
+      return;
+    }
+    const cfg = { duration: 280, easing: Easing.out(Easing.cubic) };
+    coverV.value = withTiming(1, cfg);
+    titleV.value = withDelay(60, withTiming(1, cfg));
+    transportV.value = withDelay(120, withTiming(1, cfg));
+  }, [hasBook, reduced, coverV, titleV, transportV]);
+
+  const coverStyle = useAnimatedStyle(() => ({
+    opacity: coverV.value,
+    transform: [{ scale: 0.94 + 0.06 * coverV.value }],
+  }));
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: titleV.value,
+    transform: [{ translateY: (1 - titleV.value) * 12 }],
+  }));
+  const transportStyle = useAnimatedStyle(() => ({
+    opacity: transportV.value,
+    transform: [{ translateY: (1 - transportV.value) * 12 }],
+  }));
 
   if (!nowPlaying) return <Spinner center />;
 
@@ -246,168 +334,174 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
           title stack, then the transport. justify-center keeps the group tight and
           absorbs leftover height symmetrically (web window vs tall phone). */}
       <View className="flex-1 items-center justify-center gap-6 px-6">
-        <View className="w-full max-w-[320px]">
-          <View className="aspect-square overflow-hidden rounded-lg border border-black/10 shadow-lg dark:border-white/10">
-            <Cover source={coverSource} label={title} rounded="rounded-lg" />
-          </View>
-          {sleepActive && sleepRemaining !== null ? (
-            <View className="absolute right-2 top-2 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
-              <Icon name="sleep" size={12} color={colors.white} />
-              {/* Raw RN Text + explicit classes: the themed <Text> variant injects
-                  its own text color, which NativeWind won't reliably override with an
-                  appended one - so a specific color must not go through <Text>. */}
-              <RNText className="font-sans text-xs text-white dark:text-white" style={TABULAR}>
-                {formatClock(sleepRemaining)}
-              </RNText>
+        <Animated.View style={[{ width: '100%', alignItems: 'center' }, coverStyle]}>
+          <View className="w-full max-w-[320px]">
+            <View className="aspect-square overflow-hidden rounded-lg border border-black/10 shadow-lg dark:border-white/10">
+              <Cover source={coverSource} label={title} rounded="rounded-lg" />
             </View>
-          ) : null}
-        </View>
+            {sleepActive && sleepRemaining !== null ? (
+              <View className="absolute right-2 top-2 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
+                <Icon name="sleep" size={12} color={colors.white} />
+                {/* Raw RN Text + explicit classes: the themed <Text> variant injects
+                    its own text color, which NativeWind won't reliably override with an
+                    appended one - so a specific color must not go through <Text>. */}
+                <RNText className="font-sans text-xs text-white dark:text-white" style={TABULAR}>
+                  {formatClock(sleepRemaining)}
+                </RNText>
+              </View>
+            ) : null}
+          </View>
+        </Animated.View>
 
         {/* Title hierarchy: prettified chapter/track title (primary), then
             book title · author (muted secondary). */}
-        <View className="w-full max-w-[420px] items-center gap-1">
-          {hasChapterList ? (
-            <AnimatedPressable
-              onPress={() => setSheet('chapters')}
-              className="flex-row items-center justify-center gap-2 px-2"
-              accessibilityRole="button"
-              accessibilityLabel={t('player.controls.showChapters')}
-            >
+        <Animated.View style={[{ width: '100%', alignItems: 'center' }, titleStyle]}>
+          <View className="w-full max-w-[420px] items-center gap-1">
+            {hasChapterList ? (
+              <AnimatedPressable
+                onPress={() => setSheet('chapters')}
+                className="flex-row items-center justify-center gap-2 px-2"
+                accessibilityRole="button"
+                accessibilityLabel={t('player.controls.showChapters')}
+              >
+                <Text variant="heading" className="text-center" numberOfLines={2}>
+                  {segTitle}
+                </Text>
+                <Icon name="list" size={14} color={neutral} />
+              </AnimatedPressable>
+            ) : (
               <Text variant="heading" className="text-center" numberOfLines={2}>
                 {segTitle}
               </Text>
-              <Icon name="list" size={14} color={neutral} />
-            </AnimatedPressable>
-          ) : (
-            <Text variant="heading" className="text-center" numberOfLines={2}>
-              {segTitle}
-            </Text>
-          )}
-          <Text variant="muted" className="text-center" numberOfLines={1}>
-            {secondaryLine}
-          </Text>
-        </View>
-
-        {/* Transport */}
-        <View className="w-full max-w-[420px] gap-1">
-          <SeekBar
-            position={segElapsed}
-            duration={segLength}
-            onSeek={onSeek}
-            onScrub={setScrubPreview}
-          />
-          <View className="flex-row items-center justify-between">
-            <Text variant="caption" style={TABULAR}>
-              {formatClock(segElapsed)}
-            </Text>
-            <Text variant="caption" className="flex-1 text-center" style={TABULAR}>
-              {centerLabel}
-            </Text>
-            <Text variant="caption" style={TABULAR}>
-              -{formatClock(segRemaining)}
+            )}
+            <Text variant="muted" className="text-center" numberOfLines={1}>
+              {secondaryLine}
             </Text>
           </View>
+        </Animated.View>
 
-          {isError ? (
-            <View className="mt-3 flex-row items-center justify-center gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
-              <RNText className="font-sans text-xs text-danger-600 dark:text-danger">
-                {t('ui.error')}
-              </RNText>
-              <AnimatedPressable
-                onPress={() => void retry()}
-                className="rounded-lg bg-primary px-4 py-1.5"
-                accessibilityRole="button"
-              >
-                <RNText className="font-roboto-medium text-base text-white dark:text-white">
-                  {t('common.retry')}
-                </RNText>
-              </AnimatedPressable>
-            </View>
-          ) : null}
-
-          <View className="flex-row items-center justify-between py-6">
-            <AnimatedPressable
-              onPress={goPrev}
-              hitSlop={8}
-              className="h-11 w-11 items-center justify-center rounded-full"
-              accessibilityRole="button"
-              accessibilityLabel={t('player.controls.previous')}
-            >
-              <Icon name="prev" size={22} color={neutral} />
-            </AnimatedPressable>
-
-            <AnimatedPressable
-              onPress={() => void skipSeconds(-skipBackward)}
-              className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
-            >
-              <Text variant="subtitle" style={TABULAR}>
-                {skipBackLabel}
+        {/* Transport */}
+        <Animated.View style={[{ width: '100%', alignItems: 'center' }, transportStyle]}>
+          <View className="w-full max-w-[420px] gap-1">
+            <SeekBar
+              position={segElapsed}
+              duration={segLength}
+              onSeek={onSeek}
+              onScrub={setScrubPreview}
+            />
+            <View className="flex-row items-center justify-between">
+              <Text variant="caption" style={TABULAR}>
+                {formatClock(segElapsed)}
               </Text>
-            </AnimatedPressable>
+              <Text variant="caption" className="flex-1 text-center" style={TABULAR}>
+                {centerLabel}
+              </Text>
+              <Text variant="caption" style={TABULAR}>
+                -{formatClock(segRemaining)}
+              </Text>
+            </View>
 
-            <AnimatedPressable
-              onPress={() => (isError ? void retry() : void toggle())}
-              className="h-[112px] w-[112px] items-center justify-center rounded-full bg-primary"
-              accessibilityRole="button"
-              accessibilityLabel={
-                isPlaying ? t('player.controls.pause') : t('player.controls.play')
-              }
-            >
-              {/* Diagonal bevel highlight. Drawn as an SVG ring with a 135°
+            {isError ? (
+              <View className="mt-3 flex-row items-center justify-center gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+                <RNText className="font-sans text-xs text-danger-600 dark:text-danger">
+                  {t('ui.error')}
+                </RNText>
+                <AnimatedPressable
+                  onPress={() => void retry()}
+                  className="rounded-lg bg-primary px-4 py-1.5"
+                  accessibilityRole="button"
+                >
+                  <RNText className="font-roboto-medium text-base text-white dark:text-white">
+                    {t('common.retry')}
+                  </RNText>
+                </AnimatedPressable>
+              </View>
+            ) : null}
+
+            <View className="flex-row items-center justify-between py-6">
+              <AnimatedPressable
+                onPress={goPrev}
+                hitSlop={8}
+                className="h-11 w-11 items-center justify-center rounded-full"
+                accessibilityRole="button"
+                accessibilityLabel={t('player.controls.previous')}
+              >
+                <Icon name="prev" size={22} color={neutral} />
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                onPress={() => void skipSeconds(-skipBackward)}
+                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
+              >
+                <Text variant="subtitle" style={TABULAR}>
+                  {skipBackLabel}
+                </Text>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                onPress={() => (isError ? void retry() : void toggle())}
+                className="h-[112px] w-[112px] items-center justify-center rounded-full bg-primary"
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isPlaying ? t('player.controls.pause') : t('player.controls.play')
+                }
+              >
+                {/* Diagonal bevel highlight. Drawn as an SVG ring with a 135°
                   white->transparent->white gradient stroke rather than per-side
                   borders + rotation: iOS clips a non-uniform border on a fully
                   rounded view, so the bevel rendered cropped there while web was
                   fine. An SVG stroke renders identically on web/iOS/Android. */}
-              <Svg width={112} height={112} pointerEvents="none" style={{ position: 'absolute' }}>
-                <Defs>
-                  <LinearGradient id="playBevel" x1="0" y1="0" x2="1" y2="1">
-                    <Stop offset="0" stopColor={colors.white} stopOpacity={0.4} />
-                    <Stop offset="0.5" stopColor={colors.white} stopOpacity={0} />
-                    <Stop offset="1" stopColor={colors.white} stopOpacity={0.4} />
-                  </LinearGradient>
-                </Defs>
-                <Circle
-                  cx={56}
-                  cy={56}
-                  r={55}
-                  fill="none"
-                  stroke="url(#playBevel)"
-                  strokeWidth={2}
-                />
-              </Svg>
-              {isLoading ? (
-                <Spinner size="large" color={colors.white} />
-              ) : (
-                <Icon name={isPlaying ? 'pause' : 'play'} size={28} color={colors.white} />
-              )}
-            </AnimatedPressable>
+                <Svg width={112} height={112} pointerEvents="none" style={{ position: 'absolute' }}>
+                  <Defs>
+                    <LinearGradient id="playBevel" x1="0" y1="0" x2="1" y2="1">
+                      <Stop offset="0" stopColor={colors.white} stopOpacity={0.4} />
+                      <Stop offset="0.5" stopColor={colors.white} stopOpacity={0} />
+                      <Stop offset="1" stopColor={colors.white} stopOpacity={0.4} />
+                    </LinearGradient>
+                  </Defs>
+                  <Circle
+                    cx={56}
+                    cy={56}
+                    r={55}
+                    fill="none"
+                    stroke="url(#playBevel)"
+                    strokeWidth={2}
+                  />
+                </Svg>
+                {isLoading ? (
+                  <Spinner size="large" color={colors.white} />
+                ) : (
+                  <PlayPauseIcon playing={isPlaying} />
+                )}
+              </AnimatedPressable>
 
-            <AnimatedPressable
-              onPress={() => void skipSeconds(skipForward)}
-              className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
-            >
-              <Text variant="subtitle" style={TABULAR}>
-                {skipForwardLabel}
-              </Text>
-            </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => void skipSeconds(skipForward)}
+                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
+              >
+                <Text variant="subtitle" style={TABULAR}>
+                  {skipForwardLabel}
+                </Text>
+              </AnimatedPressable>
 
-            <AnimatedPressable
-              onPress={goNext}
-              hitSlop={8}
-              className="h-11 w-11 items-center justify-center rounded-full"
-              accessibilityRole="button"
-              accessibilityLabel={t('player.controls.next')}
-            >
-              <Icon name="next" size={22} color={neutral} />
-            </AnimatedPressable>
+              <AnimatedPressable
+                onPress={goNext}
+                hitSlop={8}
+                className="h-11 w-11 items-center justify-center rounded-full"
+                accessibilityRole="button"
+                accessibilityLabel={t('player.controls.next')}
+              >
+                <Icon name="next" size={22} color={neutral} />
+              </AnimatedPressable>
+            </View>
           </View>
-        </View>
+        </Animated.View>
       </View>
 
       {/* Footer (auto height): the secondary action row. */}

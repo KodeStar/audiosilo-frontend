@@ -1,11 +1,10 @@
 import { Link, usePathname, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Text as RNText, View } from 'react-native';
 
 import { Brand } from '@/components/brand/brand';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
 import { isActiveNav } from '@/lib/nav';
 import { useTheme } from '@/theme/theme-provider';
@@ -63,23 +62,30 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
           return (
             <Link key={item.match} href={item.href} asChild>
               <AnimatedPressable
-                className="flex-1 items-center justify-center gap-1 py-2.5"
+                className="relative flex-1 items-center justify-center gap-1 py-2.5"
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={label}
               >
+                {/* Primary indicator bar centered above the icon on the active tab.
+                    Absolutely positioned so it never changes the measured nav height. */}
+                {active ? (
+                  <View className="absolute inset-x-0 top-1 items-center">
+                    <View className="h-1 w-4 rounded-full bg-primary" />
+                  </View>
+                ) : null}
                 <Icon
                   name={item.icon}
                   size={24}
                   color={active ? colors.primary : colors[scheme].textMuted}
                 />
-                <Text
+                <RNText
                   className={`text-[11px] ${
                     active ? 'font-roboto-medium text-primary' : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   {label}
-                </Text>
+                </RNText>
               </AnimatedPressable>
             </Link>
           );
@@ -105,22 +111,30 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={label}
-                className={`flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
-                  active ? 'bg-primary/10' : 'hover:bg-gray-100 dark:hover:bg-gray-840'
+                className={`relative flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
+                  active
+                    ? 'bg-white shadow-sm dark:bg-gray-750 dark:shadow-none'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-840'
                 }`}
               >
+                {/* 3px rounded primary accent hugging the pill's left inside edge. */}
+                {active ? (
+                  <View className="absolute bottom-2 left-1 top-2 w-[3px] rounded-full bg-primary" />
+                ) : null}
                 <Icon
                   name={item.icon}
                   size={22}
                   color={active ? colors.primary : colors[scheme].textMuted}
                 />
-                <Text
+                <RNText
                   className={`text-base ${
-                    active ? 'font-roboto-medium text-primary' : 'text-gray-600 dark:text-gray-300'
+                    active
+                      ? 'font-roboto-semibold text-primary'
+                      : 'font-roboto-regular text-gray-600 dark:text-gray-300'
                   }`}
                 >
                   {label}
-                </Text>
+                </RNText>
               </AnimatedPressable>
             </Link>
           );

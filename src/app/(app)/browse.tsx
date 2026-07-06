@@ -3,14 +3,19 @@ import { type ReactElement, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, useWindowDimensions, View } from 'react-native';
 
-import { useAllProgressAll, useRecentAll, type MergedBook } from '@/api/hooks';
+import {
+  useAllProgressAll,
+  useRecentAll,
+  type MergedBook,
+  type SourcedProgress,
+} from '@/api/hooks';
 import {
   GRID_GAP,
   GridCard,
   GridCardSkeleton,
   gridColumns,
 } from '@/components/library/poster-grid';
-import { ProgressCard, progressKey } from '@/components/library/progress-card';
+import { ProgressCard, ProgressMenuSheet, progressKey } from '@/components/library/progress-card';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorNote } from '@/components/ui/query-state';
@@ -47,6 +52,10 @@ export default function BrowseScreen() {
 
   // Measure the list area so columns track the available width (sidebar on desktop).
   const [gridWidth, setGridWidth] = useState(0);
+
+  // The progress card's overflow menu is presented at screen level (a Sheet must not
+  // live inside a card - it renders in place and would be clipped).
+  const [menuItem, setMenuItem] = useState<SourcedProgress | null>(null);
   const pad = wide ? 32 : 16;
   const inner = Math.max(0, gridWidth - pad * 2);
   const columns = gridColumns(inner);
@@ -144,7 +153,7 @@ export default function BrowseScreen() {
             columnWrapperStyle={columns > 1 ? { gap: GRID_GAP } : undefined}
             renderItem={({ item }) => (
               <View style={{ width: cardWidth }}>
-                <ProgressCard item={item} width={cardWidth} />
+                <ProgressCard item={item} width={cardWidth} onMenu={setMenuItem} />
               </View>
             )}
             contentContainerClassName="p-4 lg:px-8"
@@ -153,6 +162,7 @@ export default function BrowseScreen() {
           />
         )}
       </View>
+      <ProgressMenuSheet item={menuItem} onClose={() => setMenuItem(null)} />
     </View>
   );
 }

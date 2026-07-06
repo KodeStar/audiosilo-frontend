@@ -18,7 +18,7 @@ import {
   GridCardSkeleton,
   gridColumns,
 } from '@/components/library/poster-grid';
-import { ProgressCard, progressKey } from '@/components/library/progress-card';
+import { ProgressCard, ProgressMenuSheet, progressKey } from '@/components/library/progress-card';
 import { HorizontalShelf, SHELF_CARD_WIDTH } from '@/components/library/shelf';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -51,6 +51,11 @@ export default function HomeScreen() {
   const columns = gridColumns(gridWidth);
   const cardWidth =
     gridWidth > 0 ? Math.floor((gridWidth - GRID_GAP * (columns - 1)) / columns) : 0;
+
+  // The in-progress card's overflow menu is lifted to screen level (a Sheet must not
+  // live inside a card - it renders in place and would be clipped). The card's "..."
+  // sets the target item; one ProgressMenuSheet at the screen root presents it.
+  const [menuItem, setMenuItem] = useState<SourcedProgress | null>(null);
 
   // Favourites keep an inline "See all" expand on desktop (collapsed to one row).
   const [favouritesExpanded, setFavouritesExpanded] = useState(false);
@@ -119,7 +124,9 @@ export default function HomeScreen() {
       </View>
     );
 
-  const progressCard = (it: SourcedProgress, w: number) => <ProgressCard item={it} width={w} />;
+  const progressCard = (it: SourcedProgress, w: number) => (
+    <ProgressCard item={it} width={w} onMenu={setMenuItem} />
+  );
   const recentCard = (b: MergedBook, w: number) => {
     const added = formatRelative(b.added_at);
     return (
@@ -148,79 +155,85 @@ export default function HomeScreen() {
   );
 
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerClassName="p-4 lg:px-8"
-      contentContainerStyle={{ paddingBottom }}
-    >
-      <View className="gap-6" onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
-        <View className="gap-3">
-          <SectionHeader title={t('home.continueListening')} />
-          {isLoading && inProgress.length === 0 ? shelfSkeleton(true) : null}
-          {/* Only surface the error when it actually left us with nothing to show.
+    <View className="flex-1">
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="p-4 lg:px-8"
+        contentContainerStyle={{ paddingBottom }}
+      >
+        <View className="gap-6" onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
+          <View className="gap-3">
+            <SectionHeader title={t('home.continueListening')} />
+            {isLoading && inProgress.length === 0 ? shelfSkeleton(true) : null}
+            {/* Only surface the error when it actually left us with nothing to show.
               The aggregate hook flags an error if *any* connection (or a background
               refetch) failed, even while cached books are still on screen. */}
-          {error && inProgress.length === 0 ? (
-            <ErrorNote message={t('home.progressError')} />
-          ) : null}
-          {!isLoading && !error && inProgress.length === 0 ? (
-            <EmptyState
-              icon="book"
-              title={t('home.continueEmptyTitle')}
-              hint={t('home.continueEmpty')}
-            />
-          ) : null}
-          {inProgress.length > 0 ? shelfBody(inProgress, progressKey, progressCard) : null}
-        </View>
-
-        {favouriteBooks.length > 0 ? (
-          <View className="gap-3">
-            <SectionHeader
-              title={t('home.favourites')}
-              action={
-                wide && favouritesHasMore
-                  ? {
-                      label: favouritesExpanded ? t('home.collapse') : t('home.seeAll'),
-                      onPress: () => setFavouritesExpanded((v) => !v),
-                    }
-                  : undefined
-              }
-            />
-            {shelfBody(wide ? visibleFavourites : favouriteBooks, favKey, favouriteCard)}
-          </View>
-        ) : null}
-
-        {recentLoading || recentError || recent.length > 0 ? (
-          <View className="gap-3">
-            <SectionHeader
-              title={t('home.recentlyAdded')}
-              action={
-                recent.length > 0
-                  ? { label: t('home.viewMore'), onPress: () => router.push('/browse?type=recent') }
-                  : undefined
-              }
-            />
-            {recentLoading && recent.length === 0 ? shelfSkeleton() : null}
-            {recentError && recent.length === 0 ? (
-              <ErrorNote message={t('home.recentError')} />
+            {error && inProgress.length === 0 ? (
+              <ErrorNote message={t('home.progressError')} />
             ) : null}
-            {recent.length > 0 ? shelfBody(recentItems, bookKey, recentCard) : null}
+            {!isLoading && !error && inProgress.length === 0 ? (
+              <EmptyState
+                icon="book"
+                title={t('home.continueEmptyTitle')}
+                hint={t('home.continueEmpty')}
+              />
+            ) : null}
+            {inProgress.length > 0 ? shelfBody(inProgress, progressKey, progressCard) : null}
           </View>
-        ) : null}
 
-        {finished.length > 0 ? (
-          <View className="gap-3">
-            <SectionHeader
-              title={t('home.recentlyFinished')}
-              action={{
-                label: t('home.viewMore'),
-                onPress: () => router.push('/browse?type=finished'),
-              }}
-            />
-            {shelfBody(finishedItems, progressKey, progressCard)}
-          </View>
-        ) : null}
-      </View>
-    </ScrollView>
+          {favouriteBooks.length > 0 ? (
+            <View className="gap-3">
+              <SectionHeader
+                title={t('home.favourites')}
+                action={
+                  wide && favouritesHasMore
+                    ? {
+                        label: favouritesExpanded ? t('home.collapse') : t('home.seeAll'),
+                        onPress: () => setFavouritesExpanded((v) => !v),
+                      }
+                    : undefined
+                }
+              />
+              {shelfBody(wide ? visibleFavourites : favouriteBooks, favKey, favouriteCard)}
+            </View>
+          ) : null}
+
+          {recentLoading || recentError || recent.length > 0 ? (
+            <View className="gap-3">
+              <SectionHeader
+                title={t('home.recentlyAdded')}
+                action={
+                  recent.length > 0
+                    ? {
+                        label: t('home.viewMore'),
+                        onPress: () => router.push('/browse?type=recent'),
+                      }
+                    : undefined
+                }
+              />
+              {recentLoading && recent.length === 0 ? shelfSkeleton() : null}
+              {recentError && recent.length === 0 ? (
+                <ErrorNote message={t('home.recentError')} />
+              ) : null}
+              {recent.length > 0 ? shelfBody(recentItems, bookKey, recentCard) : null}
+            </View>
+          ) : null}
+
+          {finished.length > 0 ? (
+            <View className="gap-3">
+              <SectionHeader
+                title={t('home.recentlyFinished')}
+                action={{
+                  label: t('home.viewMore'),
+                  onPress: () => router.push('/browse?type=finished'),
+                }}
+              />
+              {shelfBody(finishedItems, progressKey, progressCard)}
+            </View>
+          ) : null}
+        </View>
+      </ScrollView>
+      <ProgressMenuSheet item={menuItem} onClose={() => setMenuItem(null)} />
+    </View>
   );
 }
