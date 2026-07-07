@@ -346,6 +346,14 @@
     },
     "seek": {
       "label": "Posição de reprodução"
+    },
+    "finished": {
+      "heading": "Livro concluído",
+      "upNext": "A seguir",
+      "playNext": "Reproduzir seguinte",
+      "startingIn": "Começa em {{time}}",
+      "endOfSeries": "Chegou ao fim desta pasta.",
+      "viewDetails": "Ver detalhes do livro"
     }
   },
   "nav": {

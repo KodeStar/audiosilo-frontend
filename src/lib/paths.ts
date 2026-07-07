@@ -72,3 +72,25 @@ export function playerHref(connectionId: string, libraryId: number, relPath: str
     params: { connection: connectionId, libraryId: String(libraryId), path: relPath },
   };
 }
+
+/** The end-credits (book-finished) modal for a book. A root modal like the player, so it
+ * carries the connection under the SAME `connection` param name the content routes use.
+ * `auto` marks an arrival from the book's natural end (already over) vs an early open, so
+ * the screen picks the grace-countdown vs remaining-time regime; encoded as '1'/'0'
+ * because route params are strings. */
+export function finishedHref(
+  connectionId: string,
+  libraryId: number,
+  relPath: string,
+  auto = false,
+): Href {
+  return {
+    pathname: '/finished',
+    params: {
+      connection: connectionId,
+      libraryId: String(libraryId),
+      path: relPath,
+      auto: auto ? '1' : '0',
+    },
+  };
+}

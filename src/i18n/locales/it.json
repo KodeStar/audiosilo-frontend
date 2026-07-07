@@ -346,6 +346,14 @@
     },
     "seek": {
       "label": "Posizione di riproduzione"
+    },
+    "finished": {
+      "heading": "Libro terminato",
+      "upNext": "Prossimo",
+      "playNext": "Riproduci successivo",
+      "startingIn": "Inizia tra {{time}}",
+      "endOfSeries": "Hai raggiunto la fine di questa cartella.",
+      "viewDetails": "Vedi dettagli del libro"
     }
   },
   "nav": {

@@ -346,6 +346,14 @@
     },
     "seek": {
       "label": "Playback position"
+    },
+    "finished": {
+      "heading": "Book finished",
+      "upNext": "Up next",
+      "playNext": "Play next",
+      "startingIn": "Starting in {{time}}",
+      "endOfSeries": "You have reached the end of this folder.",
+      "viewDetails": "View book details"
     }
   },
   "nav": {
