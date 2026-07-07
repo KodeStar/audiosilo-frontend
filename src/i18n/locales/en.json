@@ -37,7 +37,7 @@
       },
       "autoDownload": {
         "label": "Automatically download books",
-        "description": "Prefetch the next book so it is ready to listen offline.",
+        "description": "Download the book you start listening to so it is ready to hear offline.",
         "never": "Never",
         "wifi": "Wi-Fi only",
         "always": "Always"

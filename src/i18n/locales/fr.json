@@ -37,7 +37,7 @@
       },
       "autoDownload": {
         "label": "Télécharger les livres automatiquement",
-        "description": "Précharge le livre suivant pour l'écouter hors ligne.",
+        "description": "Télécharge le livre que vous commencez à écouter pour l'entendre hors ligne.",
         "never": "Jamais",
         "wifi": "Wi-Fi uniquement",
         "always": "Toujours"

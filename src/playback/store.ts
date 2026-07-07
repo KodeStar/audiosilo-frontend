@@ -8,6 +8,7 @@ import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
+import { canAutoDownload } from '@/lib/network';
 import { useSettings } from '@/stores/settings';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
@@ -18,7 +19,6 @@ import {
   loadInitialProgress,
   saveProgress,
 } from './progress-sync';
-import { maybeAutoDownloadNext } from './next-book';
 import { createPlaybackService } from './service';
 import { INITIAL_SNAPSHOT, type PlaybackService, type PlaybackSnapshot } from './types';
 
@@ -212,33 +212,40 @@ function invalidateProgressLists() {
   void queryClient.invalidateQueries({ queryKey: qk.allProgress(cid) });
 }
 
-/** The book key the next-book prefetch has already fired for, so the 90% latch triggers
- * at most once per loaded book. Reset in `playBook`. */
-let prefetchedFor: string | null = null;
-const PREFETCH_AT_FRACTION = 0.9; // near the end of the current book, prefetch the next
-
-/** Once the current book passes 90%, prefetch the next book in its series (once). Driven
- * off the periodic save loop, so it only runs while actually playing and reuses the
- * whole-book position already computed on that cadence. Best-effort - never touches
+/** Download the book the user just started listening to, if they've opted in. Because the
+ * player hot-swaps to the local copy the moment a download finishes
+ * (`switchCurrentBookToLocal`), downloading on start covers a whole series - the next book
+ * downloads as soon as "Play next" starts it. Honours the `autoDownloadNext` preference
+ * and the network policy (`canAutoDownload`), and skips a book already downloaded or
+ * queued/downloading (only an errored entry may be retried, matching the downloads store's
+ * own guard). Best-effort and fully guarded: any failure is swallowed and it never touches
  * playback. */
-function maybePrefetchNext() {
-  const { nowPlaying, snapshot } = usePlayer.getState();
-  if (!nowPlaying) return;
-  const total = nowPlaying.queue.total;
-  if (total <= 0) return;
-  const position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
-  if (position < total * PREFETCH_AT_FRACTION) return;
-  const key = downloadKey(nowPlaying.connectionId, nowPlaying.libraryId, nowPlaying.path);
-  if (prefetchedFor === key) return;
-  prefetchedFor = key;
-  void maybeAutoDownloadNext(nowPlaying.connectionId, nowPlaying.libraryId, nowPlaying.path);
+async function maybeAutoDownloadCurrent(
+  connectionId: string,
+  libraryId: number,
+  book: Book,
+  chapterData?: ChaptersResponse,
+): Promise<void> {
+  try {
+    const mode = useSettings.getState().autoDownloadNext;
+    if (mode === 'never') return;
+    // Already downloaded/queued/downloading? Nothing to do (only re-attempt an errored one).
+    const existing =
+      useDownloads.getState().entries[downloadKey(connectionId, libraryId, book.rel_path)];
+    if (existing && existing.status !== 'error') return;
+    if (!(await canAutoDownload(mode))) return;
+    // download() no-ops when the engine can't store offline (web without a controlling
+    // service worker, etc.), so no extra support guard is needed here.
+    useDownloads.getState().download(connectionId, libraryId, book, chapterData);
+  } catch (err) {
+    console.warn('[auto-download] failed to download the current book', err);
+  }
 }
 
 function startSaveLoop() {
   stopSaveLoop();
   saveTimer = setInterval(() => {
     void persist();
-    maybePrefetchNext();
   }, SAVE_INTERVAL_MS);
 }
 function stopSaveLoop() {
@@ -467,7 +474,6 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     deviceId = await getDeviceId();
     lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
     resumeLookupFailed = false;
-    prefetchedFor = null; // re-arm the 90% next-book prefetch for this book
 
     const queue = buildBookQueue(
       api,
@@ -544,6 +550,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     await svc.play();
     // The save loop is started by the engine 'playing' transition (see subscribe).
     void flushQueue();
+    // Fire-and-forget AFTER playback is initiated (never before/awaited, so it can't delay
+    // or break starting the book): download the book we just started, if the user opted in.
+    void maybeAutoDownloadCurrent(connectionId, libraryId, book, chapterData);
   },
 
   toggle: async () => {

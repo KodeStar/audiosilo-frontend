@@ -37,7 +37,7 @@
       },
       "autoDownload": {
         "label": "Scarica libri automaticamente",
-        "description": "Precarica il libro successivo così è pronto da ascoltare offline.",
+        "description": "Scarica il libro che inizi ad ascoltare così è pronto da ascoltare offline.",
         "never": "Mai",
         "wifi": "Solo Wi-Fi",
         "always": "Sempre"

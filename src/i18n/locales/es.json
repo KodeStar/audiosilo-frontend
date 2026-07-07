@@ -37,7 +37,7 @@
       },
       "autoDownload": {
         "label": "Descargar libros automáticamente",
-        "description": "Descarga el siguiente libro para tenerlo listo sin conexión.",
+        "description": "Descarga el libro que empiezas a escuchar para tenerlo listo sin conexión.",
         "never": "Nunca",
         "wifi": "Solo Wi-Fi",
         "always": "Siempre"

@@ -1,10 +1,6 @@
 import type { ApiClient } from '@/api/client';
-import { resolveClient } from '@/api/connection-clients';
 import type { FsEntry } from '@/api/types';
-import { downloadKey, useDownloads } from '@/downloads/store';
-import { canAutoDownload } from '@/lib/network';
 import { parentPath, pathLeaf } from '@/lib/paths';
-import { useSettings } from '@/stores/settings';
 
 // Resolving "the next book in a series" for the end-of-book flow. Framework-free (no
 // React), and it must NOT import the playback store (store.ts imports this) to avoid a
@@ -62,44 +58,5 @@ export async function resolveNextBook(
     return findNextSibling(entries, currentPath);
   } catch {
     return null;
-  }
-}
-
-/**
- * Prefetch the next book in the series when the current one nears its end. Honours the
- * `autoDownloadNext` preference and the network policy (`canAutoDownload`), and skips a
- * book that is already downloaded or queued. Best-effort and fully guarded: any failure is
- * swallowed and it never touches playback.
- */
-export async function maybeAutoDownloadNext(
-  connectionId: string,
-  libraryId: number,
-  currentPath: string,
-): Promise<void> {
-  try {
-    const mode = useSettings.getState().autoDownloadNext;
-    if (mode === 'never') return;
-
-    const client = resolveClient(connectionId);
-    if (!client) return;
-
-    const next = await resolveNextBook(client, libraryId, currentPath);
-    if (!next) return;
-
-    // Already downloaded/queued/downloading? Nothing to do (only re-attempt an errored one,
-    // matching the downloads store's own guard).
-    const existing =
-      useDownloads.getState().entries[downloadKey(connectionId, libraryId, next.path)];
-    if (existing && existing.status !== 'error') return;
-
-    if (!(await canAutoDownload(mode))) return;
-
-    // Resolve the sibling to a full Book (+ chapters) so the offline copy is complete;
-    // `item` indexes an unscanned folder on demand server-side.
-    const book = await client.item(libraryId, next.path);
-    const chapters = await client.chapters(libraryId, next.path);
-    useDownloads.getState().download(connectionId, libraryId, book, chapters);
-  } catch (err) {
-    console.warn('[next-book] auto-download failed', err);
   }
 }

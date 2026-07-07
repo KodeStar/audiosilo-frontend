@@ -58,11 +58,11 @@ jest.mock('@/api/provider', () => ({
   queryClient: { invalidateQueries: jest.fn(), setQueryData: jest.fn() },
 }));
 
-// The next-book prefetch is exercised in next-book.test.ts; here we only assert the store
-// invokes it (the 90% latch), so stub the module.
-const mockMaybeAutoDownloadNext = jest.fn((..._a: unknown[]) => Promise.resolve());
-jest.mock('./next-book', () => ({
-  maybeAutoDownloadNext: (...a: unknown[]) => mockMaybeAutoDownloadNext(...a),
+// playBook fires an auto-download of the started book through @/lib/network's policy gate;
+// mock it so the network probe is deterministic (default: allowed).
+const mockCanAutoDownload = jest.fn((..._a: unknown[]) => Promise.resolve(true));
+jest.mock('@/lib/network', () => ({
+  canAutoDownload: (...a: unknown[]) => mockCanAutoDownload(...a),
 }));
 
 // playBook resolves its ApiClient from the connection id via resolveClient(); return a
@@ -138,6 +138,10 @@ async function startBook(book: Book = makeBook(), startPos = 0, cid = 'c1') {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
+  mockCanAutoDownload.mockResolvedValue(true);
+  // Default the start-of-book auto-download OFF so the many startBook() calls below don't
+  // fire the real downloads pipeline; the dedicated describe opts each of its cases in.
+  useSettings.setState({ autoDownloadNext: 'never' });
   // Reset the public store state between tests (module-level service/timer are
   // singletons; resetting nowPlaying + snapshot is enough to isolate behaviour).
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL }, rate: 1 });
@@ -886,33 +890,75 @@ describe('finishBook', () => {
   });
 });
 
-// --- 90% next-book prefetch latch --------------------------------------------
+// --- auto-download the book you start listening to ---------------------------
+// playBook fires this fire-and-forget AFTER playback is initiated: download the started
+// book (per the autoDownloadNext setting + network policy) unless it's already downloaded/
+// queued. The player then hot-swaps to the local copy when the download completes.
 
-describe('next-book prefetch latch (fires once past 90%)', () => {
-  it('calls maybeAutoDownloadNext once when the book passes 90%, and not again', async () => {
-    await startBook(makeBook(), 0); // single-file book, total 100
-    pushSnapshot(snap('playing', 95)); // 95% - past the 90% threshold
+describe('auto-download on start', () => {
+  it('downloads the started book when the mode allows it and it is not already downloaded', async () => {
+    useSettings.setState({ autoDownloadNext: 'wifi' });
+    mockCanAutoDownload.mockResolvedValue(true);
+    const downloadSpy = jest
+      .spyOn(useDownloads.getState(), 'download')
+      .mockImplementation(() => {});
+
+    const book = makeBook();
+    await startBook(book, 0);
+    await Promise.resolve(); // let the fire-and-forget canAutoDownload() resolve
     await Promise.resolve();
 
-    mockMaybeAutoDownloadNext.mockClear();
-    jest.advanceTimersByTime(15_000); // first save-loop tick
-    await Promise.resolve();
-    expect(mockMaybeAutoDownloadNext).toHaveBeenCalledTimes(1);
-    expect(mockMaybeAutoDownloadNext).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b');
-
-    jest.advanceTimersByTime(15_000); // still past 90%, but latched
-    await Promise.resolve();
-    expect(mockMaybeAutoDownloadNext).toHaveBeenCalledTimes(1);
+    expect(mockCanAutoDownload).toHaveBeenCalledWith('wifi');
+    expect(downloadSpy).toHaveBeenCalledWith('c1', 2, book, undefined);
+    downloadSpy.mockRestore();
   });
 
-  it('does not fire before the book reaches 90%', async () => {
+  it("does not download when the mode is 'never'", async () => {
+    useSettings.setState({ autoDownloadNext: 'never' });
+    const downloadSpy = jest
+      .spyOn(useDownloads.getState(), 'download')
+      .mockImplementation(() => {});
+
     await startBook(makeBook(), 0);
-    pushSnapshot(snap('playing', 50)); // 50%
+    await Promise.resolve();
     await Promise.resolve();
 
-    mockMaybeAutoDownloadNext.mockClear();
-    jest.advanceTimersByTime(15_000);
+    expect(mockCanAutoDownload).not.toHaveBeenCalled();
+    expect(downloadSpy).not.toHaveBeenCalled();
+    downloadSpy.mockRestore();
+  });
+
+  it('does not download a book that is already downloaded', async () => {
+    useSettings.setState({ autoDownloadNext: 'always' });
+    const book = makeBook();
+    const manifest: DownloadManifest = {
+      book,
+      chapters: null,
+      files: [{ relPath: book.rel_path, localUri: 'file:///dl/0.m4b' }],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    const entry: DownloadEntry = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: book.rel_path,
+      title: book.title,
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest,
+    };
+    useDownloads.setState({ entries: { [`c1:2:${book.rel_path}`]: entry } });
+    const downloadSpy = jest
+      .spyOn(useDownloads.getState(), 'download')
+      .mockImplementation(() => {});
+
+    await startBook(book, 0);
     await Promise.resolve();
-    expect(mockMaybeAutoDownloadNext).not.toHaveBeenCalled();
+    await Promise.resolve();
+
+    expect(downloadSpy).not.toHaveBeenCalled();
+    downloadSpy.mockRestore();
   });
 });

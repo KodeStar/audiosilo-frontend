@@ -1,40 +1,9 @@
 import type { ApiClient } from '@/api/client';
-import type { Book, ChaptersResponse, FsEntry, Listing } from '@/api/types';
+import type { FsEntry, Listing } from '@/api/types';
 
-// --- Mocks -----------------------------------------------------------------
-// next-book resolves the client, settings, network policy and downloads store through
-// their module seams; stub each so the resolution logic is exercised in isolation.
-
-const mockResolveClient = jest.fn();
-jest.mock('@/api/connection-clients', () => ({
-  resolveClient: (cid: string) => mockResolveClient(cid),
-}));
-
-const mockCanAutoDownload = jest.fn((..._a: unknown[]) => Promise.resolve(true));
-jest.mock('@/lib/network', () => ({
-  canAutoDownload: (...a: unknown[]) => mockCanAutoDownload(...a),
-}));
-
-let mockMode: 'never' | 'wifi' | 'always' = 'wifi';
-jest.mock('@/stores/settings', () => ({
-  useSettings: { getState: () => ({ autoDownloadNext: mockMode }) },
-}));
-
-const mockDownload = jest.fn();
-let mockEntries: Record<string, { status: string }> = {};
-jest.mock('@/downloads/store', () => ({
-  downloadKey: (cid: string, lib: number, path: string) => `${cid}:${lib}:${path}`,
-  useDownloads: { getState: () => ({ entries: mockEntries, download: mockDownload }) },
-}));
-
-/* eslint-disable import/first */
-import {
-  findNextSibling,
-  maybeAutoDownloadNext,
-  naturalCompare,
-  resolveNextBook,
-} from './next-book';
-/* eslint-enable import/first */
+// next-book's sibling resolution is pure (the client is passed in), so no module mocks are
+// needed - only fixture entries + a fake browse() client.
+import { findNextSibling, naturalCompare, resolveNextBook } from './next-book';
 
 // --- Fixtures --------------------------------------------------------------
 
@@ -59,9 +28,6 @@ function looseFile(name: string, path = `Series/${name}`, extra: Partial<FsEntry
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockMode = 'wifi';
-  mockEntries = {};
-  mockCanAutoDownload.mockResolvedValue(true);
 });
 
 // --- naturalCompare --------------------------------------------------------
@@ -157,59 +123,5 @@ describe('resolveNextBook', () => {
       }),
     } as unknown as ApiClient;
     await expect(resolveNextBook(client, 5, 'Series/Book 1')).resolves.toBeNull();
-  });
-});
-
-// --- maybeAutoDownloadNext -------------------------------------------------
-
-const fakeBook = { rel_path: 'Series/Book 2', title: 'Book 2' } as Book;
-const fakeChapters = { path: 'Series/Book 2' } as ChaptersResponse;
-
-function downloadableClient(): ApiClient {
-  return {
-    browse: jest.fn(async () => ({
-      path: 'Series',
-      entries: [dir('Book 1'), dir('Book 2')],
-      total: 2,
-      offset: 0,
-    })),
-    item: jest.fn(async () => fakeBook),
-    chapters: jest.fn(async () => fakeChapters),
-  } as unknown as ApiClient;
-}
-
-describe('maybeAutoDownloadNext', () => {
-  it("short-circuits when the mode is 'never' (no client resolved)", async () => {
-    mockMode = 'never';
-    await maybeAutoDownloadNext('c1', 5, 'Series/Book 1');
-    expect(mockResolveClient).not.toHaveBeenCalled();
-    expect(mockDownload).not.toHaveBeenCalled();
-  });
-
-  it('resolves and enqueues the next book (happy path)', async () => {
-    mockResolveClient.mockReturnValue(downloadableClient());
-    await maybeAutoDownloadNext('c1', 5, 'Series/Book 1');
-    expect(mockCanAutoDownload).toHaveBeenCalledWith('wifi');
-    expect(mockDownload).toHaveBeenCalledWith('c1', 5, fakeBook, fakeChapters);
-  });
-
-  it('skips a next book that is already downloaded', async () => {
-    mockResolveClient.mockReturnValue(downloadableClient());
-    mockEntries = { 'c1:5:Series/Book 2': { status: 'downloaded' } };
-    await maybeAutoDownloadNext('c1', 5, 'Series/Book 1');
-    expect(mockDownload).not.toHaveBeenCalled();
-  });
-
-  it('does not download when the network policy denies it', async () => {
-    mockResolveClient.mockReturnValue(downloadableClient());
-    mockCanAutoDownload.mockResolvedValue(false);
-    await maybeAutoDownloadNext('c1', 5, 'Series/Book 1');
-    expect(mockDownload).not.toHaveBeenCalled();
-  });
-
-  it('does nothing when there is no next book', async () => {
-    mockResolveClient.mockReturnValue(downloadableClient());
-    await maybeAutoDownloadNext('c1', 5, 'Series/Book 2'); // last in the series
-    expect(mockDownload).not.toHaveBeenCalled();
   });
 });
