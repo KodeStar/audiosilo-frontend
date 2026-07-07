@@ -1,9 +1,11 @@
 import { type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useApi } from '@/api/provider';
 import { DownloadBadge } from '@/components/library/download-badge';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
 
@@ -21,6 +23,19 @@ export function gridColumns(width: number) {
 export function Grid({ children }: { children: ReactNode }) {
   return (
     <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Frames cover art so dark covers separate from dark surfaces: a hairline border
+ * on both themes plus a soft shadow in light mode only (the house "shadow light /
+ * border dark" pattern). Wrap every cover in this for consistent treatment.
+ */
+export function CoverFrame({ children }: { children: ReactNode }) {
+  return (
+    <View className="overflow-hidden rounded-lg border border-black/10 shadow-sm dark:border-white/10 dark:shadow-none">
       {children}
     </View>
   );
@@ -49,29 +64,53 @@ export function GridCard({
 }) {
   const api = useApi(connectionId);
   const { openBook } = useOpen();
+  // Width is a numeric layout value, so it rides on a plain wrapper View - passing
+  // a `style` to AnimatedPressable would clobber its internal press-scale style.
   return (
-    <Pressable
-      onPress={() => openBook(connectionId, libraryId, path)}
-      style={{ width }}
-      className="gap-2 rounded-lg border p-4 border-gray-200 bg-gray-50 shadow-sm dark:border-gray-860 dark:bg-gray-840 dark:shadow-none active:opacity-80"
-    >
-      <Cover
-        source={{ uri: api.coverUrl(libraryId, path), headers: api.authHeaders() }}
-        label={title}
-        sublabel={author}
-        rounded="rounded-lg"
-      />
-      <View className="flex-row items-start gap-1.5">
-        <View className="h-10 flex-1 justify-center">
-          <Text variant="subtitle" numberOfLines={2}>
-            {title}
-          </Text>
+    <View style={{ width }}>
+      <AnimatedPressable
+        onPress={() => openBook(connectionId, libraryId, path)}
+        accessibilityRole="button"
+        className="w-full gap-2.5 rounded-xl border border-gray-200 bg-gray-50 p-3 hover:bg-gray-100 dark:border-gray-860 dark:bg-gray-840 dark:hover:bg-gray-800"
+      >
+        <CoverFrame>
+          <Cover
+            source={{ uri: api.coverUrl(libraryId, path), headers: api.authHeaders() }}
+            label={title}
+            sublabel={author}
+            rounded="rounded-none"
+          />
+        </CoverFrame>
+        <View className="flex-row items-start gap-1.5">
+          <View className="h-10 flex-1 justify-start">
+            <Text variant="subtitle" numberOfLines={2}>
+              {title}
+            </Text>
+          </View>
+          <View className="pt-0.5">
+            <DownloadBadge connectionId={connectionId} libraryId={libraryId} path={path} />
+          </View>
         </View>
-        <View className="pt-0.5">
-          <DownloadBadge connectionId={connectionId} libraryId={libraryId} path={path} />
+        {footer}
+      </AnimatedPressable>
+    </View>
+  );
+}
+
+/** Loading placeholder shaped like a GridCard: a cover-square skeleton and two
+ * text lines, so a loading shelf/grid mirrors the final layout instead of a
+ * spinner. `footer` adds an extra line (e.g. the progress row on Continue). */
+export function GridCardSkeleton({ width, footer }: { width: number; footer?: boolean }) {
+  return (
+    <View style={{ width }}>
+      <View className="w-full gap-2.5 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-860 dark:bg-gray-840">
+        <Skeleton className="aspect-square w-full rounded-lg" />
+        <View className="gap-2 py-0.5">
+          <Skeleton className="h-3.5 w-full rounded" />
+          <Skeleton className="h-3.5 w-2/3 rounded" />
         </View>
+        {footer ? <Skeleton className="h-1.5 w-full rounded-full" /> : null}
       </View>
-      {footer}
-    </Pressable>
+    </View>
   );
 }

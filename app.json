@@ -2,16 +2,23 @@
   "expo": {
     "name": "AudioSilo",
     "slug": "audiosilo",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "audiosilo",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": ["audio"],
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleAllowMixedLocalizations": true
+        "CFBundleAllowMixedLocalizations": true,
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
       },
       "bundleIdentifier": "app.audiosilo"
     },

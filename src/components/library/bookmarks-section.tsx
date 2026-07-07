@@ -1,14 +1,21 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useBookmarks, useDeleteBookmark } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
+
+// Quiet row surface shared by the section's list items.
+const ROW =
+  'flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
  *
@@ -23,6 +30,7 @@ export function BookmarksSection({
   onAdd,
   adding,
   addLabel,
+  hideHeader,
 }: {
   libraryId: number;
   path: string;
@@ -33,6 +41,9 @@ export function BookmarksSection({
   onAdd?: () => void;
   adding?: boolean;
   addLabel?: string;
+  /** Suppress the internal heading when the caller already provides one (the player
+   * sheet's own title bar), so the sheet doesn't show two stacked headings. */
+  hideHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const { data: bookmarks } = useBookmarks(libraryId, path, connectionId);
@@ -53,7 +64,7 @@ export function BookmarksSection({
 
   return (
     <View className="gap-2">
-      <Text variant="title">{t('library.bookmarks.title')}</Text>
+      {hideHeader ? null : <SectionHeader title={t('library.bookmarks.title')} />}
       {onAdd ? (
         <Button
           title={addLabel ?? t('library.bookmarks.add')}
@@ -62,33 +73,37 @@ export function BookmarksSection({
           loading={adding}
         />
       ) : null}
-      {empty && emptyLabel ? <Text variant="caption">{emptyLabel}</Text> : null}
+      {empty && emptyLabel ? (
+        <EmptyState icon="bookmark" title={emptyLabel} className="py-6" />
+      ) : null}
       {(bookmarks ?? []).map((bm) => (
-        <View
-          key={bm.id}
-          className="flex-row items-center gap-3 rounded-lg bg-white p-3 dark:border dark:border-gray-860 dark:bg-gray-840"
-        >
-          <Pressable
+        <View key={bm.id} className={ROW}>
+          <AnimatedPressable
             className="flex-1 flex-row items-center gap-3"
+            accessibilityRole="button"
             onPress={() => void jump(bm.position)}
           >
             <Icon name="bookmark" size={16} color={colors.primary} />
             <View className="flex-1">
-              <Text variant="subtitle">{formatClock(bm.position)}</Text>
+              <Text variant="subtitle" style={tabularNums}>
+                {formatClock(bm.position)}
+              </Text>
               {bm.note ? (
                 <Text variant="muted" numberOfLines={1}>
                   {bm.note}
                 </Text>
               ) : null}
             </View>
-          </Pressable>
-          <Pressable
+          </AnimatedPressable>
+          <AnimatedPressable
             onPress={() => del.mutate(bm.id)}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('library.bookmarks.delete')}
             className="h-8 w-8 items-center justify-center"
           >
-            <Icon name="trash" size={16} color={colors.dark.textMuted} />
-          </Pressable>
+            <Icon name="trash" size={16} color={colors.danger} />
+          </AnimatedPressable>
         </View>
       ))}
     </View>

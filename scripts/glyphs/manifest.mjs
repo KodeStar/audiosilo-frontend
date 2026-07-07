@@ -54,4 +54,5 @@ export const GLYPHS = [
   ['heart', 'light', 'faHeart'],
   ['airplay', 'light', 'faAirplayAudio'],
   ['heart-solid', 'solid', 'faHeart'],
+  ['inbox', 'light', 'faInbox'],
 ];

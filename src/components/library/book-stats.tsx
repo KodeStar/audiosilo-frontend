@@ -1,12 +1,13 @@
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useFavourites, useToggleFavourite } from '@/api/hooks';
 import type { Book } from '@/api/types';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatBytes, formatDuration } from '@/lib/format';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
 
 // A fixed-height top slot keeps the heart icon and the value text on the same
 // baseline so every column's label sits on one line.
@@ -17,7 +18,7 @@ function Stat({ value, label }: { value: string; label: string }) {
   return (
     <View className="flex-1 items-center gap-1 px-2">
       <View className={topSlot}>
-        <Text variant="heading" numberOfLines={1}>
+        <Text variant="heading" numberOfLines={1} style={tabularNums}>
           {value}
         </Text>
       </View>
@@ -29,14 +30,15 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 function Divider() {
-  return <View className="my-1 w-px self-stretch bg-gray-200 dark:bg-gray-750" />;
+  return <View className="my-1 w-px self-stretch bg-black/10 dark:bg-white/10" />;
 }
 
 /**
  * The three-up stat strip on the book overview: a favourite toggle, the download
  * size over its format, and the total length - split by hairline dividers and
- * spread across the full width. Shared by the phone and wide (detail-panel)
- * overviews so they stay consistent.
+ * spread across the full width. A frosted, translucent surface so the hero's
+ * blurred-cover atmosphere reads through it. Shared by the phone and wide
+ * (detail-panel) overviews so they stay consistent.
  */
 export function BookStats({
   libraryId,
@@ -53,14 +55,14 @@ export function BookStats({
   const isFavourite = !!favourites?.some((f) => f.library_id === libraryId && f.path === path);
 
   return (
-    <View className="w-full flex-row items-stretch rounded-lg border border-gray-200 bg-gray-100 py-4 dark:border-gray-750 dark:bg-gray-840">
-      <Pressable
+    <View className="w-full flex-row items-stretch rounded-xl border border-black/10 bg-white/70 py-4 dark:border-white/10 dark:bg-gray-840/70">
+      <AnimatedPressable
         onPress={() => toggleFavourite.mutate({ libraryId, path, on: !isFavourite })}
         accessibilityRole="button"
         accessibilityLabel={
           isFavourite ? t('library.favourite.remove') : t('library.favourite.add')
         }
-        className="flex-1 items-center gap-1 px-2 active:opacity-60"
+        className="flex-1 items-center gap-1 px-2"
       >
         <View className={topSlot}>
           <Icon
@@ -70,7 +72,7 @@ export function BookStats({
           />
         </View>
         <Text variant="muted">{t('library.bookStats.favourite')}</Text>
-      </Pressable>
+      </AnimatedPressable>
 
       <Divider />
       <Stat

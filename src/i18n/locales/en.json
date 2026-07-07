@@ -163,6 +163,7 @@
     "collapse": "Collapse",
     "added": "Added {{when}}",
     "progressError": "Could not load your progress.",
+    "continueEmptyTitle": "Nothing in progress",
     "continueEmpty": "Start a book and it will show up here.",
     "recentError": "Could not load new books."
   },
@@ -173,7 +174,9 @@
       "noMatches": "No matches in this folder.",
       "filterPlaceholder": "Filter this folder…",
       "openError": "Could not open this folder.",
-      "jumpTo": "Jump to {{letter}}"
+      "jumpTo": "Jump to {{letter}}",
+      "emptyHint": "There's nothing to play in this folder.",
+      "noMatchesHint": "Try a different search term."
     },
     "bookRow": {
       "alsoOn": "Also on {{servers}}",
@@ -186,6 +189,8 @@
     "progressCard": {
       "markFinished": "Mark as Finished",
       "moreInSeries": "More in series",
+      "resume": "Resume",
+      "moreActions": "More actions",
       "timeLeft": "{{duration}} left",
       "finished": "Finished"
     },
@@ -196,14 +201,16 @@
     "notes": {
       "title": "Notes",
       "placeholder": "Add a note (markdown supported)…",
-      "add": "Add note"
+      "add": "Add note",
+      "delete": "Delete note"
     },
     "history": {
       "title": "History"
     },
     "bookmarks": {
       "title": "Bookmarks",
-      "add": "Add bookmark"
+      "add": "Add bookmark",
+      "delete": "Delete bookmark"
     },
     "versions": {
       "choose": "Choose a version",
@@ -239,9 +246,12 @@
       "added": "Added {{when}}",
       "loadError": "Could not load.",
       "noBooks": "No books yet.",
+      "noBooksHint": "Books you add to your library appear here.",
       "noFinished": "No finished books yet.",
+      "noFinishedHint": "Finish a book and it lands here.",
       "loadLibrariesError": "Could not load libraries.",
-      "noLibraries": "No libraries are shared with your account yet."
+      "noLibraries": "No libraries are shared with your account yet.",
+      "noLibrariesHint": "Ask the server owner to share one with you."
     },
     "favourites": {
       "title": "Favourites",
@@ -257,13 +267,19 @@
     "downloaded": "Downloaded",
     "failed": "Download failed",
     "unsupported": "Offline downloads aren't available in this browser. Use the installed app or a secure (https) connection.",
-    "empty": "Download a book from its detail screen to listen offline."
+    "unsupportedTitle": "Downloads unavailable",
+    "empty": "Download a book from its detail screen to listen offline.",
+    "emptyTitle": "No downloads yet",
+    "remove": "Remove {{title}}"
   },
   "search": {
     "placeholder": "Search titles, authors, series…",
+    "promptTitle": "Find your next listen",
     "prompt": "Search titles, authors, and series.",
     "failed": "Search failed.",
-    "noResults": "No results for “{{query}}”."
+    "noResultsTitle": "No results",
+    "noResults": "No results for “{{query}}”.",
+    "clear": "Clear search"
   },
   "book": {
     "loadError": "Could not load this book.",
@@ -282,7 +298,14 @@
       "fileOf": "File {{current}} of {{total}}",
       "fileNumber": "File {{number}}",
       "timeLeft": "{{time}} left ({{rate}})",
-      "showChapters": "Show chapters"
+      "showChapters": "Show chapters",
+      "close": "Close",
+      "previous": "Previous chapter",
+      "next": "Next chapter",
+      "play": "Play",
+      "pause": "Pause",
+      "skipBack": "Skip back {{seconds}} seconds",
+      "skipForward": "Skip forward {{seconds}} seconds"
     },
     "chapters": {
       "chaptersTitle": "Chapters",
@@ -320,6 +343,9 @@
     },
     "speed": {
       "title": "Playback speed"
+    },
+    "seek": {
+      "label": "Playback position"
     }
   },
   "nav": {

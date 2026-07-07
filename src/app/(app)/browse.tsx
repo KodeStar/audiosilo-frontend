@@ -1,65 +1,36 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { type ReactElement, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Pressable, useWindowDimensions, View } from 'react-native';
+import { FlatList, useWindowDimensions, View } from 'react-native';
 
-import { useAllProgressAll, useRecentAll, type MergedBook } from '@/api/hooks';
-import { GRID_GAP, GridCard, gridColumns } from '@/components/library/poster-grid';
-import { ProgressCard, progressKey } from '@/components/library/progress-card';
+import {
+  useAllProgressAll,
+  useRecentAll,
+  type MergedBook,
+  type SourcedProgress,
+} from '@/api/hooks';
+import {
+  GRID_GAP,
+  GridCard,
+  GridCardSkeleton,
+  gridColumns,
+} from '@/components/library/poster-grid';
+import { ProgressCard, ProgressMenuSheet, progressKey } from '@/components/library/progress-card';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
-import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorNote } from '@/components/ui/query-state';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
+import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { pathLeaf } from '@/lib/paths';
 
-const WIDE_BREAKPOINT = 1024;
 // How many of each type to load on this page (the home shelves show 15).
 const PAGE_LIMIT = 200;
 
 type BrowseType = 'recent' | 'finished';
 
-const TYPES: { key: BrowseType; labelKey: 'recentlyAdded' | 'recentlyFinished' }[] = [
-  { key: 'recent', labelKey: 'recentlyAdded' },
-  { key: 'finished', labelKey: 'recentlyFinished' },
-];
-
 const bookKey = (b: MergedBook) => `${b.connectionId}:${b.library_id}:${b.rel_path}`;
-
-/** Two-way selector to switch the list type, kept in sync with the URL param. */
-function TypeSelector({
-  value,
-  onChange,
-}: {
-  value: BrowseType;
-  onChange: (t: BrowseType) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <View className="flex-row self-start rounded-xl bg-gray-100 p-1 dark:bg-gray-840">
-      {TYPES.map((o) => {
-        const active = o.key === value;
-        return (
-          <Pressable
-            key={o.key}
-            onPress={() => onChange(o.key)}
-            className={`rounded-lg px-4 py-2 ${active ? 'bg-primary' : ''}`}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-          >
-            <Text
-              className={`font-roboto-medium ${
-                active ? 'text-white dark:text-white' : 'text-gray-600 dark:text-gray-300'
-              }`}
-            >
-              {t(`library.list.${o.labelKey}`)}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 export default function BrowseScreen() {
   const { t } = useTranslation();
@@ -81,6 +52,10 @@ export default function BrowseScreen() {
 
   // Measure the list area so columns track the available width (sidebar on desktop).
   const [gridWidth, setGridWidth] = useState(0);
+
+  // The progress card's overflow menu is presented at screen level (a Sheet must not
+  // live inside a card - it renders in place and would be clipped).
+  const [menuItem, setMenuItem] = useState<SourcedProgress | null>(null);
   const pad = wide ? 32 : 16;
   const inner = Math.max(0, gridWidth - pad * 2);
   const columns = gridColumns(inner);
@@ -111,24 +86,50 @@ export default function BrowseScreen() {
   const error = type === 'recent' ? recentError : progressError;
   const isEmpty = type === 'recent' ? recent.length === 0 : finished.length === 0;
 
-  const empty = loading ? (
-    <Spinner center />
-  ) : error && isEmpty ? (
-    <ErrorNote message={t('library.list.loadError')} />
-  ) : (
-    <EmptyNote
-      message={type === 'recent' ? t('library.list.noBooks') : t('library.list.noFinished')}
-    />
+  // A loading grid of card skeletons that mirrors the final layout (one filled row).
+  const skeletonGrid = (
+    <View className="flex-row flex-wrap p-4 lg:px-8" style={{ gap: GRID_GAP }}>
+      {Array.from({ length: columns * 2 }).map((_, i) => (
+        <GridCardSkeleton key={i} width={cardWidth} footer />
+      ))}
+    </View>
   );
+
+  const empty =
+    error && isEmpty ? (
+      <View className="p-4 lg:px-8">
+        <ErrorNote message={t('library.list.loadError')} />
+      </View>
+    ) : type === 'recent' ? (
+      <EmptyState
+        icon="book"
+        title={t('library.list.noBooks')}
+        hint={t('library.list.noBooksHint')}
+      />
+    ) : (
+      <EmptyState
+        icon="check"
+        title={t('library.list.noFinished')}
+        hint={t('library.list.noFinishedHint')}
+      />
+    );
 
   return (
     <View className="flex-1">
       <View className="p-4 lg:px-8">
-        <TypeSelector value={type} onChange={onChange} />
+        <SegmentedControl
+          options={[
+            { value: 'recent', label: t('library.list.recentlyAdded') },
+            { value: 'finished', label: t('library.list.recentlyFinished') },
+          ]}
+          value={type}
+          onChange={onChange}
+          className="self-start"
+        />
       </View>
       <View className="flex-1" onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
-        {gridWidth === 0 ? (
-          <Spinner center />
+        {gridWidth === 0 ? null : loading && isEmpty ? (
+          skeletonGrid
         ) : type === 'recent' ? (
           <FlatList
             key={`recent-${columns}`}
@@ -152,7 +153,7 @@ export default function BrowseScreen() {
             columnWrapperStyle={columns > 1 ? { gap: GRID_GAP } : undefined}
             renderItem={({ item }) => (
               <View style={{ width: cardWidth }}>
-                <ProgressCard item={item} width={cardWidth} />
+                <ProgressCard item={item} width={cardWidth} onMenu={setMenuItem} />
               </View>
             )}
             contentContainerClassName="p-4 lg:px-8"
@@ -161,6 +162,7 @@ export default function BrowseScreen() {
           />
         )}
       </View>
+      <ProgressMenuSheet item={menuItem} onClose={() => setMenuItem(null)} />
     </View>
   );
 }

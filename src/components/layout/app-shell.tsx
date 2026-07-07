@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
+import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { clearScrollMemory } from '@/lib/scroll-memory';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
@@ -13,8 +14,6 @@ import { AppHeader } from './app-header';
 import { NavBar } from './app-nav';
 import { ContentColumn } from './content-column';
 import { OfflineBanner } from './offline-banner';
-
-const WIDE_BREAKPOINT = 1024;
 
 /**
  * Responsive chrome around the routed screen:
@@ -59,8 +58,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!inBrowse) clearScrollMemory();
   }, [inBrowse]);
 
+  let content: ReactNode;
   if (wide && onBook) {
-    return (
+    content = (
       <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="sidebar" />
         <View className="flex-1">
@@ -69,13 +69,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </View>
       </View>
     );
-  }
-
-  if (wide) {
+  } else if (wide) {
     // Three columns when something is playing: sidebar | content | player panel.
     // The content column is flex-1, so it narrows to make room for the player
     // (and its search bar resizes with it) instead of the player overlaying it.
-    return (
+    content = (
       <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="sidebar" />
         <View className="flex-1">
@@ -89,24 +87,26 @@ export function AppShell({ children }: { children: ReactNode }) {
         ) : null}
       </View>
     );
+  } else {
+    content = (
+      <View className="flex-1 relative bg-gray-200 dark:bg-gray-800">
+        <AppHeader />
+        <OfflineBanner />
+        <View className="flex-1">{children}</View>
+        {/* Phone book screen has no inline player (that's the wide-only right panel),
+            so the mini player belongs here too - it self-hides when nothing's loaded.
+            It floats above the nav (whose measured height feeds its bottom offset). */}
+        <MiniPlayer bottomOffset={navOffset} />
+        <SafeAreaView
+          edges={['bottom']}
+          className="bg-gray-200 dark:bg-gray-800"
+          onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
+        >
+          <NavBar orientation="bottom" />
+        </SafeAreaView>
+      </View>
+    );
   }
 
-  return (
-    <View className="flex-1 relative bg-gray-200 dark:bg-gray-800">
-      <AppHeader />
-      <OfflineBanner />
-      <View className="flex-1">{children}</View>
-      {/* Phone book screen has no inline player (that's the wide-only right panel),
-          so the mini player belongs here too - it self-hides when nothing's loaded.
-          It floats above the nav (whose measured height feeds its bottom offset). */}
-      <MiniPlayer bottomOffset={navOffset} />
-      <SafeAreaView
-        edges={['bottom']}
-        className="bg-gray-200 dark:bg-gray-800"
-        onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
-      >
-        <NavBar orientation="bottom" />
-      </SafeAreaView>
-    </View>
-  );
+  return content;
 }

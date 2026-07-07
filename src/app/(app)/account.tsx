@@ -13,15 +13,18 @@ import { useRecoveryCode } from '@/components/account/use-recovery-code';
 import { useSignOut } from '@/components/account/use-sign-out';
 import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { shareText } from '@/lib/share';
 import { APP_VERSION } from '@/lib/version';
+import { colors } from '@/theme/tokens';
 import { useSession } from '@/stores/session';
 
 const PW_MIN = 8;
@@ -234,7 +237,9 @@ function AccountContent() {
                     {t('settings.account.recovery.hint')}
                   </Text>
                   {recovery.error ? (
-                    <Text className="text-xs text-red-500">{recovery.error}</Text>
+                    <Text className="text-xs text-danger-600 dark:text-danger">
+                      {recovery.error}
+                    </Text>
                   ) : null}
                   <Button
                     title={
@@ -251,12 +256,17 @@ function AccountContent() {
               </>
             )}
 
-            <Button
-              title={t('settings.account.signOut')}
-              variant="secondary"
-              icon="logout"
+            <AnimatedPressable
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.account.signOut')}
               onPress={() => void signOut.requestSignOut()}
-            />
+              className="flex-row items-center justify-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 active:bg-danger/10"
+            >
+              <Icon name="logout" size={16} color={colors.danger} />
+              <Text className="font-roboto-semibold text-base text-danger-600 dark:text-danger">
+                {t('settings.account.signOut')}
+              </Text>
+            </AnimatedPressable>
           </Card>
         </View>
 
@@ -271,7 +281,7 @@ function AccountContent() {
                 <Image
                   source={{ uri: pairing.qr_png_data_uri }}
                   style={{ width: 220, height: 220 }}
-                  className="self-center rounded-lg bg-white p-2"
+                  className="self-center rounded-xl bg-white p-3"
                 />
                 <Text selectable variant="muted" className="text-center text-xs">
                   {pairing.web_url}
@@ -293,7 +303,9 @@ function AccountContent() {
             ) : (
               <>
                 <Text variant="muted">{t('settings.devices.intro')}</Text>
-                {pairError ? <Text className="text-sm text-red-500">{pairError}</Text> : null}
+                {pairError ? (
+                  <Text className="text-sm text-danger-600 dark:text-danger">{pairError}</Text>
+                ) : null}
                 {pairLoading ? (
                   <Spinner />
                 ) : (

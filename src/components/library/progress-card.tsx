@@ -1,39 +1,51 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 
 import { useMarkFinished, type SourcedProgress } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { GridCard } from '@/components/library/poster-grid';
 import { Icon } from '@/components/ui/icon';
+import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
+import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
-
-const WIDE_BREAKPOINT = 1024;
+import { colors, tabularNums } from '@/theme/tokens';
 
 /** Stable list key for a progress entry across connections. */
 export const progressKey = (it: SourcedProgress) =>
   contentKey(it.connectionId, it.library_id, it.path);
 
-/** Overflow menu for an in-progress book: mark finished, or jump to the
- * containing folder ("more in series"). */
-function ProgressMenu({ item }: { item: SourcedProgress }) {
+/**
+ * Overflow menu for an in-progress book: mark finished, or jump to the containing
+ * folder ("more in series"). Presented as a bottom Sheet.
+ *
+ * The Sheet is lifted OUT of the card and rendered here so it can be mounted at
+ * screen level (a Sheet/OverlayHost renders in place - it must never live inside a
+ * card/Pressable, or it would be clipped to the card). The owning screen keeps a
+ * `menuItem` state, the card's "..." button sets it via `ProgressCard`'s `onMenu`,
+ * and the screen renders one `ProgressMenuSheet` at its root. Visible while `item`
+ * is non-null; renders nothing when null.
+ */
+export function ProgressMenuSheet({
+  item,
+  onClose,
+}: {
+  item: SourcedProgress | null;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const markFinished = useMarkFinished(item.connectionId);
+  const markFinished = useMarkFinished(item?.connectionId);
   const { openLibrary } = useOpen();
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.text : colors.light.textMuted;
 
   const onMarkFinished = () => {
-    setOpen(false);
+    onClose();
+    if (!item) return;
     markFinished.mutate({
       libraryId: item.library_id,
       path: item.path,
@@ -43,36 +55,26 @@ function ProgressMenu({ item }: { item: SourcedProgress }) {
     });
   };
   const onMoreInSeries = () => {
-    setOpen(false);
+    onClose();
+    if (!item) return;
     void openLibrary(item.connectionId, item.library_id, parentPath(item.path));
   };
 
   return (
-    <>
-      <Pressable onPress={() => setOpen(true)} hitSlop={8} className="px-1 active:opacity-60">
-        <Icon name="ellipsis" size={22} color={neutral} />
-      </Pressable>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
-          <Pressable
-            className="gap-1 rounded-t-2xl bg-gray-100 p-2 pb-6 dark:bg-gray-840"
-            onPress={() => {}}
-          >
-            <MenuRow
-              icon="check"
-              label={t('library.progressCard.markFinished')}
-              onPress={onMarkFinished}
-            />
-            <MenuRow
-              icon="library"
-              label={t('library.progressCard.moreInSeries')}
-              onPress={onMoreInSeries}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </>
+    <Sheet visible={item != null} onClose={onClose} title={item ? pathLeaf(item.path) : ''}>
+      <View className="gap-1 px-2 pb-4 pt-1">
+        <MenuRow
+          icon="check"
+          label={t('library.progressCard.markFinished')}
+          onPress={onMarkFinished}
+        />
+        <MenuRow
+          icon="library"
+          label={t('library.progressCard.moreInSeries')}
+          onPress={onMoreInSeries}
+        />
+      </View>
+    </Sheet>
   );
 }
 
@@ -90,6 +92,7 @@ function MenuRow({
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
       className="flex-row items-center gap-3 rounded-lg px-4 py-3 active:bg-gray-200 dark:active:bg-gray-860"
     >
       <Icon name={icon} size={20} color={neutral} />
@@ -99,9 +102,24 @@ function MenuRow({
 }
 
 /** A poster card for an in-progress / finished book, with a live-updating progress
- * bar and "time left". Shared by the Home shelves and the /browse page. */
-export function ProgressCard({ item, width }: { item: SourcedProgress; width: number }) {
+ * bar and "time left". Shared by the Home shelves and the /browse page.
+ *
+ * The overflow ("...") button is presentational: it calls `onMenu(item)` so the
+ * OWNING SCREEN can present a `ProgressMenuSheet` at screen level (the Sheet must not
+ * live inside this card - it renders in place and would be clipped). When `onMenu` is
+ * omitted the button is hidden. */
+export function ProgressCard({
+  item,
+  width,
+  onMenu,
+}: {
+  item: SourcedProgress;
+  width: number;
+  onMenu?: (item: SourcedProgress) => void;
+}) {
   const { t } = useTranslation();
+  const { scheme } = useTheme();
+  const menuColor = scheme === 'dark' ? colors.dark.text : colors.light.textMuted;
   const api = useApi(item.connectionId);
   const { openBook, openPlayer } = useOpen();
   const { width: screenWidth } = useWindowDimensions();
@@ -156,27 +174,46 @@ export function ProgressCard({ item, width }: { item: SourcedProgress; width: nu
       width={width}
       footer={
         !item.finished ? (
-          <View className="gap-1">
-            <View className="flex-row items-center gap-2">
-              <View className="h-1 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+          <View className="gap-1.5">
+            <View className="flex-row items-center gap-2.5">
+              <View className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-300 dark:bg-gray-750">
                 <View
                   className="h-full rounded-full bg-primary"
                   style={{ width: `${fraction * 100}%` }}
                 />
               </View>
-              <Pressable onPress={() => void play()} hitSlop={8} className="active:opacity-60">
-                <Icon name="circle-play" size={26} color={colors.primary} />
+              <Pressable
+                onPress={() => void play()}
+                hitSlop={8}
+                className="h-9 w-9 items-center justify-center rounded-full bg-primary pl-0.5 active:opacity-80"
+                accessibilityRole="button"
+                accessibilityLabel={t('library.progressCard.resume')}
+              >
+                <Icon name="play" size={15} color={colors.white} />
               </Pressable>
-              <ProgressMenu item={item} />
+              {onMenu ? (
+                <Pressable
+                  onPress={() => onMenu(item)}
+                  hitSlop={8}
+                  className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+                  accessibilityRole="button"
+                  accessibilityLabel={t('library.progressCard.moreActions')}
+                >
+                  <Icon name="ellipsis" size={20} color={menuColor} />
+                </Pressable>
+              ) : null}
             </View>
             {remaining > 0 ? (
-              <Text variant="caption">
+              <Text variant="caption" style={tabularNums}>
                 {t('library.progressCard.timeLeft', { duration: formatDuration(remaining) })}
               </Text>
             ) : null}
           </View>
         ) : (
-          <Text variant="caption">{t('library.progressCard.finished')}</Text>
+          <View className="flex-row items-center gap-1.5">
+            <Icon name="check" size={13} color={colors.primary} />
+            <Text variant="caption">{t('library.progressCard.finished')}</Text>
+          </View>
         )
       }
     />

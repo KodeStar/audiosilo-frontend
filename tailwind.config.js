@@ -26,6 +26,20 @@ module.exports = {
           840: '#1a2331',
           860: '#161f2c',
         },
+        // Semantic status colors, tuned to read on both the light `bg-gray-200`
+        // (#e5e7eb) and dark `bg-gray-800` (#1f2937) surfaces. Use the DEFAULT for
+        // fills / dark-mode text, the 600/700 steps for text on light surfaces.
+        danger: {
+          DEFAULT: '#ef4444', // red-500
+          600: '#dc2626', // red-600 - text on light surfaces
+          700: '#b91c1c', // red-700
+        },
+        // Downloaded / done indicators.
+        success: {
+          DEFAULT: '#22c55e', // green-500
+          600: '#16a34a', // green-600 - text on light surfaces
+          700: '#15803d', // green-700
+        },
       },
       fontFamily: {
         // Default body font. Per-weight families avoid clashing with

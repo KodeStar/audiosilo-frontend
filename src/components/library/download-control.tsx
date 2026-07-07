@@ -107,6 +107,8 @@ export function DownloadControl({
         <Pressable
           onPress={remove}
           hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={t('library.download.delete')}
           className="h-11 w-11 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-840"
         >
           <Icon name="trash" size={16} color={colors.dark.textMuted} />
@@ -125,7 +127,13 @@ export function DownloadControl({
               : t('library.download.downloading', { percent: Math.round(progress * 100) })}
             {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
           </Text>
-          <Pressable onPress={cancel} hitSlop={8} className="h-8 w-8 items-center justify-center">
+          <Pressable
+            onPress={cancel}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('library.download.cancel')}
+            className="h-8 w-8 items-center justify-center"
+          >
             <Icon name="close" size={16} color={colors.dark.textMuted} />
           </Pressable>
         </View>

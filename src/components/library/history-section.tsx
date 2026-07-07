@@ -1,15 +1,18 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useHistory } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatDuration } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
-import { colors } from '@/theme/tokens';
+import { colors, tabularNums } from '@/theme/tokens';
 
 /** Recent listening spans for a book. Each span shows its START (▶) and END (⏸)
  * positions, both independently tappable, so you can jump to either - the end is
@@ -24,6 +27,7 @@ export function HistorySection({
   connectionId,
   emptyLabel,
   chapters,
+  hideHeader,
 }: {
   libraryId: number;
   path: string;
@@ -32,6 +36,9 @@ export function HistorySection({
   connectionId?: string;
   emptyLabel?: string;
   chapters?: Chapter[];
+  /** Suppress the internal heading when the caller supplies one (the player sheet's
+   * own title bar), so the sheet doesn't show two stacked headings. */
+  hideHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const { data: history } = useHistory(libraryId, path, connectionId);
@@ -45,8 +52,8 @@ export function HistorySection({
     if (!emptyLabel) return null;
     return (
       <View className="gap-2">
-        <Text variant="title">{t('library.history.title')}</Text>
-        <Text variant="caption">{emptyLabel}</Text>
+        {hideHeader ? null : <SectionHeader title={t('library.history.title')} />}
+        <EmptyState icon="history" title={emptyLabel} className="py-6" />
       </View>
     );
   }
@@ -65,7 +72,7 @@ export function HistorySection({
 
   return (
     <View className="gap-2">
-      <Text variant="title">{t('library.history.title')}</Text>
+      {hideHeader ? null : <SectionHeader title={t('library.history.title')} />}
       {history.map((h) => {
         const wall = Math.max(0, (Date.parse(h.ended_at) - Date.parse(h.started_at)) / 1000);
         const covered = Math.max(0, h.to_pos - h.from_pos);
@@ -73,36 +80,38 @@ export function HistorySection({
         return (
           <View
             key={h.id}
-            className="gap-1.5 rounded-lg bg-white p-3 dark:border dark:border-gray-860 dark:bg-gray-840"
+            className="gap-1.5 rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
           >
             <View className="flex-row items-center gap-2">
               <Icon name="clock" size={13} color={colors.primary} />
-              <Text variant="caption">{new Date(h.started_at).toLocaleString()}</Text>
+              <Text variant="caption" style={tabularNums}>
+                {new Date(h.started_at).toLocaleString()}
+              </Text>
             </View>
             {/* End (⏸, where you left off) above start (▶), so reading top-to-bottom
                 matches the most-recent-first ordering of the list itself. */}
-            <Pressable
+            <AnimatedPressable
               onPress={() => jump(h.to_pos)}
-              className="flex-row items-center gap-2 py-0.5 active:opacity-60"
+              className="flex-row items-center gap-2 py-0.5"
               accessibilityRole="button"
             >
               <Icon name="pause" size={13} color={colors.primary} />
-              <Text variant="subtitle" numberOfLines={1} className="flex-1">
+              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabularNums}>
                 {labelAt(h.to_pos)}
               </Text>
-            </Pressable>
-            <Pressable
+            </AnimatedPressable>
+            <AnimatedPressable
               onPress={() => jump(h.from_pos)}
-              className="flex-row items-center gap-2 py-0.5 active:opacity-60"
+              className="flex-row items-center gap-2 py-0.5"
               accessibilityRole="button"
             >
               <Icon name="play" size={13} />
-              <Text variant="subtitle" numberOfLines={1} className="flex-1">
+              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabularNums}>
                 {labelAt(h.from_pos)}
               </Text>
-            </Pressable>
+            </AnimatedPressable>
             {wall > 0 ? (
-              <Text variant="caption">
+              <Text variant="caption" style={tabularNums}>
                 {t('book.duration', { value: formatDuration(wall) })}
                 {speed > 0 ? ` · ${Number(speed.toFixed(2))}×` : ''}
               </Text>

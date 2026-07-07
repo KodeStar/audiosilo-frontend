@@ -1,10 +1,12 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/brand/brand';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 /**
@@ -14,6 +16,7 @@ import { colors } from '@/theme/tokens';
  */
 export function AppHeader() {
   const { t } = useTranslation();
+  const { scheme } = useTheme();
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -22,14 +25,15 @@ export function AppHeader() {
     >
       <View className="h-16 flex-row items-center justify-between px-4">
         <Brand size={26} />
-        <Pressable
+        <AnimatedPressable
           onPress={() => router.push('/search')}
-          hitSlop={10}
+          hitSlop={12}
+          accessibilityRole="button"
           accessibilityLabel={t('nav.search')}
-          className="h-10 w-10 items-center justify-center"
+          className="h-10 w-10 items-center justify-center rounded-full active:bg-gray-100 dark:active:bg-gray-840"
         >
-          <Icon name="search" size={20} color={colors.dark.textMuted} />
-        </Pressable>
+          <Icon name="search" size={20} color={colors[scheme].textMuted} />
+        </AnimatedPressable>
       </View>
     </View>
   );

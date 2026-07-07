@@ -1,15 +1,21 @@
 import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { useMarkdown } from 'react-native-marked';
 
 import { useAddNote, useDeleteNote, useNotes } from '@/api/hooks';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
+import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
+
+// Quiet card surface shared by the composer and each rendered note.
+const CARD =
+  'rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** Renders one note's markdown. useMarkdown is a hook, so it lives in its own
  * component (one instance per note). */
@@ -30,12 +36,16 @@ export function NotesSection({
   libraryId,
   path,
   connectionId,
+  hideHeader,
 }: {
   libraryId: number;
   path: string;
   /** Source connection; defaults to the active one. The player passes the playing
    * book's connection so notes address the right server. */
   connectionId?: string;
+  /** Suppress the internal heading when the caller supplies one (the player sheet's
+   * own title bar), so the sheet doesn't show two stacked headings. */
+  hideHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const { data: notes } = useNotes(libraryId, path, connectionId);
@@ -51,8 +61,8 @@ export function NotesSection({
 
   return (
     <View className="gap-2">
-      <Text variant="title">{t('library.notes.title')}</Text>
-      <View className="gap-2 rounded-lg bg-white p-3 dark:border dark:border-gray-860 dark:bg-gray-840">
+      {hideHeader ? null : <SectionHeader title={t('library.notes.title')} />}
+      <View className={`gap-2 ${CARD}`}>
         <TextField
           placeholder={t('library.notes.placeholder')}
           value={draft}
@@ -71,16 +81,19 @@ export function NotesSection({
       </View>
 
       {notes?.map((note) => (
-        <View
-          key={note.id}
-          className="rounded-lg bg-white p-3 dark:border dark:border-gray-860 dark:bg-gray-840"
-        >
+        <View key={note.id} className={CARD}>
           <NoteMarkdown body={note.body} />
           <View className="mt-2 flex-row items-center justify-between">
             <Text variant="caption">{new Date(note.created_at).toLocaleDateString()}</Text>
-            <Pressable onPress={() => del.mutate(note.id)} hitSlop={8}>
-              <Icon name="trash" size={16} color={colors.dark.textMuted} />
-            </Pressable>
+            <AnimatedPressable
+              onPress={() => del.mutate(note.id)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('library.notes.delete')}
+              className="h-8 w-8 items-center justify-center"
+            >
+              <Icon name="trash" size={16} color={colors.danger} />
+            </AnimatedPressable>
           </View>
         </View>
       ))}

@@ -163,6 +163,7 @@
     "collapse": "Recolher",
     "added": "Adicionado {{when}}",
     "progressError": "Não foi possível carregar o teu progresso.",
+    "continueEmptyTitle": "Nada em curso",
     "continueEmpty": "Começa um livro e ele aparecerá aqui.",
     "recentError": "Não foi possível carregar os livros novos."
   },
@@ -173,7 +174,9 @@
       "noMatches": "Sem correspondências nesta pasta.",
       "filterPlaceholder": "Filtrar esta pasta…",
       "openError": "Não foi possível abrir esta pasta.",
-      "jumpTo": "Ir para {{letter}}"
+      "jumpTo": "Ir para {{letter}}",
+      "emptyHint": "Não há nada para reproduzir nesta pasta.",
+      "noMatchesHint": "Tente outro termo de pesquisa."
     },
     "bookRow": {
       "alsoOn": "Também em {{servers}}",
@@ -186,6 +189,8 @@
     "progressCard": {
       "markFinished": "Marcar como terminado",
       "moreInSeries": "Mais da série",
+      "resume": "Retomar",
+      "moreActions": "Mais ações",
       "timeLeft": "{{duration}} em falta",
       "finished": "Terminado"
     },
@@ -196,14 +201,16 @@
     "notes": {
       "title": "Notas",
       "placeholder": "Adiciona uma nota (suporta markdown)…",
-      "add": "Adicionar nota"
+      "add": "Adicionar nota",
+      "delete": "Eliminar nota"
     },
     "history": {
       "title": "Histórico"
     },
     "bookmarks": {
       "title": "Marcadores",
-      "add": "Adicionar marcador"
+      "add": "Adicionar marcador",
+      "delete": "Eliminar marcador"
     },
     "versions": {
       "choose": "Escolher uma versão",
@@ -239,9 +246,12 @@
       "added": "Adicionado {{when}}",
       "loadError": "Não foi possível carregar.",
       "noBooks": "Ainda não há livros.",
+      "noBooksHint": "Os livros que adicionares à tua biblioteca aparecem aqui.",
       "noFinished": "Ainda não há livros terminados.",
+      "noFinishedHint": "Termina um livro e ele aparecerá aqui.",
       "loadLibrariesError": "Não foi possível carregar as bibliotecas.",
-      "noLibraries": "Ainda não foi partilhada nenhuma biblioteca com a tua conta."
+      "noLibraries": "Ainda não foi partilhada nenhuma biblioteca com a tua conta.",
+      "noLibrariesHint": "Peça ao proprietário do servidor para partilhar uma consigo."
     },
     "favourites": {
       "title": "Favoritos",
@@ -257,10 +267,16 @@
     "downloaded": "Transferido",
     "failed": "Falha na transferência",
     "unsupported": "As transferências offline não estão disponíveis neste navegador. Usa a aplicação instalada ou uma ligação segura (https).",
-    "empty": "Transfere um livro a partir do ecrã de detalhes para o ouvires offline."
+    "unsupportedTitle": "Transferências indisponíveis",
+    "empty": "Transfere um livro a partir do ecrã de detalhes para o ouvires offline.",
+    "emptyTitle": "Ainda sem transferências",
+    "remove": "Remover {{title}}"
   },
   "search": {
     "placeholder": "Procurar títulos, autores, séries…",
+    "promptTitle": "Encontra a tua próxima audição",
+    "noResultsTitle": "Sem resultados",
+    "clear": "Limpar pesquisa",
     "prompt": "Procura títulos, autores e séries.",
     "failed": "A pesquisa falhou.",
     "noResults": "Sem resultados para «{{query}}»."
@@ -282,7 +298,14 @@
       "fileOf": "Ficheiro {{current}} de {{total}}",
       "fileNumber": "Ficheiro {{number}}",
       "timeLeft": "{{time}} restante ({{rate}})",
-      "showChapters": "Mostrar capítulos"
+      "showChapters": "Mostrar capítulos",
+      "close": "Fechar",
+      "previous": "Capítulo anterior",
+      "next": "Próximo capítulo",
+      "play": "Reproduzir",
+      "pause": "Pausar",
+      "skipBack": "Retroceder {{seconds}} segundos",
+      "skipForward": "Avançar {{seconds}} segundos"
     },
     "chapters": {
       "chaptersTitle": "Capítulos",
@@ -320,6 +343,9 @@
     },
     "speed": {
       "title": "Velocidade de reprodução"
+    },
+    "seek": {
+      "label": "Posição de reprodução"
     }
   },
   "nav": {

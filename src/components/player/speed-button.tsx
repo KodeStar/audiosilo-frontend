@@ -1,71 +1,57 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text as RNText, View } from 'react-native';
 
-import { Icon } from '@/components/ui/icon';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { Sheet } from '@/components/ui/sheet';
 import { Stepper } from '@/components/ui/stepper';
-import { Text } from '@/components/ui/text';
 import { usePlayer } from '@/playback/store';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
 
 const fmt = (v: number) => `${Number(v.toFixed(2))}×`;
 
-/** Tappable speed readout that opens a stepper (0.05× increments). */
-export function SpeedButton() {
+/**
+ * Speed readout button. The sheet is mounted separately (`SpeedSheet`) at the
+ * player's root so the shared bottom `Sheet` presents correctly - a Sheet nested
+ * here in the footer would be clipped to the footer's bounds.
+ */
+export function SpeedButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const rate = usePlayer((s) => s.rate);
-  const setRate = usePlayer((s) => s.setRate);
-  const { scheme } = useTheme();
-  const insets = useSafeAreaInsets();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
 
   return (
-    <>
-      <Pressable
-        onPress={() => setOpen(true)}
-        hitSlop={8}
-        className="rounded-full px-2 py-1 active:opacity-70"
-      >
-        <Text className="font-roboto-medium text-base text-gray-700 dark:text-gray-200">
-          {fmt(rate)}
-        </Text>
-      </Pressable>
+    <AnimatedPressable
+      onPress={onPress}
+      hitSlop={8}
+      className="rounded-full px-2 py-1"
+      accessibilityRole="button"
+      accessibilityLabel={t('player.speed.title')}
+    >
+      {/* Raw RN Text + explicit classes: the themed <Text> variant injects its own
+          text color, which NativeWind won't reliably override with an appended one. */}
+      <RNText className="font-roboto-medium text-base text-gray-700 dark:text-gray-200">
+        {fmt(rate)}
+      </RNText>
+    </AnimatedPressable>
+  );
+}
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
-          <Pressable
-            className="gap-4 rounded-t-2xl bg-gray-100 p-4 dark:bg-gray-840"
-            // Extra bottom room so the stepper sits well clear of the home
-            // indicator / Siri bar (a Modal ignores the screen's safe-area inset).
-            style={{ paddingBottom: insets.bottom + 40 }}
-            onPress={() => {}}
-          >
-            <View className="flex-row items-center justify-between">
-              <Text variant="title">{t('player.speed.title')}</Text>
-              <Pressable
-                onPress={() => setOpen(false)}
-                hitSlop={12}
-                className="h-8 w-8 items-center justify-center"
-              >
-                <Icon name="close" size={22} color={neutral} />
-              </Pressable>
-            </View>
-            <View className="items-center pt-2 pb-4">
-              <Stepper
-                value={rate}
-                onChange={(v) => void setRate(v)}
-                step={0.05}
-                min={0.5}
-                max={2}
-                format={fmt}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </>
+/** The playback-speed stepper sheet, controlled by the player. */
+export function SpeedSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
+  const rate = usePlayer((s) => s.rate);
+  const setRate = usePlayer((s) => s.setRate);
+
+  return (
+    <Sheet inline visible={visible} onClose={onClose} title={t('player.speed.title')}>
+      <View className="items-center px-4 pb-8 pt-2">
+        <Stepper
+          value={rate}
+          onChange={(v) => void setRate(v)}
+          step={0.05}
+          min={0.5}
+          max={2}
+          format={fmt}
+        />
+      </View>
+    </Sheet>
   );
 }

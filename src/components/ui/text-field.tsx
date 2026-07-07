@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TextInput, View, type TextInputProps } from 'react-native';
 
+import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 import { Text } from './text';
@@ -28,6 +29,7 @@ export function TextField({
   ...props
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
+  const { scheme } = useTheme();
   return (
     <View className={`mb-4 ${containerClassName ?? ''}`}>
       {label ? (
@@ -36,7 +38,7 @@ export function TextField({
         </Text>
       ) : null}
       <TextInput
-        placeholderTextColor={colors.dark.text}
+        placeholderTextColor={scheme === 'dark' ? colors.dark.text : colors.light.textMuted}
         className={[
           'rounded-xl border px-4 py-3 font-sans text-base text-gray-700 dark:text-gray-100',
           'bg-gray-100 dark:bg-gray-840',

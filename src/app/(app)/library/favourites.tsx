@@ -1,16 +1,20 @@
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/api/hooks';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
-import { EmptyNote } from '@/components/ui/query-state';
-import { Spinner } from '@/components/ui/spinner';
+import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
+
+const ROW_SURFACE =
+  'rounded-xl bg-white shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** Filled heart that un-favourites the path on its own connection. Always a
  * sibling of (never nested inside) the navigable row, so its press can't bubble. */
@@ -26,20 +30,20 @@ function UnfavouriteButton({
   const { t } = useTranslation();
   const toggleFavourite = useToggleFavourite(connectionId);
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={() => toggleFavourite.mutate({ libraryId, path, on: false })}
-      hitSlop={10}
+      hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={t('library.favourite.remove')}
-      className="self-stretch justify-center pl-2 pr-4 active:opacity-60"
+      className={`h-11 w-11 items-center justify-center ${ROW_SURFACE}`}
     >
       <Icon name="heart-solid" size={18} color={colors.primary} />
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
-/** One favourite as a row, styled like the browse list: a book (blue block) or a
- * navigation folder (pink block), opened on its own connection, with a remove-heart. */
+/** One favourite as a quiet row: a book (blue glyph tile) or a navigation folder
+ * (pink glyph tile), opened on its own connection, with a remove-heart. */
 function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
   const { openBook, openLibrary } = useOpen();
   const isBook = fav.is_book;
@@ -53,18 +57,22 @@ function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
       ? void openBook(fav.connectionId, fav.library_id, fav.path)
       : void openLibrary(fav.connectionId, fav.library_id, fav.path);
   return (
-    <View className="my-1 w-full flex-row items-center overflow-hidden rounded-lg bg-gray-50 shadow-sm dark:border dark:border-gray-900 dark:bg-gray-840 dark:shadow-none">
-      <Pressable
+    <View className="my-1 w-full flex-row items-center gap-2">
+      <AnimatedPressable
         onPress={onPress}
         accessibilityRole="button"
-        className="flex-1 flex-row items-center self-stretch active:opacity-80"
+        className={`flex-1 flex-row items-center gap-3 px-3 py-2.5 ${ROW_SURFACE}`}
       >
         <View
-          className={`min-h-[3.5rem] items-center justify-center self-stretch px-4 ${isBook ? 'bg-blue-500' : 'bg-primary'}`}
+          className={`h-10 w-10 items-center justify-center rounded-lg ${isBook ? 'bg-blue-500/10 dark:bg-blue-500/15' : 'bg-primary/10'}`}
         >
-          <Icon name={isBook ? 'book' : 'folder'} size={20} color={colors.white} />
+          <Icon
+            name={isBook ? 'book' : 'folder'}
+            size={18}
+            color={isBook ? colors.blue : colors.primary}
+          />
         </View>
-        <View className="flex-1 px-5 py-2">
+        <View className="flex-1">
           <Text variant="subtitle" numberOfLines={1}>
             {title}
           </Text>
@@ -74,7 +82,7 @@ function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
             </Text>
           ) : null}
         </View>
-      </Pressable>
+      </AnimatedPressable>
       <UnfavouriteButton
         connectionId={fav.connectionId}
         libraryId={fav.library_id}
@@ -101,9 +109,13 @@ export default function FavouritesScreen() {
         {t('library.favourites.title')}
       </Text>
 
-      {isLoading ? <Spinner center /> : null}
+      {isLoading ? <RowSkeletonList /> : null}
       {!isLoading && favourites.length === 0 ? (
-        <EmptyNote message={t('library.favourites.empty')} />
+        <EmptyState
+          icon="heart"
+          title={t('library.favourites.empty')}
+          hint={t('library.favourites.emptyHint')}
+        />
       ) : null}
 
       {favourites.map((f) => (

@@ -2,10 +2,11 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui/button';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
@@ -22,16 +23,19 @@ function CloseControl() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t('connect.scan.closeLabel')}
-      onPress={() => router.back()}
-      hitSlop={12}
-      style={{ top: insets.top + 8, left: 16 }}
-      className="absolute z-20 h-10 w-10 items-center justify-center rounded-full bg-black/50 active:opacity-70"
-    >
-      <Icon name="close" size={20} color={colors.white} />
-    </Pressable>
+    // Positioning lives on a plain wrapper: AnimatedPressable owns its `style` (the
+    // press animation), so a `style` prop on it would clobber the animation.
+    <View style={{ top: insets.top + 8, left: 16 }} className="absolute z-20">
+      <AnimatedPressable
+        accessibilityRole="button"
+        accessibilityLabel={t('connect.scan.closeLabel')}
+        onPress={() => router.back()}
+        hitSlop={12}
+        className="h-10 w-10 items-center justify-center rounded-full bg-black/50"
+      >
+        <Icon name="close" size={20} color={colors.white} />
+      </AnimatedPressable>
+    </View>
   );
 }
 
@@ -94,23 +98,21 @@ export default function ScanScreen() {
       <View className="flex-1 bg-gray-200 dark:bg-gray-800">
         <CloseControl />
         <SafeAreaView className="flex-1">
-          <View className="flex-1 items-center justify-center gap-4 p-8">
-            <Icon name="qrcode" size={48} color={colors.primary} />
-            <Text variant="title" className="text-center">
-              {t('connect.scan.permissionTitle')}
-            </Text>
-            <Text variant="muted" className="text-center">
-              {t('connect.scan.permissionDenied')}
-            </Text>
-            {permission.canAskAgain ? (
-              <Button title={t('connect.scan.tryAgain')} onPress={requestPermission} />
-            ) : (
-              <Button
-                title={t('connect.scan.openSettings')}
-                variant="secondary"
-                onPress={() => Linking.openSettings()}
-              />
-            )}
+          <View className="flex-1 justify-center">
+            <EmptyState
+              icon="qrcode"
+              title={t('connect.scan.permissionTitle')}
+              hint={t('connect.scan.permissionDenied')}
+              action={
+                permission.canAskAgain
+                  ? { label: t('connect.scan.tryAgain'), onPress: requestPermission }
+                  : {
+                      label: t('connect.scan.openSettings'),
+                      icon: 'settings',
+                      onPress: () => Linking.openSettings(),
+                    }
+              }
+            />
           </View>
         </SafeAreaView>
       </View>
@@ -130,7 +132,7 @@ export default function ScanScreen() {
         <View className="flex-1 items-end justify-end p-8" pointerEvents="box-none">
           <Text
             className={`w-full rounded-lg px-4 py-3 text-center text-white ${
-              error ? 'bg-red-600/80' : 'bg-black/60'
+              error ? 'bg-danger/90' : 'bg-black/60'
             }`}
           >
             {error ?? t('connect.scan.aimHint')}

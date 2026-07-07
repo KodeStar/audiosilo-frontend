@@ -4,13 +4,13 @@ import { ScrollView, useWindowDimensions } from 'react-native';
 
 import { useSearchAll, useSourceLabeller } from '@/api/hooks';
 import { BookRow } from '@/components/library/book-row';
+import { BookRowSkeletonList } from '@/components/library/search-results';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
-import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorNote } from '@/components/ui/query-state';
 import { TextField } from '@/components/ui/text-field';
+import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { useSearchStore } from '@/stores/search';
-
-const WIDE_BREAKPOINT = 1024;
 
 export default function SearchScreen() {
   const { t } = useTranslation();
@@ -33,7 +33,7 @@ export default function SearchScreen() {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerClassName="gap-0 p-4 lg:px-8"
+      contentContainerClassName="gap-2 p-4 lg:px-8"
       contentContainerStyle={{ paddingBottom }}
       keyboardShouldPersistTaps="handled"
     >
@@ -51,13 +51,17 @@ export default function SearchScreen() {
       ) : null}
 
       {debounced.length === 0 ? (
-        <EmptyNote message={t('search.prompt')} />
+        <EmptyState icon="search" title={t('search.promptTitle')} hint={t('search.prompt')} />
       ) : isFetching ? (
-        <Spinner center />
+        <BookRowSkeletonList />
       ) : error ? (
         <ErrorNote message={t('search.failed')} />
       ) : books.length === 0 ? (
-        <EmptyNote message={t('search.noResults', { query: debounced })} />
+        <EmptyState
+          icon="search"
+          title={t('search.noResultsTitle')}
+          hint={t('search.noResults', { query: debounced })}
+        />
       ) : (
         books.map((book) => (
           <BookRow

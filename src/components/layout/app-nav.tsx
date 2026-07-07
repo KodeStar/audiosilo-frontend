@@ -1,8 +1,9 @@
 import { Link, usePathname, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { Text as RNText, View } from 'react-native';
 
 import { Brand } from '@/components/brand/brand';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
@@ -55,23 +56,34 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
 
   if (orientation === 'bottom') {
     return (
-      <View className="flex-row border-t border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800">
+      // Extra top padding balances the home-indicator safe-area inset the shell
+      // adds below the row, so the icons aren't crammed against the top edge.
+      <View className="flex-row border-t border-gray-100 bg-gray-200 pt-3 dark:border-gray-750 dark:bg-gray-800">
         {NAV_ITEMS.map((item) => {
           const active = isActiveNav(pathname, item);
+          const label = t(`nav.${item.labelKey}`);
           return (
             <Link key={item.match} href={item.href} asChild>
-              <Pressable className="flex-1 items-center justify-center gap-1 py-2.5">
+              <AnimatedPressable
+                className="relative flex-1 items-center justify-center gap-1 py-1.5"
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={label}
+              >
+                {/* Active tab reads through color alone - primary icon + label, no pill. */}
                 <Icon
                   name={item.icon}
                   size={24}
-                  color={active ? colors.primary : colors.dark.textMuted}
+                  color={active ? colors.primary : colors[scheme].textMuted}
                 />
-                <Text
-                  className={`text-[11px] ${active ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}
+                <RNText
+                  className={`text-[11px] ${
+                    active ? 'font-roboto-medium text-primary' : 'text-gray-500 dark:text-gray-400'
+                  }`}
                 >
-                  {t(`nav.${item.labelKey}`)}
-                </Text>
-              </Pressable>
+                  {label}
+                </RNText>
+              </AnimatedPressable>
             </Link>
           );
         })}
@@ -89,9 +101,13 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
       <View className="gap-2 p-8 px-6">
         {NAV_ITEMS.map((item) => {
           const active = isActiveNav(pathname, item);
+          const label = t(`nav.${item.labelKey}`);
           return (
             <Link key={item.match} href={item.href} asChild>
-              <Pressable
+              <AnimatedPressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={label}
                 className={`relative flex-row items-center gap-3 rounded-lg border px-4 py-3 ${
                   active
                     ? 'border-gray-200 bg-gray-50 shadow-sm dark:border-gray-860 dark:bg-gray-840 dark:shadow-none'
@@ -102,10 +118,8 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                   <View className="absolute -left-[1px] -bottom-[1px] top-0 w-1.5 rounded-tl-lg rounded-bl-lg bg-primary" />
                 ) : null}
                 <Icon name={item.icon} size={24} color={colors[scheme].text} />
-                <Text className="text-base text-gray-600 dark:text-gray-300">
-                  {t(`nav.${item.labelKey}`)}
-                </Text>
-              </Pressable>
+                <Text className="text-base text-gray-600 dark:text-gray-300">{label}</Text>
+              </AnimatedPressable>
             </Link>
           );
         })}

@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, type ListRenderItem, Pressable, type ViewToken, View } from 'react-native';
+import { FlatList, type ListRenderItem, type ViewToken, View } from 'react-native';
 
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
@@ -9,8 +9,11 @@ import type { FsEntry } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
-import { EmptyNote, ErrorNote } from '@/components/ui/query-state';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorNote } from '@/components/ui/query-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -35,6 +38,27 @@ const ENTRY_H = 64;
 
 /** A flattened browse row: a letter divider or a filesystem entry. */
 type Row = { type: 'header'; letter: string } | { type: 'entry'; entry: FsEntry };
+
+/** Row-shaped loading placeholders that mirror the EntryRow surface, so the list
+ * fades in over its own silhouette instead of a centered spinner. */
+function BrowseSkeleton() {
+  return (
+    <View className="px-4 pt-2 lg:px-8">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <View
+          key={i}
+          className="my-1 h-14 flex-row items-center gap-3 rounded-xl bg-white px-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+        >
+          <Skeleton className="h-10 w-10 rounded-lg" />
+          <View className="flex-1 gap-2">
+            <Skeleton className="h-3.5 w-1/2 rounded" />
+            <Skeleton className="h-3 w-1/3 rounded" />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 /**
  * Filesystem browse view, shared by the library root (`index.tsx`) and the
@@ -191,10 +215,8 @@ function BrowseContent() {
       </View>
     );
 
-  const emptyMessage =
-    showTools && query.trim().length > 0
-      ? t('library.browse.noMatches')
-      : t('library.browse.empty');
+  // Two distinct empty variants: filtered-to-nothing vs a genuinely empty folder.
+  const noMatches = showTools && query.trim().length > 0;
 
   return (
     <View className="flex-1">
@@ -215,7 +237,7 @@ function BrowseContent() {
         </View>
       ) : null}
 
-      {isLoading ? <Spinner center /> : null}
+      {isLoading ? <BrowseSkeleton /> : null}
       {error ? (
         <ErrorNote message={t('library.browse.openError')} onRetry={() => refetch()} />
       ) : null}
@@ -234,9 +256,19 @@ function BrowseContent() {
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={VIEWABILITY_CONFIG}
             ListEmptyComponent={
-              <View className="px-4 lg:px-8">
-                <EmptyNote message={emptyMessage} />
-              </View>
+              noMatches ? (
+                <EmptyState
+                  icon="search"
+                  title={t('library.browse.noMatches')}
+                  hint={t('library.browse.noMatchesHint')}
+                />
+              ) : (
+                <EmptyState
+                  icon="folder"
+                  title={t('library.browse.empty')}
+                  hint={t('library.browse.emptyHint')}
+                />
+              )
             }
             ListFooterComponent={
               isFetchingNextPage ? (
@@ -252,27 +284,27 @@ function BrowseContent() {
             // column instead of overflowing: a top gap clears the filter box, and
             // the same bottom inset the list uses keeps the last letters above the
             // floating mini-player. pr-3 lifts it off the screen edge.
-            <View style={{ paddingTop: 12, paddingBottom }} className="w-10 items-center pr-3">
+            <View style={{ paddingTop: 12, paddingBottom }} className="w-11 items-center pr-2">
               {RAIL_LETTERS.map((l) => {
                 const active = present.has(l);
                 return (
-                  <Pressable
+                  <AnimatedPressable
                     key={l}
                     disabled={!active}
                     onPress={() => jumpToLetter(l)}
-                    hitSlop={{ top: 2, bottom: 2, left: 12, right: 6 }}
+                    hitSlop={{ top: 3, bottom: 3, left: 14, right: 8 }}
                     accessibilityRole="button"
                     accessibilityLabel={t('library.browse.jumpTo', { letter: l })}
-                    className="w-full flex-1 items-center justify-center"
+                    className="w-7 flex-1 items-center justify-center rounded-full"
                   >
                     <Text
-                      className={`text-[10px] font-roboto-semibold ${
+                      className={`text-[11px] font-roboto-semibold ${
                         active ? 'text-primary' : 'text-gray-300 dark:text-gray-700'
                       }`}
                     >
                       {l}
                     </Text>
-                  </Pressable>
+                  </AnimatedPressable>
                 );
               })}
             </View>
