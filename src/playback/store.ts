@@ -496,6 +496,15 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
       if (r.kind === 'progress') {
         const p = r.progress;
+        // Resume an in-progress book where it left off. A FINISHED book instead restarts
+        // from 0 (a deliberate re-listen): finishBook saves the finished position at the
+        // whole-book end (position within FINISHED_TOLERANCE of its duration), so resuming
+        // from the saved spot would strand the listener at the very end and instantly
+        // re-fire the end-of-book flow. A book "marked as finished" mid-book carries the
+        // flag too - either way the `finished` flag is the user's "done" signal, so we
+        // ignore the saved position and leave startAt at 0. resumeFloor is derived from
+        // startAt below, so it stays 0 and the slip guard won't block the restart's early
+        // low-position saves. Only an unfinished book resumes at its saved position.
         if (!p.finished && p.position > 0) startAt = p.position;
         if (p.playback_speed > 0) speed = clampRate(p.playback_speed);
       } else if (r.kind === 'failed' && dl?.status !== 'downloaded') {

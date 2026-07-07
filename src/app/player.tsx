@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -40,6 +40,16 @@ export default function PlayerScreen() {
   const chaptersQuery = useChapters(libraryId, path, connectionId);
   const chapterData = chaptersQuery.data;
 
+  // Auto-start playback AT MOST ONCE per target book. A mount-scoped latch keyed by
+  // `${cid}|${libraryId}|<rel_path>` remembers the target we already resolved, so we never
+  // re-start it just because `nowPlaying` changed underneath us. This guards the
+  // end-of-book teardown: finishBook() clears `nowPlaying` and THEN navigates away, so
+  // between those two steps this effect re-runs with `nowPlaying === null` - the
+  // "already playing" guard below stops matching and, without the latch, we'd fall through
+  // and restart the just-finished book (audio playing under the end-credits screen). A
+  // different key (the route reused for another book, e.g. Play next does
+  // router.replace(playerHref(next))) naturally differs, so a genuine new target still starts.
+  const startedKeyRef = useRef<string | null>(null);
   // Start playback once the book AND its chapters/files have loaded - otherwise
   // multi-file/folder books would fall back to streaming the folder path and
   // chapters would be missing. Start point priority: explicit position (bookmark
@@ -50,6 +60,9 @@ export default function PlayerScreen() {
     const hasPos = posParam !== undefined && !Number.isNaN(posParam);
     const trackParam = track !== undefined ? Number(track) : undefined;
     const hasTrack = trackParam !== undefined && !Number.isNaN(trackParam);
+    // Keyed on the book's canonical rel_path (playBook stores that as nowPlaying.path,
+    // which can differ from the decoded route param).
+    const key = `${cid}|${libraryId}|${book.rel_path}`;
     // Compare against the book's canonical rel_path - playBook stores that as
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
@@ -59,10 +72,16 @@ export default function PlayerScreen() {
       nowPlaying?.libraryId === libraryId &&
       nowPlaying?.path === book.rel_path
     ) {
+      startedKeyRef.current = key; // this target is handled; don't auto-start it again
       if (hasPos) void seekBook(posParam);
       else if (hasTrack) void goToTrack(trackParam);
       return;
     }
+    // Already auto-started this exact target (nowPlaying has since been cleared, e.g. by
+    // the finishBook teardown) - do NOT restart it just because the guard above no longer
+    // matches. A new target (different key) falls through and starts.
+    if (startedKeyRef.current === key) return;
+    startedKeyRef.current = key;
     const startAt = hasPos ? posParam : undefined;
     void usePlayer
       .getState()

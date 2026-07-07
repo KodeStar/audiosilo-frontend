@@ -518,6 +518,52 @@ describe('resume never restarts an in-progress book from 0', () => {
     expect(usePlayer.getState().rate).toBe(1.5);
   });
 
+  it('restarts a FINISHED book from 0 (re-listen) and does not block early low-position saves', async () => {
+    // finishBook saves the finished position at the whole-book end (position ~= duration).
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ finished: true, position: 100, duration: 100 }),
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+
+    // The saved end position is ignored: a re-listen starts at 0, not near the end (which
+    // would instantly re-fire the end-of-book flow).
+    expect((mockSvc.load as jest.Mock).mock.calls[0][1]).toBe(0); // startIndex (single file)
+    expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(0); // positionInTrack
+
+    // resumeFloor is 0 for the fresh session, so an early low-position save is NOT blocked
+    // by the slip guard.
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 3));
+    pushSnapshot(snap('paused', 3));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ position: 3, finished: false });
+  });
+
+  it('restarts a book marked finished mid-book from 0 (the finished flag is the done signal)', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ finished: true, position: 40, duration: 100 }),
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+    // Even with a mid-book saved position, a finished book restarts from 0.
+    expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(0); // positionInTrack
+  });
+
+  it('leaves UNFINISHED mid-book resume unchanged (starts at the saved position)', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ finished: false, position: 40, duration: 100 }),
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+    expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(40); // positionInTrack
+  });
+
   it('fails safe (error, no playback) when a streaming resume lookup fails', async () => {
     mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
     (mockSvc.load as jest.Mock).mockClear();
