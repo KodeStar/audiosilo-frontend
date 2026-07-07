@@ -5,6 +5,10 @@ import { DEFAULT_VIRTUAL_CHAPTER_INTERVAL } from '@/playback/book-queue';
 
 const KEY = 'audiosilo.settings';
 
+/** When the player may auto-download the next book in a series: never, only on an
+ * unmetered (wifi/ethernet) connection, or always. */
+export type AutoDownloadMode = 'never' | 'wifi' | 'always';
+
 export type PlaybackSettings = {
   /** Skip-forward jump in seconds. */
   skipForward: number;
@@ -17,6 +21,12 @@ export type PlaybackSettings = {
   /** Length (seconds) of the virtual chapters synthesized for a long, chapterless
    * single-file book so chapter navigation works. */
   virtualChapterInterval: number;
+  /** Auto-start the next book in a series when the current one finishes. */
+  autoPlayNext: boolean;
+  /** Whether/when to prefetch the next book in a series (near the end of the current). */
+  autoDownloadNext: AutoDownloadMode;
+  /** Delete a downloaded book's local files once it is marked finished. */
+  autoDeleteFinished: boolean;
 };
 
 const DEFAULTS: PlaybackSettings = {
@@ -25,6 +35,9 @@ const DEFAULTS: PlaybackSettings = {
   defaultRate: 1,
   autoRewindMax: 5,
   virtualChapterInterval: DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
+  autoPlayNext: false,
+  autoDownloadNext: 'wifi',
+  autoDeleteFinished: true,
 };
 
 type SettingsState = PlaybackSettings & {
@@ -35,17 +48,32 @@ type SettingsState = PlaybackSettings & {
   setDefaultRate: (rate: number) => void;
   setAutoRewindMax: (seconds: number) => void;
   setVirtualChapterInterval: (seconds: number) => void;
+  setAutoPlayNext: (on: boolean) => void;
+  setAutoDownloadNext: (mode: AutoDownloadMode) => void;
+  setAutoDeleteFinished: (on: boolean) => void;
 };
 
 export const useSettings = create<SettingsState>()((set, get) => {
   const save = () => {
-    const { skipForward, skipBackward, defaultRate, autoRewindMax, virtualChapterInterval } = get();
+    const {
+      skipForward,
+      skipBackward,
+      defaultRate,
+      autoRewindMax,
+      virtualChapterInterval,
+      autoPlayNext,
+      autoDownloadNext,
+      autoDeleteFinished,
+    } = get();
     void setItem(KEY, {
       skipForward,
       skipBackward,
       defaultRate,
       autoRewindMax,
       virtualChapterInterval,
+      autoPlayNext,
+      autoDownloadNext,
+      autoDeleteFinished,
     });
   };
   return {
@@ -73,6 +101,18 @@ export const useSettings = create<SettingsState>()((set, get) => {
     },
     setVirtualChapterInterval: (virtualChapterInterval) => {
       set({ virtualChapterInterval });
+      save();
+    },
+    setAutoPlayNext: (autoPlayNext) => {
+      set({ autoPlayNext });
+      save();
+    },
+    setAutoDownloadNext: (autoDownloadNext) => {
+      set({ autoDownloadNext });
+      save();
+    },
+    setAutoDeleteFinished: (autoDeleteFinished) => {
+      set({ autoDeleteFinished });
       save();
     },
   };

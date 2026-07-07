@@ -18,6 +18,7 @@ import {
   loadInitialProgress,
   saveProgress,
 } from './progress-sync';
+import { maybeAutoDownloadNext } from './next-book';
 import { createPlaybackService } from './service';
 import { INITIAL_SNAPSHOT, type PlaybackService, type PlaybackSnapshot } from './types';
 
@@ -108,6 +109,18 @@ export type NowPlaying = {
   queue: BookQueue;
 };
 
+/** The identity of the book that just finished - enough for a UI-layer end-of-book
+ * flow (end credits) to show it and resolve the next book, captured by `finishBook`
+ * before playback state is torn down. */
+export type FinishedBook = {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+  title: string;
+  author: string;
+  cover: string;
+};
+
 type PlayerState = {
   nowPlaying: NowPlaying | null;
   snapshot: PlaybackSnapshot;
@@ -141,32 +154,46 @@ type PlayerState = {
   skipSeconds: (delta: number) => Promise<void>;
   setRate: (rate: number) => Promise<void>;
   stop: () => Promise<void>;
+  /** Mark the current book finished (from its natural end, or a manual "mark as
+   * finished"): persist `finished: true`, tear down playback, optionally delete its
+   * downloaded copy, and return the book's identity for a follow-on UI flow. Null when
+   * nothing is playing. */
+  finishBook: () => FinishedBook | null;
   /** Present the OS audio-route / casting picker (AirPlay, Android output switcher, web
    * Remote Playback). No-op if the engine doesn't support it. */
   showRoutePicker: () => Promise<void>;
 };
 
-/** Persist the current whole-book position (offline-safe). */
-async function persist() {
+/** Persist the current whole-book position (offline-safe). Pass `forceFinished` to
+ * record the book as finished regardless of position - used by `finishBook` for the
+ * natural end AND for a manual "mark as finished" mid-book. A forced finish bypasses the
+ * position/slip guards (they exist to protect an in-progress place, not a deliberate
+ * completion) and records the whole-book duration so the book reads as 100% done. */
+async function persist(opts?: { forceFinished?: boolean }) {
   const { nowPlaying, snapshot, rate } = usePlayer.getState();
   if (!apiRef || !nowPlaying) return;
-  const position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
-  if (position <= 0) return;
-  // Guard against a slipped-through restart corrupting real progress: a position far
-  // below the resume floor (without a deliberate backward seek, which lowers the floor)
-  // is treated as a spurious reset and not saved. The server is last-write-wins, so a
-  // small-position save with a newer timestamp would otherwise permanently overwrite the
-  // user's place.
-  if (position < resumeFloor - SLIP_TOLERANCE) return;
-  if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
+  const forceFinished = opts?.forceFinished ?? false;
   const total = nowPlaying.queue.total;
+  let position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
+  if (forceFinished) {
+    if (total > 0) position = Math.max(position, total); // a completed book reads as 100%
+  } else {
+    if (position <= 0) return;
+    // Guard against a slipped-through restart corrupting real progress: a position far
+    // below the resume floor (without a deliberate backward seek, which lowers the floor)
+    // is treated as a spurious reset and not saved. The server is last-write-wins, so a
+    // small-position save with a newer timestamp would otherwise permanently overwrite the
+    // user's place.
+    if (position < resumeFloor - SLIP_TOLERANCE) return;
+    if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
+  }
   await saveProgress(apiRef, {
     connectionId: nowPlaying.connectionId,
     libraryId: nowPlaying.libraryId,
     path: nowPlaying.path,
     position,
     duration: total,
-    finished: total > 0 && position >= total - FINISHED_TOLERANCE,
+    finished: forceFinished || (total > 0 && position >= total - FINISHED_TOLERANCE),
     playback_speed: rate,
     device_id: deviceId,
     updated_at: new Date().toISOString(),
@@ -185,9 +212,34 @@ function invalidateProgressLists() {
   void queryClient.invalidateQueries({ queryKey: qk.allProgress(cid) });
 }
 
+/** The book key the next-book prefetch has already fired for, so the 90% latch triggers
+ * at most once per loaded book. Reset in `playBook`. */
+let prefetchedFor: string | null = null;
+const PREFETCH_AT_FRACTION = 0.9; // near the end of the current book, prefetch the next
+
+/** Once the current book passes 90%, prefetch the next book in its series (once). Driven
+ * off the periodic save loop, so it only runs while actually playing and reuses the
+ * whole-book position already computed on that cadence. Best-effort - never touches
+ * playback. */
+function maybePrefetchNext() {
+  const { nowPlaying, snapshot } = usePlayer.getState();
+  if (!nowPlaying) return;
+  const total = nowPlaying.queue.total;
+  if (total <= 0) return;
+  const position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
+  if (position < total * PREFETCH_AT_FRACTION) return;
+  const key = downloadKey(nowPlaying.connectionId, nowPlaying.libraryId, nowPlaying.path);
+  if (prefetchedFor === key) return;
+  prefetchedFor = key;
+  void maybeAutoDownloadNext(nowPlaying.connectionId, nowPlaying.libraryId, nowPlaying.path);
+}
+
 function startSaveLoop() {
   stopSaveLoop();
-  saveTimer = setInterval(() => void persist(), SAVE_INTERVAL_MS);
+  saveTimer = setInterval(() => {
+    void persist();
+    maybePrefetchNext();
+  }, SAVE_INTERVAL_MS);
 }
 function stopSaveLoop() {
   if (saveTimer) {
@@ -354,6 +406,14 @@ async function ensureService(): Promise<PlaybackService> {
         // buffer that outlasts the grace surfaces an error. Idempotent - already armed
         // when an attempt began. Only when we intend to play.
         if (wantsPlayback) armStallWatchdog();
+      } else if (snapshot.state === 'ended') {
+        // The book reached its natural end. Behave like a pause: clear intent and run a
+        // final persist (which records finished:true via the FINISHED_TOLERANCE), halting
+        // the save loop. But deliberately KEEP nowPlaying populated and the `ended`
+        // snapshot visible so a UI-layer listener can drive the end-of-book flow (end
+        // credits, auto-play next). Do NOT navigate or clear state here.
+        clearPlaybackIntent();
+        haltAndPersist();
       } else {
         // Any other settled state (a start-window transient was normalized to `loading`
         // above): a real pause, a finished book, a dead stream the web/Android engines
@@ -407,6 +467,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     deviceId = await getDeviceId();
     lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
     resumeLookupFailed = false;
+    prefetchedFor = null; // re-arm the 90% next-book prefetch for this book
 
     const queue = buildBookQueue(
       api,
@@ -600,6 +661,43 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
 
+  finishBook: () => {
+    const np = get().nowPlaying;
+    if (!np) return null;
+    const finished: FinishedBook = {
+      connectionId: np.connectionId,
+      libraryId: np.libraryId,
+      path: np.path,
+      title: np.title,
+      author: np.author,
+      cover: np.cover,
+    };
+    // Mirror stop()'s teardown, but the forced-finished save must be the LAST write for
+    // this book (the server is last-write-wins), so we do NOT call stop()'s ordinary
+    // persist. `persist({ forceFinished })` captures nowPlaying synchronously before we
+    // null it below, so the finished save carries the right identity even as state clears.
+    clearPlaybackIntent();
+    stopSaveLoop();
+    void persist({ forceFinished: true });
+    // Refresh the "continue listening" / "finished" lists for this book's connection.
+    // nowPlaying is nulled just below, so invalidate against the captured id directly.
+    void queryClient.invalidateQueries({ queryKey: qk.allProgress(finished.connectionId) });
+    set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
+    // Tear the engine down first, THEN delete the local copy (if enabled) so the files
+    // aren't in use by the player when they're removed. Fully best-effort.
+    void (async () => {
+      if (service) await service.reset();
+      if (!useSettings.getState().autoDeleteFinished) return;
+      const key = downloadKey(finished.connectionId, finished.libraryId, finished.path);
+      if (useDownloads.getState().entries[key]?.status !== 'downloaded') return;
+      await useDownloads
+        .getState()
+        .remove(finished.connectionId, finished.libraryId, finished.path)
+        .catch(() => undefined);
+    })();
+    return finished;
+  },
+
   showRoutePicker: async () => {
     const svc = service ?? (await ensureService());
     await svc.showRoutePicker?.();
@@ -709,3 +807,7 @@ export const selectCurrentChapter = (s: PlayerState): Chapter | null =>
   s.nowPlaying ? chapterAt(s.nowPlaying.queue.chapters, selectBookPosition(s)) : null;
 
 export const selectIsPlaying = (s: PlayerState): boolean => s.snapshot.state === 'playing';
+
+/** The current book has reached its natural end (its files finished). Drives the
+ * UI-layer end-of-book flow; nowPlaying stays populated in this state. */
+export const selectIsEnded = (s: PlayerState): boolean => s.snapshot.state === 'ended';

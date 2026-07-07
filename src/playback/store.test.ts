@@ -58,6 +58,13 @@ jest.mock('@/api/provider', () => ({
   queryClient: { invalidateQueries: jest.fn(), setQueryData: jest.fn() },
 }));
 
+// The next-book prefetch is exercised in next-book.test.ts; here we only assert the store
+// invokes it (the 90% latch), so stub the module.
+const mockMaybeAutoDownloadNext = jest.fn((..._a: unknown[]) => Promise.resolve());
+jest.mock('./next-book', () => ({
+  maybeAutoDownloadNext: (...a: unknown[]) => mockMaybeAutoDownloadNext(...a),
+}));
+
 // playBook resolves its ApiClient from the connection id via resolveClient(); return a
 // fake so saves/history/cover URLs work without a real session. Exposed as a jest.fn so a
 // test can force `null` (a connection whose token failed to hydrate - see the offline
@@ -77,6 +84,7 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
+import { useSettings } from '@/stores/settings';
 
 import { flushConnection } from './progress-sync';
 import { stopPlaybackForConnection, teardownBeforeTokenRevoke, usePlayer } from './store';
@@ -747,5 +755,118 @@ describe('plays a downloaded book whose connection is gone', () => {
     // No local files + no client => nothing to play; the online/streaming path is unchanged.
     expect(mockSvc.load).not.toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+});
+
+// --- finishBook (mark the current book finished) -----------------------------
+
+describe('finishBook', () => {
+  function downloadedEntry(): DownloadEntry {
+    const manifest: DownloadManifest = {
+      book: makeBook(),
+      chapters: null,
+      files: [{ relPath: 'A/Book.m4b', localUri: 'file:///dl/0.m4b' }],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    return {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book.m4b',
+      title: 'A Book',
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest,
+    };
+  }
+
+  it('persists finished:true, returns the book identity, and clears nowPlaying', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40)); // mid-book: proves finished is forced, not tolerance
+    await Promise.resolve();
+
+    mockSaveProgress.mockClear();
+    const info = usePlayer.getState().finishBook();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(info).toMatchObject({ connectionId: 'c1', libraryId: 2, path: 'A/Book.m4b' });
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ finished: true });
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('returns null when nothing is playing', () => {
+    expect(usePlayer.getState().finishBook()).toBeNull();
+  });
+
+  it('deletes the downloaded copy when autoDeleteFinished is on', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    await Promise.resolve();
+
+    useDownloads.setState({ entries: { 'c1:2:A/Book.m4b': downloadedEntry() } });
+    const removeSpy = jest.spyOn(useDownloads.getState(), 'remove').mockResolvedValue(undefined);
+    useSettings.setState({ autoDeleteFinished: true });
+
+    usePlayer.getState().finishBook();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(removeSpy).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b');
+    removeSpy.mockRestore();
+  });
+
+  it('keeps the downloaded copy when autoDeleteFinished is off', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    await Promise.resolve();
+
+    useDownloads.setState({ entries: { 'c1:2:A/Book.m4b': downloadedEntry() } });
+    const removeSpy = jest.spyOn(useDownloads.getState(), 'remove').mockResolvedValue(undefined);
+    useSettings.setState({ autoDeleteFinished: false });
+
+    usePlayer.getState().finishBook();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(removeSpy).not.toHaveBeenCalled();
+    removeSpy.mockRestore();
+    useSettings.setState({ autoDeleteFinished: true }); // restore the default
+  });
+});
+
+// --- 90% next-book prefetch latch --------------------------------------------
+
+describe('next-book prefetch latch (fires once past 90%)', () => {
+  it('calls maybeAutoDownloadNext once when the book passes 90%, and not again', async () => {
+    await startBook(makeBook(), 0); // single-file book, total 100
+    pushSnapshot(snap('playing', 95)); // 95% - past the 90% threshold
+    await Promise.resolve();
+
+    mockMaybeAutoDownloadNext.mockClear();
+    jest.advanceTimersByTime(15_000); // first save-loop tick
+    await Promise.resolve();
+    expect(mockMaybeAutoDownloadNext).toHaveBeenCalledTimes(1);
+    expect(mockMaybeAutoDownloadNext).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b');
+
+    jest.advanceTimersByTime(15_000); // still past 90%, but latched
+    await Promise.resolve();
+    expect(mockMaybeAutoDownloadNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire before the book reaches 90%', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50)); // 50%
+    await Promise.resolve();
+
+    mockMaybeAutoDownloadNext.mockClear();
+    jest.advanceTimersByTime(15_000);
+    await Promise.resolve();
+    expect(mockMaybeAutoDownloadNext).not.toHaveBeenCalled();
   });
 });
