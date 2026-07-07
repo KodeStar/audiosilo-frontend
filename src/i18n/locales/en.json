@@ -4,7 +4,9 @@
     "save": "Save",
     "done": "Done",
     "retry": "Retry",
-    "close": "Close"
+    "close": "Close",
+    "on": "On",
+    "off": "Off"
   },
   "settings": {
     "title": "Settings",
@@ -26,6 +28,24 @@
       "autoRewind": "Auto-rewind on resume",
       "chapterLength": "Chapter length (unchaptered)",
       "off": "Off"
+    },
+    "upNext": {
+      "label": "Up next",
+      "autoPlay": {
+        "label": "Automatically play next book",
+        "description": "Start the next book in the folder when one finishes."
+      },
+      "autoDownload": {
+        "label": "Automatically download books",
+        "description": "Prefetch the next book so it is ready to listen offline.",
+        "never": "Never",
+        "wifi": "Wi-Fi only",
+        "always": "Always"
+      },
+      "autoDelete": {
+        "label": "Automatically delete finished books",
+        "description": "Remove downloaded files once a book is finished."
+      }
     },
     "account": {
       "label": "Account",
@@ -354,6 +374,10 @@
       "startingIn": "Starting in {{time}}",
       "endOfSeries": "You have reached the end of this folder.",
       "viewDetails": "View book details"
+    },
+    "menu": {
+      "label": "More",
+      "viewCredits": "View end credits"
     }
   },
   "nav": {

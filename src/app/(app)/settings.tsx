@@ -7,14 +7,14 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
 import { Stepper } from '@/components/ui/stepper';
 import { Text } from '@/components/ui/text';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
-import { useSettings } from '@/stores/settings';
+import { useSettings, type AutoDownloadMode } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
 
 const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
@@ -55,6 +55,28 @@ function StepperRow({
   );
 }
 
+/** A choice setting: a label, a one-line description, and its control stacked below -
+ * the layout the segmented controls (wider than a compact stepper) read best in. */
+function ChoiceRow({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <View className="gap-2">
+      <View className="gap-0.5">
+        <Text>{label}</Text>
+        <Text variant="caption">{description}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
 // App-level preferences only. Account management (password, recovery, device
 // pairing, sign-out, server version) is per-connection and lives on each
 // connection's account screen, reached from the Servers list below.
@@ -85,6 +107,23 @@ export default function SettingsScreen() {
   const setDefaultRate = useSettings((s) => s.setDefaultRate);
   const setAutoRewindMax = useSettings((s) => s.setAutoRewindMax);
   const setVirtualChapterInterval = useSettings((s) => s.setVirtualChapterInterval);
+
+  const autoPlayNext = useSettings((s) => s.autoPlayNext);
+  const autoDownloadNext = useSettings((s) => s.autoDownloadNext);
+  const autoDeleteFinished = useSettings((s) => s.autoDeleteFinished);
+  const setAutoPlayNext = useSettings((s) => s.setAutoPlayNext);
+  const setAutoDownloadNext = useSettings((s) => s.setAutoDownloadNext);
+  const setAutoDeleteFinished = useSettings((s) => s.setAutoDeleteFinished);
+
+  const onOff: SegmentedOption<'on' | 'off'>[] = [
+    { value: 'on', label: t('common.on') },
+    { value: 'off', label: t('common.off') },
+  ];
+  const downloadOptions: SegmentedOption<AutoDownloadMode>[] = [
+    { value: 'never', label: t('settings.upNext.autoDownload.never') },
+    { value: 'wifi', label: t('settings.upNext.autoDownload.wifi') },
+    { value: 'always', label: t('settings.upNext.autoDownload.always') },
+  ];
 
   const paddingBottom = useMiniPlayerInset();
 
@@ -194,6 +233,44 @@ export default function SettingsScreen() {
                 format={mins}
               />
             </StepperRow>
+          </View>
+        </Section>
+
+        <Section title={t('settings.upNext.label')}>
+          <View className="gap-5">
+            <ChoiceRow
+              label={t('settings.upNext.autoPlay.label')}
+              description={t('settings.upNext.autoPlay.description')}
+            >
+              <SegmentedControl
+                options={onOff}
+                value={autoPlayNext ? 'on' : 'off'}
+                onChange={(v) => setAutoPlayNext(v === 'on')}
+                grow
+              />
+            </ChoiceRow>
+            <ChoiceRow
+              label={t('settings.upNext.autoDownload.label')}
+              description={t('settings.upNext.autoDownload.description')}
+            >
+              <SegmentedControl
+                options={downloadOptions}
+                value={autoDownloadNext}
+                onChange={setAutoDownloadNext}
+                grow
+              />
+            </ChoiceRow>
+            <ChoiceRow
+              label={t('settings.upNext.autoDelete.label')}
+              description={t('settings.upNext.autoDelete.description')}
+            >
+              <SegmentedControl
+                options={onOff}
+                value={autoDeleteFinished ? 'on' : 'off'}
+                onChange={(v) => setAutoDeleteFinished(v === 'on')}
+                grow
+              />
+            </ChoiceRow>
           </View>
         </Section>
 

@@ -1,15 +1,19 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBook } from '@/api/hooks';
 import { useCid, useOptionalApi } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
+import { CoverBackdrop } from '@/components/player/cover-backdrop';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { formatCountdown } from '@/lib/format';
 import { bookHref, libraryHref, parentPath, pathLeaf, playerHref } from '@/lib/paths';
@@ -131,14 +135,19 @@ export function EndCredits({
 
   const folderName = pathLeaf(path);
   const cover = book ? api?.coverUrl(libraryId, path) : undefined;
+  const coverSource = cover ? { uri: cover, headers: api?.authHeaders() } : null;
 
   return (
     <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       className="flex-1 bg-gray-200 dark:bg-gray-800"
     >
+      {/* Ambient backdrop from the finished book's cover - visual continuity from the
+          player through to the credits (painted under the header + hero cover). */}
+      <CoverBackdrop source={coverSource} />
+
       <View className="flex-row items-center px-4 py-2">
-        <Pressable
+        <AnimatedPressable
           onPress={onClose}
           hitSlop={12}
           className="h-8 w-8 items-center justify-center"
@@ -146,17 +155,13 @@ export function EndCredits({
           accessibilityLabel={t('common.close')}
         >
           <Icon name="chevron-down" size={26} color={neutral} />
-        </Pressable>
+        </AnimatedPressable>
       </View>
 
       <ScrollView className="flex-1" contentContainerClassName="items-center gap-6 px-6 pb-10 pt-2">
         {/* The finished book. */}
-        <View className="w-40">
-          <Cover
-            source={cover ? { uri: cover, headers: api?.authHeaders() } : null}
-            label={book?.title ?? folderName}
-            sublabel={book?.author}
-          />
+        <View className="w-40 overflow-hidden rounded-lg border border-black/10 shadow-lg dark:border-white/10">
+          <Cover source={coverSource} label={book?.title ?? folderName} sublabel={book?.author} />
         </View>
         <View className="items-center gap-1">
           <Text variant="label" className="text-primary">
@@ -176,9 +181,9 @@ export function EndCredits({
           </Text>
         </View>
 
-        {/* Up next / end-of-folder. */}
+        {/* Up next / end-of-folder / still resolving. */}
         {nextBook ? (
-          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-gray-100 p-4 dark:bg-gray-840">
+          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
             <Text variant="label">{t('player.finished.upNext')}</Text>
             <View className="gap-0.5">
               <Text variant="title" numberOfLines={2}>
@@ -203,22 +208,26 @@ export function EndCredits({
                     time: formatCountdown(decision.countdownSeconds),
                   })}
                 </Text>
-                <Pressable
+                <AnimatedPressable
                   onPress={() => setCancelled(true)}
                   hitSlop={8}
                   accessibilityRole="button"
-                  className="active:opacity-60"
                 >
                   <Text className="font-roboto-medium text-primary">{t('common.cancel')}</Text>
-                </Pressable>
+                </AnimatedPressable>
               </View>
             ) : null}
           </View>
         ) : nextBook === null ? (
-          <Text variant="muted" className="text-center">
-            {t('player.finished.endOfSeries')}
-          </Text>
-        ) : null}
+          <EmptyState icon="check" title={t('player.finished.endOfSeries')} />
+        ) : (
+          // Still resolving the next book: a card-shaped placeholder in its place.
+          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
+            <Skeleton className="h-3.5 w-20 rounded" />
+            <Skeleton className="h-5 w-3/4 rounded" />
+            <Skeleton className="h-11 w-full rounded-lg" />
+          </View>
+        )}
 
         {/* Secondary actions. */}
         <View className="w-full max-w-[420px] gap-2">

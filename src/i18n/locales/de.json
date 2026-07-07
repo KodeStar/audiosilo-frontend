@@ -4,7 +4,9 @@
     "save": "Speichern",
     "done": "Fertig",
     "retry": "Erneut versuchen",
-    "close": "Schließen"
+    "close": "Schließen",
+    "on": "Ein",
+    "off": "Aus"
   },
   "settings": {
     "title": "Einstellungen",
@@ -26,6 +28,24 @@
       "autoRewind": "Auto-Rücklauf beim Fortsetzen",
       "chapterLength": "Kapitellänge (ohne Kapitel)",
       "off": "Aus"
+    },
+    "upNext": {
+      "label": "Als Nächstes",
+      "autoPlay": {
+        "label": "Nächstes Buch automatisch abspielen",
+        "description": "Startet das nächste Buch im Ordner, sobald eines endet."
+      },
+      "autoDownload": {
+        "label": "Bücher automatisch herunterladen",
+        "description": "Lädt das nächste Buch vorab, damit es offline bereitsteht.",
+        "never": "Nie",
+        "wifi": "Nur WLAN",
+        "always": "Immer"
+      },
+      "autoDelete": {
+        "label": "Beendete Bücher automatisch löschen",
+        "description": "Entfernt heruntergeladene Dateien, sobald ein Buch beendet ist."
+      }
     },
     "account": {
       "label": "Konto",
@@ -354,6 +374,10 @@
       "startingIn": "Startet in {{time}}",
       "endOfSeries": "Das Ende dieses Ordners ist erreicht.",
       "viewDetails": "Buchdetails anzeigen"
+    },
+    "menu": {
+      "label": "Mehr",
+      "viewCredits": "Abspann anzeigen"
     }
   },
   "nav": {

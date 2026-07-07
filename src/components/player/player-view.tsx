@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, Text as RNText, useWindowDimensions, View } from 'react-native';
@@ -30,7 +31,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
-import { pathLeaf } from '@/lib/paths';
+import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { wallClockSeconds } from '@/playback/rate';
 import { useSleepTimer } from '@/playback/sleep-timer';
@@ -45,7 +46,15 @@ import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
 import { colors, tabularNums } from '@/theme/tokens';
 
-type PlayerSheet = 'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | null;
+type PlayerSheet =
+  | 'history'
+  | 'notes'
+  | 'bookmarks'
+  | 'chapters'
+  | 'speed'
+  | 'sleep'
+  | 'menu'
+  | null;
 
 /** Duration of the play/pause icon morph. */
 const MORPH_MS = 140;
@@ -86,6 +95,31 @@ function PlayPauseIcon({ playing }: { playing: boolean }) {
         <Icon name="pause" size={28} color={colors.white} />
       </Animated.View>
     </View>
+  );
+}
+
+/** A single row in the overflow menu: a leading glyph and a label, with the shared
+ * AnimatedPressable press feedback. */
+function MenuRow({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: 'book' | 'list' | 'check';
+  label: string;
+  onPress: () => void;
+}) {
+  const { scheme } = useTheme();
+  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      accessibilityRole="button"
+      className="flex-row items-center gap-3 rounded-xl px-4 py-3.5"
+    >
+      <Icon name={icon} size={20} color={neutral} />
+      <Text variant="title">{label}</Text>
+    </AnimatedPressable>
   );
 }
 
@@ -217,6 +251,25 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
 
   const { queue, title, author, libraryId, path, connectionId } = nowPlaying;
   const total = queue.total;
+
+  // Overflow-menu actions. In the phone modal (`onClose` present) we replace the
+  // player screen so the target takes its place; in the desktop inline panel (no
+  // modal to close) we push. Playback keeps running for the first two - only "mark
+  // finished" tears it down.
+  const goTo = (href: Parameters<typeof router.replace>[0]) => {
+    setSheet(null);
+    if (onClose) router.replace(href);
+    else router.push(href);
+  };
+  const onViewDetails = () => goTo(bookHref(connectionId, libraryId, path));
+  const onViewCredits = () => goTo(finishedHref(connectionId, libraryId, path));
+  const onMarkFinished = () => {
+    // finishBook persists finished, tears down the engine and clears nowPlaying (and,
+    // when enabled, deletes the local copy); it returns the finished book's identity.
+    const info = usePlayer.getState().finishBook();
+    if (!info) return;
+    goTo(finishedHref(info.connectionId, info.libraryId, info.path, true));
+  };
   const rateLabel = `${Number(rate.toFixed(2))}×`;
   // When file durations are unknown (total 0), the whole-book timeline isn't
   // reliable - drive the UI from the engine's current-track position/duration
@@ -336,6 +389,15 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             accessibilityLabel={t('player.bookmarks.label')}
           >
             <Icon name="bookmark" size={20} color={neutral} />
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={() => setSheet('menu')}
+            hitSlop={8}
+            className="h-9 w-9 items-center justify-center"
+            accessibilityRole="button"
+            accessibilityLabel={t('player.menu.label')}
+          >
+            <Icon name="ellipsis" size={20} color={neutral} />
           </AnimatedPressable>
         </View>
       </View>
@@ -622,6 +684,23 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
         onSelect={onSelectChapter}
         onClose={() => setSheet(null)}
       />
+
+      <Sheet
+        inline
+        visible={sheet === 'menu'}
+        onClose={() => setSheet(null)}
+        title={t('player.menu.label')}
+      >
+        <View className="gap-1 px-2 pb-4 pt-1">
+          <MenuRow icon="book" label={t('player.finished.viewDetails')} onPress={onViewDetails} />
+          <MenuRow icon="list" label={t('player.menu.viewCredits')} onPress={onViewCredits} />
+          <MenuRow
+            icon="check"
+            label={t('library.progressCard.markFinished')}
+            onPress={onMarkFinished}
+          />
+        </View>
+      </Sheet>
 
       <SpeedSheet visible={sheet === 'speed'} onClose={() => setSheet(null)} />
       <SleepSheet visible={sheet === 'sleep'} onClose={() => setSheet(null)} />
