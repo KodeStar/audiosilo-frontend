@@ -4,7 +4,9 @@
     "save": "Enregistrer",
     "done": "Terminé",
     "retry": "Réessayer",
-    "close": "Fermer"
+    "close": "Fermer",
+    "on": "Activé",
+    "off": "Désactivé"
   },
   "settings": {
     "title": "Réglages",
@@ -26,6 +28,24 @@
       "autoRewind": "Retour arrière auto à la reprise",
       "chapterLength": "Durée de chapitre (sans chapitres)",
       "off": "Désactivé"
+    },
+    "upNext": {
+      "label": "À suivre",
+      "autoPlay": {
+        "label": "Lire automatiquement le livre suivant",
+        "description": "Démarre le livre suivant du dossier lorsqu'un livre se termine."
+      },
+      "autoDownload": {
+        "label": "Télécharger les livres automatiquement",
+        "description": "Télécharge le livre que vous commencez à écouter pour l'entendre hors ligne.",
+        "never": "Jamais",
+        "wifi": "Wi-Fi uniquement",
+        "always": "Toujours"
+      },
+      "autoDelete": {
+        "label": "Supprimer automatiquement les livres terminés",
+        "description": "Supprime les fichiers téléchargés une fois le livre terminé."
+      }
     },
     "account": {
       "label": "Compte",
@@ -346,6 +366,18 @@
     },
     "seek": {
       "label": "Position de lecture"
+    },
+    "finished": {
+      "heading": "Livre terminé",
+      "upNext": "À suivre",
+      "playNext": "Lire le suivant",
+      "startingIn": "Démarrage dans {{time}}",
+      "endOfSeries": "Vous êtes arrivé à la fin de ce dossier.",
+      "viewDetails": "Voir les détails du livre"
+    },
+    "menu": {
+      "label": "Plus",
+      "viewCredits": "Voir le générique de fin"
     }
   },
   "nav": {

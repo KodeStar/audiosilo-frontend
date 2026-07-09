@@ -60,6 +60,30 @@ Sessions in this repo run a fixed division of labour between models:
   secure-store are native): `npx expo prebuild` then `npx expo run:ios` / `run:android`.
   **Editing native code under `modules/audiosilo-player/{ios,android}` requires a full
   rebuild** (`run:ios`/`run:android`) - a Metro/JS reload won't pick it up.
+- **iOS build needs TWO Xcode-26 / Expo-56 workarounds (both are load-bearing; a device
+  link was verified green with them, red without).** `ios/` is gitignored (CNG), so both
+  live in config so `expo prebuild` preserves them - never hand-edit `ios/` for these.
+  1. **SwiftUICore autolink (`plugins/withXcode26SwiftUICoreFix.js`).** On the iOS 26 SDK,
+     `import SwiftUI` (pulled in transitively by ExpoModulesCore, so effectively every Expo
+     module + the generated `ExpoModulesProvider`) makes the compiler emit a direct
+     `-framework SwiftUICore` autolink. Xcode 26's linker rejects it (`cannot link directly
+     with 'SwiftUICore' ... not an allowed client` -> `ld` error 65) because the app isn't on
+     `SwiftUICore.tbd`'s `allowable_clients` list - and it rejects BOTH the implicit autolink
+     and an explicit `-weak_framework` (don't reach for weak-linking; it doesn't work). The
+     plugin instead **suppresses** the autolink with `-disable-autolink-framework SwiftUICore`
+     (`-Xfrontend`) on the app target *and* every pod (a Podfile `post_install` loop), so the
+     symbols resolve through SwiftUI's re-export (SwiftUI *is* an allowed client). It also
+     sets `ENABLE_DEBUG_DYLIB = NO` (Xcode 26's Debug `AudioSilo.debug.dylib` hits the same
+     wall; RN doesn't use SwiftUI previews).
+  2. **Build React Native from source (`expo-build-properties` -> `ios.buildReactNativeFromSource: true`).**
+     Expo 56 defaults to a **prebuilt** React core (`RCT_USE_PREBUILT_RNCORE`), but that
+     prebuilt `React.xcframework` doesn't export the Fabric renderer symbols
+     (`facebook::react::Props`/`BaseViewProps`/`YogaStylableProps`/`Sealable`/`DebugStringConvertible`)
+     that source-built `RNSVG`/`RNScreens`/`RNGestureHandler` link against -> undefined-symbol
+     `ld` failure. Building RN from source restores the exported symbols. `pod install` then
+     also builds Expo modules from source (precompiled modules require the prebuilt core), so
+     builds are slower but correct. Do not re-enable the prebuilt core without confirming the
+     Fabric symbols are exported.
 - **Web dev needs CORS**: set `cors_origins` in the server config to the web origin
   (e.g. `http://localhost:8081`), or serve same-origin. Self-signed TLS may need
   trusting / `tls.mode: autocert`.

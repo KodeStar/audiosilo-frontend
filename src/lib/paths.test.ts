@@ -1,6 +1,7 @@
 import {
   accountHref,
   bookHref,
+  finishedHref,
   libraryHref,
   parentPath,
   pathLeaf,
@@ -92,5 +93,21 @@ describe('bookHref', () => {
 describe('accountHref', () => {
   it('builds the flat account route with the connection query param', () => {
     expect(accountHref('c1')).toEqual({ pathname: '/account', params: { connection: 'c1' } });
+  });
+});
+
+describe('finishedHref', () => {
+  it('carries connection + path and defaults auto to 0 (early open)', () => {
+    expect(finishedHref('c1', 3, 'Author/Book Title')).toEqual({
+      pathname: '/finished',
+      params: { connection: 'c1', libraryId: '3', path: 'Author/Book Title', auto: '0' },
+    });
+  });
+
+  it('encodes an auto (natural-end) arrival as 1', () => {
+    expect(finishedHref('c1', 3, 'Author/Book Title', true)).toEqual({
+      pathname: '/finished',
+      params: { connection: 'c1', libraryId: '3', path: 'Author/Book Title', auto: '1' },
+    });
   });
 });

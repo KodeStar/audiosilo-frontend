@@ -4,7 +4,9 @@
     "save": "Guardar",
     "done": "Concluído",
     "retry": "Tentar novamente",
-    "close": "Fechar"
+    "close": "Fechar",
+    "on": "Ativado",
+    "off": "Desativado"
   },
   "settings": {
     "title": "Definições",
@@ -26,6 +28,24 @@
       "autoRewind": "Recuo automático ao retomar",
       "chapterLength": "Duração do capítulo (sem capítulos)",
       "off": "Desligado"
+    },
+    "upNext": {
+      "label": "A seguir",
+      "autoPlay": {
+        "label": "Reproduzir automaticamente o livro seguinte",
+        "description": "Inicia o livro seguinte da pasta quando um termina."
+      },
+      "autoDownload": {
+        "label": "Transferir livros automaticamente",
+        "description": "Transfere o livro que começa a ouvir para o ouvir sem ligação.",
+        "never": "Nunca",
+        "wifi": "Apenas Wi-Fi",
+        "always": "Sempre"
+      },
+      "autoDelete": {
+        "label": "Eliminar automaticamente os livros terminados",
+        "description": "Remove os ficheiros transferidos quando um livro termina."
+      }
     },
     "account": {
       "label": "Conta",
@@ -346,6 +366,18 @@
     },
     "seek": {
       "label": "Posição de reprodução"
+    },
+    "finished": {
+      "heading": "Livro concluído",
+      "upNext": "A seguir",
+      "playNext": "Reproduzir seguinte",
+      "startingIn": "Começa em {{time}}",
+      "endOfSeries": "Chegou ao fim desta pasta.",
+      "viewDetails": "Ver detalhes do livro"
+    },
+    "menu": {
+      "label": "Mais",
+      "viewCredits": "Ver créditos finais"
     }
   },
   "nav": {

@@ -4,7 +4,9 @@
     "save": "Guardar",
     "done": "Listo",
     "retry": "Reintentar",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "on": "Activado",
+    "off": "Desactivado"
   },
   "settings": {
     "title": "Ajustes",
@@ -26,6 +28,24 @@
       "autoRewind": "Retroceso automático al reanudar",
       "chapterLength": "Duración del capítulo (sin capítulos)",
       "off": "Desactivado"
+    },
+    "upNext": {
+      "label": "A continuación",
+      "autoPlay": {
+        "label": "Reproducir automáticamente el siguiente libro",
+        "description": "Comienza el siguiente libro de la carpeta cuando uno termina."
+      },
+      "autoDownload": {
+        "label": "Descargar libros automáticamente",
+        "description": "Descarga el libro que empiezas a escuchar para tenerlo listo sin conexión.",
+        "never": "Nunca",
+        "wifi": "Solo Wi-Fi",
+        "always": "Siempre"
+      },
+      "autoDelete": {
+        "label": "Eliminar automáticamente los libros terminados",
+        "description": "Elimina los archivos descargados cuando terminas un libro."
+      }
     },
     "account": {
       "label": "Cuenta",
@@ -346,6 +366,18 @@
     },
     "seek": {
       "label": "Posición de reproducción"
+    },
+    "finished": {
+      "heading": "Libro terminado",
+      "upNext": "A continuación",
+      "playNext": "Reproducir siguiente",
+      "startingIn": "Comienza en {{time}}",
+      "endOfSeries": "Has llegado al final de esta carpeta.",
+      "viewDetails": "Ver detalles del libro"
+    },
+    "menu": {
+      "label": "Más",
+      "viewCredits": "Ver créditos finales"
     }
   },
   "nav": {

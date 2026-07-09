@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
+import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
@@ -33,10 +34,16 @@ function RootNavigator() {
   const { scheme } = useTheme();
   const background = scheme === 'dark' ? colors.dark.bg : colors.light.bg;
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: background } }}>
-      <Stack.Screen name="(app)" />
-      <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: background } }}>
+        <Stack.Screen name="(app)" />
+        <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="finished" options={{ presentation: 'fullScreenModal' }} />
+      </Stack>
+      {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
+          end-of-book flow when a book reaches its natural end. */}
+      <BookEndedListener />
+    </>
   );
 }
 
