@@ -5,6 +5,7 @@
     "done": "Fatto",
     "retry": "Riprova",
     "close": "Chiudi",
+    "copied": "Copiato",
     "on": "Attivo",
     "off": "Disattivo"
   },
@@ -88,6 +89,31 @@
       "title": "Sostituire il codice di recupero?",
       "message": "Il tuo codice di recupero attuale smetterà di funzionare. Dovrai salvare quello nuovo ovunque lo conservi.",
       "confirm": "Sostituiscilo"
+    },
+    "apiKeys": {
+      "label": "Chiavi API",
+      "hint": "Chiavi denominate che consentono a script e dashboard di accedere a questo server per tuo conto. Ogni chiave agisce come te e può essere revocata in qualsiasi momento.",
+      "nameLabel": "Nome della chiave",
+      "namePlaceholder": "es. Dashboard di casa",
+      "create": "Crea chiave API",
+      "empty": "Ancora nessuna chiave API.",
+      "loadError": "Impossibile caricare le tue chiavi API.",
+      "created": "Creata {{when}}",
+      "lastUsed": "Ultimo utilizzo {{when}}",
+      "neverUsed": "Mai utilizzata",
+      "revoke": "Revoca {{name}}",
+      "createError": "Impossibile creare la chiave API.",
+      "revokeError": "Impossibile revocare la chiave API.",
+      "createdModal": {
+        "title": "Chiave API creata",
+        "description": "Copia questa chiave ora: non verrà più mostrata. Conservala in un luogo sicuro.",
+        "copy": "Copia chiave"
+      },
+      "revokeConfirm": {
+        "title": "Revocare {{name}}?",
+        "message": "Tutto ciò che usa questa chiave perderà immediatamente l'accesso. L'operazione non può essere annullata.",
+        "confirm": "Revoca chiave"
+      }
     },
     "support": {
       "label": "Sostieni",

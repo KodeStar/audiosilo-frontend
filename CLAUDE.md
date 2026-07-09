@@ -161,6 +161,17 @@ accepts either. Sign-out is guarded (`src/lib/recovery.ts` `needsRecoveryWarning
 a user with neither credential is warned and offered a recovery code before their only
 way in is revoked (`src/components/account/sign-out-confirm.tsx`).
 
+**Personal API keys.** The per-server account screen (`src/app/(app)/account.tsx`)
+renders an API-keys section (`src/components/account/api-keys-section.tsx` +
+`use-api-keys-manager.ts`, one-time secret via `api-key-created-modal.tsx`) for
+user-minted, non-expiring bearer tokens (dashboards, cron). It is **capability-gated**
+(server `api_keys`) and **demo-hidden**. State is connection-scoped: hooks
+(`useApiKeys`/`useCreateApiKey`/`useRevokeApiKey`) key on `qk.apiKeys(cid)`;
+`client.{createApiKey,listApiKeys,revokeApiKey}` hit `/auth/tokens`. The secret is
+returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated`);
+the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
+`settings.apiKeys.*`.
+
 **Media auth rides in the URL on every platform** (`src/api/client.ts`
 `mediaTokenQuery`): cover/stream URLs embed `?token=` everywhere (`<img>`/
 `<audio>` can't set headers on web, and native image/player components don't

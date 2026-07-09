@@ -5,6 +5,7 @@
     "done": "Concluído",
     "retry": "Tentar novamente",
     "close": "Fechar",
+    "copied": "Copiado",
     "on": "Ativado",
     "off": "Desativado"
   },
@@ -88,6 +89,31 @@
       "title": "Substituir o código de recuperação?",
       "message": "O seu código de recuperação atual deixará de funcionar. Terá de guardar o novo em todos os locais onde o conserva.",
       "confirm": "Substituir"
+    },
+    "apiKeys": {
+      "label": "Chaves de API",
+      "hint": "Chaves com nome que permitem que scripts e painéis acedam a este servidor em seu nome. Cada chave age como você e pode ser revogada a qualquer momento.",
+      "nameLabel": "Nome da chave",
+      "namePlaceholder": "ex.: Painel de casa",
+      "create": "Criar chave de API",
+      "empty": "Ainda não há chaves de API.",
+      "loadError": "Não foi possível carregar as suas chaves de API.",
+      "created": "Criada {{when}}",
+      "lastUsed": "Último uso {{when}}",
+      "neverUsed": "Nunca usada",
+      "revoke": "Revogar {{name}}",
+      "createError": "Não foi possível criar a chave de API.",
+      "revokeError": "Não foi possível revogar a chave de API.",
+      "createdModal": {
+        "title": "Chave de API criada",
+        "description": "Copie esta chave agora: não será mostrada novamente. Guarde-a num local seguro.",
+        "copy": "Copiar chave"
+      },
+      "revokeConfirm": {
+        "title": "Revogar {{name}}?",
+        "message": "Tudo o que usa esta chave perderá o acesso imediatamente. Isto não pode ser desfeito.",
+        "confirm": "Revogar chave"
+      }
     },
     "support": {
       "label": "Apoiar",

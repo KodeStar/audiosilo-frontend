@@ -5,6 +5,7 @@
     "done": "Terminé",
     "retry": "Réessayer",
     "close": "Fermer",
+    "copied": "Copié",
     "on": "Activé",
     "off": "Désactivé"
   },
@@ -88,6 +89,31 @@
       "title": "Remplacer le code de récupération ?",
       "message": "Votre code de récupération actuel cessera de fonctionner. Vous devrez enregistrer le nouveau partout où vous le conservez.",
       "confirm": "Le remplacer"
+    },
+    "apiKeys": {
+      "label": "Clés d'API",
+      "hint": "Des clés nommées qui permettent aux scripts et aux tableaux de bord d'accéder à ce serveur en votre nom. Chaque clé agit en votre nom et peut être révoquée à tout moment.",
+      "nameLabel": "Nom de la clé",
+      "namePlaceholder": "p. ex. Tableau de bord maison",
+      "create": "Créer une clé d'API",
+      "empty": "Aucune clé d'API pour le moment.",
+      "loadError": "Impossible de charger vos clés d'API.",
+      "created": "Créée {{when}}",
+      "lastUsed": "Dernière utilisation {{when}}",
+      "neverUsed": "Jamais utilisée",
+      "revoke": "Révoquer {{name}}",
+      "createError": "Impossible de créer la clé d'API.",
+      "revokeError": "Impossible de révoquer la clé d'API.",
+      "createdModal": {
+        "title": "Clé d'API créée",
+        "description": "Copiez cette clé maintenant : elle ne sera plus affichée. Conservez-la en lieu sûr.",
+        "copy": "Copier la clé"
+      },
+      "revokeConfirm": {
+        "title": "Révoquer {{name}} ?",
+        "message": "Tout ce qui utilise cette clé perdra immédiatement l'accès. Cette action est irréversible.",
+        "confirm": "Révoquer la clé"
+      }
     },
     "support": {
       "label": "Soutenir",
