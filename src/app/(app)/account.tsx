@@ -7,8 +7,11 @@ import { ApiError } from '@/api/client';
 import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi, useScopedCid } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
+import { ApiKeyCreatedModal } from '@/components/account/api-key-created-modal';
+import { ApiKeysSection } from '@/components/account/api-keys-section';
 import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
 import { SignOutConfirm } from '@/components/account/sign-out-confirm';
+import { useApiKeysManager } from '@/components/account/use-api-keys-manager';
 import { useRecoveryCode } from '@/components/account/use-recovery-code';
 import { useSignOut } from '@/components/account/use-sign-out';
 import { ContentScope } from '@/components/layout/content-scope';
@@ -103,6 +106,13 @@ function AccountContent() {
   // Recovery code + guarded sign-out, both scoped to this connection.
   const recovery = useRecoveryCode(cid);
   const signOut = useSignOut(cid);
+
+  // API keys: only for servers that advertise the capability, and never for demo
+  // accounts (the server refuses them, matching the password/recovery affordances).
+  // The manager hook runs unconditionally; `apiKeysEnabled` gates its list query and
+  // the section's render.
+  const apiKeysEnabled = !!server?.capabilities.api_keys && !user?.is_demo;
+  const apiKeys = useApiKeysManager(cid, apiKeysEnabled);
 
   // Self-service device pairing: mint a fresh pairing QR for this account so
   // another device can scan it (or open the link) and pair without an admin.
@@ -270,6 +280,8 @@ function AccountContent() {
           </Card>
         </View>
 
+        {apiKeysEnabled ? <ApiKeysSection manager={apiKeys} /> : null}
+
         <View className="gap-2">
           <Text variant="label">{t('settings.devices.label')}</Text>
           <Card className="gap-3">
@@ -342,6 +354,18 @@ function AccountContent() {
         confirmIcon="qrcode"
         onConfirm={recovery.confirmGenerate}
         onCancel={() => recovery.setConfirmRegen(false)}
+      />
+      <ApiKeyCreatedModal created={apiKeys.created} onClose={apiKeys.dismissCreated} />
+      <ConfirmDialog
+        visible={apiKeys.pendingRevoke !== null}
+        title={t('settings.apiKeys.revokeConfirm.title', {
+          name: apiKeys.pendingRevoke?.label ?? '',
+        })}
+        message={t('settings.apiKeys.revokeConfirm.message')}
+        confirmLabel={t('settings.apiKeys.revokeConfirm.confirm')}
+        confirmIcon="trash"
+        onConfirm={apiKeys.confirmRevoke}
+        onCancel={apiKeys.cancelRevoke}
       />
     </>
   );

@@ -31,6 +31,7 @@ export const qk = {
   /** Prefix matching every history key of a connection (invalidation). */
   historyAll: (cid: string) => ['history', cid] as const,
   favourites: (connectionId: string) => ['favourites', connectionId] as const,
+  apiKeys: (cid: string) => ['apiKeys', cid] as const,
   search: (cid: string, q: string) => ['search', cid, q] as const,
   recent: (cid: string, limit: number) => ['books', 'recent', cid, limit] as const,
   copies: (cid: string, key: string) => ['copies', cid, key] as const,
@@ -264,6 +265,47 @@ export function useToggleFavourite(connectionId?: string) {
       if (ctx?.prev) qc.setQueryData(qk.favourites(cid), ctx.prev);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: qk.favourites(cid) }),
+  });
+}
+
+// --- API keys --------------------------------------------------------------
+// User-minted, named keys for headless integrations, scoped (like every other
+// hook here) to a connection: each key belongs to one server, so the list query
+// and both mutations key/invalidate on that connection's `qk.apiKeys(cid)` only.
+// `enabled` lets the caller gate the list on the server's `api_keys` capability
+// (and the non-demo rule) so an older server is never queried.
+
+/** The caller's API keys for this connection (metadata only), newest first. */
+export function useApiKeys(enabled: boolean, connectionId?: string) {
+  const api = useApi(connectionId);
+  const cid = useCid(connectionId);
+  return useQuery({
+    queryKey: qk.apiKeys(cid),
+    queryFn: () => api.listApiKeys(),
+    enabled: enabled && !!cid,
+  });
+}
+
+/** Mint a named API key; the plaintext secret is in the resolved value (shown once).
+ * Refreshes this connection's key list on success. */
+export function useCreateApiKey(connectionId?: string) {
+  const api = useApi(connectionId);
+  const cid = useCid(connectionId);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (label: string) => api.createApiKey(label),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.apiKeys(cid) }),
+  });
+}
+
+/** Revoke an API key by id; refreshes this connection's key list on success. */
+export function useRevokeApiKey(connectionId?: string) {
+  const api = useApi(connectionId);
+  const cid = useCid(connectionId);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.revokeApiKey(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.apiKeys(cid) }),
   });
 }
 

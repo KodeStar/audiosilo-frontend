@@ -1,4 +1,6 @@
 import type {
+  ApiKey,
+  ApiKeyCreated,
   AuthSession,
   Book,
   Bookmark,
@@ -192,6 +194,27 @@ export class ApiClient {
   async generateRecoveryCode() {
     const r = await this.request<{ recovery_code: string }>('POST', '/auth/recovery');
     return r.recovery_code;
+  }
+
+  // --- API keys (authed) ---------------------------------------------------
+  // User-minted, named keys for headless integrations (dashboards, cron). Each key
+  // acts as its owner; no scopes and no expiry in v1 - revoke is the lifecycle.
+  // Gated by the server's `api_keys` capability (hide the UI when absent) and
+  // refused for demo accounts.
+  /** Mint a named API key. The plaintext `token` is returned exactly once - the
+   * server never reveals it again. */
+  createApiKey(label: string) {
+    return this.request<ApiKeyCreated>('POST', '/auth/tokens', { body: { label } });
+  }
+  /** The caller's non-revoked API keys (metadata only), newest first. */
+  async listApiKeys() {
+    const r = await this.request<{ api_keys: ApiKey[] | null }>('GET', '/auth/tokens');
+    return r.api_keys ?? [];
+  }
+  /** Revoke a key by id. Success is any 2xx and may carry an empty body (204);
+   * `request` returns undefined for both a 204 and an empty 200 without parsing. */
+  revokeApiKey(id: number) {
+    return this.request<void>('DELETE', `/auth/tokens/${id}`);
   }
 
   // --- Libraries & browsing ------------------------------------------------

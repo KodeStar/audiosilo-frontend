@@ -5,6 +5,7 @@
     "done": "Done",
     "retry": "Retry",
     "close": "Close",
+    "copied": "Copied",
     "on": "On",
     "off": "Off"
   },
@@ -88,6 +89,30 @@
       "title": "Replace recovery code?",
       "message": "Your current recovery code will stop working. You'll need to save the new one everywhere you keep it.",
       "confirm": "Replace it"
+    },
+    "apiKeys": {
+      "label": "API keys",
+      "hint": "Named keys that let scripts and dashboards reach this server on your behalf. Each key acts as you and can be revoked at any time.",
+      "nameLabel": "Key name",
+      "namePlaceholder": "e.g. Home dashboard",
+      "create": "Create API key",
+      "empty": "No API keys yet.",
+      "loadError": "Could not load your API keys.",
+      "created": "Created {{when}}",
+      "lastUsed": "Last used {{when}}",
+      "neverUsed": "Never used",
+      "revoke": "Revoke {{name}}",
+      "createError": "Could not create the API key.",
+      "createdModal": {
+        "title": "API key created",
+        "description": "Copy this key now - it won't be shown again. Store it somewhere safe.",
+        "copy": "Copy key"
+      },
+      "revokeConfirm": {
+        "title": "Revoke {{name}}?",
+        "message": "Anything using this key will immediately lose access. This can't be undone.",
+        "confirm": "Revoke key"
+      }
     },
     "support": {
       "label": "Support",

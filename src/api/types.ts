@@ -10,6 +10,9 @@ export type Capabilities = {
   transcode: boolean;
   upload: boolean;
   websocket: boolean;
+  /** Whether the server supports user-minted, named API keys (`/auth/tokens`).
+   * Absent on older servers - treat missing as false and hide the management UI. */
+  api_keys?: boolean;
 };
 
 export type ServerInfo = {
@@ -75,6 +78,26 @@ export type PairingPayload = {
   code_expires_at?: string;
   /** Devices the parent invite can still pair; absent = unlimited or not invite-derived (advisory). */
   uses_remaining?: number;
+};
+
+/** A user-minted, named API key for headless integrations (dashboards, cron). The
+ * key acts as its owner; there are no scopes in v1 and keys don't expire - revoke
+ * is the lifecycle. Only metadata is ever listed; the plaintext secret is returned
+ * exactly once, at creation ({@link ApiKeyCreated}). */
+export type ApiKey = {
+  id: number;
+  label: string;
+  /** RFC3339 creation timestamp. */
+  created_at: string;
+  /** RFC3339 timestamp of the key's last use, or null if never used. */
+  last_seen: string | null;
+};
+
+/** Response of POST /auth/tokens: the plaintext secret (shown to the user once and
+ * never again) plus the new key's metadata. */
+export type ApiKeyCreated = {
+  token: string;
+  api_key: ApiKey;
 };
 
 export type LibraryView = 'filesystem' | 'computed' | 'hybrid';

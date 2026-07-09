@@ -156,6 +156,56 @@ describe('ApiClient', () => {
     expect(delInit.method).toBe('DELETE');
   });
 
+  it('creates an API key via POST /auth/tokens and returns the one-time secret + metadata', async () => {
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: {
+        token: 'sk_live_secret',
+        api_key: { id: 7, label: 'Dashboard', created_at: '2026-07-09T10:00:00Z', last_seen: null },
+      },
+    }));
+    const res = await new ApiClient('https://h', 'tok').createApiKey('Dashboard');
+    expect(res.token).toBe('sk_live_secret');
+    expect(res.api_key).toMatchObject({ id: 7, label: 'Dashboard', last_seen: null });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/auth/tokens');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ label: 'Dashboard' });
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('lists API keys via GET /auth/tokens, unwrapping api_keys and tolerating null', async () => {
+    const keys = [{ id: 1, label: 'a', created_at: '2026-07-09T10:00:00Z', last_seen: null }];
+    const withKeys = installFetch(() => ({ status: 200, body: { api_keys: keys } }));
+    await expect(new ApiClient('https://h', 'tok').listApiKeys()).resolves.toEqual(keys);
+    expect(String(withKeys.mock.calls[0][0])).toBe('https://h/api/v1/auth/tokens');
+
+    installFetch(() => ({ status: 200, body: { api_keys: null } }));
+    await expect(new ApiClient('https://h', 'tok').listApiKeys()).resolves.toEqual([]);
+  });
+
+  it('revokes an API key via DELETE /auth/tokens/{id}, succeeding on an empty 204', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await expect(new ApiClient('https://h', 'tok').revokeApiKey(7)).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/auth/tokens/7');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('revokes an API key successfully on an empty 200 body (no JSON to parse)', async () => {
+    installFetch(() => ({ status: 200 }));
+    await expect(new ApiClient('https://h', 'tok').revokeApiKey(9)).resolves.toBeUndefined();
+  });
+
+  it('surfaces the error envelope when creating an API key is refused', async () => {
+    installFetch(() => ({ status: 403, body: { error: 'demo accounts cannot mint keys' } }));
+    await expect(new ApiClient('https://h', 'tok').createApiKey('x')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 403,
+      message: 'demo accounts cannot mint keys',
+    });
+  });
+
   // A fetch that never resolves until its signal aborts.
   function installHangingFetch() {
     globalThis.fetch = jest.fn(
