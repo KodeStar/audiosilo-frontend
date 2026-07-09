@@ -15,21 +15,37 @@ export function naturalCompare(a: string, b: string): number {
 }
 
 /**
- * The next sibling book after `currentPath` within a listing, or null if the current
- * book is the last. Candidates are the other entries that are a book or a directory
- * (an unindexed sibling book folder is `is_dir: true, is_book: false` - it must still
- * count); plain non-audio files (`.jpg`/`.nfo`) and loose non-book files are ignored.
- * The first candidate whose name sorts strictly after the current book's leaf name wins.
+ * The next sibling book after `currentPath` within a listing, or null if the current book
+ * is the last. Ordering is by folder name (numeric-aware) - deliberately NOT by the server's
+ * `series_index`, which is derived from a leading number in the name and is 0/absent for the
+ * many libraries that number folders differently ("SS01 - Title", title-only names, ...); a
+ * partial index would skip a book whose index is missing.
+ *
+ * Among the siblings that sort strictly after the current book we PREFER the next entry the
+ * index already knows is a playable book (`is_book`). We only fall back to a bare directory
+ * (a not-yet-scanned book folder is `is_dir: true, is_book: false`) when NOTHING in the
+ * folder is indexed yet - i.e. a freshly-added/large library mid-scan. Once the folder has
+ * any indexed book, a remaining bare directory is almost certainly a non-book folder
+ * (Bonus/artwork/author dir), so returning it would strand the player on an unplayable path;
+ * we return null ("end of series") instead. Plain non-audio files and loose non-book files
+ * are always ignored.
  */
 export function findNextSibling(entries: FsEntry[], currentPath: string): FsEntry | null {
   const leaf = pathLeaf(currentPath);
-  const candidates = entries
+  const after = entries
     .filter((e) => e.path !== currentPath && (e.is_book || e.is_dir))
+    .filter((e) => naturalCompare(e.name, leaf) > 0)
     .sort((a, b) => naturalCompare(a.name, b.name));
-  for (const c of candidates) {
-    if (naturalCompare(c.name, leaf) > 0) return c;
-  }
-  return null;
+
+  // Prefer the next entry the index already resolved to a playable book.
+  const nextBook = after.find((e) => e.is_book);
+  if (nextBook) return nextBook;
+
+  // No indexed book follows. Fall back to the next directory ONLY when the folder is wholly
+  // unindexed (mid-scan) - otherwise a trailing bare directory is a non-book folder we must
+  // not offer as "next".
+  if (entries.some((e) => e.is_book)) return null;
+  return after.find((e) => e.is_dir) ?? null;
 }
 
 const PAGE_LIMIT = 200;

@@ -59,9 +59,43 @@ describe('findNextSibling', () => {
     expect(findNextSibling(entries, 'Series/Book 10')).toBeNull();
   });
 
-  it('counts an unindexed sibling folder (is_dir true, is_book false)', () => {
+  it('falls back to an unindexed sibling folder only when NOTHING is indexed yet (mid-scan)', () => {
     const entries = [dir('Book 1'), dir('Book 2', 'Series/Book 2', { is_book: false })];
     expect(findNextSibling(entries, 'Series/Book 1')?.name).toBe('Book 2');
+  });
+
+  it('prefers the next indexed book over a non-book folder sorting between books', () => {
+    const entries = [
+      bookEntry('Book 1', 'Series/Book 1'),
+      dir('Book 1.5 Bonus', 'Series/Book 1.5 Bonus'), // is_dir, is_book falsy -> non-book folder
+      bookEntry('Book 2', 'Series/Book 2'),
+    ];
+    expect(findNextSibling(entries, 'Series/Book 1')?.name).toBe('Book 2');
+  });
+
+  it('returns null (not a trailing non-book folder) once the folder has any indexed book', () => {
+    const entries = [
+      bookEntry('Book 1', 'Series/Book 1'),
+      bookEntry('Book 2', 'Series/Book 2'),
+      dir('Extras', 'Series/Extras'), // non-book folder sorting after the last real book
+    ];
+    // Finishing the last real book with only a non-book folder after it = end of series,
+    // NOT a jump into the unplayable folder.
+    expect(findNextSibling(entries, 'Series/Book 2')).toBeNull();
+    // ...and mid-folder it still resolves the real next book, skipping the folder.
+    expect(findNextSibling(entries, 'Series/Book 1')?.name).toBe('Book 2');
+  });
+
+  it('numbered book folders (SSxx, series_index 0) still order by name', () => {
+    // Path-numbered libraries: the server derives series_index 0 for "SSxx" names, so
+    // ordering must come from the folder name, not the (useless) index.
+    const entries = [
+      bookEntry('SS01 - A', 'Series/SS01 - A', { series_index: 0 }),
+      bookEntry('SS02 - B', 'Series/SS02 - B', { series_index: 0 }),
+      bookEntry('SS03 - C', 'Series/SS03 - C', { series_index: 0 }),
+    ];
+    expect(findNextSibling(entries, 'Series/SS01 - A')?.name).toBe('SS02 - B');
+    expect(findNextSibling(entries, 'Series/SS03 - C')).toBeNull();
   });
 
   it('ignores loose non-book files and non-audio plain files', () => {
