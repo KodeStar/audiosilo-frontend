@@ -103,6 +103,7 @@
       "neverUsed": "Never used",
       "revoke": "Revoke {{name}}",
       "createError": "Could not create the API key.",
+      "revokeError": "Could not revoke the API key.",
       "createdModal": {
         "title": "API key created",
         "description": "Copy this key now - it won't be shown again. Store it somewhere safe.",

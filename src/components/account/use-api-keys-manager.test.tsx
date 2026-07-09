@@ -121,7 +121,10 @@ describe('useApiKeysManager', () => {
     await act(async () => {
       hook().confirmRevoke();
     });
-    expect(mockRevoke.mutate).toHaveBeenCalledWith(42);
+    expect(mockRevoke.mutate).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
     expect(hook().pendingRevoke).toBeNull();
   });
 
@@ -137,5 +140,57 @@ describe('useApiKeysManager', () => {
     });
     expect(hook().pendingRevoke).toBeNull();
     expect(mockRevoke.mutate).not.toHaveBeenCalled();
+  });
+
+  it('does not create again while a create is in flight (guards the keyboard-submit path)', async () => {
+    // The Create button is disabled while pending, but onSubmitEditing bypasses that;
+    // create() must guard on isPending itself so a second Return can't mint a duplicate.
+    mockCreate.isPending = true;
+    const hook = await mountHook(() => useApiKeysManager('c1', true));
+
+    await act(async () => {
+      hook().setLabel('Dashboard');
+    });
+    expect(hook().canCreate).toBe(false);
+    await act(async () => {
+      await hook().create();
+    });
+    expect(mockCreate.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a revoke failure so a still-live key is not silently believed dead', async () => {
+    mockList.data = [madeKey({ id: 7 })];
+    mockRevoke.mutate.mockImplementation(
+      (_id: number, opts?: { onError?: (e: unknown) => void }) => {
+        opts?.onError?.(new ApiError(500, 'server exploded'));
+      },
+    );
+    const hook = await mountHook(() => useApiKeysManager('c1', true));
+
+    await act(async () => {
+      hook().requestRevoke(mockList.data[0]);
+    });
+    await act(async () => {
+      hook().confirmRevoke();
+    });
+    expect(hook().revokeError).toBe('server exploded');
+  });
+
+  it('clears a stale create error when the name is edited', async () => {
+    mockCreate.mutateAsync.mockRejectedValue(new ApiError(400, 'label too long'));
+    const hook = await mountHook(() => useApiKeysManager('c1', true));
+
+    await act(async () => {
+      hook().setLabel('waytoolonglabelthatis');
+    });
+    await act(async () => {
+      await hook().create();
+    });
+    expect(hook().createError).toBe('label too long');
+
+    await act(async () => {
+      hook().setLabel('shorter');
+    });
+    expect(hook().createError).toBeNull();
   });
 });

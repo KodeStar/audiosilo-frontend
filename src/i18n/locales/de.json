@@ -103,6 +103,7 @@
       "neverUsed": "Nie verwendet",
       "revoke": "{{name}} widerrufen",
       "createError": "Der API-Schlüssel konnte nicht erstellt werden.",
+      "revokeError": "Der API-Schlüssel konnte nicht widerrufen werden.",
       "createdModal": {
         "title": "API-Schlüssel erstellt",
         "description": "Kopiere diesen Schlüssel jetzt: Er wird nicht erneut angezeigt. Bewahre ihn sicher auf.",

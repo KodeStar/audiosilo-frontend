@@ -20,30 +20,52 @@ export function useApiKeysManager(connectionId: string, enabled: boolean) {
   const createMut = useCreateApiKey(connectionId);
   const revokeMut = useRevokeApiKey(connectionId);
 
-  const [label, setLabel] = useState('');
+  const [label, setLabelState] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
   const [created, setCreated] = useState<ApiKeyCreated | null>(null);
   const [pendingRevoke, setPendingRevoke] = useState<ApiKey | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  // Editing the name clears a stale "could not create" error so it can't linger under a
+  // field the user has since corrected (it only re-shows on the next failed create).
+  const setLabel = useCallback((value: string) => {
+    setLabelState(value);
+    setCreateError(null);
+  }, []);
 
   const create = useCallback(async () => {
     const name = label.trim();
-    if (!name) return; // guard: server rejects an empty label with 400
+    // Guard an empty label (server 400s) AND an in-flight create: the Create button is
+    // disabled while pending, but the keyboard-submit path (onSubmitEditing) is not, so
+    // without the isPending check a second Return before the round-trip resolves would
+    // mint a duplicate key.
+    if (!name || createMut.isPending) return;
     setCreateError(null);
     try {
       const res = await createMut.mutateAsync(name);
       setCreated(res); // reveal the one-time secret; the list refresh happens onSuccess
-      setLabel('');
+      setLabelState('');
     } catch (e) {
       setCreateError(e instanceof ApiError ? e.message : i18n.t('settings.apiKeys.createError'));
     }
   }, [label, createMut]);
 
-  const requestRevoke = useCallback((key: ApiKey) => setPendingRevoke(key), []);
+  const requestRevoke = useCallback((key: ApiKey) => {
+    setRevokeError(null);
+    setPendingRevoke(key);
+  }, []);
   const cancelRevoke = useCallback(() => setPendingRevoke(null), []);
   const confirmRevoke = useCallback(() => {
     const key = pendingRevoke;
     setPendingRevoke(null);
-    if (key) revokeMut.mutate(key.id);
+    if (!key) return;
+    setRevokeError(null);
+    // Fire-and-forget, but surface a failure: a silently-failed revoke of a leaked key
+    // would leave the user believing a still-live credential is dead.
+    revokeMut.mutate(key.id, {
+      onError: (e) =>
+        setRevokeError(e instanceof ApiError ? e.message : i18n.t('settings.apiKeys.revokeError')),
+    });
   }, [pendingRevoke, revokeMut]);
 
   return {
@@ -62,6 +84,7 @@ export function useApiKeysManager(connectionId: string, enabled: boolean) {
     requestRevoke,
     confirmRevoke,
     cancelRevoke,
+    revokeError,
   };
 }
 

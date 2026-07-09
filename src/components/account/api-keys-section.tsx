@@ -68,6 +68,10 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
             ))}
           </View>
         )}
+
+        {manager.revokeError ? (
+          <Text className="text-xs text-red-500">{manager.revokeError}</Text>
+        ) : null}
       </Card>
     </View>
   );

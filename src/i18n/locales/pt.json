@@ -103,6 +103,7 @@
       "neverUsed": "Nunca usada",
       "revoke": "Revogar {{name}}",
       "createError": "Não foi possível criar a chave de API.",
+      "revokeError": "Não foi possível revogar a chave de API.",
       "createdModal": {
         "title": "Chave de API criada",
         "description": "Copie esta chave agora: não será mostrada novamente. Guarde-a num local seguro.",

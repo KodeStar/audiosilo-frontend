@@ -275,36 +275,45 @@ export function useToggleFavourite(connectionId?: string) {
 // `enabled` lets the caller gate the list on the server's `api_keys` capability
 // (and the non-demo rule) so an older server is never queried.
 
-/** The caller's API keys for this connection (metadata only), newest first. */
+/** The caller's API keys for this connection (metadata only), newest first. Resolves
+ * the client *optionally*: the account screen can render before a connection is scoped
+ * (bare `/account` with no `?connection=`, so `cid` is `''`), and the rest of that
+ * screen tolerates a missing client via `useOptionalApi` - so these hooks must too,
+ * rather than throwing at render like `useApi`. The query simply stays disabled until
+ * a client exists. */
 export function useApiKeys(enabled: boolean, connectionId?: string) {
-  const api = useApi(connectionId);
+  const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   return useQuery({
     queryKey: qk.apiKeys(cid),
-    queryFn: () => api.listApiKeys(),
-    enabled: enabled && !!cid,
+    queryFn: () => api!.listApiKeys(),
+    enabled: enabled && !!api && !!cid,
   });
 }
 
 /** Mint a named API key; the plaintext secret is in the resolved value (shown once).
  * Refreshes this connection's key list on success. */
 export function useCreateApiKey(connectionId?: string) {
-  const api = useApi(connectionId);
+  const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (label: string) => api.createApiKey(label),
+    // The section that fires this only renders under a real connection, so `api` is
+    // present in practice; reject defensively if it somehow isn't (the caller surfaces it).
+    mutationFn: (label: string) =>
+      api ? api.createApiKey(label) : Promise.reject(new Error('no connection')),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.apiKeys(cid) }),
   });
 }
 
 /** Revoke an API key by id; refreshes this connection's key list on success. */
 export function useRevokeApiKey(connectionId?: string) {
-  const api = useApi(connectionId);
+  const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => api.revokeApiKey(id),
+    mutationFn: (id: number) =>
+      api ? api.revokeApiKey(id) : Promise.reject(new Error('no connection')),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.apiKeys(cid) }),
   });
 }
