@@ -10,7 +10,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["audio"],
+        "UIBackgroundModes": [
+          "audio"
+        ],
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleAllowMixedLocalizations": true,
         "UISupportedInterfaceOrientations~ipad": [
@@ -31,8 +33,12 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "app.audiosilo",
-      "permissions": ["android.permission.CAMERA"],
-      "blockedPermissions": ["android.permission.ACTIVITY_RECOGNITION"]
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACTIVITY_RECOGNITION"
+      ]
     },
     "web": {
       "output": "static",
@@ -66,7 +72,16 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "./plugins/withXcode26SwiftUICoreFix",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
