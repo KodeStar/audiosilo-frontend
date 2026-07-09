@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,7 +65,13 @@ export function EndCredits({
     nowPlaying?.connectionId === cid &&
     nowPlaying?.libraryId === libraryId &&
     nowPlaying?.path === path;
-  const stillPlaying = isThisLoaded && (playbackState === 'playing' || playbackState === 'loading');
+  // "Still here" = the finished book is still loaded and has NOT reached its natural end -
+  // this covers playing, buffering, AND a paused/errored book. Only a book that is genuinely
+  // over (unloaded by the natural-end teardown, or sitting in the terminal `ended` state)
+  // hands over to the grace countdown. Keying this on playing/loading alone let a lock-screen
+  // pause of an early-opened credits screen read as "over" and auto-advance mid-listen,
+  // force-finishing the half-heard book (and deleting its download).
+  const stillPlaying = isThisLoaded && playbackState !== 'ended';
   const total = isThisLoaded ? nowPlaying.queue.total : 0;
   const remainingSeconds = Math.max(0, total - bookPosition);
 
@@ -135,7 +141,13 @@ export function EndCredits({
 
   const folderName = pathLeaf(path);
   const cover = book ? api?.coverUrl(libraryId, path) : undefined;
-  const coverSource = cover ? { uri: cover, headers: api?.authHeaders() } : null;
+  // Memoize the image source: api.authHeaders() returns a fresh object each call and the
+  // grace countdown re-renders this screen on every tick, so an inline source would hand
+  // expo-image a new reference each render and defeat its cache (mirrors player-view.tsx).
+  const coverSource = useMemo(
+    () => (cover ? { uri: cover, headers: api?.authHeaders() } : null),
+    [cover, api],
+  );
 
   return (
     <View

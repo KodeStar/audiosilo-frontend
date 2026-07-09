@@ -34,14 +34,17 @@ export function BookEndedListener() {
 
 /** Decide what to do when the current book ends, given the route we're on. */
 function handleBookEnded(pathname: string): void {
-  // Already showing the end-credits screen: it reacts to the ended transition itself
-  // (its own countdown + finishBook), so the listener stays out of the way.
-  if (pathname === '/finished') return;
-
   // Capture the finished book's identity and tear playback down (persists finished,
-  // clears nowPlaying, optionally deletes the local copy).
+  // clears nowPlaying, optionally deletes the local copy). Done even when the credits
+  // screen is already open, so a natural end ALWAYS finalizes the book - otherwise (with
+  // auto-play off, the default, or no next book) nowPlaying would stay stuck in `ended`
+  // and the mini-player would remain docked showing the just-finished book.
   const info = usePlayer.getState().finishBook();
   if (!info) return;
+
+  // Already showing the end-credits screen: it drives its own countdown + Play next from
+  // here, so don't navigate again (that would stack a duplicate /finished).
+  if (pathname === '/finished') return;
 
   // Locked / backgrounded with auto-play on: iOS may suspend JS soon after audio stops,
   // so don't gamble on a visible countdown - resolve the next book and jump straight to
@@ -50,8 +53,13 @@ function handleBookEnded(pathname: string): void {
     void (async () => {
       const client = resolveClient(info.connectionId);
       const next = client ? await resolveNextBook(client, info.libraryId, info.path) : null;
-      if (next) router.replace(playerHref(info.connectionId, info.libraryId, next.path));
-      else goToFinished(info.connectionId, info.libraryId, info.path, pathname);
+      if (next) {
+        // Replace only when we're already on the player; otherwise push, so we don't drop
+        // whatever route the user was on (library/downloads/...) from the back stack.
+        const href = playerHref(info.connectionId, info.libraryId, next.path);
+        if (pathname === '/player') router.replace(href);
+        else router.push(href);
+      } else goToFinished(info.connectionId, info.libraryId, info.path, pathname);
     })();
     return;
   }
