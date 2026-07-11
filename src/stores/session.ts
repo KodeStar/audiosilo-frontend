@@ -206,7 +206,8 @@ type SessionState = {
   removeConnection: (id: string) => Promise<void>;
   /** Flag a connection as needing re-pairing (its token is being rejected, or the server
    * was reset). In-memory only; does NOT remove the connection or delete its token. A
-   * no-op if the connection is unknown or already carries this exact reason. */
+   * no-op if the connection is unknown, already carries this exact reason, or would
+   * downgrade a 'server-reset' flag to 'auth'. */
   markNeedsReconnect: (id: string, reason: ReconnectReason) => void;
   /** Clear a connection's reconnect flag (a successful authed response for it). A no-op
    * when it carries no flag, so it's cheap to call on every success. */
@@ -215,6 +216,13 @@ type SessionState = {
 
 function hostName(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || url;
+}
+
+/** Two stored serverUrls address the same physical server. All URLs come through
+ * `normalizeUrl` (trailing slashes already stripped); the trim is defensive so a stray
+ * trailing slash can't hide a same-server match. */
+function sameServer(a: string, b: string): boolean {
+  return a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 }
 
 /** Derive the default-connection mirror fields from the connection list. */
@@ -284,6 +292,11 @@ export const useSession = create<SessionState>()((set, get) => ({
     // different URL - updates its connection (and refreshes the URL) instead of adding a
     // duplicate.
     const prior = existing.find((c) => c.id === serverId);
+    // A rebuilt server mints a NEW server_id at the SAME URL, so any OTHER connection to
+    // this URL under a different id is a stale identity of the same physical server (its
+    // token is dead - flagged needsReconnect='server-reset'). It must be dropped here, or
+    // re-pairing leaves a zombie the reconnect banner keeps re-flagging on every /server hit.
+    const stale = existing.filter((c) => c.id !== serverId && sameServer(c.serverUrl, serverUrl));
     const conn: Connection = {
       id: serverId,
       serverUrl,
@@ -291,10 +304,14 @@ export const useSession = create<SessionState>()((set, get) => ({
       token,
       user,
     };
+    const surviving = existing.filter((c) => !stale.includes(c));
     const connections = prior
-      ? existing.map((c) => (c.id === serverId ? conn : c))
-      : [...existing, conn];
+      ? surviving.map((c) => (c.id === serverId ? conn : c))
+      : [...surviving, conn];
     await setSecure(tokenKey(serverId), token);
+    // Best-effort drop each stale identity's dead token. No server revoke - the token is
+    // already dead, so there's nothing to call.
+    await Promise.all(stale.map((c) => deleteSecure(tokenKey(c.id)).catch(() => undefined)));
     await persist(connections, serverId);
     // Remember this server durably (no token) so the connect screen can offer a one-tap
     // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
@@ -302,6 +319,18 @@ export const useSession = create<SessionState>()((set, get) => ({
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
     set({ connections, pendingServerUrl: null, ...mirror(connections, serverId) });
+    // Purge each dropped stale identity's scoped state (downloads, progress mirror/queue,
+    // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
+    // never let one block the re-pair.
+    if (stale.length) {
+      const results = await Promise.allSettled(
+        stale.flatMap((c) => [...removalCleanups].map((fn) => fn(c.id))),
+      );
+      for (const r of results) {
+        if (r.status === 'rejected')
+          console.warn('[session] stale-identity cleanup failed', r.reason);
+      }
+    }
     return serverId;
   },
 
@@ -343,6 +372,10 @@ export const useSession = create<SessionState>()((set, get) => ({
     // No-op if unknown, or already flagged with this exact reason - so repeated 401s
     // across many in-flight queries don't churn state (and re-render everything).
     if (!conn || conn.needsReconnect === reason) return;
+    // Never downgrade 'server-reset' to 'auth': it's the rarer, strictly-more-informative
+    // reason (a fresh server_id), and frequent authed 401s ('auth') would otherwise clobber
+    // it. It stays until cleared or a re-pair; the 'auth' → 'server-reset' upgrade is allowed.
+    if (conn.needsReconnect === 'server-reset' && reason === 'auth') return;
     // In-memory only: don't persist (the flag is recomputed from the next failure).
     set({
       connections: connections.map((c) => (c.id === id ? { ...c, needsReconnect: reason } : c)),

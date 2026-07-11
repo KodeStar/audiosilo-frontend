@@ -20,6 +20,25 @@ describe('needsPasswordWarning', () => {
     expect(needsPasswordWarning({ ...base, has_password: true })).toBe(false);
   });
 
+  it('does not warn when the user has a recovery code (a legacy but working way back in)', () => {
+    expect(needsPasswordWarning({ ...base, has_password: false, has_recovery: true })).toBe(false);
+  });
+
+  it('warns when a non-admin has neither a password nor a recovery code', () => {
+    expect(needsPasswordWarning({ ...base, has_password: false, has_recovery: false })).toBe(true);
+  });
+
+  it('does not warn when has_recovery is unknown (needs positive knowledge of both flags)', () => {
+    const legacy = {
+      id: 3,
+      username: 'l',
+      role: 'user',
+      disabled: false,
+      has_password: false,
+    } as unknown as User;
+    expect(needsPasswordWarning(legacy)).toBe(false);
+  });
+
   it('never warns an admin (they always keep a password)', () => {
     expect(needsPasswordWarning({ ...base, role: 'admin' })).toBe(false);
   });

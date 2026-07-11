@@ -268,6 +268,24 @@ describe('session store (multi-connection)', () => {
       expect(useSession.getState().connections).toBe(ref1); // same array reference (no set)
     });
 
+    it('never downgrades server-reset to auth, but upgrades auth to server-reset', async () => {
+      await addA();
+      // server-reset is strictly more informative than the frequent authed-401 'auth'; an
+      // 'auth' mark must not clobber it.
+      useSession.getState().markNeedsReconnect('srv-a', 'server-reset');
+      useSession.getState().markNeedsReconnect('srv-a', 'auth');
+      expect(useSession.getState().connections.find((x) => x.id === 'srv-a')!.needsReconnect).toBe(
+        'server-reset',
+      );
+      // The reverse (auth → server-reset) is a valid upgrade.
+      useSession.getState().clearNeedsReconnect('srv-a');
+      useSession.getState().markNeedsReconnect('srv-a', 'auth');
+      useSession.getState().markNeedsReconnect('srv-a', 'server-reset');
+      expect(useSession.getState().connections.find((x) => x.id === 'srv-a')!.needsReconnect).toBe(
+        'server-reset',
+      );
+    });
+
     it('clearNeedsReconnect clears the flag and no-ops when unset', async () => {
       await addA();
       const ref0 = useSession.getState().connections;
@@ -311,6 +329,58 @@ describe('session store (multi-connection)', () => {
       const known = JSON.parse(raw!);
       expect(known).toEqual([{ serverUrl: 'https://a', name: 'a', serverId: 'srv-a' }]);
       expect(raw).not.toMatch(/token/i);
+    });
+  });
+
+  // A rebuilt server mints a new server_id at the same URL, so re-pairing must retire the
+  // stale identity instead of leaving a zombie the reconnect banner keeps re-flagging.
+  describe('re-pairing a reset server (same URL, new id)', () => {
+    const unsubs: (() => void)[] = [];
+    afterEach(() => {
+      while (unsubs.length) unsubs.pop()!();
+    });
+
+    it('replaces a stale same-URL connection: drops its token + scoped state, keeps only the new id', async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't1', user: mkUser('a') });
+      useSession.getState().markNeedsReconnect('srv-a', 'server-reset');
+      const cleanup = jest.fn();
+      unsubs.push(onConnectionRemoved(cleanup));
+
+      // Re-pair the SAME URL under a fresh server_id (the rebuilt server).
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-b', token: 't2', user: mkUser('b') });
+
+      const s = useSession.getState();
+      expect(s.connections).toHaveLength(1);
+      expect(s.connections[0].id).toBe('srv-b');
+      expect(s.connections[0].needsReconnect).toBeUndefined(); // fresh identity, no stale flag
+      // The stale identity's scoped state is purged and its dead token deleted.
+      expect(cleanup).toHaveBeenCalledWith('srv-a');
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv-a')).toBeNull();
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv-b')).toBe('t2');
+      // Persisted connections carry only the new id.
+      const persisted = JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!);
+      expect(persisted.map((c: { id: string }) => c.id)).toEqual(['srv-b']);
+    });
+
+    it('leaves connections to DIFFERENT URLs untouched when adding a new server', async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 'tA', user: mkUser('a') });
+      const cleanup = jest.fn();
+      unsubs.push(onConnectionRemoved(cleanup));
+
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 'tB', user: mkUser('b') });
+
+      const s = useSession.getState();
+      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a', 'srv-b']);
+      expect(cleanup).not.toHaveBeenCalled(); // a distinct URL is not a stale identity
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv-a')).toBe('tA');
     });
   });
 

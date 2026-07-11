@@ -62,11 +62,43 @@ export class ApiClient {
   readonly baseUrl: string;
   private readonly token: string | null;
   private readonly timeoutMs: number;
+  private readonly onAuthError?: () => void;
 
-  constructor(baseUrl: string, token: string | null = null, timeoutMs = 15000) {
+  /**
+   * `onAuthError` is invoked once whenever a request produces an HTTP **401** - a
+   * "dead token" signal: the server *answered* and rejected our credential itself. It
+   * is the single choke point for dead-token detection: because EVERY request (queries,
+   * mutations, the framework-free progress-sync save loop) funnels through `request`,
+   * wiring the callback where a connection's client is built (`provider.tsx`,
+   * `connection-clients.resolveClient`) gives every request path detection for free.
+   * This class deliberately does NOT import the session store (that would be a cycle,
+   * and would couple transport to state); the caller injects a callback that marks its
+   * own connection. Onboarding flows build bare clients WITHOUT the callback, so a
+   * wrong-password 401 on `/auth/login` never false-flags a reconnect.
+   *
+   * **Why 401 only.** On audiosilo-server a genuinely dead/invalid/revoked token ALWAYS
+   * yields 401 (`middleware.go` "missing bearer token" / "invalid or expired token"),
+   * while **403 means "valid token, but forbidden"** - a share/scope denial
+   * (`handlers_library.go` "no access to this library"/"no access to this path", a
+   * routine event when a scoped user browses outside their share), "admin only", or an
+   * api-key/demo restriction. The token is perfectly good in every 403 case; treating
+   * one as dead would spuriously tell a correctly-logged-in shared user to reconnect
+   * just for hitting a forbidden path - the exact false-positive this feature exists to
+   * prevent. And because this class only throws `ApiError` for a real HTTP response (a
+   * network/offline failure surfaces as `TimeoutError` or a raw fetch rejection, with
+   * no status), a 401 `ApiError` inherently proves "server responded, token refused" -
+   * cleanly distinct from offline (the reachability layer relies on the same invariant).
+   */
+  constructor(
+    baseUrl: string,
+    token: string | null = null,
+    timeoutMs = 15000,
+    onAuthError?: () => void,
+  ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
     this.timeoutMs = timeoutMs;
+    this.onAuthError = onAuthError;
   }
 
   /** Absolute URL for an API path (e.g. `/server`). */
@@ -135,6 +167,11 @@ export class ApiClient {
       // Our timeout fired (not a caller cancel, and not a real server answer in
       // the same tick): report it as a timeout so it's classified as unreachable.
       if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(this.timeoutMs);
+      // A 401 ApiError means the server answered and rejected our token - fire the
+      // dead-token callback (both ApiError throw sites above land here). 403 is a scope
+      // denial (valid token, forbidden) and a network/timeout failure has no status, so
+      // neither is a dead token - the full rationale is on the constructor doc above.
+      if (e instanceof ApiError && e.status === 401) this.onAuthError?.();
       throw e;
     } finally {
       clearTimeout(timer);

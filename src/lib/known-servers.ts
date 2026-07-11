@@ -23,12 +23,19 @@ export async function list(): Promise<KnownServer[]> {
   return (await getItem<KnownServer[]>(KEY)) ?? [];
 }
 
-/** Upsert a server by its stable `serverId` (a re-pair at a new URL refreshes the
- * existing entry rather than duplicating it), moving it to the front. */
+/** Upsert a server, moving it to the front. Dedupes on EITHER the stable
+ * `serverId` OR the `serverUrl`: a re-pair at a new URL refreshes the existing
+ * entry (same id), and a re-pair at the same address supersedes the old entry even
+ * when the server minted a fresh `serverId` (a rebuilt/reset server) - otherwise
+ * that address would show two identical "Reconnect to <name>" rows, one pointing at
+ * a dead identity. */
 export async function remember(entry: KnownServer): Promise<void> {
   if (!entry.serverId) return;
   const current = await list();
-  const next = [entry, ...current.filter((e) => e.serverId !== entry.serverId)];
+  const next = [
+    entry,
+    ...current.filter((e) => e.serverId !== entry.serverId && e.serverUrl !== entry.serverUrl),
+  ];
   await setItem(KEY, next);
 }
 

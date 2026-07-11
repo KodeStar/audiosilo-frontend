@@ -40,6 +40,23 @@ describe('known-servers', () => {
     expect(l[0]).toEqual({ serverUrl: 'https://a.example', name: 'Server A', serverId: 'srv-a' });
   });
 
+  it('supersedes an entry at the same url when the server minted a new id (rebuilt server)', async () => {
+    await remember(mk('old-id', 'https://same.example', 'Home'));
+    await remember(mk('srv-b', 'https://b.example'));
+    // Re-pair to the same address; the rebuilt server minted a fresh serverId.
+    await remember(mk('new-id', 'https://same.example', 'Home'));
+    const l = await list();
+    expect(l.map((e) => e.serverId)).toEqual(['new-id', 'srv-b']); // single entry, dead id gone
+    expect(l[0]).toEqual({ serverUrl: 'https://same.example', name: 'Home', serverId: 'new-id' });
+  });
+
+  it('leaves entries at distinct urls untouched', async () => {
+    await remember(mk('srv-a', 'https://a.example'));
+    await remember(mk('srv-b', 'https://b.example'));
+    await remember(mk('srv-c', 'https://c.example'));
+    expect((await list()).map((e) => e.serverId)).toEqual(['srv-c', 'srv-b', 'srv-a']);
+  });
+
   it('ignores a blank serverId', async () => {
     await remember(mk('', 'https://x'));
     expect(await list()).toEqual([]);

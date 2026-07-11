@@ -16,7 +16,13 @@ import { ApiClient } from './client';
  */
 export function resolveClient(connectionId: string): ApiClient | null {
   const conn = useSession.getState().connections.find((c) => c.id === connectionId);
-  return conn ? new ApiClient(conn.serverUrl, conn.token) : null;
+  if (!conn) return null;
+  // Inject the dead-token callback so a 401 from the framework-free progress-sync save
+  // loop (which resolves its client here) flags this connection for reconnect too - the
+  // same detection every provider-built client gets, so no request path is a blind spot.
+  return new ApiClient(conn.serverUrl, conn.token, undefined, () =>
+    useSession.getState().markNeedsReconnect(connectionId, 'auth'),
+  );
 }
 
 /** Whether the session store has finished hydrating (so the connection list is real).
