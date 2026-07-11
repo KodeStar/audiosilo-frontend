@@ -1,5 +1,4 @@
 import { router } from 'expo-router';
-import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
@@ -23,7 +22,7 @@ export function ReconnectBanner() {
   const { t } = useTranslation();
   const connections = useSession((s) => s.connections);
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
-  const needing = useMemo(() => connections.filter((c) => c.needsReconnect), [connections]);
+  const needing = connections.filter((c) => c.needsReconnect);
 
   if (needing.length === 0) return null;
   const conn = needing[0];

@@ -1,6 +1,12 @@
 import { ApiError, TimeoutError } from '@/api/client';
+import { qk } from '@/api/hooks';
 
-import { connectionIdFromKey, isDeadTokenError } from './auth-failure';
+import {
+  connectionIdFromKey,
+  isDeadTokenError,
+  isServerInfoKey,
+  serverResetCid,
+} from './auth-failure';
 
 describe('isDeadTokenError', () => {
   it('is true for a 401 ApiError (server answered, token rejected)', () => {
@@ -60,5 +66,41 @@ describe('connectionIdFromKey', () => {
 
   it('ignores non-string key parts', () => {
     expect(connectionIdFromKey([1, 2, 3], ids)).toBeNull();
+  });
+});
+
+describe('isServerInfoKey', () => {
+  // Build the key via the real factory so a change to `qk.server`'s shape breaks this
+  // test - that's the drift guard.
+  it('is true for a qk.server key', () => {
+    expect(isServerInfoKey(qk.server('srv-a'))).toBe(true);
+  });
+
+  it('is false for any non-server key', () => {
+    expect(isServerInfoKey(qk.libraries('srv-a'))).toBe(false);
+    expect(isServerInfoKey(['progress', 'all', 'srv-a'])).toBe(false);
+    expect(isServerInfoKey([])).toBe(false);
+  });
+});
+
+describe('serverResetCid', () => {
+  const cid = 'srv-a';
+
+  it('returns null when server_id still matches the connection id', () => {
+    expect(serverResetCid(qk.server(cid), { server_id: cid })).toBeNull();
+  });
+
+  it('returns the cid when server_id differs (the install was rebuilt)', () => {
+    expect(serverResetCid(qk.server(cid), { server_id: 'a-different-id' })).toBe(cid);
+  });
+
+  it('returns null when server_id is missing or empty', () => {
+    expect(serverResetCid(qk.server(cid), {})).toBeNull();
+    expect(serverResetCid(qk.server(cid), { server_id: '' })).toBeNull();
+    expect(serverResetCid(qk.server(cid), undefined)).toBeNull();
+  });
+
+  it('returns null for a non-server key', () => {
+    expect(serverResetCid(qk.libraries(cid), { server_id: 'a-different-id' })).toBeNull();
   });
 });

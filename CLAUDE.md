@@ -187,7 +187,7 @@ screen's code field redeems it through the same `redeemCode → exchange` path a
 logout is rare - but when a token IS genuinely dead (admin revoked it, or the server's
 data dir was reset) the app must not fail every request silently forever. Detection is
 centralized and rides on the React Query cache (no per-call handling, no background
-poller): the `QueryClient` in `src/api/provider.tsx` gets a `QueryCache`/`MutationCache`
+poller): the `QueryClient` in `src/api/provider.tsx` gets a `QueryCache`
 whose `onError` flags the connection when the error is a **dead-token signal** -
 `isDeadTokenError` in `src/lib/auth-failure.ts`, i.e. an `ApiError` with status **401
 only** (a 403 is "valid token, forbidden" - a scope/share denial, admin-only, or

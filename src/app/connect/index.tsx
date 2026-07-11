@@ -38,7 +38,10 @@ export default function ConnectServerScreen() {
   // Remembered servers (durable, no token) so a fully-logged-out user gets a one-tap
   // reconnect with zero typing. Only relevant when signed in to nothing.
   const [known, setKnown] = useState<KnownServer[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Which connect action is in flight (a remembered server's `serverId`, or `'manual'` for
+  // the typed-address button), so only the tapped button spins - and, since it's non-null
+  // for the whole probe, every other connect button stays inert (no double-submit).
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pairing, setPairing] = useState(!!token);
   const [pairError, setPairError] = useState<string | null>(null);
@@ -100,14 +103,14 @@ export default function ConnectServerScreen() {
   // The existing connect path: probe the server, then either reveal the demo login or push
   // to sign-in. Takes an explicit address so the reconnect shortcut can drive it without
   // waiting for the `url` state to settle.
-  const connect = async (target: string) => {
+  const connect = async (target: string, tag: string) => {
     setError(null);
     const normalized = normalizeUrl(target);
     if (!normalized) {
       setError(t('connect.server.enterAddress'));
       return;
     }
-    setLoading(true);
+    setBusy(tag);
     try {
       const info = await new ApiClient(normalized).serverInfo();
       await setPendingServerUrl(normalized);
@@ -123,17 +126,17 @@ export default function ConnectServerScreen() {
           : t('connect.server.reachError'),
       );
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
-  const onConnect = () => connect(url);
+  const onConnect = () => connect(url, 'manual');
 
   // One-tap reconnect to a remembered server: prefill the address (for visual continuity)
   // and run the same connect path the user would have typed by hand.
   const onReconnect = (entry: KnownServer) => {
     setUrl(entry.serverUrl);
-    void connect(entry.serverUrl);
+    void connect(entry.serverUrl, entry.serverId);
   };
 
   const onForget = async (serverId: string) => {
@@ -197,7 +200,8 @@ export default function ConnectServerScreen() {
                     title={t('reconnect.connect.action', { name: entry.name })}
                     icon="server"
                     variant="secondary"
-                    loading={loading}
+                    loading={busy === entry.serverId}
+                    disabled={busy !== null}
                     onPress={() => onReconnect(entry)}
                   />
                 </View>
@@ -211,11 +215,7 @@ export default function ConnectServerScreen() {
                 </Pressable>
               </View>
             ))}
-            <View className="flex-row items-center gap-3">
-              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-              <Text variant="muted">{t('connect.server.or')}</Text>
-              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-            </View>
+            <LabeledDivider label={t('connect.server.or')} />
           </View>
         ) : null}
         {pairError ? (
@@ -238,17 +238,14 @@ export default function ConnectServerScreen() {
           <Button
             title={t('connect.server.connect')}
             icon="server"
-            loading={loading}
+            loading={busy === 'manual'}
+            disabled={busy !== null}
             onPress={onConnect}
           />
         </View>
         {demoBase ? (
           <View className="gap-4">
-            <View className="flex-row items-center gap-3">
-              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-              <Text variant="muted">{t('connect.server.demoDivider')}</Text>
-              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-            </View>
+            <LabeledDivider label={t('connect.server.demoDivider')} />
             <Text variant="muted" className="text-center">
               {t('connect.server.demoIntro')}
             </Text>
@@ -267,11 +264,7 @@ export default function ConnectServerScreen() {
         ) : null}
         {Platform.OS !== 'web' ? (
           <View className="gap-4">
-            <View className="flex-row items-center gap-3">
-              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-              <Text variant="muted">{t('connect.server.or')}</Text>
-              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
-            </View>
+            <LabeledDivider label={t('connect.server.or')} />
             <Button
               title={t('connect.server.scanQr')}
               icon="qrcode"
@@ -282,5 +275,17 @@ export default function ConnectServerScreen() {
         ) : null}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/** A horizontal rule with a centered label ("or", demo divider) - the connect screen's
+ * repeated section separator. File-local; no other consumers. */
+function LabeledDivider({ label }: { label: string }) {
+  return (
+    <View className="flex-row items-center gap-3">
+      <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+      <Text variant="muted">{label}</Text>
+      <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+    </View>
   );
 }

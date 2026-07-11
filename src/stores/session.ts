@@ -111,19 +111,15 @@ export async function resetStaleStorage(): Promise<StorageResetResult> {
   // --- CACHE axis -------------------------------------------------------------------
   let cacheReset = false;
   if (cacheVersion !== CACHE_STORAGE_VERSION) {
+    // A healthy pre-split install (auth version recorded, cache version never written)
+    // ADOPTS the current version without wiping; if the auth axis already reset, the
+    // scoped keys are already gone. Otherwise this is a real cache bump (or a brand-new
+    // install, where the wipe is a harmless no-op): clear the scoped cache.
     const isPreexistingInstall = cacheVersion == null && authVersion != null;
-    if (isPreexistingInstall) {
-      // A healthy install that predates the cache-version split (its auth version was
-      // already recorded). Its cache is valid - ADOPT the current cache version silently,
-      // never wiping the user's downloads on the first launch of this code.
-    } else if (!authReset) {
-      // A real cache-schema bump (recorded but differs), or a brand-new install (nothing
-      // stored, so the wipe is a harmless no-op). Either way, clear the scoped cache.
+    if (!isPreexistingInstall && !authReset) {
       await Promise.all(SCOPED_STORAGE_KEYS.map((k) => removeItem(k)));
       cacheReset = true;
     }
-    // else: the auth axis already wiped the scoped keys and the caller clears the
-    // downloads root via `authReset`, so there's no extra cache work - just stamp below.
     await setItem(CACHE_VERSION_KEY, CACHE_STORAGE_VERSION);
   }
 
