@@ -112,15 +112,6 @@ describe('ApiClient', () => {
     });
   });
 
-  it('mints a recovery code via POST /auth/recovery and unwraps recovery_code', async () => {
-    const fetchMock = installFetch(() => ({ status: 201, body: { recovery_code: 'ABCD-EFGH' } }));
-    const c = new ApiClient('https://h', 'tok');
-    await expect(c.generateRecoveryCode()).resolves.toBe('ABCD-EFGH');
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(String(url)).toBe('https://h/api/v1/auth/recovery');
-    expect(init.method).toBe('POST');
-  });
-
   it('posts the documented body shape for exchange', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { token: 't', user: {} } }));
     await new ApiClient('https://h').exchange('pair-token', 'iPhone');

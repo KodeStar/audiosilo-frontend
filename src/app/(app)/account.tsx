@@ -9,10 +9,8 @@ import { useOptionalApi, useScopedCid } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
 import { ApiKeyCreatedModal } from '@/components/account/api-key-created-modal';
 import { ApiKeysSection } from '@/components/account/api-keys-section';
-import { RecoveryCodeModal } from '@/components/account/recovery-code-modal';
 import { SignOutConfirm } from '@/components/account/sign-out-confirm';
 import { useApiKeysManager } from '@/components/account/use-api-keys-manager';
-import { useRecoveryCode } from '@/components/account/use-recovery-code';
 import { useSignOut } from '@/components/account/use-sign-out';
 import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -103,12 +101,11 @@ function AccountContent() {
     }
   };
 
-  // Recovery code + guarded sign-out, both scoped to this connection.
-  const recovery = useRecoveryCode(cid);
+  // Guarded sign-out, scoped to this connection.
   const signOut = useSignOut(cid);
 
   // API keys: only for servers that advertise the capability, and never for demo
-  // accounts (the server refuses them, matching the password/recovery affordances).
+  // accounts (the server refuses them, matching the password affordance).
   // The manager hook runs unconditionally; `apiKeysEnabled` gates its list query and
   // the section's render.
   const apiKeysEnabled = !!server?.capabilities.api_keys && !user?.is_demo;
@@ -164,106 +161,74 @@ function AccountContent() {
               </Text>
             </View>
 
-            {/* Demo accounts can't set a password or mint a recovery code (the
-                server refuses both), so hide those affordances entirely. */}
+            {/* Demo accounts can't set a password (the server refuses it), so hide
+                that affordance entirely. */}
             {!user?.is_demo && (
-              <>
-                <View className="gap-2">
-                  <View className="flex-row items-center justify-between">
-                    <Text>{t('settings.account.password.label')}</Text>
-                    <Text variant="muted">
-                      {user?.has_password
-                        ? t('settings.account.password.set')
-                        : t('settings.account.password.notSet')}
-                    </Text>
-                  </View>
-                  {pwOpen ? (
-                    <View className="gap-2">
-                      {user?.has_password ? (
-                        <TextField
-                          label={t('settings.account.password.current')}
-                          placeholder={t('settings.account.password.currentPlaceholder')}
-                          secureTextEntry
-                          autoCapitalize="none"
-                          value={curPw}
-                          onChangeText={setCurPw}
-                        />
-                      ) : null}
+              <View className="gap-2">
+                <View className="flex-row items-center justify-between">
+                  <Text>{t('settings.account.password.label')}</Text>
+                  <Text variant="muted">
+                    {user?.has_password
+                      ? t('settings.account.password.set')
+                      : t('settings.account.password.notSet')}
+                  </Text>
+                </View>
+                {pwOpen ? (
+                  <View className="gap-2">
+                    {user?.has_password ? (
                       <TextField
-                        label={t('settings.account.password.new')}
-                        placeholder={t('settings.account.password.newPlaceholder', {
-                          count: PW_MIN,
-                        })}
+                        label={t('settings.account.password.current')}
+                        placeholder={t('settings.account.password.currentPlaceholder')}
                         secureTextEntry
                         autoCapitalize="none"
-                        value={pw}
-                        onChangeText={setPw}
-                        error={pwError ?? undefined}
+                        value={curPw}
+                        onChangeText={setCurPw}
                       />
-                      <View className="flex-row gap-2">
-                        <Button
-                          title={t('common.save')}
-                          loading={pwBusy}
-                          disabled={
-                            pw.length < PW_MIN || (!!user?.has_password && curPw.length === 0)
-                          }
-                          onPress={savePassword}
-                        />
-                        <Button
-                          title={t('common.cancel')}
-                          variant="ghost"
-                          onPress={() => {
-                            setPwOpen(false);
-                            setPw('');
-                            setCurPw('');
-                            setPwError(null);
-                          }}
-                        />
-                      </View>
-                    </View>
-                  ) : (
-                    <Button
-                      title={
-                        user?.has_password
-                          ? t('settings.account.password.change')
-                          : t('settings.account.password.setNew')
-                      }
-                      variant="secondary"
-                      onPress={() => setPwOpen(true)}
+                    ) : null}
+                    <TextField
+                      label={t('settings.account.password.new')}
+                      placeholder={t('settings.account.password.newPlaceholder', {
+                        count: PW_MIN,
+                      })}
+                      secureTextEntry
+                      autoCapitalize="none"
+                      value={pw}
+                      onChangeText={setPw}
+                      error={pwError ?? undefined}
                     />
-                  )}
-                </View>
-
-                <View className="gap-2">
-                  <View className="flex-row items-center justify-between">
-                    <Text>{t('settings.account.recovery.label')}</Text>
-                    <Text variant="muted">
-                      {user?.has_recovery
-                        ? t('settings.account.recovery.set')
-                        : t('settings.account.recovery.notSet')}
-                    </Text>
+                    <View className="flex-row gap-2">
+                      <Button
+                        title={t('common.save')}
+                        loading={pwBusy}
+                        disabled={
+                          pw.length < PW_MIN || (!!user?.has_password && curPw.length === 0)
+                        }
+                        onPress={savePassword}
+                      />
+                      <Button
+                        title={t('common.cancel')}
+                        variant="ghost"
+                        onPress={() => {
+                          setPwOpen(false);
+                          setPw('');
+                          setCurPw('');
+                          setPwError(null);
+                        }}
+                      />
+                    </View>
                   </View>
-                  <Text variant="muted" className="text-xs">
-                    {t('settings.account.recovery.hint')}
-                  </Text>
-                  {recovery.error ? (
-                    <Text className="text-xs text-danger-600 dark:text-danger">
-                      {recovery.error}
-                    </Text>
-                  ) : null}
+                ) : (
                   <Button
                     title={
-                      user?.has_recovery
-                        ? t('settings.account.recovery.regenerate')
-                        : t('settings.account.recovery.generate')
+                      user?.has_password
+                        ? t('settings.account.password.change')
+                        : t('settings.account.password.setNew')
                     }
                     variant="secondary"
-                    icon="qrcode"
-                    loading={recovery.busy}
-                    onPress={recovery.requestGenerate}
+                    onPress={() => setPwOpen(true)}
                   />
-                </View>
-              </>
+                )}
+              </View>
             )}
 
             <AnimatedPressable
@@ -340,20 +305,12 @@ function AccountContent() {
         connectionId={cid}
         onCancel={() => signOut.setConfirmVisible(false)}
         onSignOut={signOut.signOut}
-        onSetRecovery={() => {
+        onSetPassword={() => {
+          // Dismiss the warning and reveal this connection's set-password editor -
+          // the durable, self-service way back in after signing out.
           signOut.setConfirmVisible(false);
-          recovery.requestGenerate();
+          setPwOpen(true);
         }}
-      />
-      <RecoveryCodeModal code={recovery.code} onClose={() => recovery.setCode(null)} />
-      <ConfirmDialog
-        visible={recovery.confirmRegen}
-        title={t('settings.recoveryReplace.title')}
-        message={t('settings.recoveryReplace.message')}
-        confirmLabel={t('settings.recoveryReplace.confirm')}
-        confirmIcon="qrcode"
-        onConfirm={recovery.confirmGenerate}
-        onCancel={() => recovery.setConfirmRegen(false)}
       />
       <ApiKeyCreatedModal created={apiKeys.created} onClose={apiKeys.dismissCreated} />
       <ConfirmDialog

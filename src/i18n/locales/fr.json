@@ -66,14 +66,6 @@
         "minError": "Le mot de passe doit comporter au moins {{count}} caractères.",
         "updateError": "Impossible de mettre à jour le mot de passe."
       },
-      "recovery": {
-        "label": "Code de récupération",
-        "set": "Défini",
-        "notSet": "Non défini",
-        "hint": "Un code que vous conservez pour vous reconnecter vous-même, sans administrateur.",
-        "regenerate": "Régénérer le code de récupération",
-        "generate": "Générer un code de récupération"
-      },
       "signOut": "Se déconnecter"
     },
     "devices": {
@@ -84,11 +76,6 @@
       "share": "Partager le lien",
       "done": "Terminé",
       "reachError": "Impossible de joindre le serveur."
-    },
-    "recoveryReplace": {
-      "title": "Remplacer le code de récupération ?",
-      "message": "Votre code de récupération actuel cessera de fonctionner. Vous devrez enregistrer le nouveau partout où vous le conservez.",
-      "confirm": "Le remplacer"
     },
     "apiKeys": {
       "label": "Clés d'API",
@@ -135,21 +122,13 @@
         "message_other": "Cela supprime {{count}} livres téléchargés sur cet appareil ainsi que toute progression pas encore synchronisée."
       }
     },
-    "recoveryModal": {
-      "title": "Code de récupération",
-      "description": "Conservez-le en lieu sûr. Saisissez-le sur l’écran de connexion pour vous reconnecter sur n’importe quel appareil. Il ne sera plus affiché.",
-      "share": "Partager"
-    },
     "signOut": {
       "title": "Se déconnecter ?",
-      "warning": "Vous n’avez défini ni mot de passe ni code de récupération. Sans cela, il vous faudra une nouvelle invitation de votre administrateur pour vous reconnecter à ce serveur.",
-      "setRecovery": "Définir un code de récupération",
+      "warning": "Vous n’avez pas défini de mot de passe. Sans cela, il vous faudra une nouvelle invitation de votre administrateur pour vous reconnecter à ce serveur.",
+      "setPassword": "Définir un mot de passe",
       "confirm": "Se déconnecter quand même",
       "downloadsWarning_one": "La déconnexion supprimera aussi {{count}} livre téléchargé depuis ce serveur sur cet appareil.",
       "downloadsWarning_other": "La déconnexion supprimera aussi {{count}} livres téléchargés depuis ce serveur sur cet appareil."
-    },
-    "recovery": {
-      "generateError": "Impossible de générer un code de récupération."
     }
   },
   "connect": {
@@ -179,8 +158,8 @@
         "code": "Code",
         "password": "Mot de passe"
       },
-      "codeLabel": "Code d'invitation ou de récupération",
-      "codePlaceholder": "Saisissez votre code d'invitation ou de récupération",
+      "codeLabel": "Code d'invitation",
+      "codePlaceholder": "Saisissez votre code d'invitation",
       "usernameLabel": "Nom d'utilisateur",
       "usernamePlaceholder": "Nom d'utilisateur",
       "passwordLabel": "Mot de passe",
@@ -404,6 +383,18 @@
     "menu": {
       "label": "Plus",
       "viewCredits": "Voir le générique de fin"
+    }
+  },
+  "reconnect": {
+    "banner": {
+      "auth": "Se reconnecter à {{name}}",
+      "serverReset": "{{name}} a été réinitialisé - réappairez pour continuer",
+      "more": "+{{count}} autre(s)"
+    },
+    "connect": {
+      "heading": "Se reconnecter",
+      "action": "Se reconnecter à {{name}}",
+      "forget": "Oublier {{name}}"
     }
   },
   "nav": {

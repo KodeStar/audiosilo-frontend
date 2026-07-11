@@ -66,14 +66,6 @@
         "minError": "La contraseña debe tener al menos {{count}} caracteres.",
         "updateError": "No se pudo actualizar la contraseña."
       },
-      "recovery": {
-        "label": "Código de recuperación",
-        "set": "Establecido",
-        "notSet": "Sin establecer",
-        "hint": "Un código que guardas para volver a iniciar sesión tú mismo, sin necesidad de un administrador.",
-        "regenerate": "Regenerar código de recuperación",
-        "generate": "Generar código de recuperación"
-      },
       "signOut": "Cerrar sesión"
     },
     "devices": {
@@ -84,11 +76,6 @@
       "share": "Compartir enlace",
       "done": "Listo",
       "reachError": "No se pudo conectar con el servidor."
-    },
-    "recoveryReplace": {
-      "title": "¿Reemplazar el código de recuperación?",
-      "message": "Tu código de recuperación actual dejará de funcionar. Tendrás que guardar el nuevo en todos los lugares donde lo conserves.",
-      "confirm": "Reemplazarlo"
     },
     "apiKeys": {
       "label": "Claves de API",
@@ -135,21 +122,13 @@
         "message_other": "Esto elimina {{count}} libros descargados en este dispositivo y cualquier progreso que aún no se haya sincronizado."
       }
     },
-    "recoveryModal": {
-      "title": "Código de recuperación",
-      "description": "Guárdalo en un lugar seguro. Introdúcelo en la pantalla de conexión para volver a iniciar sesión en cualquier dispositivo. No se mostrará de nuevo.",
-      "share": "Compartir"
-    },
     "signOut": {
       "title": "¿Cerrar sesión?",
-      "warning": "No tienes ninguna contraseña ni código de recuperación configurado. Sin uno de ellos, necesitarás una nueva invitación de tu administrador para volver a iniciar sesión en este servidor.",
-      "setRecovery": "Configurar un código de recuperación",
+      "warning": "No tienes ninguna contraseña configurada. Sin ella, necesitarás una nueva invitación de tu administrador para volver a iniciar sesión en este servidor.",
+      "setPassword": "Establecer una contraseña",
       "confirm": "Cerrar sesión de todas formas",
       "downloadsWarning_one": "Cerrar sesión también eliminará {{count}} libro descargado de este servidor en este dispositivo.",
       "downloadsWarning_other": "Cerrar sesión también eliminará {{count}} libros descargados de este servidor en este dispositivo."
-    },
-    "recovery": {
-      "generateError": "No se pudo generar un código de recuperación."
     }
   },
   "connect": {
@@ -179,8 +158,8 @@
         "code": "Código",
         "password": "Contraseña"
       },
-      "codeLabel": "Código de invitación o recuperación",
-      "codePlaceholder": "Introduce tu código de invitación o recuperación",
+      "codeLabel": "Código de invitación",
+      "codePlaceholder": "Introduce tu código de invitación",
       "usernameLabel": "Nombre de usuario",
       "usernamePlaceholder": "Nombre de usuario",
       "passwordLabel": "Contraseña",
@@ -404,6 +383,18 @@
     "menu": {
       "label": "Más",
       "viewCredits": "Ver créditos finales"
+    }
+  },
+  "reconnect": {
+    "banner": {
+      "auth": "Volver a conectar con {{name}}",
+      "serverReset": "{{name}} se restableció - vuelve a emparejar para continuar",
+      "more": "+{{count}} más"
+    },
+    "connect": {
+      "heading": "Volver a conectar",
+      "action": "Volver a conectar con {{name}}",
+      "forget": "Olvidar {{name}}"
     }
   },
   "nav": {

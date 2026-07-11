@@ -77,8 +77,8 @@ function ChoiceRow({
   );
 }
 
-// App-level preferences only. Account management (password, recovery, device
-// pairing, sign-out, server version) is per-connection and lives on each
+// App-level preferences only. Account management (password, device pairing,
+// sign-out, server version) is per-connection and lives on each
 // connection's account screen, reached from the Servers list below.
 export default function SettingsScreen() {
   const { t } = useTranslation();

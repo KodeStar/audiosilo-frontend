@@ -66,14 +66,6 @@
         "minError": "La password deve contenere almeno {{count}} caratteri.",
         "updateError": "Impossibile aggiornare la password."
       },
-      "recovery": {
-        "label": "Codice di recupero",
-        "set": "Impostato",
-        "notSet": "Non impostato",
-        "hint": "Un codice che conservi per riaccedere da solo, senza bisogno di un amministratore.",
-        "regenerate": "Rigenera codice di recupero",
-        "generate": "Genera codice di recupero"
-      },
       "signOut": "Esci"
     },
     "devices": {
@@ -84,11 +76,6 @@
       "share": "Condividi link",
       "done": "Fatto",
       "reachError": "Impossibile raggiungere il server."
-    },
-    "recoveryReplace": {
-      "title": "Sostituire il codice di recupero?",
-      "message": "Il tuo codice di recupero attuale smetterà di funzionare. Dovrai salvare quello nuovo ovunque lo conservi.",
-      "confirm": "Sostituiscilo"
     },
     "apiKeys": {
       "label": "Chiavi API",
@@ -135,21 +122,13 @@
         "message_other": "Questo elimina {{count}} libri scaricati su questo dispositivo e ogni progresso non ancora sincronizzato."
       }
     },
-    "recoveryModal": {
-      "title": "Codice di recupero",
-      "description": "Conservalo in un luogo sicuro. Inseriscilo nella schermata di connessione per accedere di nuovo su qualsiasi dispositivo. Non verrà mostrato di nuovo.",
-      "share": "Condividi"
-    },
     "signOut": {
       "title": "Disconnettersi?",
-      "warning": "Non hai impostato alcuna password né codice di recupero. Senza uno dei due, ti servirà un nuovo invito dal tuo amministratore per accedere di nuovo a questo server.",
-      "setRecovery": "Imposta un codice di recupero",
+      "warning": "Non hai impostato alcuna password. Senza di essa, ti servirà un nuovo invito dal tuo amministratore per accedere di nuovo a questo server.",
+      "setPassword": "Imposta una password",
       "confirm": "Disconnetti comunque",
       "downloadsWarning_one": "Disconnettendoti verrà eliminato anche {{count}} libro scaricato da questo server su questo dispositivo.",
       "downloadsWarning_other": "Disconnettendoti verranno eliminati anche {{count}} libri scaricati da questo server su questo dispositivo."
-    },
-    "recovery": {
-      "generateError": "Impossibile generare un codice di recupero."
     }
   },
   "connect": {
@@ -179,8 +158,8 @@
         "code": "Codice",
         "password": "Password"
       },
-      "codeLabel": "Codice di invito o di recupero",
-      "codePlaceholder": "Inserisci il tuo codice di invito o di recupero",
+      "codeLabel": "Codice di invito",
+      "codePlaceholder": "Inserisci il tuo codice di invito",
       "usernameLabel": "Nome utente",
       "usernamePlaceholder": "Nome utente",
       "passwordLabel": "Password",
@@ -404,6 +383,18 @@
     "menu": {
       "label": "Altro",
       "viewCredits": "Vedi i titoli di coda"
+    }
+  },
+  "reconnect": {
+    "banner": {
+      "auth": "Riconnetti a {{name}}",
+      "serverReset": "{{name}} è stato reimpostato - riesegui l'associazione per continuare",
+      "more": "+{{count}} altri"
+    },
+    "connect": {
+      "heading": "Riconnetti",
+      "action": "Riconnetti a {{name}}",
+      "forget": "Dimentica {{name}}"
     }
   },
   "nav": {

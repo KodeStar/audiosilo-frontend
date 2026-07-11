@@ -14,6 +14,7 @@ import { AppHeader } from './app-header';
 import { NavBar } from './app-nav';
 import { ContentColumn } from './content-column';
 import { OfflineBanner } from './offline-banner';
+import { ReconnectBanner } from './reconnect-banner';
 
 /**
  * Responsive chrome around the routed screen:
@@ -64,6 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="sidebar" />
         <View className="flex-1">
+          <ReconnectBanner />
           <OfflineBanner />
           {children}
         </View>
@@ -77,6 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
         <NavBar orientation="sidebar" />
         <View className="flex-1">
+          <ReconnectBanner />
           <OfflineBanner />
           <ContentColumn>{children}</ContentColumn>
         </View>
@@ -91,6 +94,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     content = (
       <View className="flex-1 relative bg-gray-200 dark:bg-gray-800">
         <AppHeader />
+        <ReconnectBanner />
         <OfflineBanner />
         <View className="flex-1">{children}</View>
         {/* Phone book screen has no inline player (that's the wide-only right panel),

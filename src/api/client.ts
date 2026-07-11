@@ -179,21 +179,16 @@ export class ApiClient {
     return this.request<PairingPayload>('POST', '/auth/pair');
   }
 
-  // --- Self-service recovery (authed) --------------------------------------
-  // Set/change your own password and mint a durable recovery code, so a
-  // signed-out user can get back in without an admin. A recovery code redeems
-  // through the normal connect flow (redeemCode → exchange) - it is just an auth
-  // code the user owns. Changing an existing password requires the current one
-  // (pass currentPassword); setting a first password does not. The password can't
-  // be empty (clearing is admin-only).
+  // --- Self-service password (authed) --------------------------------------
+  // Set/change your own password so a signed-out user can get back in on any
+  // device without an admin. Changing an existing password requires the current
+  // one (pass currentPassword); setting a first password does not. The password
+  // can't be empty (clearing is admin-only). The connect screen's code field still
+  // redeems an admin invite code (redeemCode → exchange) as the other way in.
   setPassword(password: string, currentPassword?: string) {
     return this.request<void>('POST', '/auth/password', {
       body: currentPassword ? { password, current_password: currentPassword } : { password },
     });
-  }
-  async generateRecoveryCode() {
-    const r = await this.request<{ recovery_code: string }>('POST', '/auth/recovery');
-    return r.recovery_code;
   }
 
   // --- API keys (authed) ---------------------------------------------------

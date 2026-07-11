@@ -66,14 +66,6 @@
         "minError": "A palavra-passe deve ter pelo menos {{count}} caracteres.",
         "updateError": "Não foi possível atualizar a palavra-passe."
       },
-      "recovery": {
-        "label": "Código de recuperação",
-        "set": "Definido",
-        "notSet": "Não definido",
-        "hint": "Um código que guarda para iniciar sessão sozinho - sem precisar de um administrador.",
-        "regenerate": "Regenerar código de recuperação",
-        "generate": "Gerar código de recuperação"
-      },
       "signOut": "Terminar sessão"
     },
     "devices": {
@@ -84,11 +76,6 @@
       "share": "Partilhar ligação",
       "done": "Concluído",
       "reachError": "Não foi possível contactar o servidor."
-    },
-    "recoveryReplace": {
-      "title": "Substituir o código de recuperação?",
-      "message": "O seu código de recuperação atual deixará de funcionar. Terá de guardar o novo em todos os locais onde o conserva.",
-      "confirm": "Substituir"
     },
     "apiKeys": {
       "label": "Chaves de API",
@@ -135,21 +122,13 @@
         "message_other": "Isto elimina {{count}} livros descarregados neste dispositivo e qualquer progresso ainda não sincronizado."
       }
     },
-    "recoveryModal": {
-      "title": "Código de recuperação",
-      "description": "Guarde-o num local seguro. Introduza-o no ecrã de ligação para iniciar sessão novamente em qualquer dispositivo. Não será mostrado outra vez.",
-      "share": "Partilhar"
-    },
     "signOut": {
       "title": "Terminar sessão?",
-      "warning": "Não tem qualquer palavra-passe nem código de recuperação definido. Sem um deles, vai precisar de um novo convite do seu administrador para iniciar sessão novamente neste servidor.",
-      "setRecovery": "Definir um código de recuperação",
+      "warning": "Não tem qualquer palavra-passe definida. Sem ela, vai precisar de um novo convite do seu administrador para iniciar sessão novamente neste servidor.",
+      "setPassword": "Definir uma palavra-passe",
       "confirm": "Terminar sessão mesmo assim",
       "downloadsWarning_one": "Terminar sessão também elimina {{count}} livro descarregado deste servidor neste dispositivo.",
       "downloadsWarning_other": "Terminar sessão também elimina {{count}} livros descarregados deste servidor neste dispositivo."
-    },
-    "recovery": {
-      "generateError": "Não foi possível gerar um código de recuperação."
     }
   },
   "connect": {
@@ -179,8 +158,8 @@
         "code": "Código",
         "password": "Palavra-passe"
       },
-      "codeLabel": "Código de convite ou recuperação",
-      "codePlaceholder": "Introduz o teu código de convite ou recuperação",
+      "codeLabel": "Código de convite",
+      "codePlaceholder": "Introduz o teu código de convite",
       "usernameLabel": "Nome de utilizador",
       "usernamePlaceholder": "Nome de utilizador",
       "passwordLabel": "Palavra-passe",
@@ -404,6 +383,18 @@
     "menu": {
       "label": "Mais",
       "viewCredits": "Ver créditos finais"
+    }
+  },
+  "reconnect": {
+    "banner": {
+      "auth": "Voltar a ligar a {{name}}",
+      "serverReset": "{{name}} foi reposto - volta a emparelhar para continuar",
+      "more": "+{{count}} mais"
+    },
+    "connect": {
+      "heading": "Voltar a ligar",
+      "action": "Voltar a ligar a {{name}}",
+      "forget": "Esquecer {{name}}"
     }
   },
   "nav": {

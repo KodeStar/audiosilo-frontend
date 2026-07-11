@@ -2,8 +2,7 @@ import { shareText } from './share';
 
 /**
  * Copy a string to the clipboard, returning whether it actually landed on the
- * clipboard. The app has no clipboard native module (like the recovery-code flow,
- * it deliberately avoids one), so:
+ * clipboard. The app has no clipboard native module (it deliberately avoids one), so:
  *
  * - On the web the Clipboard API is available: write directly and report `true`.
  * - Otherwise (native, or a browser without a usable Clipboard API) fall back to

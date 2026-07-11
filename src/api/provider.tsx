@@ -1,13 +1,64 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 
+import { connectionIdFromKey, isDeadTokenError } from '@/lib/auth-failure';
 import { flushConnection } from '@/playback/progress-sync';
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { ApiClient } from './client';
 import { onReconnect, setReachabilityClients } from './reachability';
+import type { ServerInfo } from './types';
+
+// --- Dead-token / server-reset detection (centralized, not per-call) -----------------
+// A 401 on ANY authenticated query proves the server answered and rejected our token
+// (a network failure has no HTTP status - see isDeadTokenError), so we flag that
+// connection as needing a reconnect instead of failing silently forever. Detection rides
+// on the query/mutation cache rather than each call site. The connection id is resolved
+// from the key by membership against the live connection ids (keys are connection-scoped
+// but not at a fixed index).
+
+/** The current connection ids, read fresh from the store (module scope, no React). */
+function knownConnectionIds(): string[] {
+  return useSession.getState().connections.map((c) => c.id);
+}
+
+/** Flag the connection a failed key belongs to when the error is a dead-token signal. */
+function noteAuthError(error: unknown, key: readonly unknown[]) {
+  if (!isDeadTokenError(error)) return;
+  const cid = connectionIdFromKey(key, knownConnectionIds());
+  if (cid) useSession.getState().markNeedsReconnect(cid, 'auth');
+}
+
+/** A successful AUTHENTICATED query for a connection proves its token is alive - clear any
+ * flag. The public `/server` query is skipped: it carries no auth, so its success proves
+ * nothing about the token (and we use it to DETECT a server reset, below). */
+function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
+  if (key[0] === 'server') {
+    // `useServerInfo()` refetched a connection's /server. If the server now reports a
+    // different server_id, the install was rebuilt from scratch - this identity is gone,
+    // so re-pairing is required. Piggybacks on the existing fetch (no dedicated poller).
+    const cid = typeof key[1] === 'string' ? key[1] : null;
+    const serverId = (data as ServerInfo | undefined)?.server_id;
+    if (cid && serverId && serverId !== cid) {
+      useSession.getState().markNeedsReconnect(cid, 'server-reset');
+    }
+    return;
+  }
+  const cid = connectionIdFromKey(key, knownConnectionIds());
+  if (cid) useSession.getState().clearNeedsReconnect(cid);
+}
 
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => noteAuthError(error, query.queryKey),
+    onSuccess: (data, query) => noteQuerySuccess(data, query.queryKey),
+  }),
+  // Mutations don't carry a connection-scoped key today (none set `mutationKey`), so this
+  // resolves to null and no-ops - but it's in place so a keyed mutation is covered too.
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) =>
+      noteAuthError(error, mutation.options.mutationKey ?? []),
+  }),
   defaultOptions: {
     queries: {
       retry: 1,

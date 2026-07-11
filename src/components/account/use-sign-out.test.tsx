@@ -19,7 +19,7 @@ jest.mock('@/stores/session', () => ({
 }));
 
 // signOut runs the shared token-revoking teardown (playback stop + queued-progress
-// flush); mock the player store so this test (focused on the recovery-warning
+// flush); mock the player store so this test (focused on the password-warning
 // decision) doesn't pull in the native engine.
 jest.mock('@/playback/store', () => ({ teardownBeforeTokenRevoke: jest.fn(async () => {}) }));
 
@@ -54,7 +54,7 @@ const user = (over: Partial<User>): User => ({
   ...over,
 });
 
-// A session persisted before the recovery flags existed carries them as undefined.
+// A session persisted before the account flags existed carries them as undefined.
 const flaglessUser = { id: 1, username: 'kid', role: 'user', disabled: false } as unknown as User;
 
 // Seed connection 'c1' carrying `u` as its user (what the hook reads for the decision).

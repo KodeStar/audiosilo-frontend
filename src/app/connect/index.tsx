@@ -1,20 +1,27 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiClient, ApiError } from '@/api/client';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
+import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
+import {
+  forget as forgetServer,
+  list as listKnownServers,
+  type KnownServer,
+} from '@/lib/known-servers';
 import { normalizeUrl } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
+import { colors } from '@/theme/tokens';
 
 export default function ConnectServerScreen() {
   const { t } = useTranslation();
@@ -26,7 +33,11 @@ export default function ConnectServerScreen() {
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const setSession = useSession((s) => s.setSession);
   const savedUrl = useSession((s) => s.pendingServerUrl);
+  const connectionCount = useSession((s) => s.connections.length);
   const [url, setUrl] = useState(savedUrl ?? '');
+  // Remembered servers (durable, no token) so a fully-logged-out user gets a one-tap
+  // reconnect with zero typing. Only relevant when signed in to nothing.
+  const [known, setKnown] = useState<KnownServer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pairing, setPairing] = useState(!!token);
@@ -75,9 +86,23 @@ export default function ConnectServerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, setSession]);
 
-  const onConnect = async () => {
+  // Load remembered servers once (only surfaced when signed in to nothing).
+  useEffect(() => {
+    let cancelled = false;
+    void listKnownServers().then((k) => {
+      if (!cancelled) setKnown(k);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The existing connect path: probe the server, then either reveal the demo login or push
+  // to sign-in. Takes an explicit address so the reconnect shortcut can drive it without
+  // waiting for the `url` state to settle.
+  const connect = async (target: string) => {
     setError(null);
-    const normalized = normalizeUrl(url);
+    const normalized = normalizeUrl(target);
     if (!normalized) {
       setError(t('connect.server.enterAddress'));
       return;
@@ -100,6 +125,20 @@ export default function ConnectServerScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const onConnect = () => connect(url);
+
+  // One-tap reconnect to a remembered server: prefill the address (for visual continuity)
+  // and run the same connect path the user would have typed by hand.
+  const onReconnect = (entry: KnownServer) => {
+    setUrl(entry.serverUrl);
+    void connect(entry.serverUrl);
+  };
+
+  const onForget = async (serverId: string) => {
+    await forgetServer(serverId);
+    setKnown((k) => k.filter((e) => e.serverId !== serverId));
   };
 
   const onTryDemo = async () => {
@@ -148,6 +187,37 @@ export default function ConnectServerScreen() {
           <Text className="font-roboto-bold text-3xl text-primary">AudioSilo</Text>
           <Text variant="muted">{t('connect.server.subtitle')}</Text>
         </View>
+        {connectionCount === 0 && known.length > 0 ? (
+          <View className="gap-3">
+            <Text variant="label">{t('reconnect.connect.heading')}</Text>
+            {known.map((entry) => (
+              <View key={entry.serverId} className="flex-row items-center gap-2">
+                <View className="flex-1">
+                  <Button
+                    title={t('reconnect.connect.action', { name: entry.name })}
+                    icon="server"
+                    variant="secondary"
+                    loading={loading}
+                    onPress={() => onReconnect(entry)}
+                  />
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('reconnect.connect.forget', { name: entry.name })}
+                  onPress={() => onForget(entry.serverId)}
+                  className="h-11 w-11 items-center justify-center rounded-lg active:opacity-60"
+                >
+                  <Icon name="close" size={16} color={colors.dark.textMuted} />
+                </Pressable>
+              </View>
+            ))}
+            <View className="flex-row items-center gap-3">
+              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+              <Text variant="muted">{t('connect.server.or')}</Text>
+              <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+            </View>
+          </View>
+        ) : null}
         {pairError ? (
           <Text className="text-center text-sm text-danger-600 dark:text-danger">{pairError}</Text>
         ) : null}

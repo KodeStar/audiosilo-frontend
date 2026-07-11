@@ -24,7 +24,7 @@ jest.mock('@/api/hooks', () => ({
 import { useApiKeysManager } from './use-api-keys-manager';
 
 // renderHook is incompatible with this jest-expo + React 19 setup, so mount a probe
-// component that re-captures the hook value on every render (see use-recovery-code.test).
+// component that re-captures the hook value on every render (see use-sign-out.test).
 async function mountHook<T>(useHook: () => T): Promise<() => T> {
   const ref: { value: T | null } = { value: null };
   function Probe() {

@@ -12,7 +12,7 @@ import { copyText } from '@/lib/clipboard';
  * Shows a freshly minted API key's plaintext secret in an always-on-top dialog. The
  * server returns it exactly once, so this is the user's only chance to grab it - the
  * copy button and a selectable secret both cover that, with a plain "won't be shown
- * again" warning. Mirrors {@link RecoveryCodeModal}.
+ * again" warning.
  */
 export function ApiKeyCreatedModal({
   created,

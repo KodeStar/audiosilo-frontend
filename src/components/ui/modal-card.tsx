@@ -7,7 +7,7 @@ import { OverlayHost } from './overlay-host';
  * A centered dialog card over a dimmed backdrop. Tapping the backdrop (or the
  * Android hardware back button) dismisses it; taps inside the card are caught by
  * the inner Pressable so they don't fall through to the backdrop. Extracted so the
- * account dialogs (sign-out warning, recovery code, confirmations) share one
+ * account dialogs (sign-out warning, API-key secret, confirmations) share one
  * implementation instead of each re-rolling the backdrop scaffold.
  *
  * Hosted in an `OverlayHost`, which renders in place (react-native-web's `Modal`

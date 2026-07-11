@@ -66,14 +66,6 @@
         "minError": "Password must be at least {{count}} characters.",
         "updateError": "Could not update the password."
       },
-      "recovery": {
-        "label": "Recovery code",
-        "set": "Set",
-        "notSet": "Not set",
-        "hint": "A code you keep to sign back in yourself - no admin needed.",
-        "regenerate": "Regenerate recovery code",
-        "generate": "Generate recovery code"
-      },
       "signOut": "Sign out"
     },
     "devices": {
@@ -84,11 +76,6 @@
       "share": "Share link",
       "done": "Done",
       "reachError": "Could not reach the server."
-    },
-    "recoveryReplace": {
-      "title": "Replace recovery code?",
-      "message": "Your current recovery code will stop working. You'll need to save the new one everywhere you keep it.",
-      "confirm": "Replace it"
     },
     "apiKeys": {
       "label": "API keys",
@@ -135,21 +122,13 @@
         "message_other": "This deletes {{count}} downloaded books on this device and any progress that hasn't synced yet."
       }
     },
-    "recoveryModal": {
-      "title": "Recovery code",
-      "description": "Save this somewhere safe. Enter it on the connect screen to sign back in on any device. It won’t be shown again.",
-      "share": "Share"
-    },
     "signOut": {
       "title": "Sign out?",
-      "warning": "You don’t have a password or recovery code set. Without one you’ll need a new invite from your admin to sign back in on this server.",
-      "setRecovery": "Set a recovery code",
+      "warning": "You don’t have a password set. Without one you’ll need a new invite from your admin to sign back in on this server.",
+      "setPassword": "Set a password",
       "confirm": "Sign out anyway",
       "downloadsWarning_one": "Signing out also deletes {{count}} book downloaded from this server on this device.",
       "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device."
-    },
-    "recovery": {
-      "generateError": "Could not generate a recovery code."
     }
   },
   "connect": {
@@ -179,8 +158,8 @@
         "code": "Code",
         "password": "Password"
       },
-      "codeLabel": "Invite or recovery code",
-      "codePlaceholder": "Enter your invite or recovery code",
+      "codeLabel": "Invite code",
+      "codePlaceholder": "Enter your invite code",
       "usernameLabel": "Username",
       "usernamePlaceholder": "Username",
       "passwordLabel": "Password",
@@ -404,6 +383,18 @@
     "menu": {
       "label": "More",
       "viewCredits": "View end credits"
+    }
+  },
+  "reconnect": {
+    "banner": {
+      "auth": "Reconnect to {{name}}",
+      "serverReset": "{{name}} was reset - re-pair to continue",
+      "more": "+{{count}} more"
+    },
+    "connect": {
+      "heading": "Reconnect",
+      "action": "Reconnect to {{name}}",
+      "forget": "Forget {{name}}"
     }
   },
   "nav": {
