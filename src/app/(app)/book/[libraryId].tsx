@@ -98,6 +98,9 @@ function BookDetailContent() {
   // advertising the capability (older servers omit the flag → false → no query).
   const { data: server } = useServerInfo();
   const metadataEnabled = !!server?.capabilities.metadata;
+  // Older servers omit the capability → false; books with neither id can never
+  // match, so we skip the request entirely.
+  const bookMetaEnabled = metadataEnabled && !!(book?.asin || book?.isbn);
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
@@ -300,7 +303,7 @@ function BookDetailContent() {
               disabled={chaptersLoading}
             />
             {fileList}
-            {metadataEnabled ? <BookMetaSection libraryId={libraryId} path={path} /> : null}
+            <BookMetaSection libraryId={libraryId} path={path} enabled={bookMetaEnabled} />
             <BookmarksSection libraryId={libraryId} path={path} />
             <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
             <NotesSection libraryId={libraryId} path={path} />
@@ -416,7 +419,7 @@ function BookDetailContent() {
 
       {fileList}
 
-      {metadataEnabled ? <BookMetaSection libraryId={libraryId} path={path} /> : null}
+      <BookMetaSection libraryId={libraryId} path={path} enabled={bookMetaEnabled} />
       <BookmarksSection libraryId={libraryId} path={path} />
       <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
       <NotesSection libraryId={libraryId} path={path} />

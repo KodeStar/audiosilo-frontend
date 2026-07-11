@@ -1,7 +1,7 @@
 import * as WebBrowser from 'expo-web-browser';
 import { Linking, Platform } from 'react-native';
 
-import { SUPPORT_URL, isSupportAvailable, openSupport } from './support';
+import { SUPPORT_URL, isSupportAvailable, openExternalUrl, openSupport } from './support';
 
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn() }));
 const openBrowserAsync = WebBrowser.openBrowserAsync as jest.Mock;
@@ -60,6 +60,25 @@ describe('support', () => {
       setPlatform('android');
       openBrowserAsync.mockRejectedValue(new Error('no browser'));
       await expect(openSupport()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('openExternalUrl', () => {
+    const url = 'https://meta.audiosilo.app/work?id=the-martian';
+
+    it('opens a new tab on web (not the popup-style in-app browser)', async () => {
+      setPlatform('web');
+      await openExternalUrl(url);
+      expect(openURL).toHaveBeenCalledWith(url);
+      expect(openBrowserAsync).not.toHaveBeenCalled();
+    });
+
+    it('opens an in-app browser tab on native', async () => {
+      setPlatform('android');
+      openBrowserAsync.mockResolvedValue(undefined);
+      await openExternalUrl(url);
+      expect(openBrowserAsync).toHaveBeenCalledWith(url);
+      expect(openURL).not.toHaveBeenCalled();
     });
   });
 });
