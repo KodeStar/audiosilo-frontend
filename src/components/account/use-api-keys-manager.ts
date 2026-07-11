@@ -10,7 +10,7 @@ import i18n from '@/i18n';
  * the revoke confirmation) on top of the connection-scoped React Query hooks, so the
  * account screen can render the reveal modal and revoke confirmation at screen level
  * (a `ModalCard` must not live inside the settings `ScrollView`) while the in-scroll
- * section just reads/drives this state. Mirrors `useRecoveryCode`.
+ * section just reads/drives this state.
  *
  * `enabled` gates the list query on the server's `api_keys` capability and the
  * non-demo rule, so an older server (or a demo account) is never queried.

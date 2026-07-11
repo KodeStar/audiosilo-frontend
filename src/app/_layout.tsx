@@ -53,19 +53,22 @@ export default function RootLayout() {
   const hydrateDownloads = useDownloads((s) => s.hydrate);
   useEffect(() => {
     void (async () => {
-      // Clear any state left incompatible by a storage-version bump BEFORE the stores
-      // read it, so none loads records keyed on now-invalid connection ids. A no-op
-      // after the first post-upgrade launch. Guarded so a keychain/storage hiccup can
+      // Reconcile storage left incompatible by a version bump BEFORE the stores read it,
+      // so none loads records keyed on now-invalid connection ids. Two independent axes:
+      // `authReset` (connection identity scheme changed - everyone re-pairs) and
+      // `cacheReset` (disposable download/progress cache schema changed - logins intact).
+      // A no-op after the first post-bump launch. Guarded so a keychain/storage hiccup can
       // never skip hydration below - that would strand the app on 'loading' forever
       // (and defeat hydrate()'s own fail-safe).
       let didReset = false;
       try {
-        didReset = await resetStaleStorage();
+        const { authReset, cacheReset } = await resetStaleStorage();
+        didReset = authReset || cacheReset;
       } catch (e) {
         console.warn('[storage] stale-state reset failed', e);
       }
-      // On the id-scheme bump the pre-scoping downloaded files are orphaned on disk
-      // (their old paths lack the connectionId segment removeBook now needs), so wipe
+      // Whenever either axis reset, the on-disk downloaded files no longer match the
+      // registry (auth wipe orphans them; a cache-schema bump invalidates them), so wipe
       // the whole downloads root once - otherwise they leak, uncounted-for, forever.
       if (didReset && engine.clearAll) {
         try {

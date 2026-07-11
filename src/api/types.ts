@@ -39,11 +39,14 @@ export type User = {
   /** Whether the account can sign in with a username + password. False for
    * password-less accounts onboarded purely via auth-code pairing. */
   has_password: boolean;
-  /** Whether the user holds a durable recovery code to re-authenticate without an
-   * admin. Drives the "you have no way back in" warning shown at sign-out. */
+  /** @deprecated Legacy field - this client no longer mints or displays recovery
+   * codes, so don't build new features on it. It IS still read in one place:
+   * `needsPasswordWarning` (src/lib/account.ts) uses it to suppress the sign-out
+   * warning for a user who still holds a working recovery code (a durable way back
+   * in). Do not remove it from this wire type. */
   has_recovery: boolean;
-  /** Throwaway demo account. The server refuses self-service password/recovery for
-   * these, so the UI hides those affordances when set. */
+  /** Throwaway demo account. The server refuses self-service password for these,
+   * so the UI hides that affordance when set. */
   is_demo?: boolean;
 };
 

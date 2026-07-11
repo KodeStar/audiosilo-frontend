@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 
 import { useOptionalApi } from '@/api/provider';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
-import { accountFlagsKnown, needsRecoveryWarning } from '@/lib/recovery';
+import { accountFlagsKnown, needsPasswordWarning } from '@/lib/account';
 import { useSession } from '@/stores/session';
 
 /**
@@ -15,10 +15,10 @@ import { useSession } from '@/stores/session';
  * so signing out from that connection's account screen targets *that* server.
  *
  * `requestSignOut` decides on the freshest account flags it can get: a session
- * persisted before `has_password`/`has_recovery` existed has them `undefined`, so
- * we fetch `/me` once before deciding rather than guessing. When the server is
- * unreachable we fall back to whatever we have and don't warn - offline there's no
- * way to mint a recovery code anyway, so a warning would be a dead end.
+ * persisted before `has_password` existed has it `undefined`, so we fetch `/me`
+ * once before deciding rather than guessing. When the server is unreachable we fall
+ * back to whatever we have and don't warn - offline there's no way to set a password
+ * anyway, so a warning would be a dead end.
  */
 export function useSignOut(connectionId: string) {
   const api = useOptionalApi(connectionId);
@@ -54,7 +54,7 @@ export function useSignOut(connectionId: string) {
         // offline / unreachable: decide on what we already have
       }
     }
-    if (needsRecoveryWarning(current)) setConfirmVisible(true);
+    if (needsPasswordWarning(current)) setConfirmVisible(true);
     else void signOut();
   }, [user, api, connectionId, setConnectionUser, signOut]);
 

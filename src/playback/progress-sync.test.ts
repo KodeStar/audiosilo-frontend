@@ -150,6 +150,17 @@ describe('progress-sync', () => {
     expect(await readQueue()).toHaveLength(0);
   });
 
+  it('drops a 401 save silently (no throw, no retry loop) - the reconnect flag is raised', async () => {
+    // A token revoked mid-listen 401s the 15s save loop. progress-sync must still drop it
+    // (no forever-retry). The reconnect banner is NOT raised here: dead-token detection now
+    // lives on the ApiClient's onAuthError callback, fired inside a real client's request()
+    // before the ApiError reaches this layer. The client the save loop uses is built with
+    // that callback (provider.tsx / resolveClient); this layer's job is only to not loop.
+    const api = fakeApi(() => Promise.reject(new ApiError(401, 'invalid or expired token')));
+    await expect(saveProgress(api, save)).resolves.toBeUndefined();
+    expect(await readQueue()).toHaveLength(0);
+  });
+
   it('enqueues on a connection error, then replays it on the next flush', async () => {
     const failing = fakeApi(() => Promise.reject(new Error('network down')));
     await saveProgress(failing, save);

@@ -8,22 +8,22 @@ import { downloadedCountFor, useDownloads } from '@/downloads/store';
 
 /**
  * Confirmation shown before signing out a user who has no durable way back in (no
- * password and no recovery code). It offers to set a recovery credential instead
- * of stranding them. Presentational only - the caller decides what each action
- * does (the per-connection account screen mints and reveals a recovery code).
- * Signing out removes the named connection, which purges its downloads, so it also
- * warns when that server has downloaded books (counted against `connectionId`).
+ * password). It offers to set a password instead of stranding them. Presentational
+ * only - the caller decides what each action does (the per-connection account screen
+ * opens its set-password editor). Signing out removes the named connection, which
+ * purges its downloads, so it also warns when that server has downloaded books
+ * (counted against `connectionId`).
  */
 export function SignOutConfirm({
   visible,
   connectionId,
-  onSetRecovery,
+  onSetPassword,
   onSignOut,
   onCancel,
 }: {
   visible: boolean;
   connectionId: string;
-  onSetRecovery: () => void;
+  onSetPassword: () => void;
   onSignOut: () => void;
   onCancel: () => void;
 }) {
@@ -44,7 +44,7 @@ export function SignOutConfirm({
         </Text>
       ) : null}
       <View className="gap-2">
-        <Button title={t('account.signOut.setRecovery')} icon="qrcode" onPress={onSetRecovery} />
+        <Button title={t('account.signOut.setPassword')} onPress={onSetPassword} />
         <Button
           title={t('account.signOut.confirm')}
           variant="secondary"

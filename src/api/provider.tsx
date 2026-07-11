@@ -1,13 +1,51 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 
+import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
 import { flushConnection } from '@/playback/progress-sync';
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { ApiClient } from './client';
 import { onReconnect, setReachabilityClients } from './reachability';
 
+// --- Dead-token / server-reset detection -----------------------------------------------
+// Dead-token detection (a 401 on an authenticated request ⇒ re-pair) rides on the
+// ApiClient itself: each per-connection client is built with an `onAuthError` callback
+// that flags ITS connection, so EVERY request path - queries, mutations, and the
+// framework-free progress-sync save loop - inherits detection at one choke point (see
+// `client.ts` and `connection-clients.resolveClient`). The query cache keeps only the two
+// jobs a per-call callback can't do: CLEARING a flag when an authenticated query succeeds,
+// and detecting a SERVER RESET from a public `/server` response (a differing `server_id`).
+
+/** A successful AUTHENTICATED query for a connection proves its token is alive - clear any
+ * flag. The public `/server` query is skipped: it carries no auth, so its success proves
+ * nothing about the token (and we use it to DETECT a server reset, below). */
+function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
+  if (isServerInfoKey(key)) {
+    // Public /server success proves nothing about the token - never clears the flag;
+    // it only DETECTS a server reset (a differing server_id ⇒ re-pair required).
+    const cid = serverResetCid(key, data);
+    if (cid) useSession.getState().markNeedsReconnect(cid, 'server-reset');
+    return;
+  }
+  // Hot path: fires on EVERY successful fetch, so bail before allocating when nothing
+  // is flagged (the overwhelmingly common case) - clearNeedsReconnect would just no-op.
+  const { connections, clearNeedsReconnect } = useSession.getState();
+  if (!connections.some((c) => c.needsReconnect)) return;
+  const cid = connectionIdFromKey(
+    key,
+    connections.map((c) => c.id),
+  );
+  if (cid) clearNeedsReconnect(cid);
+}
+
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    // No onError: dead-token flagging lives on the ApiClient callback now (one choke
+    // point for every request path). The cache keeps only success handling: clearing a
+    // flag and detecting a server reset.
+    onSuccess: (data, query) => noteQuerySuccess(data, query.queryKey),
+  }),
   defaultOptions: {
     queries: {
       retry: 1,
@@ -55,7 +93,17 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   // in-flight reachability probes and force-refetch every query).
   const clients = useMemo<Map<string, ApiClient>>(() => {
     const map = new Map<string, ApiClient>();
-    for (const c of connections) map.set(c.id, new ApiClient(c.serverUrl, c.token));
+    for (const c of connections) {
+      // Inject the dead-token callback so a 401 on ANY request through this client
+      // (query OR mutation) flags this connection for reconnect - the client is the one
+      // choke point every request path shares.
+      map.set(
+        c.id,
+        new ApiClient(c.serverUrl, c.token, undefined, () =>
+          useSession.getState().markNeedsReconnect(c.id, 'auth'),
+        ),
+      );
+    }
     return map;
   }, [connections]);
 

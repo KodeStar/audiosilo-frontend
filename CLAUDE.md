@@ -11,7 +11,7 @@ Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complet
 `download-control`/`download-badge` components); **M4 (PWA / service worker)**
 shipped (`public/sw.js`, `public/manifest.json`, `src/lib/register-sw{,.web}.ts`).
 Several features have landed since the original plan: **demo mode**, **favourites**,
-**self-service recovery**, and **i18n** (`src/i18n/`). M5 (release/store) is the main
+**self-service password**, and **i18n** (`src/i18n/`). M5 (release/store) is the main
 remaining track.
 
 ## Model routing (every session follows this)
@@ -142,24 +142,95 @@ onto another. The seam is `src/api/connection-clients.ts` - framework-free modul
 (`resolveClient`) and gate on the session having hydrated (`sessionReady`) before
 reading storage, without importing React; removing/signing out of a connection
 **purges** its scoped state through the `onConnectionRemoved` registry in
-`src/stores/session.ts`. Client state left incompatible by the id scheme moving to the
-server-minted `server_id` (a `STORAGE_VERSION` bump) is cleared once, before any store
-hydrates, by `resetStaleStorage()` (the user re-pairs). See `src/api/client.ts` +
-`src/api/types.ts`.
+`src/stores/session.ts`. Stale persisted state is reconciled once, before any store
+hydrates, by `resetStaleStorage()` along **two independent version axes** so cache churn
+can never log anyone out (`{ authReset, cacheReset }`):
+- **`AUTH_STORAGE_VERSION`** gates the auth wipe (connections + their secure-store session
+  tokens). Session tokens never expire server-side, so wiping them is the ONLY thing that
+  logs a user out and forces a re-pair. Bump it **ONLY** when the connection *identity
+  scheme itself* changes (like v2: ids became the server-minted `server_id`) - a
+  deliberate, rare, breaking act that logs **everyone** out. **Never bump it for a cache
+  reason.**
+- **`CACHE_STORAGE_VERSION`** gates the disposable per-server cache (downloads + the
+  progress mirror/queue + the on-disk downloads root). Bump **this** for any scoped-state /
+  cache schema change: it wipes that cache (it re-downloads / re-syncs from the server)
+  while keeping every login intact. A pre-existing install that predates this split adopts
+  the cache version silently, without wiping its downloads.
+
+`_layout.tsx` wipes the downloads root via `engine.clearAll()` when **either** axis reset.
+See `src/api/client.ts` + `src/api/types.ts`.
 
 **API envelopes** (from the Go handlers): auth returns `{ token, user }`; `/me`
 returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cursor }`,
 `{ progress }`, `{ bookmarks }`, `{ notes }`); errors are `{ error }`. Pairing deep
 link is `audiosilo://connect?server=<base>&token=<pairing_token>`.
 
-**Self-service recovery.** `User` carries `has_password`/`has_recovery`. A signed-in
-user can set a password (`client.setPassword`) and/or mint a durable **recovery code**
-(`client.generateRecoveryCode`) from Settings so they can get back in after signing out
-without an admin. A recovery code is just an auth code the user owns - it redeems through
-the same `redeemCode → exchange` path as an invite, so the connect screen's code field
-accepts either. Sign-out is guarded (`src/lib/recovery.ts` `needsRecoveryWarning`):
-a user with neither credential is warned and offered a recovery code before their only
-way in is revoked (`src/components/account/sign-out-confirm.tsx`).
+**Self-service password.** A signed-in user can set/change a password
+(`client.setPassword`) from the per-server account screen so they can get back in on any
+device after signing out without an admin. Sign-out is guarded
+(`src/lib/account.ts` `needsPasswordWarning`): a non-admin, non-demo user with **neither a
+password nor a recovery code** (`has_password === false && has_recovery === false`) is
+warned before their only credential (the session token) is revoked - a legacy user who
+still holds a working recovery code is exempt (it re-pairs them via the connect screen's
+code field, so the "you'll need a new invite" warning would be false for them). The
+warning's remedy is **"Set a password"** - it dismisses the
+sheet and opens the account screen's set-password editor
+(`src/components/account/sign-out-confirm.tsx`). The connect screen's code field still
+redeems an admin invite code as the other way in.
+
+The **recovery-code** feature (a durable user-owned auth code minted from Settings) was
+**removed from this client's UI** - it was confusing and unused. The server keeps its
+`/auth/recovery` endpoints for already-shipped older clients, and `/me` still returns a
+`has_recovery` field, so `User.has_recovery` (`src/api/types.ts`) is **retained as a
+tolerated legacy wire field** (marked `@deprecated`). The only reader is
+`needsPasswordWarning` (above), which uses it solely to **suppress** the sign-out warning
+for a legacy user who still holds a working recovery code - the feature itself has no UI.
+Any legacy recovery code a user still holds keeps working because the connect
+screen's code field redeems it through the same `redeemCode → exchange` path as an invite.
+
+**Dead-token reconnect.** Session tokens never expire server-side, so an involuntary
+logout is rare - but when a token IS genuinely dead (admin revoked it, or the server's
+data dir was reset) the app must not fail every request silently forever. Detection lives
+at ONE choke point - the `ApiClient` itself - so it covers **every** request path
+(queries, the `useMutation`s in `src/api/hooks.ts`, and the framework-free progress-sync
+save loop) without per-call handling or a background poller. `ApiClient.request()` invokes
+an injected `onAuthError` callback whenever a request produces an `ApiError` with status
+**401 only** (a 403 is "valid token, forbidden" - a scope/share denial, admin-only, or
+api-key/demo restriction - NOT a dead token, so flagging it would false-positive the
+reconnect prompt for a scoped user browsing outside their share). That check is reliable
+because `ApiClient` only throws `ApiError` for a real HTTP response; a network/offline
+failure throws `TimeoutError`/a raw fetch rejection with no status - so a 401 inherently
+proves "server answered, token rejected", cleanly distinct from offline (the reachability
+layer relies on the same invariant; the full rationale + the server-source citations live
+on the `onAuthError` constructor doc in `client.ts`). The callback is injected wherever a per-connection client is
+built - `provider.tsx`'s client map AND `connection-clients.resolveClient` - as `() =>
+markNeedsReconnect(cid, 'auth')`; `client.ts` never imports the session store (no cycle).
+**Onboarding** flows (connect / sign-in / demo) build bare clients with NO callback, so a
+wrong-password 401 on `/auth/login` can't false-flag a reconnect. The React Query
+`QueryCache` keeps only the two success-side jobs a per-request error callback can't do:
+**clearing** the flag when an authenticated query succeeds (the connection id resolved from
+the query key by membership against the live ids, `connectionIdFromKey`, since keys are
+connection-scoped but not at a fixed index), and detecting a **server reset** by
+piggybacking on the existing `useServerInfo()` fetch - a successful public `/server`
+response whose `server_id` differs from the connection id flags `server-reset` (that public
+success is skipped for flag-clearing, since it proves nothing about the token).
+
+The flag is a per-connection `Connection.needsReconnect?: 'auth' | 'server-reset'` in
+`src/stores/session.ts` (`markNeedsReconnect`/`clearNeedsReconnect`) - **in-memory only**
+(stripped from the persisted shape, recomputed from the next failure), and marking it
+never removes the connection or its token (only a successful `setSession` re-pair replaces
+the token) - and `markNeedsReconnect` never downgrades a `server-reset` flag to `auth`, so
+frequent authed 401s can't clobber the rarer, more informative server-reset reason. A
+re-pair additionally retires any *stale same-URL connection under a different `server_id`*
+(a rebuilt server mints a new id, so the old identity's dead token + scoped state are
+dropped via the `onConnectionRemoved` registry rather than left as a zombie the banner
+keeps re-flagging). It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
+rendered in `app-shell` beside the offline banner); tapping it pre-fills `pendingServerUrl`
+and routes into the EXISTING connect → sign-in screens to re-enter a code/password.
+`setSession` also upserts a durable, tokenless **known-servers** entry
+(`src/lib/known-servers.ts`, AsyncStorage key `audiosilo.knownServers`, NOT touched by
+`resetStaleStorage`), so after a full logout the connect screen offers one-tap
+"Reconnect to <server>" shortcuts (with a per-entry forget).
 
 **Personal API keys.** The per-server account screen (`src/app/(app)/account.tsx`)
 renders an API-keys section (`src/components/account/api-keys-section.tsx` +

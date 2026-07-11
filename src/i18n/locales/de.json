@@ -66,14 +66,6 @@
         "minError": "Das Passwort muss mindestens {{count}} Zeichen lang sein.",
         "updateError": "Passwort konnte nicht aktualisiert werden."
       },
-      "recovery": {
-        "label": "Wiederherstellungscode",
-        "set": "Festgelegt",
-        "notSet": "Nicht festgelegt",
-        "hint": "Ein Code, den du aufbewahrst, um dich selbst wieder anzumelden – ohne Administrator.",
-        "regenerate": "Wiederherstellungscode neu erstellen",
-        "generate": "Wiederherstellungscode erstellen"
-      },
       "signOut": "Abmelden"
     },
     "devices": {
@@ -84,11 +76,6 @@
       "share": "Link teilen",
       "done": "Fertig",
       "reachError": "Server konnte nicht erreicht werden."
-    },
-    "recoveryReplace": {
-      "title": "Wiederherstellungscode ersetzen?",
-      "message": "Dein aktueller Wiederherstellungscode funktioniert dann nicht mehr. Du musst den neuen überall dort speichern, wo du ihn aufbewahrst.",
-      "confirm": "Ersetzen"
     },
     "apiKeys": {
       "label": "API-Schlüssel",
@@ -135,21 +122,13 @@
         "message_other": "Dadurch werden {{count}} auf diesem Gerät heruntergeladene Bücher gelöscht, ebenso wie noch nicht synchronisierter Fortschritt."
       }
     },
-    "recoveryModal": {
-      "title": "Wiederherstellungscode",
-      "description": "Bewahre ihn an einem sicheren Ort auf. Gib ihn auf dem Verbindungsbildschirm ein, um dich auf einem beliebigen Gerät wieder anzumelden. Er wird nicht erneut angezeigt.",
-      "share": "Teilen"
-    },
     "signOut": {
       "title": "Abmelden?",
-      "warning": "Du hast weder ein Passwort noch einen Wiederherstellungscode festgelegt. Ohne eines davon brauchst du eine neue Einladung von deinem Administrator, um dich wieder bei diesem Server anzumelden.",
-      "setRecovery": "Wiederherstellungscode festlegen",
+      "warning": "Du hast kein Passwort festgelegt. Ohne Passwort brauchst du eine neue Einladung von deinem Administrator, um dich wieder bei diesem Server anzumelden.",
+      "setPassword": "Passwort festlegen",
       "confirm": "Trotzdem abmelden",
       "downloadsWarning_one": "Beim Abmelden wird außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladenes Buch gelöscht.",
       "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht."
-    },
-    "recovery": {
-      "generateError": "Wiederherstellungscode konnte nicht generiert werden."
     }
   },
   "connect": {
@@ -179,8 +158,8 @@
         "code": "Code",
         "password": "Passwort"
       },
-      "codeLabel": "Einladungs- oder Wiederherstellungscode",
-      "codePlaceholder": "Gib deinen Einladungs- oder Wiederherstellungscode ein",
+      "codeLabel": "Einladungscode",
+      "codePlaceholder": "Gib deinen Einladungscode ein",
       "usernameLabel": "Benutzername",
       "usernamePlaceholder": "Benutzername",
       "passwordLabel": "Passwort",
@@ -404,6 +383,18 @@
     "menu": {
       "label": "Mehr",
       "viewCredits": "Abspann anzeigen"
+    }
+  },
+  "reconnect": {
+    "banner": {
+      "auth": "Erneut mit {{name}} verbinden",
+      "serverReset": "{{name}} wurde zurückgesetzt - erneut koppeln, um fortzufahren",
+      "more": "+{{count}} weitere"
+    },
+    "connect": {
+      "heading": "Erneut verbinden",
+      "action": "Erneut mit {{name}} verbinden",
+      "forget": "{{name}} entfernen"
     }
   },
   "nav": {

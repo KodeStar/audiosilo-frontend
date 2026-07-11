@@ -112,15 +112,6 @@ describe('ApiClient', () => {
     });
   });
 
-  it('mints a recovery code via POST /auth/recovery and unwraps recovery_code', async () => {
-    const fetchMock = installFetch(() => ({ status: 201, body: { recovery_code: 'ABCD-EFGH' } }));
-    const c = new ApiClient('https://h', 'tok');
-    await expect(c.generateRecoveryCode()).resolves.toBe('ABCD-EFGH');
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(String(url)).toBe('https://h/api/v1/auth/recovery');
-    expect(init.method).toBe('POST');
-  });
-
   it('posts the documented body shape for exchange', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { token: 't', user: {} } }));
     await new ApiClient('https://h').exchange('pair-token', 'iPhone');
@@ -232,5 +223,42 @@ describe('ApiClient', () => {
     const pending = new ApiClient('https://h', 'tok').serverInfo(caller.signal);
     caller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  // --- onAuthError (dead-token detection choke point) -------------------------
+  // Every request path funnels through request(); a 401 fires the injected callback so
+  // whoever built the client can flag its connection for reconnect. 403 (scope denial),
+  // 500, and a network failure/timeout must NOT fire it - they aren't dead tokens.
+
+  it('fires onAuthError exactly once on a 401 response', async () => {
+    installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    const onAuthError = jest.fn();
+    const c = new ApiClient('https://h', 'tok', undefined, onAuthError);
+    await expect(c.me()).rejects.toMatchObject({ name: 'ApiError', status: 401 });
+    expect(onAuthError).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT fire onAuthError on a 403 scope/share denial', async () => {
+    installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
+    const onAuthError = jest.fn();
+    const c = new ApiClient('https://h', 'tok', undefined, onAuthError);
+    await expect(c.me()).rejects.toMatchObject({ status: 403 });
+    expect(onAuthError).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire onAuthError on a 500', async () => {
+    installFetch(() => ({ status: 500, body: { error: 'boom' } }));
+    const onAuthError = jest.fn();
+    const c = new ApiClient('https://h', 'tok', undefined, onAuthError);
+    await expect(c.me()).rejects.toMatchObject({ status: 500 });
+    expect(onAuthError).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire onAuthError on a network failure / timeout (no HTTP status)', async () => {
+    installHangingFetch();
+    const onAuthError = jest.fn();
+    const c = new ApiClient('https://h', 'tok', 10, onAuthError); // 10ms timeout
+    await expect(c.serverInfo()).rejects.toMatchObject({ name: 'TimeoutError' });
+    expect(onAuthError).not.toHaveBeenCalled();
   });
 });
