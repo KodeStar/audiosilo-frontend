@@ -197,6 +197,50 @@ describe('ApiClient', () => {
     });
   });
 
+  // --- Enriched metadata (GET /libraries/{id}/meta) --------------------------
+
+  it('fetches book metadata via GET /libraries/{id}/meta?path=, passing the token', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { matched: false } }));
+    await new ApiClient('https://h', 'tok').bookMeta(3, 'A/Book');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/libraries/3/meta?path=A%2FBook');
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('passes through a matched metadata envelope unchanged', async () => {
+    const envelope = {
+      matched: true,
+      work: {
+        id: 'the-martian',
+        title: 'The Martian',
+        authors: [{ id: 'andy-weir', name: 'Andy Weir' }],
+        language: 'en',
+        description: 'Stranded on Mars.',
+      },
+      recording: { id: 'podium-2013', narrators: [{ id: 'r-c-bray', name: 'R. C. Bray' }] },
+      web_url: 'https://meta.audiosilo.app/work?id=the-martian',
+    };
+    installFetch(() => ({ status: 200, body: envelope }));
+    await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).resolves.toEqual(envelope);
+  });
+
+  it('passes through a matched:false result (no ids / no upstream match)', async () => {
+    installFetch(() => ({ status: 200, body: { matched: false } }));
+    await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).resolves.toEqual({
+      matched: false,
+    });
+  });
+
+  it('surfaces an ApiError when the meta service is unavailable (502)', async () => {
+    installFetch(() => ({ status: 502, body: { error: 'metadata service unavailable' } }));
+    await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 502,
+      message: 'metadata service unavailable',
+    });
+  });
+
   // A fetch that never resolves until its signal aborts.
   function installHangingFetch() {
     globalThis.fetch = jest.fn(

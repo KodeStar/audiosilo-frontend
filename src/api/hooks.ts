@@ -23,6 +23,7 @@ export const qk = {
   browse: (cid: string, lib: number, path: string) => ['browse', cid, lib, path] as const,
   item: (cid: string, lib: number, path: string) => ['item', cid, lib, path] as const,
   chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path] as const,
+  bookMeta: (cid: string, lib: number, path: string) => ['bookMeta', cid, lib, path] as const,
   allProgress: (cid: string) => ['progress', 'all', cid] as const,
   progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path] as const,
   bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
@@ -99,6 +100,22 @@ export function useChapters(libraryId: number, path: string, connectionId?: stri
     queryKey: qk.chapters(cid, libraryId, path),
     queryFn: ({ signal }) => api!.chapters(libraryId, path, signal),
     enabled: !!api && path.length > 0,
+  });
+}
+
+/** Enriched community metadata for a book. `enabled` gates the query on the
+ * server's `metadata` capability (older servers never advertise it, so we never
+ * probe an endpoint they lack). Long `staleTime` (the server caches too) and no
+ * retry (a 502 from a down meta service should render nothing, not spin). */
+export function useBookMeta(libraryId: number, path: string, enabled: boolean) {
+  const api = useOptionalApi();
+  const cid = useCid();
+  return useQuery({
+    queryKey: qk.bookMeta(cid, libraryId, path),
+    queryFn: ({ signal }) => api!.bookMeta(libraryId, path, signal),
+    enabled: enabled && !!api && path.length > 0,
+    staleTime: 60 * 60_000,
+    retry: false,
   });
 }
 

@@ -243,6 +243,19 @@ returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated
 the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 `settings.apiKeys.*`.
 
+**Enriched book metadata.** The book screen (`src/app/(app)/book/[libraryId].tsx`)
+renders a `BookMetaSection` (`src/components/library/book-meta.tsx`) beneath the
+file/chapter list in both the wide and phone branches: a description (collapsed with
+a show-more toggle when long), production details, a horizontal "more in this series"
+rail (remote covers, taps open `entry.web_url` externally), and a "View on AudioSilo
+Meta" link. Progressive enhancement - **capability-gated** on server `metadata`
+(`!!server.capabilities.metadata`, absent on older servers) and rendered as nothing
+while loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
+`useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so
+a 502 from a down meta service doesn't spin). Strings under `book.meta.*`. The wire
+envelope (`BookMeta` discriminated union in `types.ts`) is hand-mirrored from the
+server.
+
 **Media auth rides in the URL on every platform** (`src/api/client.ts`
 `mediaTokenQuery`): cover/stream URLs embed `?token=` everywhere (`<img>`/
 `<audio>` can't set headers on web, and native image/player components don't

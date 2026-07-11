@@ -3,6 +3,7 @@ import type {
   ApiKeyCreated,
   AuthSession,
   Book,
+  BookMeta,
   Bookmark,
   ChaptersResponse,
   DemoSession,
@@ -281,6 +282,18 @@ export class ApiClient {
   }
   chapters(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<ChaptersResponse>('GET', `/libraries/${libraryId}/chapters`, {
+      query: { path },
+      signal,
+    });
+  }
+  /** Enriched metadata for a book (description, series rail, meta links) resolved
+   * server-side from its asin/isbn against the community metadata service. Only call
+   * this when the server advertises the `metadata` capability. Returns
+   * `{ matched: false }` when the book has no ids or no upstream match; throws an
+   * `ApiError` (502) when the meta service is unreachable, so the caller can render
+   * nothing rather than block the page. */
+  bookMeta(libraryId: number, path: string, signal?: AbortSignal) {
+    return this.request<BookMeta>('GET', `/libraries/${libraryId}/meta`, {
       query: { path },
       signal,
     });

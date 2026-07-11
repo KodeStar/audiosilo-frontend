@@ -316,7 +316,20 @@
     "bitrate": "Débit : {{value}}",
     "byAuthor": "De {{author}}",
     "narratedBy": "Lu par {{narrator}}",
-    "listen": "Écouter"
+    "listen": "Écouter",
+    "meta": {
+      "about": "À propos",
+      "publisher": "Éditeur",
+      "released": "Sortie",
+      "firstPublished": "Première publication",
+      "abridged": "Abrégé",
+      "moreInSeries": "Plus dans cette série",
+      "moreInNamedSeries": "Plus dans {{series}}",
+      "seriesPosition": "Tome {{position}}",
+      "showMore": "Voir plus",
+      "showLess": "Voir moins",
+      "viewOnMeta": "Voir sur AudioSilo Meta"
+    }
   },
   "player": {
     "controls": {

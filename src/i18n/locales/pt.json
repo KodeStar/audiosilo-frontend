@@ -316,7 +316,20 @@
     "bitrate": "Taxa de bits: {{value}}",
     "byAuthor": "De {{author}}",
     "narratedBy": "Narrado por {{narrator}}",
-    "listen": "Ouvir"
+    "listen": "Ouvir",
+    "meta": {
+      "about": "Sobre",
+      "publisher": "Editora",
+      "released": "Lançamento",
+      "firstPublished": "Primeira publicação",
+      "abridged": "Resumido",
+      "moreInSeries": "Mais desta série",
+      "moreInNamedSeries": "Mais de {{series}}",
+      "seriesPosition": "Livro {{position}}",
+      "showMore": "Ver mais",
+      "showLess": "Ver menos",
+      "viewOnMeta": "Ver no AudioSilo Meta"
+    }
   },
   "player": {
     "controls": {
