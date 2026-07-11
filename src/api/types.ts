@@ -13,6 +13,10 @@ export type Capabilities = {
   /** Whether the server supports user-minted, named API keys (`/auth/tokens`).
    * Absent on older servers - treat missing as false and hide the management UI. */
   api_keys?: boolean;
+  /** Whether the server enriches books from the community metadata service
+   * (`/libraries/{id}/meta`). Absent on older servers - treat missing as false and
+   * skip the enriched-metadata section entirely (progressive enhancement). */
+  metadata?: boolean;
 };
 
 export type ServerInfo = {
@@ -223,6 +227,72 @@ export type ChaptersResponse = {
   /** Whether the codec plays natively in browsers (see Book.direct_playable). */
   direct_playable?: boolean;
 };
+
+// --- Enriched metadata (community meta service, via /libraries/{id}/meta) -----
+// The server resolves a book's asin/isbn against the community metadata API,
+// composes the envelope below, and caches it. Capability-gated (`metadata`), so a
+// client only ever asks a server that advertises it. `matched:false` (no ids or no
+// upstream match) and any transport failure both render nothing (progressive
+// enhancement). Hand-mirrored from the server's `internal/api` meta handler.
+
+/** A person referenced by the metadata service (author or narrator). */
+export type MetaPersonRef = { id: string; name: string };
+
+/** The abstract work (edition-independent): what the book is. */
+export type BookMetaWork = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  authors: MetaPersonRef[];
+  language: string;
+  first_published?: string;
+  description?: string;
+};
+
+/** The specific narration/production matched to this book. Narrator and runtime
+ * are intentionally shown elsewhere on the book screen, so the UI skips them here. */
+export type BookMetaRecording = {
+  id: string;
+  narrators: MetaPersonRef[];
+  abridged?: boolean;
+  runtime_min?: number;
+  release_date?: string;
+  publisher?: string;
+  cover_url?: string;
+};
+
+/** One work in a series rail. Carries its own `web_url` so the client never
+ * constructs meta URLs itself. */
+export type BookMetaSeriesWork = {
+  id: string;
+  title: string;
+  position: string;
+  authors: MetaPersonRef[];
+  cover_url?: string;
+  web_url: string;
+};
+
+/** A series the work belongs to, with the full ordered rail (including the current
+ * work - the UI filters it out by id). */
+export type BookMetaSeries = {
+  id: string;
+  name: string;
+  /** This work's position within the series. */
+  position: string;
+  works: BookMetaSeriesWork[];
+};
+
+/** Response of GET /libraries/{id}/meta. A discriminated union on `matched`:
+ * `matched:false` when the book has no asin/isbn or the service found no match. */
+export type BookMeta =
+  | { matched: false }
+  | {
+      matched: true;
+      work: BookMetaWork;
+      recording?: BookMetaRecording;
+      series?: BookMetaSeries[];
+      web_url: string;
+    };
 
 export type Progress = {
   library_id: number;

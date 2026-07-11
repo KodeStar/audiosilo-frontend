@@ -23,19 +23,24 @@ export function isSupportAvailable(): boolean {
 }
 
 /**
- * Open the GitHub Sponsors page. On web we want a normal new tab (`Linking` →
+ * Open an external URL. On web we want a normal new tab (`Linking` →
  * `window.open('_blank')`); `WebBrowser.openBrowserAsync` is avoided there because its
- * web path opens an OAuth-style centred popup window. On native (Android - iOS hides
- * the link entirely) `openBrowserAsync` gives a nicer in-app Custom Tab.
+ * web path opens an OAuth-style centred popup window. On native `openBrowserAsync`
+ * gives a nicer in-app Custom Tab.
  */
-export async function openSupport(): Promise<void> {
+export async function openExternalUrl(url: string): Promise<void> {
   try {
     if (Platform.OS === 'web') {
-      await Linking.openURL(SUPPORT_URL);
+      await Linking.openURL(url);
     } else {
-      await WebBrowser.openBrowserAsync(SUPPORT_URL);
+      await WebBrowser.openBrowserAsync(url);
     }
   } catch {
     // user dismissed it, or no browser is available - nothing to recover from
   }
+}
+
+/** Open the GitHub Sponsors page. On iOS the link is hidden entirely. */
+export async function openSupport(): Promise<void> {
+  await openExternalUrl(SUPPORT_URL);
 }

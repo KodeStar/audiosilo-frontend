@@ -2,11 +2,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { useBook, useChapters, useLibraries } from '@/api/hooks';
+import { useBook, useChapters, useLibraries, useServerInfo } from '@/api/hooks';
 import { useApi, useScopedCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
 import { ContentColumn } from '@/components/layout/content-column';
 import { ContentScope } from '@/components/layout/content-scope';
+import { BookMetaSection } from '@/components/library/book-meta';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
 import { BookVersions } from '@/components/library/book-versions';
@@ -93,6 +94,13 @@ function BookDetailContent() {
   const { data: book, isLoading, refetch } = useBook(libraryId, path);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
+  // Enriched community metadata is progressive enhancement, gated on the server
+  // advertising the capability (older servers omit the flag → false → no query).
+  const { data: server } = useServerInfo();
+  const metadataEnabled = !!server?.capabilities.metadata;
+  // Older servers omit the capability → false; books with neither id can never
+  // match, so we skip the request entirely.
+  const bookMetaEnabled = metadataEnabled && !!(book?.asin || book?.isbn);
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
@@ -295,6 +303,7 @@ function BookDetailContent() {
               disabled={chaptersLoading}
             />
             {fileList}
+            <BookMetaSection libraryId={libraryId} path={path} enabled={bookMetaEnabled} />
             <BookmarksSection libraryId={libraryId} path={path} />
             <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
             <NotesSection libraryId={libraryId} path={path} />
@@ -410,6 +419,7 @@ function BookDetailContent() {
 
       {fileList}
 
+      <BookMetaSection libraryId={libraryId} path={path} enabled={bookMetaEnabled} />
       <BookmarksSection libraryId={libraryId} path={path} />
       <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
       <NotesSection libraryId={libraryId} path={path} />
