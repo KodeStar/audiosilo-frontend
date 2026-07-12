@@ -328,7 +328,21 @@
       "seriesPosition": "Libro {{position}}",
       "showMore": "Mostra di più",
       "showLess": "Mostra meno",
-      "viewOnMeta": "Visualizza su AudioSilo Meta"
+      "viewOnMeta": "Visualizza su AudioSilo Meta",
+      "characters": "Personaggi",
+      "alsoKnownAs": "Anche {{names}}",
+      "revealFromStart": "Fin dall'inizio",
+      "revealFromChapter": "Dal capitolo {{chapter}}",
+      "storySoFar": "Riassunto della storia",
+      "recapSeriesPrior": "In precedenza, nei libri precedenti",
+      "recapBeforeBook": "Prima di questo libro",
+      "recapUpToChapter": "Fino al capitolo {{chapter}}",
+      "role": {
+        "protagonist": "Protagonista",
+        "antagonist": "Antagonista",
+        "supporting": "Secondario",
+        "minor": "Minore"
+      }
     }
   },
   "player": {

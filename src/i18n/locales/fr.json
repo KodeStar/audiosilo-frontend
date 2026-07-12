@@ -328,7 +328,21 @@
       "seriesPosition": "Tome {{position}}",
       "showMore": "Voir plus",
       "showLess": "Voir moins",
-      "viewOnMeta": "Voir sur AudioSilo Meta"
+      "viewOnMeta": "Voir sur AudioSilo Meta",
+      "characters": "Personnages",
+      "alsoKnownAs": "Aussi {{names}}",
+      "revealFromStart": "Dès le début",
+      "revealFromChapter": "À partir du chapitre {{chapter}}",
+      "storySoFar": "Résumé de l'histoire",
+      "recapSeriesPrior": "Précédemment, dans les livres précédents",
+      "recapBeforeBook": "Avant ce livre",
+      "recapUpToChapter": "Jusqu'au chapitre {{chapter}}",
+      "role": {
+        "protagonist": "Protagoniste",
+        "antagonist": "Antagoniste",
+        "supporting": "Secondaire",
+        "minor": "Mineur"
+      }
     }
   },
   "player": {

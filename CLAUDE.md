@@ -246,9 +246,18 @@ the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 **Enriched book metadata.** The book screen (`src/app/(app)/book/[libraryId].tsx`)
 renders a `BookMetaSection` (`src/components/library/book-meta.tsx`) beneath the
 file/chapter list in both the wide and phone branches: a description (collapsed with
-a show-more toggle when long), production details, a horizontal "more in this series"
+a show-more toggle when long), production details, a **Characters** section
+(spoiler-aware cards - name/role badge/aliases/"from chapter N" always visible, the
+description a per-card accordion closed by default, no blur), a **Story so far**
+recap accordion (position-keyed, closed by default so the reader opens only as far
+as they've listened; a chapter-0 `series` recap reads "Previously, in earlier
+books"), a horizontal "more in this series"
 rail (remote covers, taps open `entry.web_url` externally), and a "View on AudioSilo
-Meta" link. Progressive enhancement - **capability-gated** on server `metadata`
+Meta" link. Characters/recaps are the CC BY-SA layer under `work.characters`/
+`work.recaps` (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`);
+pure label helpers (`roleLabelKey`/`revealDescriptor`/`recapDescriptor`/`sortRecaps`)
+are unit-tested and `book.meta.role.*`/`characters`/`storySoFar`/`recap*` strings live
+in all 6 locales. Progressive enhancement - **capability-gated** on server `metadata`
 (`!!server.capabilities.metadata`, absent on older servers) and rendered as nothing
 while loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 `useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so

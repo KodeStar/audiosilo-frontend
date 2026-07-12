@@ -238,6 +238,29 @@ export type ChaptersResponse = {
 /** A person referenced by the metadata service (author or narrator). */
 export type MetaPersonRef = { id: string; name: string };
 
+/** A spoiler position on the work's own (edition-independent) timeline. `chapter`
+ * is the logical book chapter; 0 means front matter / prior-book knowledge. */
+export type BookMetaPosition = { chapter: number };
+
+/** A community-authored, spoiler-tagged character entry (the CC BY-SA layer).
+ * `reveal` is where the character is first disclosed in the work. */
+export type BookMetaCharacter = {
+  id: string;
+  name: string;
+  aliases?: string[];
+  role?: 'protagonist' | 'antagonist' | 'supporting' | 'minor';
+  reveal: BookMetaPosition;
+  description?: string;
+};
+
+/** A position-keyed "story so far" recap; `through` is the position it is safe to
+ * show at (the listener has finished that chapter). */
+export type BookMetaRecap = {
+  through: BookMetaPosition;
+  scope?: 'book' | 'series';
+  text: string;
+};
+
 /** The abstract work (edition-independent): what the book is. */
 export type BookMetaWork = {
   id: string;
@@ -247,6 +270,9 @@ export type BookMetaWork = {
   language: string;
   first_published?: string;
   description?: string;
+  /** Community expressive layer (CC BY-SA); absent on most works. */
+  characters?: BookMetaCharacter[];
+  recaps?: BookMetaRecap[];
 };
 
 /** The specific narration/production matched to this book. Narrator and runtime
