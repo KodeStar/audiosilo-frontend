@@ -51,6 +51,11 @@ final class AudioEngine: NSObject {
   private var queued: [(index: Int, item: AVPlayerItem)] = []
   private var currentIndex = 0
   private var rate: Float = 1.0
+  /// Output gain (0...1) last asked for by JS - the sleep timer's fade-out. Held here
+  /// (not just on the player) because the queue is torn down and rebuilt on every
+  /// load/skip/retry; without re-applying it, a fade-in-progress would jump back to
+  /// full volume the moment anything rebuilt the queue.
+  private var volume: Float = 1.0
   private var autoRewindMax: Double = 0
   private var jumpForward: Double = 30
   private var jumpBackward: Double = 15
@@ -162,6 +167,10 @@ final class AudioEngine: NSObject {
       player.insert(item, after: nil)
     }
     currentIndex = startIndex
+    // Re-assert the intended gain on the rebuilt queue. Today the AVQueuePlayer instance
+    // itself is reused (only its items are swapped), so this is belt-and-braces - but if
+    // it is ever recreated here, a fade must not silently reset to full volume.
+    player.volume = volume
     // Defer the start seek until the item is actually ready. Seeking a freshly
     // created AVPlayerItem before .readyToPlay is silently dropped - especially
     // for streaming assets - which made resume play the book from 0.
@@ -351,6 +360,15 @@ final class AudioEngine: NSObject {
     rate = Float(r)
     if player.rate != 0 { player.rate = rate }
     updateNowPlayingInfo()
+  }
+
+  /// Set the player's own output gain (0...1). This is AVPlayer.volume - our audio,
+  /// independent of the device/ringer volume - so a fade to 0 silences the book without
+  /// touching the user's system volume. Sticky by design (see `volume`): whoever faded
+  /// down is responsible for restoring it.
+  func setVolume(_ v: Double) {
+    volume = Float(max(0, min(1, v)))
+    player.volume = volume
   }
 
   func reset() {
@@ -627,6 +645,11 @@ public class AudiosiloPlayerModule: Module {
       self?.onMain { self?.engine?.skip(to: index, position: seconds) }
     }
     AsyncFunction("setRate") { [weak self] (rate: Double) in self?.onMain { self?.engine?.setRate(rate) } }
+    // Engine gain (0...1) for the sleep-timer fade - NOT the device volume. No-ops before
+    // the engine exists (nothing is playing to fade), like the other transport commands.
+    AsyncFunction("setVolume") { [weak self] (volume: Double) in
+      self?.onMain { self?.engine?.setVolume(volume) }
+    }
     AsyncFunction("reset") { [weak self] in self?.onMain { self?.engine?.reset() } }
 
     // Opens the AirPlay route sheet so the user can send audio to a HomePod / AirPlay

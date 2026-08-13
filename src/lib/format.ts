@@ -1,4 +1,5 @@
 import { getLocale } from '@/i18n/locale';
+import { parseHhMm } from '@/lib/hhmm';
 
 /** "12h 30m" / "45m" / "30s" - compact total-duration label. */
 export function formatDuration(seconds?: number): string {
@@ -97,6 +98,47 @@ export function formatRelative(iso?: string, locale: string = getLocale()): stri
     }
   }
   return '';
+}
+
+/**
+ * Cached `Intl.DateTimeFormat`s for `formatTimeOfDay`, keyed by locale. Under
+ * Hermes every construction bridges to the platform formatter, and a single
+ * stepper tap re-renders every clock readout on the settings screen - walking a
+ * window bound across the evening is dozens of taps, so building one formatter
+ * per call is measurably wasteful for a value that never changes.
+ */
+const timeOfDayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * A canonical "HH:MM" rendered in the reader's own clock convention (so an en-US
+ * reader sees "10:00 PM" where a de reader sees "22:00"). Falls back to the stored
+ * 24h form if the runtime has no usable `Intl.DateTimeFormat` - Hermes ships a
+ * reduced Intl, and a clock label is not worth a crash.
+ *
+ * The instant and the formatter are both pinned to UTC. The value is a bare wall-clock
+ * time with no date and no zone, so the two only have to agree with EACH OTHER - and a
+ * formatter resolves the device zone once, when it is constructed and cached, while a
+ * `new Date(y, m, d, h, m)` re-reads the live zone on every call. Someone whose zone
+ * changed under a long-lived JS context (travel) would otherwise see their 22:00 bound
+ * rendered as "3:00 AM". Pinning both sides makes the pair immune to that.
+ */
+export function formatTimeOfDay(hhmm: string, locale: string = getLocale()): string {
+  const minutes = parseHhMm(hhmm);
+  if (minutes === null) return hhmm;
+  try {
+    let fmt = timeOfDayFormatters.get(locale);
+    if (!fmt) {
+      fmt = new Intl.DateTimeFormat(locale, {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'UTC',
+      });
+      timeOfDayFormatters.set(locale, fmt);
+    }
+    return fmt.format(new Date(Date.UTC(2000, 0, 1, Math.floor(minutes / 60), minutes % 60)));
+  } catch {
+    return hhmm;
+  }
 }
 
 /** Author / series line for a book, skipping empty parts. */

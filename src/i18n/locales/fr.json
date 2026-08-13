@@ -30,6 +30,22 @@
       "chapterLength": "Durée de chapitre (sans chapitres)",
       "off": "Désactivé"
     },
+    "sleep": {
+      "label": "Minuteur de veille",
+      "auto": {
+        "label": "Minuteur de veille automatique",
+        "description": "Démarre automatiquement un minuteur pour les lectures qui commencent entre ces heures."
+      },
+      "from": "De",
+      "until": "À",
+      "sameTimes": "De et À sont réglés sur la même heure, donc aucun minuteur ne démarrera. Choisissez des heures différentes.",
+      "earlier": "{{label}}, {{minutes}} minutes plus tôt",
+      "later": "{{label}}, {{minutes}} minutes plus tard",
+      "type": {
+        "label": "Type de minuteur",
+        "chapter": "Fin du chapitre"
+      }
+    },
     "upNext": {
       "label": "À suivre",
       "autoPlay": {
@@ -388,9 +404,16 @@
       "minutes_other": "{{count}} min",
       "endOfChapterSection": "Fin du chapitre",
       "endOf": "Fin de {{chapter}}",
+      "endOfChapterNumber": "Fin du chapitre {{number}}",
       "current": " (en cours)",
       "endOfBook": "Fin du livre",
       "noChapters": "Aucun chapitre disponible.",
+      "fading": "Le son s'estompe",
+      "ending": "Se termine bientôt",
+      "grace": "Lecture en pause",
+      "keepListening": "Continuer l'écoute",
+      "shakeHint": "Secouez votre téléphone pour continuer l'écoute",
+      "keepGoingShort": "Continuer",
       "cancel": "Annuler le minuteur"
     },
     "speed": {

@@ -30,6 +30,22 @@
       "chapterLength": "Duração do capítulo (sem capítulos)",
       "off": "Desligado"
     },
+    "sleep": {
+      "label": "Temporizador",
+      "auto": {
+        "label": "Temporizador automático",
+        "description": "Inicia automaticamente um temporizador para as reproduções que começam entre estas horas."
+      },
+      "from": "De",
+      "until": "Até",
+      "sameTimes": "De e Até estão na mesma hora, por isso nenhum temporizador vai começar. Defina horas diferentes.",
+      "earlier": "{{label}}, {{minutes}} minutos mais cedo",
+      "later": "{{label}}, {{minutes}} minutos mais tarde",
+      "type": {
+        "label": "Tipo de temporizador",
+        "chapter": "Fim do capítulo"
+      }
+    },
     "upNext": {
       "label": "A seguir",
       "autoPlay": {
@@ -388,9 +404,16 @@
       "minutes_other": "{{count}} min",
       "endOfChapterSection": "Fim do capítulo",
       "endOf": "Fim de {{chapter}}",
+      "endOfChapterNumber": "Fim do capítulo {{number}}",
       "current": " (atual)",
       "endOfBook": "Fim do livro",
       "noChapters": "Não há capítulos disponíveis.",
+      "fading": "A baixar o volume",
+      "ending": "A terminar em breve",
+      "grace": "Reprodução em pausa",
+      "keepListening": "Continuar a ouvir",
+      "shakeHint": "Agite o telemóvel para continuar a ouvir",
+      "keepGoingShort": "Continuar",
       "cancel": "Cancelar temporizador"
     },
     "speed": {

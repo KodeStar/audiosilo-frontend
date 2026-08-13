@@ -53,6 +53,9 @@ class WebPlaybackService implements PlaybackService {
   private tracks: PlaybackTrack[] = [];
   private index = 0;
   private rate = 1;
+  /** Last requested output volume, re-applied to every element we create (a fade
+   * mid-`swapTo` would otherwise jump back to full on the swapped-in element). */
+  private volume = 1;
   private config: PlaybackConfig = { autoRewindMax: 0, jumpForward: 30, jumpBackward: 15 };
   private pausedAt: number | null = null;
   private snapshot: PlaybackSnapshot = { ...INITIAL_SNAPSHOT };
@@ -72,6 +75,7 @@ class WebPlaybackService implements PlaybackService {
   private createAudio(): HTMLAudioElement {
     const a = new Audio();
     a.preload = 'auto';
+    this.applyVolume(a);
     const active = () => a === this.audio;
     a.addEventListener('timeupdate', () => active() && this.update({ position: a.currentTime }));
     a.addEventListener('durationchange', () => {
@@ -277,6 +281,24 @@ class WebPlaybackService implements PlaybackService {
     this.rate = rate;
     if (this.audio) this.audio.playbackRate = rate;
     this.update({ rate });
+  }
+
+  async setVolume(volume: number) {
+    // Stored as given: the store clamps into [0,1] before it gets here (see
+    // `PlaybackService.setVolume`), so re-clamping would only hide a caller bug.
+    this.volume = volume;
+    if (this.audio) this.applyVolume(this.audio);
+  }
+
+  /** iOS Safari refuses per-element volume (the system volume is the only control there),
+   * so a fade is simply inaudible on iPhone/iPad web - it must never become a thrown
+   * error that kills playback. Everywhere else this is the real gain control. */
+  private applyVolume(a: HTMLAudioElement) {
+    try {
+      a.volume = this.volume;
+    } catch {
+      // read-only / unsupported on this platform; degrade to no fade
+    }
   }
 
   async reset() {

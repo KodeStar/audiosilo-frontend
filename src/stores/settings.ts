@@ -9,6 +9,11 @@ const KEY = 'audiosilo.settings';
  * unmetered (wifi/ethernet) connection, or always. */
 export type AutoDownloadMode = 'never' | 'wifi' | 'always';
 
+/** What an auto-armed sleep timer does: stop at the end of the current chapter, or
+ * after a fixed number of minutes. The numeric members are minutes; a string union
+ * keeps the value trivially persistable and every `switch` over it exhaustive. */
+export type AutoSleepType = 'chapter' | '15' | '30' | '45' | '60';
+
 export type PlaybackSettings = {
   /** Skip-forward jump in seconds. */
   skipForward: number;
@@ -30,6 +35,15 @@ export type PlaybackSettings = {
   autoDownloadNext: AutoDownloadMode;
   /** Delete a downloaded book's local files once it is marked finished. */
   autoDeleteFinished: boolean;
+  /** Automatically arm a sleep timer for playback started inside the nightly window. */
+  autoSleepTimer: boolean;
+  /** Window start, local wall-clock "HH:MM" (24h). Parsed, stepped and window-tested
+   * by the pure helpers in `@/lib/hhmm` (this store only persists the string). */
+  autoSleepFrom: string;
+  /** Window end, local wall-clock "HH:MM" (24h). Wraps past midnight when <= from. */
+  autoSleepUntil: string;
+  /** What the auto-armed timer does: end of the current chapter, or a fixed duration. */
+  autoSleepType: AutoSleepType;
 };
 
 const DEFAULTS: PlaybackSettings = {
@@ -41,6 +55,10 @@ const DEFAULTS: PlaybackSettings = {
   autoPlayNext: false,
   autoDownloadNext: 'wifi',
   autoDeleteFinished: true,
+  autoSleepTimer: false,
+  autoSleepFrom: '22:00',
+  autoSleepUntil: '06:00',
+  autoSleepType: 'chapter',
 };
 
 type SettingsState = PlaybackSettings & {
@@ -54,6 +72,10 @@ type SettingsState = PlaybackSettings & {
   setAutoPlayNext: (on: boolean) => void;
   setAutoDownloadNext: (mode: AutoDownloadMode) => void;
   setAutoDeleteFinished: (on: boolean) => void;
+  setAutoSleepTimer: (on: boolean) => void;
+  setAutoSleepFrom: (hhmm: string) => void;
+  setAutoSleepUntil: (hhmm: string) => void;
+  setAutoSleepType: (type: AutoSleepType) => void;
 };
 
 export const useSettings = create<SettingsState>()((set, get) => {
@@ -67,6 +89,10 @@ export const useSettings = create<SettingsState>()((set, get) => {
       autoPlayNext,
       autoDownloadNext,
       autoDeleteFinished,
+      autoSleepTimer,
+      autoSleepFrom,
+      autoSleepUntil,
+      autoSleepType,
     } = get();
     void setItem(KEY, {
       skipForward,
@@ -77,6 +103,10 @@ export const useSettings = create<SettingsState>()((set, get) => {
       autoPlayNext,
       autoDownloadNext,
       autoDeleteFinished,
+      autoSleepTimer,
+      autoSleepFrom,
+      autoSleepUntil,
+      autoSleepType,
     });
   };
   return {
@@ -116,6 +146,22 @@ export const useSettings = create<SettingsState>()((set, get) => {
     },
     setAutoDeleteFinished: (autoDeleteFinished) => {
       set({ autoDeleteFinished });
+      save();
+    },
+    setAutoSleepTimer: (autoSleepTimer) => {
+      set({ autoSleepTimer });
+      save();
+    },
+    setAutoSleepFrom: (autoSleepFrom) => {
+      set({ autoSleepFrom });
+      save();
+    },
+    setAutoSleepUntil: (autoSleepUntil) => {
+      set({ autoSleepUntil });
+      save();
+    },
+    setAutoSleepType: (autoSleepType) => {
+      set({ autoSleepType });
       save();
     },
   };

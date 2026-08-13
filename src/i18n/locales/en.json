@@ -30,6 +30,22 @@
       "chapterLength": "Chapter length (unchaptered)",
       "off": "Off"
     },
+    "sleep": {
+      "label": "Sleep timer",
+      "auto": {
+        "label": "Auto sleep timer",
+        "description": "Start a sleep timer automatically for playback that begins between these times."
+      },
+      "from": "From",
+      "until": "Until",
+      "sameTimes": "From and Until are the same time, so no timer will start. Set them to different times.",
+      "earlier": "{{label}}, {{minutes}} minutes earlier",
+      "later": "{{label}}, {{minutes}} minutes later",
+      "type": {
+        "label": "Timer type",
+        "chapter": "End of chapter"
+      }
+    },
     "upNext": {
       "label": "Up next",
       "autoPlay": {
@@ -388,9 +404,16 @@
       "minutes_other": "{{count}} min",
       "endOfChapterSection": "End of chapter",
       "endOf": "End of {{chapter}}",
+      "endOfChapterNumber": "End of Chapter {{number}}",
       "current": " (current)",
       "endOfBook": "End of book",
       "noChapters": "No chapters available.",
+      "fading": "Fading out",
+      "ending": "Ending soon",
+      "grace": "Playback paused",
+      "keepListening": "Keep listening",
+      "shakeHint": "Shake your phone to keep listening",
+      "keepGoingShort": "Keep going",
       "cancel": "Cancel timer"
     },
     "speed": {

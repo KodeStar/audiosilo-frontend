@@ -30,6 +30,22 @@
       "chapterLength": "Kapitellänge (ohne Kapitel)",
       "off": "Aus"
     },
+    "sleep": {
+      "label": "Sleep-Timer",
+      "auto": {
+        "label": "Automatischer Sleep-Timer",
+        "description": "Startet automatisch einen Sleep-Timer für Wiedergaben, die zwischen diesen Zeiten beginnen."
+      },
+      "from": "Von",
+      "until": "Bis",
+      "sameTimes": "Von und Bis sind auf dieselbe Zeit gesetzt, deshalb startet kein Timer. Stell unterschiedliche Zeiten ein.",
+      "earlier": "{{label}}, {{minutes}} Minuten früher",
+      "later": "{{label}}, {{minutes}} Minuten später",
+      "type": {
+        "label": "Timer-Typ",
+        "chapter": "Kapitelende"
+      }
+    },
     "upNext": {
       "label": "Als Nächstes",
       "autoPlay": {
@@ -388,9 +404,16 @@
       "minutes_other": "{{count}} Min.",
       "endOfChapterSection": "Kapitelende",
       "endOf": "Ende von {{chapter}}",
+      "endOfChapterNumber": "Ende von Kapitel {{number}}",
       "current": " (aktuell)",
       "endOfBook": "Ende des Buches",
       "noChapters": "Keine Kapitel verfügbar.",
+      "fading": "Wird ausgeblendet",
+      "ending": "Endet gleich",
+      "grace": "Wiedergabe pausiert",
+      "keepListening": "Weiterhören",
+      "shakeHint": "Schüttle dein Telefon, um weiterzuhören",
+      "keepGoingShort": "Weiter",
       "cancel": "Timer abbrechen"
     },
     "speed": {

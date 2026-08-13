@@ -34,14 +34,13 @@ import { formatClock } from '@/lib/format';
 import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { wallClockSeconds } from '@/playback/rate';
-import { useSleepTimer } from '@/playback/sleep-timer';
+import { selectSleepPhase, useSleepTimer } from '@/playback/sleep-timer';
 import {
   selectBookPosition,
   selectCurrentChapter,
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
-import { useShakeToCancel } from '@/playback/use-shake-to-cancel';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
 import { colors, tabularNums } from '@/theme/tokens';
@@ -176,9 +175,8 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
   const skipForward = useSettings((s) => s.skipForward);
   const skipBackward = useSettings((s) => s.skipBackward);
-  const sleepActive = useSleepTimer((s) => s.active);
+  const sleepPhase = useSleepTimer(selectSleepPhase);
   const sleepRemaining = useSleepTimer((s) => s.remaining);
-  useShakeToCancel();
   // Keyed to the playing book; placeholders keep hook order stable before the
   // early return below (nowPlaying is null only briefly while loading).
   const addBookmark = useAddBookmark(
@@ -411,18 +409,33 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             <View className="aspect-square overflow-hidden rounded-lg border border-black/10 shadow-lg dark:border-white/10">
               <Cover source={coverSource} label={title} rounded="rounded-lg" />
             </View>
-            {sleepActive && sleepRemaining !== null ? (
-              <View className="absolute right-2 top-2 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
+            {sleepPhase !== 'idle' ? (
+              // The glanceable sleep badge. It goes solid pink for the last stretch
+              // (the `ending` window) and through the post-pause grace, so "it is
+              // about to stop / it just stopped, shake to keep going" reads without
+              // opening the sheet. It says nothing about volume, so it is the same
+              // badge whether or not that window fades the audio.
+              <View
+                className={`absolute right-2 top-2 flex-row items-center gap-1 rounded-full px-2 py-1 ${
+                  sleepPhase === 'running' ? 'bg-black/60' : 'bg-primary'
+                }`}
+              >
                 <Icon name="sleep" size={12} color={colors.white} />
                 {/* Raw RN Text + explicit classes: the themed <Text> variant injects
                     its own text color, which NativeWind won't reliably override with an
                     appended one - so a specific color must not go through <Text>. */}
-                <RNText
-                  className="font-sans text-xs text-white dark:text-white"
-                  style={tabularNums}
-                >
-                  {formatClock(sleepRemaining)}
-                </RNText>
+                {sleepPhase === 'grace' ? (
+                  <RNText className="font-roboto-medium text-xs text-white dark:text-white">
+                    {t('player.sleepTimer.keepGoingShort')}
+                  </RNText>
+                ) : sleepRemaining !== null ? (
+                  <RNText
+                    className="font-sans text-xs text-white dark:text-white"
+                    style={tabularNums}
+                  >
+                    {formatClock(sleepRemaining)}
+                  </RNText>
+                ) : null}
               </View>
             ) : null}
           </View>

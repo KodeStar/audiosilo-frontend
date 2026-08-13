@@ -228,10 +228,7 @@ export function buildBookQueue(
 
   // total: prefer the book duration, else the summed file durations, else the
   // furthest chapter end on the book timeline (handles duration === 0 metadata).
-  const furthestEnd = chapters.reduce(
-    (max, ch) => Math.max(max, ch.book_offset + Math.max(0, ch.end - ch.start)),
-    0,
-  );
+  const furthestEnd = chapters.reduce((max, ch) => Math.max(max, chapterEndPosition(ch)), 0);
   const total = Math.max(book.duration > 0 ? book.duration : 0, acc, furthestEnd);
 
   // Clips come from the REAL chapters (empty/singleton here → `[]`); computing them
@@ -291,6 +288,17 @@ export function toBookPosition(offsets: number[], index: number, positionInTrack
   return (offsets[index] ?? 0) + positionInTrack;
 }
 
+/**
+ * Whole-book position (seconds) at which a chapter ends: where it starts on the book
+ * timeline plus its own span in its file. One definition, used by the queue's total, the
+ * sleep sheet's countdown list and the sleep timer's "one more chapter" retarget - if
+ * this formula ever changes, those must not be able to disagree about where a chapter
+ * ends. `Math.max(0, ...)` because bad metadata can put `end` before `start`.
+ */
+export function chapterEndPosition(ch: Chapter): number {
+  return ch.book_offset + Math.max(0, ch.end - ch.start);
+}
+
 /** The chapter active at a given whole-book position. */
 export function chapterAt(chapters: Chapter[], bookPosition: number): Chapter | null {
   let current: Chapter | null = null;
@@ -335,7 +343,7 @@ export function chapterCountdowns(
   const current = chapterAt(chapters, bookPosition);
   const from = current ? chapters.indexOf(current) : 0;
   const list = chapters.slice(Math.max(0, from)).map((ch) => {
-    const endPosition = ch.book_offset + Math.max(0, ch.end - ch.start);
+    const endPosition = chapterEndPosition(ch);
     return {
       chapter: ch,
       endPosition,
@@ -348,4 +356,43 @@ export function chapterCountdowns(
   const firstOver = list.findIndex((c) => c.untilEnd > limit.maxSeconds);
   const count = Math.max(limit.minCount, firstOver < 0 ? list.length : firstOver + 1);
   return list.slice(0, count);
+}
+
+/**
+ * The NEAREST chapter end more than `minSeconds` of WALL CLOCK ahead of `bookPosition`
+ * (so `rate` scales it, exactly as in `chapterCountdowns`), or null when no chapter
+ * qualifies. Drives the sleep timer's end-of-chapter target: `minSeconds` is what makes a
+ * shake during the last seconds of a chapter mean the NEXT chapter, because the chapter
+ * about to end IS the boundary the timer was already stopping at.
+ *
+ * "Nearest qualifying end", not "first qualifying array element": it must not assume the
+ * chapters are in ascending order of position, because nothing guarantees they are.
+ * `buildBookQueue` recomputes every `book_offset` through `chapterBookOffset`, whose
+ * `file_index` fallback degrades to 0 preceding files for an out-of-range index - so
+ * stale or duplicated chapter metadata yields ends that are not monotonic. Reading the
+ * array order as position order there would let this disagree with `chapterCountdowns`
+ * (which locates the current chapter with `chapterAt` and slices from it), i.e. let the
+ * boundary a shake retargets differ from the list the sheet shows - and, with a
+ * whole-book-length entry early in the array, arm a timer hours long.
+ *
+ * The full scan that costs is still cheaper than `chapterCountdowns`, which allocates an
+ * annotated entry per remaining chapter; this keeps one. It shares this file's
+ * `chapterEndPosition` and `wallClockSeconds` with that list, so the two can only ever
+ * agree about where a chapter ends and how far away that is.
+ */
+export function nextChapterEnd(
+  chapters: Chapter[],
+  bookPosition: number,
+  rate: number,
+  minSeconds: number,
+): ChapterCountdown | null {
+  let nearest: ChapterCountdown | null = null;
+  for (const chapter of chapters) {
+    const endPosition = chapterEndPosition(chapter);
+    const untilEnd = wallClockSeconds(endPosition - bookPosition, rate);
+    if (untilEnd > minSeconds && (nearest === null || endPosition < nearest.endPosition)) {
+      nearest = { chapter, endPosition, untilEnd };
+    }
+  }
+  return nearest;
 }

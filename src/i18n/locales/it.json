@@ -30,6 +30,22 @@
       "chapterLength": "Durata capitolo (senza capitoli)",
       "off": "Disattivato"
     },
+    "sleep": {
+      "label": "Timer di spegnimento",
+      "auto": {
+        "label": "Timer di spegnimento automatico",
+        "description": "Avvia automaticamente un timer per le riproduzioni che iniziano tra questi orari."
+      },
+      "from": "Da",
+      "until": "A",
+      "sameTimes": "Da e A sono impostati sulla stessa ora, quindi non si avvierà alcun timer. Imposta orari diversi.",
+      "earlier": "{{label}}, {{minutes}} minuti prima",
+      "later": "{{label}}, {{minutes}} minuti dopo",
+      "type": {
+        "label": "Tipo di timer",
+        "chapter": "Fine del capitolo"
+      }
+    },
     "upNext": {
       "label": "Prossimo",
       "autoPlay": {
@@ -388,9 +404,16 @@
       "minutes_other": "{{count}} min",
       "endOfChapterSection": "Fine del capitolo",
       "endOf": "Fine di {{chapter}}",
+      "endOfChapterNumber": "Fine del capitolo {{number}}",
       "current": " (attuale)",
       "endOfBook": "Fine del libro",
       "noChapters": "Nessun capitolo disponibile.",
+      "fading": "Dissolvenza in corso",
+      "ending": "Termina a breve",
+      "grace": "Riproduzione in pausa",
+      "keepListening": "Continua ad ascoltare",
+      "shakeHint": "Scuoti il telefono per continuare ad ascoltare",
+      "keepGoingShort": "Continua",
       "cancel": "Annulla timer"
     },
     "speed": {
