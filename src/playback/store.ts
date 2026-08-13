@@ -8,6 +8,7 @@ import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
+import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { useSettings } from '@/stores/settings';
 
@@ -20,7 +21,46 @@ import {
   saveProgress,
 } from './progress-sync';
 import { createPlaybackService } from './service';
-import { INITIAL_SNAPSHOT, type PlaybackService, type PlaybackSnapshot } from './types';
+import {
+  clampVolume,
+  INITIAL_SNAPSHOT,
+  type PlaybackService,
+  type PlaybackSnapshot,
+  type PlaybackState,
+} from './types';
+
+/**
+ * Is the engine actually producing audio? The strict reading of "the user is
+ * listening": a buffering book is NOT playing, because no time is being spent on the
+ * book yet. Used for the listening-history spans (a span must cover audio the listener
+ * actually heard) and by `selectIsPlaying` for the play/pause UI.
+ *
+ * The deliberately looser reading is `isTransportLiveState` below - see it for when to
+ * pick which.
+ */
+function isPlayingState(state: PlaybackState): boolean {
+  return state === 'playing';
+}
+
+/**
+ * Is the transport running right now, INCLUDING a book that is buffering with playback
+ * intended? The loose reading of "the user is listening": `loading` counts because the
+ * book is on its way to playing, so time is about to be spent listening. (A stall that
+ * outlasts the watchdog becomes `error`, which does not count - so a dead stream reads
+ * as not-listening rather than listening forever.)
+ *
+ * Which to use: pick this one for anything that must not treat a two-second buffer as
+ * the listener having stopped - the sleep timer's freeze (a countdown that froze and
+ * thawed on every buffer would be jitter, and a buffering book is still a book being
+ * listened to). Pick `isPlayingState` when the answer must be "audio came out of the
+ * speaker": the history spans, and the play/pause button.
+ *
+ * The difference IS deliberate. The two live side by side here, rather than one being
+ * re-derived in the feature that needs it, so the choice is visible at both call sites.
+ */
+function isTransportLiveState(state: PlaybackState): boolean {
+  return state === 'playing' || state === 'loading';
+}
 
 /** The `local` files map + artwork a downloaded book plays from, derived from its
  * manifest. Shared by `playBook` (downloaded-before-play) and `switchCurrentBookToLocal`
@@ -63,6 +103,17 @@ let resumeFloor = 0;
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
 let resumeLookupFailed = false;
+/** The output gain currently applied to the engine, held here like `rate` (the other
+ * engine parameter the store owns) so `setOutputVolume` can skip a bridge round-trip
+ * when nothing changed. That matters because the sleep timer's fade calls it four times
+ * a second, and its idle state calls it with 1 far more often than that.
+ *
+ * Not store state: nothing renders it, so a `set()` would re-render every player
+ * subscriber at 4Hz. Kept in sync by EVERY route to the engine's volume, including
+ * `playBook`'s direct `svc.setVolume(1)` backstop - a stale "already 1" would turn a
+ * real restore into a no-op and leave the listener with a quiet book. */
+let outputVolume = 1;
+
 /** Captured so `retry()` can re-run the resume path after a lookup failure. */
 let lastPlayRequest: {
   connectionId: string;
@@ -153,6 +204,13 @@ type PlayerState = {
   goToTrack: (index: number) => Promise<void>;
   skipSeconds: (delta: number) => Promise<void>;
   setRate: (rate: number) => Promise<void>;
+  /** Apply an output gain to the engine - the sleep timer's fade-out. This is the ONLY
+   * way out of the store to the engine's volume, so it is where the [0,1] clamp lives
+   * (engines trust it), and where the gain the engine is already at is remembered: a
+   * call that would not change it costs nothing, so a 4Hz fade (and the restore-to-full
+   * that every timer path makes defensively) is free rather than a bridge round-trip
+   * each. A no-op before an engine exists. */
+  setOutputVolume: (volume: number) => Promise<void>;
   stop: () => Promise<void>;
   /** Mark the current book finished (from its natural end, or a manual "mark as
    * finished"): persist `finished: true`, tear down playback, optionally delete its
@@ -387,11 +445,13 @@ async function ensureService(): Promise<PlaybackService> {
       return;
     }
     usePlayer.setState({ snapshot });
-    if (snapshot.state === 'playing' && prev.state !== 'playing') beginHistory();
-    else if (prev.state === 'playing' && snapshot.state !== 'playing') endHistory();
+    // Listening spans use the STRICT reading (see `isPlayingState`): a span must cover
+    // audio the listener actually heard, so a buffer is not the start of one.
+    if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) beginHistory();
+    else if (isPlayingState(prev.state) && !isPlayingState(snapshot.state)) endHistory();
     // Close + reopen a span when the track advances mid-playback (e.g. a
     // multi-file book auto-advancing), so each file is logged as it finishes.
-    else if (snapshot.state === 'playing' && snapshot.trackIndex !== prev.trackIndex) {
+    else if (isPlayingState(snapshot.state) && snapshot.trackIndex !== prev.trackIndex) {
       endHistory();
       beginHistory();
     }
@@ -495,6 +555,28 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       queue,
     };
     const svc = await ensureService();
+    /**
+     * A new book must never inherit a stale sleep-timer fade gain. The timer restores the
+     * volume on every path it owns; this is the backstop for the one it doesn't -
+     * something going wrong mid-fade - because near-silent audio with no visible cause is
+     * the worst failure this feature can produce. Not awaited: it is a no-op in the
+     * common case, and every play would otherwise wait on a bridge round-trip.
+     *
+     * Written unconditionally (not through `setOutputVolume`) because this is the
+     * backstop for a gain the store may have lost track of; `outputVolume` is updated
+     * with it so the no-op check can never think the engine is quieter than it is.
+     *
+     * Called AFTER `nowPlaying` is swapped, at every site that swaps it, and that
+     * ordering is the whole point: the fade ticker cancels itself by comparing the
+     * playing book against the timer's own, so while `nowPlaying` still holds the OLD
+     * book it keeps writing the fade gain - a resume lookup is a network round trip, far
+     * more than the fade's 250ms period. Restoring before the swap simply handed the
+     * ticker a window to undo it in, and the new book could start attenuated.
+     */
+    const restoreOutputGain = () => {
+      outputVolume = 1;
+      void svc.setVolume(1);
+    };
 
     let startAt = startBookPosition ?? 0;
     let speed = clampRate(useSettings.getState().defaultRate);
@@ -530,6 +612,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
           nowPlaying,
           snapshot: { ...INITIAL_SNAPSHOT, state: 'error', rate: speed },
         });
+        restoreOutputGain();
         return;
       }
       // kind 'empty' (server reachable, genuinely new) or 'failed' for a downloaded book
@@ -544,6 +627,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // the save guard won't let progress regress below it without a deliberate seek.
     resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
     set({ rate: speed, nowPlaying });
+    restoreOutputGain(); // only now can the old book's fade no longer write over it
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
     await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
     await svc.setRate(speed);
@@ -668,6 +752,16 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     set({ rate: clamped });
     if (service) await service.setRate(clamped);
     void persist();
+  },
+
+  setOutputVolume: async (volume) => {
+    const gain = clampVolume(volume);
+    // Nothing to do when the engine is already at this gain. With no engine at all there
+    // is nothing to remember either - a fresh one starts at full volume (and `playBook`
+    // re-asserts that), so the cache must not run ahead of an engine that doesn't exist.
+    if (!service || gain === outputVolume) return;
+    outputVolume = gain;
+    await service.setVolume(gain);
   },
 
   stop: async () => {
@@ -824,7 +918,41 @@ export const selectBookPosition = (s: PlayerState): number =>
 export const selectCurrentChapter = (s: PlayerState): Chapter | null =>
   s.nowPlaying ? chapterAt(s.nowPlaying.queue.chapters, selectBookPosition(s)) : null;
 
-export const selectIsPlaying = (s: PlayerState): boolean => s.snapshot.state === 'playing';
+/** Memo for `selectBookKey`, keyed on the `nowPlaying` OBJECT. */
+let bookKeyMemo: { nowPlaying: NowPlaying; key: string } | null = null;
+
+/**
+ * Identity of the book playing right now (`contentKey`, so two servers that each have a
+ * "library 1 / Book" can never look like the same book), or null when nothing is loaded.
+ *
+ * The ONE definition of that identity for playback: the sleep timer scopes its timer to
+ * it and auto sleep keys its per-book anti-nag sets on it, and those two must agree -
+ * a second hand-rolled copy drifting would break "never re-arm what you cancelled" with
+ * no type error and no failing test.
+ *
+ * Memoized on the `nowPlaying` object identity, which is exactly the right key: the
+ * store replaces that object when the book changes (and when a book hot-swaps to its
+ * local files), and never mutates it in place. Building the template string fresh
+ * instead would run several times a second for the whole life of a timer, and would
+ * make every `===` against the result a full character walk.
+ */
+export const selectBookKey = (s: PlayerState): string | null => {
+  const np = s.nowPlaying;
+  if (!np) return null;
+  if (bookKeyMemo?.nowPlaying !== np) {
+    bookKeyMemo = { nowPlaying: np, key: contentKey(np.connectionId, np.libraryId, np.path) };
+  }
+  return bookKeyMemo.key;
+};
+
+/** Is audio coming out of the speaker? The strict reading - see `isPlayingState`, and
+ * `selectIsTransportLive` for the looser one. Drives the play/pause button. */
+export const selectIsPlaying = (s: PlayerState): boolean => isPlayingState(s.snapshot.state);
+
+/** Is the transport running, counting a book that is buffering with playback intended?
+ * The looser reading - see `isTransportLiveState` for which to use when. */
+export const selectIsTransportLive = (s: PlayerState): boolean =>
+  isTransportLiveState(s.snapshot.state);
 
 /** The current book has reached its natural end (its files finished). Drives the
  * UI-layer end-of-book flow; nowPlaying stays populated in this state. */

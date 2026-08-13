@@ -29,6 +29,12 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
   skipToTrack(index: number, seconds: number): Promise<void>;
   /** Set playback speed (pitch-corrected). */
   setRate(rate: number): Promise<void>;
+  /** Set the engine's own output volume, 0..1 linear gain (NOT the device volume) - the
+   * sleep timer's fade-out. The value is sticky: it survives a queue rebuild and is only
+   * changed by another call, so whoever faded down owns restoring it.
+   * **Added after the first shipped builds**, so an installed older binary won't define it
+   * and calling it there throws - `service.native.ts` feature-detects before calling. */
+  setVolume(volume: number): Promise<void>;
   /** Stop playback and clear the queue. */
   reset(): Promise<void>;
   /** Present the OS audio-route picker so the user can send playback elsewhere: the

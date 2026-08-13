@@ -7,8 +7,10 @@ import {
   buildChapterClips,
   chapterAt,
   chapterCountdowns,
+  chapterEndPosition,
   type FileSpec,
   locate,
+  nextChapterEnd,
   synthesizeChapters,
   toBookPosition,
 } from '@/playback/book-queue';
@@ -474,5 +476,84 @@ describe('chapterCountdowns', () => {
   it('keeps every chapter when none reach maxSeconds', () => {
     const out = chapterCountdowns(evenChapters(3, 600), 0, { minCount: 5, maxSeconds: 3600 });
     expect(out).toHaveLength(3);
+  });
+});
+
+describe('nextChapterEnd', () => {
+  // 60s, then 140s, then 120s, back to back on the book timeline.
+  const chapters = [
+    chapter({ index: 0, book_offset: 0, start: 0, end: 60 }),
+    chapter({ index: 1, book_offset: 60, start: 60, end: 200 }),
+    chapter({ index: 2, book_offset: 200, start: 200, end: 320 }),
+  ];
+
+  it('returns the first chapter end further than minSeconds away', () => {
+    const out = nextChapterEnd(chapters, 0, 1, 30);
+    expect(out?.chapter.index).toBe(0);
+    expect(out?.endPosition).toBe(60);
+    expect(out?.untilEnd).toBe(60);
+  });
+
+  it('skips a chapter ending too soon to be worth arming - the "one more chapter" rule', () => {
+    // 20s from the end of chapter 0: that boundary IS the one a timer would be stopping
+    // at, so the next worthwhile target is the end of chapter 1.
+    const out = nextChapterEnd(chapters, 40, 1, 30);
+    expect(out?.chapter.index).toBe(1);
+    expect(out?.endPosition).toBe(200);
+  });
+
+  it('measures the distance in wall-clock time, so the rate can rule a chapter out', () => {
+    // 40s of content left in chapter 0: over the 30s bar at 1x, under it at 2x.
+    expect(nextChapterEnd(chapters, 20, 1, 30)?.chapter.index).toBe(0);
+    expect(nextChapterEnd(chapters, 20, 2, 30)?.chapter.index).toBe(1);
+  });
+
+  it('returns null when no chapter is far enough away (the caller falls back)', () => {
+    expect(nextChapterEnd(chapters, 300, 1, 30)).toBeNull();
+    expect(nextChapterEnd([], 0, 1, 30)).toBeNull();
+  });
+
+  it('reads a chapter end the same way the countdown list does', () => {
+    // The whole point of sharing `chapterEndPosition`: the sheet's list and the shake's
+    // retarget can never disagree about where a chapter ends.
+    const fromList = chapterCountdowns(chapters, 40)[1];
+    const fromScan = nextChapterEnd(chapters, 40, 1, 30);
+    expect(fromScan?.endPosition).toBe(fromList.endPosition);
+    expect(fromScan?.untilEnd).toBe(fromList.untilEnd);
+  });
+
+  it('takes the NEAREST qualifying end, not the first one in the array', () => {
+    // Chapter ends are not guaranteed to ascend with the array: `buildBookQueue`
+    // recomputes every `book_offset` through `chapterBookOffset`, whose `file_index`
+    // fallback degrades to 0 preceding files for an out-of-range index - so stale or
+    // duplicated chapter metadata puts a whole-book-length entry anywhere in the list.
+    // Reading array order as position order would arm a four-hour "end of chapter" timer
+    // here, and disagree with the list the sleep sheet shows (which locates the current
+    // chapter with `chapterAt` and slices from there).
+    const jumbled = [
+      chapter({ index: 5, book_offset: 0, start: 0, end: 14_400 }), // ends 4h out
+      chapter({ index: 1, book_offset: 60, start: 60, end: 200 }), // ends at 200
+      chapter({ index: 2, book_offset: 200, start: 200, end: 320 }),
+    ];
+    const out = nextChapterEnd(jumbled, 40, 1, 30);
+    expect(out?.endPosition).toBe(200);
+    expect(out?.chapter.index).toBe(1);
+    expect(out?.untilEnd).toBe(160);
+  });
+
+  it('still skips a nearer end that is inside the minSeconds bar', () => {
+    // Nearest QUALIFYING: the "one more chapter" rule still comes first, so an end 20s
+    // away is passed over for the next one even though it is nearer.
+    const jumbled = [
+      chapter({ index: 2, book_offset: 200, start: 200, end: 320 }),
+      chapter({ index: 0, book_offset: 0, start: 0, end: 60 }), // 20s away: too close
+    ];
+    expect(nextChapterEnd(jumbled, 40, 1, 30)?.endPosition).toBe(320);
+  });
+
+  it('treats bad metadata (end before start) as a zero-length chapter', () => {
+    const broken = [chapter({ index: 0, book_offset: 100, start: 200, end: 50 })];
+    expect(chapterEndPosition(broken[0])).toBe(100);
+    expect(nextChapterEnd(broken, 0, 1, 30)?.endPosition).toBe(100);
   });
 });

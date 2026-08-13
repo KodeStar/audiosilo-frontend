@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, Text as RNText, View } from 'react-native';
 
@@ -8,13 +8,15 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
+import { SelectRow, SelectSheet, type SelectOption } from '@/components/ui/select-row';
 import { Stepper } from '@/components/ui/stepper';
 import { Text } from '@/components/ui/text';
+import { TimeStepper } from '@/components/ui/time-stepper';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
-import { useSettings, type AutoDownloadMode } from '@/stores/settings';
+import { useSettings, type AutoDownloadMode, type AutoSleepType } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
 
 const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
@@ -114,6 +116,29 @@ export default function SettingsScreen() {
   const setAutoPlayNext = useSettings((s) => s.setAutoPlayNext);
   const setAutoDownloadNext = useSettings((s) => s.setAutoDownloadNext);
   const setAutoDeleteFinished = useSettings((s) => s.setAutoDeleteFinished);
+
+  const autoSleepTimer = useSettings((s) => s.autoSleepTimer);
+  const autoSleepFrom = useSettings((s) => s.autoSleepFrom);
+  const autoSleepUntil = useSettings((s) => s.autoSleepUntil);
+  const autoSleepType = useSettings((s) => s.autoSleepType);
+  const setAutoSleepTimer = useSettings((s) => s.setAutoSleepTimer);
+  const setAutoSleepFrom = useSettings((s) => s.setAutoSleepFrom);
+  const setAutoSleepUntil = useSettings((s) => s.setAutoSleepUntil);
+  const setAutoSleepType = useSettings((s) => s.setAutoSleepType);
+  // Five options is too many to stay readable in a SegmentedControl on a phone, so
+  // the timer type is a select row + bottom sheet (mounted at screen level below).
+  const [sleepTypeOpen, setSleepTypeOpen] = useState(false);
+  const sleepTypeOptions: SelectOption<AutoSleepType>[] = [
+    { value: 'chapter', label: t('settings.sleep.type.chapter') },
+    // The player's own timer menu already owns a pluralised "N min" string; reusing
+    // it keeps the two lists worded identically and plural-correct in every locale.
+    ...(['15', '30', '45', '60'] as const).map((value) => ({
+      value,
+      label: t('player.sleepTimer.minutes', { count: Number(value) }),
+    })),
+  ];
+  const sleepTypeLabel =
+    sleepTypeOptions.find((o) => o.value === autoSleepType)?.label ?? sleepTypeOptions[0].label;
 
   const onOff: SegmentedOption<'on' | 'off'>[] = [
     { value: 'on', label: t('common.on') },
@@ -236,6 +261,56 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
+        <Section title={t('settings.sleep.label')}>
+          <View className="gap-5">
+            <ChoiceRow
+              label={t('settings.sleep.auto.label')}
+              description={t('settings.sleep.auto.description')}
+            >
+              <SegmentedControl
+                options={onOff}
+                value={autoSleepTimer ? 'on' : 'off'}
+                onChange={(v) => setAutoSleepTimer(v === 'on')}
+                grow
+              />
+            </ChoiceRow>
+            {/* The window and the timer's kind only matter once the feature is on. */}
+            {autoSleepTimer ? (
+              <View className="gap-2">
+                <View className="overflow-hidden rounded-lg bg-white shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+                  <StepperRow label={t('settings.sleep.from')} first>
+                    <TimeStepper
+                      value={autoSleepFrom}
+                      onChange={setAutoSleepFrom}
+                      label={t('settings.sleep.from')}
+                    />
+                  </StepperRow>
+                  <StepperRow label={t('settings.sleep.until')}>
+                    <TimeStepper
+                      value={autoSleepUntil}
+                      onChange={setAutoSleepUntil}
+                      label={t('settings.sleep.until')}
+                    />
+                  </StepperRow>
+                  <SelectRow
+                    label={t('settings.sleep.type.label')}
+                    value={sleepTypeLabel}
+                    onPress={() => setSleepTypeOpen(true)}
+                  />
+                </View>
+                {/* Both bounds on the same time is a zero-length window, which
+                  `withinAutoSleepWindow` reads as NEVER - and the stepper wraps in 30
+                  minute steps, so walking "Until" back onto "From" takes one tap. Without
+                  this the screen shows a feature that is switched on and can never arm,
+                  with nothing to explain why. */}
+                {autoSleepFrom === autoSleepUntil ? (
+                  <Text variant="caption">{t('settings.sleep.sameTimes')}</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        </Section>
+
         <Section title={t('settings.upNext.label')}>
           <View className="gap-5">
             <ChoiceRow
@@ -295,6 +370,16 @@ export default function SettingsScreen() {
           {t('settings.version', { version: APP_VERSION })}
         </Text>
       </ScrollView>
+      {/* Mounted at screen level, outside the ScrollView: a Sheet renders in place and
+        would be clipped inside a scroll container (same reason as the dialog below). */}
+      <SelectSheet
+        visible={sleepTypeOpen}
+        title={t('settings.sleep.type.label')}
+        options={sleepTypeOptions}
+        value={autoSleepType}
+        onChange={setAutoSleepType}
+        onClose={() => setSleepTypeOpen(false)}
+      />
       {connectionRemoval.dialog}
     </>
   );

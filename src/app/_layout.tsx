@@ -6,11 +6,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
+import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
+import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import '@/lib/register-sw';
 // Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
 // (which nests illegally and hits an older-Safari flex bug). All top-level imports
@@ -43,6 +45,9 @@ function RootNavigator() {
       {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
           end-of-book flow when a book reaches its natural end. */}
       <BookEndedListener />
+      {/* A shake must keep the listener going while the phone is locked
+          and no player screen is mounted. */}
+      <ShakeToExtendListener />
     </>
   );
 }
@@ -82,6 +87,15 @@ export default function RootLayout() {
       void hydrateDownloads();
     })();
   }, [hydrate, hydrateSettings, hydrateDownloads]);
+
+  // The nightly auto sleep timer. Framework-free (subscriptions, no rendering), so it is
+  // started here rather than mounted as a component that renders null - this is simply
+  // where the app's lifetime is expressed. Its own effect, not the bootstrap one above:
+  // that one is async and returns nothing, and pairing start with teardown in a single
+  // expression is what keeps the subscriptions from leaking. It must run whether or not
+  // the player modal is open, since the timer has to arm for a book started from the
+  // mini player, the library, or a lock-screen play.
+  useEffect(() => startAutoSleep(), []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.

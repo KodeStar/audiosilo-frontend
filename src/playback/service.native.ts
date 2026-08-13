@@ -100,6 +100,22 @@ class NativePlaybackService implements PlaybackService {
     await AudiosiloPlayer.setRate(rate);
     this.update({ rate });
   }
+  async setVolume(volume: number) {
+    // The JS bundle can be newer than the native binary it runs on: an installed dev
+    // build, or a shipped App Store / Play build, that predates `setVolume`. Calling a
+    // function a native module doesn't define THROWS, so an unguarded call would turn a
+    // sleep-timer fade into a playback-breaking rejection on every older install.
+    // Feature-detect, and still catch, so an old binary degrades to "no fade" and resolves.
+    if (typeof AudiosiloPlayer.setVolume !== 'function') return;
+    try {
+      // Not re-clamped here: the store clamps every value on its way out (see
+      // `PlaybackService.setVolume`), and the native side clamps again on the far
+      // side of the bridge.
+      await AudiosiloPlayer.setVolume(volume);
+    } catch {
+      // no volume control on this binary - silently keep playing at the current volume
+    }
+  }
   async reset() {
     await AudiosiloPlayer.reset();
     this.update({ ...INITIAL_SNAPSHOT, rate: this.snapshot.rate });

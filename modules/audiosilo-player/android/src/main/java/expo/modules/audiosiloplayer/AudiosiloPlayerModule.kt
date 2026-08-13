@@ -113,6 +113,10 @@ class AudiosiloPlayerModule : Module() {
   /** Per-file durations (seconds) from the loaded tracks, so progress can report the
    * FILE duration even when the engine's current item is a clip. */
   private var fileDurations: List<Double> = emptyList()
+  /** Output gain (0..1) last asked for by JS - the sleep timer's fade-out. Kept here so a
+   * reconnect re-applies it: the controller can be rebuilt against a freshly started
+   * service whose ExoPlayer is back at full volume, which would abort a fade mid-way. */
+  private var lastVolume: Float = 1.0f
 
   private val context
     get() = requireNotNull(appContext.reactContext) { "React context is not available" }
@@ -222,6 +226,17 @@ class AudiosiloPlayerModule : Module() {
       handler.post { controller?.setPlaybackParameters(PlaybackParameters(rate.toFloat(), 1.0f)) }
     }
 
+    // Player gain (0..1), NOT the device/stream volume: Player.setVolume scales only our
+    // output, so the sleep timer can fade the book to silence without touching what the
+    // user hears from everything else. Sticky - whoever faded down restores it.
+    AsyncFunction("setVolume") { volume: Double ->
+      handler.post {
+        val v = volume.coerceIn(0.0, 1.0).toFloat()
+        lastVolume = v
+        controller?.volume = v
+      }
+    }
+
     AsyncFunction("reset") {
       handler.post {
         controller?.stop()
@@ -290,6 +305,10 @@ class AudiosiloPlayerModule : Module() {
       try {
         val c = future.get()
         controller = c
+        // A (re)connected controller may front a freshly created ExoPlayer at full
+        // volume; re-assert the last requested gain so a fade isn't undone by a
+        // service restart.
+        c.volume = lastVolume
         attachListener(c)
         // The loop is play-state-driven (onIsPlayingChanged). If we reconnected to a
         // service that is already playing, kick it off now since no transition will fire.

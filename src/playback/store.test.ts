@@ -19,6 +19,7 @@ const mockSvc = {
   seekTo: jest.fn(async () => {}),
   skipToTrack: jest.fn(async () => {}),
   setRate: jest.fn(async () => {}),
+  setVolume: jest.fn(async () => {}),
   reset: jest.fn(async () => {}),
   getSnapshot: jest.fn(() => ({ ...INITIAL })),
   subscribe: jest.fn((listener: (s: PlaybackSnapshot) => void) => {
@@ -87,7 +88,14 @@ import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { useSettings } from '@/stores/settings';
 
 import { flushConnection } from './progress-sync';
-import { stopPlaybackForConnection, teardownBeforeTokenRevoke, usePlayer } from './store';
+import {
+  selectBookKey,
+  selectIsPlaying,
+  selectIsTransportLive,
+  stopPlaybackForConnection,
+  teardownBeforeTokenRevoke,
+  usePlayer,
+} from './store';
 /* eslint-enable import/first */
 
 // --- Fixtures --------------------------------------------------------------
@@ -960,5 +968,116 @@ describe('auto-download on start', () => {
 
     expect(downloadSpy).not.toHaveBeenCalled();
     downloadSpy.mockRestore();
+  });
+});
+
+// --- the output gain the engine is already at ------------------------------
+
+describe('setOutputVolume', () => {
+  it('writes a changed gain and skips one that would change nothing', async () => {
+    await startBook();
+    // playBook re-asserts full volume on the engine as its own backstop; the gain the
+    // store remembers has to move with it, or a real restore later would be dropped.
+    const setVolume = mockSvc.setVolume as jest.Mock;
+    setVolume.mockClear();
+
+    await usePlayer.getState().setOutputVolume(0.5);
+    await usePlayer.getState().setOutputVolume(0.5); // the sleep timer's 4Hz fade re-writes
+    expect(setVolume).toHaveBeenCalledTimes(1);
+    expect(setVolume).toHaveBeenLastCalledWith(0.5);
+
+    // The restore is a real change, so it is never the one that gets skipped - a
+    // listener left with a quiet book is this feature's worst failure.
+    await usePlayer.getState().setOutputVolume(1);
+    expect(setVolume).toHaveBeenCalledTimes(2);
+    expect(setVolume).toHaveBeenLastCalledWith(1);
+  });
+
+  it('re-asserts full volume only once the new book is the one playing', async () => {
+    const setVolume = mockSvc.setVolume as jest.Mock;
+    await startBook(makeBook({ rel_path: 'A/First.m4b' }), 0);
+
+    // Which book was loaded at the moment each gain reached the engine. The sleep timer's
+    // 250ms fade ticker cancels itself by comparing the PLAYING book with the timer's
+    // own, so a backstop written while `nowPlaying` still holds the old book is one the
+    // ticker is still entitled to overwrite - and the resume lookup below it is a network
+    // round trip, far longer than the fade's period. The new book could start attenuated.
+    const seen: (string | null)[] = [];
+    setVolume.mockClear();
+    setVolume.mockImplementation(async () => {
+      seen.push(usePlayer.getState().nowPlaying?.path ?? null);
+    });
+    // No explicit start position, so this takes the resume-lookup path a real play uses.
+    await usePlayer.getState().playBook('c1', 2, makeBook({ rel_path: 'A/Second.m4b' }));
+
+    expect(seen).toEqual(['A/Second.m4b']);
+    setVolume.mockImplementation(async () => {});
+  });
+
+  it('clamps out-of-range gains before comparing', async () => {
+    await startBook();
+    const setVolume = mockSvc.setVolume as jest.Mock;
+    setVolume.mockClear();
+    await usePlayer.getState().setOutputVolume(3); // clamps to 1, which it is already at
+    expect(setVolume).not.toHaveBeenCalled();
+    await usePlayer.getState().setOutputVolume(-1); // clamps to 0
+    expect(setVolume).toHaveBeenLastCalledWith(0);
+    // ...and back to full for the tests that follow (the gain is module state).
+    await usePlayer.getState().setOutputVolume(1);
+  });
+});
+
+// --- the two readings of "the user is listening" ---------------------------
+
+describe('selectIsPlaying vs selectIsTransportLive', () => {
+  it('splits on a buffering book: live transport, but not playing', () => {
+    usePlayer.setState({ snapshot: { ...INITIAL, state: 'loading' } });
+    // The difference is load-bearing, not cosmetic. The sleep timer freezes its countdown
+    // on the LOOSE reading, so collapsing this to strict `playing` would make every
+    // buffering stall freeze and thaw the timer (sliding its deadline forward each time),
+    // and a timer firing during a momentary buffer would take the "it fired against a
+    // book that was not playing" branch: no pause, no grace, the book plays on and the
+    // timer simply vanishes.
+    expect(selectIsTransportLive(usePlayer.getState())).toBe(true);
+    expect(selectIsPlaying(usePlayer.getState())).toBe(false);
+
+    // They agree everywhere else: only `loading` is read differently.
+    for (const state of ['idle', 'ready', 'paused', 'ended', 'error'] as const) {
+      usePlayer.setState({ snapshot: { ...INITIAL, state } });
+      expect(selectIsTransportLive(usePlayer.getState())).toBe(false);
+      expect(selectIsPlaying(usePlayer.getState())).toBe(false);
+    }
+    usePlayer.setState({ snapshot: { ...INITIAL, state: 'playing' } });
+    expect(selectIsTransportLive(usePlayer.getState())).toBe(true);
+    expect(selectIsPlaying(usePlayer.getState())).toBe(true);
+  });
+});
+
+// --- the one definition of the playing book's identity ---------------------
+
+describe('selectBookKey', () => {
+  it('is the connection-scoped content key, and null with nothing loaded', async () => {
+    expect(selectBookKey(usePlayer.getState())).toBeNull();
+    await startBook(makeBook(), 0, 'c1');
+    expect(selectBookKey(usePlayer.getState())).toBe('c1:2:A/Book.m4b');
+  });
+
+  it('returns the SAME string until the book changes', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    const first = selectBookKey(usePlayer.getState());
+    // Memoized on the nowPlaying object: the sleep timer asks several times a second for
+    // the whole life of a timer, and compares the answer with `===`.
+    pushSnapshot(snap('playing', 10));
+    expect(selectBookKey(usePlayer.getState())).toBe(first);
+
+    await startBook(makeBook({ rel_path: 'A/Other.m4b' }), 0, 'c1');
+    expect(selectBookKey(usePlayer.getState())).toBe('c1:2:A/Other.m4b');
+  });
+
+  it('distinguishes the same library + path on two different servers', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    const onC1 = selectBookKey(usePlayer.getState());
+    await startBook(makeBook(), 0, 'c2');
+    expect(selectBookKey(usePlayer.getState())).not.toBe(onC1);
   });
 });

@@ -7,6 +7,7 @@ import {
   formatDuration,
   formatDurationFull,
   formatRelative,
+  formatTimeOfDay,
 } from '@/lib/format';
 
 describe('formatCountdown', () => {
@@ -126,6 +127,89 @@ describe('formatBitrate', () => {
     expect(formatBitrate(undefined, 100)).toBe('');
     expect(formatBitrate(0, 100)).toBe('');
     expect(formatBitrate(10, 100)).toBe(''); // rounds to 0 kbps → empty
+  });
+});
+
+describe('formatTimeOfDay', () => {
+  // ICU has changed which space it puts before AM/PM between versions, so compare
+  // on normalised whitespace rather than pinning the exact code point.
+  const spaces = (s: string) => s.replace(/\s/g, ' ');
+
+  it('renders the reader own clock convention', () => {
+    expect(spaces(formatTimeOfDay('22:00', 'en-US'))).toBe('10:00 PM');
+    expect(spaces(formatTimeOfDay('06:30', 'en-US'))).toBe('6:30 AM');
+    expect(formatTimeOfDay('22:00', 'de')).toBe('22:00');
+    expect(formatTimeOfDay('06:30', 'en-GB')).toBe('6:30');
+  });
+
+  it('returns a malformed value unchanged', () => {
+    expect(formatTimeOfDay('24:00', 'en-US')).toBe('24:00');
+    expect(formatTimeOfDay('nope', 'en-US')).toBe('nope');
+  });
+
+  it('falls back to the stored 24h form when Intl.DateTimeFormat throws (Hermes)', () => {
+    // Hermes ships a reduced Intl; a locale it cannot build must not crash a screen.
+    const intl = Intl as unknown as Record<string, unknown>;
+    const original = intl.DateTimeFormat;
+    intl.DateTimeFormat = function Broken() {
+      throw new RangeError('no Intl here');
+    };
+    try {
+      // A locale no other case in this file formats, so nothing is cached for it.
+      expect(formatTimeOfDay('22:00', 'ko')).toBe('22:00');
+    } finally {
+      intl.DateTimeFormat = original;
+    }
+  });
+
+  it('builds one formatter per locale and reuses it', () => {
+    const intl = Intl as unknown as Record<string, unknown>;
+    const original = intl.DateTimeFormat as typeof Intl.DateTimeFormat;
+    const spy = jest.fn(
+      (locale?: string, options?: Intl.DateTimeFormatOptions) => new original(locale, options),
+    );
+    intl.DateTimeFormat = spy;
+    try {
+      expect(formatTimeOfDay('22:00', 'ja')).toBeTruthy();
+      expect(formatTimeOfDay('06:30', 'ja')).toBeTruthy();
+      expect(formatTimeOfDay('06:30', 'ja')).toBeTruthy();
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      intl.DateTimeFormat = original;
+    }
+  });
+
+  it('formats in the same zone the formatter resolves', () => {
+    // A cached formatter resolves its zone once, when it is built; a value assembled
+    // from local-time components re-reads the live zone on every call. Let those two
+    // disagree - which is what a device whose zone changed under a long-lived JS
+    // context does - and a 22:00 bound renders as 3:00 AM. Stand-in for the travelling
+    // device: a formatter that resolves a zone a local-time Date would not be built in.
+    const local = new Date(2000, 0, 1, 22, 0);
+    const rendersLocalAs22 = (timeZone: string) =>
+      new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone,
+      }).format(local) === '22:00';
+    const elsewhere = ['Asia/Tokyo', 'America/New_York'].find((z) => !rendersLocalAs22(z)) ?? 'UTC';
+
+    const intl = Intl as unknown as Record<string, unknown>;
+    const original = intl.DateTimeFormat as typeof Intl.DateTimeFormat;
+    // `jest.fn`, not an arrow: `formatTimeOfDay` uses `new`, which an arrow function
+    // cannot service (it would throw straight into the Hermes fallback and the test
+    // would pass against anything).
+    intl.DateTimeFormat = jest.fn(
+      (locale?: string, options?: Intl.DateTimeFormatOptions) =>
+        new original(locale, { ...options, timeZone: options?.timeZone ?? elsewhere }),
+    );
+    try {
+      // A 24h locale nothing else in this file formats, so it builds a fresh formatter.
+      expect(formatTimeOfDay('22:00', 'fr')).toBe('22:00');
+    } finally {
+      intl.DateTimeFormat = original;
+    }
   });
 });
 

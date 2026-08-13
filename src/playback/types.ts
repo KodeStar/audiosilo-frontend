@@ -59,6 +59,18 @@ export type PlaybackConfig = {
 };
 
 /**
+ * Coerce a caller's volume into the [0,1] linear-gain range every engine expects.
+ * A non-finite value (a NaN from a fade computation dividing by a zero duration)
+ * falls back to **1**, not 0: an out-of-range volume is a bug, and silence the user
+ * can't undo is a far worse failure than a fade that doesn't fade. Web throws on an
+ * out-of-range `audio.volume`, so this can't just be advisory.
+ */
+export function clampVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.min(1, Math.max(0, volume));
+}
+
+/**
  * Platform-agnostic playback engine. Implemented by a custom native module
  * (AVQueuePlayer / Media3) on native and HTML5 Audio on web; the player store
  * talks only to this interface so the engine stays swappable.
@@ -94,6 +106,21 @@ export interface PlaybackService {
   seekTo(positionInTrack: number): Promise<void>;
   skipToTrack(index: number, positionInTrack?: number): Promise<void>;
   setRate(rate: number): Promise<void>;
+  /**
+   * Set output volume as a linear gain applied to the engine's own volume (NOT the
+   * device volume). Used by the sleep timer's fade-out.
+   *
+   * REQUIRED, and it must stay required: both engines implement it, and the one real
+   * "no volume here" case (an installed native binary older than this JS bundle, or
+   * iOS Safari's read-only `audio.volume`) is that engine's own private business -
+   * each degrades internally to "no fade" and still resolves. An optional marker
+   * would push a `?.` onto every caller to model something no caller can act on.
+   *
+   * Callers pass a value already inside **[0,1]** - `usePlayer.setOutputVolume` is
+   * the only route here and clamps once, so engines don't re-clamp (the native side
+   * still does, because that crosses a language boundary).
+   */
+  setVolume(volume: number): Promise<void>;
   reset(): Promise<void>;
   /**
    * Present the OS audio-route / casting picker so the user can send playback to

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { ScrollView, Text as RNText, View } from 'react-native';
+import { Platform, ScrollView, Text as RNText, View } from 'react-native';
 
 import type { Chapter } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -10,7 +10,12 @@ import { formatClock, formatCountdown } from '@/lib/format';
 import { chapterCountdowns } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { wallClockSeconds } from '@/playback/rate';
-import { useSleepTimer } from '@/playback/sleep-timer';
+import {
+  chapterSleepLabel,
+  selectSleepExtendable,
+  selectSleepPhase,
+  useSleepTimer,
+} from '@/playback/sleep-timer';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { colors, tabularNums } from '@/theme/tokens';
@@ -18,14 +23,22 @@ import { colors, tabularNums } from '@/theme/tokens';
 const PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
 /**
- * Sleep-timer trigger. Shows the current remaining time when active. The sheet
+ * Sleep-timer trigger. Shows the current remaining time when active, and swaps to a
+ * "keep going" prompt once the timer is about to stop or has just paused playback -
+ * the two windows where opening the sheet still keeps the listener going. The sheet
  * itself (`SleepSheet`) is mounted at the player root so the shared bottom `Sheet`
  * presents correctly.
  */
 export function SleepTimerButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
   const { scheme } = useTheme();
-  const active = useSleepTimer((s) => s.active);
+  const phase = useSleepTimer(selectSleepPhase);
+  // The a11y label follows what the button can DO, not merely whether a timer exists:
+  // it overrides the visible children for a screen reader, and announcing "Keep
+  // listening" for a control that just opens the presets sheet (25 minutes still to
+  // run) is simply wrong. The same selector gates the shake listener, so the spoken
+  // promise and the gesture are true in exactly the same windows.
+  const extendable = useSleepTimer(selectSleepExtendable);
   const remaining = useSleepTimer((s) => s.remaining);
   // Match the sibling footer icons' theme-aware neutral (history/airplay use the
   // same `textStrong`); a hardcoded dark color washed out on the light footer.
@@ -37,11 +50,23 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
       className="flex-row items-center gap-1.5"
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel={t('player.sleepTimer.title')}
+      accessibilityLabel={
+        extendable ? t('player.sleepTimer.keepListening') : t('player.sleepTimer.title')
+      }
     >
-      <Icon name="sleep" size={20} color={active ? colors.primary : neutral} />
-      {active && remaining !== null ? (
-        <RNText className="font-sans text-sm text-primary" style={tabularNums}>
+      <Icon name="sleep" size={20} color={phase === 'idle' ? neutral : colors.primary} />
+      {phase === 'grace' ? (
+        <RNText className="font-roboto-semibold text-sm text-primary">
+          {t('player.sleepTimer.keepGoingShort')}
+        </RNText>
+      ) : phase !== 'idle' && remaining !== null ? (
+        // Ending: the same countdown, weighted up so a glance reads "about to stop".
+        <RNText
+          className={`text-sm text-primary ${
+            phase === 'ending' ? 'font-roboto-semibold' : 'font-sans'
+          }`}
+          style={tabularNums}
+        >
           {formatClock(remaining)}
         </RNText>
       ) : null}
@@ -69,11 +94,15 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const chapterLabel = (ch: Chapter) =>
     prettifyChapterTitle(ch.title || t('player.chapters.chapterNumber', { number: ch.index + 1 }));
-  const active = useSleepTimer((s) => s.active);
+  const phase = useSleepTimer(selectSleepPhase);
   const label = useSleepTimer((s) => s.label);
   const remaining = useSleepTimer((s) => s.remaining);
+  // Only a duration timer fades out (see `fadesAudio` in sleep-timer.ts), so only it
+  // may say so: a chapter timer plays its last 30 seconds at full volume.
+  const origin = useSleepTimer((s) => s.origin);
   const startDuration = useSleepTimer((s) => s.startDuration);
   const startUntilPosition = useSleepTimer((s) => s.startUntilPosition);
+  const keepListening = useSleepTimer((s) => s.keepListening);
   const cancel = useSleepTimer((s) => s.cancel);
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const bookPosition = usePlayer(selectBookPosition);
@@ -98,10 +127,44 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
 
   return (
     <View className="gap-3 px-4 pb-4">
-      {active ? (
+      {phase === 'ending' || phase === 'grace' ? (
+        // The extendable windows. The button is mandatory, not a convenience: the web
+        // has no accelerometer, so it is the only way to keep listening there. On
+        // native it sits alongside the shake hint.
+        <View className="gap-2 rounded-lg bg-primary/10 px-3 py-3">
+          <View className="flex-row items-center justify-between">
+            <RNText className="font-roboto-semibold text-base text-primary">
+              {phase === 'grace'
+                ? t('player.sleepTimer.grace')
+                : origin?.kind === 'duration'
+                  ? t('player.sleepTimer.fading')
+                  : t('player.sleepTimer.ending')}
+            </RNText>
+            {remaining !== null ? (
+              <RNText className="font-roboto-semibold text-base text-primary" style={tabularNums}>
+                {formatClock(remaining)}
+              </RNText>
+            ) : null}
+          </View>
+          {Platform.OS === 'web' ? null : (
+            <Text variant="caption">{t('player.sleepTimer.shakeHint')}</Text>
+          )}
+          <AnimatedPressable
+            onPress={() => pick(keepListening)}
+            className="items-center rounded-lg bg-primary px-4 py-3"
+            accessibilityRole="button"
+          >
+            <RNText className="font-roboto-semibold text-base text-white dark:text-white">
+              {t('player.sleepTimer.keepListening')}
+            </RNText>
+          </AnimatedPressable>
+        </View>
+      ) : phase === 'running' ? (
         <View className="flex-row items-center justify-between rounded-lg bg-primary/10 px-3 py-2">
           <RNText className="font-sans text-base text-primary">
-            {label || t('player.sleepTimer.running')}
+            {/* Rendered here, not stored: the timer keeps a translation descriptor so
+                a language switch re-renders an armed timer in the new language. */}
+            {label ? t(label.key, label.params) : t('player.sleepTimer.running')}
           </RNText>
           {remaining !== null ? (
             <RNText className="font-roboto-semibold text-base text-primary" style={tabularNums}>
@@ -135,12 +198,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
               <AnimatedPressable
                 key={c.chapter.index}
                 onPress={() =>
-                  pick(() =>
-                    startUntilPosition(
-                      c.endPosition,
-                      t('player.sleepTimer.endOf', { chapter: chapterLabel(c.chapter) }),
-                    ),
-                  )
+                  pick(() => startUntilPosition(c.endPosition, chapterSleepLabel(c.chapter)))
                 }
                 className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
                 accessibilityRole="button"
@@ -158,7 +216,9 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
         </View>
       ) : nowPlaying ? (
         <AnimatedPressable
-          onPress={() => pick(() => startUntilPosition(total, t('player.sleepTimer.endOfBook')))}
+          onPress={() =>
+            pick(() => startUntilPosition(total, { key: 'player.sleepTimer.endOfBook' }))
+          }
           className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
           accessibilityRole="button"
         >
@@ -171,15 +231,23 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
         <Text variant="caption">{t('player.sleepTimer.noChapters')}</Text>
       )}
 
-      {active ? (
+      {phase !== 'idle' ? (
+        // Demoted to a neutral button while the timer is extendable, so it can't
+        // compete with the "keep listening" call to action above it.
         <AnimatedPressable
           onPress={() => pick(cancel)}
-          className="mt-1 items-center rounded-lg bg-primary px-4 py-3"
+          className={`mt-1 items-center rounded-lg px-4 py-3 ${
+            phase === 'running' ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-860'
+          }`}
           accessibilityRole="button"
         >
-          <RNText className="font-roboto-semibold text-base text-white dark:text-white">
-            {t('player.sleepTimer.cancel')}
-          </RNText>
+          {phase === 'running' ? (
+            <RNText className="font-roboto-semibold text-base text-white dark:text-white">
+              {t('player.sleepTimer.cancel')}
+            </RNText>
+          ) : (
+            <Text>{t('player.sleepTimer.cancel')}</Text>
+          )}
         </AnimatedPressable>
       ) : null}
     </View>
