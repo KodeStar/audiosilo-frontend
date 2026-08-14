@@ -10,6 +10,7 @@ import {
   flushConnection,
   flushQueue,
   loadInitialProgress,
+  mirroredProgress,
   type ProgressSave,
   saveProgress,
 } from '@/playback/progress-sync';
@@ -505,5 +506,34 @@ describe('progress-sync', () => {
     );
     const r = await loadInitialProgress(api, 'c1', 1, 'A/Book');
     expect(r).toMatchObject({ kind: 'progress', progress: { position: 95 } });
+  });
+
+  // --- mirroredProgress: the offline read path (the book screen's progress query) ---
+
+  it('mirroredProgress returns the mirrored record shaped as Progress', async () => {
+    reachable.mockReturnValue(false); // offline: the save only lands in the mirror/queue
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 42, finished: true },
+    );
+
+    expect(await mirroredProgress('c1', 1, 'A/Book')).toMatchObject({
+      library_id: 1,
+      path: 'A/Book',
+      position: 42,
+      finished: true,
+      updated_at: save.updated_at,
+    });
+  });
+
+  it('mirroredProgress is null for another connection or an unmirrored book', async () => {
+    reachable.mockReturnValue(false);
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      save,
+    );
+
+    expect(await mirroredProgress('c2', 1, 'A/Book')).toBeNull(); // another server
+    expect(await mirroredProgress('c1', 1, 'A/Other')).toBeNull(); // never played
   });
 });

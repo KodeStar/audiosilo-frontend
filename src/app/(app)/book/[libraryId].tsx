@@ -1,13 +1,31 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { useBook, useChapters, useLibraries, useServerInfo } from '@/api/hooks';
+import {
+  useBook,
+  useBookMeta,
+  useBookProgress,
+  useChapters,
+  useLibraries,
+  useServerInfo,
+} from '@/api/hooks';
 import { useApi, useScopedCid } from '@/api/provider';
-import type { Chapter } from '@/api/types';
 import { ContentColumn } from '@/components/layout/content-column';
 import { ContentScope } from '@/components/layout/content-scope';
-import { BookMetaSection } from '@/components/library/book-meta';
+import {
+  BookMetaAbout,
+  BookMetaCharactersTab,
+  BookMetaRecapsTab,
+  BookMetaSeriesTab,
+  matchedMeta,
+  previousWorks,
+  seriesRails,
+  summaryIsVisible,
+} from '@/components/library/book-meta';
+import { type BookTab, bookTabs, TAB_LABEL_KEY } from '@/components/library/book-tabs';
+import { listeningProgressFor } from '@/components/library/meta-gating';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
 import { BookVersions } from '@/components/library/book-versions';
@@ -24,6 +42,7 @@ import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TabBar } from '@/components/ui/tab-bar';
 import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
@@ -31,12 +50,20 @@ import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { selectCurrentChapter, usePlayer } from '@/playback/store';
+import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { colors, tabularNums } from '@/theme/tokens';
 
 // The cover art rounded corner + hairline border + soft shadow, applied wherever
 // the hero cover appears so dark covers separate from dark surfaces.
 const COVER_FRAME = 'overflow-hidden rounded-lg border border-black/10 dark:border-white/10';
+
+// How coarsely this screen samples the player's live position (seconds). The only
+// consumer is the spoiler gate, which just needs to know which CHAPTER the listener
+// is in, so subscribing to the per-tick position would re-render a list of possibly
+// hundreds of chapter rows every second for nothing. Rounding DOWN can delay a
+// reveal by at most this many seconds at a chapter boundary - it can never reveal
+// something early, which is the direction that matters.
+const LIVE_POSITION_BUCKET_S = 15;
 
 /** Loading placeholder shaped like the final layout: a cover block, title lines,
  * a stat strip and a few chapter rows - no centered spinner. */
@@ -101,11 +128,52 @@ function BookDetailContent() {
   // Older servers omit the capability → false; books with neither id can never
   // match, so we skip the request entirely.
   const bookMetaEnabled = metadataEnabled && !!(book?.asin || book?.isbn);
+  const { data: meta } = useBookMeta(libraryId, path, bookMetaEnabled);
+  // Where the listener has got to, for the spoiler gating below - so it rides the
+  // same gate: with no metadata to gate, this authenticated GET would be waste.
+  const { data: progress } = useBookProgress(libraryId, path, bookMetaEnabled);
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
+  // The player's live whole-book POSITION, bucketed (see LIVE_POSITION_BUCKET_S) and
+  // zeroed unless this library on this connection is the one playing - so an unrelated
+  // book playing elsewhere never re-renders this screen. The caller still checks
+  // `isThisPlaying` (which also matches the path) before trusting it.
+  const livePosition = usePlayer((s) =>
+    s.nowPlaying?.connectionId === cid && s.nowPlaying.libraryId === libraryId
+      ? Math.floor(selectBookPosition(s) / LIVE_POSITION_BUCKET_S) * LIVE_POSITION_BUCKET_S
+      : 0,
+  );
   const downloadEntry = useDownloadEntry(cid, libraryId, path);
   const paddingBottom = useMiniPlayerInset();
+  // The selected tab. Held as an intent: which tabs EXIST depends on data that
+  // can arrive late (or vanish), so the render below falls back to the first
+  // available tab rather than showing a blank panel.
+  const [tab, setTab] = useState<BookTab>('chapters');
+  // The spoiler reveal is held HERE, not per tab: revealing in Characters and
+  // switching to Recaps must not re-hide everything the reader just chose to see.
+  const [showSpoilers, setShowSpoilers] = useState(false);
+
+  // Chapters/files and their whole-book offsets. Computed ABOVE the early returns
+  // (they derive from `chapterData` alone, and cost nothing while it is undefined)
+  // so the memo is a real hook, called on every render.
+  const chapters = useMemo(() => chapterData?.chapters ?? [], [chapterData]);
+  const files = useMemo(() => chapterData?.files ?? [], [chapterData]);
+  // The whole-book offset of every chapter. The server's `book_offset` is unreliable,
+  // so it is recomputed from the cumulative file durations (shared with book-queue) -
+  // an O(chapters x files) pass, memoized because the History and metadata tabs read
+  // it on every render, including while parked on another tab.
+  const chapterStarts = useMemo(() => {
+    if (files.length === 0) return chapters.map((ch) => ch.book_offset);
+    const fileDurations = files.map((f) => ({ path: f.rel_path, duration: f.duration }));
+    return chapters.map((ch) => chapterBookOffset(fileDurations, ch));
+  }, [chapters, files]);
+  // Chapters carrying the corrected offset, so the History tab can label each
+  // listening span with its chapter.
+  const historyChapters = useMemo(
+    () => chapters.map((ch, i) => ({ ...ch, book_offset: chapterStarts[i] })),
+    [chapters, chapterStarts],
+  );
 
   if (isLoading) return <BookSkeleton paddingBottom={paddingBottom} />;
   // Render whenever we have book data - including a downloaded book served from
@@ -126,8 +194,6 @@ function BookDetailContent() {
   const coverUrl = api.coverUrl(libraryId, path);
   const coverHeaders = api.authHeaders();
   const coverSource = { uri: coverUrl, headers: coverHeaders };
-  const chapters = chapterData?.chapters ?? [];
-  const files = chapterData?.files ?? [];
   const listLabel = chapters.length > 0 ? t('book.chaptersTitle') : t('book.filesTitle');
   const isThisPlaying =
     nowPlaying?.connectionId === cid &&
@@ -148,15 +214,6 @@ function BookDetailContent() {
     // crumbs and the browse view); the book's title is shown in the header below.
     { label: pathLeaf(path) || book.title, active: true },
   ];
-
-  // Whole-book offset for a chapter (the server's book_offset is unreliable;
-  // recompute from the cumulative file durations - shared with book-queue).
-  const fileDurations = files.map((f) => ({ path: f.rel_path, duration: f.duration }));
-  const chapterStart = (ch: Chapter) =>
-    files.length > 0 ? chapterBookOffset(fileDurations, ch) : ch.book_offset;
-  // Chapters carrying the corrected whole-book offset, so the history panel can
-  // label each listening span with its chapter.
-  const historyChapters = chapters.map((ch) => ({ ...ch, book_offset: chapterStart(ch) }));
 
   // On desktop the player lives in the right panel, so play inline; on phone open
   // the full-screen player modal. A chapter is addressed by whole-book position;
@@ -259,7 +316,7 @@ function BookDetailContent() {
           ch.title || t('book.chapterFallback', { number: ch.index + 1 }),
           Math.max(0, ch.end - ch.start),
           formatBitrate(file?.size, file?.duration),
-          () => goPlay({ position: chapterStart(ch) }),
+          () => goPlay({ position: chapterStarts[i] }),
           i + 1,
           active,
         );
@@ -279,14 +336,118 @@ function BookDetailContent() {
   };
 
   const hasList = chapters.length > 0 || files.length > 0;
-  const fileList = hasList ? (
-    <View>
-      <Text variant="heading" className="mb-2">
-        {listLabel}
-      </Text>
-      {renderRows()}
+
+  // --- Tabs ----------------------------------------------------------------
+  // Everything after the overview lives in tabs: with a few hundred chapters the
+  // old single scroll buried bookmarks/notes/metadata below an unreachable list.
+  // The community-metadata tabs are progressive enhancement - absent entirely on
+  // an older server or an unmatched book.
+  const metaMatched = matchedMeta(meta, bookMetaEnabled);
+  const metaCharacters = metaMatched?.work.characters ?? [];
+  const metaRecaps = metaMatched?.work.recaps ?? [];
+  const rails = metaMatched ? seriesRails(metaMatched.series, metaMatched.work.id) : [];
+  // The earlier books of the series, for the "catch up on previous books" block
+  // appended to the Recaps and Characters tabs (each row fetches its own work
+  // lazily, on open).
+  const previousBooks = metaMatched ? previousWorks(metaMatched.series, metaMatched.work.id) : [];
+  const metaSummary = metaMatched?.work.recap_summary;
+
+  // Spoiler gating: ONE whole-book position - the player's live one when this book is
+  // loaded, else the saved progress - mapped onto the chapter list (see meta-gating).
+  // Reading a position rather than the player's chapter identity matters: a chapterless
+  // single-file book gets synthetic 30-minute chapters whose indexes are wall-clock
+  // slices, not logical chapters. The furthest of the two is used so a live position
+  // that has not ticked yet can't briefly un-reveal what the saved one already showed.
+  const listening = listeningProgressFor({
+    chapterStarts,
+    position: isThisPlaying ? Math.max(livePosition, progress?.position ?? 0) : progress?.position,
+    finished: !!progress?.finished,
+  });
+  // Whether the whole-book summary will actually render - the same predicate the
+  // Recaps panel guards on, so a tab can never open onto a panel that withholds
+  // everything (an `ending` alone is withheld until the book is finished).
+  const summaryVisible = summaryIsVisible(metaSummary, listening.finished);
+
+  const tabs = bookTabs({
+    // Chapters arrive on their own request; count the tab as present while it is in
+    // flight (its panel is simply empty meanwhile) so the row doesn't briefly start on
+    // Bookmarks - firing that GET - and then snap to Chapters when the data lands.
+    hasList: hasList || chaptersLoading,
+    hasRecaps: metaRecaps.length > 0,
+    hasCharacters: metaCharacters.length > 0,
+    hasSeries: rails.length > 0,
+    hasPreviousBooks: previousBooks.length > 0,
+    summaryVisible,
+  });
+  const activeTab = tabs.includes(tab) ? tab : tabs[0];
+  // Chapters' label flips between "Chapters" and "Files"; every other tab reuses an
+  // existing section string (see TAB_LABEL_KEY).
+  const tabLabel = (v: BookTab): string => (v === 'chapters' ? listLabel : t(TAB_LABEL_KEY[v]));
+
+  const tabContent = () => {
+    switch (activeTab) {
+      case 'chapters':
+        // A plain View, NOT a Fragment: the rows carry their own `my-1` spacing, and a
+        // Fragment would make each one a direct child of tabSection's `gap-4`.
+        return <View>{renderRows()}</View>;
+      case 'recaps':
+        return (
+          <BookMetaRecapsTab
+            recaps={metaRecaps}
+            progress={listening}
+            summary={metaSummary}
+            summaryVisible={summaryVisible}
+            showSpoilers={showSpoilers}
+            onToggleSpoilers={() => setShowSpoilers((v) => !v)}
+            previousBooks={previousBooks}
+          />
+        );
+      case 'characters':
+        return (
+          <BookMetaCharactersTab
+            characters={metaCharacters}
+            progress={listening}
+            showSpoilers={showSpoilers}
+            onToggleSpoilers={() => setShowSpoilers((v) => !v)}
+            previousBooks={previousBooks}
+          />
+        );
+      case 'bookmarks':
+        return (
+          <BookmarksSection
+            libraryId={libraryId}
+            path={path}
+            emptyLabel={t('player.bookmarks.empty')}
+          />
+        );
+      case 'history':
+        return (
+          <HistorySection
+            libraryId={libraryId}
+            path={path}
+            chapters={historyChapters}
+            emptyLabel={t('player.history.empty')}
+          />
+        );
+      case 'notes':
+        return <NotesSection libraryId={libraryId} path={path} />;
+      case 'series':
+        return <BookMetaSeriesTab rails={rails} />;
+    }
+  };
+
+  // The tab bar + the active panel, shared by both layouts. Rendered inside the
+  // page's own vertical ScrollView (no nested vertical scrollers).
+  const tabSection = (
+    <View className="gap-4">
+      <TabBar
+        options={tabs.map((v) => ({ value: v, label: tabLabel(v) }))}
+        value={activeTab}
+        onChange={setTab}
+      />
+      {tabContent()}
     </View>
-  ) : null;
+  );
 
   if (wide) {
     return (
@@ -302,11 +463,8 @@ function BookDetailContent() {
               chapterData={chapterData}
               disabled={chaptersLoading}
             />
-            {fileList}
-            <BookMetaSection libraryId={libraryId} path={path} enabled={bookMetaEnabled} />
-            <BookmarksSection libraryId={libraryId} path={path} />
-            <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
-            <NotesSection libraryId={libraryId} path={path} />
+            {metaMatched ? <BookMetaAbout meta={metaMatched} /> : null}
+            {tabSection}
           </ScrollView>
         </ContentColumn>
 
@@ -417,12 +575,9 @@ function BookDetailContent() {
         ) : null}
       </View>
 
-      {fileList}
+      {metaMatched ? <BookMetaAbout meta={metaMatched} /> : null}
 
-      <BookMetaSection libraryId={libraryId} path={path} enabled={bookMetaEnabled} />
-      <BookmarksSection libraryId={libraryId} path={path} />
-      <HistorySection libraryId={libraryId} path={path} chapters={historyChapters} />
-      <NotesSection libraryId={libraryId} path={path} />
+      {tabSection}
     </ScrollView>
   );
 }

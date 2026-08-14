@@ -8,7 +8,6 @@ import type { Chapter } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
-import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatDuration } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
@@ -27,7 +26,6 @@ export function HistorySection({
   connectionId,
   emptyLabel,
   chapters,
-  hideHeader,
 }: {
   libraryId: number;
   path: string;
@@ -36,9 +34,6 @@ export function HistorySection({
   connectionId?: string;
   emptyLabel?: string;
   chapters?: Chapter[];
-  /** Suppress the internal heading when the caller supplies one (the player sheet's
-   * own title bar), so the sheet doesn't show two stacked headings. */
-  hideHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const { data: history } = useHistory(libraryId, path, connectionId);
@@ -52,7 +47,6 @@ export function HistorySection({
     if (!emptyLabel) return null;
     return (
       <View className="gap-2">
-        {hideHeader ? null : <SectionHeader title={t('library.history.title')} />}
         <EmptyState icon="history" title={emptyLabel} className="py-6" />
       </View>
     );
@@ -72,7 +66,6 @@ export function HistorySection({
 
   return (
     <View className="gap-2">
-      {hideHeader ? null : <SectionHeader title={t('library.history.title')} />}
       {history.map((h) => {
         const wall = Math.max(0, (Date.parse(h.ended_at) - Date.parse(h.started_at)) / 1000);
         const covered = Math.max(0, h.to_pos - h.from_pos);

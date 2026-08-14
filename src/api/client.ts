@@ -4,6 +4,7 @@ import type {
   AuthSession,
   Book,
   BookMeta,
+  BookMetaWork,
   Bookmark,
   ChaptersResponse,
   DemoSession,
@@ -297,6 +298,21 @@ export class ApiClient {
       query: { path },
       signal,
     });
+  }
+  /** One work from the community metadata service, by its meta-site work id (the
+   * `id` a series rail entry carries). Used to catch up on the earlier books of a
+   * series without leaving the book screen, so it is fetched lazily, per opened
+   * row. Unwraps the `{ work }` envelope.
+   *
+   * Every failure means "not available": a server predating this route 404s
+   * exactly like an unknown id, and a down meta service 502s. Callers must render
+   * a quiet fallback, never an error. */
+  async metaWork(workId: string, signal?: AbortSignal) {
+    const res = await this.request<{ work: BookMetaWork }>('GET', '/meta/work', {
+      query: { id: workId },
+      signal,
+    });
+    return res.work;
   }
 
   // --- Media URLs ----------------------------------------------------------

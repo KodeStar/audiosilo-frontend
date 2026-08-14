@@ -639,7 +639,6 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             libraryId={libraryId}
             path={path}
             connectionId={connectionId}
-            hideHeader
             emptyLabel={t('player.bookmarks.empty')}
             onAdd={onAddBookmark}
             adding={addBookmark.isPending}
@@ -667,7 +666,6 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             libraryId={libraryId}
             path={path}
             connectionId={connectionId}
-            hideHeader
             emptyLabel={t('player.history.empty')}
             chapters={queue.chapters}
           />
@@ -685,7 +683,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
           contentContainerClassName="px-4 pb-4"
           keyboardShouldPersistTaps="handled"
         >
-          <NotesSection libraryId={libraryId} path={path} connectionId={connectionId} hideHeader />
+          <NotesSection libraryId={libraryId} path={path} connectionId={connectionId} />
         </ScrollView>
       </Sheet>
 

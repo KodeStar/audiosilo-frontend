@@ -241,6 +241,38 @@ describe('ApiClient', () => {
     });
   });
 
+  // --- One work by meta id (GET /meta/work) ----------------------------------
+
+  it('fetches a work via GET /meta/work?id=, url-encoding the id', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { work: { id: 'a/b' } } }));
+    await new ApiClient('https://h', 'tok').metaWork('a/b');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/meta/work?id=a%2Fb');
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('unwraps the { work } envelope', async () => {
+    const work = {
+      id: 'the-martian',
+      title: 'The Martian',
+      authors: [{ id: 'andy-weir', name: 'Andy Weir' }],
+      language: 'en',
+      recap_summary: { in_short: 'Stranded on Mars.', ending: 'He gets home.' },
+    };
+    installFetch(() => ({ status: 200, body: { work } }));
+    await expect(new ApiClient('https://h', 'tok').metaWork('the-martian')).resolves.toEqual(work);
+  });
+
+  it('surfaces an ApiError for an unknown work id / a server without the route (404)', async () => {
+    installFetch(() => ({ status: 404, body: { error: 'not found' } }));
+    await expect(new ApiClient('https://h', 'tok').metaWork('nope')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      message: 'not found',
+    });
+  });
+
   // A fetch that never resolves until its signal aborts.
   function installHangingFetch() {
     globalThis.fetch = jest.fn(
