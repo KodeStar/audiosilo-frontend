@@ -117,6 +117,18 @@ export async function loadInitialProgress(
   return { kind: 'failed' }; // never reached the server and no local fallback
 }
 
+/** The durable local mirror for a book, shaped as a `Progress` - for read paths
+ * that could not reach the server (an offline book screen), so a downloaded book
+ * still reports where the listener is instead of looking untouched. Null when
+ * nothing has ever been mirrored for it. */
+export async function mirroredProgress(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<Progress | null> {
+  return mirrorAsProgress(libraryId, path, await readMirror(connectionId, libraryId, path));
+}
+
 function mirrorAsProgress(
   libraryId: number,
   path: string,

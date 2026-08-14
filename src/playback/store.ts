@@ -265,9 +265,15 @@ async function persist(opts?: { forceFinished?: boolean }) {
 function invalidateProgressLists() {
   // The playing book's connection scopes the invalidation (stop() invalidates
   // before it nulls nowPlaying, so the id is still in hand at every call site).
-  const cid = usePlayer.getState().nowPlaying?.connectionId;
-  if (!cid) return;
-  void queryClient.invalidateQueries({ queryKey: qk.allProgress(cid) });
+  const np = usePlayer.getState().nowPlaying;
+  if (!np) return;
+  void queryClient.invalidateQueries({ queryKey: qk.allProgress(np.connectionId) });
+  // ...and this book's own progress entry: a book screen mounted alongside the player
+  // (the wide layout's side panel) reads `useBookProgress` for its position/finished
+  // gating, which would otherwise stay stale for as long as the screen stays mounted.
+  void queryClient.invalidateQueries({
+    queryKey: qk.progress(np.connectionId, np.libraryId, np.path),
+  });
 }
 
 /** Download the book the user just started listening to, if they've opted in. Because the
@@ -791,9 +797,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     clearPlaybackIntent();
     stopSaveLoop();
     void persist({ forceFinished: true });
-    // Refresh the "continue listening" / "finished" lists for this book's connection.
-    // nowPlaying is nulled just below, so invalidate against the captured id directly.
+    // Refresh the "continue listening" / "finished" lists for this book's connection,
+    // plus the book's own progress entry so a book screen mounted beside the player
+    // (wide layout) re-reads its finished state instead of staying stale. nowPlaying is
+    // nulled just below, so invalidate against the captured identity directly.
     void queryClient.invalidateQueries({ queryKey: qk.allProgress(finished.connectionId) });
+    void queryClient.invalidateQueries({
+      queryKey: qk.progress(finished.connectionId, finished.libraryId, finished.path),
+    });
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
     // Tear the engine down first, THEN delete the local copy (if enabled) so the files
     // aren't in use by the player when they're removed. Fully best-effort.

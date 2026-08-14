@@ -2,39 +2,132 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
-import { useBookMeta } from '@/api/hooks';
+import { useMetaWork } from '@/api/hooks';
 import type {
   BookMeta,
   BookMetaCharacter,
   BookMetaPosition,
   BookMetaRecap,
+  BookMetaRecapSummary,
   BookMetaSeries,
   BookMetaSeriesWork,
+  BookMetaWork,
 } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { SectionHeader } from '@/components/ui/section-header';
+import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { openExternalUrl } from '@/lib/support';
 import { colors } from '@/theme/tokens';
+
+import { type ListeningProgress, type Split, splitCharacters, splitRecaps } from './meta-gating';
 
 /** Descriptions past this many characters get a collapse + "show more" toggle.
  * A deterministic length heuristic (rather than an onTextLayout measure pass) so
  * the toggle never flashes and the choice is unit-testable. */
 const LONG_DESCRIPTION_CHARS = 300;
 
+/** The matched half of the meta envelope - what every block below renders from. */
+export type MatchedBookMeta = Extract<BookMeta, { matched: true }>;
+
+/** The usable half of the meta envelope: the matched payload, or undefined when
+ * the capability is off, the response has not arrived, or the service found no
+ * match. One place decides "is there enriched metadata to show", so the screen's
+ * About block and the metadata tabs can never disagree. */
+export function matchedMeta(
+  meta: BookMeta | undefined,
+  enabled: boolean,
+): MatchedBookMeta | undefined {
+  if (!enabled || !meta || !meta.matched) return undefined;
+  return meta;
+}
+
 /** Whether a description is long enough to warrant the collapse toggle. */
 export function descriptionIsLong(text: string | undefined): boolean {
   return (text?.length ?? 0) > LONG_DESCRIPTION_CHARS;
 }
 
-/** The series works to show in a rail: every work except the one being viewed. */
-export function seriesRailWorks(
-  series: BookMetaSeries,
+/** One series rail: the series plus the works to show for it (the current work
+ * removed). */
+export type SeriesRail = { series: BookMetaSeries; works: BookMetaSeriesWork[] };
+
+/** Every series rail worth rendering (empty rails dropped). The screen uses the
+ * count to decide whether the Series tab exists, and passes the rails straight
+ * to `BookMetaSeriesTab` - one computation, no drift. */
+export function seriesRails(
+  series: BookMetaSeries[] | undefined,
+  currentWorkId: string,
+): SeriesRail[] {
+  return (series ?? [])
+    .map((s) => ({ series: s, works: s.works.filter((w) => w.id !== currentWorkId) }))
+    .filter((r) => r.works.length > 0);
+}
+
+/** A series position ("1", "2.5", "1-3.5") as a number, or undefined when it does
+ * not parse. Only the FIRST number counts, so an omnibus spanning "1-3.5" sorts at
+ * its start (1). Unparsable positions are never guessed at - the caller drops them,
+ * because mis-ordering a series is worse than omitting an entry. */
+export function seriesPositionValue(position: string | undefined): number | undefined {
+  const n = parseFloat(position ?? '');
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * The earlier books of every series this work belongs to: the works positioned
+ * BEFORE the current work, deduplicated by work id (two series can list the same
+ * book) and ordered by position DESCENDING - the immediately-preceding book first,
+ * since that is the one you most need catching up on.
+ *
+ * Entries whose position does not parse are excluded, as is a whole series whose
+ * *own* current position does not parse (there is then nothing to compare against).
+ * A duplicate keeps the first series' entry, so ordering is deterministic.
+ */
+export function previousWorks(
+  series: BookMetaSeries[] | undefined,
   currentWorkId: string,
 ): BookMetaSeriesWork[] {
-  return series.works.filter((w) => w.id !== currentWorkId);
+  const found = new Map<string, { work: BookMetaSeriesWork; pos: number }>();
+  for (const s of series ?? []) {
+    const current = seriesPositionValue(s.position);
+    if (current === undefined) continue;
+    for (const w of s.works) {
+      if (w.id === currentWorkId || found.has(w.id)) continue;
+      const pos = seriesPositionValue(w.position);
+      if (pos === undefined || pos >= current) continue;
+      found.set(w.id, { work: w, pos });
+    }
+  }
+  return [...found.values()].sort((a, b) => b.pos - a.pos).map((e) => e.work);
+}
+
+/**
+ * Whether a whole-work summary will actually RENDER anything. The ONE predicate
+ * behind the summary: the book screen decides from it whether a Recaps tab exists
+ * at all, and `RecapSummaryBlock` guards on it - so a tab can never open onto a
+ * panel that withholds everything.
+ *
+ * `in_short` is always safe; the `ending` counts only once `finished` says the
+ * ending is in play (a finished current book, or a previous book whose row the
+ * reader deliberately opened). The wire field is omitted when absent, but a
+ * defensive empty-string check keeps an all-blank payload from drawing an empty
+ * block.
+ */
+export function summaryIsVisible(
+  summary: BookMetaRecapSummary | undefined,
+  finished: boolean,
+): boolean {
+  return !!(summary?.in_short?.trim() || (summary?.ending?.trim() && finished));
+}
+
+/** The furthest book-scope recap of a work - the closest thing its position-keyed
+ * recaps offer to a whole-book summary, used to catch up on an earlier book that
+ * has no `recap_summary`. Series-scope recaps are skipped (they summarise OTHER
+ * books); an absent scope counts as book scope. Undefined when there is none. */
+export function lastBookRecap(recaps: BookMetaRecap[] | undefined): BookMetaRecap | undefined {
+  const book = sortRecaps(recaps ?? []).filter((r) => r.scope !== 'series');
+  return book.length > 0 ? book[book.length - 1] : undefined;
 }
 
 /** The translation key for each recognised role. An unexpected upstream value
@@ -81,42 +174,173 @@ export function sortRecaps(recaps: BookMetaRecap[]): BookMetaRecap[] {
   return [...recaps].sort((a, b) => a.through.chapter - b.through.chapter);
 }
 
-/**
- * Enriched community metadata for a book (description, production details, and a
- * "more in this series" rail), shown beneath the file/chapter list on the book
- * screen. Progressive enhancement: the caller always mounts this and passes
- * `enabled` (server `metadata` capability AND the book has an asin/isbn to match);
- * the hook's `enabled` gate prevents the fetch when off, and the component renders
- * nothing while loading, on error, or when the service returns no match - so the
- * page never regresses when metadata is unavailable.
- */
-export function BookMetaSection({
-  libraryId,
-  path,
-  enabled,
-}: {
-  libraryId: number;
-  path: string;
-  enabled: boolean;
-}) {
-  const { data } = useBookMeta(libraryId, path, enabled);
+/** The tiny uppercase pill this block uses for both its markers: `neutral` for the
+ * spoiler chip, `primary` for a character's role. */
+function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
+  const primary = tone === 'primary';
+  return (
+    <View
+      className={`rounded-full px-2 py-0.5 ${
+        primary ? 'bg-primary/10 dark:bg-primary/15' : 'bg-gray-100 dark:bg-gray-800'
+      }`}
+    >
+      <Text
+        className={`text-[10px] font-roboto-medium uppercase ${
+          primary ? 'text-primary dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'
+        }`}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
 
-  if (!enabled || !data || !data.matched) return null;
-  return <MatchedMeta meta={data} />;
+/** A small "spoiler" chip marking an entry the listener has not reached yet
+ * (only ever rendered once they have chosen to show spoilers anyway). */
+function SpoilerChip() {
+  const { t } = useTranslation();
+  return <Chip label={t('book.meta.spoiler')} tone="neutral" />;
+}
+
+/** The open/closed marker every collapsible thing in this block shares. */
+function DisclosureChevron({ open }: { open: boolean }) {
+  return <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} color={colors.primary} />;
+}
+
+/**
+ * The collapsible row this block is built from: a pressable header ending in the
+ * chevron, revealing `children` once open. It owns the open state unless the caller
+ * lifts it out with `open`/`onToggle` - which `PreviousBookRow` does, because its
+ * lazy fetch is gated on the very same flag.
+ */
+function Disclosure({
+  header,
+  headerClassName,
+  accessibilityLabel,
+  open: controlledOpen,
+  onToggle,
+  className,
+  children,
+}: {
+  /** The header row's content, left of the chevron. */
+  header: React.ReactNode;
+  /** Layout for the header row (padding/gap); `flex-row items-center` is implied. */
+  headerClassName?: string;
+  accessibilityLabel?: string;
+  open?: boolean;
+  onToggle?: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  return (
+    <View className={className}>
+      <AnimatedPressable
+        onPress={onToggle ?? (() => setLocalOpen((v) => !v))}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={accessibilityLabel}
+        className={`flex-row items-center ${headerClassName ?? ''}`}
+      >
+        {header}
+        <DisclosureChevron open={open} />
+      </AnimatedPressable>
+      {open ? children : null}
+    </View>
+  );
+}
+
+/** The quiet link out to a work on AudioSilo Meta. `small` only tightens the
+ * padding - the icon sizes are deliberately identical everywhere it appears. */
+function ViewOnMetaLink({ url, small }: { url: string; small?: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <AnimatedPressable
+      onPress={() => void openExternalUrl(url)}
+      accessibilityRole="link"
+      className={`flex-row items-center gap-2 self-start ${small ? 'py-0.5' : 'py-1'}`}
+    >
+      <Icon name="library" size={14} color={colors.primary} />
+      <Text className="text-sm font-roboto-medium text-primary">{t('book.meta.viewOnMeta')}</Text>
+      <Icon name="chevron-right" size={12} color={colors.primary} />
+    </AnimatedPressable>
+  );
+}
+
+/** The rows a spoiler-gated tab renders: everything the listener has reached, then -
+ * only once they have opted in - the withheld entries, each marked as a spoiler. */
+function spoilerRows<T>({ visible, hidden }: Split<T>, showSpoilers: boolean) {
+  return [
+    ...visible.map((item) => ({ item, spoiler: false })),
+    ...(showSpoilers ? hidden.map((item) => ({ item, spoiler: true })) : []),
+  ];
+}
+
+/** The quiet footer row of a spoiler-gated tab: how many entries are held back,
+ * and the toggle that reveals (or re-hides) them. Renders nothing when nothing
+ * is being held back.
+ *
+ * The "N hidden" caption is dropped once they ARE shown - it would otherwise sit
+ * next to the very entries it claims are hidden. The toggle stays either way (it
+ * is how you re-hide them), and `justify-end` keeps it right-aligned with the
+ * caption gone. */
+function HiddenNotice({
+  count,
+  shown,
+  onToggle,
+}: {
+  count: number;
+  shown: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  if (count === 0) return null;
+  return (
+    <View className="flex-row items-center justify-end gap-3 py-1">
+      {!shown ? (
+        <Text variant="caption" className="flex-1">
+          {t('book.meta.hiddenCount', { count })}
+        </Text>
+      ) : null}
+      <AnimatedPressable
+        onPress={onToggle}
+        hitSlop={8}
+        accessibilityRole="button"
+        className="flex-row items-center gap-1 py-0.5"
+      >
+        <Text className="text-sm font-roboto-medium text-primary">
+          {shown ? t('book.meta.hideSpoilers') : t('book.meta.showAnyway')}
+        </Text>
+        <DisclosureChevron open={shown} />
+      </AnimatedPressable>
+    </View>
+  );
 }
 
 /** One character card: name, optional role badge + aliases, and a "first appears"
  * line always visible; the description is a per-card accordion, closed by default
  * (spoiler-safe) and opened by tapping the card. Cards with no description are
- * static (not tappable). */
-function CharacterCard({ character }: { character: BookMetaCharacter }) {
+ * static (not tappable). `spoiler` marks a card the listener has not reached
+ * (shown only after they opted in). */
+function CharacterCard({
+  character,
+  spoiler,
+}: {
+  character: BookMetaCharacter;
+  spoiler?: boolean;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const fromStart = revealFromStart(character.reveal);
   const roleKey = roleLabelKey(character.role);
   const hasDescription = !!character.description;
   return (
-    <View className="rounded-xl border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03]">
+    <View
+      className={`rounded-xl border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03] ${
+        spoiler ? 'opacity-70' : ''
+      }`}
+    >
       <AnimatedPressable
         onPress={hasDescription ? () => setOpen((v) => !v) : undefined}
         disabled={!hasDescription}
@@ -141,16 +365,9 @@ function CharacterCard({ character }: { character: BookMetaCharacter }) {
             </Text>
           </View>
           <View className="flex-row items-center gap-2">
-            {roleKey ? (
-              <View className="rounded-full bg-primary/10 px-2 py-0.5 dark:bg-primary/15">
-                <Text className="text-[10px] font-roboto-medium uppercase text-primary dark:text-primary-400">
-                  {t(roleKey)}
-                </Text>
-              </View>
-            ) : null}
-            {hasDescription ? (
-              <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} color={colors.primary} />
-            ) : null}
+            {spoiler ? <SpoilerChip /> : null}
+            {roleKey ? <Chip label={t(roleKey)} tone="primary" /> : null}
+            {hasDescription ? <DisclosureChevron open={open} /> : null}
           </View>
         </View>
         {open ? (
@@ -163,28 +380,18 @@ function CharacterCard({ character }: { character: BookMetaCharacter }) {
   );
 }
 
-/** The cast: spoiler-aware character cards, each an independent accordion (the
- * description reveals on tap). Renders nothing when empty. */
-function CharactersBlock({ characters }: { characters: BookMetaCharacter[] }) {
-  const { t } = useTranslation();
-  if (characters.length === 0) return null;
-  return (
-    <View className="gap-2">
-      <SectionHeader title={t('book.meta.characters')} />
-      <View className="gap-2">
-        {characters.map((c) => (
-          <CharacterCard key={c.id} character={c} />
-        ))}
-      </View>
-    </View>
-  );
-}
-
 /** One "story so far" recap: a collapsible row, closed by default (spoiler-safe)
  * until the reader opens it. */
-function RecapRow({ recap, first }: { recap: BookMetaRecap; first: boolean }) {
+function RecapRow({
+  recap,
+  first,
+  spoiler,
+}: {
+  recap: BookMetaRecap;
+  first: boolean;
+  spoiler?: boolean;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const d = recapDescriptor(recap);
   const heading =
     d.kind === 'seriesPrior'
@@ -193,48 +400,229 @@ function RecapRow({ recap, first }: { recap: BookMetaRecap; first: boolean }) {
         ? t('book.meta.recapBeforeBook')
         : t('book.meta.recapUpToChapter', { chapter: d.chapter });
   return (
-    <View className={first ? '' : 'border-t border-black/10 dark:border-white/10'}>
-      <AnimatedPressable
-        onPress={() => setOpen((v) => !v)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        className="flex-row items-center justify-between gap-2 px-3 py-2.5"
-      >
-        <Text variant="subtitle" className="flex-1 font-roboto-medium">
-          {heading}
-        </Text>
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} color={colors.primary} />
-      </AnimatedPressable>
-      {open ? (
-        <Text variant="body" className="px-3 pb-3">
-          {recap.text}
-        </Text>
-      ) : null}
+    <Disclosure
+      className={first ? '' : 'border-t border-black/10 dark:border-white/10'}
+      headerClassName="justify-between gap-2 px-3 py-2.5"
+      header={
+        <>
+          <Text
+            variant="subtitle"
+            className={`flex-1 font-roboto-medium ${spoiler ? 'opacity-70' : ''}`}
+          >
+            {heading}
+          </Text>
+          {spoiler ? <SpoilerChip /> : null}
+        </>
+      }
+    >
+      <Text variant="body" className="px-3 pb-3">
+        {recap.text}
+      </Text>
+    </Disclosure>
+  );
+}
+
+/** The quiet link out to a work on AudioSilo Meta, with an optional caption above
+ * it. Used wherever a previous book has nothing to show (no recap, no cast, or the
+ * fetch failed): the reader still gets somewhere to go. The url comes from the
+ * series RAIL entry - the fetched work payload carries no `web_url`. */
+function PreviousBookNote({ message, url }: { message: string; url: string }) {
+  return (
+    <View className="gap-1">
+      <Text variant="caption">{message}</Text>
+      <ViewOnMetaLink url={url} small />
     </View>
   );
 }
 
-/** "Story so far": position-keyed recaps as an accordion, ordered by position and
- * closed by default so the reader opens only as far as they have listened. */
-function RecapsBlock({ recaps }: { recaps: BookMetaRecap[] }) {
+/** What a previous-book row renders once its work has loaded: the Recaps or the
+ * Characters body, so both tabs share ONE accordion scaffold (row chrome, lazy
+ * fetch, loading + failure states). */
+type PreviousBookBody = React.ComponentType<{ work: BookMetaWork; entry: BookMetaSeriesWork }>;
+
+/** One earlier book: a closed accordion whose work is fetched only when it is
+ * opened (never eagerly - a long series would otherwise fan out a request per
+ * book). Every failure - a 404 from a server without the route, a down meta
+ * service - is a quiet caption plus the link out, never an error banner. */
+function PreviousBookRow({
+  entry,
+  first,
+  body: Body,
+}: {
+  entry: BookMetaSeriesWork;
+  first: boolean;
+  body: PreviousBookBody;
+}) {
   const { t } = useTranslation();
-  if (recaps.length === 0) return null;
-  const ordered = sortRecaps(recaps);
+  // Open state lives here (not inside `Disclosure`) because the lazy fetch is
+  // gated on it: a closed row must never request its work.
+  const [open, setOpen] = useState(false);
+  const { data, isError } = useMetaWork(entry.id, open);
   return (
-    <View className="gap-2">
-      <SectionHeader title={t('book.meta.storySoFar')} />
+    <Disclosure
+      className={first ? '' : 'border-t border-black/10 dark:border-white/10'}
+      headerClassName="gap-3 px-3 py-2.5"
+      accessibilityLabel={entry.title}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+      header={
+        <>
+          <View className="w-10 overflow-hidden rounded border border-black/10 dark:border-white/10">
+            <Cover source={entry.cover_url ?? null} rounded="rounded" />
+          </View>
+          <View className="flex-1">
+            {entry.position ? (
+              <Text variant="caption">
+                {t('book.meta.seriesPosition', { position: entry.position })}
+              </Text>
+            ) : null}
+            <Text variant="subtitle" numberOfLines={2} className="font-roboto-medium">
+              {entry.title}
+            </Text>
+          </View>
+        </>
+      }
+    >
+      <View className="gap-2 px-3 pb-3">
+        {isError ? (
+          <PreviousBookNote message={t('book.meta.couldntLoad')} url={entry.web_url} />
+        ) : data ? (
+          <Body work={data} entry={entry} />
+        ) : (
+          <SkeletonText lines={3} className="py-1" />
+        )}
+      </View>
+    </Disclosure>
+  );
+}
+
+/**
+ * The "Previous books" catch-up block appended to the Recaps and Characters tabs:
+ * one accordion row per earlier book in the series, most recent first. Renders
+ * nothing when there is no earlier book (an unparsable position, book one, a
+ * standalone).
+ */
+function PreviousBooksSection({
+  works,
+  body,
+}: {
+  works: BookMetaSeriesWork[];
+  body: PreviousBookBody;
+}) {
+  const { t } = useTranslation();
+  if (works.length === 0) return null;
+  return (
+    <View className="mt-2 gap-2">
+      <SectionHeader title={t('book.meta.previousBooks')} />
       <View className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
-        {ordered.map((r, i) => (
-          <RecapRow key={`${r.through.chapter}-${i}`} recap={r} first={i === 0} />
+        {works.map((w, i) => (
+          <PreviousBookRow key={w.id} entry={w} first={i === 0} body={body} />
         ))}
       </View>
     </View>
   );
 }
 
-function MatchedMeta({ meta }: { meta: Extract<BookMeta, { matched: true }> }) {
+/** The full ending of a work, behind its own extra tap and a spoiler chip. Used
+ * for a previous book (always - the reader opened that book's row deliberately)
+ * and for the current book ONLY once it is finished. */
+function EndingAccordion({ text }: { text: string }) {
   const { t } = useTranslation();
-  const { work, recording, series, web_url } = meta;
+  return (
+    <Disclosure
+      className="rounded-lg border border-black/10 dark:border-white/10"
+      headerClassName="gap-2 px-3 py-2"
+      header={
+        <>
+          <Text variant="subtitle" className="flex-1 font-roboto-medium">
+            {t('book.meta.howItEnds')}
+          </Text>
+          <SpoilerChip />
+        </>
+      }
+    >
+      <Text variant="body" className="px-3 pb-3">
+        {text}
+      </Text>
+    </Disclosure>
+  );
+}
+
+/** The "In short" whole-book summary paragraph, optionally followed by the
+ * spoiler-gated ending. `showEnding` is the caller's decision (always true for a
+ * previous book; only a FINISHED current book). Null when there is nothing. */
+function RecapSummaryBlock({
+  summary,
+  showEnding,
+}: {
+  summary: BookMetaRecapSummary | undefined;
+  showEnding: boolean;
+}) {
+  const { t } = useTranslation();
+  const inShort = summary?.in_short?.trim();
+  const ending = summary?.ending?.trim();
+  // Same predicate the screen gates the Recaps TAB on, so the two can't disagree.
+  if (!summaryIsVisible(summary, showEnding)) return null;
+  return (
+    <View className="gap-2">
+      {inShort ? (
+        <View className="gap-1">
+          <Text variant="caption" className="uppercase">
+            {t('book.meta.inShort')}
+          </Text>
+          <Text variant="body">{inShort}</Text>
+        </View>
+      ) : null}
+      {ending && showEnding ? <EndingAccordion text={ending} /> : null}
+    </View>
+  );
+}
+
+/** A previous book's recap body: its whole-work summary (ending included - the
+ * reader opened this earlier book's row deliberately), else its furthest
+ * book-scope "story so far", else a quiet note. */
+function PreviousRecapBody({ work, entry }: { work: BookMetaWork; entry: BookMetaSeriesWork }) {
+  const { t } = useTranslation();
+  // `showEnding` (hence the predicate's `finished`) is true throughout: the reader
+  // opened this EARLIER book's row deliberately, so its ending is fair game.
+  if (summaryIsVisible(work.recap_summary, true))
+    return <RecapSummaryBlock summary={work.recap_summary} showEnding />;
+  const fallback = lastBookRecap(work.recaps);
+  if (fallback) return <Text variant="body">{fallback.text}</Text>;
+  return <PreviousBookNote message={t('book.meta.noRecap')} url={entry.web_url} />;
+}
+
+/** A previous book's character body: the same cards as the Characters tab, with
+ * no spoiler gating (same reason). */
+function PreviousCharactersBody({
+  work,
+  entry,
+}: {
+  work: BookMetaWork;
+  entry: BookMetaSeriesWork;
+}) {
+  const { t } = useTranslation();
+  const cast = work.characters ?? [];
+  if (cast.length === 0)
+    return <PreviousBookNote message={t('book.meta.noCharacters')} url={entry.web_url} />;
+  return (
+    <View className="gap-2">
+      {cast.map((c) => (
+        <CharacterCard key={c.id} character={c} />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * The "About" block of the enriched metadata: description (collapsed past a
+ * length threshold), the compact production detail rows, the abridged badge and
+ * the link out to AudioSilo Meta. Lives in the book screen's overview, above the
+ * tabs - it is the one part of the meta that is not spoiler-shaped.
+ */
+export function BookMetaAbout({ meta }: { meta: MatchedBookMeta }) {
+  const { t } = useTranslation();
+  const { work, recording, web_url } = meta;
   const [expanded, setExpanded] = useState(false);
 
   const description = work.description?.trim() ?? '';
@@ -251,15 +639,10 @@ function MatchedMeta({ meta }: { meta: Extract<BookMeta, { matched: true }> }) {
   if (work.first_published)
     details.push({ label: t('book.meta.firstPublished'), value: work.first_published });
 
-  const rails = (series ?? [])
-    .map((s) => ({ series: s, works: seriesRailWorks(s, work.id) }))
-    .filter((r) => r.works.length > 0);
-  const multipleSeries = rails.length > 1;
-
   const hasAbout = description.length > 0 || details.length > 0 || abridged;
 
   return (
-    <View className="gap-6">
+    <View className="gap-3">
       {hasAbout ? (
         <View className="gap-2">
           <SectionHeader title={t('book.meta.about')} />
@@ -278,11 +661,7 @@ function MatchedMeta({ meta }: { meta: Extract<BookMeta, { matched: true }> }) {
                   <Text className="text-sm font-roboto-medium text-primary">
                     {expanded ? t('book.meta.showLess') : t('book.meta.showMore')}
                   </Text>
-                  <Icon
-                    name={expanded ? 'chevron-up' : 'chevron-down'}
-                    size={12}
-                    color={colors.primary}
-                  />
+                  <DisclosureChevron open={expanded} />
                 </AnimatedPressable>
               ) : null}
             </View>
@@ -311,18 +690,121 @@ function MatchedMeta({ meta }: { meta: Extract<BookMeta, { matched: true }> }) {
         </View>
       ) : null}
 
-      <CharactersBlock characters={work.characters ?? []} />
-      <RecapsBlock recaps={work.recaps ?? []} />
+      <ViewOnMetaLink url={web_url} />
+    </View>
+  );
+}
 
+/** The spoiler reveal, held by the SCREEN and shared by both gated tabs, so
+ * revealing in one and switching to the other does not re-hide everything. */
+type SpoilerReveal = {
+  showSpoilers: boolean;
+  onToggleSpoilers: () => void;
+};
+
+/**
+ * The Characters tab: spoiler-gated character cards, each an independent
+ * accordion (the description reveals on tap). Cards for parts of the book the
+ * listener has not reached are withheld behind the shared "show anyway" toggle.
+ *
+ * Takes plain data rather than fetching, so the screen keeps ONE `useBookMeta`;
+ * the "catch up on previous books" block appended below is the sibling that
+ * arrangement was for (its rows fetch their own work, lazily, on open).
+ */
+export function BookMetaCharactersTab({
+  characters,
+  progress,
+  showSpoilers,
+  onToggleSpoilers,
+  previousBooks = [],
+}: SpoilerReveal & {
+  characters: BookMetaCharacter[];
+  progress: ListeningProgress;
+  /** Earlier books of the series, for the catch-up block (see `previousWorks`). */
+  previousBooks?: BookMetaSeriesWork[];
+}) {
+  const split = splitCharacters(characters, progress);
+  const rows = spoilerRows(split, showSpoilers);
+  return (
+    <View className="gap-2">
+      {rows.map(({ item, spoiler }) => (
+        <CharacterCard key={item.id} character={item} spoiler={spoiler} />
+      ))}
+      <HiddenNotice count={split.hidden.length} shown={showSpoilers} onToggle={onToggleSpoilers} />
+      <PreviousBooksSection works={previousBooks} body={PreviousCharactersBody} />
+    </View>
+  );
+}
+
+/**
+ * The Recaps tab: position-keyed "story so far" recaps as an accordion, ordered
+ * by position and closed by default. Recaps covering chapters the listener has
+ * not finished are withheld behind the shared "show anyway" toggle.
+ * Data in, JSX out - see `BookMetaCharactersTab` for why.
+ */
+export function BookMetaRecapsTab({
+  recaps,
+  progress,
+  summary,
+  summaryVisible,
+  showSpoilers,
+  onToggleSpoilers,
+  previousBooks = [],
+}: SpoilerReveal & {
+  recaps: BookMetaRecap[];
+  progress: ListeningProgress;
+  /** This book's own whole-work summary, when the service has one. Its `ending` is
+   * only offered once the listener has FINISHED - mid-book it would spoil the
+   * position-keyed recaps below it, which already cover where they are. */
+  summary?: BookMetaRecapSummary;
+  /** Whether that summary actually renders - the SCREEN's single predicate (it
+   * decides whether this tab exists at all from the same flag), so a tab can never
+   * open onto a panel that withholds everything. */
+  summaryVisible: boolean;
+  /** Earlier books of the series, for the catch-up block (see `previousWorks`). */
+  previousBooks?: BookMetaSeriesWork[];
+}) {
+  const { t } = useTranslation();
+  const split = splitRecaps(sortRecaps(recaps), progress);
+  const rows = spoilerRows(split, showSpoilers);
+  return (
+    <View className="gap-3">
+      {summaryVisible ? (
+        <RecapSummaryBlock summary={summary} showEnding={progress.finished} />
+      ) : null}
+      {rows.length > 0 ? (
+        <View className="gap-2">
+          {summaryVisible ? <SectionHeader title={t('book.meta.storySoFar')} /> : null}
+          <View className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
+            {rows.map(({ item, spoiler }, i) => (
+              <RecapRow
+                key={`${item.through.chapter}-${i}`}
+                recap={item}
+                first={i === 0}
+                spoiler={spoiler}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+      <HiddenNotice count={split.hidden.length} shown={showSpoilers} onToggle={onToggleSpoilers} />
+      <PreviousBooksSection works={previousBooks} body={PreviousRecapBody} />
+    </View>
+  );
+}
+
+/** The Series tab: one horizontal rail per series the work belongs to (covers
+ * open the work on AudioSilo Meta externally). */
+export function BookMetaSeriesTab({ rails }: { rails: SeriesRail[] }) {
+  const { t } = useTranslation();
+  const multipleSeries = rails.length > 1;
+  return (
+    <View className="gap-6">
       {rails.map(({ series: s, works }) => (
         <View key={s.id} className="gap-2">
-          <SectionHeader
-            title={
-              multipleSeries
-                ? t('book.meta.moreInNamedSeries', { series: s.name })
-                : t('book.meta.moreInSeries')
-            }
-          />
+          {multipleSeries ? (
+            <SectionHeader title={t('book.meta.moreInNamedSeries', { series: s.name })} />
+          ) : null}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -352,16 +834,6 @@ function MatchedMeta({ meta }: { meta: Extract<BookMeta, { matched: true }> }) {
           </ScrollView>
         </View>
       ))}
-
-      <AnimatedPressable
-        onPress={() => void openExternalUrl(web_url)}
-        accessibilityRole="link"
-        className="flex-row items-center gap-2 self-start py-1"
-      >
-        <Icon name="library" size={14} color={colors.primary} />
-        <Text className="text-sm font-roboto-medium text-primary">{t('book.meta.viewOnMeta')}</Text>
-        <Icon name="chevron-right" size={12} color={colors.primary} />
-      </AnimatedPressable>
     </View>
   );
 }

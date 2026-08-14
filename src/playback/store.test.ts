@@ -83,6 +83,8 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 
 /* eslint-disable import/first */
+import { qk } from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { useSettings } from '@/stores/settings';
@@ -135,6 +137,18 @@ function makeProgress(p: Partial<Progress> = {}): Progress {
 
 function snap(state: PlaybackState, position: number, extra: Partial<PlaybackSnapshot> = {}) {
   return { state, trackIndex: 0, position, duration: 100, rate: 1, ...extra } as PlaybackSnapshot;
+}
+
+/** The query keys handed to the mocked React Query client since the last clear. */
+function invalidatedKeys(): unknown[] {
+  return (queryClient.invalidateQueries as jest.Mock).mock.calls.map(
+    (c) => (c[0] as { queryKey: unknown }).queryKey,
+  );
+}
+
+/** Flush a few microtask turns so a fire-and-forget `void persist()` chain settles. */
+async function flushMicrotasks(turns = 6) {
+  for (let i = 0; i < turns; i++) await Promise.resolve();
 }
 
 /** Start a book so `nowPlaying` + the engine subscription are wired up. Loaded
@@ -200,6 +214,20 @@ describe('persist (via the engine snapshot transition)', () => {
     await Promise.resolve();
     expect(mockSaveProgress).toHaveBeenCalledTimes(1);
     expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ position: 96, finished: true });
+  });
+
+  it('invalidates the progress lists AND the played book own progress key on halt', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    (queryClient.invalidateQueries as jest.Mock).mockClear();
+
+    pushSnapshot(snap('paused', 40));
+    await flushMicrotasks();
+
+    // The lists refresh AND the book screen's own `useBookProgress` entry, so a book
+    // screen mounted beside the player (wide layout) doesn't go stale.
+    expect(invalidatedKeys()).toContainEqual(qk.allProgress('c1'));
+    expect(invalidatedKeys()).toContainEqual(qk.progress('c1', 2, 'A/Book.m4b'));
   });
 });
 
@@ -854,6 +882,19 @@ describe('finishBook', () => {
     expect(mockSaveProgress).toHaveBeenCalledTimes(1);
     expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ finished: true });
     expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('invalidates the progress lists AND the finished book own progress key', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    await Promise.resolve();
+    (queryClient.invalidateQueries as jest.Mock).mockClear();
+
+    usePlayer.getState().finishBook();
+    await flushMicrotasks();
+
+    expect(invalidatedKeys()).toContainEqual(qk.allProgress('c1'));
+    expect(invalidatedKeys()).toContainEqual(qk.progress('c1', 2, 'A/Book.m4b'));
   });
 
   it('returns null when nothing is playing', () => {

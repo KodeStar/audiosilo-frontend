@@ -243,27 +243,97 @@ returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated
 the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 `settings.apiKeys.*`.
 
-**Enriched book metadata.** The book screen (`src/app/(app)/book/[libraryId].tsx`)
-renders a `BookMetaSection` (`src/components/library/book-meta.tsx`) beneath the
-file/chapter list in both the wide and phone branches: a description (collapsed with
-a show-more toggle when long), production details, a **Characters** section
-(spoiler-aware cards - name/role badge/aliases/"from chapter N" always visible, the
-description a per-card accordion closed by default, no blur), a **Story so far**
-recap accordion (position-keyed, closed by default so the reader opens only as far
-as they've listened; a chapter-0 `series` recap reads "Previously, in earlier
-books"), a horizontal "more in this series"
-rail (remote covers, taps open `entry.web_url` externally), and a "View on AudioSilo
-Meta" link. Characters/recaps are the CC BY-SA layer under `work.characters`/
-`work.recaps` (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`);
-pure label helpers (`roleLabelKey`/`revealDescriptor`/`recapDescriptor`/`sortRecaps`)
-are unit-tested and `book.meta.role.*`/`characters`/`storySoFar`/`recap*` strings live
-in all 6 locales. Progressive enhancement - **capability-gated** on server `metadata`
-(`!!server.capabilities.metadata`, absent on older servers) and rendered as nothing
-while loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
+**The book screen is tabbed.** `src/app/(app)/book/[libraryId].tsx` shows an
+**overview** (breadcrumbs, `BookVersions`, cover hero/stats/listen/`DownloadControl`,
+then the meta **About** block) and puts *everything else* behind a
+`TabBar` (`src/components/ui/tab-bar.tsx` - a thin wrapper naming
+`SegmentedControl`'s `scrollable` + `role="tab"` mode, so the pill row scrolls
+horizontally, carries tablist/tab a11y roles, and can never drift from the
+equal-width, non-scrolling default the rest of the app uses): **Chapters** (label
+switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
+**History** · **Notes** · **Series**. Both layouts share the same tab section; wide
+keeps its right-hand player/cover panel. A long chapter list used to bury the
+sections below it - with tabs each is one tap away, and the active panel renders
+inside the page's existing ScrollView (never a nested vertical scroller). Which tabs
+exist is the pure, tested `bookTabs()` (`src/components/library/book-tabs.ts`):
+chapters when there's a list, the three community-metadata tabs only when that data
+is non-empty (so nothing regresses on an older server or an unmatched book),
+bookmarks/history/notes always (they're user-creatable, so they must be reachable
+from empty - hence the `emptyLabel`; those sections render no heading of their own,
+the tab label is the heading). `tab` is held as an *intent*; render falls back to
+the first existing tab when data changes under it. Labels come from
+`TAB_LABEL_KEY` (same module), which deliberately **reuses** the existing strings
+(`library.{bookmarks,history,notes}.title`, `book.meta.characters`) - only
+`book.tabs.{recaps,series}` are tab-only keys.
+
+**Enriched book metadata.** One `useBookMeta` fetch at the screen level feeds
+`matchedMeta()` and the placeable blocks exported from
+`src/components/library/book-meta.tsx`: `BookMetaAbout` (description with the
+6-line collapse, production details, abridged badge, "View on AudioSilo Meta" link -
+in the overview, above the tabs), `BookMetaRecapsTab`, `BookMetaCharactersTab`,
+`BookMetaSeriesTab`. Those take **plain data, not a query**, so a sibling block can be
+appended without another restructure - which is how the **"catch up on previous books"**
+block lands: `previousWorks(series, currentWorkId)` (pure, tested - earlier positions
+only, deduped, position-DESCENDING, unparsable positions dropped) feeds one shared
+accordion into both the Recaps and Characters tabs, and each row lazily fetches its own
+work with `useMetaWork(workId, open)` (`client.metaWork` → `GET /meta/work?id=`, key
+`qk.metaWork(cid, workId)`, 1h/`retry:false`) - a closed row never fetches, and any
+failure (an older server 404s, since it lacks the route) is a quiet caption + the
+entry's `web_url` link, never an error. Bodies: the work's `recap_summary.in_short`
+(else its furthest book-scope recap via `lastBookRecap`), and its `CharacterCard`s.
+`recap_summary.ending` is a **full spoiler** - always behind its own extra tap
+(`How it ends` + chip), and for the CURRENT book (whose `in_short` heads the Recaps tab)
+only offered once `progress.finished`. ONE exported predicate,
+`summaryIsVisible(summary, finished)` (`in_short`, or an `ending` once the ending is
+in play), is called by the screen (feeding both `bookTabs` and `BookMetaRecapsTab`),
+by `RecapSummaryBlock`'s own null-guard and by the render tests - so a Recaps tab can
+never open onto a panel that withholds everything; `bookTabs` likewise opens the
+Recaps/Characters tabs on `hasPreviousBooks` alone, and counts Chapters as present
+while `useChapters` is still in flight (so the row can't start on Bookmarks - firing
+its GET - and then snap over).
+Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
+(`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
+(`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`) are
+unit-tested. Progressive enhancement - **capability-gated** on server `metadata`
+(`!!server.capabilities.metadata`, absent on older servers) and nothing renders while
+loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 `useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so
-a 502 from a down meta service doesn't spin). Strings under `book.meta.*`. The wire
-envelope (`BookMeta` discriminated union in `types.ts`) is hand-mirrored from the
-server.
+a 502 from a down meta service doesn't spin). Strings under `book.meta.*` (plus the
+two `book.tabs.*` keys) in all 6 locales. The wire envelope (`BookMeta` discriminated
+union in `types.ts`) is hand-mirrored from the server.
+
+**Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
+all pure + tested). The listener's position is a 1-based chapter NUMBER derived
+from **ONE whole-book POSITION** - the player's live position
+(`usePlayer(selectBookPosition)`) when this book is loaded, else `useBookProgress`
+(`qk.progress(cid, lib, path)`) - walked through `chapterNumberAt` against the
+screen's *corrected*, memoized chapter offsets (`chapterStarts`, recomputed from the
+cumulative file durations, not the server's `book_offset`); no position → 0. **Never
+the player's chapter identity**: a chapterless single-file book gets *synthetic*
+30-minute chapters (`synthesizeChapters`) whose indexes are wall-clock slices, so
+reading them as logical chapter numbers revealed the whole cast an hour in. The
+consequence is that a chapterless book gates to 0 whether playing or not (accepted -
+"Show anyway" is the escape hatch). The live position is sampled in coarse buckets
+(`LIVE_POSITION_BUCKET_S`) so the screen re-renders at chapter-ish granularity
+rather than per tick; rounding DOWN can only delay a reveal, never reveal early.
+That progress query rides the SAME gate as the metadata itself
+(the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
+gated). Its `queryFn` falls back to the durable local mirror (`mirroredProgress` in
+`progress-sync.ts`) **only for a non-`ApiError` failure** (offline/unreachable, and
+it `noteError`s reachability like `loadInitialProgress` does) - an `ApiError` means
+the server ANSWERED and is rethrown, because resolving a 401 as a query *success*
+on `qk.progress` would have `provider.tsx`'s `QueryCache.onSuccess` immediately
+`clearNeedsReconnect()` the banner that same request just raised. A character shows when `reveal.chapter <= max(current, 1)` (an
+unstarted book still shows the from-the-start cast); a recap when
+`through.chapter === 0` or `through.chapter < current` (a chapter is only "done"
+once you're past it); `finished` reveals everything. Meta chapter numbers are the
+*work's* logical chapters and needn't match the local edition - the comparison is
+deliberately approximate. Not-yet-reached entries are **not rendered**; each tab
+footers a quiet "N hidden to avoid spoilers" + **Show anyway** toggle that renders
+them marked with a `Spoiler` chip. The reveal is ONE piece of state held by the
+**screen** and passed to both tabs (`showSpoilers`/`onToggleSpoilers`) - revealing in
+Characters and switching to Recaps must not re-hide what the reader just chose to
+see. Descriptions/recap text stay behind their own per-card accordions either way.
 
 **Media auth rides in the URL on every platform** (`src/api/client.ts`
 `mediaTokenQuery`): cover/stream URLs embed `?token=` everywhere (`<img>`/

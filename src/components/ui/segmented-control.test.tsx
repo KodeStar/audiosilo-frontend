@@ -32,4 +32,38 @@ describe('SegmentedControl', () => {
     expect(selected).toBeTruthy();
     expect(active).toBeTruthy();
   });
+
+  it('stretches the pills when grow is set on a non-scrolling track', async () => {
+    await mount(<SegmentedControl options={[...options]} value="all" onChange={jest.fn()} grow />);
+
+    const pill = screen.getAllByRole('button')[0];
+    expect(String(pill.props.className)).toContain('flex-1');
+  });
+
+  it('ignores grow inside a scroller (a flex-1 pill would collapse)', async () => {
+    await mount(
+      <SegmentedControl options={[...options]} value="all" onChange={jest.fn()} grow scrollable />,
+    );
+
+    const pill = screen.getAllByRole('button')[0];
+    expect(String(pill.props.className)).not.toContain('flex-1');
+  });
+
+  it('switches to tablist/tab semantics in tab mode', async () => {
+    await mount(
+      <SegmentedControl
+        options={[...options]}
+        value="books"
+        onChange={jest.fn()}
+        scrollable
+        role="tab"
+      />,
+    );
+
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
+    // The pills are tabs, not buttons (the track itself carries `tablist`, which
+    // RNTL's role query does not surface on a non-accessible container).
+    expect(screen.queryByRole('button')).toBeNull();
+  });
 });

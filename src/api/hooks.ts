@@ -8,9 +8,11 @@ import {
 
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
-import { getDeviceId, saveProgress } from '@/playback/progress-sync';
+import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 
+import { ApiError, type ApiClient } from './client';
 import { useApi, useApis, useCid, useOptionalApi } from './provider';
+import { noteError } from './reachability';
 import type { Book, Favourite, Library, Progress } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. Every key leads with
@@ -24,6 +26,7 @@ export const qk = {
   item: (cid: string, lib: number, path: string) => ['item', cid, lib, path] as const,
   chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path] as const,
   bookMeta: (cid: string, lib: number, path: string) => ['bookMeta', cid, lib, path] as const,
+  metaWork: (cid: string, workId: string) => ['metaWork', cid, workId] as const,
   allProgress: (cid: string) => ['progress', 'all', cid] as const,
   progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path] as const,
   bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
@@ -117,6 +120,86 @@ export function useBookMeta(libraryId: number, path: string, enabled: boolean) {
     staleTime: 60 * 60_000,
     retry: false,
   });
+}
+
+/** One community-metadata work by its meta-site id, for the "catch up on the
+ * previous books" blocks. `enabled` is the caller's "this row is open" flag, so a
+ * closed accordion never fetches. Same policy as `useBookMeta`: long `staleTime`
+ * and no retry - and an older server (which lacks the route entirely) 404s, which
+ * the UI renders as a quiet "couldn't load", never an error banner. */
+export function useMetaWork(workId: string, enabled: boolean) {
+  const api = useOptionalApi();
+  const cid = useCid();
+  return useQuery({
+    queryKey: qk.metaWork(cid, workId),
+    queryFn: ({ signal }) => api!.metaWork(workId, signal),
+    enabled: enabled && !!api && workId.length > 0,
+    staleTime: 60 * 60_000,
+    retry: false,
+  });
+}
+
+/** A book's saved listening position (or null when it has never been played).
+ * The book screen uses it to place the listener in the chapter list - which gates
+ * the spoiler-aware community characters/recaps - without loading the player, and
+ * passes its own `enabled` so the request only happens where that gating exists.
+ * Optional client (like `useBook`/`useChapters`) so a stale connection yields a
+ * disabled query rather than a render throw.
+ *
+ * Offline (or against an unreachable server) it falls back to the durable local
+ * mirror - the same record the resume path trusts - so a downloaded book still
+ * knows where the listener is instead of reading as "never started". An HTTP
+ * error is NOT swallowed: it propagates and the query fails (see
+ * `fetchBookProgress` for why that matters to the reconnect banner). */
+export function useBookProgress(
+  libraryId: number,
+  path: string,
+  enabled: boolean,
+  connectionId?: string,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  return useQuery({
+    queryKey: qk.progress(cid, libraryId, path),
+    queryFn: ({ signal }) => fetchBookProgress(api!, cid, libraryId, path, signal),
+    enabled: enabled && !!api && path.length > 0,
+  });
+}
+
+/**
+ * The `useBookProgress` fetch, extracted so the fallback policy is unit-testable.
+ *
+ * Ask the server; on failure fall back to the durable local mirror **only when the
+ * server never answered**. The distinction is load-bearing:
+ *  - An `ApiError` means the server DID answer with an HTTP error. Rethrow it so the
+ *    query fails. A 401 in particular has already flagged the connection for reconnect
+ *    via the client's `onAuthError`; resolving it as a *success* on `qk.progress(...)`
+ *    would make provider.tsx's `QueryCache.onSuccess` immediately `clearNeedsReconnect`
+ *    and wipe the banner the same request just raised. A 403 (scope/share denial) is
+ *    likewise a real answer, not an excuse to serve stale local state.
+ *  - Anything else (offline, DNS, `TimeoutError`) means we never reached the server:
+ *    note it against this connection's reachability - same as `loadInitialProgress` -
+ *    and serve the mirror so a downloaded book still knows where the listener is.
+ *
+ * A cancelled query stays cancelled (the abort rethrows untouched).
+ */
+export async function fetchBookProgress(
+  api: ApiClient,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  signal: AbortSignal,
+): Promise<Progress | null> {
+  try {
+    return await api.getProgress(libraryId, path, signal);
+  } catch (e) {
+    // A cancelled query must stay cancelled - only a real failure falls back.
+    if (signal.aborted) throw e;
+    // The server answered (any HTTP status) - propagate, never mask it with the mirror.
+    if (e instanceof ApiError) throw e;
+    noteError(connectionId, e);
+    return await mirroredProgress(connectionId, libraryId, path);
+  }
 }
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so

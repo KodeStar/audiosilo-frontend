@@ -1,13 +1,26 @@
-import type { BookMetaRecap, BookMetaSeries } from '@/api/types';
+import type { BookMeta, BookMetaRecap, BookMetaSeries } from '@/api/types';
 
+// book-meta pulls in the shared Skeleton, whose theme-provider side-effect-imports
+// global.css (unparseable in Node); stub the hook so this pure-helper suite loads.
+jest.mock('@/theme/theme-provider', () => ({
+  useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
+}));
+
+/* eslint-disable import/first */
 import {
   descriptionIsLong,
+  lastBookRecap,
+  matchedMeta,
+  previousWorks,
   recapDescriptor,
   revealFromStart,
   roleLabelKey,
-  seriesRailWorks,
+  seriesPositionValue,
+  seriesRails,
   sortRecaps,
+  summaryIsVisible,
 } from './book-meta';
+/* eslint-enable import/first */
 
 function work(id: string, position: string) {
   return { id, title: id, position, authors: [], web_url: `https://m/work?id=${id}` };
@@ -25,20 +38,36 @@ describe('descriptionIsLong', () => {
   });
 });
 
-describe('seriesRailWorks', () => {
-  const series: BookMetaSeries = {
-    id: 's',
+describe('seriesRails', () => {
+  const one: BookMetaSeries = { id: 's1', name: 'One', position: '1', works: [work('a', '1')] };
+  const two: BookMetaSeries = {
+    id: 's2',
+    name: 'Two',
+    position: '2',
+    works: [work('a', '1'), work('b', '2')],
+  };
+  const three: BookMetaSeries = {
+    id: 's3',
     name: 'Wandering Earth',
     position: '2',
     works: [work('a', '1'), work('b', '2'), work('c', '3')],
   };
 
-  it('drops the current work, keeping the rest in order', () => {
-    expect(seriesRailWorks(series, 'b').map((w) => w.id)).toEqual(['a', 'c']);
+  it('drops the current work from a rail, keeping the rest in order', () => {
+    expect(seriesRails([three], 'b')[0].works.map((w) => w.id)).toEqual(['a', 'c']);
   });
 
-  it('returns all works when the current work is not in the rail', () => {
-    expect(seriesRailWorks(series, 'zzz').map((w) => w.id)).toEqual(['a', 'b', 'c']);
+  it('keeps every work when the current work is in no rail', () => {
+    expect(seriesRails([three], 'zzz')[0].works.map((w) => w.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drops rails left empty after removing the current work', () => {
+    expect(seriesRails([one, two], 'a').map((r) => r.series.id)).toEqual(['s2']);
+    expect(seriesRails([one, two], 'a')[0].works.map((w) => w.id)).toEqual(['b']);
+  });
+
+  it('is empty when the book belongs to no series', () => {
+    expect(seriesRails(undefined, 'a')).toEqual([]);
   });
 });
 
@@ -90,5 +119,134 @@ describe('sortRecaps', () => {
     ];
     expect(sortRecaps(input).map((r) => r.through.chapter)).toEqual([0, 4, 9]);
     expect(input.map((r) => r.through.chapter)).toEqual([9, 0, 4]);
+  });
+});
+
+describe('seriesPositionValue', () => {
+  it('reads the leading number, including a decimal position', () => {
+    expect(seriesPositionValue('1')).toBe(1);
+    expect(seriesPositionValue('2.5')).toBe(2.5);
+  });
+
+  it('takes the FIRST number of a span (an omnibus sorts at its start)', () => {
+    expect(seriesPositionValue('1-3.5')).toBe(1);
+  });
+
+  it('is undefined for an unparsable or missing position', () => {
+    expect(seriesPositionValue('')).toBeUndefined();
+    expect(seriesPositionValue('novella')).toBeUndefined();
+    expect(seriesPositionValue(undefined)).toBeUndefined();
+  });
+});
+
+describe('previousWorks', () => {
+  const series = (
+    id: string,
+    position: string,
+    works: BookMetaSeries['works'],
+  ): BookMetaSeries => ({
+    id,
+    name: id,
+    position,
+    works,
+  });
+
+  it('keeps only the works before the current position, most recent first', () => {
+    const s = series('s', '3', [work('a', '1'), work('b', '2'), work('c', '3'), work('d', '4')]);
+    expect(previousWorks([s], 'c').map((w) => w.id)).toEqual(['b', 'a']);
+  });
+
+  it('places a "2.5" novella between books 2 and 3', () => {
+    const s = series('s', '4', [work('a', '2'), work('b', '2.5'), work('c', '3')]);
+    expect(previousWorks([s], 'zzz').map((w) => w.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('deduplicates a work listed by two series', () => {
+    const s1 = series('s1', '2', [work('shared', '1')]);
+    const s2 = series('s2', '5', [work('shared', '4'), work('other', '3')]);
+    expect(previousWorks([s1, s2], 'me').map((w) => w.id)).toEqual(['other', 'shared']);
+  });
+
+  it('excludes entries whose position does not parse', () => {
+    const s = series('s', '3', [work('a', '1'), work('bonus', 'novella')]);
+    expect(previousWorks([s], 'zzz').map((w) => w.id)).toEqual(['a']);
+  });
+
+  it('excludes a whole series whose own position does not parse', () => {
+    const s = series('s', 'anthology', [work('a', '1')]);
+    expect(previousWorks([s], 'zzz')).toEqual([]);
+  });
+
+  it('is empty for no series, book one, or when only the current work matches', () => {
+    expect(previousWorks(undefined, 'a')).toEqual([]);
+    expect(previousWorks([series('s', '1', [work('a', '1'), work('b', '2')])], 'a')).toEqual([]);
+    expect(previousWorks([series('s', '2', [work('a', '2')])], 'a')).toEqual([]);
+  });
+});
+
+describe('matchedMeta', () => {
+  const matched: BookMeta = {
+    matched: true,
+    work: { id: 'w', title: 'W', authors: [], language: 'en' },
+    web_url: 'https://m/work?id=w',
+  };
+
+  it('is the payload only when the capability is on AND the book matched', () => {
+    expect(matchedMeta(matched, true)).toBe(matched);
+  });
+
+  it('is undefined when the server capability is off', () => {
+    // Progressive enhancement: an older server never advertises `metadata`, so even a
+    // cached payload must not render.
+    expect(matchedMeta(matched, false)).toBeUndefined();
+  });
+
+  it('is undefined while the response has not arrived', () => {
+    expect(matchedMeta(undefined, true)).toBeUndefined();
+  });
+
+  it('is undefined when the service found no match', () => {
+    expect(matchedMeta({ matched: false }, true)).toBeUndefined();
+  });
+});
+
+describe('summaryIsVisible', () => {
+  it('is true for an in_short, finished or not', () => {
+    expect(summaryIsVisible({ in_short: 'A summary.' }, false)).toBe(true);
+    expect(summaryIsVisible({ in_short: 'A summary.' }, true)).toBe(true);
+  });
+
+  it('withholds an ending-only summary until the book is finished', () => {
+    expect(summaryIsVisible({ ending: 'They win.' }, false)).toBe(false);
+    expect(summaryIsVisible({ ending: 'They win.' }, true)).toBe(true);
+  });
+
+  it('is false when absent or blank', () => {
+    expect(summaryIsVisible(undefined, true)).toBe(false);
+    expect(summaryIsVisible({}, true)).toBe(false);
+    expect(summaryIsVisible({ in_short: '  ', ending: '' }, true)).toBe(false);
+    expect(summaryIsVisible({ in_short: '  ', ending: '   ' }, true)).toBe(false);
+  });
+});
+
+describe('lastBookRecap', () => {
+  const r = (chapter: number, scope?: 'book' | 'series'): BookMetaRecap => ({
+    through: { chapter },
+    ...(scope ? { scope } : {}),
+    text: `through ${chapter}`,
+  });
+
+  it('is the furthest book-scope recap, whatever the input order', () => {
+    expect(lastBookRecap([r(9), r(3), r(6)])?.through.chapter).toBe(9);
+  });
+
+  it('ignores series-scope recaps (they summarise other books)', () => {
+    expect(lastBookRecap([r(2, 'book'), r(12, 'series')])?.through.chapter).toBe(2);
+  });
+
+  it('is undefined with no recaps or only series-scope ones', () => {
+    expect(lastBookRecap(undefined)).toBeUndefined();
+    expect(lastBookRecap([])).toBeUndefined();
+    expect(lastBookRecap([r(0, 'series')])).toBeUndefined();
   });
 });

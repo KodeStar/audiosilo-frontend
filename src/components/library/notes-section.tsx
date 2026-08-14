@@ -7,7 +7,6 @@ import { useAddNote, useDeleteNote, useNotes } from '@/api/hooks';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { useTheme } from '@/theme/theme-provider';
@@ -36,16 +35,12 @@ export function NotesSection({
   libraryId,
   path,
   connectionId,
-  hideHeader,
 }: {
   libraryId: number;
   path: string;
   /** Source connection; defaults to the active one. The player passes the playing
    * book's connection so notes address the right server. */
   connectionId?: string;
-  /** Suppress the internal heading when the caller supplies one (the player sheet's
-   * own title bar), so the sheet doesn't show two stacked headings. */
-  hideHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const { data: notes } = useNotes(libraryId, path, connectionId);
@@ -61,7 +56,6 @@ export function NotesSection({
 
   return (
     <View className="gap-2">
-      {hideHeader ? null : <SectionHeader title={t('library.notes.title')} />}
       <View className={`gap-2 ${CARD}`}>
         <TextField
           placeholder={t('library.notes.placeholder')}

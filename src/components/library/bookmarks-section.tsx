@@ -8,7 +8,6 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
-import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
 import { colors, tabularNums } from '@/theme/tokens';
@@ -30,7 +29,6 @@ export function BookmarksSection({
   onAdd,
   adding,
   addLabel,
-  hideHeader,
 }: {
   libraryId: number;
   path: string;
@@ -41,9 +39,6 @@ export function BookmarksSection({
   onAdd?: () => void;
   adding?: boolean;
   addLabel?: string;
-  /** Suppress the internal heading when the caller already provides one (the player
-   * sheet's own title bar), so the sheet doesn't show two stacked headings. */
-  hideHeader?: boolean;
 }) {
   const { t } = useTranslation();
   const { data: bookmarks } = useBookmarks(libraryId, path, connectionId);
@@ -64,7 +59,6 @@ export function BookmarksSection({
 
   return (
     <View className="gap-2">
-      {hideHeader ? null : <SectionHeader title={t('library.bookmarks.title')} />}
       {onAdd ? (
         <Button
           title={addLabel ?? t('library.bookmarks.add')}
