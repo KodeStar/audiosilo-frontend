@@ -17,6 +17,11 @@ export type Capabilities = {
    * (`/libraries/{id}/meta`). Absent on older servers - treat missing as false and
    * skip the enriched-metadata section entirely (progressive enhancement). */
   metadata?: boolean;
+  /** Whether the server can export a library's book list for meta.audiosilo.app
+   * (`/admin/libraries/{id}/export`, admin console only). Absent on older servers -
+   * treat missing as false. The player does not consume it; the type mirrors the
+   * wire so the contract stays complete. */
+  export?: boolean;
 };
 
 export type ServerInfo = {
