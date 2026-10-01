@@ -84,37 +84,15 @@ type SettingsState = PlaybackSettings & {
  * setting changed before hydration finished wins over its stored value, and never
  * clobbers the settings it did not touch. Hydrated once at boot from `_layout.tsx`. */
 export const useSettings = create<SettingsState>()((set, get) => {
-  // Every setter goes through here: set the one value, then persist the WHOLE document.
+  // Every setter goes through here: set the one value, then persist the WHOLE document -
+  // exactly the persisted keys (DEFAULTS' own), never the store's functions.
   const update = (change: Partial<PlaybackSettings>) => {
     set(change);
-    const {
-      skipForward,
-      skipBackward,
-      defaultRate,
-      autoRewindMax,
-      virtualChapterInterval,
-      autoPlayNext,
-      autoDownloadNext,
-      autoDeleteFinished,
-      autoSleepTimer,
-      autoSleepFrom,
-      autoSleepUntil,
-      autoSleepType,
-    } = get();
-    stored.write(change, {
-      skipForward,
-      skipBackward,
-      defaultRate,
-      autoRewindMax,
-      virtualChapterInterval,
-      autoPlayNext,
-      autoDownloadNext,
-      autoDeleteFinished,
-      autoSleepTimer,
-      autoSleepFrom,
-      autoSleepUntil,
-      autoSleepType,
-    });
+    const state = get();
+    const doc = Object.fromEntries(
+      (Object.keys(DEFAULTS) as (keyof PlaybackSettings)[]).map((k) => [k, state[k]]),
+    ) as PlaybackSettings;
+    stored.write(change, doc);
   };
   return {
     ...DEFAULTS,

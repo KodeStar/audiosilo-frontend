@@ -27,14 +27,17 @@ export type SegmentedControlProps<T extends string> = {
 };
 
 /** What each `role` means to assistive tech: the track's group role and the state key
- * that marks the chosen pill. Data rather than branches, so a new mode is one row. */
+ * that marks the chosen pill. Data rather than branches, so a new mode is one row. The
+ * state rides on `aria-*` props, NOT `accessibilityState`: react-native maps both on
+ * native, but react-native-web (0.21) reads only the `aria-*` form, so
+ * `accessibilityState` left every pill unchecked/unselected to a web screen reader. */
 const ROLE_SEMANTICS = {
-  button: { group: undefined, stateKey: 'selected' },
-  tab: { group: 'tablist', stateKey: 'selected' },
-  radio: { group: 'radiogroup', stateKey: 'checked' },
+  button: { group: undefined, stateKey: 'aria-selected' },
+  tab: { group: 'tablist', stateKey: 'aria-selected' },
+  radio: { group: 'radiogroup', stateKey: 'aria-checked' },
 } as const satisfies Record<
   NonNullable<SegmentedControlProps<string>['role']>,
-  { group: AccessibilityRole | undefined; stateKey: 'selected' | 'checked' }
+  { group: AccessibilityRole | undefined; stateKey: 'aria-selected' | 'aria-checked' }
 >;
 
 /**
@@ -61,7 +64,7 @@ export function SegmentedControl<T extends string>({
         key={opt.value}
         onPress={() => onChange(opt.value)}
         accessibilityRole={role}
-        accessibilityState={{ [stateKey]: active }}
+        {...{ [stateKey]: active }}
         className={`flex-row items-center justify-center rounded-md px-3 py-1.5 active:opacity-80 ${
           grow && !scrollable ? 'flex-1' : ''
         } ${active ? 'bg-primary' : ''}`}
