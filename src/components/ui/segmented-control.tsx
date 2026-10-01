@@ -15,10 +15,14 @@ export type SegmentedControlProps<T extends string> = {
    * `grow`: inside a horizontal scroller there is no row width to divide, so `grow`
    * is ignored. */
   scrollable?: boolean;
-  /** Semantics: a plain group of buttons (default), or a tab bar - which marks the
-   * track as a `tablist` and each pill as a `tab`. Purely an a11y distinction; the
-   * visual language is identical on purpose, so the two read as one family. */
-  role?: 'button' | 'tab';
+  /** Semantics: a plain group of buttons (default), a tab bar - which marks the
+   * track as a `tablist` and each pill as a `tab` - or a single choice that switches
+   * a view in place, marking the track a `radiogroup` and each pill a `radio` whose
+   * `checked` state says which is chosen. Purely an a11y distinction; the visual
+   * language is identical on purpose, so they all read as one family. */
+  role?: 'button' | 'tab' | 'radio';
+  /** The group's accessible name (what is being chosen, e.g. "Reading order"). */
+  accessibilityLabel?: string;
   className?: string;
 };
 
@@ -35,6 +39,7 @@ export function SegmentedControl<T extends string>({
   grow,
   scrollable,
   role = 'button',
+  accessibilityLabel,
   className,
 }: SegmentedControlProps<T>) {
   const pills = options.map((opt) => {
@@ -44,7 +49,7 @@ export function SegmentedControl<T extends string>({
         key={opt.value}
         onPress={() => onChange(opt.value)}
         accessibilityRole={role}
-        accessibilityState={{ selected: active }}
+        accessibilityState={role === 'radio' ? { checked: active } : { selected: active }}
         className={`flex-row items-center justify-center rounded-md px-3 py-1.5 active:opacity-80 ${
           grow && !scrollable ? 'flex-1' : ''
         } ${active ? 'bg-primary' : ''}`}
@@ -61,11 +66,12 @@ export function SegmentedControl<T extends string>({
   });
 
   const track = `rounded-lg bg-gray-100 p-1 dark:bg-gray-840 ${className ?? ''}`;
-  const tablist = role === 'tab' ? ('tablist' as const) : undefined;
+  const group =
+    role === 'tab' ? ('tablist' as const) : role === 'radio' ? ('radiogroup' as const) : undefined;
 
   if (scrollable) {
     return (
-      <View accessibilityRole={tablist} className={track}>
+      <View accessibilityRole={group} accessibilityLabel={accessibilityLabel} className={track}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -77,7 +83,11 @@ export function SegmentedControl<T extends string>({
     );
   }
   return (
-    <View accessibilityRole={tablist} className={`flex-row ${track}`}>
+    <View
+      accessibilityRole={group}
+      accessibilityLabel={accessibilityLabel}
+      className={`flex-row ${track}`}
+    >
       {pills}
     </View>
   );

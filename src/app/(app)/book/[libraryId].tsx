@@ -51,6 +51,7 @@ import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { useSeriesOrderings } from '@/stores/series-orderings';
 import { colors, tabularNums } from '@/theme/tokens';
 
 // The cover art rounded corner + hairline border + soft shadow, applied wherever
@@ -153,6 +154,11 @@ function BookDetailContent() {
   // The spoiler reveal is held HERE, not per tab: revealing in Characters and
   // switching to Recaps must not re-hide everything the reader just chose to see.
   const [showSpoilers, setShowSpoilers] = useState(false);
+  // The reader's reading order per series family (Publication / Chronological / ...),
+  // remembered on the device. It drives BOTH the Series rail and "previous books", so
+  // catching up never draws on an order the reader is not following.
+  const orderingPicks = useSeriesOrderings((s) => s.picks);
+  const pickOrdering = useSeriesOrderings((s) => s.pick);
 
   // Chapters/files and their whole-book offsets. Computed ABOVE the early returns
   // (they derive from `chapterData` alone, and cost nothing while it is undefined)
@@ -345,11 +351,15 @@ function BookDetailContent() {
   const metaMatched = matchedMeta(meta, bookMetaEnabled);
   const metaCharacters = metaMatched?.work.characters ?? [];
   const metaRecaps = metaMatched?.work.recaps ?? [];
-  const rails = metaMatched ? seriesRails(metaMatched.series, metaMatched.work.id) : [];
+  const rails = metaMatched
+    ? seriesRails(metaMatched.series, metaMatched.work.id, orderingPicks)
+    : [];
   // The earlier books of the series, for the "catch up on previous books" block
   // appended to the Recaps and Characters tabs (each row fetches its own work
-  // lazily, on open).
-  const previousBooks = metaMatched ? previousWorks(metaMatched.series, metaMatched.work.id) : [];
+  // lazily, on open). Each family contributes from the order the reader picked only.
+  const previousBooks = metaMatched
+    ? previousWorks(metaMatched.series, metaMatched.work.id, orderingPicks)
+    : [];
   const metaSummary = metaMatched?.work.recap_summary;
 
   // Spoiler gating: ONE whole-book position - the player's live one when this book is
@@ -432,7 +442,7 @@ function BookDetailContent() {
       case 'notes':
         return <NotesSection libraryId={libraryId} path={path} />;
       case 'series':
-        return <BookMetaSeriesTab rails={rails} />;
+        return <BookMetaSeriesTab rails={rails} onSelectView={pickOrdering} />;
     }
   };
 

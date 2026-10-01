@@ -273,8 +273,9 @@ the first existing tab when data changes under it. Labels come from
 in the overview, above the tabs), `BookMetaRecapsTab`, `BookMetaCharactersTab`,
 `BookMetaSeriesTab`. Those take **plain data, not a query**, so a sibling block can be
 appended without another restructure - which is how the **"catch up on previous books"**
-block lands: `previousWorks(series, currentWorkId)` (pure, tested - earlier positions
-only, deduped, position-DESCENDING, unparsable positions dropped) feeds one shared
+block lands: `previousWorks(series, currentWorkId, picks)` (pure, tested - earlier positions
+only, from each family's SELECTED reading order, deduped, position-DESCENDING, unparsable
+positions dropped) feeds one shared
 accordion into both the Recaps and Characters tabs, and each row lazily fetches its own
 work with `useMetaWork(workId, open)` (`client.metaWork` → `GET /meta/work?id=`, key
 `qk.metaWork(cid, workId)`, 1h/`retry:false`) - a closed row never fetches, and any
@@ -291,10 +292,38 @@ never open onto a panel that withholds everything; `bookTabs` likewise opens the
 Recaps/Characters tabs on `hasPreviousBooks` alone, and counts Chapters as present
 while `useChapters` is still in flight (so the row can't start on Bookmarks - firing
 its GET - and then snap over).
+**Reading-order families** (`src/lib/series-orderings.ts`, pure + tested). A series can
+come in several reading orders - a primary (usually publication) plus variants whose
+`ordering_of` names it (chronological, the author's recommended) - and the server
+collapses each such FAMILY into ONE rail: `BookMetaSeries`'s top-level `works`/`position`
+are the MAIN view (the primary, or the variant for a book only a variant places), and
+the family's other orders ride along as additive `orderings[]` (`BookMetaSeriesOrdering`,
+`position` empty when the book is not in that order), with `ordering`/`ordering_of` on
+the main view. Family key = `ordering_of || id`, so an older server (no ordering fields)
+makes every series its own one-view family - today's behaviour. `seriesViews` lists a
+family primary-first then variants by id (metaserve's order, so the toggle reads the same
+on a variant-only book), `selectedView` resolves the reader's pick (an unknown/stale pick
+falls back to the main view), `orderingLabelKey` labels a segment
+(`book.meta.ordering.{publication,chronological,recommended}`, else the series name). The
+pick is remembered PER FAMILY on the device by `src/stores/series-orderings.ts` (zustand
+over `@/lib/storage`, key `audiosilo.seriesOrderings`, hydrated in `_layout.tsx` beside
+settings, NOT a scoped key so neither reset axis wipes it; a pick made before hydration is
+held back from storage and merged over the stored map, so it cannot clobber other
+families). The screen reads the picks once and passes them to BOTH `seriesRails` and
+`previousWorks`, so the rail and "previous books" always follow the same order: each
+family contributes earlier books from its SELECTED order only, an order the book is not
+part of contributes nothing (the Narnia spoiler - The Magician's Nephew offered as a
+"previous book" of The Lion, the Witch and the Wardrobe through the chronological variant -
+is pinned as a regression test), and different families still union. `BookMetaSeriesTab`
+shows a `SegmentedControl` in its `role="radio"` mode (`radiogroup` labelled "Reading
+order", `radio` pills with `checked`) when a family has alternates, reports the pick via
+`onSelectView(family, viewId)`, and captions "This book isn't part of this reading order"
+when the selected view lacks the book. A rail is dropped only when EVERY order is empty
+once the current work is removed.
 Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
 (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
-(`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`) are
-unit-tested. Progressive enhancement - **capability-gated** on server `metadata`
+(`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`/
+`previousWorks`) are unit-tested. Progressive enhancement - **capability-gated** on server `metadata`
 (`!!server.capabilities.metadata`, absent on older servers) and nothing renders while
 loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 `useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so
@@ -509,7 +538,7 @@ src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
 src/components/      ui/ (primitives + Icon), layout/ (shell/header/nav), player/, library/
-src/stores/         Zustand: session, search, settings
+src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens + ThemeProvider
 src/lib/            storage, secure-store, device, paths, format, register-sw

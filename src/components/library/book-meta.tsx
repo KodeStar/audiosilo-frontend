@@ -17,8 +17,19 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { SectionHeader } from '@/components/ui/section-header';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import {
+  familyKey,
+  familyName,
+  type OrderingPicks,
+  orderingLabelKey,
+  selectedView,
+  seriesViews,
+  type SeriesView,
+  viewHoldsWork,
+} from '@/lib/series-orderings';
 import { openExternalUrl } from '@/lib/support';
 import { colors } from '@/theme/tokens';
 
@@ -49,20 +60,48 @@ export function descriptionIsLong(text: string | undefined): boolean {
   return (text?.length ?? 0) > LONG_DESCRIPTION_CHARS;
 }
 
-/** One series rail: the series plus the works to show for it (the current work
- * removed). */
-export type SeriesRail = { series: BookMetaSeries; works: BookMetaSeriesWork[] };
+/** One series rail: one ordering FAMILY (see `@/lib/series-orderings`) - its main
+ * series, every reading order it comes in, the order currently shown, and that
+ * order's works with the current work removed. */
+export type SeriesRail = {
+  series: BookMetaSeries;
+  /** The family key the reader's pick is remembered under. */
+  family: string;
+  /** Every reading order of the family, in family order (one when it has none). */
+  views: SeriesView[];
+  /** The order shown: the remembered pick, else the main view. */
+  view: SeriesView;
+  /** The shown order's works, minus the current work. */
+  works: BookMetaSeriesWork[];
+  /** Whether the current work is part of the shown order (else the rail says so). */
+  holdsWork: boolean;
+};
 
-/** Every series rail worth rendering (empty rails dropped). The screen uses the
- * count to decide whether the Series tab exists, and passes the rails straight
- * to `BookMetaSeriesTab` - one computation, no drift. */
+/** Every series rail worth rendering - one per family, showing the order `picks`
+ * selects. A rail is dropped only when EVERY one of its orders is empty once the
+ * current work is removed, so switching order can never make the tab vanish. The
+ * screen uses the count to decide whether the Series tab exists, and passes the
+ * rails straight to `BookMetaSeriesTab` - one computation, no drift. */
 export function seriesRails(
   series: BookMetaSeries[] | undefined,
   currentWorkId: string,
+  picks: OrderingPicks = {},
 ): SeriesRail[] {
+  const others = (works: BookMetaSeriesWork[]) => works.filter((w) => w.id !== currentWorkId);
   return (series ?? [])
-    .map((s) => ({ series: s, works: s.works.filter((w) => w.id !== currentWorkId) }))
-    .filter((r) => r.works.length > 0);
+    .map((s) => {
+      const views = seriesViews(s);
+      const view = selectedView(s, picks);
+      return {
+        series: s,
+        family: familyKey(s),
+        views,
+        view,
+        works: others(view.works),
+        holdsWork: viewHoldsWork(view, currentWorkId),
+      };
+    })
+    .filter((r) => r.views.some((v) => others(v.works).length > 0));
 }
 
 /** A series position ("1", "2.5", "1-3.5") as a number, or undefined when it does
@@ -80,6 +119,13 @@ export function seriesPositionValue(position: string | undefined): number | unde
  * book) and ordered by position DESCENDING - the immediately-preceding book first,
  * since that is the one you most need catching up on.
  *
+ * Each rail contributes from the ONE reading order the reader has selected for its
+ * family (`picks`, else the main view) - never the union of a family's orders: in
+ * publication order The Lion, the Witch and the Wardrobe is book 1, and offering The
+ * Magician's Nephew as a "previous book" through the chronological order would spoil
+ * a reader going in publication order. An order the current work is not part of
+ * contributes nothing (there is no "before" in it). Different families still union.
+ *
  * Entries whose position does not parse are excluded, as is a whole series whose
  * *own* current position does not parse (there is then nothing to compare against).
  * A duplicate keeps the first series' entry, so ordering is deterministic.
@@ -87,12 +133,14 @@ export function seriesPositionValue(position: string | undefined): number | unde
 export function previousWorks(
   series: BookMetaSeries[] | undefined,
   currentWorkId: string,
+  picks: OrderingPicks = {},
 ): BookMetaSeriesWork[] {
   const found = new Map<string, { work: BookMetaSeriesWork; pos: number }>();
   for (const s of series ?? []) {
-    const current = seriesPositionValue(s.position);
+    const view = selectedView(s, picks);
+    const current = seriesPositionValue(view.position);
     if (current === undefined) continue;
-    for (const w of s.works) {
+    for (const w of view.works) {
       if (w.id === currentWorkId || found.has(w.id)) continue;
       const pos = seriesPositionValue(w.position);
       if (pos === undefined || pos >= current) continue;
@@ -793,24 +841,66 @@ export function BookMetaRecapsTab({
   );
 }
 
-/** The Series tab: one horizontal rail per series the work belongs to (covers
- * open the work on AudioSilo Meta externally). */
-export function BookMetaSeriesTab({ rails }: { rails: SeriesRail[] }) {
+/** The toggle between a family's reading orders. Each segment is labelled with its
+ * order (Publication / Chronological / Recommended), else the series' own name. */
+function ReadingOrderToggle({
+  rail,
+  onSelectView,
+}: {
+  rail: SeriesRail;
+  onSelectView?: (family: string, viewId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const options = rail.views.map((v) => {
+    const key = orderingLabelKey(v.ordering);
+    return { value: v.id, label: key ? t(key) : v.name };
+  });
+  return (
+    <SegmentedControl
+      options={options}
+      value={rail.view.id}
+      onChange={(id) => onSelectView?.(rail.family, id)}
+      role="radio"
+      accessibilityLabel={t('book.meta.readingOrder')}
+      scrollable
+      className="max-w-full self-start"
+    />
+  );
+}
+
+/** The Series tab: one horizontal rail per series family the work belongs to
+ * (covers open the work on AudioSilo Meta externally). A family with several
+ * reading orders gets a toggle; the pick is the SCREEN's (remembered per family on
+ * the device), reported through `onSelectView`, so the rail and "previous books"
+ * always follow the same order. */
+export function BookMetaSeriesTab({
+  rails,
+  onSelectView,
+}: {
+  rails: SeriesRail[];
+  onSelectView?: (family: string, viewId: string) => void;
+}) {
   const { t } = useTranslation();
   const multipleSeries = rails.length > 1;
   return (
     <View className="gap-6">
-      {rails.map(({ series: s, works }) => (
-        <View key={s.id} className="gap-2">
+      {rails.map((rail) => (
+        <View key={`${rail.family}:${rail.series.id}`} className="gap-2">
           {multipleSeries ? (
-            <SectionHeader title={t('book.meta.moreInNamedSeries', { series: s.name })} />
+            <SectionHeader
+              title={t('book.meta.moreInNamedSeries', { series: familyName(rail.series) })}
+            />
           ) : null}
+          {rail.views.length > 1 ? (
+            <ReadingOrderToggle rail={rail} onSelectView={onSelectView} />
+          ) : null}
+          {rail.holdsWork ? null : <Text variant="caption">{t('book.meta.notInOrder')}</Text>}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerClassName="gap-3 pb-1"
           >
-            {works.map((w) => (
+            {rail.works.map((w) => (
               <AnimatedPressable
                 key={w.id}
                 onPress={() => void openExternalUrl(w.web_url)}

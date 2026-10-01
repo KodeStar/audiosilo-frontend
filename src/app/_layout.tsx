@@ -18,6 +18,7 @@ import '@/lib/register-sw';
 // (which nests illegally and hits an older-Safari flex bug). All top-level imports
 // evaluate before the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
+import { useSeriesOrderings } from '@/stores/series-orderings';
 import { resetStaleStorage, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { ThemeProvider, useTheme } from '@/theme/theme-provider';
@@ -56,6 +57,7 @@ export default function RootLayout() {
   const hydrate = useSession((s) => s.hydrate);
   const hydrateSettings = useSettings((s) => s.hydrate);
   const hydrateDownloads = useDownloads((s) => s.hydrate);
+  const hydrateSeriesOrderings = useSeriesOrderings((s) => s.hydrate);
   useEffect(() => {
     void (async () => {
       // Reconcile storage left incompatible by a version bump BEFORE the stores read it,
@@ -85,8 +87,9 @@ export default function RootLayout() {
       void hydrate();
       void hydrateSettings();
       void hydrateDownloads();
+      void hydrateSeriesOrderings();
     })();
-  }, [hydrate, hydrateSettings, hydrateDownloads]);
+  }, [hydrate, hydrateSettings, hydrateDownloads, hydrateSeriesOrderings]);
 
   // The nightly auto sleep timer. Framework-free (subscriptions, no rendering), so it is
   // started here rather than mounted as a component that renders null - this is simply
