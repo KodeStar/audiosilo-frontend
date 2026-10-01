@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type {
   BookMetaCharacter,
   BookMetaRecap,
+  BookMetaSeries,
   BookMetaSeriesWork,
   BookMetaWork,
 } from '@/api/types';
@@ -28,6 +29,7 @@ import {
   BookMetaRecapsTab,
   BookMetaSeriesTab,
   type MatchedBookMeta,
+  seriesRails,
   summaryIsVisible,
 } from './book-meta';
 /* eslint-enable import/first */
@@ -194,26 +196,122 @@ describe('BookMetaSeriesTab', () => {
   it('renders each rail work with its position', async () => {
     await mount(
       <BookMetaSeriesTab
-        rails={[
-          {
-            series: { id: 's', name: 'Middle-earth', position: '1', works: [] },
-            works: [
-              {
-                id: 'lotr',
-                title: 'The Fellowship of the Ring',
-                position: '2',
-                authors: [],
-                web_url: 'https://m/work?id=lotr',
-              },
-            ],
-          },
-        ]}
+        rails={seriesRails(
+          [
+            {
+              id: 's',
+              name: 'Middle-earth',
+              position: '1',
+              works: [
+                {
+                  id: 'lotr',
+                  title: 'The Fellowship of the Ring',
+                  position: '2',
+                  authors: [],
+                  web_url: 'https://m/work?id=lotr',
+                },
+              ],
+            },
+          ],
+          'the-hobbit',
+        )}
       />,
     );
     // The title appears twice (the cover's own placeholder label + the caption),
     // so identify the rail entry by its link label.
     expect(screen.getByLabelText('The Fellowship of the Ring')).toBeTruthy();
     expect(screen.getByText('Book 2')).toBeTruthy();
+    // A series with one order has no toggle.
+    expect(screen.queryByRole('radio')).toBeNull();
+  });
+});
+
+describe('BookMetaSeriesTab reading-order toggle', () => {
+  const entry = (id: string, title: string, position: string): BookMetaSeriesWork => ({
+    id,
+    title,
+    position,
+    authors: [],
+    web_url: `https://m/work?id=${id}`,
+  });
+  const narnia: BookMetaSeries = {
+    id: 'narnia',
+    name: 'The Chronicles of Narnia',
+    position: '1',
+    ordering: 'publication',
+    works: [entry('lion', 'The Lion', '1'), entry('caspian', 'Prince Caspian', '2')],
+    orderings: [
+      {
+        id: 'narnia-chronological',
+        name: 'The Chronicles of Narnia (Chronological)',
+        ordering: 'chronological',
+        ordering_of: 'narnia',
+        position: '2',
+        works: [entry('nephew', "The Magician's Nephew", '1'), entry('lion', 'The Lion', '2')],
+      },
+    ],
+  };
+
+  // Stands in for the screen: the pick lives above the tab and drives its rails,
+  // exactly as the book screen's remembered per-family picks do.
+  function Harness({ series, onPick }: { series: BookMetaSeries; onPick?: jest.Mock }) {
+    const [picks, setPicks] = useState<Record<string, string>>({});
+    return (
+      <BookMetaSeriesTab
+        rails={seriesRails([series], 'lion', picks)}
+        onSelectView={(family, id) => {
+          onPick?.(family, id);
+          setPicks((p) => ({ ...p, [family]: id }));
+        }}
+      />
+    );
+  }
+
+  it('offers a labelled radio group, the main order checked', async () => {
+    await mount(<Harness series={narnia} />);
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(screen.getByRole('radio', { name: 'Publication', checked: true })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Chronological', checked: false })).toBeTruthy();
+    expect(screen.getByLabelText('Reading order')).toBeTruthy();
+    expect(screen.getByLabelText('Prince Caspian')).toBeTruthy();
+    expect(screen.queryByLabelText("The Magician's Nephew")).toBeNull();
+  });
+
+  it('switches the rail to the picked order and reports the pick for its family', async () => {
+    const onPick = jest.fn();
+    await mount(<Harness series={narnia} onPick={onPick} />);
+    await press('Chronological');
+    expect(onPick).toHaveBeenCalledWith('narnia', 'narnia-chronological');
+    expect(screen.getByRole('radio', { name: 'Chronological', checked: true })).toBeTruthy();
+    expect(screen.getByLabelText("The Magician's Nephew")).toBeTruthy();
+    expect(screen.queryByLabelText('Prince Caspian')).toBeNull();
+  });
+
+  it('falls back to the series name when an order states no ordering', async () => {
+    const unlabelled: BookMetaSeries = {
+      ...narnia,
+      ordering: undefined,
+    };
+    await mount(<Harness series={unlabelled} />);
+    expect(screen.getByRole('radio', { name: 'The Chronicles of Narnia' })).toBeTruthy();
+  });
+
+  it('says so when the book is not part of the picked order', async () => {
+    const notInChron: BookMetaSeries = {
+      ...narnia,
+      orderings: [
+        {
+          ...narnia.orderings![0],
+          position: undefined,
+          works: [entry('nephew', "The Magician's Nephew", '1')],
+        },
+      ],
+    };
+    await mount(<Harness series={notInChron} />);
+    expect(screen.queryByText("This book isn't part of this reading order.")).toBeNull();
+    await press('Chronological');
+    expect(screen.getByText("This book isn't part of this reading order.")).toBeTruthy();
+    expect(screen.getByLabelText("The Magician's Nephew")).toBeTruthy();
   });
 });
 

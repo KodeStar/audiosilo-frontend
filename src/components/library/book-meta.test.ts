@@ -1,4 +1,5 @@
 import type { BookMeta, BookMetaRecap, BookMetaSeries } from '@/api/types';
+import type { OrderingPicks } from '@/lib/series-orderings';
 
 // book-meta pulls in the shared Skeleton, whose theme-provider side-effect-imports
 // global.css (unparseable in Node); stub the hook so this pure-helper suite loads.
@@ -68,6 +69,59 @@ describe('seriesRails', () => {
 
   it('is empty when the book belongs to no series', () => {
     expect(seriesRails(undefined, 'a')).toEqual([]);
+  });
+
+  it('is one view per series, keyed by its own id, on a server with no ordering data', () => {
+    const [rail] = seriesRails([three], 'b');
+    expect(rail.family).toBe('s3');
+    expect(rail.views.map((v) => v.id)).toEqual(['s3']);
+    expect(rail.view.id).toBe('s3');
+    expect(rail.holdsWork).toBe(true);
+  });
+});
+
+describe('seriesRails (reading-order families)', () => {
+  const family: BookMetaSeries = {
+    id: 'pub',
+    name: 'Saga',
+    position: '1',
+    ordering: 'publication',
+    works: [work('me', '1'), work('two', '2')],
+    orderings: [
+      {
+        id: 'chron',
+        name: 'Saga (Chronological)',
+        ordering: 'chronological',
+        ordering_of: 'pub',
+        works: [work('prequel', '1'), work('two', '2')],
+      },
+    ],
+  };
+
+  it('shows the main view by default, with every order of the family available', () => {
+    const [rail] = seriesRails([family], 'me');
+    expect(rail.family).toBe('pub');
+    expect(rail.views.map((v) => v.id)).toEqual(['pub', 'chron']);
+    expect(rail.view.id).toBe('pub');
+    expect(rail.works.map((w) => w.id)).toEqual(['two']);
+  });
+
+  it('shows the picked order, and says when the book is not part of it', () => {
+    const [rail] = seriesRails([family], 'me', { pub: 'chron' });
+    expect(rail.view.id).toBe('chron');
+    expect(rail.works.map((w) => w.id)).toEqual(['prequel', 'two']);
+    expect(rail.holdsWork).toBe(false);
+  });
+
+  it('keeps a rail whose picked order holds only the current work while another is not empty', () => {
+    const s: BookMetaSeries = {
+      ...family,
+      works: [work('me', '1')],
+      orderings: [{ ...family.orderings![0], works: [work('other', '1')] }],
+    };
+    const rails = seriesRails([s], 'me');
+    expect(rails).toHaveLength(1);
+    expect(rails[0].works).toEqual([]);
   });
 });
 
@@ -139,6 +193,10 @@ describe('seriesPositionValue', () => {
   });
 });
 
+// `previousWorks` reads the rails `seriesRails` built, exactly as the screen does.
+const prev = (series: BookMetaSeries[] | undefined, workId: string, picks?: OrderingPicks) =>
+  previousWorks(seriesRails(series, workId, picks));
+
 describe('previousWorks', () => {
   const series = (
     id: string,
@@ -153,34 +211,94 @@ describe('previousWorks', () => {
 
   it('keeps only the works before the current position, most recent first', () => {
     const s = series('s', '3', [work('a', '1'), work('b', '2'), work('c', '3'), work('d', '4')]);
-    expect(previousWorks([s], 'c').map((w) => w.id)).toEqual(['b', 'a']);
+    expect(prev([s], 'c').map((w) => w.id)).toEqual(['b', 'a']);
   });
 
   it('places a "2.5" novella between books 2 and 3', () => {
     const s = series('s', '4', [work('a', '2'), work('b', '2.5'), work('c', '3')]);
-    expect(previousWorks([s], 'zzz').map((w) => w.id)).toEqual(['c', 'b', 'a']);
+    expect(prev([s], 'zzz').map((w) => w.id)).toEqual(['c', 'b', 'a']);
   });
 
-  it('deduplicates a work listed by two series', () => {
+  it('deduplicates a work listed by two different series (two families still union)', () => {
     const s1 = series('s1', '2', [work('shared', '1')]);
     const s2 = series('s2', '5', [work('shared', '4'), work('other', '3')]);
-    expect(previousWorks([s1, s2], 'me').map((w) => w.id)).toEqual(['other', 'shared']);
+    expect(prev([s1, s2], 'me').map((w) => w.id)).toEqual(['other', 'shared']);
   });
 
   it('excludes entries whose position does not parse', () => {
     const s = series('s', '3', [work('a', '1'), work('bonus', 'novella')]);
-    expect(previousWorks([s], 'zzz').map((w) => w.id)).toEqual(['a']);
+    expect(prev([s], 'zzz').map((w) => w.id)).toEqual(['a']);
   });
 
   it('excludes a whole series whose own position does not parse', () => {
     const s = series('s', 'anthology', [work('a', '1')]);
-    expect(previousWorks([s], 'zzz')).toEqual([]);
+    expect(prev([s], 'zzz')).toEqual([]);
   });
 
   it('is empty for no series, book one, or when only the current work matches', () => {
-    expect(previousWorks(undefined, 'a')).toEqual([]);
-    expect(previousWorks([series('s', '1', [work('a', '1'), work('b', '2')])], 'a')).toEqual([]);
-    expect(previousWorks([series('s', '2', [work('a', '2')])], 'a')).toEqual([]);
+    expect(prev(undefined, 'a')).toEqual([]);
+    expect(prev([series('s', '1', [work('a', '1'), work('b', '2')])], 'a')).toEqual([]);
+    expect(prev([series('s', '2', [work('a', '2')])], 'a')).toEqual([]);
+  });
+});
+
+// The spoiler this guards against was live: previous books UNIONED every order of a
+// family, so in publication order (where The Lion, the Witch and the Wardrobe is
+// book 1) The Magician's Nephew - book 1 only in the CHRONOLOGICAL order - was
+// offered as a "previous book".
+describe('previousWorks follows the picked reading order (Narnia regression)', () => {
+  const lion = 'the-lion-the-witch-and-the-wardrobe';
+  const nephew = 'the-magicians-nephew';
+  const narnia: BookMetaSeries = {
+    id: 'narnia',
+    name: 'The Chronicles of Narnia',
+    position: '1',
+    ordering: 'publication',
+    works: [work(lion, '1'), work('prince-caspian', '2'), work(nephew, '6')],
+    orderings: [
+      {
+        id: 'narnia-chronological',
+        name: 'The Chronicles of Narnia (Chronological)',
+        ordering: 'chronological',
+        ordering_of: 'narnia',
+        position: '2',
+        works: [work(nephew, '1'), work(lion, '2'), work('the-horse-and-his-boy', '3')],
+      },
+    ],
+  };
+
+  it('has no previous books in publication order (the default)', () => {
+    expect(prev([narnia], lion)).toEqual([]);
+    expect(prev([narnia], lion, { narnia: 'narnia' })).toEqual([]);
+  });
+
+  it("offers The Magician's Nephew once the reader picks the chronological order", () => {
+    expect(prev([narnia], lion, { narnia: 'narnia-chronological' }).map((w) => w.id)).toEqual([
+      nephew,
+    ]);
+  });
+
+  it('contributes nothing from a picked order the current book is not part of', () => {
+    const variantOnly: BookMetaSeries = {
+      id: 'narnia-chronological',
+      name: 'The Chronicles of Narnia (Chronological)',
+      position: '0.5',
+      ordering: 'chronological',
+      ordering_of: 'narnia',
+      works: [work('prequel', '0.5'), work(nephew, '1')],
+      orderings: [{ id: 'narnia', name: 'The Chronicles of Narnia', works: [work(lion, '1')] }],
+    };
+    expect(prev([variantOnly], 'prequel', { narnia: 'narnia' })).toEqual([]);
+  });
+
+  it('still unions a different family beside the picked order', () => {
+    const other: BookMetaSeries = {
+      id: 'other',
+      name: 'Other',
+      position: '3',
+      works: [work('o1', '1'), work('o2', '2')],
+    };
+    expect(prev([narnia, other], lion).map((w) => w.id)).toEqual(['o2', 'o1']);
   });
 });
 

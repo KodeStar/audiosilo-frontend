@@ -66,4 +66,22 @@ describe('SegmentedControl', () => {
     // RNTL's role query does not surface on a non-accessible container).
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('switches to radiogroup/radio semantics, with a group label, in radio mode', async () => {
+    await mount(
+      <SegmentedControl
+        options={[...options]}
+        value="books"
+        onChange={jest.fn()}
+        role="radio"
+        accessibilityLabel="Kind"
+      />,
+    );
+
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(screen.getByRole('radio', { name: 'Books', checked: true })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'All', checked: false })).toBeTruthy();
+    expect(screen.getByLabelText('Kind')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
 });

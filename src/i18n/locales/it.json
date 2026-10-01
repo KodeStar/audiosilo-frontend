@@ -345,6 +345,13 @@
       "abridged": "Ridotto",
       "moreInNamedSeries": "Altro in {{series}}",
       "seriesPosition": "Libro {{position}}",
+      "readingOrder": "Ordine di lettura",
+      "notInOrder": "Questo libro non fa parte di questo ordine di lettura.",
+      "ordering": {
+        "publication": "Pubblicazione",
+        "chronological": "Cronologico",
+        "recommended": "Consigliato"
+      },
       "showMore": "Mostra di più",
       "showLess": "Mostra meno",
       "viewOnMeta": "Visualizza su AudioSilo Meta",

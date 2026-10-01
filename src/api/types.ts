@@ -316,14 +316,40 @@ export type BookMetaSeriesWork = {
   web_url: string;
 };
 
+/** Which reading order a series records (metaserve's `ordering` enum). Typed
+ * loosely at the edges: an unknown upstream value falls back to the series name. */
+export type BookMetaSeriesOrderingKind = 'publication' | 'chronological' | 'recommended';
+
+/** Another reading order of the same ordering FAMILY (a primary series plus the
+ * variants naming it), carried on the rail as an additive alternate view. */
+export type BookMetaSeriesOrdering = {
+  id: string;
+  name: string;
+  ordering?: BookMetaSeriesOrderingKind;
+  /** Set when this view is itself a variant (names the family's primary). */
+  ordering_of?: string;
+  /** This work's position in this ordering - EMPTY/absent when the work is not in it. */
+  position?: string;
+  works: BookMetaSeriesWork[];
+};
+
 /** A series the work belongs to, with the full ordered rail (including the current
- * work - the UI filters it out by id). */
+ * work - the UI filters it out by id). The top-level `works`/`position` are the
+ * family's MAIN view (the primary order, or the variant for a work only a variant
+ * places); `orderings` holds the family's other views. The three ordering fields are
+ * additive - an older server omits them and every series is its own family. */
 export type BookMetaSeries = {
   id: string;
   name: string;
   /** This work's position within the series. */
   position: string;
   works: BookMetaSeriesWork[];
+  /** The main view's reading order, when the series states one. */
+  ordering?: BookMetaSeriesOrderingKind;
+  /** Set when the main view is itself a variant: the family's primary series id. */
+  ordering_of?: string;
+  /** The family's alternate views, in family order (primary first, then variants). */
+  orderings?: BookMetaSeriesOrdering[];
 };
 
 /** Response of GET /libraries/{id}/meta. A discriminated union on `matched`:

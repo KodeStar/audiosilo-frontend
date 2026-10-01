@@ -273,11 +273,11 @@ the first existing tab when data changes under it. Labels come from
 in the overview, above the tabs), `BookMetaRecapsTab`, `BookMetaCharactersTab`,
 `BookMetaSeriesTab`. Those take **plain data, not a query**, so a sibling block can be
 appended without another restructure - which is how the **"catch up on previous books"**
-block lands: `previousWorks(series, currentWorkId)` (pure, tested - earlier positions
-only, deduped, position-DESCENDING, unparsable positions dropped) feeds one shared
-accordion into both the Recaps and Characters tabs, and each row lazily fetches its own
-work with `useMetaWork(workId, open)` (`client.metaWork` → `GET /meta/work?id=`, key
-`qk.metaWork(cid, workId)`, 1h/`retry:false`) - a closed row never fetches, and any
+block lands: `previousWorks(rails)` (pure, tested - earlier positions only, from each
+rail's shown reading order, deduped, position-DESCENDING, unparsable positions dropped)
+feeds one shared accordion into both the Recaps and Characters tabs, and each row
+lazily fetches its own work with `useMetaWork(workId, open)` (`client.metaWork` →
+`GET /meta/work?id=`, key `qk.metaWork(cid, workId)`, 1h/`retry:false`) - a closed row never fetches, and any
 failure (an older server 404s, since it lacks the route) is a quiet caption + the
 entry's `web_url` link, never an error. Bodies: the work's `recap_summary.in_short`
 (else its furthest book-scope recap via `lastBookRecap`), and its `CharacterCard`s.
@@ -291,11 +291,22 @@ never open onto a panel that withholds everything; `bookTabs` likewise opens the
 Recaps/Characters tabs on `hasPreviousBooks` alone, and counts Chapters as present
 while `useChapters` is still in flight (so the row can't start on Bookmarks - firing
 its GET - and then snap over).
+**Reading-order families** (rules in `src/lib/series-orderings.ts`, pick in
+`src/stores/series-orderings.ts`): the server collapses a primary series and its
+`ordering_of` variants into ONE rail (`BookMetaSeries` = main view + additive
+`orderings[]`; an older server sends neither, so every series is its own family). The
+reader's pick is remembered PER FAMILY, device-wide (not a scoped key). `seriesRails`
+shows the picked order and `previousWorks` reads those same rails, so "previous books"
+always follows the pick; a view without the current book contributes nothing (the
+Narnia regression test). The collapse is server-side too so an unaware client still
+gets one rail per family rather than a duplicate per reading order. Stores persisted as
+one JSON document share `persistedDocument` (`@/lib/storage`): a change made before
+hydration wins and never clobbers the stored rest.
 Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
 (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
-(`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`) are
-unit-tested. Progressive enhancement - **capability-gated** on server `metadata`
-(`!!server.capabilities.metadata`, absent on older servers) and nothing renders while
+(`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`/
+`previousWorks`) are unit-tested. Progressive enhancement - **capability-gated** on
+server `metadata` (`!!server.capabilities.metadata`, absent on older servers) and nothing renders while
 loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 `useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so
 a 502 from a down meta service doesn't spin). Strings under `book.meta.*` (plus the
@@ -509,7 +520,7 @@ src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
 src/components/      ui/ (primitives + Icon), layout/ (shell/header/nav), player/, library/
-src/stores/         Zustand: session, search, settings
+src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens + ThemeProvider
 src/lib/            storage, secure-store, device, paths, format, register-sw
