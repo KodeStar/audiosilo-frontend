@@ -1,4 +1,5 @@
 import type { BookMeta, BookMetaRecap, BookMetaSeries } from '@/api/types';
+import type { OrderingPicks } from '@/lib/series-orderings';
 
 // book-meta pulls in the shared Skeleton, whose theme-provider side-effect-imports
 // global.css (unparseable in Node); stub the hook so this pure-helper suite loads.
@@ -192,6 +193,10 @@ describe('seriesPositionValue', () => {
   });
 });
 
+// `previousWorks` reads the rails `seriesRails` built, exactly as the screen does.
+const prev = (series: BookMetaSeries[] | undefined, workId: string, picks?: OrderingPicks) =>
+  previousWorks(seriesRails(series, workId, picks));
+
 describe('previousWorks', () => {
   const series = (
     id: string,
@@ -206,34 +211,34 @@ describe('previousWorks', () => {
 
   it('keeps only the works before the current position, most recent first', () => {
     const s = series('s', '3', [work('a', '1'), work('b', '2'), work('c', '3'), work('d', '4')]);
-    expect(previousWorks([s], 'c').map((w) => w.id)).toEqual(['b', 'a']);
+    expect(prev([s], 'c').map((w) => w.id)).toEqual(['b', 'a']);
   });
 
   it('places a "2.5" novella between books 2 and 3', () => {
     const s = series('s', '4', [work('a', '2'), work('b', '2.5'), work('c', '3')]);
-    expect(previousWorks([s], 'zzz').map((w) => w.id)).toEqual(['c', 'b', 'a']);
+    expect(prev([s], 'zzz').map((w) => w.id)).toEqual(['c', 'b', 'a']);
   });
 
   it('deduplicates a work listed by two different series (two families still union)', () => {
     const s1 = series('s1', '2', [work('shared', '1')]);
     const s2 = series('s2', '5', [work('shared', '4'), work('other', '3')]);
-    expect(previousWorks([s1, s2], 'me').map((w) => w.id)).toEqual(['other', 'shared']);
+    expect(prev([s1, s2], 'me').map((w) => w.id)).toEqual(['other', 'shared']);
   });
 
   it('excludes entries whose position does not parse', () => {
     const s = series('s', '3', [work('a', '1'), work('bonus', 'novella')]);
-    expect(previousWorks([s], 'zzz').map((w) => w.id)).toEqual(['a']);
+    expect(prev([s], 'zzz').map((w) => w.id)).toEqual(['a']);
   });
 
   it('excludes a whole series whose own position does not parse', () => {
     const s = series('s', 'anthology', [work('a', '1')]);
-    expect(previousWorks([s], 'zzz')).toEqual([]);
+    expect(prev([s], 'zzz')).toEqual([]);
   });
 
   it('is empty for no series, book one, or when only the current work matches', () => {
-    expect(previousWorks(undefined, 'a')).toEqual([]);
-    expect(previousWorks([series('s', '1', [work('a', '1'), work('b', '2')])], 'a')).toEqual([]);
-    expect(previousWorks([series('s', '2', [work('a', '2')])], 'a')).toEqual([]);
+    expect(prev(undefined, 'a')).toEqual([]);
+    expect(prev([series('s', '1', [work('a', '1'), work('b', '2')])], 'a')).toEqual([]);
+    expect(prev([series('s', '2', [work('a', '2')])], 'a')).toEqual([]);
   });
 });
 
@@ -263,14 +268,14 @@ describe('previousWorks follows the picked reading order (Narnia regression)', (
   };
 
   it('has no previous books in publication order (the default)', () => {
-    expect(previousWorks([narnia], lion)).toEqual([]);
-    expect(previousWorks([narnia], lion, { narnia: 'narnia' })).toEqual([]);
+    expect(prev([narnia], lion)).toEqual([]);
+    expect(prev([narnia], lion, { narnia: 'narnia' })).toEqual([]);
   });
 
   it("offers The Magician's Nephew once the reader picks the chronological order", () => {
-    expect(
-      previousWorks([narnia], lion, { narnia: 'narnia-chronological' }).map((w) => w.id),
-    ).toEqual([nephew]);
+    expect(prev([narnia], lion, { narnia: 'narnia-chronological' }).map((w) => w.id)).toEqual([
+      nephew,
+    ]);
   });
 
   it('contributes nothing from a picked order the current book is not part of', () => {
@@ -283,7 +288,7 @@ describe('previousWorks follows the picked reading order (Narnia regression)', (
       works: [work('prequel', '0.5'), work(nephew, '1')],
       orderings: [{ id: 'narnia', name: 'The Chronicles of Narnia', works: [work(lion, '1')] }],
     };
-    expect(previousWorks([variantOnly], 'prequel', { narnia: 'narnia' })).toEqual([]);
+    expect(prev([variantOnly], 'prequel', { narnia: 'narnia' })).toEqual([]);
   });
 
   it('still unions a different family beside the picked order', () => {
@@ -293,7 +298,7 @@ describe('previousWorks follows the picked reading order (Narnia regression)', (
       position: '3',
       works: [work('o1', '1'), work('o2', '2')],
     };
-    expect(previousWorks([narnia, other], lion).map((w) => w.id)).toEqual(['o2', 'o1']);
+    expect(prev([narnia, other], lion).map((w) => w.id)).toEqual(['o2', 'o1']);
   });
 });
 

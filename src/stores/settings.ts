@@ -1,9 +1,7 @@
 import { create } from 'zustand';
 
-import { getItem, setItem } from '@/lib/storage';
+import { persistedDocument } from '@/lib/storage';
 import { DEFAULT_VIRTUAL_CHAPTER_INTERVAL } from '@/playback/book-queue';
-
-const KEY = 'audiosilo.settings';
 
 /** When the player may auto-download a book to the device: never, only on an
  * unmetered (wifi/ethernet) connection, or always. */
@@ -61,8 +59,12 @@ const DEFAULTS: PlaybackSettings = {
   autoSleepType: 'chapter',
 };
 
+// A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all.
+const stored = persistedDocument<PlaybackSettings>('audiosilo.settings', (raw) =>
+  raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Partial<PlaybackSettings>) : {},
+);
+
 type SettingsState = PlaybackSettings & {
-  hydrated: boolean;
   hydrate: () => Promise<void>;
   setSkipForward: (seconds: number) => void;
   setSkipBackward: (seconds: number) => void;
@@ -78,8 +80,13 @@ type SettingsState = PlaybackSettings & {
   setAutoSleepType: (type: AutoSleepType) => void;
 };
 
+/** The persisted settings, under the shared hydration rule (`persistedDocument`): a
+ * setting changed before hydration finished wins over its stored value, and never
+ * clobbers the settings it did not touch. Hydrated once at boot from `_layout.tsx`. */
 export const useSettings = create<SettingsState>()((set, get) => {
-  const save = () => {
+  // Every setter goes through here: set the one value, then persist the WHOLE document.
+  const update = (change: Partial<PlaybackSettings>) => {
+    set(change);
     const {
       skipForward,
       skipBackward,
@@ -94,7 +101,7 @@ export const useSettings = create<SettingsState>()((set, get) => {
       autoSleepUntil,
       autoSleepType,
     } = get();
-    void setItem(KEY, {
+    stored.write(change, {
       skipForward,
       skipBackward,
       defaultRate,
@@ -111,58 +118,18 @@ export const useSettings = create<SettingsState>()((set, get) => {
   };
   return {
     ...DEFAULTS,
-    hydrated: false,
-    hydrate: async () => {
-      const saved = await getItem<Partial<PlaybackSettings>>(KEY);
-      set({ ...DEFAULTS, ...(saved ?? {}), hydrated: true });
-    },
-    setSkipForward: (skipForward) => {
-      set({ skipForward });
-      save();
-    },
-    setSkipBackward: (skipBackward) => {
-      set({ skipBackward });
-      save();
-    },
-    setDefaultRate: (defaultRate) => {
-      set({ defaultRate });
-      save();
-    },
-    setAutoRewindMax: (autoRewindMax) => {
-      set({ autoRewindMax });
-      save();
-    },
-    setVirtualChapterInterval: (virtualChapterInterval) => {
-      set({ virtualChapterInterval });
-      save();
-    },
-    setAutoPlayNext: (autoPlayNext) => {
-      set({ autoPlayNext });
-      save();
-    },
-    setAutoDownloadNext: (autoDownloadNext) => {
-      set({ autoDownloadNext });
-      save();
-    },
-    setAutoDeleteFinished: (autoDeleteFinished) => {
-      set({ autoDeleteFinished });
-      save();
-    },
-    setAutoSleepTimer: (autoSleepTimer) => {
-      set({ autoSleepTimer });
-      save();
-    },
-    setAutoSleepFrom: (autoSleepFrom) => {
-      set({ autoSleepFrom });
-      save();
-    },
-    setAutoSleepUntil: (autoSleepUntil) => {
-      set({ autoSleepUntil });
-      save();
-    },
-    setAutoSleepType: (autoSleepType) => {
-      set({ autoSleepType });
-      save();
-    },
+    hydrate: () => stored.hydrate(DEFAULTS, (doc) => set(doc)),
+    setSkipForward: (skipForward) => update({ skipForward }),
+    setSkipBackward: (skipBackward) => update({ skipBackward }),
+    setDefaultRate: (defaultRate) => update({ defaultRate }),
+    setAutoRewindMax: (autoRewindMax) => update({ autoRewindMax }),
+    setVirtualChapterInterval: (virtualChapterInterval) => update({ virtualChapterInterval }),
+    setAutoPlayNext: (autoPlayNext) => update({ autoPlayNext }),
+    setAutoDownloadNext: (autoDownloadNext) => update({ autoDownloadNext }),
+    setAutoDeleteFinished: (autoDeleteFinished) => update({ autoDeleteFinished }),
+    setAutoSleepTimer: (autoSleepTimer) => update({ autoSleepTimer }),
+    setAutoSleepFrom: (autoSleepFrom) => update({ autoSleepFrom }),
+    setAutoSleepUntil: (autoSleepUntil) => update({ autoSleepUntil }),
+    setAutoSleepType: (autoSleepType) => update({ autoSleepType }),
   };
 });

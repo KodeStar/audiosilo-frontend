@@ -1,4 +1,4 @@
-import { Pressable, Text as RNText, ScrollView, View } from 'react-native';
+import { type AccessibilityRole, Pressable, Text as RNText, ScrollView, View } from 'react-native';
 
 export type SegmentedOption<T extends string> = { value: T; label: string };
 
@@ -26,6 +26,17 @@ export type SegmentedControlProps<T extends string> = {
   className?: string;
 };
 
+/** What each `role` means to assistive tech: the track's group role and the state key
+ * that marks the chosen pill. Data rather than branches, so a new mode is one row. */
+const ROLE_SEMANTICS = {
+  button: { group: undefined, stateKey: 'selected' },
+  tab: { group: 'tablist', stateKey: 'selected' },
+  radio: { group: 'radiogroup', stateKey: 'checked' },
+} as const satisfies Record<
+  NonNullable<SegmentedControlProps<string>['role']>,
+  { group: AccessibilityRole | undefined; stateKey: 'selected' | 'checked' }
+>;
+
 /**
  * A pill/segment toggle group: a rounded track with the active option filled in
  * primary (white label) and the rest quiet. Generic over a string union of option
@@ -42,6 +53,7 @@ export function SegmentedControl<T extends string>({
   accessibilityLabel,
   className,
 }: SegmentedControlProps<T>) {
+  const { group, stateKey } = ROLE_SEMANTICS[role];
   const pills = options.map((opt) => {
     const active = opt.value === value;
     return (
@@ -49,7 +61,7 @@ export function SegmentedControl<T extends string>({
         key={opt.value}
         onPress={() => onChange(opt.value)}
         accessibilityRole={role}
-        accessibilityState={role === 'radio' ? { checked: active } : { selected: active }}
+        accessibilityState={{ [stateKey]: active }}
         className={`flex-row items-center justify-center rounded-md px-3 py-1.5 active:opacity-80 ${
           grow && !scrollable ? 'flex-1' : ''
         } ${active ? 'bg-primary' : ''}`}
@@ -66,8 +78,6 @@ export function SegmentedControl<T extends string>({
   });
 
   const track = `rounded-lg bg-gray-100 p-1 dark:bg-gray-840 ${className ?? ''}`;
-  const group =
-    role === 'tab' ? ('tablist' as const) : role === 'radio' ? ('radiogroup' as const) : undefined;
 
   if (scrollable) {
     return (

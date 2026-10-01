@@ -91,7 +91,7 @@ export function seriesRails(
   return (series ?? [])
     .map((s) => {
       const views = seriesViews(s);
-      const view = selectedView(s, picks);
+      const view = selectedView(s, picks, views);
       return {
         series: s,
         family: familyKey(s),
@@ -119,8 +119,9 @@ export function seriesPositionValue(position: string | undefined): number | unde
  * book) and ordered by position DESCENDING - the immediately-preceding book first,
  * since that is the one you most need catching up on.
  *
- * Each rail contributes from the ONE reading order the reader has selected for its
- * family (`picks`, else the main view) - never the union of a family's orders: in
+ * Reads the `rails` `seriesRails` built, so each family contributes from the ONE
+ * reading order its rail shows (the reader's pick, else the main view) - the rail and
+ * this list can never follow different orders, and never the union of a family's: in
  * publication order The Lion, the Witch and the Wardrobe is book 1, and offering The
  * Magician's Nephew as a "previous book" through the chronological order would spoil
  * a reader going in publication order. An order the current work is not part of
@@ -130,18 +131,14 @@ export function seriesPositionValue(position: string | undefined): number | unde
  * *own* current position does not parse (there is then nothing to compare against).
  * A duplicate keeps the first series' entry, so ordering is deterministic.
  */
-export function previousWorks(
-  series: BookMetaSeries[] | undefined,
-  currentWorkId: string,
-  picks: OrderingPicks = {},
-): BookMetaSeriesWork[] {
+export function previousWorks(rails: readonly SeriesRail[]): BookMetaSeriesWork[] {
   const found = new Map<string, { work: BookMetaSeriesWork; pos: number }>();
-  for (const s of series ?? []) {
-    const view = selectedView(s, picks);
+  for (const { view, works } of rails) {
     const current = seriesPositionValue(view.position);
     if (current === undefined) continue;
-    for (const w of view.works) {
-      if (w.id === currentWorkId || found.has(w.id)) continue;
+    // `works` is the shown order minus the current work.
+    for (const w of works) {
+      if (found.has(w.id)) continue;
       const pos = seriesPositionValue(w.position);
       if (pos === undefined || pos >= current) continue;
       found.set(w.id, { work: w, pos });
@@ -888,7 +885,9 @@ export function BookMetaSeriesTab({
         <View key={`${rail.family}:${rail.series.id}`} className="gap-2">
           {multipleSeries ? (
             <SectionHeader
-              title={t('book.meta.moreInNamedSeries', { series: familyName(rail.series) })}
+              title={t('book.meta.moreInNamedSeries', {
+                series: familyName(rail.series, rail.views),
+              })}
             />
           ) : null}
           {rail.views.length > 1 ? (

@@ -159,6 +159,18 @@ function BookDetailContent() {
   // catching up never draws on an order the reader is not following.
   const orderingPicks = useSeriesOrderings((s) => s.picks);
   const pickOrdering = useSeriesOrderings((s) => s.pick);
+  // The community metadata, when there is a match to show (see the tabs below).
+  const metaMatched = matchedMeta(meta, bookMetaEnabled);
+  // One series rail per family, showing the picked order, and the earlier books of
+  // those SAME rails for the "catch up on previous books" block appended to the
+  // Recaps and Characters tabs (each row fetches its own work lazily, on open).
+  // Computed once, above the early returns, so the memo is a real hook.
+  const { rails, previousBooks } = useMemo(() => {
+    const rails = metaMatched
+      ? seriesRails(metaMatched.series, metaMatched.work.id, orderingPicks)
+      : [];
+    return { rails, previousBooks: previousWorks(rails) };
+  }, [metaMatched, orderingPicks]);
 
   // Chapters/files and their whole-book offsets. Computed ABOVE the early returns
   // (they derive from `chapterData` alone, and cost nothing while it is undefined)
@@ -348,18 +360,8 @@ function BookDetailContent() {
   // old single scroll buried bookmarks/notes/metadata below an unreachable list.
   // The community-metadata tabs are progressive enhancement - absent entirely on
   // an older server or an unmatched book.
-  const metaMatched = matchedMeta(meta, bookMetaEnabled);
   const metaCharacters = metaMatched?.work.characters ?? [];
   const metaRecaps = metaMatched?.work.recaps ?? [];
-  const rails = metaMatched
-    ? seriesRails(metaMatched.series, metaMatched.work.id, orderingPicks)
-    : [];
-  // The earlier books of the series, for the "catch up on previous books" block
-  // appended to the Recaps and Characters tabs (each row fetches its own work
-  // lazily, on open). Each family contributes from the order the reader picked only.
-  const previousBooks = metaMatched
-    ? previousWorks(metaMatched.series, metaMatched.work.id, orderingPicks)
-    : [];
   const metaSummary = metaMatched?.work.recap_summary;
 
   // Spoiler gating: ONE whole-book position - the player's live one when this book is

@@ -83,9 +83,13 @@ export function seriesViews(series: BookMetaSeries): SeriesView[] {
 
 /** The view a rail shows: the remembered pick for its family when that names one of
  * the family's views, else the MAIN view (the server's default - the primary order,
- * or the only order that places a variant-only book). */
-export function selectedView(series: BookMetaSeries, picks: OrderingPicks): SeriesView {
-  const views = seriesViews(series);
+ * or the only order that places a variant-only book). Pass `views` when the caller
+ * already has them. */
+export function selectedView(
+  series: BookMetaSeries,
+  picks: OrderingPicks,
+  views: readonly SeriesView[] = seriesViews(series),
+): SeriesView {
   const pick = picks[familyKey(series)];
   return views.find((v) => v.id === pick) ?? views.find((v) => v.id === series.id) ?? views[0];
 }
@@ -117,15 +121,17 @@ export function orderingLabelKey(
 
 /** The name a whole family goes by (the rail's heading): the primary's name when
  * the family carries it, else the main view's. Choosing an order on the toggle
- * therefore never renames the rail. */
-export function familyName(series: BookMetaSeries): string {
-  const primary = seriesViews(series).find((v) => !v.orderingOf);
-  return primary?.name ?? series.name;
+ * therefore never renames the rail. Pass `views` when the caller already has them. */
+export function familyName(
+  series: BookMetaSeries,
+  views: readonly SeriesView[] = seriesViews(series),
+): string {
+  return views.find((v) => !v.orderingOf)?.name ?? series.name;
 }
 
 /** Validate a persisted picks document: keep only string -> string entries, so a
  * corrupt or foreign value can never crash a render. */
-export function parsePicks(raw: unknown): Record<string, string> {
+export function parsePicks(raw: unknown): OrderingPicks {
   const out: Record<string, string> = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
