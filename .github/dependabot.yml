@@ -31,11 +31,11 @@ updates:
       # node_modules/expo/bundledNativeModules.json) are ignored outright, patches
       # included: React Native's renderer is built against one exact react, and
       # dependabot moving react 19.2.3 -> 19.2.8 inside a "patch" group is how
-      # that broke. react-test-renderer follows the react the SDK pins, and
-      # async-storage (a native module already past the SDK's 2.x) is held the
-      # same way. Named one by one rather than `react-native-*`, which would
-      # also freeze react-native-marked (plain JS); add a native module here
-      # when one is added.
+      # that broke. react-test-renderer follows the react the SDK pins and is
+      # ignored outright with it; async-storage (a native module already past
+      # the SDK's 2.x) takes patches only. Named one by one rather than
+      # `react-native-*`, which would also freeze react-native-marked (plain
+      # JS); add a native module here when one is added.
       - dependency-name: expo
         update-types:
           - version-update:semver-major
