@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { ApiClient } from '@/api/client';
 
 type FetchResult = { status: number; body?: unknown };
@@ -336,5 +338,71 @@ describe('ApiClient', () => {
     const c = new ApiClient('https://h', 'tok', 10, onAuthError); // 10ms timeout
     await expect(c.serverInfo()).rejects.toMatchObject({ name: 'TimeoutError' });
     expect(onAuthError).not.toHaveBeenCalled();
+  });
+
+  // --- Client identification header -------------------------------------------
+  // Sent on native always; on web only same-origin (a cross-origin custom header would
+  // force a CORS preflight that pre-header servers reject). Platform.OS and the page
+  // origin are read in the constructor, so each case sets them before building.
+
+  describe('X-AudioSilo-Client header', () => {
+    const realOS = Platform.OS;
+    const realLocation = Object.getOwnPropertyDescriptor(globalThis, 'location');
+
+    function setPlatform(os: string) {
+      (Platform as { OS: string }).OS = os;
+    }
+    function setPageOrigin(origin: string | undefined) {
+      Object.defineProperty(globalThis, 'location', {
+        value: origin === undefined ? undefined : { origin },
+        configurable: true,
+        writable: true,
+      });
+    }
+
+    afterEach(() => {
+      setPlatform(realOS);
+      if (realLocation) Object.defineProperty(globalThis, 'location', realLocation);
+      else delete (globalThis as { location?: unknown }).location;
+    });
+
+    async function sentHeader(
+      baseUrl: string,
+      token: string | null = 'tok',
+    ): Promise<string | undefined> {
+      const fetchMock = installFetch(() => ({ status: 200, body: {} }));
+      await new ApiClient(baseUrl, token).serverInfo();
+      return headerValue(fetchMock.mock.calls[0][1] as RequestInit, 'X-AudioSilo-Client');
+    }
+
+    it('sends the client identity on native', async () => {
+      setPlatform('ios');
+      setPageOrigin(undefined);
+      expect(await sentHeader('https://h')).toMatch(/^AudioSilo\/\S+ \(ios\)$/);
+    });
+
+    it('sends the client identity from a tokenless (onboarding) client', async () => {
+      setPlatform('android');
+      expect(await sentHeader('https://h', null)).toMatch(/^AudioSilo\/\S+ \(android\)$/);
+    });
+
+    it('sends the client identity on same-origin web', async () => {
+      setPlatform('web');
+      setPageOrigin('https://h.test');
+      expect(await sentHeader('https://h.test')).toMatch(/^AudioSilo\/\S+ \(web\)$/);
+    });
+
+    it('omits the client identity on cross-origin web', async () => {
+      setPlatform('web');
+      setPageOrigin('http://localhost:8081');
+      expect(await sentHeader('https://h.test')).toBeUndefined();
+    });
+
+    it('keeps the identity out of authHeaders (used by the media layers)', () => {
+      setPlatform('ios');
+      expect(new ApiClient('https://h', 'tok').authHeaders()).toEqual({
+        Authorization: 'Bearer tok',
+      });
+    });
   });
 });
