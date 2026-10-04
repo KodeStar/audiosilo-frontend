@@ -1,0 +1,110 @@
+version: 2
+
+# Keep the dependency surfaces this repo actually has fresh, without turning the
+# pull request list into a dependency feed. Minor and patch updates are GROUPED
+# into one pull request per ecosystem per week - they are the bulk of the
+# traffic and are reviewed as one bump either way - while a major update still
+# arrives on its own, because that is the one that needs reading.
+#
+# Not configured: docker (Dockerfile.web is FROM scratch, nothing to update)
+# and scripts/glyphs (an optional generator with no lockfile, whose packages
+# come from FontAwesome's private registry).
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # This is an Expo SDK app: the SDK pins the versions of these packages
+      # (`npx expo install --check` reports any drift), and a native module
+      # bumped past its pin can build and still crash on a device. Patch
+      # releases inside the pin are fine; minor and major moves happen only as
+      # part of an Expo SDK upgrade, done with `npx expo install --fix` - never
+      # by dependabot. react-test-renderer and @types/react follow the react
+      # the SDK pins.
+      - dependency-name: expo
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: expo-*
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: '@expo/*'
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: jest-expo
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: eslint-config-expo
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-dom
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-test-renderer
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: '@types/react'
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native-*
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: '@react-native/*'
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: '@react-native-community/*'
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: '@react-native-async-storage/*'
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      # NativeWind v4 runs on the Tailwind v3.4 engine; Tailwind v4 arrives
+      # with a NativeWind major that adopts it, never ahead of it.
+      - dependency-name: tailwindcss
+        update-types:
+          - version-update:semver-major
+      # jest-expo carries jest 29 (jest-environment-jsdom ^29); a jest major
+      # arrives with the jest-expo of an SDK upgrade, not on its own.
+      - dependency-name: jest
+        update-types:
+          - version-update:semver-major
+      - dependency-name: '@types/jest'
+        update-types:
+          - version-update:semver-major
+
+  # The workflows reference actions by major tag (actions/checkout@v4), so for
+  # most of them the only update is the next major, which arrives on its own.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
