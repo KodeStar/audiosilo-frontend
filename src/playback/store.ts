@@ -125,6 +125,11 @@ let lastPlayRequest: {
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
 
+// The server derives listening sessions from these saves (audiosilo-server
+// internal/catalog/sessions.go: a session reads as playing for 60 s after a save
+// and as ended after 10 min without one, though a later save whose position advanced
+// by about the elapsed time still continues it). Changing the cadence means revisiting
+// those windows (CROSS-REPO.md section 20).
 const SAVE_INTERVAL_MS = 15_000;
 const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
 const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect

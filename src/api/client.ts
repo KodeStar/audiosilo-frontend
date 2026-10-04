@@ -1,3 +1,9 @@
+import { Platform } from 'react-native';
+
+import { webOrigin } from '@/lib/base-url';
+import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
+import { APP_VERSION } from '@/lib/version';
+
 import type {
   ApiKey,
   ApiKeyCreated,
@@ -59,10 +65,15 @@ function toQueryString(query?: Query): string {
  * Thin, fully-typed client over the audiosilo-server REST API. Holds the base
  * URL and (optional) session token; every content call is addressed by
  * (library_id, path). Throws `ApiError` on non-2xx with the server's `error`.
+ * Every request also sends `X-AudioSilo-Client: AudioSilo/<version> (<platform>)` so
+ * the server can tell which app owns a session - on web only when same-origin with
+ * the page (see `shouldIdentify` in `src/lib/client-id.ts` for the CORS reason).
  */
 export class ApiClient {
   readonly baseUrl: string;
   private readonly token: string | null;
+  /** Identity header for `request()`; empty when this client must not send it. */
+  private readonly clientHeaders: Record<string, string>;
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
 
@@ -101,6 +112,9 @@ export class ApiClient {
     this.token = token;
     this.timeoutMs = timeoutMs;
     this.onAuthError = onAuthError;
+    this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, webOrigin())
+      ? { [CLIENT_HEADER]: clientIdentity(APP_VERSION, Platform.OS) }
+      : {};
   }
 
   /** Absolute URL for an API path (e.g. `/server`). */
@@ -119,7 +133,7 @@ export class ApiClient {
     path: string,
     opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {},
   ): Promise<T> {
-    const headers: Record<string, string> = { ...this.authHeaders() };
+    const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
     // Abort after timeoutMs so a frozen/unreachable server can't hang the caller

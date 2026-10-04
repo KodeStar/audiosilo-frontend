@@ -165,6 +165,14 @@ returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cu
 `{ progress }`, `{ bookmarks }`, `{ notes }`); errors are `{ error }`. Pairing deep
 link is `audiosilo://connect?server=<base>&token=<pairing_token>`.
 
+**Client identification.** `ApiClient.request()` sends
+`X-AudioSilo-Client: AudioSilo/<APP_VERSION or dev> (<Platform.OS>)` on every API call
+so the server can record which app owns each session token (`src/lib/client-id.ts`).
+On web it is sent **only when the API base is same-origin with the page**: a custom
+header makes a cross-origin request non-simple (CORS preflight), and servers released
+before the header don't allow it. The embedded `/web` player is same-origin and always
+identifies; native has no CORS. `authHeaders()` (media layers) does not carry it.
+
 **Self-service password.** A signed-in user can set/change a password
 (`client.setPassword`) from the per-server account screen so they can get back in on any
 device after signing out without an admin. Sign-out is guarded
