@@ -56,9 +56,7 @@ export type ProgressSave = {
  *    caller must fail safe rather than restart at 0.
  */
 export type ResumeLookup =
-  | { kind: 'progress'; progress: Progress }
-  | { kind: 'empty' }
-  | { kind: 'failed' };
+  { kind: 'progress'; progress: Progress } | { kind: 'empty' } | { kind: 'failed' };
 
 /** Newest of two progress records by `updated_at` (last-write-wins, same rule the
  * server uses); ties keep the first argument. */

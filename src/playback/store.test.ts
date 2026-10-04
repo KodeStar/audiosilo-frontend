@@ -43,9 +43,9 @@ jest.mock('./service', () => ({
 // Spy on the progress-sync layer so we can assert what (if anything) gets saved,
 // and so playBook's resume/flush calls are inert.
 const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
-const mockLoadInitialProgress = jest.fn(
-  async (..._args: unknown[]): Promise<ResumeLookup> => ({ kind: 'empty' }),
-);
+const mockLoadInitialProgress = jest.fn(async (..._args: unknown[]): Promise<ResumeLookup> => ({
+  kind: 'empty',
+}));
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),

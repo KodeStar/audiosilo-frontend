@@ -203,9 +203,7 @@ export function revealFromStart(reveal: BookMetaPosition): boolean {
  * a chapter-0 "book" recap is a pre-book note; otherwise it covers up to chapter
  * N. Returns a descriptor the component maps to a translated string. */
 export type RecapDescriptor =
-  | { kind: 'seriesPrior' }
-  | { kind: 'beforeBook' }
-  | { kind: 'upToChapter'; chapter: number };
+  { kind: 'seriesPrior' } | { kind: 'beforeBook' } | { kind: 'upToChapter'; chapter: number };
 export function recapDescriptor(recap: BookMetaRecap): RecapDescriptor {
   const ch = recap.through.chapter;
   if (ch === 0) return recap.scope === 'series' ? { kind: 'seriesPrior' } : { kind: 'beforeBook' };

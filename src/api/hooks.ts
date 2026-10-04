@@ -439,13 +439,11 @@ export function useLibrariesAll() {
     })),
     combine: (results) => ({
       libraries: results.flatMap((r, i) =>
-        (r.data ?? []).map(
-          (l): SourcedLibrary => ({
-            ...l,
-            connectionId: apis[i].connection.id,
-            connectionName: apis[i].connection.name,
-          }),
-        ),
+        (r.data ?? []).map((l): SourcedLibrary => ({
+          ...l,
+          connectionId: apis[i].connection.id,
+          connectionName: apis[i].connection.name,
+        })),
       ),
       isLoading: results.some((r) => r.isLoading),
       error: results.find((r) => r.error)?.error ?? null,
@@ -502,13 +500,11 @@ export function useFavouritesAll() {
     })),
     combine: (results) => ({
       favourites: results.flatMap((r, i) =>
-        (r.data ?? []).map(
-          (f): SourcedFavourite => ({
-            ...f,
-            connectionId: apis[i].connection.id,
-            connectionName: apis[i].connection.name,
-          }),
-        ),
+        (r.data ?? []).map((f): SourcedFavourite => ({
+          ...f,
+          connectionId: apis[i].connection.id,
+          connectionName: apis[i].connection.name,
+        })),
       ),
       isLoading: results.some((r) => r.isLoading),
       error: results.find((r) => r.error)?.error ?? null,
@@ -527,13 +523,11 @@ export function useAllProgressAll() {
       // Newest first across all connections (no cross-connection merge yet).
       progress: results
         .flatMap((r, i) =>
-          (r.data ?? []).map(
-            (p): SourcedProgress => ({
-              ...p,
-              connectionId: apis[i].connection.id,
-              connectionName: apis[i].connection.name,
-            }),
-          ),
+          (r.data ?? []).map((p): SourcedProgress => ({
+            ...p,
+            connectionId: apis[i].connection.id,
+            connectionName: apis[i].connection.name,
+          })),
         )
         .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
       isLoading: results.some((r) => r.isLoading),
