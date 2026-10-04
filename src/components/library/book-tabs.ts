@@ -1,12 +1,6 @@
 /** The book screen's tabs, in display order. */
 export type BookTab =
-  | 'chapters'
-  | 'recaps'
-  | 'characters'
-  | 'bookmarks'
-  | 'history'
-  | 'notes'
-  | 'series';
+  'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series';
 
 /** The i18n key labelling each tab. Deliberately REUSES the existing section /
  * heading strings rather than minting tab-only duplicates (the bookmarks/history/

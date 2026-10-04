@@ -46,14 +46,7 @@ import { useTheme } from '@/theme/theme-provider';
 import { colors, tabularNums } from '@/theme/tokens';
 
 type PlayerSheet =
-  | 'history'
-  | 'notes'
-  | 'bookmarks'
-  | 'chapters'
-  | 'speed'
-  | 'sleep'
-  | 'menu'
-  | null;
+  'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | 'menu' | null;
 
 /** Duration of the play/pause icon morph. */
 const MORPH_MS = 140;

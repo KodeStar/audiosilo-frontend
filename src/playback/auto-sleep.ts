@@ -106,9 +106,7 @@ export type AutoSleepInput = {
 };
 
 export type AutoSleepDecision =
-  | { arm: 'none' }
-  | { arm: 'chapter' }
-  | { arm: 'duration'; minutes: number };
+  { arm: 'none' } | { arm: 'chapter' } | { arm: 'duration'; minutes: number };
 
 const NONE: AutoSleepDecision = { arm: 'none' };
 
