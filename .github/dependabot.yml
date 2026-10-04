@@ -20,13 +20,17 @@ updates:
           - minor
           - patch
     ignore:
-      # This is an Expo SDK app: the SDK pins the versions of these packages
-      # (`npx expo install --check` reports any drift), and a native module
+      # This is an Expo SDK app: the SDK pins the versions of these packages -
+      # its native modules, and react, typescript, jest and their types
+      # (`npx expo install --check` reports any drift) - and a native module
       # bumped past its pin can build and still crash on a device. Patch
       # releases inside the pin are fine; minor and major moves happen only as
       # part of an Expo SDK upgrade, done with `npx expo install --fix` - never
-      # by dependabot. react-test-renderer and @types/react follow the react
-      # the SDK pins.
+      # by dependabot. react-test-renderer follows the react the SDK pins, and
+      # async-storage (a native module already past the SDK's 2.x) is held the
+      # same way. Named one by one rather than `react-native-*`, which would
+      # also freeze react-native-marked (plain JS); add a native module here
+      # when one is added.
       - dependency-name: expo
         update-types:
           - version-update:semver-major
@@ -67,19 +71,47 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
-      - dependency-name: react-native-*
+      - dependency-name: react-native-gesture-handler
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
-      - dependency-name: '@react-native/*'
+      - dependency-name: react-native-reanimated
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
-      - dependency-name: '@react-native-community/*'
+      - dependency-name: react-native-safe-area-context
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
-      - dependency-name: '@react-native-async-storage/*'
+      - dependency-name: react-native-screens
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native-svg
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native-web
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native-worklets
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: '@react-native-async-storage/async-storage'
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: jest
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: '@types/jest'
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
@@ -88,17 +120,9 @@ updates:
       - dependency-name: tailwindcss
         update-types:
           - version-update:semver-major
-      # jest-expo carries jest 29 (jest-environment-jsdom ^29); a jest major
-      # arrives with the jest-expo of an SDK upgrade, not on its own.
-      - dependency-name: jest
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@types/jest'
-        update-types:
-          - version-update:semver-major
 
-  # The workflows reference actions by major tag (actions/checkout@v4), so for
-  # most of them the only update is the next major, which arrives on its own.
+  # The workflows reference actions by major tag (actions/checkout@v4), so the
+  # only update for them is the next major, which arrives on its own.
   - package-ecosystem: github-actions
     directory: /
     schedule:
