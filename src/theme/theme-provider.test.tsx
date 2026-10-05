@@ -6,14 +6,7 @@ import { Uniwind } from 'uniwind';
 // global.css is compiled by Uniwind's Metro transformer; the Node test runtime can't
 // parse it. Fonts and the splash screen are native modules.
 jest.mock('@/global.css', () => ({}));
-jest.mock('@expo-google-fonts/roboto', () => ({
-  useFonts: () => [true],
-  Roboto_300Light: 1,
-  Roboto_400Regular: 2,
-  Roboto_500Medium: 3,
-  Roboto_600SemiBold: 4,
-  Roboto_700Bold: 5,
-}));
+jest.mock('expo-font', () => ({ useFonts: () => [true, null] }));
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(() => Promise.resolve()),
   hideAsync: jest.fn(() => Promise.resolve()),

@@ -45,7 +45,7 @@ export function ApiKeyCreatedModal({
       <Text variant="muted" className="text-xs">
         {t('settings.apiKeys.createdModal.description')}
       </Text>
-      <Text selectable className="text-center tracking-wider text-gray-700">
+      <Text selectable variant="mono" className="text-center text-base">
         {created?.token}
       </Text>
       <View className="flex-row gap-2">

@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { TextInput, View, type TextInputProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Text } from './text';
 
@@ -15,7 +14,7 @@ export type TextFieldProps = TextInputProps & {
 };
 
 /**
- * Labeled text input with a primary focus ring, matching the old client's input
+ * Labeled text input with a brand focus ring, matching the old client's input
  * styling (rounded-xl, gray surface). The old "floating label" effect relied on
  * CSS `:placeholder-shown`; here the label sits above the field for parity
  * across native + web.
@@ -29,25 +28,21 @@ export function TextField({
   onBlur,
   ...props
 }: TextFieldProps) {
+  const themed = useThemeColors();
   const [focused, setFocused] = useState(false);
-  const { scheme } = useTheme();
   return (
     <View className={cn('mb-4', containerClassName)}>
       {label ? (
-        <Text variant="label" className="mb-1.5">
+        <Text variant="eyebrow" className="mb-1.5">
           {label}
         </Text>
       ) : null}
       <TextInput
-        placeholderTextColor={scheme === 'dark' ? colors.dark.text : colors.light.textMuted}
+        placeholderTextColor={themed.mutedForeground}
         className={cn(
-          'rounded-xl border px-4 py-3 font-sans text-base text-gray-700 dark:text-gray-100',
-          'bg-gray-100 dark:bg-gray-840',
-          error
-            ? 'border-red-500'
-            : focused
-              ? 'border-primary'
-              : 'border-gray-200 dark:border-gray-750',
+          'rounded-xl border px-4 py-3 font-sans text-base text-foreground',
+          'bg-card',
+          error ? 'border-destructive' : focused ? 'border-brand' : 'border-border',
           className,
         )}
         onFocus={(e) => {
@@ -60,7 +55,7 @@ export function TextField({
         }}
         {...props}
       />
-      {error ? <Text className="mt-1 text-xs text-red-500">{error}</Text> : null}
+      {error ? <Text className="mt-1 text-xs text-destructive">{error}</Text> : null}
     </View>
   );
 }

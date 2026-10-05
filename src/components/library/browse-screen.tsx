@@ -47,7 +47,7 @@ function BrowseSkeleton() {
       {Array.from({ length: 8 }).map((_, i) => (
         <View
           key={i}
-          className="my-1 h-14 flex-row items-center gap-3 rounded-xl bg-white px-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+          className="my-1 h-14 flex-row items-center gap-3 rounded-xl bg-card px-3 shadow-xs dark:border dark:border-border dark:shadow-none"
         >
           <Skeleton className="h-10 w-10 rounded-lg" />
           <View className="flex-1 gap-2">
@@ -201,13 +201,10 @@ function BrowseContent() {
 
   const renderItem: ListRenderItem<Row> = ({ item }) =>
     item.type === 'header' ? (
-      // Background matches the page (gray-200/gray-800) so the sticky header
+      // Background matches the page (bg-background) so the sticky header
       // occludes scrolled rows without showing as a distinct block.
-      <View
-        style={{ height: HEADER_H }}
-        className="justify-end bg-gray-200 px-4 pb-2 dark:bg-gray-800 lg:px-8"
-      >
-        <Text variant="label">{item.letter}</Text>
+      <View style={{ height: HEADER_H }} className="justify-end bg-background px-4 pb-2 lg:px-8">
+        <Text variant="eyebrow">{item.letter}</Text>
       </View>
     ) : (
       <View style={{ height: ENTRY_H }} className="px-4 lg:px-8">
@@ -297,7 +294,11 @@ function BrowseContent() {
                     accessibilityLabel={t('library.browse.jumpTo', { letter: l })}
                     className="w-7 flex-1 items-center justify-center rounded-full"
                   >
-                    <Text className={active ? 'text-primary' : 'dark:text-gray-700'}>{l}</Text>
+                    <Text
+                      className={`font-sans-semibold text-[11px] ${active ? 'text-brand-ink' : 'text-subtle-foreground'}`}
+                    >
+                      {l}
+                    </Text>
                   </AnimatedPressable>
                 );
               })}

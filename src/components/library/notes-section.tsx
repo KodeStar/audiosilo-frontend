@@ -10,11 +10,10 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // Quiet card surface shared by the composer and each rendered note.
-const CARD =
-  'rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+const CARD = 'rounded-xl bg-card p-3 shadow-xs dark:border dark:border-border dark:shadow-none';
 
 /** Renders one note's markdown. useMarkdown is a hook, so it lives in its own
  * component (one instance per note). */
@@ -42,6 +41,7 @@ export function NotesSection({
    * book's connection so notes address the right server. */
   connectionId?: string;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { data: notes } = useNotes(libraryId, path, connectionId);
   const add = useAddNote(libraryId, path, connectionId);
@@ -85,7 +85,7 @@ export function NotesSection({
               accessibilityLabel={t('library.notes.delete')}
               className="h-8 w-8 items-center justify-center"
             >
-              <Icon name="trash" size={16} color={colors.danger} />
+              <Icon name="trash" size={16} color={themed.destructive} />
             </AnimatedPressable>
           </View>
         </View>

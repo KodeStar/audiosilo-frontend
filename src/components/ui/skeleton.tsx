@@ -10,15 +10,15 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/theme/theme-provider';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 const PULSE_MS = 1000;
 const DIM = 0.55;
 
-// The fill color as a raw value (gray-300 light / gray-750 dark), on the inner
-// animated layer rather than a className: animated style and className stay on
-// separate views (why: animated-pressable.native.tsx).
-const FILL = { light: '#d1d5db', dark: '#2c3340' } as const;
+// The fill is the themed `border` colour as a raw value, on the inner animated layer
+// rather than a className: animated style and className stay on separate views (why:
+// animated-pressable.native.tsx). `border`, not `muted`: muted barely separates from
+// the porcelain page.
 
 export type SkeletonProps = {
   /** Shape utilities for the placeholder, e.g. "h-4 w-32 rounded-md". */
@@ -33,7 +33,7 @@ export type SkeletonProps = {
  */
 export function Skeleton({ className, testID }: SkeletonProps) {
   const reduced = useReducedMotion();
-  const { scheme } = useTheme();
+  const fill = useThemeColors().border;
   const opacity = useSharedValue(1);
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export function Skeleton({ className, testID }: SkeletonProps) {
   // fill, clipped to the outer's rounding by overflow-hidden.
   return (
     <View testID={testID} className={cn('overflow-hidden', className)}>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: FILL[scheme] }, style]} />
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: fill }, style]} />
     </View>
   );
 }

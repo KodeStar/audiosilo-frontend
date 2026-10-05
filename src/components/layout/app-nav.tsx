@@ -8,8 +8,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
 import { isActiveNav } from '@/lib/nav';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // `alsoMatch` keeps a tab highlighted on related routes that live outside its
 // own path - e.g. a book screen (`/book/...`) is reached through the library.
@@ -50,15 +49,15 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** Left sidebar on wide screens, bottom tab bar on phones. */
 export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const pathname = usePathname();
-  const { scheme } = useTheme();
 
   if (orientation === 'bottom') {
     return (
       // Extra top padding balances the home-indicator safe-area inset the shell
       // adds below the row, so the icons aren't crammed against the top edge.
-      <View className="flex-row border-t border-gray-100 bg-gray-200 pt-3 dark:border-gray-750 dark:bg-gray-800">
+      <View className="flex-row border-t border-border bg-background pt-3">
         {NAV_ITEMS.map((item) => {
           const active = isActiveNav(pathname, item);
           const label = t(`nav.${item.labelKey}`);
@@ -74,11 +73,11 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                 <Icon
                   name={item.icon}
                   size={24}
-                  color={active ? colors.primary : colors[scheme].textMuted}
+                  color={active ? themed.brand : themed.mutedForeground}
                 />
                 <RNText
                   className={`text-[11px] ${
-                    active ? 'font-roboto-medium text-primary' : 'text-gray-500 dark:text-gray-400'
+                    active ? 'font-sans-medium text-brand-ink' : 'text-muted-foreground'
                   }`}
                 >
                   {label}
@@ -92,8 +91,8 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
   }
 
   return (
-    <View className="w-80 border-r border-gray-100 bg-gray-200 dark:border-gray-750 dark:bg-gray-800 after:content-[''] after:border-r after:absolute after:right-0 after:h-full after:border-gray-300 dark:after:border-gray-860">
-      <View className="p-5 border-b border-gray-100 active:bg-gray-50 dark:border-gray-750 dark:active:bg-gray-840 after:content-[''] after:border-b after:absolute after:bottom-0 after:left-0 after:w-full after:border-gray-300 dark:after:border-gray-860">
+    <View className="w-80 border-r border-border bg-background after:content-[''] after:border-r after:absolute after:right-0 after:h-full after:border-border-strong">
+      <View className="p-5 border-b border-border active:bg-accent after:content-[''] after:border-b after:absolute after:bottom-0 after:left-0 after:w-full after:border-border-strong">
         {/* App build version, not a server's - account/server details are per-connection
             on each connection's account screen (reached from Settings → Servers). */}
         <Brand size={50} showVersion />
@@ -110,14 +109,14 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                 accessibilityLabel={label}
                 className={`relative flex-row items-center gap-3 rounded-lg border px-4 py-3 ${
                   active
-                    ? 'border-gray-200 bg-gray-50 shadow-xs dark:border-gray-860 dark:bg-gray-840 dark:shadow-none'
-                    : 'border-transparent active:bg-gray-50 dark:active:bg-gray-840'
+                    ? 'border-border bg-card shadow-xs dark:shadow-none'
+                    : 'border-transparent active:bg-accent'
                 }`}
               >
                 {active ? (
-                  <View className="absolute -left-[1px] -bottom-[1px] top-0 w-1.5 rounded-tl-lg rounded-bl-lg bg-primary" />
+                  <View className="absolute -left-[1px] -bottom-[1px] top-0 w-1.5 rounded-tl-lg rounded-bl-lg bg-brand" />
                 ) : null}
-                <Icon name={item.icon} size={24} color={colors[scheme].text} />
+                <Icon name={item.icon} size={24} color={themed.mutedForeground} />
                 <Text>{label}</Text>
               </AnimatedPressable>
             </Link>

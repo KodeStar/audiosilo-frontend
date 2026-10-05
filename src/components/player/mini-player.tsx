@@ -27,9 +27,9 @@ import {
   usePlayer,
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { useTheme } from '@/theme/theme-provider';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
 const COVER_SIZE = 64;
@@ -60,8 +60,8 @@ function ProgressHairline({ total }: { total: number }) {
   const bookPosition = usePlayer(selectBookPosition);
   const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
   return (
-    <View className="h-0.5 bg-gray-300 dark:bg-gray-750">
-      <View className="h-full bg-primary" style={{ width: `${fraction * 100}%` }} />
+    <View className="h-0.5 bg-muted">
+      <View className="h-full bg-brand" style={{ width: `${fraction * 100}%` }} />
     </View>
   );
 }
@@ -89,13 +89,13 @@ function TimeLeft({ total }: { total: number }) {
  * fixed offset would leave the bar hidden behind it). Content scrolls behind it;
  * screens reserve room with `useMiniPlayerInset()`. */
 export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
+  const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
   const toggle = usePlayer((s) => s.toggle);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const skipBackward = useSettings((s) => s.skipBackward);
-  const { scheme } = useTheme();
   // The cover URL embeds the playing book's own server auth (`?token=`); its request
   // headers must match that connection too, not whatever happens to be default - the
   // mini-player can outlive a switch away from the connection the book plays through.
@@ -145,13 +145,13 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
           nav. */}
       <AnimatedPressable
         onPress={() => router.push('/player')}
-        className="overflow-hidden border-t border-gray-100 bg-gray-50 dark:border-gray-750 dark:bg-gray-840"
+        className="overflow-hidden border-t border-border bg-card"
         accessibilityRole="button"
         accessibilityLabel={nowPlaying.title}
       >
         {/* Cover sits flush against the bar's left edge, full content-row height - the
             artwork anchors the bar. */}
-        <View className="flex-row items-stretch bg-gray-50 dark:bg-gray-840">
+        <View className="flex-row items-stretch bg-card">
           <Cover
             source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
             label={nowPlaying.title}
@@ -160,7 +160,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
           />
           <View className="flex-1 flex-row items-center gap-3 px-3">
             <View className="flex-1">
-              <Text variant="subtitle" numberOfLines={1}>
+              <Text variant="label" numberOfLines={1}>
                 {nowPlaying.title}
               </Text>
               {caption ? (
@@ -174,7 +174,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
               direction="back"
               seconds={skipBackward}
               onPress={() => void skipSeconds(-skipBackward)}
-              color={colors[scheme].textMuted}
+              color={themed.mutedForeground}
               fontSize={12}
               className="px-1 items-center justify-center"
               accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
@@ -182,7 +182,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
             <AnimatedPressable
               onPress={() => void toggle()}
               hitSlop={8}
-              className={`h-10 w-10 items-center justify-center rounded-full bg-primary ${
+              className={`h-10 w-10 items-center justify-center rounded-full bg-brand ${
                 isPlaying ? '' : 'pl-0.5'
               }`}
               accessibilityRole="button"

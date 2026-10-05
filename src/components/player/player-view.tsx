@@ -43,9 +43,9 @@ import {
   usePlayer,
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { useTheme } from '@/theme/theme-provider';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 type PlayerSheet =
   'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | 'menu' | null;
@@ -103,8 +103,8 @@ function MenuRow({
   label: string;
   onPress: () => void;
 }) {
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  const themed = useThemeColors();
+  const neutral = themed.foreground;
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -130,13 +130,13 @@ function MenuRow({
  * footer control).
  */
 export function PlayerView({ onClose }: { onClose?: () => void }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   const { height } = useWindowDimensions();
   // The player fills the screen edge-to-edge (backdrop under the status bar); the
   // top controls + footer pad themselves clear of the notch / home indicator.
   const insets = useSafeAreaInsets();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  const neutral = themed.foreground;
   const [sheet, setSheet] = useState<PlayerSheet>(null);
   // Live scrub preview (segment-relative seconds) while dragging the seek bar; the
   // time labels track it, and it commits on release.
@@ -412,19 +412,16 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
               // badge whether or not that window fades the audio.
               <View
                 className={`absolute right-2 top-2 flex-row items-center gap-1 rounded-full px-2 py-1 ${
-                  sleepPhase === 'running' ? 'bg-black/60' : 'bg-primary'
+                  sleepPhase === 'running' ? 'bg-black/60' : 'bg-brand'
                 }`}
               >
                 <Icon name="sleep" size={12} color={colors.white} />
                 {sleepPhase === 'grace' ? (
-                  <RNText className="font-roboto-medium text-xs text-white dark:text-white">
+                  <RNText className="font-sans-medium text-xs text-white">
                     {t('player.sleepTimer.keepGoingShort')}
                   </RNText>
                 ) : sleepRemaining !== null ? (
-                  <RNText
-                    className="font-sans text-xs text-white dark:text-white"
-                    style={tabularNums}
-                  >
+                  <RNText className="font-sans text-xs text-white" style={tabularNums}>
                     {formatClock(sleepRemaining)}
                   </RNText>
                 ) : null}
@@ -482,16 +479,14 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             </View>
 
             {isError ? (
-              <View className="mt-3 flex-row items-center justify-center gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
-                <RNText className="font-sans text-xs text-danger-600 dark:text-danger">
-                  {t('ui.error')}
-                </RNText>
+              <View className="mt-3 flex-row items-center justify-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+                <RNText className="font-sans text-xs text-destructive">{t('ui.error')}</RNText>
                 <AnimatedPressable
                   onPress={() => void retry()}
-                  className="rounded-lg bg-primary px-4 py-1.5"
+                  className="rounded-lg bg-brand px-4 py-1.5"
                   accessibilityRole="button"
                 >
-                  <RNText className="font-roboto-medium text-base text-white dark:text-white">
+                  <RNText className="font-sans-medium text-base text-brand-foreground">
                     {t('common.retry')}
                   </RNText>
                 </AnimatedPressable>
@@ -521,7 +516,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
 
               <AnimatedPressable
                 onPress={() => (isError ? void retry() : void toggle())}
-                className="h-[112px] w-[112px] items-center justify-center rounded-full bg-primary"
+                className="h-[112px] w-[112px] items-center justify-center rounded-full bg-brand"
                 accessibilityRole="button"
                 accessibilityLabel={
                   isPlaying ? t('player.controls.pause') : t('player.controls.play')

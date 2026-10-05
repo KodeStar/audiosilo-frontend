@@ -29,7 +29,7 @@ const mins = (v: number) => `${Math.round(v / 60)}m`;
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View className="gap-2">
-      <Text variant="label">{title}</Text>
+      <Text variant="eyebrow">{title}</Text>
       {children}
     </View>
   );
@@ -48,7 +48,7 @@ function StepperRow({
   return (
     <View
       className={`flex-row items-center justify-between px-4 py-3.5 ${
-        first ? '' : 'border-t border-black/5 dark:border-white/5'
+        first ? '' : 'border-t border-border'
       }`}
     >
       <Text>{label}</Text>
@@ -175,8 +175,8 @@ export default function SettingsScreen() {
         <Section title={t('settings.language.label')}>
           {/* A long, wrapping list, so it stays a pill group rather than a single-row
             segmented control - but the pills share the SegmentedControl idiom (a quiet
-            track with the active option filled in primary). */}
-          <View className="flex-row flex-wrap gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-840">
+            track with the active option filled in brand pink). */}
+          <View className="flex-row flex-wrap gap-2 rounded-lg bg-muted p-1">
             {languages.map((o) => {
               const active = langPref === o.value;
               return (
@@ -186,15 +186,13 @@ export default function SettingsScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                   accessibilityLabel={o.label}
-                  className={`items-center rounded-md px-3 py-1.5 ${active ? 'bg-primary' : ''}`}
+                  className={`items-center rounded-md px-3 py-1.5 ${active ? 'bg-brand' : ''}`}
                 >
-                  {/* Raw RN Text with the full class string (as SegmentedControl does):
-                    through the themed <Text>, the body variant's `dark:text-gray-400`
-                    survives cn() next to `text-white` and wins in dark mode, so the
-                    active label would render gray-on-pink. */}
+                  {/* Raw RN Text with the full class string, as SegmentedControl's
+                    pills do. */}
                   <RNText
-                    className={`font-roboto-medium text-sm ${
-                      active ? 'text-white' : 'text-gray-500 dark:text-gray-400'
+                    className={`font-sans-medium text-sm ${
+                      active ? 'text-brand-foreground' : 'text-muted-foreground'
                     }`}
                   >
                     {o.label}
@@ -206,7 +204,7 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title={t('settings.playback.label')}>
-          <View className="overflow-hidden rounded-lg bg-white shadow-xs ios-clipped-shadow dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+          <View className="overflow-hidden rounded-lg bg-card shadow-xs ios-clipped-shadow dark:border dark:border-border dark:shadow-none">
             <StepperRow label={t('settings.playback.skipBack')} first>
               <Stepper
                 value={skipBackward}
@@ -276,7 +274,7 @@ export default function SettingsScreen() {
             {/* The window and the timer's kind only matter once the feature is on. */}
             {autoSleepTimer ? (
               <View className="gap-2">
-                <View className="overflow-hidden rounded-lg bg-white shadow-xs ios-clipped-shadow dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+                <View className="overflow-hidden rounded-lg bg-card shadow-xs ios-clipped-shadow dark:border dark:border-border dark:shadow-none">
                   <StepperRow label={t('settings.sleep.from')} first>
                     <TimeStepper
                       value={autoSleepFrom}

@@ -11,28 +11,29 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // A quiet surface row: soft shadow in light, hairline border in dark. The former
 // loud filled blocks are demoted to a tinted glyph tile.
 const ROW_SURFACE =
-  'flex-row items-center gap-3 rounded-xl bg-white px-3 py-2.5 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+  'flex-row items-center gap-3 rounded-xl bg-card px-3 py-2.5 shadow-xs dark:border dark:border-border dark:shadow-none';
 const GLYPH = 'h-10 w-10 items-center justify-center rounded-lg';
 
 /** Favourites sits alongside the libraries as a special "shelf": a row that opens
  * the dedicated Favourites screen. Always shown so it stays discoverable. */
 function FavouritesShelfRow() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { favourites } = useFavouritesAll();
   const count = favourites.length;
   return (
     <Link href="/library/favourites" asChild>
       <AnimatedPressable accessibilityRole="link" className={`my-1 w-full ${ROW_SURFACE}`}>
-        <View className={`${GLYPH} bg-primary/10`}>
-          <Icon name="heart-solid" size={18} color={colors.primary} />
+        <View className={`${GLYPH} bg-brand/10`}>
+          <Icon name="heart-solid" size={18} color={themed.brand} />
         </View>
         <View className="flex-1">
-          <Text variant="subtitle">{t('library.favourites.title')}</Text>
+          <Text variant="label">{t('library.favourites.title')}</Text>
           <Text variant="muted">
             {count === 0
               ? t('library.favourites.emptyHint')
@@ -46,6 +47,7 @@ function FavouritesShelfRow() {
 }
 
 export default function LibrariesScreen() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { libraries, isLoading, error } = useLibrariesAll();
   const { openLibrary } = useOpen();
@@ -81,7 +83,7 @@ export default function LibrariesScreen() {
       {groups.map((g) => (
         <View key={g.id}>
           {showServerHeaders ? (
-            <Text variant="label" className="mb-1 mt-4">
+            <Text variant="eyebrow" className="mb-1 mt-4">
               {g.name}
             </Text>
           ) : null}
@@ -92,11 +94,11 @@ export default function LibrariesScreen() {
               accessibilityRole="button"
               className={`my-1 w-full ${ROW_SURFACE}`}
             >
-              <View className={`${GLYPH} bg-primary/10`}>
-                <Icon name="folder" size={18} color={colors.primary} />
+              <View className={`${GLYPH} bg-brand/10`}>
+                <Icon name="folder" size={18} color={themed.brand} />
               </View>
               <View className="flex-1">
-                <Text variant="subtitle">{lib.name}</Text>
+                <Text variant="label">{lib.name}</Text>
                 <Text variant="muted">{lib.default_view}</Text>
               </View>
               <Icon name="chevron-right" size={16} />

@@ -4,7 +4,7 @@ import { Platform, type ViewStyle, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // react-native-web supports CSS `filter`, but it isn't in RN's ViewStyle type;
 // cast through `unknown` to attach it without an `any`. Beyond the blur we
@@ -35,6 +35,7 @@ const WEB_FILTER_LIGHT = {
  * `pointerEvents="none"`.
  */
 export function CoverBackdrop({ source }: { source?: ImageSource | null }) {
+  const themed = useThemeColors();
   const { scheme } = useTheme();
   // Unique per instance: SVG def ids are document-global on web, so a fixed id would
   // collide when two backdrops mount at once (e.g. a book page behind an open player
@@ -44,7 +45,7 @@ export function CoverBackdrop({ source }: { source?: ImageSource | null }) {
   if (!source) return null;
   const dark = scheme === 'dark';
   const native = Platform.OS !== 'web';
-  const bg = dark ? colors.dark.bg : colors.light.bg;
+  const bg = themed.background;
 
   return (
     <View className="absolute inset-x-0 top-0 h-[60%] overflow-hidden" pointerEvents="none">
@@ -65,11 +66,11 @@ export function CoverBackdrop({ source }: { source?: ImageSource | null }) {
       {/* Native-only: a neutral tint over the blurred art approximates the web
           `saturate()` - it desaturates a loud cover perceptually (no CSS filters
           on native). */}
-      {native ? <View className="absolute inset-0 bg-gray-200/45 dark:bg-gray-800/45" /> : null}
+      {native ? <View className="absolute inset-0 bg-background/45" /> : null}
 
       {/* Scrim: lighter than a full paint-over - the fade + tint now carry most of
           the load, so the art still reads as a warm glow while text stays legible. */}
-      <View className="absolute inset-0 bg-gray-100/45 dark:bg-gray-900/50" />
+      <View className="absolute inset-0 bg-background/50" />
 
       {/* Vertical fade: transparent down to ~40%, then dissolving to the base
           background so the band's bottom edge melts into the page (no hard line). */}

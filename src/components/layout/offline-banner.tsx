@@ -6,12 +6,13 @@ import { anyOffline, useReachability } from '@/api/reachability';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { connectionParam } from '@/lib/paths';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 function Bar({ label }: { label: string }) {
+  const themed = useThemeColors();
   return (
-    <View className="flex-row items-center justify-center gap-2 border-b border-gray-200 bg-gray-100 py-1.5 dark:border-gray-750 dark:bg-gray-860">
-      <Icon name="offline" size={12} color={colors.dark.textMuted} />
+    <View className="flex-row items-center justify-center gap-2 border-b border-border bg-muted py-1.5">
+      <Icon name="offline" size={12} color={themed.mutedForeground} />
       <Text variant="caption">{label}</Text>
     </View>
   );

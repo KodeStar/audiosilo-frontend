@@ -11,10 +11,17 @@
 // 2. Native letter-spacing. NativeWind pinned px tracking on native; Tailwind v4's em
 //    values would scale with the font size. This asserts `tracking-wider` resolves to
 //    0.5 on an iOS `text-base` element.
+// 3. Themed colour tokens. The Stacks semantic colours are Uniwind theme variables
+//    (`@variant light` / `@variant dark` in the generated region of global.css), which
+//    only become utilities through the `@theme` block Uniwind writes into its own CSS
+//    artifact. This asserts `bg-background` exists and resolves to each theme's value
+//    on iOS (also through an opacity modifier, `bg-brand/10`), and that the web CSS
+//    switches it under `.dark`.
 //
-// It runs the same compile step Uniwind's Metro transformer runs (`compileCSS`, read
-// out of the installed transformer because Uniwind doesn't export it). If a Uniwind
-// upgrade renames it, this fails loudly - update the hook below, don't delete the guard.
+// It runs the same steps Uniwind's Metro transformer runs (`generateArtifacts`, then
+// `compileCSS`, read out of the installed transformer because Uniwind doesn't export
+// it). If a Uniwind upgrade renames them, this fails loudly - update the hook below,
+// don't delete the guard.
 
 const fs = require('node:fs');
 const Module = require('node:module');
@@ -26,15 +33,19 @@ process.chdir(root); // Uniwind resolves cssEntryFile against the cwd.
 function loadUniwindCompiler() {
   const file = require.resolve('uniwind/metro').replace(/index\.cjs$/, 'transformer.cjs');
   const src = fs.readFileSync(file, 'utf8');
-  if (!/\bconst compileCSS = /.test(src) || !/\bconst config = require\(/.test(src)) {
+  if (
+    !/\bconst compileCSS = /.test(src) ||
+    !/\bconst config = require\(/.test(src) ||
+    !/\bconst cssArtifactPath = /.test(src)
+  ) {
     throw new Error(
-      `check-styles: ${file} no longer defines compileCSS/config - update this script`,
+      `check-styles: ${file} no longer defines compileCSS/config/cssArtifactPath - update this script`,
     );
   }
   const mod = new Module(file, module);
   mod.filename = file;
   mod.paths = Module._nodeModulePaths(path.dirname(file));
-  mod._compile(`${src}\nmodule.exports.__probe = { compileCSS, config };`, file);
+  mod._compile(`${src}\nmodule.exports.__probe = { compileCSS, config, cssArtifactPath };`, file);
   return mod.exports.__probe;
 }
 
@@ -61,13 +72,21 @@ const failures = [];
 const check = (ok, message) => ok || failures.push(message);
 
 (async () => {
-  const { compileCSS, config } = loadUniwindCompiler();
-  const uniwind = { cssEntryFile: './src/global.css', polyfills: { rem: 14 } };
+  const { compileCSS, config, cssArtifactPath } = loadUniwindCompiler();
+  // The options metro.config.js passes (dtsFile included: generating artifacts rewrites it).
+  const uniwind = {
+    cssEntryFile: './src/global.css',
+    dtsFile: './src/uniwind-types.d.ts',
+    polyfills: { rem: 14 },
+  };
   const bundler = (platform) => config.UniwindBundlerConfig.fromMetroConfig(uniwind, platform);
+  // Uniwind's CSS artifact (its variants + the @theme block for theme variables), as the
+  // Metro transformer refreshes it before every compile.
+  await bundler(config.Platform.Web).generateArtifacts(cssArtifactPath);
 
   // 1. web: a dark: utility the app uses must have an unscoped rule.
   const webCss = await compileCSS(bundler(config.Platform.Web));
-  const darkClass = '.dark\\:bg-gray-800';
+  const darkClass = '.dark\\:border-border';
   check(webCss.includes(darkClass), `web CSS has no ${darkClass} rule at all`);
   check(
     withoutBlocks(withoutBlocks(webCss, '@scope'), '@media (prefers-color-scheme').includes(
@@ -98,6 +117,32 @@ const check = (ok, message) => ok || failures.push(message);
   check(
     letterSpacing === 0.5,
     `ios: tracking-wider letterSpacing is ${letterSpacing}, expected 0.5 (NativeWind's px value)`,
+  );
+
+  // 3. themed tokens: iOS resolves each theme's value (scoped theme vars over the base),
+  // web overrides the variable under `.dark`.
+  const tokens = require(path.join(root, 'src/theme/tokens.json')).themes;
+  for (const theme of ['light', 'dark']) {
+    const themed = { ...vars, ...scopedVars[`${config.UNIWIND_THEME_VARIABLES}${theme}`] };
+    const bg = entry('bg-background', 'backgroundColor')?.(themed);
+    check(
+      bg === tokens[theme].background,
+      `ios ${theme}: bg-background is ${bg}, expected ${tokens[theme].background} (themed tokens, see the generated region of src/global.css)`,
+    );
+    const mixes = [];
+    const mixRt = { colorMix: (c, pct) => mixes.push([c, pct]) };
+    const tinted = new Function('rt', `return ${nativeCode}`)(mixRt).stylesheet['bg-brand/10'];
+    for (const s of tinted ?? []) s.entries.forEach(([, f]) => f(themed));
+    check(
+      mixes.some(([c, pct]) => c === tokens[theme].brand && pct === '10%'),
+      `ios ${theme}: bg-brand/10 does not mix the ${theme} brand colour`,
+    );
+  }
+  check(
+    new RegExp(`\\.dark\\s*\\{[^}]*--color-background:\\s*${tokens.dark.background}`).test(
+      webCss,
+    ) && /\.bg-background\s*\{\s*background-color:\s*var\(--color-background\)/.test(webCss),
+    'web: bg-background is not a themed variable switched under .dark',
   );
 
   if (failures.length) {

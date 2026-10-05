@@ -63,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   let content: ReactNode;
   if (wide && onBook) {
     content = (
-      <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
+      <View className="flex-1 flex-row bg-background">
         <NavBar orientation="sidebar" />
         <View className="flex-1">
           <ReconnectBanner />
@@ -77,7 +77,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     // The content column is flex-1, so it narrows to make room for the player
     // (and its search bar resizes with it) instead of the player overlaying it.
     content = (
-      <View className="flex-1 flex-row bg-gray-200 dark:bg-gray-800">
+      <View className="flex-1 flex-row bg-background">
         <NavBar orientation="sidebar" />
         <View className="flex-1">
           <ReconnectBanner />
@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ContentColumn>{children}</ContentColumn>
         </View>
         {playing ? (
-          <View className="w-[380px] border-l border-gray-100 dark:border-gray-750">
+          <View className="w-[380px] border-l border-border">
             <PlayerView />
           </View>
         ) : null}
@@ -93,7 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   } else {
     content = (
-      <View className="flex-1 relative bg-gray-200 dark:bg-gray-800">
+      <View className="flex-1 relative bg-background">
         <AppHeader />
         <ReconnectBanner />
         <OfflineBanner />
@@ -104,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <MiniPlayer bottomOffset={navOffset} />
         <SafeAreaView
           edges={['bottom']}
-          className="bg-gray-200 dark:bg-gray-800"
+          className="bg-background"
           onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
         >
           <NavBar orientation="bottom" />

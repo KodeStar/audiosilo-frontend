@@ -1,7 +1,8 @@
 import { ActivityIndicator, Pressable, Text as RNText, type PressableProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
-import { colors } from '@/theme/tokens';
+import type { ThemeColors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
 
@@ -11,22 +12,23 @@ const containerBase =
   'flex-row items-center justify-center gap-2 rounded-lg px-4 py-3 active:opacity-80';
 
 const containerVariant: Record<Variant, string> = {
-  primary: 'bg-primary',
-  secondary: 'bg-gray-100 border border-gray-200 dark:border-gray-750 dark:bg-gray-840',
+  primary: 'bg-brand',
+  secondary: 'border border-border bg-secondary',
   ghost: 'bg-transparent',
 };
 
 const labelVariant: Record<Variant, string> = {
-  primary: 'text-white',
-  secondary: 'text-gray-700 dark:text-gray-200',
-  ghost: 'text-primary',
+  primary: 'text-brand-foreground',
+  secondary: 'text-secondary-foreground',
+  ghost: 'text-brand-ink',
 };
 
-const iconColor: Record<Variant, string> = {
-  primary: colors.white,
-  secondary: colors.dark.text,
-  ghost: colors.primary,
-};
+const iconColor = (variant: Variant, themed: ThemeColors) =>
+  variant === 'primary'
+    ? themed.brandForeground
+    : variant === 'ghost'
+      ? themed.brand
+      : themed.secondaryForeground;
 
 export type ButtonProps = Omit<PressableProps, 'children'> & {
   /** Omit for an icon-only button (pass an `accessibilityLabel` instead). */
@@ -46,6 +48,7 @@ export function Button({
   className,
   ...props
 }: ButtonProps) {
+  const themed = useThemeColors();
   const isDisabled = disabled || loading;
   return (
     <Pressable
@@ -60,12 +63,12 @@ export function Button({
       {...props}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? colors.white : colors.primary} />
+        <ActivityIndicator color={iconColor(variant, themed)} />
       ) : (
         <>
-          {icon ? <Icon name={icon} size={16} color={iconColor[variant]} /> : null}
+          {icon ? <Icon name={icon} size={16} color={iconColor(variant, themed)} /> : null}
           {title ? (
-            <RNText className={`font-roboto-semibold text-base ${labelVariant[variant]}`}>
+            <RNText className={`font-sans-semibold text-base ${labelVariant[variant]}`}>
               {title}
             </RNText>
           ) : null}

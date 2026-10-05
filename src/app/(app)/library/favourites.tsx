@@ -11,10 +11,9 @@ import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
-const ROW_SURFACE =
-  'rounded-xl bg-white shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+const ROW_SURFACE = 'rounded-xl bg-card shadow-xs dark:border dark:border-border dark:shadow-none';
 
 /** Filled heart that un-favourites the path on its own connection. Always a
  * sibling of (never nested inside) the navigable row, so its press can't bubble. */
@@ -27,6 +26,7 @@ function UnfavouriteButton({
   libraryId: number;
   path: string;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const toggleFavourite = useToggleFavourite(connectionId);
   return (
@@ -37,7 +37,7 @@ function UnfavouriteButton({
       accessibilityLabel={t('library.favourite.remove')}
       className={`h-11 w-11 items-center justify-center ${ROW_SURFACE}`}
     >
-      <Icon name="heart-solid" size={18} color={colors.primary} />
+      <Icon name="heart-solid" size={18} color={themed.brand} />
     </AnimatedPressable>
   );
 }
@@ -45,6 +45,7 @@ function UnfavouriteButton({
 /** One favourite as a quiet row: a book (blue glyph tile) or a navigation folder
  * (pink glyph tile), opened on its own connection, with a remove-heart. */
 function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
+  const themed = useThemeColors();
   const { openBook, openLibrary } = useOpen();
   const isBook = fav.is_book;
   const title = fav.title || pathLeaf(fav.path);
@@ -64,16 +65,16 @@ function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
         className={`flex-1 flex-row items-center gap-3 px-3 py-2.5 ${ROW_SURFACE}`}
       >
         <View
-          className={`h-10 w-10 items-center justify-center rounded-lg ${isBook ? 'bg-blue-500/10 dark:bg-blue-500/15' : 'bg-primary/10'}`}
+          className={`h-10 w-10 items-center justify-center rounded-lg ${isBook ? 'bg-info/10' : 'bg-brand/10'}`}
         >
           <Icon
             name={isBook ? 'book' : 'folder'}
             size={18}
-            color={isBook ? colors.blue : colors.primary}
+            color={isBook ? themed.info : themed.brand}
           />
         </View>
         <View className="flex-1">
-          <Text variant="subtitle" numberOfLines={1}>
+          <Text variant="label" numberOfLines={1}>
             {title}
           </Text>
           {meta ? (

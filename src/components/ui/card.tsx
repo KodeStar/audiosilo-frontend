@@ -7,7 +7,7 @@ export function Card({ className, ...props }: ViewProps & { className?: string }
   return (
     <View
       className={cn(
-        'rounded-lg bg-white p-4 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none',
+        'rounded-lg bg-card p-4 shadow-xs dark:border dark:border-border dark:shadow-none',
         className,
       )}
       {...props}

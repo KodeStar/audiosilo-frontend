@@ -84,11 +84,13 @@ export default function DemoScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <SafeAreaView className="flex-1 bg-background">
       <ScrollView contentContainerClassName="grow items-center justify-center gap-8 p-6">
         <View className="items-center gap-3">
           <Logo size={64} />
-          <Text className="text-primary">{t('demo.title')}</Text>
+          <Text variant="display" className="text-brand">
+            {t('demo.title')}
+          </Text>
           <Text variant="muted" className="text-center">
             {t('demo.intro')}
           </Text>
@@ -96,7 +98,7 @@ export default function DemoScreen() {
 
         {error ? (
           <View className="items-center gap-4">
-            <Text className="text-center text-sm">{error}</Text>
+            <Text className="text-center text-sm text-destructive">{error}</Text>
             <Button title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
           </View>
         ) : !pairing ? (

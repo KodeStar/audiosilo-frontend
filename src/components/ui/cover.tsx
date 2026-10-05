@@ -31,7 +31,7 @@ export function Cover({
 
   return (
     <View
-      className={`aspect-square w-full overflow-hidden bg-gray-300 dark:bg-gray-860 ${rounded}`}
+      className={`aspect-square w-full overflow-hidden bg-muted ${rounded}`}
       style={size ? { width: size, height: size } : undefined}
     >
       {source && !failed ? (
@@ -46,12 +46,12 @@ export function Cover({
       ) : (
         <View className="flex-1 items-center justify-center gap-0.5 p-2">
           {label ? (
-            <Text className="text-center text-xs" numberOfLines={3}>
+            <Text className="text-center font-sans-medium text-xs" numberOfLines={3}>
               {label}
             </Text>
           ) : null}
           {sublabel ? (
-            <Text className="text-center" numberOfLines={2}>
+            <Text className="text-center text-[10px] text-muted-foreground" numberOfLines={2}>
               {sublabel}
             </Text>
           ) : null}

@@ -96,7 +96,7 @@ export default function ScanScreen() {
     // the user and linking to Settings here; on Android a soft-deny leaves
     // `canAskAgain` true, so offer a neutral in-app retry instead.
     return (
-      <View className="flex-1 bg-gray-200 dark:bg-gray-800">
+      <View className="flex-1 bg-background">
         <CloseControl />
         <SafeAreaView className="flex-1">
           <View className="flex-1 justify-center">
@@ -133,7 +133,7 @@ export default function ScanScreen() {
         <View className="flex-1 items-end justify-end p-8" pointerEvents="box-none">
           <Text
             className={`w-full rounded-lg px-4 py-3 text-center text-white ${
-              error ? 'bg-danger/90' : 'bg-black/60'
+              error ? 'bg-destructive/90' : 'bg-black/60'
             }`}
           >
             {error ?? t('connect.scan.aimHint')}

@@ -11,12 +11,6 @@ jest.mock('@/playback/store', () =>
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
 
-// The primitives read the theme; mocking it keeps the test out of ThemeProvider (whose
-// module side-effect-imports global.css, unparseable in the Node test runtime).
-jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
-}));
-
 /* eslint-disable import/first */
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { FADE_SECONDS, useSleepTimer } from '@/playback/sleep-timer';

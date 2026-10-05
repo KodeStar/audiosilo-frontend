@@ -1,7 +1,7 @@
 import { useCid } from '@/api/provider';
 import { useDownloadEntry } from '@/downloads/store';
 import { Icon } from '@/components/ui/icon';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Small indicator for list rows: a check when downloaded, an arrow while in
  * flight, nothing otherwise. Scoped to the card's own connection (falling back to the
@@ -19,12 +19,12 @@ export function DownloadBadge({
   path: string;
   size?: number;
 }) {
+  const themed = useThemeColors();
   const entry = useDownloadEntry(useCid(connectionId), libraryId, path);
   if (!entry) return null;
-  if (entry.status === 'downloaded')
-    return <Icon name="check" size={size} color={colors.primary} />;
+  if (entry.status === 'downloaded') return <Icon name="check" size={size} color={themed.brand} />;
   if (entry.status === 'downloading' || entry.status === 'queued') {
-    return <Icon name="download" size={size} color={colors.dark.textMuted} />;
+    return <Icon name="download" size={size} color={themed.mutedForeground} />;
   }
   return null;
 }

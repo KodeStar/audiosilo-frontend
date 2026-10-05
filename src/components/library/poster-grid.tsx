@@ -59,7 +59,7 @@ export function GridCard({
       <AnimatedPressable
         onPress={() => openBook(connectionId, libraryId, path)}
         accessibilityRole="button"
-        className="w-full gap-2.5 rounded-xl border border-gray-200 bg-gray-50 p-3 hover:bg-gray-100 dark:border-gray-860 dark:bg-gray-840 dark:hover:bg-gray-800"
+        className="w-full gap-2.5 rounded-xl border border-border bg-card p-3 hover:bg-accent"
       >
         <CoverFrame>
           <Cover
@@ -71,7 +71,7 @@ export function GridCard({
         </CoverFrame>
         <View className="flex-row items-start gap-1.5">
           <View className="h-10 flex-1 justify-start">
-            <Text variant="subtitle" numberOfLines={2}>
+            <Text variant="label" numberOfLines={2}>
               {title}
             </Text>
           </View>
@@ -91,7 +91,7 @@ export function GridCard({
 export function GridCardSkeleton({ width, footer }: { width: number; footer?: boolean }) {
   return (
     <View style={{ width }}>
-      <View className="w-full gap-2.5 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-860 dark:bg-gray-840">
+      <View className="w-full gap-2.5 rounded-xl border border-border bg-card p-3">
         <Skeleton className="aspect-square w-full rounded-lg" />
         <View className="gap-2 py-0.5">
           <Skeleton className="h-3.5 w-full rounded-sm" />

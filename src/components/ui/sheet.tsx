@@ -19,8 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
 import { OverlayHost } from './overlay-host';
@@ -89,12 +88,12 @@ export function Sheet({
   maxHeightFraction = 0.85,
   inline = false,
 }: SheetProps) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const reduced = useReducedMotion();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  const neutral = themed.foreground;
 
   // Keep the panel mounted through the exit animation. Opening depends ONLY on the
   // `visible` prop; `exiting` extends the mount past a close until the slide-down
@@ -187,7 +186,7 @@ export function Sheet({
       </Animated.View>
       <Animated.View style={panelStyle} onLayout={onLayout}>
         <View
-          className="rounded-t-2xl bg-white shadow-lg dark:border-t dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+          className="rounded-t-2xl bg-card shadow-lg dark:border-t dark:border-border dark:shadow-none"
           style={{
             maxHeight: Math.round(height * maxHeightFraction),
             paddingBottom: insets.bottom,

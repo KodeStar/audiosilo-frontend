@@ -25,9 +25,9 @@ export function Brand({
     <View className="flex-row items-center gap-2.5">
       <Logo size={size} />
       <View>
-        <RNText className="font-roboto-bold text-xl">
-          <RNText className="font-roboto-bold text-primary">AUDIO</RNText>
-          <RNText className="font-roboto-bold text-gray-500 dark:text-gray-300">SILO</RNText>
+        <RNText className="font-sans-bold text-xl">
+          <RNText className="font-sans-bold text-brand">AUDIO</RNText>
+          <RNText className="font-sans-bold text-muted-foreground">SILO</RNText>
         </RNText>
         {showVersion ? (
           // eslint-disable-next-line i18next/no-literal-string -- "v" is universal version notation

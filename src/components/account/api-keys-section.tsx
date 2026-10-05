@@ -10,8 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { formatRelative } from '@/lib/format';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { ApiKeysManager } from './use-api-keys-manager';
 
@@ -30,7 +29,7 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
   const { t } = useTranslation();
   return (
     <View className="gap-2">
-      <Text variant="label">{t('settings.apiKeys.label')}</Text>
+      <Text variant="eyebrow">{t('settings.apiKeys.label')}</Text>
       <Card className="gap-4">
         <Text variant="muted" className="text-xs">
           {t('settings.apiKeys.hint')}
@@ -70,7 +69,7 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
         )}
 
         {manager.revokeError ? (
-          <Text className="text-xs text-red-500">{manager.revokeError}</Text>
+          <Text className="text-xs text-destructive">{manager.revokeError}</Text>
         ) : null}
       </Card>
     </View>
@@ -78,14 +77,14 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
 }
 
 function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: () => void }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   return (
-    <View className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+    <View className="flex-row items-center gap-1 rounded-xl bg-card pr-1 shadow-xs dark:border dark:border-border dark:shadow-none">
       <View className="flex-1 flex-row items-center gap-3 px-3 py-3">
-        <Icon name="settings" size={18} color={colors[scheme].textMuted} />
+        <Icon name="settings" size={18} color={themed.mutedForeground} />
         <View className="flex-1">
-          <Text variant="subtitle" numberOfLines={1}>
+          <Text variant="label" numberOfLines={1}>
             {apiKey.label}
           </Text>
           <Text variant="caption" numberOfLines={1}>
@@ -102,9 +101,9 @@ function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: () => void 
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('settings.apiKeys.revoke', { name: apiKey.label })}
-        className="h-9 w-9 items-center justify-center rounded-full active:bg-danger/10"
+        className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10"
       >
-        <Icon name="trash" size={16} color={colors.danger} />
+        <Icon name="trash" size={16} color={themed.destructive} />
       </AnimatedPressable>
     </View>
   );

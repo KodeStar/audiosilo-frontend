@@ -4,7 +4,7 @@ import { type LayoutChangeEvent, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 const TRACK_H = 6; // slim visual track (h-1.5)
 const HIT_H = 44; // generous touch/hit area
@@ -38,6 +38,7 @@ export function SeekBar({
   onSeek: (position: number) => void;
   onScrub?: (position: number | null) => void;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const width = useSharedValue(0);
   const dragging = useSharedValue(0);
@@ -128,14 +129,11 @@ export function SeekBar({
         }}
         accessibilityLabel={t('player.seek.label')}
       >
-        <View
-          style={{ height: TRACK_H }}
-          className="overflow-hidden rounded-full bg-gray-400/70 dark:bg-gray-700"
-        >
+        <View style={{ height: TRACK_H }} className="overflow-hidden rounded-full bg-foreground/15">
           <Animated.View
             style={[
               { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, borderRadius: 999 },
-              { backgroundColor: colors.primary },
+              { backgroundColor: themed.brand },
               fillStyle,
             ]}
           />
@@ -151,7 +149,7 @@ export function SeekBar({
               width: THUMB,
               height: THUMB,
               borderRadius: THUMB / 2,
-              backgroundColor: colors.primary,
+              backgroundColor: themed.brand,
             },
             thumbStyle,
           ]}

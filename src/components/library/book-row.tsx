@@ -49,7 +49,7 @@ export function BookRow({
     <AnimatedPressable
       onPress={() => void openBook(connectionId, book.library_id, book.rel_path)}
       accessibilityRole="button"
-      className="flex-row items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-2 hover:bg-gray-100 dark:border-gray-860 dark:bg-gray-840 dark:hover:bg-gray-800"
+      className="flex-row items-center gap-3 rounded-xl border border-border bg-card p-2 hover:bg-accent"
     >
       <CoverFrame>
         <Cover
@@ -61,7 +61,7 @@ export function BookRow({
         />
       </CoverFrame>
       <View className="flex-1">
-        <Text variant="subtitle" numberOfLines={1}>
+        <Text variant="label" numberOfLines={1}>
           {book.title}
         </Text>
         {subtitle ? (

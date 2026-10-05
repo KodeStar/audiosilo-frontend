@@ -5,11 +5,10 @@ import { Platform, Pressable, type StyleProp, TextInput, type TextStyle, View } 
 import { SearchResults } from '@/components/library/search-results';
 import { Icon } from '@/components/ui/icon';
 import { useSearchStore } from '@/stores/search';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // react-native-web renders TextInput as an <input>; its default focus outline is
-// the blue ring we want gone (we draw a primary border instead). `outlineStyle`
+// the blue ring we want gone (we draw a brand border instead). `outlineStyle`
 // isn't in RN's TextStyle, so cast - it's a no-op on native (guarded by Platform).
 const webNoOutline = { outlineStyle: 'none' } as unknown as StyleProp<TextStyle>;
 
@@ -17,12 +16,12 @@ const webNoOutline = { outlineStyle: 'none' } as unknown as StyleProp<TextStyle>
  * overlay in place (no route change). It lives in the content column, so it
  * sits above the page (e.g. the breadcrumbs) and never spans the player panel. */
 function DesktopSearch() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   const query = useSearchStore((s) => s.query);
   const setQuery = useSearchStore((s) => s.setQuery);
   const [focused, setFocused] = useState(false);
-  const muted = colors[scheme].textMuted;
+  const muted = themed.mutedForeground;
   return (
     <View className="relative justify-center">
       <View className="absolute bottom-0 left-4 top-0 z-10 justify-center">
@@ -39,13 +38,13 @@ function DesktopSearch() {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         // Match TextField's look (radius/paddings/surface); swap the browser's
-        // default blue focus outline for a primary ring by suppressing the native
+        // default blue focus outline for a brand ring by suppressing the native
         // outline on web and driving the border colour from focus state.
         style={Platform.OS === 'web' ? webNoOutline : undefined}
         className={[
-          'rounded-xl border py-3.5 pl-11 pr-11 font-sans text-base text-gray-700 dark:text-gray-100',
-          'bg-gray-100 dark:bg-gray-840',
-          focused ? 'border-primary' : 'border-gray-200 dark:border-gray-750',
+          'rounded-xl border py-3.5 pl-11 pr-11 font-sans text-base text-foreground',
+          'bg-card',
+          focused ? 'border-brand' : 'border-border',
         ].join(' ')}
       />
       {query.length > 0 ? (

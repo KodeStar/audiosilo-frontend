@@ -1,7 +1,6 @@
 import { View } from 'react-native';
 
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { AnimatedPressable } from './animated-pressable';
 import { Icon } from './icon';
@@ -33,20 +32,20 @@ export function SelectRow({
   value: string;
   onPress: () => void;
 }) {
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.textMuted : colors.light.textMuted;
+  const themed = useThemeColors();
+  const neutral = themed.mutedForeground;
   return (
     <AnimatedPressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${label}: ${value}`}
-      className="flex-row items-center justify-between border-t border-black/5 px-4 py-3.5 dark:border-white/5"
+      className="flex-row items-center justify-between border-t border-border px-4 py-3.5"
     >
       <Text numberOfLines={1} className="pr-3">
         {label}
       </Text>
       <View className="flex-row items-center gap-2">
-        <Text variant="subtitle" numberOfLines={1}>
+        <Text variant="label" numberOfLines={1}>
           {value}
         </Text>
         <Icon name="chevron-right" size={14} color={neutral} />
@@ -77,6 +76,7 @@ export function SelectSheet<T extends string>({
   onChange: (value: T) => void;
   onClose: () => void;
 }) {
+  const themed = useThemeColors();
   return (
     <Sheet visible={visible} onClose={onClose} title={title}>
       <View className="gap-2 px-4 pb-4 pt-1">
@@ -93,11 +93,11 @@ export function SelectSheet<T extends string>({
               accessibilityState={{ selected }}
               accessibilityLabel={opt.label}
               className={`flex-row items-center justify-between rounded-lg px-4 py-3 ${
-                selected ? 'bg-primary/10' : 'bg-gray-100 dark:bg-gray-860'
+                selected ? 'bg-brand/10' : 'bg-muted'
               }`}
             >
               <Text variant="title">{opt.label}</Text>
-              {selected ? <Icon name="check" size={16} color={colors.primary} /> : null}
+              {selected ? <Icon name="check" size={16} color={themed.brand} /> : null}
             </AnimatedPressable>
           );
         })}

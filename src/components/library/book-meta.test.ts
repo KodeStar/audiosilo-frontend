@@ -1,8 +1,9 @@
 import type { BookMeta, BookMetaRecap, BookMetaSeries } from '@/api/types';
 import type { OrderingPicks } from '@/lib/series-orderings';
 
-// book-meta pulls in the shared Skeleton, whose theme-provider side-effect-imports
-// global.css (unparseable in Node); stub the hook so this pure-helper suite loads.
+// book-meta pulls in CoverFrame, whose iOS shadow hook reads the theme provider (its
+// module side-effect-imports global.css, unparseable in Node); stub the hook so this
+// pure-helper suite loads.
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
 }));

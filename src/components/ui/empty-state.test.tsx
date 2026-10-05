@@ -1,14 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
-// Mock the theme hook so the primitive doesn't need a ThemeProvider (whose module
-// also side-effect-imports global.css, unparseable in the Node test runtime).
-jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
-}));
-
-/* eslint-disable import/first */
 import { EmptyState } from './empty-state';
-/* eslint-enable import/first */
 
 async function mount(ui: React.ReactElement) {
   await act(async () => {

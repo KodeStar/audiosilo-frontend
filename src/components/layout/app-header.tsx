@@ -6,8 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Brand } from '@/components/brand/brand';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /**
  * Sticky phone header: the wordmark on the left, a search affordance on the
@@ -15,14 +14,11 @@ import { colors } from '@/theme/tokens';
  * carries the brand + search instead, so this is only rendered on phones.
  */
 export function AppHeader() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View
-      style={{ paddingTop: insets.top + 8 }}
-      className="border-b border-gray-100 bg-gray-200/90 dark:border-gray-750 dark:bg-gray-800/90"
-    >
+    <View style={{ paddingTop: insets.top + 8 }} className="border-b border-border bg-topbar">
       <View className="h-16 flex-row items-center justify-between px-4">
         <Brand size={26} />
         <AnimatedPressable
@@ -30,9 +26,9 @@ export function AppHeader() {
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={t('nav.search')}
-          className="h-10 w-10 items-center justify-center rounded-full active:bg-gray-100 dark:active:bg-gray-840"
+          className="h-10 w-10 items-center justify-center rounded-full active:bg-accent"
         >
-          <Icon name="search" size={20} color={colors[scheme].textMuted} />
+          <Icon name="search" size={20} color={themed.mutedForeground} />
         </AnimatedPressable>
       </View>
     </View>

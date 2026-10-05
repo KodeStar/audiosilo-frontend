@@ -21,8 +21,8 @@ import '@/lib/rnw-button-fix';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { resetStaleStorage, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
-import { ThemeProvider, useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { ThemeProvider } from '@/theme/theme-provider';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 export const unstable_settings = {
   anchor: '(app)',
@@ -34,8 +34,7 @@ export const unstable_settings = {
  * transitions (and the swipe-back gesture) flash the default white card.
  */
 function RootNavigator() {
-  const { scheme } = useTheme();
-  const background = scheme === 'dark' ? colors.dark.bg : colors.light.bg;
+  const { background } = useThemeColors();
   return (
     <>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: background } }}>

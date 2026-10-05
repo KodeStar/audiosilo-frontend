@@ -44,7 +44,7 @@ const ROLE_SEMANTICS = {
 
 /**
  * A pill/segment toggle group: a rounded track with the active option filled in
- * primary (white label) and the rest quiet. Generic over a string union of option
+ * brand pink (white label) and the rest quiet. Generic over a string union of option
  * values. Screens migrate ad-hoc segment rows onto this; `scrollable` + `role="tab"`
  * is the tab-bar flavour (see `TabBar`).
  */
@@ -69,11 +69,11 @@ export function SegmentedControl<T extends string>({
         {...{ [stateKey]: active }}
         className={`flex-row items-center justify-center rounded-md px-3 py-1.5 active:opacity-80 ${
           grow && !scrollable ? 'flex-1' : ''
-        } ${active ? 'bg-primary' : ''}`}
+        } ${active ? 'bg-brand' : ''}`}
       >
         <RNText
-          className={`font-roboto-medium text-sm ${
-            active ? 'text-white' : 'text-gray-500 dark:text-gray-400'
+          className={`font-sans-medium text-sm ${
+            active ? 'text-brand-foreground' : 'text-muted-foreground'
           }`}
         >
           {opt.label}
@@ -82,7 +82,7 @@ export function SegmentedControl<T extends string>({
     );
   });
 
-  const track = cn('rounded-lg bg-gray-100 p-1 dark:bg-gray-840', className);
+  const track = cn('rounded-lg bg-muted p-1', className);
 
   if (scrollable) {
     return (

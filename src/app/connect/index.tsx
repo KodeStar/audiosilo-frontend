@@ -20,10 +20,11 @@ import {
 } from '@/lib/known-servers';
 import { normalizeUrl } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
 
 export default function ConnectServerScreen() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   // A copy-invite link or pairing QR opens this screen with a pairing `token`
   // (and, on native, the `server` it belongs to). When present we exchange it for
@@ -179,7 +180,7 @@ export default function ConnectServerScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <SafeAreaView className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="grow justify-center gap-8 p-6"
         keyboardShouldPersistTaps="handled"
@@ -187,12 +188,14 @@ export default function ConnectServerScreen() {
         <View className="items-center gap-3">
           <Logo size={64} />
           {/* eslint-disable-next-line i18next/no-literal-string -- brand wordmark, never translated */}
-          <Text className="text-primary">AudioSilo</Text>
+          <Text variant="display" className="text-brand">
+            AudioSilo
+          </Text>
           <Text variant="muted">{t('connect.server.subtitle')}</Text>
         </View>
         {connectionCount === 0 && known.length > 0 ? (
           <View className="gap-3">
-            <Text variant="label">{t('reconnect.connect.heading')}</Text>
+            <Text variant="eyebrow">{t('reconnect.connect.heading')}</Text>
             {known.map((entry) => (
               <View key={entry.serverId} className="flex-row items-center gap-2">
                 <View className="flex-1">
@@ -211,14 +214,16 @@ export default function ConnectServerScreen() {
                   onPress={() => onForget(entry.serverId)}
                   className="h-11 w-11 items-center justify-center rounded-lg active:opacity-60"
                 >
-                  <Icon name="close" size={16} color={colors.dark.textMuted} />
+                  <Icon name="close" size={16} color={themed.mutedForeground} />
                 </Pressable>
               </View>
             ))}
             <LabeledDivider label={t('connect.server.or')} />
           </View>
         ) : null}
-        {pairError ? <Text className="text-center text-sm">{pairError}</Text> : null}
+        {pairError ? (
+          <Text className="text-center text-sm text-destructive">{pairError}</Text>
+        ) : null}
         <View>
           <TextField
             label={t('connect.server.addressLabel')}
@@ -281,9 +286,9 @@ export default function ConnectServerScreen() {
 function LabeledDivider({ label }: { label: string }) {
   return (
     <View className="flex-row items-center gap-3">
-      <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+      <View className="h-px flex-1 bg-border" />
       <Text variant="muted">{label}</Text>
-      <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+      <View className="h-px flex-1 bg-border" />
     </View>
   );
 }

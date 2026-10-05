@@ -33,7 +33,7 @@ import {
 } from '@/lib/series-orderings';
 import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { type ListeningProgress, type Split, splitCharacters, splitRecaps } from './meta-gating';
 
@@ -224,12 +224,10 @@ export function sortRecaps(recaps: BookMetaRecap[]): BookMetaRecap[] {
 function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
   const primary = tone === 'primary';
   return (
-    <View
-      className={`rounded-full px-2 py-0.5 ${
-        primary ? 'bg-primary/10 dark:bg-primary/15' : 'bg-gray-100 dark:bg-gray-800'
-      }`}
-    >
-      <Text className={primary ? 'uppercase text-primary dark:text-primary-400' : 'uppercase'}>
+    <View className={`rounded-full px-2 py-0.5 ${primary ? 'bg-brand-soft' : 'bg-muted'}`}>
+      <Text
+        className={`font-sans-medium text-[10px] uppercase ${primary ? 'text-brand-ink' : 'text-muted-foreground'}`}
+      >
         {label}
       </Text>
     </View>
@@ -245,7 +243,8 @@ function SpoilerChip() {
 
 /** The open/closed marker every collapsible thing in this block shares. */
 function DisclosureChevron({ open }: { open: boolean }) {
-  return <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} color={colors.primary} />;
+  const themed = useThemeColors();
+  return <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} color={themed.brand} />;
 }
 
 /**
@@ -295,6 +294,7 @@ function Disclosure({
 /** The quiet link out to a work on AudioSilo Meta. `small` only tightens the
  * padding - the icon sizes are deliberately identical everywhere it appears. */
 function ViewOnMetaLink({ url, small }: { url: string; small?: boolean }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   return (
     <AnimatedPressable
@@ -302,9 +302,9 @@ function ViewOnMetaLink({ url, small }: { url: string; small?: boolean }) {
       accessibilityRole="link"
       className={`flex-row items-center gap-2 self-start ${small ? 'py-0.5' : 'py-1'}`}
     >
-      <Icon name="library" size={14} color={colors.primary} />
-      <Text className="text-sm text-primary">{t('book.meta.viewOnMeta')}</Text>
-      <Icon name="chevron-right" size={12} color={colors.primary} />
+      <Icon name="library" size={14} color={themed.brand} />
+      <Text className="font-sans-medium text-sm text-brand-ink">{t('book.meta.viewOnMeta')}</Text>
+      <Icon name="chevron-right" size={12} color={themed.brand} />
     </AnimatedPressable>
   );
 }
@@ -350,7 +350,7 @@ function HiddenNotice({
         accessibilityRole="button"
         className="flex-row items-center gap-1 py-0.5"
       >
-        <Text className="text-sm text-primary">
+        <Text className="font-sans-medium text-sm text-brand-ink">
           {shown ? t('book.meta.hideSpoilers') : t('book.meta.showAnyway')}
         </Text>
         <DisclosureChevron open={shown} />
@@ -377,11 +377,7 @@ function CharacterCard({
   const roleKey = roleLabelKey(character.role);
   const hasDescription = !!character.description;
   return (
-    <View
-      className={`rounded-xl border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03] ${
-        spoiler ? 'opacity-70' : ''
-      }`}
-    >
+    <View className={`rounded-xl border border-border bg-card ${spoiler ? 'opacity-70' : ''}`}>
       <AnimatedPressable
         onPress={hasDescription ? () => setOpen((v) => !v) : undefined}
         disabled={!hasDescription}
@@ -391,15 +387,13 @@ function CharacterCard({
       >
         <View className="flex-row items-start justify-between gap-2">
           <View className="flex-1">
-            <Text variant="subtitle" className="font-roboto-medium">
-              {character.name}
-            </Text>
+            <Text variant="label">{character.name}</Text>
             {character.aliases && character.aliases.length > 0 ? (
               <Text variant="caption" className="mt-0.5">
                 {t('book.meta.alsoKnownAs', { names: character.aliases.join(', ') })}
               </Text>
             ) : null}
-            <Text variant="caption" className="mt-1 text-primary">
+            <Text variant="caption" className="mt-1 text-brand-ink">
               {fromStart
                 ? t('book.meta.revealFromStart')
                 : t('book.meta.revealFromChapter', { chapter: character.reveal.chapter })}
@@ -442,14 +436,11 @@ function RecapRow({
         : t('book.meta.recapUpToChapter', { chapter: d.chapter });
   return (
     <Disclosure
-      className={first ? '' : 'border-t border-black/10 dark:border-white/10'}
+      className={first ? '' : 'border-t border-border'}
       headerClassName="justify-between gap-2 px-3 py-2.5"
       header={
         <>
-          <Text
-            variant="subtitle"
-            className={`flex-1 font-roboto-medium ${spoiler ? 'opacity-70' : ''}`}
-          >
+          <Text variant="label" className={`flex-1 ${spoiler ? 'opacity-70' : ''}`}>
             {heading}
           </Text>
           {spoiler ? <SpoilerChip /> : null}
@@ -501,7 +492,7 @@ function PreviousBookRow({
   const { data, isError } = useMetaWork(entry.id, open);
   return (
     <Disclosure
-      className={first ? '' : 'border-t border-black/10 dark:border-white/10'}
+      className={first ? '' : 'border-t border-border'}
       headerClassName="gap-3 px-3 py-2.5"
       accessibilityLabel={entry.title}
       open={open}
@@ -517,7 +508,7 @@ function PreviousBookRow({
                 {t('book.meta.seriesPosition', { position: entry.position })}
               </Text>
             ) : null}
-            <Text variant="subtitle" numberOfLines={2} className="font-roboto-medium">
+            <Text variant="label" numberOfLines={2}>
               {entry.title}
             </Text>
           </View>
@@ -555,7 +546,7 @@ function PreviousBooksSection({
   return (
     <View className="mt-2 gap-2">
       <SectionHeader title={t('book.meta.previousBooks')} />
-      <View className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
+      <View className="overflow-hidden rounded-xl border border-border">
         {works.map((w, i) => (
           <PreviousBookRow key={w.id} entry={w} first={i === 0} body={body} />
         ))}
@@ -572,11 +563,11 @@ function PreviousBooksSection({
 function SpoilerAccordion({ label, text }: { label: string; text: string }) {
   return (
     <Disclosure
-      className="rounded-lg border border-black/10 dark:border-white/10"
+      className="rounded-lg border border-border"
       headerClassName="gap-2 px-3 py-2"
       header={
         <>
-          <Text variant="subtitle" className="flex-1 font-roboto-medium">
+          <Text variant="label" className="flex-1">
             {label}
           </Text>
           <SpoilerChip />
@@ -709,7 +700,7 @@ export function BookMetaAbout({ meta }: { meta: MatchedBookMeta }) {
                   accessibilityRole="button"
                   className="flex-row items-center gap-1 self-start py-0.5"
                 >
-                  <Text className="text-sm text-primary">
+                  <Text className="font-sans-medium text-sm text-brand-ink">
                     {expanded ? t('book.meta.showLess') : t('book.meta.showMore')}
                   </Text>
                   <DisclosureChevron open={expanded} />
@@ -724,14 +715,14 @@ export function BookMetaAbout({ meta }: { meta: MatchedBookMeta }) {
                   <Text variant="muted" className="w-32">
                     {d.label}
                   </Text>
-                  <Text variant="subtitle" className="flex-1">
+                  <Text variant="label" className="flex-1">
                     {d.value}
                   </Text>
                 </View>
               ))}
               {abridged ? (
-                <View className="mt-0.5 self-start rounded-full bg-primary/10 px-2.5 py-1 dark:bg-primary/15">
-                  <Text className="text-xs text-primary dark:text-primary-400">
+                <View className="mt-0.5 self-start rounded-full bg-brand/10 px-2.5 py-1 dark:bg-brand/15">
+                  <Text className="font-sans-medium text-xs text-brand-ink">
                     {t('book.meta.abridged')}
                   </Text>
                 </View>
@@ -825,7 +816,7 @@ export function BookMetaRecapsTab({
       {rows.length > 0 ? (
         <View className="gap-2">
           {summaryVisible ? <SectionHeader title={t('book.meta.storySoFar')} /> : null}
-          <View className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
+          <View className="overflow-hidden rounded-xl border border-border">
             {rows.map(({ item, spoiler }, i) => (
               <RecapRow
                 key={`${item.through.chapter}-${i}`}
@@ -920,7 +911,7 @@ export function BookMetaSeriesTab({
                     {t('book.meta.seriesPosition', { position: w.position })}
                   </Text>
                 ) : null}
-                <Text variant="subtitle" numberOfLines={2} className="mt-0.5">
+                <Text variant="label" numberOfLines={2} className="mt-0.5">
                   {w.title}
                 </Text>
               </AnimatedPressable>

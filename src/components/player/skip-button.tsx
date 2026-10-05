@@ -7,7 +7,7 @@ import { tabularNums } from '@/theme/tabular-nums';
  * A directional skip control rendered as plain signed text: back reads `-15s`,
  * forward reads `+30s` (`${sign}${seconds}s`). The sign carries the direction, so
  * it reads at a glance without a glyph - the earlier circular-arrow glyph overlapped
- * the seconds and read as clutter. The label uses the app's semibold Roboto and the
+ * the seconds and read as clutter. The label uses semibold Figtree (`font-sans-semibold`) and the
  * caller-provided color; callers own the tap-target size (via `className`), the label
  * `fontSize` (mini player passes a smaller value, the full transport a larger one),
  * and the accessibility label.
@@ -42,7 +42,7 @@ export function SkipButton({
     >
       <RNText
         allowFontScaling={false}
-        className="font-roboto-semibold"
+        className="font-sans-semibold"
         style={[{ fontSize, lineHeight: fontSize + 2, color }, tabularNums]}
       >
         {label}

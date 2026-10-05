@@ -16,7 +16,7 @@ import { colors } from '@/theme/tokens';
 // (short of the full screen in a standalone PWA), leaving a strip the backdrop
 // must cover. The live theme keeps these in sync at runtime (see ThemeProvider's
 // web effect), which also covers the light-theme case.
-const backdropCss = `html, body, #root { background-color: ${colors.dark.bg}; }`;
+const backdropCss = `html, body, #root { background-color: ${colors.dark.background}; }`;
 
 // Cascade-layer order for Uniwind (Tailwind v4) + react-native-web. Tailwind v4 ships
 // in layers (preflight in `base`, classes in `utilities`), and Uniwind moves RNW's

@@ -12,8 +12,7 @@ import { Text } from '@/components/ui/text';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
 import { accountHref } from '@/lib/paths';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSession, type Connection } from '@/stores/session';
 
 /**
@@ -85,18 +84,18 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
  * `useConnectionRemoval` and rendered by the screen at top level (a Sheet/ModalCard must
  * not live inside this scrolled section); this section just invokes `onRemove`. */
 export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => void }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   const connections = useSession((s) => s.connections);
 
   return (
     <View className="gap-2">
-      <Text variant="label">{t('account.connections.label')}</Text>
+      <Text variant="eyebrow">{t('account.connections.label')}</Text>
       <View className="gap-2">
         {connections.map((c) => (
           <View
             key={c.id}
-            className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none"
+            className="flex-row items-center gap-1 rounded-xl bg-card pr-1 shadow-xs dark:border dark:border-border dark:shadow-none"
           >
             <AnimatedPressable
               onPress={() => router.push(accountHref(c.id))}
@@ -104,25 +103,25 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
               accessibilityLabel={t('account.connections.manage', { name: c.name })}
               className="flex-1 flex-row items-center gap-3 rounded-xl px-3 py-3"
             >
-              <Icon name="server" size={18} color={colors[scheme].textMuted} />
+              <Icon name="server" size={18} color={themed.mutedForeground} />
               <View className="flex-1">
-                <Text variant="subtitle" numberOfLines={1}>
+                <Text variant="label" numberOfLines={1}>
                   {c.name}
                 </Text>
                 <Text variant="caption" numberOfLines={1}>
                   {c.user.username} · {c.serverUrl}
                 </Text>
               </View>
-              <Icon name="chevron-right" size={16} color={colors[scheme].textMuted} />
+              <Icon name="chevron-right" size={16} color={themed.mutedForeground} />
             </AnimatedPressable>
             <AnimatedPressable
               onPress={() => onRemove(c)}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={t('account.connections.remove', { name: c.name })}
-              className="h-9 w-9 items-center justify-center rounded-full active:bg-danger/10"
+              className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10"
             >
-              <Icon name="trash" size={16} color={colors.danger} />
+              <Icon name="trash" size={16} color={themed.destructive} />
             </AnimatedPressable>
           </View>
         ))}

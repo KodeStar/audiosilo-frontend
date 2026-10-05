@@ -25,7 +25,7 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { shareText } from '@/lib/share';
 import { APP_VERSION } from '@/lib/version';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSession } from '@/stores/session';
 
 const PW_MIN = 8;
@@ -49,6 +49,7 @@ export default function AccountScreen() {
 }
 
 function AccountContent() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const cid = useScopedCid();
   const api = useOptionalApi();
@@ -149,10 +150,10 @@ function AccountContent() {
         <BreadCrumbs crumbs={crumbs} />
 
         <View className="gap-2">
-          <Text variant="label">{t('settings.account.label')}</Text>
+          <Text variant="eyebrow">{t('settings.account.label')}</Text>
           <Card className="gap-4">
             <View>
-              <Text variant="subtitle">{user?.username ?? t('settings.account.signedIn')}</Text>
+              <Text variant="label">{user?.username ?? t('settings.account.signedIn')}</Text>
               <Text variant="muted">
                 {user?.role === 'admin'
                   ? t('settings.account.administrator')
@@ -235,10 +236,12 @@ function AccountContent() {
               accessibilityRole="button"
               accessibilityLabel={t('settings.account.signOut')}
               onPress={() => void signOut.requestSignOut()}
-              className="flex-row items-center justify-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 active:bg-danger/10"
+              className="flex-row items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 active:bg-destructive/10"
             >
-              <Icon name="logout" size={16} color={colors.danger} />
-              <Text>{t('settings.account.signOut')}</Text>
+              <Icon name="logout" size={16} color={themed.destructive} />
+              <Text className="font-sans-semibold text-destructive">
+                {t('settings.account.signOut')}
+              </Text>
             </AnimatedPressable>
           </Card>
         </View>
@@ -246,7 +249,7 @@ function AccountContent() {
         {apiKeysEnabled ? <ApiKeysSection manager={apiKeys} /> : null}
 
         <View className="gap-2">
-          <Text variant="label">{t('settings.devices.label')}</Text>
+          <Text variant="eyebrow">{t('settings.devices.label')}</Text>
           <Card className="gap-3">
             {pairing ? (
               <View className="items-center gap-3">
@@ -278,7 +281,7 @@ function AccountContent() {
             ) : (
               <>
                 <Text variant="muted">{t('settings.devices.intro')}</Text>
-                {pairError ? <Text className="text-sm">{pairError}</Text> : null}
+                {pairError ? <Text className="text-sm text-destructive">{pairError}</Text> : null}
                 {pairLoading ? (
                   <Spinner />
                 ) : (

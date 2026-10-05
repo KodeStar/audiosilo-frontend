@@ -55,6 +55,7 @@ import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // How coarsely this screen samples the player's live position (seconds). The only
 // consumer is the spoiler gate, which just needs to know which CHAPTER the listener
@@ -103,6 +104,7 @@ export default function BookDetailScreen() {
 }
 
 function BookDetailContent() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
@@ -258,7 +260,7 @@ function BookDetailContent() {
   // A quiet chapter/file row: a numbered tile (or a play glyph on a pink tile when
   // this row is the one currently playing), the title, a tabular duration/bitrate
   // line, and a small success check when the book is downloaded. The blue block is
-  // gone; the currently-playing row lifts to a soft primary tint.
+  // gone; the currently-playing row lifts to a soft brand tint.
   const fileRow = (
     key: string | number,
     name: string,
@@ -273,29 +275,23 @@ function BookDetailContent() {
       onPress={onPress}
       accessibilityRole="button"
       // The dark border is on every row, playing or not, so a row keeps one height.
-      className={`my-1 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 dark:border dark:border-gray-750 ${
-        active
-          ? 'bg-primary/10 dark:bg-primary/15'
-          : 'bg-white shadow-xs dark:bg-gray-840 dark:shadow-none'
+      className={`my-1 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 dark:border dark:border-border ${
+        active ? 'bg-brand/10 dark:bg-brand/15' : 'bg-card shadow-xs dark:shadow-none'
       }`}
     >
       <View
-        className={`h-9 w-9 items-center justify-center rounded-lg ${active ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-800'}`}
+        className={`h-9 w-9 items-center justify-center rounded-lg ${active ? 'bg-brand' : 'bg-muted'}`}
       >
         {active ? (
           <Icon name="play" size={13} color={colors.white} />
         ) : (
-          <Text className="text-sm" style={tabularNums}>
+          <Text className="font-sans-semibold text-sm text-muted-foreground" style={tabularNums}>
             {index}
           </Text>
         )}
       </View>
       <View className="flex-1">
-        <Text
-          variant="subtitle"
-          numberOfLines={1}
-          className={active ? 'text-primary dark:text-primary-400' : ''}
-        >
+        <Text variant="label" numberOfLines={1} className={active ? 'text-brand-ink' : ''}>
           {prettifyChapterTitle(name)}
         </Text>
         <Text variant="caption" style={tabularNums}>
@@ -306,7 +302,7 @@ function BookDetailContent() {
       </View>
       {downloaded ? (
         <View className="h-5 w-5 items-center justify-center rounded-full bg-success/15">
-          <Icon name="check" size={11} color={colors.success} />
+          <Icon name="check" size={11} color={themed.success} />
         </View>
       ) : null}
     </AnimatedPressable>
@@ -476,7 +472,7 @@ function BookDetailContent() {
           </ScrollView>
         </ContentColumn>
 
-        <View className="w-[380px] overflow-hidden border-l border-gray-100 dark:border-gray-750">
+        <View className="w-[380px] overflow-hidden border-l border-border">
           {isThisPlaying ? (
             <PlayerView />
           ) : (

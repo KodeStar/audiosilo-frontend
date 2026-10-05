@@ -8,12 +8,6 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-// Mock the theme hook so the primitives don't need a ThemeProvider (whose module
-// side-effect-imports global.css, unparseable in the Node test runtime).
-jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
-}));
-
 // The poster card renders a cover image + navigation we don't care about here; the
 // only part under test is the `footer` (progress bar + resume + overflow button).
 jest.mock('@/components/library/poster-grid', () => ({

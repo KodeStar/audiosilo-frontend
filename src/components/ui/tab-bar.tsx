@@ -9,7 +9,7 @@ export type TabBarProps<T extends string> = {
 
 /**
  * A horizontally scrollable tab row: content-hugging pills on a rounded track,
- * the active one filled in primary. Generic over a string union of tab ids.
+ * the active one filled in brand pink. Generic over a string union of tab ids.
  *
  * It IS `SegmentedControl` in its scrolling, `tablist`-flavoured mode - the two
  * share one implementation so they can never drift visually. The equal-width,

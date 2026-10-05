@@ -10,7 +10,7 @@ import { Text } from '@/components/ui/text';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { useSession } from '@/stores/session';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // Reuse the shared, locale-aware byte formatter (so a GB-sized copy reads "2 GB",
 // not "2048 MB"); null drops the size hint from the `· `-joined quality line.
@@ -21,6 +21,7 @@ const mb = (n?: number) => (n && n > 0 ? formatBytes(n) : null);
  * copies across servers/libraries (with quality hints) to switch to. Hidden when
  * there's only one copy. Sits near the top of the book screen, under the breadcrumb. */
 export function BookVersions({ book, connectionId }: { book: Book; connectionId: string | null }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { copies, isLoading } = useBookCopies(book);
   const sourceOf = useSourceLabeller();
@@ -48,11 +49,11 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
         accessibilityRole="button"
         accessibilityLabel={t('library.versions.choose')}
         hitSlop={6}
-        className="flex-row items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+        className="flex-row items-center gap-3 rounded-xl bg-card px-4 py-3 shadow-xs dark:border dark:border-border dark:shadow-none"
       >
-        <Icon name="server" size={16} color={colors.primary} />
+        <Icon name="server" size={16} color={themed.brand} />
         <View className="flex-1">
-          <Text variant="subtitle" numberOfLines={1}>
+          <Text variant="label" numberOfLines={1}>
             {currentSource || t('library.versions.thisCopy')}
           </Text>
           <Text variant="caption" numberOfLines={1}>
@@ -77,11 +78,11 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
                 key={`${c.connectionId}:${c.libraryId}:${c.path}`}
                 onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
                 accessibilityRole="button"
-                className="ml-3 flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+                className="ml-3 flex-row items-center gap-3 rounded-xl bg-card p-3 shadow-xs dark:border dark:border-border dark:shadow-none"
               >
-                <Icon name="chevron-right" size={14} color={colors.primary} />
+                <Icon name="chevron-right" size={14} color={themed.brand} />
                 <View className="flex-1">
-                  <Text variant="subtitle" numberOfLines={1}>
+                  <Text variant="label" numberOfLines={1}>
                     {src}
                   </Text>
                   {quality ? (

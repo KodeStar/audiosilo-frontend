@@ -36,7 +36,7 @@ export function ModalCard({
         onPress={onRequestClose}
       >
         <Pressable
-          className="gap-4 self-center rounded-2xl bg-gray-100 p-5 dark:bg-gray-840"
+          className="gap-4 self-center rounded-2xl bg-popover p-5"
           style={{ maxWidth: 420, width: '100%' }}
           onPress={() => {}}
         >

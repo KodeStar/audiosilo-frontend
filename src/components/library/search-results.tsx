@@ -13,7 +13,7 @@ import { useSearchStore } from '@/stores/search';
  * text lines. Shown while a search is in flight so the list mirrors its layout. */
 export function BookRowSkeleton() {
   return (
-    <View className="flex-row items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-860 dark:bg-gray-840">
+    <View className="flex-row items-center gap-3 rounded-xl border border-border bg-card p-2">
       <Skeleton className="h-16 w-16 rounded-lg" />
       <View className="flex-1 gap-2">
         <Skeleton className="h-3.5 w-1/2 rounded-sm" />
@@ -51,7 +51,7 @@ export function SearchResults() {
 
   return (
     <ScrollView
-      className="flex-1 bg-gray-200 dark:bg-gray-800"
+      className="flex-1 bg-background"
       contentContainerClassName="gap-2 p-6"
       keyboardShouldPersistTaps="handled"
     >

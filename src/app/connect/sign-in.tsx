@@ -77,7 +77,7 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <SafeAreaView className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="grow justify-center gap-6 p-6"
         keyboardShouldPersistTaps="handled"
@@ -132,7 +132,7 @@ export default function SignInScreen() {
           </View>
         )}
 
-        {error ? <Text className="text-center text-sm">{error}</Text> : null}
+        {error ? <Text className="text-center text-sm text-destructive">{error}</Text> : null}
 
         <Button
           title={mode === 'code' ? t('connect.signIn.connect') : t('connect.signIn.submit')}

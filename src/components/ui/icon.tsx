@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { ICON_DATA, type IconName } from './icon-data';
 
@@ -21,11 +21,14 @@ export type { IconName };
 export type IconProps = {
   name: IconName;
   size?: number;
+  /** Fill colour; defaults to the theme's `mutedForeground`. */
   color?: string;
   className?: string;
 };
 
-export function Icon({ name, size = 20, color = colors.dark.text, className }: IconProps) {
+export function Icon({ name, size = 20, color, className }: IconProps) {
+  // The theme's muted ink unless a colour is passed.
+  const fallback = useThemeColors().mutedForeground;
   const { width, height, path } = ICON_DATA[name];
   // Match @fortawesome/react-native-fontawesome's rendering exactly: a square
   // size×size box with the FA7 overflow viewBox expansion (minY −32, height +64)
@@ -33,7 +36,7 @@ export function Icon({ name, size = 20, color = colors.dark.text, className }: I
   // preserved (react-native-svg defaults to xMidYMid meet).
   const icon = (
     <Svg width={size} height={size} viewBox={`0 -32 ${width} ${height + 64}`}>
-      <Path d={path} fill={color} />
+      <Path d={path} fill={color ?? fallback} />
     </Svg>
   );
   return className ? <View className={className}>{icon}</View> : icon;

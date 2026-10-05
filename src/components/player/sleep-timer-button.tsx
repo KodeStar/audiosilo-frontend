@@ -17,9 +17,8 @@ import {
   useSleepTimer,
 } from '@/playback/sleep-timer';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-import { useTheme } from '@/theme/theme-provider';
 import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 const PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
@@ -32,7 +31,7 @@ const PRESETS = [5, 10, 15, 20, 30, 45, 60];
  */
 export function SleepTimerButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
-  const { scheme } = useTheme();
+  const themed = useThemeColors();
   const phase = useSleepTimer(selectSleepPhase);
   // The a11y label follows what the button can DO, not merely whether a timer exists:
   // it overrides the visible children for a screen reader, and announcing "Keep
@@ -42,8 +41,8 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
   const extendable = useSleepTimer(selectSleepExtendable);
   const remaining = useSleepTimer((s) => s.remaining);
   // Match the sibling footer icons' theme-aware neutral (history/airplay use the
-  // same `textStrong`); a hardcoded dark color washed out on the light footer.
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  // same `foreground`); a hardcoded dark color washed out on the light footer.
+  const neutral = themed.foreground;
 
   return (
     <AnimatedPressable
@@ -55,16 +54,16 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
         extendable ? t('player.sleepTimer.keepListening') : t('player.sleepTimer.title')
       }
     >
-      <Icon name="sleep" size={20} color={phase === 'idle' ? neutral : colors.primary} />
+      <Icon name="sleep" size={20} color={phase === 'idle' ? neutral : themed.brand} />
       {phase === 'grace' ? (
-        <RNText className="font-roboto-semibold text-sm text-primary">
+        <RNText className="font-sans-semibold text-sm text-brand-ink">
           {t('player.sleepTimer.keepGoingShort')}
         </RNText>
       ) : phase !== 'idle' && remaining !== null ? (
         // Ending: the same countdown, weighted up so a glance reads "about to stop".
         <RNText
-          className={`text-sm text-primary ${
-            phase === 'ending' ? 'font-roboto-semibold' : 'font-sans'
+          className={`text-sm text-brand-ink ${
+            phase === 'ending' ? 'font-sans-semibold' : 'font-sans'
           }`}
           style={tabularNums}
         >
@@ -132,9 +131,9 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
         // The extendable windows. The button is mandatory, not a convenience: the web
         // has no accelerometer, so it is the only way to keep listening there. On
         // native it sits alongside the shake hint.
-        <View className="gap-2 rounded-lg bg-primary/10 px-3 py-3">
+        <View className="gap-2 rounded-lg bg-brand/10 px-3 py-3">
           <View className="flex-row items-center justify-between">
-            <RNText className="font-roboto-semibold text-base text-primary">
+            <RNText className="font-sans-semibold text-base text-brand-ink">
               {phase === 'grace'
                 ? t('player.sleepTimer.grace')
                 : origin?.kind === 'duration'
@@ -142,7 +141,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                   : t('player.sleepTimer.ending')}
             </RNText>
             {remaining !== null ? (
-              <RNText className="font-roboto-semibold text-base text-primary" style={tabularNums}>
+              <RNText className="font-sans-semibold text-base text-brand-ink" style={tabularNums}>
                 {formatClock(remaining)}
               </RNText>
             ) : null}
@@ -152,36 +151,36 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
           )}
           <AnimatedPressable
             onPress={() => pick(keepListening)}
-            className="items-center rounded-lg bg-primary px-4 py-3"
+            className="items-center rounded-lg bg-brand px-4 py-3"
             accessibilityRole="button"
           >
-            <RNText className="font-roboto-semibold text-base text-white dark:text-white">
+            <RNText className="font-sans-semibold text-base text-brand-foreground">
               {t('player.sleepTimer.keepListening')}
             </RNText>
           </AnimatedPressable>
         </View>
       ) : phase === 'running' ? (
-        <View className="flex-row items-center justify-between rounded-lg bg-primary/10 px-3 py-2">
-          <RNText className="font-sans text-base text-primary">
+        <View className="flex-row items-center justify-between rounded-lg bg-brand/10 px-3 py-2">
+          <RNText className="font-sans text-base text-brand-ink">
             {/* Rendered here, not stored: the timer keeps a translation descriptor so
                 a language switch re-renders an armed timer in the new language. */}
             {label ? t(label.key, label.params) : t('player.sleepTimer.running')}
           </RNText>
           {remaining !== null ? (
-            <RNText className="font-roboto-semibold text-base text-primary" style={tabularNums}>
+            <RNText className="font-sans-semibold text-base text-brand-ink" style={tabularNums}>
               {formatClock(remaining)}
             </RNText>
           ) : null}
         </View>
       ) : null}
 
-      <Text variant="label">{t('player.sleepTimer.timeSection')}</Text>
+      <Text variant="eyebrow">{t('player.sleepTimer.timeSection')}</Text>
       <View className="flex-row flex-wrap gap-2">
         {PRESETS.map((m) => (
           <AnimatedPressable
             key={m}
             onPress={() => pick(() => startDuration(m))}
-            className="rounded-full bg-gray-100 px-4 py-2 dark:bg-gray-860"
+            className="rounded-full bg-muted px-4 py-2"
             accessibilityRole="button"
           >
             <Text style={tabularNums}>{t('player.sleepTimer.minutes', { count: m })}</Text>
@@ -189,7 +188,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
         ))}
       </View>
 
-      <Text variant="label">{t('player.sleepTimer.endOfChapterSection')}</Text>
+      <Text variant="eyebrow">{t('player.sleepTimer.endOfChapterSection')}</Text>
       {countdowns.length > 0 ? (
         // Cap on the wrapper View (not the ScrollView) so the list scrolls
         // instead of pushing the sheet off-screen.
@@ -201,7 +200,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                 onPress={() =>
                   pick(() => startUntilPosition(c.endPosition, chapterSleepLabel(c.chapter)))
                 }
-                className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
+                className="flex-row items-center justify-between rounded-lg bg-muted px-4 py-3"
                 accessibilityRole="button"
               >
                 <Text numberOfLines={1} className="flex-1 pr-3">
@@ -220,7 +219,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
           onPress={() =>
             pick(() => startUntilPosition(total, { key: 'player.sleepTimer.endOfBook' }))
           }
-          className="flex-row items-center justify-between rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-860"
+          className="flex-row items-center justify-between rounded-lg bg-muted px-4 py-3"
           accessibilityRole="button"
         >
           <Text>{t('player.sleepTimer.endOfBook')}</Text>
@@ -238,12 +237,12 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
         <AnimatedPressable
           onPress={() => pick(cancel)}
           className={`mt-1 items-center rounded-lg px-4 py-3 ${
-            phase === 'running' ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-860'
+            phase === 'running' ? 'bg-brand' : 'bg-muted'
           }`}
           accessibilityRole="button"
         >
           {phase === 'running' ? (
-            <RNText className="font-roboto-semibold text-base text-white dark:text-white">
+            <RNText className="font-sans-semibold text-base text-brand-foreground">
               {t('player.sleepTimer.cancel')}
             </RNText>
           ) : (
