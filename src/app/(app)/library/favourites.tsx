@@ -14,7 +14,7 @@ import { pathLeaf } from '@/lib/paths';
 import { colors } from '@/theme/tokens';
 
 const ROW_SURFACE =
-  'rounded-xl bg-white shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+  'rounded-xl bg-white shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** Filled heart that un-favourites the path on its own connection. Always a
  * sibling of (never nested inside) the navigable row, so its press can't bubble. */

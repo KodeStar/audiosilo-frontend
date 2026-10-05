@@ -1,3 +1,280 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Styling entry for Uniwind (Tailwind v4) on every platform. metro.config.js points
+ * `cssEntryFile` here, so Tailwind scans for classNames from src/. There is no
+ * tailwind.config.js: theme tokens live in `@theme` blocks below. Colours come from
+ * src/theme/tokens.json via `npm run gen:tokens` (the generated region); the rest is
+ * hand-written.
+ *
+ * Phase 0a of the player redesign moved this app from NativeWind v4 (Tailwind v3.4)
+ * with NO visual change, so several blocks below pin v3-era values on purpose.
+ */
+
+/*
+ * Tailwind's three parts, imported individually so the utilities stay OUTSIDE any
+ * cascade layer (as Tailwind v3's were). On web, react-native-web's own component
+ * styles are unlayered CSS classes (e.g. a horizontal ScrollView's `flex-grow: 1`),
+ * and unlayered CSS beats every layer - so layered utilities (`@import 'tailwindcss'`)
+ * would lose to them, where v3's later-in-the-document utilities won. The layer order
+ * (with RNW's resets in `rnw`) must match `layerOrderCss` in src/app/+html.tsx, which
+ * declares it before any stylesheet loads.
+ */
+@layer properties, theme, base, rnw, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css';
+@import 'uniwind';
+@import 'tw-animate-css';
+
+/*
+ * `dark:` for browsers without CSS `@scope` (Safari/iOS < 17.4, Chrome < 118,
+ * Firefox < 146 - all inside Tailwind v4's Safari 16.4 / Chrome 111 / Firefox 128
+ * floor). On web Uniwind wraps the first rule of every `dark:` class in
+ * `@scope (.dark) to (.light)`, which those browsers drop, and its
+ * prefers-color-scheme branch never matches once Uniwind has put `.dark`/`.light` on
+ * <html> - so dark mode would silently fall back to the light classes there. This
+ * keeps Uniwind's two branches and adds an unscoped `:where(.dark) &` copy (what
+ * NativeWind's `:is(.dark *)` did, at class specificity). Uniwind's native processor
+ * reads the first branch and skips the descendant one, so native output is unchanged.
+ */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:not(:where(.light, .light *, .dark, .dark *)) {
+      @slot;
+    }
+  }
+  :where(.dark) & {
+    @slot;
+  }
+}
+
+/*
+ * `hover:` as Tailwind v3 drew it (a plain `:hover`). v4 gates it behind
+ * `@media (hover: hover)`, which drops the hover highlight on an iPad with a trackpad
+ * (it reports `hover: none`) and the tap highlight on touch screens. Native never
+ * applied `hover:` under either engine.
+ */
+@custom-variant hover (&:hover);
+
+/* @generated-tokens:start - DO NOT EDIT this region. Source: src/theme/tokens.json; regenerate with `npm run gen:tokens`. */
+@theme {
+  --color-primary: #db2777;
+  --color-primary-50: #fdf2f8;
+  --color-primary-100: #fce7f3;
+  --color-primary-200: #fbcfe8;
+  --color-primary-300: #f9a8d4;
+  --color-primary-400: #f472b6;
+  --color-primary-500: #ec4899;
+  --color-primary-600: #db2777;
+  --color-primary-700: #be185d;
+  --color-primary-800: #9d174d;
+  --color-primary-900: #831843;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-750: #2c3340;
+  --color-gray-800: #1f2937;
+  --color-gray-840: #1a2331;
+  --color-gray-860: #161f2c;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+  --color-red-950: #450a0a;
+  --color-green-50: #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #15803d;
+  --color-green-800: #166534;
+  --color-green-900: #14532d;
+  --color-green-950: #052e16;
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+  --color-danger: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+  --color-success: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+  --color-black: #000000;
+  --color-white: #ffffff;
+}
+/* @generated-tokens:end */
+
+@theme {
+  /*
+   * Fonts: ONE family per token, because React Native has no font fallback (each
+   * Roboto weight is its own loaded family, see ThemeProvider). Per-weight families
+   * avoid clashing with the font-weight utilities (font-light / font-medium / ...).
+   * Web gets the same families with the system fallback stack, below.
+   */
+  --font-sans: 'Roboto_400Regular';
+  --font-roboto-light: 'Roboto_300Light';
+  --font-roboto-medium: 'Roboto_500Medium';
+  --font-roboto-semibold: 'Roboto_600SemiBold';
+  --font-roboto-bold: 'Roboto_700Bold';
+
+  /*
+   * Web shadows: NativeWind's preset values for the two the app uses, under Tailwind
+   * v4's names (v3 `shadow-sm` is v4 `shadow-xs`). Native: see below.
+   */
+  --shadow-xs: 0px 1px 1px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0px 4px 10px rgba(0, 0, 0, 0.35);
+
+  /*
+   * Breakpoints in px, as in Tailwind v3. v4's defaults are rems (lg = 64rem), which
+   * native resolves against the 14px rem (metro.config.js), moving `lg:` from 1024px
+   * to 896px wide. On web 1024px and 64rem are the same width.
+   */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /*
+   * `rounded-full` as Tailwind v3 drew it (9999px). v4's default is
+   * `calc(infinity * 1px)`, which Chrome rasterises differently (circle edges and
+   * the glyphs inside them shift by a sub-pixel); on native Uniwind would emit 99999.
+   */
+  --radius-full: 9999px;
+}
+
+/*
+ * Native shadows, matching what NativeWind rendered. NativeWind compiled `shadow-*` to
+ * React Native's legacy shadow props (shadowColor/Offset/Radius/Opacity, plus Android
+ * `elevation`); Uniwind emits CSS `boxShadow` and cannot emit `shadowOffset` (an
+ * object). So, per platform (the browser ignores these `@media ios/android` blocks):
+ * - iOS: `boxShadow` with blur = 2 x NativeWind's shadowRadius. React Native draws an
+ *   iOS box-shadow as a CALayer shadow with shadowRadius = blur / 2 on the view's
+ *   rounded-rect path (RCTBoxShadow.mm), which is what the legacy shadow drew on a
+ *   view with a solid background.
+ * - iOS, `overflow-hidden` views: the legacy shadow was clipped by masksToBounds,
+ *   while a box-shadow is not, so those views add `ios-clipped-shadow` (no
+ *   box-shadow). A cover frame with a translucent border showed a sliver of the
+ *   clipped shadow through the border; CoverFrame reproduces that with the legacy
+ *   props inline (src/theme/clipped-shadow.ios.ts).
+ * - Android: NativeWind's Android props, `elevation` + `shadowColor` (which tints
+ *   elevation shadows on Android 9+), and no box-shadow.
+ */
+@utility shadow-xs {
+  @variant ios {
+    box-shadow: 0px 1px 2px #00000059;
+  }
+  @variant android {
+    box-shadow: none;
+    shadow-color: #00000059;
+    elevation: 1;
+  }
+}
+@utility shadow-lg {
+  @variant ios {
+    box-shadow: 0px 4px 20px #00000059;
+  }
+  @variant android {
+    box-shadow: none;
+    shadow-color: #00000059;
+    elevation: 8;
+  }
+}
+@utility shadow-none {
+  @variant native {
+    box-shadow: none;
+    elevation: 0;
+  }
+}
+/* No box-shadow on iOS for a shadowed `overflow-hidden` view (see above). */
+@utility ios-clipped-shadow {
+  @variant ios {
+    box-shadow: none !important;
+  }
+}
+
+@layer theme {
+  :root {
+    /*
+     * Web keeps the exact font stacks NativeWind emitted: the family, then the system
+     * fallback its CSS pipeline expanded `system-ui, sans-serif` into.
+     */
+    @variant web {
+      --font-web-fallback:
+        system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu,
+        Cantarell, 'Helvetica Neue', sans-serif;
+      --font-sans: 'Roboto_400Regular', var(--font-web-fallback);
+      --font-roboto-light: 'Roboto_300Light', var(--font-web-fallback);
+      --font-roboto-medium: 'Roboto_500Medium', var(--font-web-fallback);
+      --font-roboto-semibold: 'Roboto_600SemiBold', var(--font-web-fallback);
+      --font-roboto-bold: 'Roboto_700Bold', var(--font-web-fallback);
+    }
+
+    /*
+     * Native keeps the px letter-spacing scale NativeWind's native preset pinned.
+     * Tailwind v4's values are em, which native resolves against each element's own
+     * font size (`tracking-wider` on `text-base` would be 0.7 instead of 0.5). Web keeps
+     * the em values, which both engines emit there.
+     */
+    @variant native {
+      --tracking-tighter: -0.5px;
+      --tracking-tight: -0.25px;
+      --tracking-normal: 0px;
+      --tracking-wide: 0.25px;
+      --tracking-wider: 0.5px;
+      --tracking-widest: 1px;
+    }
+  }
+}
+
+/*
+ * Tailwind v3 preflight compatibility (web only - React Native has no cascade), from
+ * the Tailwind v4 upgrade guide, so the browser renders what v3 did.
+ */
+@layer base {
+  /* v4 defaults borders to currentColor; v3 used gray-200. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+
+  /* v4 placeholders are currentColor at 50%; v3 used gray-400. */
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+
+  /* v4 buttons use the default cursor; v3 used a pointer. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}

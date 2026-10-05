@@ -5,7 +5,8 @@ import { Icon } from '@/components/ui/icon';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 /** One row in the chapter/file picker. `sublabel` carries an optional time. */
 export type ChapterItem = { key: string; label: string; sublabel?: string };
@@ -68,7 +69,7 @@ export function ChapterListSheet({
               </View>
               <Text
                 numberOfLines={1}
-                className={`flex-1 ${current ? 'font-roboto-semibold text-primary' : 'text-gray-700 dark:text-gray-200'}`}
+                className={`flex-1 ${current ? 'text-primary' : 'text-gray-700'}`}
               >
                 {prettifyChapterTitle(item.label)}
               </Text>

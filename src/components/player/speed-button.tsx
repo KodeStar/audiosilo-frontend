@@ -25,8 +25,6 @@ export function SpeedButton({ onPress }: { onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={t('player.speed.title')}
     >
-      {/* Raw RN Text + explicit classes: the themed <Text> variant injects its own
-          text color, which NativeWind won't reliably override with an appended one. */}
       <RNText className="font-roboto-medium text-base text-gray-700 dark:text-gray-200">
         {fmt(rate)}
       </RNText>

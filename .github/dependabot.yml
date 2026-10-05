@@ -99,11 +99,14 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
-      # NativeWind v4 runs on the Tailwind v3.4 engine; Tailwind v4 arrives
-      # with a NativeWind major that adopts it, never ahead of it.
+      # Uniwind compiles with the @tailwindcss/node it pins exactly (4.3.3 for
+      # uniwind 1.12), which pins its own tailwindcss; the top-level tailwindcss
+      # only supplies the theme/preflight/utilities CSS that src/global.css
+      # imports, and must stay on that same version. A uniwind bump moves both
+      # (npm hoists the new pin); a tailwindcss bump on its own - patches too:
+      # the 4.3.3 change that needed uniwind 1.12 was a patch - only splits them.
+      # So it is ignored outright and moves with uniwind.
       - dependency-name: tailwindcss
-        update-types:
-          - version-update:semver-major
 
   # The workflows reference actions by major tag (actions/checkout@v4), so the
   # only update for them is the next major, which arrives on its own.

@@ -22,6 +22,27 @@ module.exports = [
     },
   },
   {
+    // Uniwind only resolves `className` on React Native's own components; this
+    // third-party one drops its classes on native unless wrapped (see the wrapper).
+    files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['src/components/ui/safe-area-view.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react-native-safe-area-context',
+              importNames: ['SafeAreaView'],
+              message:
+                "Import SafeAreaView from '@/components/ui/safe-area-view' (it resolves className; this one drops it on native).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Build output, native projects, generated types and root tooling configs
     // aren't app source - keep them out of linting.
     ignores: [
@@ -34,7 +55,7 @@ module.exports = [
       '*.config.js',
       'expo-env.d.ts',
       'expo-globals.d.ts',
-      'nativewind-env.d.ts',
+      'src/uniwind-types.d.ts',
     ],
   },
   {

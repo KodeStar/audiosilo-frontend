@@ -1,7 +1,7 @@
 import { Text as RNText } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
 
 /**
  * A directional skip control rendered as plain signed text: back reads `-15s`,
@@ -40,8 +40,6 @@ export function SkipButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >
-      {/* Raw RN Text + explicit color: the themed <Text> variant injects its own
-          color, which NativeWind won't reliably override with the caller's. */}
       <RNText
         allowFontScaling={false}
         className="font-roboto-semibold"

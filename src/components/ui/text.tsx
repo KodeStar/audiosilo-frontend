@@ -1,5 +1,7 @@
 import { Text as RNText, type TextProps } from 'react-native';
 
+import { cn } from '@/lib/utils';
+
 type Variant = 'body' | 'muted' | 'heading' | 'title' | 'subtitle' | 'label' | 'caption';
 
 const variants: Record<Variant, string> = {
@@ -14,6 +16,11 @@ const variants: Record<Variant, string> = {
 
 export type AppTextProps = TextProps & { variant?: Variant; className?: string };
 
+/**
+ * Themed text. A caller's class replaces the variant's class for the same property and
+ * variant (`cn`). The variant's `dark:` colour is a different variant, so it stays and
+ * wins in dark mode: recolour both themes with e.g. `text-primary dark:text-primary`.
+ */
 export function Text({ variant = 'body', className, ...props }: AppTextProps) {
-  return <RNText className={`${variants[variant]} ${className ?? ''}`} {...props} />;
+  return <RNText className={cn(variants[variant], className)} {...props} />;
 }

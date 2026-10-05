@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -13,6 +13,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { parsePairingScan } from '@/lib/pairing';
 import { colors } from '@/theme/tokens';
+import { SafeAreaView } from '@/components/ui/safe-area-view';
 
 // Floating close control. Positioned against the live safe-area top inset (not a
 // fixed offset) so it lands below the status bar / notch / Dynamic Island where taps

@@ -29,8 +29,8 @@ The **old client** at `~/dev/audiosilo-old` - a Nuxt 2 / Vue / Tailwind v2 PWA w
 | Old client (2021) | New client (2026) |
 |---|---|
 | Nuxt 2 / Vue, file-based `/pages` | Expo + Expo Router (file-based routes) |
-| `@nuxtjs/tailwindcss` (Tailwind v2) | NativeWind v4 (Tailwind v3.4 engine) |
-| `@nuxtjs/color-mode` | NativeWind dark mode + persisted theme toggle |
+| `@nuxtjs/tailwindcss` (Tailwind v2) | Uniwind (Tailwind v4); NativeWind v4 (Tailwind v3.4) until player-redesign Phase 0a |
+| `@nuxtjs/color-mode` | Uniwind themes (`dark:` + `Uniwind.setTheme`) + persisted theme toggle |
 | Vuex | Zustand (UI/player) + TanStack Query (server state) |
 | `@nuxtjs/localforage` | AsyncStorage + expo-secure-store (token) |
 | `@nuxtjs/pwa` | Expo static web export + service worker + manifest (M4) |

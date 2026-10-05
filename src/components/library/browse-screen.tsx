@@ -47,12 +47,12 @@ function BrowseSkeleton() {
       {Array.from({ length: 8 }).map((_, i) => (
         <View
           key={i}
-          className="my-1 h-14 flex-row items-center gap-3 rounded-xl bg-white px-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+          className="my-1 h-14 flex-row items-center gap-3 rounded-xl bg-white px-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
         >
           <Skeleton className="h-10 w-10 rounded-lg" />
           <View className="flex-1 gap-2">
-            <Skeleton className="h-3.5 w-1/2 rounded" />
-            <Skeleton className="h-3 w-1/3 rounded" />
+            <Skeleton className="h-3.5 w-1/2 rounded-sm" />
+            <Skeleton className="h-3 w-1/3 rounded-sm" />
           </View>
         </View>
       ))}
@@ -297,13 +297,7 @@ function BrowseContent() {
                     accessibilityLabel={t('library.browse.jumpTo', { letter: l })}
                     className="w-7 flex-1 items-center justify-center rounded-full"
                   >
-                    <Text
-                      className={`text-[11px] font-roboto-semibold ${
-                        active ? 'text-primary' : 'text-gray-300 dark:text-gray-700'
-                      }`}
-                    >
-                      {l}
-                    </Text>
+                    <Text className={active ? 'text-primary' : 'dark:text-gray-700'}>{l}</Text>
                   </AnimatedPressable>
                 );
               })}

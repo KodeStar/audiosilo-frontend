@@ -1,7 +1,7 @@
 import { usePathname } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useWindowDimensions, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { PlayerView } from '@/components/player/player-view';
@@ -9,6 +9,7 @@ import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { clearScrollMemory } from '@/lib/scroll-memory';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
+import { SafeAreaView } from '@/components/ui/safe-area-view';
 
 import { AppHeader } from './app-header';
 import { NavBar } from './app-nav';

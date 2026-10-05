@@ -1,5 +1,7 @@
 import { type AccessibilityRole, Pressable, Text as RNText, ScrollView, View } from 'react-native';
 
+import { cn } from '@/lib/utils';
+
 export type SegmentedOption<T extends string> = { value: T; label: string };
 
 export type SegmentedControlProps<T extends string> = {
@@ -80,7 +82,7 @@ export function SegmentedControl<T extends string>({
     );
   });
 
-  const track = `rounded-lg bg-gray-100 p-1 dark:bg-gray-840 ${className ?? ''}`;
+  const track = cn('rounded-lg bg-gray-100 p-1 dark:bg-gray-840', className);
 
   if (scrollable) {
     return (

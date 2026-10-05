@@ -1,24 +1,18 @@
-/**
- * Raw color values, mirroring the NativeWind/Tailwind theme, for the places that
- * need an actual color string rather than a className: status bar, native
- * component props (ActivityIndicator, TextInput placeholders), react-native-svg
- * fills, navigation theme, etc. Ported from the old client's design.
- */
+// GENERATED FILE - DO NOT EDIT. Source: src/theme/tokens.json; regenerate with `npm run gen:tokens`.
+
+/** Raw values for native props that need a colour string rather than a className (status bar, ActivityIndicator, TextInput placeholders, react-native-svg fills, navigation theme). The same palette backs the Tailwind classes (src/global.css). */
 export const colors = {
-  primary: '#db2777', // pink-600
-  // LEGACY: the loud blue that filled chapter/file tiles. The design refresh
-  // demotes it (books/chapters distinguish by icon + subtle tint, not a filled
-  // block); screens migrate off it in later tasks. Kept until then - still
-  // referenced by existing code. Prefer the semantic tokens below for new work.
+  primary: '#db2777', // primary
+  /** LEGACY: the loud blue that filled chapter/file tiles. The design refresh demotes it (books/chapters distinguish by icon + subtle tint, not a filled block); screens migrate off it in later tasks. Kept until then - still referenced by existing code. Prefer the semantic tokens below for new work. */
   blue: '#3b82f6', // blue-500
-  // Semantic status colors, mirroring tailwind.config.js `danger`/`success` for
-  // native props (icon fills, ActivityIndicator, svg) that need a raw string.
-  danger: '#ef4444', // red-500 (DEFAULT) - see tailwind danger.600/700 for light-surface text
-  success: '#22c55e', // green-500 (DEFAULT) - downloaded/done indicators
-  white: '#ffffff',
+  /** Status colours for native props (icon fills, ActivityIndicator, svg). For text on light surfaces use the danger-600/700 classes. */
+  danger: '#ef4444', // danger
+  /** Downloaded/done indicators. */
+  success: '#22c55e', // success
+  white: '#ffffff', // white
   light: {
     bg: '#e5e7eb', // gray-200
-    surface: '#ffffff',
+    surface: '#ffffff', // white
     surfaceAlt: '#f3f4f6', // gray-100
     text: '#4b5563', // gray-600
     textStrong: '#374151', // gray-700
@@ -35,13 +29,3 @@ export const colors = {
     border: '#2c3340', // gray-750
   },
 } as const;
-
-/**
- * Tabular (monospaced) numerals for `style=` on native/`<Text>` - locks figures to
- * a fixed advance so a value doesn't jitter as its digit count changes (clocks,
- * durations, counts). Prefer this token over `className="tabular-nums"`: the Tailwind
- * class compiles to `font-variant-numeric: var(--tw-numeric-spacing)`, which
- * NativeWind's native interop does not translate into RN's `fontVariant`, so the class
- * is a no-op on iOS/Android (figures still jitter there).
- */
-export const tabularNums = { fontVariant: ['tabular-nums' as const] };

@@ -26,11 +26,7 @@ export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
         >
           <Text
             numberOfLines={1}
-            className={
-              c.active
-                ? 'font-roboto-medium text-sm text-primary dark:text-primary'
-                : 'text-sm text-gray-500 dark:text-gray-400'
-            }
+            className={c.active ? 'text-sm text-primary dark:text-primary' : 'text-sm'}
           >
             {c.label}
           </Text>

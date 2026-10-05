@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { useApi } from '@/api/provider';
 import { DownloadBadge } from '@/components/library/download-badge';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { Cover } from '@/components/ui/cover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -23,19 +24,6 @@ export function gridColumns(width: number) {
 export function Grid({ children }: { children: ReactNode }) {
   return (
     <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
-      {children}
-    </View>
-  );
-}
-
-/**
- * Frames cover art so dark covers separate from dark surfaces: a hairline border
- * on both themes plus a soft shadow in light mode only (the house "shadow light /
- * border dark" pattern). Wrap every cover in this for consistent treatment.
- */
-export function CoverFrame({ children }: { children: ReactNode }) {
-  return (
-    <View className="overflow-hidden rounded-lg border border-black/10 shadow-sm dark:border-white/10 dark:shadow-none">
       {children}
     </View>
   );
@@ -106,8 +94,8 @@ export function GridCardSkeleton({ width, footer }: { width: number; footer?: bo
       <View className="w-full gap-2.5 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-860 dark:bg-gray-840">
         <Skeleton className="aspect-square w-full rounded-lg" />
         <View className="gap-2 py-0.5">
-          <Skeleton className="h-3.5 w-full rounded" />
-          <Skeleton className="h-3.5 w-2/3 rounded" />
+          <Skeleton className="h-3.5 w-full rounded-sm" />
+          <Skeleton className="h-3.5 w-2/3 rounded-sm" />
         </View>
         {footer ? <Skeleton className="h-1.5 w-full rounded-full" /> : null}
       </View>

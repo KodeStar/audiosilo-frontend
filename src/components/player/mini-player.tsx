@@ -28,7 +28,8 @@ import {
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
 const COVER_SIZE = 64;

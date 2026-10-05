@@ -16,7 +16,7 @@ import { colors } from '@/theme/tokens';
 // A quiet surface row: soft shadow in light, hairline border in dark. The former
 // loud filled blocks are demoted to a tinted glyph tile.
 const ROW_SURFACE =
-  'flex-row items-center gap-3 rounded-xl bg-white px-3 py-2.5 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+  'flex-row items-center gap-3 rounded-xl bg-white px-3 py-2.5 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 const GLYPH = 'h-10 w-10 items-center justify-center rounded-lg';
 
 /** Favourites sits alongside the libraries as a special "shelf": a row that opens

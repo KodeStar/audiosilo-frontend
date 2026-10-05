@@ -7,6 +7,8 @@
     "@expo/ui": "~56.0.26",
     "@react-native-async-storage/async-storage": "^3.1.1",
     "@tanstack/react-query": "^5.104.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "expo": "~56.0.23",
     "expo-blur": "~56.0.4",
     "expo-build-properties": "~56.0.27",
@@ -29,7 +31,6 @@
     "expo-system-ui": "~56.0.5",
     "expo-web-browser": "~56.0.6",
     "i18next": "^26.4.2",
-    "nativewind": "^4.2.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-i18next": "^17.0.15",
@@ -42,7 +43,10 @@
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.3",
     "react-native-worklets": "0.8.3",
-    "tailwindcss": "^3.4.19",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3",
+    "tw-animate-css": "^1.4.0",
+    "uniwind": "^1.12.2",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -67,8 +71,9 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "gen:icons": "node ./scripts/gen-icons.mjs",
+    "gen:tokens": "node ./scripts/gen-tokens.mjs",
     "lint": "expo lint",
-    "test": "jest",
+    "test": "node scripts/gen-tokens.mjs --check && node scripts/check-styles.cjs && jest",
     "format": "prettier --check ."
   },
   "private": true

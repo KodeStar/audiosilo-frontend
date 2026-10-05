@@ -1,4 +1,3 @@
-import { cssInterop } from 'nativewind';
 import { forwardRef } from 'react';
 import { Pressable, type PressableProps, type View } from 'react-native';
 import Animated, {
@@ -9,13 +8,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-// An animated Pressable that also honours NativeWind `className`. NativeWind only
-// interops components it knows about (see react-native-css-interop's wrapJSX), and
-// `Animated.createAnimatedComponent(Pressable)` is not one of them, so we register
-// it: cssInterop resolves className -> style and merges it with the animated style
-// prop we pass (reanimated accepts the resulting style array).
+// The web animated Pressable. It needs no Uniwind wrapper (`withUniwind`): Uniwind's
+// Metro resolver swaps react-native's Pressable for its own className-aware one, and
+// reanimated's animated component forwards `className` to it untouched, so className
+// resolves on the inner Pressable and merges with the animated style we pass. (Uniwind
+// documents reanimated components as className-ready; `withUniwind` is for third-party
+// components that don't render a core component.)
 const AnimatedPressableBase = Animated.createAnimatedComponent(Pressable);
-cssInterop(AnimatedPressableBase, { className: 'style' });
 
 const PRESS_IN_MS = 120;
 const RELEASE_MS = 180;

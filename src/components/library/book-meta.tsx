@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
+import { CoverFrame } from '@/components/library/cover-frame';
 import { useMetaWork } from '@/api/hooks';
 import type {
   BookMeta,
@@ -31,6 +32,7 @@ import {
   viewHoldsWork,
 } from '@/lib/series-orderings';
 import { openExternalUrl } from '@/lib/support';
+import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 
 import { type ListeningProgress, type Split, splitCharacters, splitRecaps } from './meta-gating';
@@ -227,11 +229,7 @@ function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
         primary ? 'bg-primary/10 dark:bg-primary/15' : 'bg-gray-100 dark:bg-gray-800'
       }`}
     >
-      <Text
-        className={`text-[10px] font-roboto-medium uppercase ${
-          primary ? 'text-primary dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'
-        }`}
-      >
+      <Text className={primary ? 'uppercase text-primary dark:text-primary-400' : 'uppercase'}>
         {label}
       </Text>
     </View>
@@ -284,7 +282,7 @@ function Disclosure({
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         accessibilityLabel={accessibilityLabel}
-        className={`flex-row items-center ${headerClassName ?? ''}`}
+        className={cn('flex-row items-center', headerClassName)}
       >
         {header}
         <DisclosureChevron open={open} />
@@ -305,7 +303,7 @@ function ViewOnMetaLink({ url, small }: { url: string; small?: boolean }) {
       className={`flex-row items-center gap-2 self-start ${small ? 'py-0.5' : 'py-1'}`}
     >
       <Icon name="library" size={14} color={colors.primary} />
-      <Text className="text-sm font-roboto-medium text-primary">{t('book.meta.viewOnMeta')}</Text>
+      <Text className="text-sm text-primary">{t('book.meta.viewOnMeta')}</Text>
       <Icon name="chevron-right" size={12} color={colors.primary} />
     </AnimatedPressable>
   );
@@ -352,7 +350,7 @@ function HiddenNotice({
         accessibilityRole="button"
         className="flex-row items-center gap-1 py-0.5"
       >
-        <Text className="text-sm font-roboto-medium text-primary">
+        <Text className="text-sm text-primary">
           {shown ? t('book.meta.hideSpoilers') : t('book.meta.showAnyway')}
         </Text>
         <DisclosureChevron open={shown} />
@@ -510,8 +508,8 @@ function PreviousBookRow({
       onToggle={() => setOpen((v) => !v)}
       header={
         <>
-          <View className="w-10 overflow-hidden rounded border border-black/10 dark:border-white/10">
-            <Cover source={entry.cover_url ?? null} rounded="rounded" />
+          <View className="w-10 overflow-hidden rounded-sm border border-black/10 dark:border-white/10">
+            <Cover source={entry.cover_url ?? null} rounded="rounded-sm" />
           </View>
           <View className="flex-1">
             {entry.position ? (
@@ -711,7 +709,7 @@ export function BookMetaAbout({ meta }: { meta: MatchedBookMeta }) {
                   accessibilityRole="button"
                   className="flex-row items-center gap-1 self-start py-0.5"
                 >
-                  <Text className="text-sm font-roboto-medium text-primary">
+                  <Text className="text-sm text-primary">
                     {expanded ? t('book.meta.showLess') : t('book.meta.showMore')}
                   </Text>
                   <DisclosureChevron open={expanded} />
@@ -733,7 +731,7 @@ export function BookMetaAbout({ meta }: { meta: MatchedBookMeta }) {
               ))}
               {abridged ? (
                 <View className="mt-0.5 self-start rounded-full bg-primary/10 px-2.5 py-1 dark:bg-primary/15">
-                  <Text className="text-xs font-roboto-medium text-primary dark:text-primary-400">
+                  <Text className="text-xs text-primary dark:text-primary-400">
                     {t('book.meta.abridged')}
                   </Text>
                 </View>
@@ -914,9 +912,9 @@ export function BookMetaSeriesTab({
                 accessibilityLabel={w.title}
                 className="w-28"
               >
-                <View className="overflow-hidden rounded-lg border border-black/10 shadow-sm dark:border-white/10 dark:shadow-none">
+                <CoverFrame>
                   <Cover source={w.cover_url ?? null} label={w.title} />
-                </View>
+                </CoverFrame>
                 {w.position ? (
                   <Text variant="caption" className="mt-1.5">
                     {t('book.meta.seriesPosition', { position: w.position })}

@@ -3,7 +3,6 @@ import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiClient, ApiError } from '@/api/client';
 import type { PairingPayload } from '@/api/types';
@@ -15,6 +14,7 @@ import { Text } from '@/components/ui/text';
 import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
+import { SafeAreaView } from '@/components/ui/safe-area-view';
 
 /**
  * Public demo landing. On a demo server (e.g. demo.audiosilo.app), visiting this
@@ -85,10 +85,10 @@ export default function DemoScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
-      <ScrollView contentContainerClassName="flex-grow items-center justify-center gap-8 p-6">
+      <ScrollView contentContainerClassName="grow items-center justify-center gap-8 p-6">
         <View className="items-center gap-3">
           <Logo size={64} />
-          <Text className="font-roboto-bold text-3xl text-primary">{t('demo.title')}</Text>
+          <Text className="text-primary">{t('demo.title')}</Text>
           <Text variant="muted" className="text-center">
             {t('demo.intro')}
           </Text>
@@ -96,7 +96,7 @@ export default function DemoScreen() {
 
         {error ? (
           <View className="items-center gap-4">
-            <Text className="text-center text-sm text-danger-600 dark:text-danger">{error}</Text>
+            <Text className="text-center text-sm">{error}</Text>
             <Button title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
           </View>
         ) : !pairing ? (

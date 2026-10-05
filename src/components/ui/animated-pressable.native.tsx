@@ -10,29 +10,27 @@ const RIPPLE = { color: 'rgba(128,128,128,0.22)', borderless: false, foreground:
 /**
  * Native counterpart of the web `AnimatedPressable`.
  *
- * ## Why this file exists (the native regression it fixes)
+ * ## Why this file exists (the native regression it fixed)
  *
  * The web implementation is a reanimated `Animated.createAnimatedComponent(Pressable)`
- * that is `cssInterop`'d and rendered with an inline `style={animatedStyle}` (a
- * `useAnimatedStyle` result) for a press scale/opacity flourish. On **native** that
- * seam is broken: NativeWind maps `className -> style`, and feeding it an inline
- * reanimated animated-style object at the same target makes the native interop drop
- * the className-resolved styles entirely. The pressable then loses its
- * `flex-row`/background/padding and collapses to the column default with no surface -
- * every card/row/button built on it renders stacked and transparent. (Web resolves
- * className and inline style through a different, additive path, so it's fine there;
- * hence this is a `.native` override and the web file is left untouched.)
+ * rendered with an inline `style={animatedStyle}` (a `useAnimatedStyle` result) for a
+ * press scale/opacity flourish. Under NativeWind (the styling engine before Uniwind)
+ * that seam broke on **native**: NativeWind mapped `className -> style`, and feeding
+ * it an inline reanimated animated-style object at the same target made its native
+ * interop drop the className-resolved styles entirely. The pressable then lost its
+ * `flex-row`/background/padding and collapsed to the column default with no surface -
+ * every card/row/button built on it rendered stacked and transparent. (Web resolved
+ * className and inline style through a different, additive path, so it was fine
+ * there; hence this is a `.native` override and the web file is separate.)
  *
  * A plain `<Pressable className=...>` - with NO inline reanimated animated-style -
- * goes through NativeWind's ordinary core-component interop and keeps className
- * correctly (the same path every working `<View className>` uses). So on native we
- * render exactly that. The distinction is specifically the reanimated *object*: a
- * plain `style` FUNCTION (`({pressed}) => ...`) is forwarded and merged fine by the
- * interop (verified on-device - the card/row still lays out correctly), it's only
- * the `useAnimatedStyle` result that clobbers className. So press feedback survives
- * as a lightweight opacity dip on the Pressable's own `pressed` state, plus an
- * `android_ripple` on Android. We drop the reanimated 0.97 scale flourish on native
- * (it only ever worked on web) - correct layout beats the flourish.
+ * keeps className correctly (the same path every working `<View className>` uses), so
+ * on native we render exactly that. A plain `style` FUNCTION (`({pressed}) => ...`)
+ * merges fine with className (verified on-device). So press feedback is a lightweight
+ * opacity dip on the Pressable's own `pressed` state, plus an `android_ripple` on
+ * Android; the reanimated 0.97 scale flourish is web-only. This shape is kept under
+ * Uniwind (it renders the same); whether Uniwind would keep className next to a
+ * reanimated style object has not been verified on device.
  *
  * Forwards every Pressable prop (including accessibility props and the caller's own
  * onPressIn/onPressOut) and the ref, so it stays a drop-in for the ~30 call sites.

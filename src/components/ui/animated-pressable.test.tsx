@@ -10,21 +10,12 @@ async function mount(ui: React.ReactElement) {
 }
 
 describe('AnimatedPressable', () => {
-  // Native regression guard (the reason animated-pressable.native.tsx exists).
-  //
-  // The shared/web impl renders a reanimated `Animated.createAnimatedComponent(Pressable)`
-  // with an inline `style={useAnimatedStyle(...)}`. On device that reanimated style
-  // object, fed through NativeWind's `className -> style` interop, DROPPED the
-  // className-resolved layout entirely - every card/row/button collapsed to a
-  // background-less vertical stack. The native impl instead renders a plain Pressable,
-  // forwards className untouched (so NativeWind resolves it the normal way) and never
-  // injects a reanimated style - so className (on device) and any caller inline style
-  // survive. jest-expo runs this against the .native file but does NOT run NativeWind's
-  // native interop (className stays an unresolved string here), so we assert the
-  // structural guarantee that actually differs between broken and fixed - className is
-  // forwarded and an inline style is preserved - not the resolved flexbox (that lives in
-  // the on-device screenshots). Runs first: the fireEvent-based tests below leave the
-  // shared `screen` in a state that trips up a later className query.
+  // Native regression guard: why animated-pressable.native.tsx exists is in that file.
+  // jest-expo runs the .native file but not Uniwind's className resolution (its Metro
+  // resolver wires that in), so this asserts the structural guarantee instead: className
+  // is forwarded untouched and a caller inline style is kept. Runs first: the
+  // fireEvent-based tests below leave the shared `screen` in a state that trips up a
+  // later className query.
   it('forwards className untouched and keeps a caller inline style (no clobbering)', async () => {
     await mount(
       <AnimatedPressable

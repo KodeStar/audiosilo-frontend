@@ -15,7 +15,8 @@ import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 /** Stable list key for a progress entry across connections. */
 export const progressKey = (it: SourcedProgress) =>

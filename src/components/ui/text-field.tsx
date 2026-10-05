@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TextInput, View, type TextInputProps } from 'react-native';
 
+import { cn } from '@/lib/utils';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -31,7 +32,7 @@ export function TextField({
   const [focused, setFocused] = useState(false);
   const { scheme } = useTheme();
   return (
-    <View className={`mb-4 ${containerClassName ?? ''}`}>
+    <View className={cn('mb-4', containerClassName)}>
       {label ? (
         <Text variant="label" className="mb-1.5">
           {label}
@@ -39,7 +40,7 @@ export function TextField({
       ) : null}
       <TextInput
         placeholderTextColor={scheme === 'dark' ? colors.dark.text : colors.light.textMuted}
-        className={[
+        className={cn(
           'rounded-xl border px-4 py-3 font-sans text-base text-gray-700 dark:text-gray-100',
           'bg-gray-100 dark:bg-gray-840',
           error
@@ -47,8 +48,8 @@ export function TextField({
             : focused
               ? 'border-primary'
               : 'border-gray-200 dark:border-gray-750',
-          className ?? '',
-        ].join(' ')}
+          className,
+        )}
         onFocus={(e) => {
           setFocused(true);
           onFocus?.(e);

@@ -14,7 +14,8 @@ import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 function DownloadRow({ entry }: { entry: DownloadEntry }) {
   const { t } = useTranslation();
@@ -35,7 +36,7 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
       : null;
 
   return (
-    <View className="flex-row items-center gap-3 rounded-xl bg-white p-2 shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+    <View className="flex-row items-center gap-3 rounded-xl bg-white p-2 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
       <Pressable
         className="flex-1 flex-row items-center gap-3 active:opacity-80"
         onPress={() => void openPlayer(entry.connectionId, entry.libraryId, entry.path)}
@@ -52,9 +53,7 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
               {entry.totalBytes > 0 ? formatBytes(entry.totalBytes) : t('downloads.downloaded')}
             </Text>
           ) : entry.status === 'error' ? (
-            <Text className="text-xs font-roboto-medium text-danger-600 dark:text-danger">
-              {t('downloads.failed')}
-            </Text>
+            <Text className="text-xs">{t('downloads.failed')}</Text>
           ) : (
             <View className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-750">
               <View

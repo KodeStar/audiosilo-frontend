@@ -34,7 +34,9 @@ Sessions in this repo run a fixed division of labour between models:
 
 ## Stack
 - **Expo SDK 56**, **React Native 0.85** (new architecture), **React 19**, **Expo Router** (file-based, in `src/app`).
-- **NativeWind v4** (Tailwind v3.4 engine) for styling. Tokens in `tailwind.config.js`, directives in `src/global.css`.
+- **Uniwind** (Tailwind v4) for styling - `className` on core RN components, on every platform. No
+  `tailwind.config.js`: the theme is CSS in `src/global.css`; colour tokens are generated into it
+  from `src/theme/tokens.json` (see Styling below). Replaced NativeWind v4 in player-redesign Phase 0a.
 - **TanStack Query** (server state) + **Zustand** (session + player state).
 - **Custom native playback module** (`modules/audiosilo-player`, a local Expo
   module): **AVQueuePlayer** on iOS, **Media3/ExoPlayer** on Android. **HTML5 Audio +
@@ -96,10 +98,11 @@ npm run web                 # expo start --web (testable without a dev build)
 npm run ios / npm run android
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
-npm test                    # jest-expo unit tests (npm test -- --coverage for coverage)
+npm test                    # colour-token drift + style guards (scripts/check-styles.cjs), then jest-expo (npm test -- --coverage for coverage)
 npm run format              # prettier --check . (CI-gated; fails on unformatted files)
 npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
+npm run gen:tokens          # regenerate colour tokens after editing src/theme/tokens.json
 ```
 
 **Before a change is done, run `npx tsc --noEmit && npm run lint && npm run format && npm test`**
@@ -505,11 +508,62 @@ of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo (jest 29
 and tests mock `fetch` / `@/api/reachability` as needed. Flip `Platform.OS` at
 runtime to cover web-vs-native branches.
 
-**Styling**: use `className` on core RN components (NativeWind). Never import an
-icon lib directly - use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text via
-`<Text variant=... />`. Tokens: primary `#db2777`; grays `750/840/860`; Roboto
-weights as `font-roboto-{light,medium,semibold,bold}` (plain `font-sans` = regular).
-Raw color values for native props in `src/theme/tokens.ts`.
+**Styling**: use `className` on core RN components (**Uniwind**, Tailwind v4; Metro wires
+it in via `withUniwindConfig` in `metro.config.js`, so there is no babel preset). Never
+import an icon lib directly - use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text
+via `<Text variant=... />`. Tokens: primary `#db2777`; grays `750/840/860`; Roboto weights
+as `font-roboto-{light,medium,semibold,bold}` (plain `font-sans` = regular; one family per
+token, since RN has no font fallback - web adds the system stack).
+- **Colour tokens have ONE source, `src/theme/tokens.json`.** `npm run gen:tokens`
+  (`scripts/gen-tokens.mjs`) writes the generated `@theme` region of `src/global.css` (the
+  classes) and `src/theme/tokens.ts` (raw `colors` for native props). Never hand-edit
+  either output: `npm test` runs `gen-tokens.mjs --check` first and fails on drift. The
+  default Tailwind families the app uses (gray/red/green/blue) are pinned to Tailwind
+  v3's hex values (v4's defaults are OKLCH and render slightly differently).
+- `src/global.css` also pins other v3-era values on purpose - NativeWind's `shadow-xs` /
+  `shadow-lg` values (the two the app uses; any other `shadow-*` is Tailwind v4's default
+  until it is pinned the same way), px breakpoints, `rounded-full` = 9999px, native px
+  letter-spacing (`tracking-*`), v3 `hover:` (no `(hover: hover)` gate), v3 preflight
+  compat, and a `dark:` variant that still applies in browsers without CSS `@scope`
+  (Uniwind scopes `dark:` rules on web) - Phase 0a was a no-visual-change migration.
+  `scripts/check-styles.cjs` (run by `npm test`) guards the last two through Uniwind's
+  real compiler: an unscoped web `dark:` rule, and native `tracking-wider` = 0.5.
+- **rem is 14px on native** (`polyfills.rem` in `metro.config.js`, NativeWind's value);
+  web uses real CSS rems against the browser's 16px root.
+- **Theme**: `ThemeProvider` drives `Uniwind.setTheme('light'|'dark'|'system')` and reads
+  the resolved scheme from `useUniwind()`; `useTheme().scheme` is that resolved value.
+- **Conflicting classes are not de-duplicated.** When two classes with the same variants
+  set the same property, web resolves by stylesheet order and native by className order
+  (the later class wins). A class with a variant (`dark:`, `active:`, `ios:`, `md:`...)
+  outranks a plain one on every platform, whatever the order. A component that lets a
+  caller override its classes must merge with `cn()` (`@/lib/utils`, clsx +
+  tailwind-merge: a caller class replaces the component's class for the same property
+  AND variant). The themed `<Text>` does, so `<Text variant="caption"
+  className="text-primary">` is primary in light mode only - the variant's
+  `dark:text-gray-500` survives and wins in dark mode. To recolour both themes pass the
+  dark class too (`text-primary dark:text-primary`). This is also why the settings
+  language pills keep a raw RN `Text`.
+- **Web cascade layers** (`src/app/+html.tsx` + the split Tailwind imports at the top of
+  `src/global.css`): Tailwind's utilities are imported unlayered and the layer order puts
+  react-native-web's resets above Tailwind's preflight, reproducing Tailwind v3's
+  precedence. Keep both when touching either file.
+- `src/uniwind-types.d.ts` is generated by Uniwind (Metro, or `npx uniwind
+  generate-artifacts --css ./src/global.css --dts ./src/uniwind-types.d.ts`) and committed
+  so `tsc` passes without Metro; it gives RN components their `className` props.
+- **`className` only works on React Native's own components** (Uniwind's Metro resolver
+  swaps those). A third-party component needs a one-time `withUniwind` wrapper - e.g.
+  `SafeAreaView` from `@/components/ui/safe-area-view` (lint forbids importing it from
+  react-native-safe-area-context, whose classes are silently dropped on native;
+  NativeWind used to wrap it for us).
+- **Native shadows** mirror NativeWind's legacy output (see the notes in `src/global.css`):
+  iOS draws `shadow-xs`/`shadow-lg` as a box-shadow with doubled blur, Android uses
+  `elevation`. A shadowed `overflow-hidden` view adds `ios-clipped-shadow`. Frame
+  shadowed cover art with `CoverFrame` (`@/components/library/cover-frame`, `size` xs/lg
+  + layout `className`), which owns the frame classes and the iOS inline shadow they
+  need; the two shadowless thumbnail frames (book-meta's previous-book rows, the
+  downloads list) keep their own classes.
+- Uniwind's free tier has no `group-*` variants and no `hover:` on native.
+Raw color values for native props: `colors` from `src/theme/tokens.ts`.
 
 **Routing**: `src/app/(app)/*` is the authenticated shell (guarded in its
 `_layout.tsx`); `src/app/connect/*` is onboarding; `src/app/player.tsx` is a modal.
@@ -534,7 +588,7 @@ src/downloads/      offline downloads: native/web engines + store (sibling of pl
 src/components/      ui/ (primitives + Icon), layout/ (shell/header/nav), player/, library/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
-src/theme/          tokens + ThemeProvider
+src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider
 src/lib/            storage, secure-store, device, paths, format, register-sw
 ```
 

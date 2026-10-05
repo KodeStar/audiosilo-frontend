@@ -2,7 +2,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiClient, ApiError } from '@/api/client';
 import { Logo } from '@/components/brand/logo';
@@ -22,6 +21,7 @@ import {
 import { normalizeUrl } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
+import { SafeAreaView } from '@/components/ui/safe-area-view';
 
 export default function ConnectServerScreen() {
   const { t } = useTranslation();
@@ -181,13 +181,13 @@ export default function ConnectServerScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
       <ScrollView
-        contentContainerClassName="flex-grow justify-center gap-8 p-6"
+        contentContainerClassName="grow justify-center gap-8 p-6"
         keyboardShouldPersistTaps="handled"
       >
         <View className="items-center gap-3">
           <Logo size={64} />
           {/* eslint-disable-next-line i18next/no-literal-string -- brand wordmark, never translated */}
-          <Text className="font-roboto-bold text-3xl text-primary">AudioSilo</Text>
+          <Text className="text-primary">AudioSilo</Text>
           <Text variant="muted">{t('connect.server.subtitle')}</Text>
         </View>
         {connectionCount === 0 && known.length > 0 ? (
@@ -218,9 +218,7 @@ export default function ConnectServerScreen() {
             <LabeledDivider label={t('connect.server.or')} />
           </View>
         ) : null}
-        {pairError ? (
-          <Text className="text-center text-sm text-danger-600 dark:text-danger">{pairError}</Text>
-        ) : null}
+        {pairError ? <Text className="text-center text-sm">{pairError}</Text> : null}
         <View>
           <TextField
             label={t('connect.server.addressLabel')}

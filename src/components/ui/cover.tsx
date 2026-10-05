@@ -46,15 +46,12 @@ export function Cover({
       ) : (
         <View className="flex-1 items-center justify-center gap-0.5 p-2">
           {label ? (
-            <Text
-              className="text-center text-xs font-roboto-medium text-gray-600 dark:text-gray-200"
-              numberOfLines={3}
-            >
+            <Text className="text-center text-xs" numberOfLines={3}>
               {label}
             </Text>
           ) : null}
           {sublabel ? (
-            <Text className="text-center text-[10px] text-gray-500" numberOfLines={2}>
+            <Text className="text-center" numberOfLines={2}>
               {sublabel}
             </Text>
           ) : null}

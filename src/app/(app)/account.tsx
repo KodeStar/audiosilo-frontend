@@ -238,9 +238,7 @@ function AccountContent() {
               className="flex-row items-center justify-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 active:bg-danger/10"
             >
               <Icon name="logout" size={16} color={colors.danger} />
-              <Text className="font-roboto-semibold text-base text-danger-600 dark:text-danger">
-                {t('settings.account.signOut')}
-              </Text>
+              <Text>{t('settings.account.signOut')}</Text>
             </AnimatedPressable>
           </Card>
         </View>
@@ -280,9 +278,7 @@ function AccountContent() {
             ) : (
               <>
                 <Text variant="muted">{t('settings.devices.intro')}</Text>
-                {pairError ? (
-                  <Text className="text-sm text-danger-600 dark:text-danger">{pairError}</Text>
-                ) : null}
+                {pairError ? <Text className="text-sm">{pairError}</Text> : null}
                 {pairLoading ? (
                   <Spinner />
                 ) : (

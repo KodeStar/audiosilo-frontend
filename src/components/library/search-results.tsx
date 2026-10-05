@@ -16,8 +16,8 @@ export function BookRowSkeleton() {
     <View className="flex-row items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-860 dark:bg-gray-840">
       <Skeleton className="h-16 w-16 rounded-lg" />
       <View className="flex-1 gap-2">
-        <Skeleton className="h-3.5 w-1/2 rounded" />
-        <Skeleton className="h-3 w-1/3 rounded" />
+        <Skeleton className="h-3.5 w-1/2 rounded-sm" />
+        <Skeleton className="h-3 w-1/3 rounded-sm" />
       </View>
     </View>
   );

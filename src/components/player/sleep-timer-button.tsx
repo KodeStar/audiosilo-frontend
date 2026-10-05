@@ -18,7 +18,8 @@ import {
 } from '@/playback/sleep-timer';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 const PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
