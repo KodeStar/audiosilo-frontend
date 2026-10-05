@@ -235,10 +235,6 @@
       "timeLeft": "{{duration}} restante",
       "finished": "Terminado"
     },
-    "searchResults": {
-      "failed": "La búsqueda falló.",
-      "noResults": "Sin resultados para «{{query}}»."
-    },
     "notes": {
       "title": "Notas",
       "placeholder": "Añade una nota (admite markdown)…",
@@ -281,7 +277,6 @@
       "downloading": "Descargando {{percent}} %"
     },
     "list": {
-      "title": "Biblioteca",
       "recentlyAdded": "Añadidos recientemente",
       "recentlyFinished": "Terminados recientemente",
       "added": "Añadido {{when}}",
@@ -303,7 +298,6 @@
     }
   },
   "downloads": {
-    "title": "Descargas",
     "storageUsed": "{{size}} usados",
     "downloaded": "Descargado",
     "failed": "Error al descargar",
@@ -381,7 +375,8 @@
         "supporting": "Secundario",
         "minor": "Menor"
       }
-    }
+    },
+    "openPlayer": "Abrir el reproductor"
   },
   "player": {
     "controls": {
@@ -474,11 +469,12 @@
     "library": "Biblioteca",
     "search": "Buscar",
     "downloads": "Descargas",
-    "settings": "Ajustes",
     "logout": "Cerrar sesión",
     "offline": "Sin conexión: los cambios se sincronizan al reconectar",
     "someOffline": "Algunos servidores sin conexión",
-    "searchPlaceholder": "Buscar…"
+    "me": "Yo",
+    "back": "Atrás",
+    "backTo": "Volver a {{name}}"
   },
   "ui": {
     "error": "Algo salió mal."
@@ -494,5 +490,19 @@
     "qrLabel": "Código QR para abrir la demo en la app",
     "scanHint": "Escanéalo con tu teléfono para continuar en la app de AudioSilo, o sigue explorando en este navegador.",
     "browseHere": "Explorar la demo aquí"
+  },
+  "shell": {
+    "home": "Inicio de AudioSilo",
+    "offline": "Sin conexión · las descargas se reproducen",
+    "serverMore": "{{name}} + {{count}} más",
+    "account": "Tu cuenta, {{name}}",
+    "openPlayer": "Abrir el reproductor completo de {{title}}",
+    "titleTimeLeft": "{{title}} · quedan {{time}}",
+    "dock": {
+      "label": "Reproductor",
+      "bookLeft": "Quedan {{time}}",
+      "savedLocally": "Guardado en este dispositivo, se sincronizará",
+      "expand": "Ampliar el reproductor"
+    }
   }
 }

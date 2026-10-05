@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { type ReactElement, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, useWindowDimensions, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import {
   useAllProgressAll,
@@ -26,7 +26,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
+import { useLayout } from '@/lib/layout';
 import { pathLeaf } from '@/lib/paths';
 import { flushQueue } from '@/playback/progress-sync';
 
@@ -38,15 +38,16 @@ const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.p
 
 export default function HomeScreen() {
   const { t } = useTranslation();
-  const { width } = useWindowDimensions();
-  const wide = width >= WIDE_BREAKPOINT;
+  // Tablet and desktop lay the shelves out as wrapping grids; phone scrolls them.
+  const wide = useLayout() !== 'phone';
   const { progress, isLoading, error } = useAllProgressAll();
   const { books: recent, isLoading: recentLoading, error: recentError } = useRecentAll();
   const { favourites } = useFavouritesAll();
   const paddingBottom = useMiniPlayerInset();
 
   // Measure the content row so the desktop grid columns track the available width
-  // (the sidebar means window width isn't the content width). Phone uses shelves.
+  // (the page is capped at 1480 and shares the row with the drawer, so the window width
+  // isn't the content width). Phone uses shelves.
   const [gridWidth, setGridWidth] = useState(0);
   const columns = gridColumns(gridWidth);
   const cardWidth =

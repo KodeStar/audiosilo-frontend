@@ -235,10 +235,6 @@
       "timeLeft": "{{duration}} restant",
       "finished": "Terminé"
     },
-    "searchResults": {
-      "failed": "La recherche a échoué.",
-      "noResults": "Aucun résultat pour « {{query}} »."
-    },
     "notes": {
       "title": "Notes",
       "placeholder": "Ajouter une note (markdown pris en charge)…",
@@ -281,7 +277,6 @@
       "downloading": "Téléchargement {{percent}} %"
     },
     "list": {
-      "title": "Bibliothèque",
       "recentlyAdded": "Ajoutés récemment",
       "recentlyFinished": "Terminés récemment",
       "added": "Ajouté {{when}}",
@@ -303,7 +298,6 @@
     }
   },
   "downloads": {
-    "title": "Téléchargements",
     "storageUsed": "{{size}} utilisés",
     "downloaded": "Téléchargé",
     "failed": "Échec du téléchargement",
@@ -381,7 +375,8 @@
         "supporting": "Secondaire",
         "minor": "Mineur"
       }
-    }
+    },
+    "openPlayer": "Ouvrir le lecteur"
   },
   "player": {
     "controls": {
@@ -474,11 +469,12 @@
     "library": "Bibliothèque",
     "search": "Rechercher",
     "downloads": "Téléchargements",
-    "settings": "Réglages",
     "logout": "Déconnexion",
     "offline": "Hors ligne - les modifications se synchronisent à la reconnexion",
     "someOffline": "Certains serveurs hors ligne",
-    "searchPlaceholder": "Rechercher…"
+    "me": "Moi",
+    "back": "Retour",
+    "backTo": "Retour à {{name}}"
   },
   "ui": {
     "error": "Une erreur s'est produite."
@@ -494,5 +490,19 @@
     "qrLabel": "Code QR pour ouvrir la démo dans l'application",
     "scanHint": "Scanne avec ton téléphone pour continuer dans l'application AudioSilo, ou continue à explorer dans ce navigateur.",
     "browseHere": "Explorer la démo ici"
+  },
+  "shell": {
+    "home": "Accueil AudioSilo",
+    "offline": "Hors ligne · les téléchargements sont lus",
+    "serverMore": "{{name}} + {{count}} autres",
+    "account": "Ton compte, {{name}}",
+    "openPlayer": "Ouvrir le lecteur complet pour {{title}}",
+    "titleTimeLeft": "{{title}} · {{time}} restantes",
+    "dock": {
+      "label": "Lecteur",
+      "bookLeft": "{{time}} restantes",
+      "savedLocally": "Enregistré sur cet appareil, sera synchronisé",
+      "expand": "Agrandir le lecteur"
+    }
   }
 }

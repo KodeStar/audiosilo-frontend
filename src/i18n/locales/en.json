@@ -235,10 +235,6 @@
       "timeLeft": "{{duration}} left",
       "finished": "Finished"
     },
-    "searchResults": {
-      "failed": "Search failed.",
-      "noResults": "No results for “{{query}}”."
-    },
     "notes": {
       "title": "Notes",
       "placeholder": "Add a note (markdown supported)…",
@@ -281,7 +277,6 @@
       "downloading": "Downloading {{percent}}%"
     },
     "list": {
-      "title": "Library",
       "recentlyAdded": "Recently added",
       "recentlyFinished": "Recently finished",
       "added": "Added {{when}}",
@@ -303,7 +298,6 @@
     }
   },
   "downloads": {
-    "title": "Downloads",
     "storageUsed": "{{size}} used",
     "downloaded": "Downloaded",
     "failed": "Download failed",
@@ -381,7 +375,8 @@
         "supporting": "Supporting",
         "minor": "Minor"
       }
-    }
+    },
+    "openPlayer": "Open the player"
   },
   "player": {
     "controls": {
@@ -474,11 +469,12 @@
     "library": "Library",
     "search": "Search",
     "downloads": "Downloads",
-    "settings": "Settings",
     "logout": "Logout",
     "offline": "Offline - changes sync when reconnected",
     "someOffline": "Some servers offline",
-    "searchPlaceholder": "Search…"
+    "me": "Me",
+    "back": "Back",
+    "backTo": "Back to {{name}}"
   },
   "ui": {
     "error": "Something went wrong."
@@ -494,5 +490,19 @@
     "qrLabel": "QR code to open the demo in the app",
     "scanHint": "Scan with your phone to continue in the AudioSilo app, or keep exploring in this browser.",
     "browseHere": "Browse the demo here"
+  },
+  "shell": {
+    "home": "AudioSilo home",
+    "offline": "Offline · downloads play",
+    "serverMore": "{{name}} + {{count}} more",
+    "account": "Your account, {{name}}",
+    "openPlayer": "Open the full player for {{title}}",
+    "titleTimeLeft": "{{title}} · {{time}} left",
+    "dock": {
+      "label": "Player",
+      "bookLeft": "{{time}} left",
+      "savedLocally": "Saved on this device, will sync",
+      "expand": "Expand player"
+    }
   }
 }

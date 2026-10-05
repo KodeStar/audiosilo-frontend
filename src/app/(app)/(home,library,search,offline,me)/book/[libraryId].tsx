@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, useWindowDimensions, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import {
   useBook,
@@ -13,7 +13,6 @@ import {
 } from '@/api/hooks';
 import { CoverFrame } from '@/components/library/cover-frame';
 import { useApi, useScopedCid } from '@/api/provider';
-import { ContentColumn } from '@/components/layout/content-column';
 import { ContentScope } from '@/components/layout/content-scope';
 import {
   BookMetaAbout,
@@ -35,7 +34,6 @@ import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { PlayerView } from '@/components/player/player-view';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
@@ -47,7 +45,7 @@ import { TabBar } from '@/components/ui/tab-bar';
 import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
+import { useLayout } from '@/lib/layout';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
@@ -116,8 +114,10 @@ function BookDetailContent() {
   // The connection rides in the `?connection=` query param; the `(app)` layout publishes
   // it as the scope, so this screen's content resolves to that server (not the default).
   const cid = useScopedCid();
-  const { width } = useWindowDimensions();
-  const wide = width >= WIDE_BREAKPOINT;
+  // Tablet and desktop get the two-pane layout (the cover panel is narrower on a
+  // tablet); a phone gets the single column.
+  const layout = useLayout();
+  const wide = layout !== 'phone';
 
   const { data: book, isLoading, refetch } = useBook(libraryId, path);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
@@ -233,8 +233,8 @@ function BookDetailContent() {
     { label: pathLeaf(path) || book.title, active: true },
   ];
 
-  // On desktop the player lives in the right panel, so play inline; on phone open
-  // the full-screen player modal. A chapter is addressed by whole-book position;
+  // On tablet/desktop play inline (the docked player bar is the transport); on phone
+  // open the full-screen player modal. A chapter is addressed by whole-book position;
   // a file by track index (durations may be unknown, so a position can't locate it).
   const goPlay = (target: { position?: number; track?: number }) => {
     if (wide) {
@@ -454,64 +454,73 @@ function BookDetailContent() {
   );
 
   if (wide) {
+    // The cover panel never carries a transport: the docked player bar does, so while
+    // this book plays its button opens the full player instead of restarting it.
     return (
       <View className="flex-1 flex-row">
-        <ContentColumn>
-          <ScrollView className="flex-1" contentContainerClassName="gap-4 p-8 pt-2">
-            <BreadCrumbs crumbs={crumbs} />
-            <BookVersions book={book} connectionId={cid} />
-            <DownloadControl
-              libraryId={libraryId}
-              path={path}
-              book={book}
-              chapterData={chapterData}
-              disabled={chaptersLoading}
-            />
-            {metaMatched ? <BookMetaAbout meta={metaMatched} /> : null}
-            {tabSection}
-          </ScrollView>
-        </ContentColumn>
+        <ScrollView className="flex-1" contentContainerClassName="gap-4 p-6 lg:p-8">
+          <BreadCrumbs crumbs={crumbs} />
+          <BookVersions book={book} connectionId={cid} />
+          <DownloadControl
+            libraryId={libraryId}
+            path={path}
+            book={book}
+            chapterData={chapterData}
+            disabled={chaptersLoading}
+          />
+          {metaMatched ? <BookMetaAbout meta={metaMatched} /> : null}
+          {tabSection}
+        </ScrollView>
 
-        <View className="w-[380px] overflow-hidden border-l border-border">
-          {isThisPlaying ? (
-            <PlayerView />
-          ) : (
-            <View className="flex-1 items-center justify-center">
-              <CoverBackdrop source={coverSource} />
-              <View className="w-full items-center gap-6 p-6">
-                <CoverFrame size="lg" className="aspect-square w-full max-w-[300px]">
-                  <Cover source={coverSource} label={book.title} sublabel={book.author} />
-                </CoverFrame>
-                <View className="items-center gap-1">
-                  {book.author ? (
-                    <Text variant="muted" className="text-center opacity-80">
-                      {t('book.byAuthor', { author: book.author })}
-                    </Text>
-                  ) : null}
-                  <Text variant="title" className="text-center" numberOfLines={2}>
-                    {book.title}
+        <View
+          className={`overflow-hidden border-l border-border ${
+            layout === 'desktop' ? 'w-[380px]' : 'w-[300px]'
+          }`}
+        >
+          <View className="flex-1 items-center justify-center">
+            <CoverBackdrop source={coverSource} />
+            <View className="w-full items-center gap-6 p-6">
+              <CoverFrame size="lg" className="aspect-square w-full max-w-[300px]">
+                <Cover source={coverSource} label={book.title} sublabel={book.author} />
+              </CoverFrame>
+              <View className="items-center gap-1">
+                {book.author ? (
+                  <Text variant="muted" className="text-center opacity-80">
+                    {t('book.byAuthor', { author: book.author })}
                   </Text>
-                  {seriesLabel ? (
-                    <Text variant="muted" className="text-center">
-                      {seriesLabel}
-                    </Text>
-                  ) : null}
-                </View>
-                <BookStats libraryId={libraryId} path={path} book={book} />
+                ) : null}
+                <Text variant="title" className="text-center" numberOfLines={2}>
+                  {book.title}
+                </Text>
+                {seriesLabel ? (
+                  <Text variant="muted" className="text-center">
+                    {seriesLabel}
+                  </Text>
+                ) : null}
+              </View>
+              <BookStats libraryId={libraryId} path={path} book={book} />
+              {isThisPlaying ? (
+                <Button
+                  title={t('book.openPlayer')}
+                  icon="chevron-up"
+                  className="w-full"
+                  onPress={() => router.push('/player')}
+                />
+              ) : (
                 <Button
                   title={t('book.listen')}
                   icon="play"
                   className="w-full"
                   onPress={() => goPlay({})}
                 />
-                {book.narrator ? (
-                  <Text variant="muted" className="text-center">
-                    {t('book.narratedBy', { narrator: book.narrator })}
-                  </Text>
-                ) : null}
-              </View>
+              )}
+              {book.narrator ? (
+                <Text variant="muted" className="text-center">
+                  {t('book.narratedBy', { narrator: book.narrator })}
+                </Text>
+              ) : null}
             </View>
-          )}
+          </View>
         </View>
       </View>
     );

@@ -164,8 +164,6 @@ export default function SettingsScreen() {
         contentContainerClassName="gap-6 p-4 lg:px-8"
         contentContainerStyle={{ paddingBottom }}
       >
-        <Text variant="heading">{t('settings.title')}</Text>
-
         <ConnectionsSection onRemove={connectionRemoval.onRemove} />
 
         <Section title={t('settings.appearance.label')}>

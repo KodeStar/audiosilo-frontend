@@ -25,6 +25,12 @@ import { SeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
+import {
+  currentSegment,
+  nextSegmentStart,
+  previousSegmentStart,
+  segmentStarts,
+} from '@/components/player/transport';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
@@ -119,9 +125,9 @@ function MenuRow({
 
 /**
  * The full transport for the currently-playing book, driven by the player store.
- * Rendered inside the player modal (phone) and as the right-hand panel on the
- * desktop book screen - identical everywhere except the close button, which the
- * phone modal supplies via `onClose` (the desktop panel has nothing to close).
+ * Rendered by the full-screen player modal (`src/app/player.tsx`), which supplies the
+ * close button via `onClose`. (Tablet and desktop also have the docked player bar,
+ * `src/components/shell/docked-player.tsx`, whose expand button opens this modal.)
  *
  * The body is an ambient "listening room": a blurred rendition of the cover fills
  * the background under a scrim, the cover floats, and the transport sits directly
@@ -129,7 +135,7 @@ function MenuRow({
  * `Sheet` renders inline, so it must sit at a top-level position, not nested in a
  * footer control).
  */
-export function PlayerView({ onClose }: { onClose?: () => void }) {
+export function PlayerView({ onClose }: { onClose: () => void }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
   const { height } = useWindowDimensions();
@@ -245,14 +251,11 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { queue, title, author, libraryId, path, connectionId } = nowPlaying;
   const total = queue.total;
 
-  // Overflow-menu actions. In the phone modal (`onClose` present) we replace the
-  // player screen so the target takes its place; in the desktop inline panel (no
-  // modal to close) we push. Playback keeps running for the first two - only "mark
-  // finished" tears it down.
+  // Overflow-menu actions replace the player modal so the target takes its place.
+  // Playback keeps running for the first two - only "mark finished" tears it down.
   const goTo = (href: Parameters<typeof router.replace>[0]) => {
     setSheet(null);
-    if (onClose) router.replace(href);
-    else router.push(href);
+    router.replace(href);
   };
   const onViewDetails = () => goTo(bookHref(connectionId, libraryId, path));
   const onViewCredits = () => goTo(finishedHref(connectionId, libraryId, path));
@@ -264,10 +267,6 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     goTo(finishedHref(info.connectionId, info.libraryId, info.path, true));
   };
   const rateLabel = `${Number(rate.toFixed(2))}×`;
-  // When file durations are unknown (total 0), the whole-book timeline isn't
-  // reliable - drive the UI from the engine's current-track position/duration
-  // and navigate per-file instead.
-  const perTrack = total <= 0;
   // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
   // playback). Surface it with a retry rather than silently sitting on a dead
   // stream where the play button does nothing. While buffering ('loading') show a
@@ -275,15 +274,21 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const isError = playbackState === 'error';
   const isLoading = playbackState === 'loading';
 
-  const segStart = currentChapter ? currentChapter.book_offset : 0;
-  const segLength = perTrack
-    ? Math.max(1, trackDur)
-    : currentChapter
-      ? Math.max(1, currentChapter.end - currentChapter.start)
-      : total;
-  const segElapsedRaw = perTrack
-    ? trackPos
-    : Math.max(0, Math.min(segLength, bookPosition - segStart));
+  // When file durations are unknown (total 0), the whole-book timeline isn't
+  // reliable - drive the UI from the engine's current-track position/duration
+  // and navigate per-file instead.
+  const {
+    perTrack,
+    start: segStart,
+    length: segLength,
+    elapsed: segElapsedRaw,
+  } = currentSegment({
+    total,
+    bookPosition,
+    chapter: currentChapter,
+    trackPosition: trackPos,
+    trackDuration: trackDur,
+  });
   // While scrubbing, the labels preview the drag position.
   const segElapsed = scrubPreview ?? segElapsedRaw;
   const segRemaining = Math.max(0, segLength - segElapsed);
@@ -304,11 +309,10 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const secondaryLine = author ? `${title} · ${author}` : title;
 
   // Prev/next: per file when there's no timeline, else by chapter/file boundary.
-  const segs = queue.chapters.length > 0 ? queue.chapters.map((c) => c.book_offset) : queue.offsets;
-  const curStart = [...segs].reverse().find((s) => s <= bookPosition + 0.01) ?? 0;
+  const segs = segmentStarts(queue);
   const goNext = () => {
     if (perTrack) return void goToTrack(trackIndex + 1);
-    const n = segs.find((s) => s > bookPosition + 1.5);
+    const n = nextSegmentStart(segs, bookPosition);
     if (n !== undefined) void seekBook(n);
   };
   const goPrev = () => {
@@ -316,9 +320,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
       if (trackPos > 3) return void seekInTrack(0);
       return void goToTrack(trackIndex - 1);
     }
-    if (bookPosition - curStart > 3) return void seekBook(curStart);
-    const prior = segs.filter((s) => s < curStart - 0.01);
-    void seekBook(prior.length ? prior[prior.length - 1] : 0);
+    void seekBook(previousSegmentStart(segs, bookPosition));
   };
 
   // Tapping the chapter title opens a list of all chapters (or files, when the
@@ -349,21 +351,19 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     <View className="flex-1">
       <CoverBackdrop source={coverSource} />
 
-      {/* Header (auto height). The close button is mobile-only; the right side is
-          the shared action area (notes + bookmarks). Padded below the status-bar
-          inset so it clears the notch (the backdrop paints under it). */}
+      {/* Header (auto height): close on the left, the action area (notes + bookmarks +
+          menu) on the right. Padded below the status-bar inset so it clears the notch
+          (the backdrop paints under it). */}
       <View className="flex-row items-center px-4 py-2" style={{ paddingTop: insets.top + 8 }}>
-        {onClose ? (
-          <AnimatedPressable
-            onPress={onClose}
-            hitSlop={12}
-            className="h-9 w-9 items-center justify-center"
-            accessibilityRole="button"
-            accessibilityLabel={t('player.controls.close')}
-          >
-            <Icon name="chevron-down" size={26} color={neutral} />
-          </AnimatedPressable>
-        ) : null}
+        <AnimatedPressable
+          onPress={onClose}
+          hitSlop={12}
+          className="h-9 w-9 items-center justify-center"
+          accessibilityRole="button"
+          accessibilityLabel={t('player.controls.close')}
+        >
+          <Icon name="chevron-down" size={26} color={neutral} />
+        </AnimatedPressable>
         <View className="ml-auto flex-row items-center gap-2">
           <AnimatedPressable
             onPress={() => setSheet('notes')}

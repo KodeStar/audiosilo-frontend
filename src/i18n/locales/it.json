@@ -235,10 +235,6 @@
       "timeLeft": "{{duration}} rimanenti",
       "finished": "Finito"
     },
-    "searchResults": {
-      "failed": "Ricerca non riuscita.",
-      "noResults": "Nessun risultato per «{{query}}»."
-    },
     "notes": {
       "title": "Note",
       "placeholder": "Aggiungi una nota (markdown supportato)…",
@@ -281,7 +277,6 @@
       "downloading": "Download {{percent}} %"
     },
     "list": {
-      "title": "Libreria",
       "recentlyAdded": "Aggiunti di recente",
       "recentlyFinished": "Finiti di recente",
       "added": "Aggiunto {{when}}",
@@ -303,7 +298,6 @@
     }
   },
   "downloads": {
-    "title": "Download",
     "storageUsed": "{{size}} usati",
     "downloaded": "Scaricato",
     "failed": "Download non riuscito",
@@ -381,7 +375,8 @@
         "supporting": "Secondario",
         "minor": "Minore"
       }
-    }
+    },
+    "openPlayer": "Apri il lettore"
   },
   "player": {
     "controls": {
@@ -474,11 +469,12 @@
     "library": "Libreria",
     "search": "Cerca",
     "downloads": "Download",
-    "settings": "Impostazioni",
     "logout": "Esci",
     "offline": "Offline - le modifiche si sincronizzano alla riconnessione",
     "someOffline": "Alcuni server offline",
-    "searchPlaceholder": "Cerca…"
+    "me": "Io",
+    "back": "Indietro",
+    "backTo": "Torna a {{name}}"
   },
   "ui": {
     "error": "Qualcosa è andato storto."
@@ -494,5 +490,19 @@
     "qrLabel": "Codice QR per aprire la demo nell'app",
     "scanHint": "Scansiona con il telefono per continuare nell'app AudioSilo, oppure continua a esplorare in questo browser.",
     "browseHere": "Esplora la demo qui"
+  },
+  "shell": {
+    "home": "Home di AudioSilo",
+    "offline": "Offline · i download si riproducono",
+    "serverMore": "{{name}} + altri {{count}}",
+    "account": "Il tuo account, {{name}}",
+    "openPlayer": "Apri il lettore completo per {{title}}",
+    "titleTimeLeft": "{{title}} · mancano {{time}}",
+    "dock": {
+      "label": "Lettore",
+      "bookLeft": "Mancano {{time}}",
+      "savedLocally": "Salvato su questo dispositivo, verrà sincronizzato",
+      "expand": "Espandi il lettore"
+    }
   }
 }

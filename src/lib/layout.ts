@@ -1,9 +1,28 @@
+import { useWindowDimensions } from 'react-native';
+
 /**
- * The single phone -> desktop layout switch. Below this width the app renders its
- * phone layout (bottom nav, single column, full-screen player modal); at or above
- * it the desktop layout (sidebar rail, multi-column grids, docked player).
+ * The three Stacks form factors (STYLEGUIDE section 2), from the window width:
+ * - `phone` (< 640): bottom tabs + mini player, single column, full-screen player modal;
+ * - `tablet` (640-1023, iPad portrait): top bar + sub-nav + docked player bar;
+ * - `desktop` (>= 1024): the same chrome, plus multi-column grids and the drawer slot.
  *
- * Compared against `useWindowDimensions().width`. Kept in one place so every screen
- * flips at the same threshold - do not re-declare a local `1024` constant.
+ * Every layout decision reads this one value, so every screen flips at the same
+ * thresholds - never compare a width against a local constant.
  */
-export const WIDE_BREAKPOINT = 1024;
+export type LayoutClass = 'phone' | 'tablet' | 'desktop';
+
+/** Below this width the app is a phone. */
+export const TABLET_MIN_WIDTH = 640;
+/** At or above this width the app is a desktop. */
+export const DESKTOP_MIN_WIDTH = 1024;
+
+export function layoutFor(width: number): LayoutClass {
+  if (width < TABLET_MIN_WIDTH) return 'phone';
+  if (width < DESKTOP_MIN_WIDTH) return 'tablet';
+  return 'desktop';
+}
+
+/** The current form factor; re-renders when the window crosses a threshold. */
+export function useLayout(): LayoutClass {
+  return layoutFor(useWindowDimensions().width);
+}

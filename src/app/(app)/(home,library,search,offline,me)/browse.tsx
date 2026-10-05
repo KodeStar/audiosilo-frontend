@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { type ReactElement, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, useWindowDimensions, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 
 import {
   useAllProgressAll,
@@ -22,7 +22,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
+import { useLayout } from '@/lib/layout';
 import { pathLeaf } from '@/lib/paths';
 
 // How many of each type to load on this page (the home shelves show 15).
@@ -38,8 +38,8 @@ export default function BrowseScreen() {
   // updates the param) switches the list without any mirrored state.
   const params = useLocalSearchParams<{ type?: string }>();
   const type: BrowseType = params.type === 'finished' ? 'finished' : 'recent';
-  const { width } = useWindowDimensions();
-  const wide = width >= WIDE_BREAKPOINT;
+  // The side padding the `p-4 lg:px-8` classes below apply (lg = desktop).
+  const desktop = useLayout() === 'desktop';
   const paddingBottom = useMiniPlayerInset();
 
   const { books: recent, isLoading: recentLoading, error: recentError } = useRecentAll(PAGE_LIMIT);
@@ -50,13 +50,13 @@ export default function BrowseScreen() {
     [progress],
   );
 
-  // Measure the list area so columns track the available width (sidebar on desktop).
+  // Measure the list area so columns track the available width (the page, not the window).
   const [gridWidth, setGridWidth] = useState(0);
 
   // The progress card's overflow menu is presented at screen level (a Sheet must not
   // live inside a card - it renders in place and would be clipped).
   const [menuItem, setMenuItem] = useState<SourcedProgress | null>(null);
-  const pad = wide ? 32 : 16;
+  const pad = desktop ? 32 : 16;
   const inner = Math.max(0, gridWidth - pad * 2);
   const columns = gridColumns(inner);
   const cardWidth = inner > 0 ? Math.floor((inner - GRID_GAP * (columns - 1)) / columns) : 0;

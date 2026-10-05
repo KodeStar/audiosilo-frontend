@@ -109,14 +109,12 @@ export default function DownloadsScreen() {
       contentContainerClassName="gap-4 p-4 lg:px-8"
       contentContainerStyle={{ paddingBottom }}
     >
-      <View className="flex-row items-center justify-between">
-        <Text variant="heading">{t('downloads.title')}</Text>
-        {supported && totalBytes > 0 ? (
-          <Text variant="muted" style={tabularNums}>
-            {t('downloads.storageUsed', { size: formatBytes(totalBytes) })}
-          </Text>
-        ) : null}
-      </View>
+      {/* The page title is the chrome's (phone header / sub-nav). */}
+      {supported && totalBytes > 0 ? (
+        <Text variant="muted" className="self-end" style={tabularNums}>
+          {t('downloads.storageUsed', { size: formatBytes(totalBytes) })}
+        </Text>
+      ) : null}
 
       {!supported ? (
         <EmptyState
