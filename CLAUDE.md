@@ -259,10 +259,9 @@ the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 **The book screen is tabbed.** `src/app/(app)/book/[libraryId].tsx` shows an
 **overview** (breadcrumbs, `BookVersions`, cover hero/stats/listen/`DownloadControl`,
 then the meta **About** block) and puts *everything else* behind a
-`TabBar` (`src/components/ui/tab-bar.tsx` - a thin wrapper naming
-`SegmentedControl`'s `scrollable` + `role="tab"` mode, so the pill row scrolls
-horizontally, carries tablist/tab a11y roles, and can never drift from the
-equal-width, non-scrolling default the rest of the app uses): **Chapters** (label
+`Tabs` row (`src/components/ui/tabs.tsx`, the Stacks underline tabs with
+`scrollable`, so the row scrolls horizontally and carries tablist/tab/tabpanel
+a11y roles): **Chapters** (label
 switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
 **History** · **Notes** · **Series**. Both layouts share the same tab section; wide
 keeps its right-hand player/cover panel. A long chapter list used to bury the
@@ -515,6 +514,19 @@ it in via `withUniwindConfig` in `metro.config.js`, so there is no babel preset)
 import an icon lib directly - use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text
 via `<Text variant=... />`. **[STYLEGUIDE.md](STYLEGUIDE.md) (Stacks) is authoritative** for
 tokens, type and components; its section 17 maps them onto these files.
+- **Primitives are react-native-reusables** (`components.json`, Uniwind) in `src/components/ui/`,
+  restyled to Stacks (list: STYLEGUIDE.md section 17, "Components in this codebase"). Add more with
+  `npx @react-native-reusables/cli add <name> --styling-library uniwind -p <scratch dir>` (it would
+  overwrite our same-named files), then port: lucide -> `<Icon>`, strings through `t()`, the
+  Stacks tokens (shadcn's `bg-black/50`, `text-zinc-*`... compile to nothing here), `rounded-control`
+  etc. Overlays (Dialog, AlertDialog, Select, Popover, DropdownMenu, Tooltip) portal into the root
+  `<PortalHost />` on native (keep it LAST in `src/app/_layout.tsx`) and wrap in `FullWindowOverlay` on
+  iOS, so they can open from inside a card or a ScrollView. Keep exactly one `@rn-primitives/portal`
+  and one `@radix-ui/react-slot` (`npm ls`); the `@rn-primitives/*` family is pinned `~1.5.x` to move
+  together. On web, rn-primitives hands some props to Radix DOM nodes through a Slot that merges
+  `style` by object spread: pass those parts a FLAT style object (`StyleSheet.flatten`), never an
+  array (an array crashed react-native-web's style setter). Tests render overlays with
+  `mountWithPortal` (`src/testing/render-overlay.tsx`).
 - **Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`**
   (`themes.light` / `themes.dark`, plus a fixed `palette` of `white`/`black`). `npm run gen:tokens`
   (`scripts/gen-tokens.mjs`) writes the generated region of `src/global.css` (each theme token as a

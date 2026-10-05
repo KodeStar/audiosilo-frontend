@@ -631,8 +631,28 @@ The CSS in section 3 is the design reference. In the app:
   compiles to nothing. Use a semantic token; add one to `tokens.json` (both themes) if none fits.
 - **`primary` is ink**, as in shadcn: the play button and primary buttons. The pink is `brand`; pink text is
   `brand-ink` (AA on both themes).
-- **Not adopted yet:** the `--radius` scale (it would move every existing `rounded-*` class; Phase 0a
-  decision), `--wash`, the shadow tokens and the motion tokens. They land with the components that need them.
+- **Radii and the overlay shadow have their own names** (`src/global.css` `@theme`): shadcn's `--radius`
+  scale is not adopted (it would move every existing `rounded-*` class; Phase 0a decision), so the section 5
+  radii are `rounded-control` (10: buttons, inputs, selects), `rounded-menu` (14: menus, popovers, toasts),
+  `rounded-card` (16), `rounded-dialog` (20) and `rounded-sheet` (24); `--shadow-overlay` is the
+  `shadow-overlay` utility (web two-layer, iOS one box-shadow, Android elevation). `cn()` knows these names.
+- **Not adopted yet:** `--wash`, `--shadow-cover*`, `--shadow-dock` and the motion tokens. They land with the
+  components that need them.
+
+### Components in this codebase
+
+The section 8 primitives are react-native-reusables (`components.json`, `--styling-library uniwind`) in
+`src/components/ui/`, restyled to Stacks, with lucide replaced by our `<Icon>` and every string translated:
+`button` (variants `default` ink / `brand` / `outline` / `secondary` / `ghost` / `destructive` /
+`destructive-outline` / `link`, sizes `sm` 30 / `default` 38 / `lg` 46 / `xl` 54, `title` + `icon` + `loading`
+or composed children), `card`, `input` (`Input`, `Textarea`, with `label` / `error`), `dialog` (+ `DialogIcon`,
+a bottom sheet below 640), `alert-dialog` (+ the `confirm-dialog` helper), `select`, `tabs` (`underline` /
+`segmented`, `scrollable`), `toggle-group` (+ the typed `SegmentedControl`), `popover`, `dropdown-menu`,
+`switch`, `separator`, `badge`, `tooltip` and `skeleton`. Hand-built on primitives: `slider`, `toast`
+(`toast({ title, description, action })` + `<ToastHost />`) and `row-surface` (`RowSurface` / `PressableRow`,
+the quiet list row). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
+through `TextClassContext`. Overlays portal into the root `<PortalHost />` (`src/app/_layout.tsx`) and wrap in
+`FullWindowOverlay` on iOS (`overlay.tsx`). The bottom `sheet.tsx` is still hand-rolled (its comment says why).
 
 ### Fonts
 
