@@ -192,6 +192,60 @@
   }
 }
 
+/*
+ * SPIKE (player redesign Phase 0a, branch spike/player-0a-portals): the shadcn /
+ * react-native-reusables semantic tokens the spike-ui overlays use, mapped roughly onto
+ * the current palette (dark = gray-800 page, gray-840 surfaces; light = gray-200 page,
+ * white surfaces). `primary` itself stays the generated brand pink above; only its
+ * foreground is added. Themed per Uniwind theme: on web Uniwind puts the theme class on
+ * <html>, so body-portaled overlay content inherits it; on native the theme is global.
+ * Radii are deliberately NOT overridden (shadcn's --radius scale would move every
+ * existing rounded-* class); the spike components use Tailwind's default radii.
+ */
+@layer theme {
+  :root {
+    @variant light {
+      --color-background: #f3f4f6;
+      --color-foreground: #374151;
+      --color-card: #ffffff;
+      --color-card-foreground: #374151;
+      --color-popover: #ffffff;
+      --color-popover-foreground: #374151;
+      --color-primary-foreground: #ffffff;
+      --color-secondary: #f3f4f6;
+      --color-secondary-foreground: #374151;
+      --color-muted: #f3f4f6;
+      --color-muted-foreground: #6b7280;
+      --color-accent: #fce7f3;
+      --color-accent-foreground: #9d174d;
+      --color-destructive: #dc2626;
+      --color-border: #e5e7eb;
+      --color-input: #d1d5db;
+      --color-ring: #f472b6;
+    }
+
+    @variant dark {
+      --color-background: #1f2937;
+      --color-foreground: #e5e7eb;
+      --color-card: #1a2331;
+      --color-card-foreground: #e5e7eb;
+      --color-popover: #1a2331;
+      --color-popover-foreground: #e5e7eb;
+      --color-primary-foreground: #ffffff;
+      --color-secondary: #2c3340;
+      --color-secondary-foreground: #e5e7eb;
+      --color-muted: #2c3340;
+      --color-muted-foreground: #9ca3af;
+      --color-accent: #2c3340;
+      --color-accent-foreground: #f9a8d4;
+      --color-destructive: #f87171;
+      --color-border: #2c3340;
+      --color-input: #374151;
+      --color-ring: #db2777;
+    }
+  }
+}
+
 @layer theme {
   :root {
     /*

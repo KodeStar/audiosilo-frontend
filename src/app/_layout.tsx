@@ -1,3 +1,4 @@
+import { PortalHost } from '@rn-primitives/portal';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -42,6 +43,9 @@ function RootNavigator() {
         <Stack.Screen name="(app)" />
         <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="finished" options={{ presentation: 'fullScreenModal' }} />
+        {/* SPIKE (Phase 0a): a native fullScreenModal holding overlays, to prove
+            FullWindowOverlay lifts them above a native modal on iOS. */}
+        <Stack.Screen name="spike-modal" options={{ presentation: 'fullScreenModal' }} />
       </Stack>
       {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
           end-of-book flow when a book reaches its natural end. */}
@@ -112,6 +116,12 @@ export default function RootLayout() {
             <ApiProvider>
               <RootNavigator />
               <StatusBar style="auto" />
+              {/* SPIKE (Phase 0a): the native outlet for @rn-primitives portals
+                  (react-native-reusables overlays). Mounted LAST so portaled content
+                  stacks above every screen; inside ThemeProvider so it renders only once
+                  fonts + theme are ready. Web overlays bypass it (Radix portals into
+                  document.body). */}
+              <PortalHost />
             </ApiProvider>
           </ThemeProvider>
         </LanguageProvider>

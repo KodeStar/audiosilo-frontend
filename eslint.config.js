@@ -15,7 +15,15 @@ module.exports = [
     // className/variant/icon-name/testID attributes. App screens only; tests, the
     // i18n catalogs and the static pre-render web shell are exempt.
     files: ['src/**/*.tsx'],
-    ignores: ['**/*.test.tsx', 'src/app/+html.tsx'],
+    // SPIKE (Phase 0a, never merged): the overlay test bench and the vendored
+    // react-native-reusables components under spike-ui/ are English-only fixtures.
+    ignores: [
+      '**/*.test.tsx',
+      'src/app/+html.tsx',
+      'src/app/spike.tsx',
+      'src/app/spike-modal.tsx',
+      'src/components/spike-ui/**',
+    ],
     plugins: { i18next },
     rules: {
       'i18next/no-literal-string': ['error', { mode: 'jsx-text-only' }],
