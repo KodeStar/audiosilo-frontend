@@ -482,7 +482,11 @@
     "searchPlaceholder": "Suchen…"
   },
   "ui": {
-    "error": "Etwas ist schiefgelaufen."
+    "error": "Etwas ist schiefgelaufen.",
+    "toast": {
+      "dismiss": "Schließen",
+      "region": "Benachrichtigungen"
+    }
   },
   "demo": {
     "title": "AudioSilo-Demo",

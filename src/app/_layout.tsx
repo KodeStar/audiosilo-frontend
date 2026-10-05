@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiProvider } from '@/api/provider';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
+import { ToastHost } from '@/components/ui/toast';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
@@ -115,8 +116,9 @@ export default function RootLayout() {
               {/* The native outlet for the portal-based overlays (Dialog, Select, menus,
                   popovers: @rn-primitives). LAST, so portaled content stacks above every
                   screen, and inside the providers it reads (theme, i18n, query client).
-                  Web overlays portal into document.body instead. */}
+                  Web overlays portal into document.body instead. Toasts sit above it. */}
               <PortalHost />
+              <ToastHost />
             </ApiProvider>
           </ThemeProvider>
         </LanguageProvider>

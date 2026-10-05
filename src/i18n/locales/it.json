@@ -482,7 +482,11 @@
     "searchPlaceholder": "Cerca…"
   },
   "ui": {
-    "error": "Qualcosa è andato storto."
+    "error": "Qualcosa è andato storto.",
+    "toast": {
+      "dismiss": "Ignora",
+      "region": "Notifiche"
+    }
   },
   "demo": {
     "title": "Demo di AudioSilo",

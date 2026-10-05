@@ -482,7 +482,11 @@
     "searchPlaceholder": "Rechercher…"
   },
   "ui": {
-    "error": "Une erreur s'est produite."
+    "error": "Une erreur s'est produite.",
+    "toast": {
+      "dismiss": "Ignorer",
+      "region": "Notifications"
+    }
   },
   "demo": {
     "title": "Démo AudioSilo",

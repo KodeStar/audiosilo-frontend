@@ -482,7 +482,11 @@
     "searchPlaceholder": "Buscar…"
   },
   "ui": {
-    "error": "Algo salió mal."
+    "error": "Algo salió mal.",
+    "toast": {
+      "dismiss": "Descartar",
+      "region": "Notificaciones"
+    }
   },
   "demo": {
     "title": "Demo de AudioSilo",

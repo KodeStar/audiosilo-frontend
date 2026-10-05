@@ -482,7 +482,11 @@
     "searchPlaceholder": "Search…"
   },
   "ui": {
-    "error": "Something went wrong."
+    "error": "Something went wrong.",
+    "toast": {
+      "dismiss": "Dismiss",
+      "region": "Notifications"
+    }
   },
   "demo": {
     "title": "AudioSilo demo",
