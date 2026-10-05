@@ -8,6 +8,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
 import { downloadKey, useDownloads } from '@/downloads/store';
@@ -37,7 +38,7 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
       : null;
 
   return (
-    <View className="flex-row items-center gap-3 rounded-xl bg-card p-2 shadow-xs dark:border dark:border-border dark:shadow-none">
+    <RowSurface className="flex-row items-center gap-3 p-2">
       <Pressable
         className="flex-1 flex-row items-center gap-3 active:opacity-80"
         onPress={() => void openPlayer(entry.connectionId, entry.libraryId, entry.path)}
@@ -76,7 +77,7 @@ function DownloadRow({ entry }: { entry: DownloadEntry }) {
       >
         <Icon name="trash" size={16} color={themed.destructive} />
       </AnimatedPressable>
-    </View>
+    </RowSurface>
   );
 }
 

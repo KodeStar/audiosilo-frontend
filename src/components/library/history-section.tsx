@@ -8,6 +8,7 @@ import type { Chapter } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatDuration } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
@@ -73,10 +74,7 @@ export function HistorySection({
         const covered = Math.max(0, h.to_pos - h.from_pos);
         const speed = wall > 0 ? covered / wall : 0;
         return (
-          <View
-            key={h.id}
-            className="gap-1.5 rounded-xl bg-card p-3 shadow-xs dark:border dark:border-border dark:shadow-none"
-          >
+          <RowSurface key={h.id} className="gap-1.5 p-3">
             <View className="flex-row items-center gap-2">
               <Icon name="clock" size={13} color={themed.brand} />
               <Text variant="caption" style={tabularNums}>
@@ -111,7 +109,7 @@ export function HistorySection({
                 {speed > 0 ? ` · ${Number(speed.toFixed(2))}×` : ''}
               </Text>
             ) : null}
-          </View>
+          </RowSurface>
         );
       })}
     </View>

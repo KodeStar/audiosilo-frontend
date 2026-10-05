@@ -8,14 +8,13 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 // Quiet row surface shared by the section's list items.
-const ROW =
-  'flex-row items-center gap-3 rounded-xl bg-card p-3 shadow-xs dark:border dark:border-border dark:shadow-none';
 
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
  *
@@ -73,7 +72,7 @@ export function BookmarksSection({
         <EmptyState icon="bookmark" title={emptyLabel} className="py-6" />
       ) : null}
       {(bookmarks ?? []).map((bm) => (
-        <View key={bm.id} className={ROW}>
+        <RowSurface key={bm.id} className="flex-row items-center gap-3 p-3">
           <AnimatedPressable
             className="flex-1 flex-row items-center gap-3"
             accessibilityRole="button"
@@ -100,7 +99,7 @@ export function BookmarksSection({
           >
             <Icon name="trash" size={16} color={themed.destructive} />
           </AnimatedPressable>
-        </View>
+        </RowSurface>
       ))}
     </View>
   );

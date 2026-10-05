@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
+import { RowSurface } from '@/components/ui/row-surface';
 import {
   filterEntries,
   groupByLetter,
@@ -45,16 +46,13 @@ function BrowseSkeleton() {
   return (
     <View className="px-4 pt-2 lg:px-8">
       {Array.from({ length: 8 }).map((_, i) => (
-        <View
-          key={i}
-          className="my-1 h-14 flex-row items-center gap-3 rounded-xl bg-card px-3 shadow-xs dark:border dark:border-border dark:shadow-none"
-        >
+        <RowSurface key={i} className="my-1 h-14 flex-row items-center gap-3 px-3">
           <Skeleton className="h-10 w-10 rounded-lg" />
           <View className="flex-1 gap-2">
             <Skeleton className="h-3.5 w-1/2 rounded-sm" />
             <Skeleton className="h-3 w-1/3 rounded-sm" />
           </View>
-        </View>
+        </RowSurface>
       ))}
     </View>
   );

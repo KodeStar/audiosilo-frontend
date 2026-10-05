@@ -4,19 +4,17 @@ import { ScrollView, View } from 'react-native';
 
 import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
+import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-// A quiet surface row: soft shadow in light, hairline border in dark. The former
-// loud filled blocks are demoted to a tinted glyph tile.
-const ROW_SURFACE =
-  'flex-row items-center gap-3 rounded-xl bg-card px-3 py-2.5 shadow-xs dark:border dark:border-border dark:shadow-none';
+// The quiet row's layout (the surface itself is PressableRow's).
+const ROW = 'my-1 w-full flex-row items-center gap-3 px-3 py-2.5';
 const GLYPH = 'h-10 w-10 items-center justify-center rounded-lg';
 
 /** Favourites sits alongside the libraries as a special "shelf": a row that opens
@@ -28,7 +26,7 @@ function FavouritesShelfRow() {
   const count = favourites.length;
   return (
     <Link href="/library/favourites" asChild>
-      <AnimatedPressable accessibilityRole="link" className={`my-1 w-full ${ROW_SURFACE}`}>
+      <PressableRow accessibilityRole="link" className={ROW}>
         <View className={`${GLYPH} bg-brand/10`}>
           <Icon name="heart-solid" size={18} color={themed.brand} />
         </View>
@@ -41,7 +39,7 @@ function FavouritesShelfRow() {
           </Text>
         </View>
         <Icon name="chevron-right" size={16} />
-      </AnimatedPressable>
+      </PressableRow>
     </Link>
   );
 }
@@ -88,11 +86,11 @@ export default function LibrariesScreen() {
             </Text>
           ) : null}
           {g.libs.map((lib) => (
-            <AnimatedPressable
+            <PressableRow
               key={`${g.id}:${lib.id}`}
               onPress={() => void openLibrary(g.id, lib.id)}
               accessibilityRole="button"
-              className={`my-1 w-full ${ROW_SURFACE}`}
+              className={ROW}
             >
               <View className={`${GLYPH} bg-brand/10`}>
                 <Icon name="folder" size={18} color={themed.brand} />
@@ -102,7 +100,7 @@ export default function LibrariesScreen() {
                 <Text variant="muted">{lib.default_view}</Text>
               </View>
               <Icon name="chevron-right" size={16} />
-            </AnimatedPressable>
+            </PressableRow>
           ))}
         </View>
       ))}

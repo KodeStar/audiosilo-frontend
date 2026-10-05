@@ -3,17 +3,15 @@ import { ScrollView, View } from 'react-native';
 
 import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/api/hooks';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-const ROW_SURFACE = 'rounded-xl bg-card shadow-xs dark:border dark:border-border dark:shadow-none';
 
 /** Filled heart that un-favourites the path on its own connection. Always a
  * sibling of (never nested inside) the navigable row, so its press can't bubble. */
@@ -30,15 +28,15 @@ function UnfavouriteButton({
   const { t } = useTranslation();
   const toggleFavourite = useToggleFavourite(connectionId);
   return (
-    <AnimatedPressable
+    <PressableRow
       onPress={() => toggleFavourite.mutate({ libraryId, path, on: false })}
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={t('library.favourite.remove')}
-      className={`h-11 w-11 items-center justify-center ${ROW_SURFACE}`}
+      className="h-11 w-11 items-center justify-center"
     >
       <Icon name="heart-solid" size={18} color={themed.brand} />
-    </AnimatedPressable>
+    </PressableRow>
   );
 }
 
@@ -59,10 +57,10 @@ function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
       : void openLibrary(fav.connectionId, fav.library_id, fav.path);
   return (
     <View className="my-1 w-full flex-row items-center gap-2">
-      <AnimatedPressable
+      <PressableRow
         onPress={onPress}
         accessibilityRole="button"
-        className={`flex-1 flex-row items-center gap-3 px-3 py-2.5 ${ROW_SURFACE}`}
+        className="flex-1 flex-row items-center gap-3 px-3 py-2.5"
       >
         <View
           className={`h-10 w-10 items-center justify-center rounded-lg ${isBook ? 'bg-info/10' : 'bg-brand/10'}`}
@@ -83,7 +81,7 @@ function FavouriteRow({ fav }: { fav: SourcedFavourite }) {
             </Text>
           ) : null}
         </View>
-      </AnimatedPressable>
+      </PressableRow>
       <UnfavouriteButton
         connectionId={fav.connectionId}
         libraryId={fav.library_id}

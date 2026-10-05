@@ -8,6 +8,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
 import { accountHref } from '@/lib/paths';
@@ -90,10 +91,7 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
       <Text variant="eyebrow">{t('account.connections.label')}</Text>
       <View className="gap-2">
         {connections.map((c) => (
-          <View
-            key={c.id}
-            className="flex-row items-center gap-1 rounded-xl bg-card pr-1 shadow-xs dark:border dark:border-border dark:shadow-none"
-          >
+          <RowSurface key={c.id} className="flex-row items-center gap-1 pr-1">
             <AnimatedPressable
               onPress={() => router.push(accountHref(c.id))}
               accessibilityRole="button"
@@ -120,7 +118,7 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
             >
               <Icon name="trash" size={16} color={themed.destructive} />
             </AnimatedPressable>
-          </View>
+          </RowSurface>
         ))}
         <Button
           title={t('account.connections.add')}

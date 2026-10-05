@@ -5,9 +5,9 @@ import { useApi } from '@/api/provider';
 import type { Book } from '@/api/types';
 import { DownloadBadge } from '@/components/library/download-badge';
 import { CoverFrame } from '@/components/library/cover-frame';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
+import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle, formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
@@ -46,10 +46,10 @@ export function BookRow({
       : null;
 
   return (
-    <AnimatedPressable
+    <PressableRow
       onPress={() => void openBook(connectionId, book.library_id, book.rel_path)}
       accessibilityRole="button"
-      className="flex-row items-center gap-3 rounded-xl border border-border bg-card p-2 hover:bg-accent"
+      className="flex-row items-center gap-3 p-2"
     >
       <CoverFrame>
         <Cover
@@ -87,6 +87,6 @@ export function BookRow({
       ) : null}
       <DownloadBadge connectionId={connectionId} libraryId={book.library_id} path={book.rel_path} />
       <Icon name="chevron-right" size={14} />
-    </AnimatedPressable>
+    </PressableRow>
   );
 }

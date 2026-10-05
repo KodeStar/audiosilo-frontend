@@ -4,8 +4,8 @@ import { View } from 'react-native';
 
 import { useBookCopies, useSourceLabeller } from '@/api/hooks';
 import type { Book } from '@/api/types';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
@@ -44,12 +44,12 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
 
   return (
     <View className="gap-1">
-      <AnimatedPressable
+      <PressableRow
         onPress={() => setOpen((v) => !v)}
         accessibilityRole="button"
         accessibilityLabel={t('library.versions.choose')}
         hitSlop={6}
-        className="flex-row items-center gap-3 rounded-xl bg-card px-4 py-3 shadow-xs dark:border dark:border-border dark:shadow-none"
+        className="flex-row items-center gap-3 px-4 py-3"
       >
         <Icon name="server" size={16} color={themed.brand} />
         <View className="flex-1">
@@ -61,7 +61,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
           </Text>
         </View>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} />
-      </AnimatedPressable>
+      </PressableRow>
 
       {open
         ? others.map((c) => {
@@ -74,11 +74,11 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
               .filter(Boolean)
               .join(' · ');
             return (
-              <AnimatedPressable
+              <PressableRow
                 key={`${c.connectionId}:${c.libraryId}:${c.path}`}
                 onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
                 accessibilityRole="button"
-                className="ml-3 flex-row items-center gap-3 rounded-xl bg-card p-3 shadow-xs dark:border dark:border-border dark:shadow-none"
+                className="ml-3 flex-row items-center gap-3 p-3"
               >
                 <Icon name="chevron-right" size={14} color={themed.brand} />
                 <View className="flex-1">
@@ -91,7 +91,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
                     </Text>
                   ) : null}
                 </View>
-              </AnimatedPressable>
+              </PressableRow>
             );
           })
         : null}

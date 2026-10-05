@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
+import { RowSurface } from '@/components/ui/row-surface';
 import { formatRelative } from '@/lib/format';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -80,7 +81,7 @@ function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: () => void 
   const themed = useThemeColors();
   const { t } = useTranslation();
   return (
-    <View className="flex-row items-center gap-1 rounded-xl bg-card pr-1 shadow-xs dark:border dark:border-border dark:shadow-none">
+    <RowSurface className="flex-row items-center gap-1 pr-1">
       <View className="flex-1 flex-row items-center gap-3 px-3 py-3">
         <Icon name="settings" size={18} color={themed.mutedForeground} />
         <View className="flex-1">
@@ -105,6 +106,6 @@ function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: () => void 
       >
         <Icon name="trash" size={16} color={themed.destructive} />
       </AnimatedPressable>
-    </View>
+    </RowSurface>
   );
 }

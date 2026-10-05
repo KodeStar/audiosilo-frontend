@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Textarea } from '@/components/ui/input';
+import { RowSurface } from '@/components/ui/row-surface';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 // Quiet card surface shared by the composer and each rendered note.
-const CARD = 'rounded-xl bg-card p-3 shadow-xs dark:border dark:border-border dark:shadow-none';
 
 /** Renders one note's markdown. useMarkdown is a hook, so it lives in its own
  * component (one instance per note). */
@@ -56,7 +56,7 @@ export function NotesSection({
 
   return (
     <View className="gap-2">
-      <View className={`gap-2 ${CARD}`}>
+      <RowSurface className="gap-2 p-3">
         <Textarea
           containerClassName="mb-4"
           placeholder={t('library.notes.placeholder')}
@@ -69,10 +69,10 @@ export function NotesSection({
           onPress={onAdd}
           loading={add.isPending}
         />
-      </View>
+      </RowSurface>
 
       {notes?.map((note) => (
-        <View key={note.id} className={CARD}>
+        <RowSurface key={note.id} className="p-3">
           <NoteMarkdown body={note.body} />
           <View className="mt-2 flex-row items-center justify-between">
             <Text variant="caption">{new Date(note.created_at).toLocaleDateString()}</Text>
@@ -86,7 +86,7 @@ export function NotesSection({
               <Icon name="trash" size={16} color={themed.destructive} />
             </AnimatedPressable>
           </View>
-        </View>
+        </RowSurface>
       ))}
     </View>
   );
