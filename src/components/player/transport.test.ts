@@ -1,4 +1,10 @@
-import { currentSegment, nextSegmentStart, previousSegmentStart, segmentStarts } from './transport';
+import {
+  currentSegment,
+  nextSegmentStart,
+  previousSegmentStart,
+  segmentStarts,
+  stepSegment,
+} from './transport';
 
 describe('currentSegment', () => {
   const chapter = { book_offset: 100, start: 0, end: 50 };
@@ -65,5 +71,61 @@ describe('previous / next chapter', () => {
     expect(previousSegmentStart(starts, 90)).toBe(60);
     expect(previousSegmentStart(starts, 61)).toBe(0);
     expect(previousSegmentStart(starts, 1)).toBe(0);
+  });
+});
+
+describe('stepSegment', () => {
+  const make = (
+    queue: { total: number; chapters: { book_offset: number }[]; offsets: number[] } | null,
+    trackIndex: number,
+    position: number,
+  ) => ({
+    nowPlaying: queue ? { queue } : null,
+    snapshot: { trackIndex, position },
+    seekBook: jest.fn(),
+    seekInTrack: jest.fn(),
+    goToTrack: jest.fn(),
+  });
+  const chaptered = {
+    total: 300,
+    chapters: [{ book_offset: 0 }, { book_offset: 100 }, { book_offset: 200 }],
+    offsets: [0, 150],
+  };
+
+  it('does nothing with no book loaded', () => {
+    const s = make(null, 0, 0);
+    stepSegment(s, 1);
+    expect(s.seekBook).not.toHaveBeenCalled();
+    expect(s.goToTrack).not.toHaveBeenCalled();
+  });
+
+  it('steps between chapters on the whole-book timeline (file offsets applied)', () => {
+    // Track 1 at 10s = book 160, inside chapter 2 (100..200).
+    const next = make(chaptered, 1, 10);
+    stepSegment(next, 1);
+    expect(next.seekBook).toHaveBeenCalledWith(200);
+    const prev = make(chaptered, 1, 10);
+    stepSegment(prev, -1);
+    expect(prev.seekBook).toHaveBeenCalledWith(100);
+  });
+
+  it('does not seek past the last chapter', () => {
+    const s = make(chaptered, 1, 100); // book 250
+    stepSegment(s, 1);
+    expect(s.seekBook).not.toHaveBeenCalled();
+  });
+
+  it('steps per file without a timeline; previous restarts the file after 3 s', () => {
+    const perFile = { total: 0, chapters: [], offsets: [] };
+    const next = make(perFile, 2, 1);
+    stepSegment(next, 1);
+    expect(next.goToTrack).toHaveBeenCalledWith(3);
+    const restart = make(perFile, 2, 4);
+    stepSegment(restart, -1);
+    expect(restart.seekInTrack).toHaveBeenCalledWith(0);
+    expect(restart.goToTrack).not.toHaveBeenCalled();
+    const back = make(perFile, 2, 2);
+    stepSegment(back, -1);
+    expect(back.goToTrack).toHaveBeenCalledWith(1);
   });
 });

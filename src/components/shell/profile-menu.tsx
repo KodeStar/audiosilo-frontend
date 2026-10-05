@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { useReachability } from '@/api/reachability';
+import { serverStatus, useReachability } from '@/api/reachability';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,18 +18,6 @@ import { cn } from '@/lib/utils';
 import { type Connection, useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-export type ServerStatus = 'online' | 'offline' | 'reconnect';
-
-/** What the menu says under a server: it needs signing in again (the reconnect flag
- * wins), it is unreachable, or who you are signed in as. Pure, for the tests. */
-export function serverStatus(
-  connection: Pick<Connection, 'id' | 'needsReconnect'>,
-  online: Record<string, boolean>,
-): ServerStatus {
-  if (connection.needsReconnect) return 'reconnect';
-  return online[connection.id] === false ? 'offline' : 'online';
-}
 
 /** The user's initial, in a round monogram (household avatars come in Phase 5). */
 function Monogram({ name }: { name: string }) {

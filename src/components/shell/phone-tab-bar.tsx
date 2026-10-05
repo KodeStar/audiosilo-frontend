@@ -4,14 +4,9 @@ import { type LayoutChangeEvent, Text as RNText, View } from 'react-native';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
-import { engine } from '@/downloads/engine';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { TABS, useTabPress } from './destinations';
-
-/** Downloads need offline storage: on web only in a secure context with the Cache API.
- * Static per page load, so the bar never changes under a mounted screen. */
-const PHONE_TABS = TABS.filter((t) => t.name !== '(offline)' || engine.supported);
+import { PHONE_TABS, useTabPress } from './destinations';
 
 /**
  * The phone tab bar on web (iOS and Android use the native tab bar): the five

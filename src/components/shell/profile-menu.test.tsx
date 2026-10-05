@@ -19,7 +19,7 @@ jest.mock('@/theme/theme-provider', () => ({
 import { useReachability } from '@/api/reachability';
 import { useSession } from '@/stores/session';
 
-import { ProfileMenu, serverStatus } from './profile-menu';
+import { ProfileMenu } from './profile-menu';
 /* eslint-enable import/first */
 
 const user = (username: string) => ({ username }) as never;
@@ -44,16 +44,6 @@ beforeEach(() => {
     user: user('chris'),
   });
   useReachability.setState({ online: { c1: true, c2: false, c3: false } });
-});
-
-describe('serverStatus', () => {
-  it('prefers the reconnect flag, then reachability', () => {
-    expect(serverStatus({ id: 'a', needsReconnect: 'server-reset' }, { a: false })).toBe(
-      'reconnect',
-    );
-    expect(serverStatus({ id: 'a' }, { a: false })).toBe('offline');
-    expect(serverStatus({ id: 'a' }, {})).toBe('online');
-  });
 });
 
 describe('ProfileMenu', () => {

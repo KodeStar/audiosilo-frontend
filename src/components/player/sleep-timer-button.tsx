@@ -1,14 +1,13 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, Text as RNText, View } from 'react-native';
 
-import type { Chapter } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatCountdown } from '@/lib/format';
 import { chapterCountdowns } from '@/playback/book-queue';
-import { prettifyChapterTitle } from '@/playback/prettify-title';
+import { chapterLabel } from '@/lib/chapter-label';
 import { wallClockSeconds } from '@/playback/rate';
 import {
   chapterSleepLabel,
@@ -92,8 +91,6 @@ export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: ()
 
 function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const chapterLabel = (ch: Chapter) =>
-    prettifyChapterTitle(ch.title || t('player.chapters.chapterNumber', { number: ch.index + 1 }));
   const phase = useSleepTimer(selectSleepPhase);
   const label = useSleepTimer((s) => s.label);
   const remaining = useSleepTimer((s) => s.remaining);
@@ -204,7 +201,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                 accessibilityRole="button"
               >
                 <Text numberOfLines={1} className="flex-1 pr-3">
-                  {chapterLabel(c.chapter)}
+                  {chapterLabel(c.chapter, t)}
                   {i === 0 ? t('player.sleepTimer.current') : ''}
                 </Text>
                 <Text variant="caption" style={tabularNums}>

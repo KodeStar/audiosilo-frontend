@@ -4,33 +4,25 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useApi } from '@/api/provider';
+import { useBookTimeLeft } from '@/components/player/book-progress';
 import { SkipButton } from '@/components/player/skip-button';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { formatDuration } from '@/lib/format';
-import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { wallClockSeconds } from '@/playback/rate';
-import {
-  selectBookPosition,
-  selectCurrentChapter,
-  selectIsPlaying,
-  usePlayer,
-} from '@/playback/store';
+import { chapterLabel } from '@/lib/chapter-label';
+import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** "Title · 5h 27m left" at the current speed. A leaf, so only this line re-renders as
- * the position ticks. */
+/** "Title · 5h 27m left" at the current speed. A leaf, so only this line re-renders, and
+ * only when its text changes. */
 function BookLine({ title, total }: { title: string; total: number }) {
   const { t } = useTranslation();
-  const position = usePlayer(selectBookPosition);
-  const rate = usePlayer((s) => s.rate);
-  const remaining = wallClockSeconds(total - position, rate);
+  const time = useBookTimeLeft(total);
   return (
     <Text variant="caption" numberOfLines={1}>
-      {remaining > 0 ? t('shell.titleTimeLeft', { title, time: formatDuration(remaining) }) : title}
+      {time ? t('shell.titleTimeLeft', { title, time }) : title}
     </Text>
   );
 }
@@ -58,11 +50,7 @@ export function AccessoryPlayer() {
   if (!nowPlaying) return null;
 
   const regular = placement === 'regular';
-  const heading = chapter
-    ? prettifyChapterTitle(
-        chapter.title || t('player.chapters.chapterNumber', { number: chapter.index + 1 }),
-      )
-    : nowPlaying.title;
+  const heading = chapter ? chapterLabel(chapter, t) : nowPlaying.title;
 
   return (
     <View

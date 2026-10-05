@@ -25,18 +25,14 @@ import { SeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
-import {
-  currentSegment,
-  nextSegmentStart,
-  previousSegmentStart,
-  segmentStarts,
-} from '@/components/player/transport';
+import { currentSegment, stepSegment } from '@/components/player/transport';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock } from '@/lib/format';
 import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
@@ -301,27 +297,14 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // Title line: the current chapter, else the current file's name.
   const track = queue.tracks[trackIndex];
   const trackName = track ? pathLeaf(track.id.split(':').slice(1).join(':')) || title : title;
-  const segTitleRaw = currentChapter
-    ? currentChapter.title ||
-      t('player.chapters.chapterNumber', { number: currentChapter.index + 1 })
-    : trackName;
-  const segTitle = prettifyChapterTitle(segTitleRaw);
+  const segTitle = currentChapter
+    ? chapterLabel(currentChapter, t)
+    : prettifyChapterTitle(trackName);
   const secondaryLine = author ? `${title} · ${author}` : title;
 
   // Prev/next: per file when there's no timeline, else by chapter/file boundary.
-  const segs = segmentStarts(queue);
-  const goNext = () => {
-    if (perTrack) return void goToTrack(trackIndex + 1);
-    const n = nextSegmentStart(segs, bookPosition);
-    if (n !== undefined) void seekBook(n);
-  };
-  const goPrev = () => {
-    if (perTrack) {
-      if (trackPos > 3) return void seekInTrack(0);
-      return void goToTrack(trackIndex - 1);
-    }
-    void seekBook(previousSegmentStart(segs, bookPosition));
-  };
+  const goNext = () => stepSegment(usePlayer.getState(), 1);
+  const goPrev = () => stepSegment(usePlayer.getState(), -1);
 
   // Tapping the chapter title opens a list of all chapters (or files, when the
   // book has no chapters), scrolled to the current one.

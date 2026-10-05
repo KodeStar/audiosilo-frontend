@@ -5,8 +5,19 @@ import {
   noteError,
   noteSuccess,
   onReconnect,
+  serverStatus,
   useReachability,
 } from '@/api/reachability';
+
+describe('serverStatus', () => {
+  it('prefers the reconnect flag, then reachability', () => {
+    expect(serverStatus({ id: 'a', needsReconnect: 'server-reset' }, { a: false })).toBe(
+      'reconnect',
+    );
+    expect(serverStatus({ id: 'a' }, { a: false })).toBe('offline');
+    expect(serverStatus({ id: 'a' }, {})).toBe('online');
+  });
+});
 
 // Exercises the per-connection reachability state machine. `setOnline` is driven through
 // the public `noteError` (-> offline) / `noteSuccess` (-> online) per connection id.

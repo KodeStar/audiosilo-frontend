@@ -5,65 +5,61 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApi } from '@/api/provider';
-import { useReachability } from '@/api/reachability';
+import { serverStatus, useReachability } from '@/api/reachability';
+import { BookProgressLine, useBookTimeLeft } from '@/components/player/book-progress';
 import { SeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
-import {
-  currentSegment,
-  nextSegmentStart,
-  previousSegmentStart,
-  segmentStarts,
-} from '@/components/player/transport';
+import { currentSegment, stepSegment } from '@/components/player/transport';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { formatClock, formatDuration } from '@/lib/format';
+import { chapterLabel } from '@/lib/chapter-label';
+import { formatClock } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
-import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { wallClockSeconds } from '@/playback/rate';
 import {
   selectBookPosition,
   selectCurrentChapter,
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
+import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { setShellMetric } from './shell-metrics';
 
-/** The 3px whole-book progress line along the bar's top edge. A leaf: it subscribes to
- * the per-tick position so the rest of the bar re-renders only on real changes. */
-function BookProgressLine({ total }: { total: number }) {
-  const position = usePlayer(selectBookPosition);
-  const fraction = total > 0 ? Math.max(0, Math.min(1, position / total)) : 0;
-  return (
-    <View className="absolute left-0 right-0 top-0 h-[3px]">
-      <View className="h-full bg-brand" style={{ width: `${fraction * 100}%` }} />
-    </View>
-  );
-}
-
 /** The chapter scrubber row: elapsed in the chapter, the scrubber, and the time left in
- * the whole book at the listener's speed. A per-tick leaf. */
+ * the whole book at the listener's speed. A per-tick leaf that moves in whole seconds
+ * (the clock's resolution), so it re-renders about once a second, not per engine tick. */
 function ChapterScrubber({ total }: { total: number }) {
   const { t } = useTranslation();
-  const bookPosition = usePlayer(selectBookPosition);
   const chapter = usePlayer(selectCurrentChapter);
-  const trackPosition = usePlayer((s) => s.snapshot.position);
   const trackDuration = usePlayer((s) => s.snapshot.duration);
-  const rate = usePlayer((s) => s.rate);
+  const elapsedSecond = usePlayer((s) =>
+    Math.floor(
+      currentSegment({
+        total,
+        bookPosition: selectBookPosition(s),
+        chapter: selectCurrentChapter(s),
+        trackPosition: s.snapshot.position,
+        trackDuration: s.snapshot.duration,
+      }).elapsed,
+    ),
+  );
+  const left = useBookTimeLeft(total);
   const seekBook = usePlayer((s) => s.seekBook);
   const seekInTrack = usePlayer((s) => s.seekInTrack);
   const [scrub, setScrub] = useState<number | null>(null);
-  const segment = currentSegment({ total, bookPosition, chapter, trackPosition, trackDuration });
-  const left = wallClockSeconds(total - bookPosition, rate);
+  const segment = {
+    ...currentSegment({ total, bookPosition: 0, chapter, trackPosition: 0, trackDuration }),
+    elapsed: elapsedSecond,
+  };
   const onSeek = (p: number) =>
     segment.perTrack ? void seekInTrack(p) : void seekBook(segment.start + p);
   return (
@@ -81,7 +77,7 @@ function ChapterScrubber({ total }: { total: number }) {
         />
       </View>
       <Text variant="caption" style={tabularNums} className="min-w-[44px]" numberOfLines={1}>
-        {total > 0 && left > 0 ? t('shell.dock.bookLeft', { time: formatDuration(left) }) : ''}
+        {left ? t('shell.dock.bookLeft', { time: left }) : ''}
       </Text>
     </View>
   );
@@ -92,7 +88,12 @@ function ChapterScrubber({ total }: { total: number }) {
 function SyncState({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const offline = useReachability((s) => s.online[connectionId] === false);
+  const needsReconnect = useSession(
+    (s) => s.connections.find((c) => c.id === connectionId)?.needsReconnect,
+  );
+  const offline = useReachability(
+    (s) => serverStatus({ id: connectionId, needsReconnect }, s.online) === 'offline',
+  );
   if (!offline) return null;
   return (
     <View className="flex-row items-center gap-1">
@@ -135,29 +136,12 @@ export function DockedPlayer() {
   if (!nowPlaying) return null;
 
   const { queue, title, author } = nowPlaying;
-  const heading = chapter
-    ? prettifyChapterTitle(
-        chapter.title || t('player.chapters.chapterNumber', { number: chapter.index + 1 }),
-      )
-    : title;
+  const heading = chapter ? chapterLabel(chapter, t) : title;
   const bookLine = author ? `${title} · ${author}` : title;
   const openPlayer = () => router.push('/player');
 
-  // Previous/next read the live position at press time (not per render), the same rules
-  // as the full player: by chapter, by file without a whole-book timeline.
-  const step = (dir: 1 | -1) => {
-    const s = usePlayer.getState();
-    if (queue.total <= 0) {
-      const i = s.snapshot.trackIndex;
-      if (dir === -1 && s.snapshot.position > 3) return void s.seekInTrack(0);
-      return void s.goToTrack(i + dir);
-    }
-    const position = selectBookPosition(s);
-    const starts = segmentStarts(queue);
-    const target =
-      dir === 1 ? nextSegmentStart(starts, position) : previousSegmentStart(starts, position);
-    if (target !== undefined) void s.seekBook(target);
-  };
+  // Previous/next read the live position at press time (not per render).
+  const step = (dir: 1 | -1) => stepSegment(usePlayer.getState(), dir);
 
   const isError = state === 'error';
   const roundButton = 'h-10 w-10 items-center justify-center rounded-full active:bg-accent';
@@ -176,7 +160,8 @@ export function DockedPlayer() {
         }}
         className="border-t border-border bg-card"
       >
-        <BookProgressLine total={queue.total} />
+        {/* The 3px whole-book progress line along the bar's top edge (a leaf). */}
+        <BookProgressLine total={queue.total} className="absolute left-0 right-0 top-0 h-[3px]" />
         <View className="h-[84px] flex-row items-center gap-4 pl-3.5 pr-4 lg:gap-5 lg:pr-5">
           <AnimatedPressable
             onPress={openPlayer}

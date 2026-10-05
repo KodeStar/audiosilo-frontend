@@ -6,11 +6,14 @@ jest.mock('@/theme/theme-provider', () => ({
 
 /* eslint-disable import/first */
 import {
+  PHONE_TABS,
   rootOfPathname,
   rootOfRoute,
+  TAB_STACK_SETTINGS,
   TABS,
   tabOfSegments,
   tabStackListeners,
+  TOP_BAR_TABS,
 } from './destinations';
 import { serverLine } from './top-bar';
 /* eslint-enable import/first */
@@ -86,7 +89,30 @@ describe('serverLine', () => {
     expect(serverLine([a, b], 'a', { b: false }).kind).toBe('server');
   });
 
+  it('says the default server needs signing in again before anything else', () => {
+    const flagged = { ...a, needsReconnect: 'auth' as const };
+    expect(serverLine([flagged, b], 'a', { a: false })).toEqual({ kind: 'reconnect' });
+    expect(serverLine([flagged, b], 'b', {}).kind).toBe('server');
+  });
+
   it('is empty with no connection', () => {
     expect(serverLine([], null, {})).toEqual({ kind: 'none' });
+  });
+});
+
+describe('derived destination lists', () => {
+  it('keys each tab stack setting by bare group name, rooted at the tab root', () => {
+    expect(TAB_STACK_SETTINGS).toEqual({
+      home: { initialRouteName: 'index' },
+      library: { initialRouteName: 'library/index' },
+      search: { initialRouteName: 'search' },
+      offline: { initialRouteName: 'downloads' },
+      me: { initialRouteName: 'settings' },
+    });
+  });
+
+  it('lists the top bar destinations without Search and Me', () => {
+    expect(TOP_BAR_TABS.map((t) => t.name)).toEqual(['(home)', '(library)', '(offline)']);
+    expect(PHONE_TABS).toHaveLength(5);
   });
 });

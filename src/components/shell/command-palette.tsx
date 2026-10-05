@@ -21,12 +21,11 @@ import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { engine } from '@/downloads/engine';
+import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
@@ -74,16 +73,12 @@ function useActionItems(): PaletteItem[] {
   return useMemo(() => {
     const items: PaletteItem[] = [];
     if (nowPlaying) {
-      const chapterLabel = chapter
-        ? prettifyChapterTitle(
-            chapter.title || t('player.chapters.chapterNumber', { number: chapter.index + 1 }),
-          )
-        : null;
+      const chapterName = chapter ? chapterLabel(chapter, t) : null;
       items.push({
         id: 'toggle',
         title: isPlaying
           ? t('player.controls.pause')
-          : t('palette.resume', { name: chapterLabel ?? nowPlaying.title }),
+          : t('palette.resume', { name: chapterName ?? nowPlaying.title }),
         subtitle: nowPlaying.title,
         icon: isPlaying ? 'pause' : 'play',
         run: () => void usePlayer.getState().toggle(),
@@ -107,11 +102,11 @@ function useActionItems(): PaletteItem[] {
         items.push({
           id: 'sleep-chapter',
           title,
-          subtitle: chapterLabel ?? undefined,
+          subtitle: chapterName ?? undefined,
           icon: 'sleep',
           run: () => {
             useSleepTimer.getState().startChapterTimer({ allowEndOfBook: true });
-            toast({ title, description: chapterLabel ?? undefined });
+            toast({ title, description: chapterName ?? undefined });
           },
         });
       }
@@ -148,7 +143,7 @@ function useGoToItems(): PaletteItem[] {
   const { press } = useTabPress();
   return useMemo(
     () =>
-      TOP_BAR_TABS.filter((d) => d.name !== '(offline)' || engine.supported).map((d) => ({
+      TOP_BAR_TABS.map((d) => ({
         id: `go:${d.name}`,
         title: t(d.labelKey),
         icon: d.icon,

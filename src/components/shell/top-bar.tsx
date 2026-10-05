@@ -2,17 +2,16 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useReachability } from '@/api/reachability';
+import { serverStatus, useReachability } from '@/api/reachability';
 import { Logo } from '@/components/brand/logo';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
-import { engine } from '@/downloads/engine';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useSearchStore } from '@/stores/search';
-import { useSession } from '@/stores/session';
+import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { TOP_BAR_TABS, useTabPress } from './destinations';
@@ -20,21 +19,22 @@ import { shortcutHint } from './palette-model';
 import { usePalette } from './palette-store';
 import { ProfileMenu } from './profile-menu';
 
-/** Downloads need offline storage: always on native; on web wherever the service worker
- * + Cache API are available (a secure context). Static per page load, so the list never
- * changes under a mounted bar. */
-const DESTINATIONS = TOP_BAR_TABS.filter((t) => t.name !== '(offline)' || engine.supported);
-
-/** "Hearthside", "Hearthside + 1 more", or the offline note when the default server is
- * unreachable. Pure, so the top bar's server line is tested without a store. */
+/** "Hearthside", "Hearthside + 1 more", or the default server's trouble (`serverStatus`:
+ * it needs signing in again, or it is unreachable). Pure, so the top bar's server line is
+ * tested without a store. */
 export function serverLine(
-  connections: readonly { id: string; name: string }[],
+  connections: readonly Pick<Connection, 'id' | 'name' | 'needsReconnect'>[],
   defaultId: string | null,
   online: Record<string, boolean>,
-): { kind: 'offline' } | { kind: 'server'; name: string; more: number } | { kind: 'none' } {
+):
+  | { kind: 'offline' }
+  | { kind: 'reconnect' }
+  | { kind: 'server'; name: string; more: number }
+  | { kind: 'none' } {
   const def = connections.find((c) => c.id === defaultId) ?? connections[0];
   if (!def) return { kind: 'none' };
-  if (online[def.id] === false) return { kind: 'offline' };
+  const status = serverStatus(def, online);
+  if (status === 'offline' || status === 'reconnect') return { kind: status };
   return { kind: 'server', name: def.name, more: connections.length - 1 };
 }
 
@@ -45,15 +45,19 @@ function ServerLine() {
   const online = useReachability((s) => s.online);
   const line = serverLine(connections, defaultId, online);
   if (line.kind === 'none') return null;
-  const offline = line.kind === 'offline';
-  const label = offline
-    ? t('shell.offline')
-    : line.more > 0
-      ? t('shell.serverMore', { name: line.name, count: line.more })
-      : line.name;
+  const label =
+    line.kind === 'offline'
+      ? t('shell.offline')
+      : line.kind === 'reconnect'
+        ? t('shell.profile.reconnect')
+        : line.more > 0
+          ? t('shell.serverMore', { name: line.name, count: line.more })
+          : line.name;
   return (
     <View className="flex-row items-center gap-1.5">
-      <View className={`h-1.5 w-1.5 rounded-full ${offline ? 'bg-warning' : 'bg-success'}`} />
+      <View
+        className={`h-1.5 w-1.5 rounded-full ${line.kind === 'server' ? 'bg-success' : 'bg-warning'}`}
+      />
       <Text variant="caption" className="text-[11.5px]" numberOfLines={1}>
         {label}
       </Text>
@@ -111,7 +115,7 @@ export function TopBar() {
 
         <View className="flex-1 flex-row items-center justify-center gap-4">
           <View accessibilityRole="tablist" className="flex-row gap-0.5">
-            {DESTINATIONS.map((d) => {
+            {TOP_BAR_TABS.map((d) => {
               const selected = active === d.name;
               const label = t(d.labelKey);
               return (

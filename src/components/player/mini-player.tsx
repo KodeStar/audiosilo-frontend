@@ -11,22 +11,16 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useApi } from '@/api/provider';
+import { BookProgressLine, useBookTimeLeft } from '@/components/player/book-progress';
 import { SkipButton } from '@/components/player/skip-button';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { formatDuration } from '@/lib/format';
+import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
-import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { wallClockSeconds } from '@/playback/rate';
-import {
-  selectBookPosition,
-  selectCurrentChapter,
-  selectIsPlaying,
-  usePlayer,
-} from '@/playback/store';
+import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -53,33 +47,17 @@ export function useMiniPlayerInset(): number {
   return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT : 0);
 }
 
-/** The 2px whole-book progress hairline along the bar's BOTTOM edge, so it sits
- * flush on top of the nav bar below. It subscribes to the per-tick playback
- * position on its own, so only this leaf re-renders each tick - the always-mounted
- * bar around it reconciles just on play/pause/track changes. */
-function ProgressHairline({ total }: { total: number }) {
-  const bookPosition = usePlayer(selectBookPosition);
-  const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
-  return (
-    <View className="h-0.5 bg-muted">
-      <View className="h-full bg-brand" style={{ width: `${fraction * 100}%` }} />
-    </View>
-  );
-}
-
 /** "5h 27m left (1.4×)" - wall-clock time remaining at the current speed, with the
- * speed modifier appended. A leaf so only this line re-renders as the position
- * ticks (it reads the live whole-book position + rate from the store). */
+ * speed modifier appended. A leaf so only this line re-renders, when its text changes. */
 function TimeLeft({ total }: { total: number }) {
   const { t } = useTranslation();
-  const position = usePlayer(selectBookPosition);
+  const time = useBookTimeLeft(total);
   const rate = usePlayer((s) => s.rate);
-  const remaining = wallClockSeconds(total - position, rate);
-  if (remaining <= 0) return null;
+  if (!time) return null;
   const rateLabel = `${Number(rate.toFixed(2))}×`;
   return (
     <Text variant="caption" numberOfLines={1} style={tabularNums}>
-      {t('player.controls.timeLeft', { time: formatDuration(remaining), rate: rateLabel })}
+      {t('player.controls.timeLeft', { time, rate: rateLabel })}
     </Text>
   );
 }
@@ -129,13 +107,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
 
   // Muted caption line: the current chapter (prettified, like the full player) when the
   // book carries chapters, else the author. Display-only - reads from the store.
-  const chapterLabel = currentChapter
-    ? prettifyChapterTitle(
-        currentChapter.title ||
-          t('player.chapters.chapterNumber', { number: currentChapter.index + 1 }),
-      )
-    : '';
-  const caption = chapterLabel || nowPlaying.author;
+  const caption = (currentChapter ? chapterLabel(currentChapter, t) : '') || nowPlaying.author;
 
   return (
     <Animated.View
@@ -201,7 +173,9 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
             </AnimatedPressable>
           </View>
         </View>
-        <ProgressHairline total={nowPlaying.queue.total} />
+        {/* The 2px whole-book hairline along the bar's BOTTOM edge, flush on the nav
+            below. A leaf: the bar around it reconciles only on play/pause/track. */}
+        <BookProgressLine total={nowPlaying.queue.total} className="h-0.5 bg-muted" />
       </AnimatedPressable>
     </Animated.View>
   );

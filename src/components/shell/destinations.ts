@@ -3,6 +3,7 @@ import type { MaterialIcon, SFSymbolIcon } from 'expo-router/unstable-native-tab
 import { useCallback } from 'react';
 
 import type { IconName } from '@/components/ui/icon';
+import { engine } from '@/downloads/engine';
 
 /**
  * The app's destinations, in ONE table every piece of chrome reads: the native tab bar
@@ -97,11 +98,19 @@ export const TABS: readonly Destination[] = [
   },
 ];
 
-/** The destinations the tablet/desktop top bar lists. Search is the omnisearch field and
- * Me is the settings icon + profile button there, so neither is a labelled destination.
- * ("You" - stats, year, journal - joins in Phase 5.) */
+/** Downloads only where this platform can download (`engine.supported`: on web, a secure
+ * context with the Cache API; always on native, whose tab set must never change at
+ * runtime). Static per page load, so a bar never changes under a mounted screen. */
+const available = (d: Destination) => d.name !== '(offline)' || engine.supported;
+
+/** The destinations OUR web phone tab bar lists (the native bars list every `TABS`). */
+export const PHONE_TABS: readonly Destination[] = TABS.filter(available);
+
+/** The destinations the tablet/desktop top bar (and the palette's Go to) lists. Search is
+ * the omnisearch field and Me is the settings icon + profile button there, so neither is
+ * a labelled destination. ("You" - stats, year, journal - joins in Phase 5.) */
 export const TOP_BAR_TABS: readonly Destination[] = TABS.filter(
-  (t) => t.name !== '(search)' && t.name !== '(me)',
+  (t) => t.name !== '(search)' && t.name !== '(me)' && available(t),
 );
 
 export function destination(name: TabName): Destination {
@@ -125,13 +134,10 @@ export function rootOfRoute(routeName: string): Destination | null {
  * to. Keyed by group name - the array-group layout form, one `unstable_settings` for the
  * five stacks its single `_layout.tsx` expands into. Plain data so tests can import it.
  */
-export const TAB_STACK_SETTINGS = {
-  home: { initialRouteName: 'index' },
-  library: { initialRouteName: 'library/index' },
-  search: { initialRouteName: 'search' },
-  offline: { initialRouteName: 'downloads' },
-  me: { initialRouteName: 'settings' },
-};
+export const TAB_STACK_SETTINGS: Record<string, { initialRouteName: string }> = Object.fromEntries(
+  // `(home)` -> `home`: the array group's settings are keyed by the bare group name.
+  TABS.map((t) => [t.name.slice(1, -1), { initialRouteName: t.rootRoute }]),
+);
 
 /** The active tab, from the router's current segments. */
 export function useActiveTab(): TabName | null {

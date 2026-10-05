@@ -4,6 +4,8 @@
  * Framework-free so it is unit-tested; the components feed it from the player store.
  */
 
+import { toBookPosition } from '@/playback/book-queue';
+
 /** The slice of the current chapter this needs (`Chapter` from the playback types). */
 type ChapterSpan = { book_offset: number; start: number; end: number };
 
@@ -69,4 +71,37 @@ export function previousSegmentStart(starts: readonly number[], position: number
   if (position - current > 3) return current;
   const prior = starts.filter((s) => s < current - 0.01);
   return prior.length ? prior[prior.length - 1] : 0;
+}
+
+/** The slice of the player store previous/next reads and drives (structural, so this
+ * module stays framework-free and the tests pass a plain object). */
+export type StepState = {
+  nowPlaying: {
+    queue: { total: number; chapters: readonly { book_offset: number }[]; offsets: number[] };
+  } | null;
+  snapshot: { trackIndex: number; position: number };
+  seekBook: (bookPosition: number) => unknown;
+  seekInTrack: (positionInTrack: number) => unknown;
+  goToTrack: (index: number) => unknown;
+};
+
+/**
+ * Previous (-1) / next (+1) on every player surface, read from the live state at press
+ * time. With a whole-book timeline it steps between chapter (else file) boundaries;
+ * without one (`total <= 0`) it steps per FILE, and "previous" restarts the current file
+ * when more than 3 seconds in.
+ */
+export function stepSegment(state: StepState, dir: 1 | -1): void {
+  const queue = state.nowPlaying?.queue;
+  if (!queue) return;
+  const { trackIndex, position } = state.snapshot;
+  if (queue.total <= 0) {
+    if (dir === -1 && position > 3) return void state.seekInTrack(0);
+    return void state.goToTrack(trackIndex + dir);
+  }
+  const bookPosition = toBookPosition(queue.offsets, trackIndex, position);
+  const starts = segmentStarts(queue);
+  const target =
+    dir === 1 ? nextSegmentStart(starts, bookPosition) : previousSegmentStart(starts, bookPosition);
+  if (target !== undefined) void state.seekBook(target);
 }
