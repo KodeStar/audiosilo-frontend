@@ -54,7 +54,9 @@ export default function SignInScreen() {
       token: session.token,
       user: session.user,
     });
-    router.replace('/');
+    // Back to the app, not `replace`: `(app)` is the root stack's anchor and already sits
+    // under onboarding, so replacing would stack a second `(app)` on top of it.
+    router.dismissTo('/');
   };
 
   const onSubmit = async () => {
