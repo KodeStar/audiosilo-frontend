@@ -52,6 +52,14 @@ describe('Button', () => {
     expect(screen.getByRole('button')).toHaveProp('hitSlop', 7);
   });
 
+  it("drops the size's height and padding on the link variant", async () => {
+    await mount(<Button title="Show more" variant="link" />);
+    const classes = String(screen.getByRole('button').props.className).split(' ');
+    expect(classes).toEqual(expect.arrayContaining(['h-auto', 'px-0']));
+    expect(classes).not.toContain('h-[38px]');
+    expect(classes).not.toContain('px-4');
+  });
+
   it('takes an accessibility label when it is icon-only', async () => {
     await mount(<Button icon="trash" variant="secondary" accessibilityLabel="Delete download" />);
     expect(screen.getByRole('button', { name: 'Delete download' })).toBeTruthy();

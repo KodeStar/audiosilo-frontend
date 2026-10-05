@@ -33,7 +33,7 @@ const buttonVariants = cva(
         destructive: 'bg-destructive active:opacity-90 hover:opacity-90',
         'destructive-outline':
           'border-destructive/40 active:bg-destructive-soft hover:bg-destructive-soft',
-        link: 'h-auto px-0',
+        link: '',
       },
       size: {
         sm: 'h-[30px] gap-1.5 rounded-lg px-2.5',
@@ -43,6 +43,9 @@ const buttonVariants = cva(
         icon: 'h-[38px] w-[38px] px-0',
       },
     },
+    // After the size classes, so a link drops the size's height and padding (as a plain
+    // variant class, tailwind-merge let the later size class win).
+    compoundVariants: [{ variant: 'link', class: 'h-auto px-0' }],
     defaultVariants: { variant: 'default', size: 'default' },
   },
 );

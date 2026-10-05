@@ -97,6 +97,8 @@ type KeyEvent = {
 type ResponderHandlers = { onKeyDown: (event: KeyEvent) => void } & Record<string, unknown>;
 interface PressResponderInstance {
   _config: { disabled?: boolean | null; onPress?: ((event: unknown) => void) | null };
+  /** The document keyup listener of a Space press still waiting for its key up. */
+  __audiosiloSpaceUp?: EventListener;
 }
 type CreateHandlers = ((this: PressResponderInstance) => ResponderHandlers) & {
   __audiosiloSpacePatch?: boolean;
@@ -131,12 +133,17 @@ if (!createHandlers.__audiosiloSpacePatch) {
       event.preventDefault(); // no page scroll
       event.stopPropagation();
       if (event.repeat) return;
-      const onKeyUp = (up: KeyEvent) => {
+      // At most one pending key up per pressable: one whose key up never reached the
+      // document (the window lost focus mid-press) must not fire alongside the next.
+      if (this.__audiosiloSpaceUp) document.removeEventListener('keyup', this.__audiosiloSpaceUp);
+      const onKeyUp = ((up: KeyEvent) => {
         if (!isSpace(up.key)) return;
-        document.removeEventListener('keyup', onKeyUp as unknown as EventListener);
+        document.removeEventListener('keyup', onKeyUp);
+        this.__audiosiloSpaceUp = undefined;
         if (up.target === target) this._config.onPress?.(up);
-      };
-      document.addEventListener('keyup', onKeyUp as unknown as EventListener);
+      }) as unknown as EventListener;
+      this.__audiosiloSpaceUp = onKeyUp;
+      document.addEventListener('keyup', onKeyUp);
     };
     return handlers;
   };

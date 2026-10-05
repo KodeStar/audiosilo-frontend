@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
+import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -63,7 +64,7 @@ export function HistorySection({
 
   const labelAt = (pos: number): string => {
     const c = chapters && chapters.length > 0 ? chapterAt(chapters, pos) : null;
-    const name = c ? c.title || t('player.chapters.chapterNumber', { number: c.index + 1 }) : null;
+    const name = c ? chapterLabel(c, t) : null;
     return name ? `${formatClock(pos)} · ${name}` : formatClock(pos);
   };
 

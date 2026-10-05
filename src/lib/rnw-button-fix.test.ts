@@ -118,6 +118,21 @@ describe('rnw-button-fix (web): Space activation', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
+  it('fires once after a Space whose key up never reached the document', () => {
+    // The window lost focus mid-press: its key up went elsewhere. The next full press
+    // must fire onPress once, not once per stranded listener.
+    const onPress = jest.fn();
+    const el = element('tab');
+    const handlers = new PressResponder({ onPress }).getEventHandlers();
+    handlers.onKeyDown(keyDown(el));
+    expect(keyups).toHaveLength(1);
+    handlers.onKeyDown(keyDown(el));
+    expect(keyups).toHaveLength(1);
+    keyUp(el);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(keyups).toHaveLength(0);
+  });
+
   it('leaves Space to the element itself when there is nothing to press (a Select trigger)', () => {
     const el = element('button');
     const event = keyDown(el);

@@ -221,7 +221,11 @@ function Highlighted({ text, query }: { text: string; query: string }) {
       {range ? (
         <>
           {text.slice(0, range[0])}
-          <Text className="font-sans-bold text-brand-ink">{text.slice(range[0], range[1])}</Text>
+          {/* `label` like the line around it: a bare <Text> would apply the `body`
+              variant's larger size to the match. */}
+          <Text variant="label" className="font-sans-bold text-brand-ink">
+            {text.slice(range[0], range[1])}
+          </Text>
           {text.slice(range[1])}
         </>
       ) : (

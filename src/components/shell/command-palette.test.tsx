@@ -189,6 +189,18 @@ describe('CommandPalette', () => {
     expect(usePalette.getState().recent).toEqual(['holmes']);
   });
 
+  it("bolds the match at the line's own label size", async () => {
+    await openWith('holmes');
+    // Two books carry "Holmes"; both highlights are label-sized (a bare nested <Text>
+    // fell back to the larger `body` size).
+    const [match] = screen.getAllByText('Holmes');
+    const classes = String(match.props.className);
+    expect(classes).toContain('font-sans-bold');
+    expect(classes).toContain('text-brand-ink');
+    expect(classes).toContain('text-sm');
+    expect(classes).not.toContain('text-base');
+  });
+
   it('reads Continue listening from the cache, and not at all while a query is typed', async () => {
     await openWith();
     expect(mockProgressOptions).toHaveBeenLastCalledWith({
