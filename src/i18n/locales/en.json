@@ -508,6 +508,51 @@
       "bookLeft": "{{time}} left",
       "savedLocally": "Saved on this device, will sync",
       "expand": "Expand player"
+    },
+    "profile": {
+      "label": "Servers and account, {{name}}",
+      "servers": "Servers",
+      "signedInAs": "Signed in as {{name}}",
+      "offline": "Offline",
+      "reconnect": "Needs signing in again",
+      "accountOn": "Account on {{name}}",
+      "dark": "Dark appearance",
+      "light": "Light appearance"
     }
+  },
+  "palette": {
+    "label": "Search and commands",
+    "omnisearch": "Search or run a command",
+    "placeholder": "Search or type a command",
+    "hint": "Type to find a book or an action. The arrow keys move through the results and Enter opens one.",
+    "recent": "Recent",
+    "groups": {
+      "actions": "Actions",
+      "books": "Books",
+      "goTo": "Go to"
+    },
+    "resume": "Resume {{name}}",
+    "sleepMinutes_one": "Sleep in {{count}} minute",
+    "sleepMinutes_other": "Sleep in {{count}} minutes",
+    "sleepFades": "Fades out over the last 30 seconds",
+    "sleepChapter": "Sleep at end of chapter",
+    "openPlayer": "Open the full player",
+    "settings": "Go to settings",
+    "settingsHint": "Servers, appearance and playback",
+    "dark": "Switch to dark appearance",
+    "light": "Switch to light appearance",
+    "listened": "{{percent}}% listened",
+    "searching": "Searching",
+    "empty": "Nothing called \"{{query}}\"",
+    "emptyHint": "Try a title or an author.",
+    "keys": {
+      "move": "move",
+      "open": "open",
+      "close": "close"
+    },
+    "results_one": "{{count}} result",
+    "results_other": "{{count}} results",
+    "resultsOn_one": "{{count}} result · {{servers}}",
+    "resultsOn_other": "{{count}} results · {{servers}}"
   }
 }

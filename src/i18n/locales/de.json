@@ -508,6 +508,51 @@
       "bookLeft": "Noch {{time}}",
       "savedLocally": "Auf diesem Gerät gespeichert, wird synchronisiert",
       "expand": "Player vergrößern"
+    },
+    "profile": {
+      "label": "Server und Konto, {{name}}",
+      "servers": "Server",
+      "signedInAs": "Angemeldet als {{name}}",
+      "offline": "Offline",
+      "reconnect": "Erneute Anmeldung nötig",
+      "accountOn": "Konto auf {{name}}",
+      "dark": "Dunkle Darstellung",
+      "light": "Helle Darstellung"
     }
+  },
+  "palette": {
+    "label": "Suche und Befehle",
+    "omnisearch": "Suchen oder Befehl ausführen",
+    "placeholder": "Suchen oder Befehl eingeben",
+    "hint": "Tippe, um ein Buch oder eine Aktion zu finden. Mit den Pfeiltasten wählst du ein Ergebnis, mit der Eingabetaste öffnest du es.",
+    "recent": "Zuletzt",
+    "groups": {
+      "actions": "Aktionen",
+      "books": "Bücher",
+      "goTo": "Gehe zu"
+    },
+    "resume": "{{name}} fortsetzen",
+    "sleepMinutes_one": "Schlafen in {{count}} Minute",
+    "sleepMinutes_other": "Schlafen in {{count}} Minuten",
+    "sleepFades": "Blendet in den letzten 30 Sekunden aus",
+    "sleepChapter": "Schlafen am Kapitelende",
+    "openPlayer": "Vollen Player öffnen",
+    "settings": "Zu den Einstellungen",
+    "settingsHint": "Server, Darstellung und Wiedergabe",
+    "dark": "Zur dunklen Darstellung wechseln",
+    "light": "Zur hellen Darstellung wechseln",
+    "listened": "{{percent}} % gehört",
+    "searching": "Suche läuft",
+    "empty": "Nichts namens „{{query}}“",
+    "emptyHint": "Versuche einen Titel oder einen Autor.",
+    "keys": {
+      "move": "bewegen",
+      "open": "öffnen",
+      "close": "schließen"
+    },
+    "results_one": "{{count}} Ergebnis",
+    "results_other": "{{count}} Ergebnisse",
+    "resultsOn_one": "{{count}} Ergebnis · {{servers}}",
+    "resultsOn_other": "{{count}} Ergebnisse · {{servers}}"
   }
 }

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import type { StoreApi, UseBoundStore } from 'zustand';
 
 // --- router -------------------------------------------------------------------------
@@ -33,6 +33,10 @@ jest.mock('react-native-safe-area-context', () => {
 });
 
 jest.mock('@/downloads/engine', () => ({ engine: { supported: true } }));
+// theme-provider side-effect-imports global.css (unparseable in Node).
+jest.mock('@/theme/theme-provider', () => ({
+  useTheme: () => ({ scheme: 'light', pref: 'light', setPref: jest.fn() }),
+}));
 jest.mock('@/api/provider', () => ({ useApi: () => ({ authHeaders: () => ({}) }) }));
 
 // --- player ---------------------------------------------------------------------------
@@ -94,6 +98,7 @@ import { useSession } from '@/stores/session';
 
 import { AccessoryPlayer } from './accessory-player';
 import { DockedPlayer } from './docked-player';
+import { usePalette } from './palette-store';
 import { PhoneTabBar } from './phone-tab-bar';
 import { TopBar } from './top-bar';
 /* eslint-enable import/first */
@@ -173,7 +178,22 @@ describe('TopBar', () => {
     expect(screen.queryByText('Library')).toBeNull();
   });
 
-  it('jumps to Search and asks it to focus from the omnisearch', async () => {
+  it('opens the command palette from the omnisearch on web', async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      usePalette.setState({ open: false });
+      await render(<TopBar />);
+      await fireEvent.press(screen.getByTestId('top-bar-search'));
+      expect(usePalette.getState().open).toBe(true);
+      expect(mockDispatch).not.toHaveBeenCalled();
+    } finally {
+      Platform.OS = prevOS;
+      usePalette.setState({ open: false });
+    }
+  });
+
+  it('jumps to Search and asks it to focus from the omnisearch on a native tablet', async () => {
     const before = useSearchStore.getState().focusRequest;
     await render(<TopBar />);
     await fireEvent.press(screen.getByTestId('top-bar-search'));
@@ -184,15 +204,14 @@ describe('TopBar', () => {
     });
   });
 
-  it('opens settings and the default account', async () => {
+  it('opens settings, and names the profile menu after the user', async () => {
     await render(<TopBar />);
     await fireEvent.press(screen.getByLabelText('Settings'));
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'JUMP_TO', payload: { name: '(me)' } });
-    await fireEvent.press(screen.getByTestId('top-bar-profile'));
-    expect(mockRouter.push).toHaveBeenCalledWith({
-      pathname: '/account',
-      params: { connection: 'c1' },
-    });
+    expect(screen.getByTestId('top-bar-profile')).toHaveProp(
+      'accessibilityLabel',
+      'Servers and account, chris',
+    );
   });
 });
 

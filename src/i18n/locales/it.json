@@ -508,6 +508,51 @@
       "bookLeft": "Mancano {{time}}",
       "savedLocally": "Salvato su questo dispositivo, verrà sincronizzato",
       "expand": "Espandi il lettore"
+    },
+    "profile": {
+      "label": "Server e account, {{name}}",
+      "servers": "Server",
+      "signedInAs": "Accesso come {{name}}",
+      "offline": "Offline",
+      "reconnect": "Serve un nuovo accesso",
+      "accountOn": "Account su {{name}}",
+      "dark": "Aspetto scuro",
+      "light": "Aspetto chiaro"
     }
+  },
+  "palette": {
+    "label": "Ricerca e comandi",
+    "omnisearch": "Cerca o esegui un comando",
+    "placeholder": "Cerca o digita un comando",
+    "hint": "Digita per trovare un libro o un'azione. Le frecce scorrono i risultati e Invio ne apre uno.",
+    "recent": "Recenti",
+    "groups": {
+      "actions": "Azioni",
+      "books": "Libri",
+      "goTo": "Vai a"
+    },
+    "resume": "Riprendi {{name}}",
+    "sleepMinutes_one": "Spegni tra {{count}} minuto",
+    "sleepMinutes_other": "Spegni tra {{count}} minuti",
+    "sleepFades": "Sfuma negli ultimi 30 secondi",
+    "sleepChapter": "Spegni a fine capitolo",
+    "openPlayer": "Apri il player completo",
+    "settings": "Vai alle impostazioni",
+    "settingsHint": "Server, aspetto e riproduzione",
+    "dark": "Passa all'aspetto scuro",
+    "light": "Passa all'aspetto chiaro",
+    "listened": "{{percent}}% ascoltato",
+    "searching": "Ricerca in corso",
+    "empty": "Niente si chiama «{{query}}»",
+    "emptyHint": "Prova con un titolo o un autore.",
+    "keys": {
+      "move": "sposta",
+      "open": "apri",
+      "close": "chiudi"
+    },
+    "results_one": "{{count}} risultato",
+    "results_other": "{{count}} risultati",
+    "resultsOn_one": "{{count}} risultato · {{servers}}",
+    "resultsOn_other": "{{count}} risultati · {{servers}}"
   }
 }

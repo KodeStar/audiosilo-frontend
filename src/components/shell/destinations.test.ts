@@ -1,3 +1,10 @@
+// top-bar -> profile-menu -> theme-provider side-effect-imports global.css (unparseable
+// in Node).
+jest.mock('@/theme/theme-provider', () => ({
+  useTheme: () => ({ scheme: 'light', pref: 'light', setPref: jest.fn() }),
+}));
+
+/* eslint-disable import/first */
 import {
   rootOfPathname,
   rootOfRoute,
@@ -6,6 +13,7 @@ import {
   tabStackListeners,
 } from './destinations';
 import { serverLine } from './top-bar';
+/* eslint-enable import/first */
 
 describe('destinations', () => {
   it('lists the five tabs in bar order, Downloads as the (offline) group', () => {

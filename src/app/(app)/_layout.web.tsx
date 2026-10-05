@@ -1,13 +1,14 @@
 import { TabList, TabSlot, TabTrigger, Tabs } from 'expo-router/ui';
-import { useState } from 'react';
 import { View } from 'react-native';
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { AuthGate } from '@/components/shell/auth-gate';
-import { TABS } from '@/components/shell/destinations';
+import { CommandPalette, usePaletteShortcut } from '@/components/shell/command-palette';
+import { TABS, useActiveTab } from '@/components/shell/destinations';
 import { DockedPlayer } from '@/components/shell/docked-player';
 import { DrawerSlot } from '@/components/shell/drawer-slot';
 import { PhoneTabBar } from '@/components/shell/phone-tab-bar';
+import { setShellMetric, useShellMetrics } from '@/components/shell/shell-metrics';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { WideTop } from '@/components/shell/wide-top';
 import { useLayout } from '@/lib/layout';
@@ -22,15 +23,18 @@ import { useLayout } from '@/lib/layout';
  * toggles. Moving it between wrappers would remount every screen on a resize (and jump
  * the URL to another tab). Phone: the page (with its Stack header), the mini player and
  * our tab bar. Tablet/desktop: top bar + sub-nav + banners, the page beside the drawer
- * slot, the docked player bar.
+ * slot, the docked player bar. The command palette (⌘K, `/`, the omnisearch) opens over
+ * any tab page, at every width.
  */
 function WebShell() {
   useShellEffects();
+  // Not over the full player or the finished screen (root modals: no active tab).
+  usePaletteShortcut(useActiveTab() !== null);
   const layout = useLayout();
   const wide = layout !== 'phone';
-  // The mini player floats just above the tab bar, whose height includes the home
-  // indicator inset; measure it rather than guess (estimate until the first layout).
-  const [tabBarHeight, setTabBarHeight] = useState(64);
+  // The mini player (and the toasts) float just above the tab bar, whose height includes
+  // the home indicator inset; measure it rather than guess (estimate until laid out).
+  const tabBarHeight = useShellMetrics((s) => s.tabBarHeight) ?? 64;
   return (
     <Tabs style={{ flex: 1 }}>
       <TabList style={{ display: 'none' }}>
@@ -52,9 +56,12 @@ function WebShell() {
         {wide ? (
           <DockedPlayer />
         ) : (
-          <PhoneTabBar onLayout={(e) => setTabBarHeight(e.nativeEvent.layout.height)} />
+          <PhoneTabBar
+            onLayout={(e) => setShellMetric('tabBarHeight', e.nativeEvent.layout.height)}
+          />
         )}
       </View>
+      <CommandPalette />
     </Tabs>
   );
 }

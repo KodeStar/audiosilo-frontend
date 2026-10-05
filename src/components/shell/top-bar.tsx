@@ -1,21 +1,24 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useReachability } from '@/api/reachability';
 import { Logo } from '@/components/brand/logo';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
 import { engine } from '@/downloads/engine';
 import { useLayout } from '@/lib/layout';
-import { accountHref } from '@/lib/paths';
+import { cn } from '@/lib/utils';
 import { useSearchStore } from '@/stores/search';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { TOP_BAR_TABS, useTabPress } from './destinations';
+import { shortcutHint } from './palette-model';
+import { usePalette } from './palette-store';
+import { ProfileMenu } from './profile-menu';
 
 /** Downloads need offline storage: always on native; on web wherever the service worker
  * + Cache API are available (a secure context). Static per page load, so the list never
@@ -58,25 +61,14 @@ function ServerLine() {
   );
 }
 
-/** The user's initial, in a round monogram (household avatars come in Phase 5). */
-function Monogram({ name }: { name: string }) {
-  return (
-    <View className="h-[30px] w-[30px] items-center justify-center rounded-full bg-brand-soft">
-      <Text className="font-display text-sm text-brand-ink">
-        {(name.trim()[0] ?? '?').toUpperCase()}
-      </Text>
-    </View>
-  );
-}
-
 /**
  * The tablet/desktop top bar (64, STYLEGUIDE section 2): the mark with the server it
  * talks to, the destinations, the omnisearch, settings and the profile button. Tablet
  * keeps the destinations as icons only.
  *
- * The omnisearch is a field-shaped button for now: it jumps to the Search tab and
- * focuses its input (the command palette arrives later). The profile button opens the
- * default connection's account screen until the profile menu lands.
+ * The omnisearch is a field-shaped button: on web it opens the command palette (⌘K);
+ * on a native tablet it jumps to the Search tab and focuses its input. The profile
+ * button opens the profile menu (servers, account, appearance).
  */
 export function TopBar() {
   const { t } = useTranslation();
@@ -85,10 +77,11 @@ export function TopBar() {
   const desktop = useLayout() === 'desktop';
   const { active, press } = useTabPress();
   const requestFocus = useSearchStore((s) => s.requestFocus);
-  const user = useSession((s) => s.user);
-  const defaultId = useSession((s) => s.defaultConnectionId);
+  const openPalette = usePalette((s) => s.openPalette);
+  const web = Platform.OS === 'web';
 
   const openSearch = () => {
+    if (web) return openPalette();
     requestFocus();
     press('(search)');
   };
@@ -104,9 +97,9 @@ export function TopBar() {
           onPress={() => press('(home)')}
           accessibilityRole="button"
           accessibilityLabel={t('shell.home')}
-          className="flex-row items-center gap-2.5 rounded-xl py-1.5 pl-1 pr-2 active:bg-accent"
+          className="flex-row items-center gap-2.5 rounded-control py-1.5 pl-1 pr-2 active:bg-accent"
         >
-          <View className="h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-primary">
+          <View className="h-[30px] w-[30px] items-center justify-center rounded-control bg-primary">
             <Logo size={16} />
           </View>
           <View className="gap-0.5">
@@ -129,9 +122,11 @@ export function TopBar() {
                   accessibilityRole="tab"
                   aria-selected={selected}
                   accessibilityLabel={label}
-                  className={`h-[38px] min-w-[44px] flex-row items-center justify-center gap-2 rounded-[10px] border px-3 ${
-                    selected ? 'border-border bg-card' : 'border-transparent active:bg-accent'
-                  }`}
+                  className={cn(
+                    'h-[38px] min-w-[44px] flex-row items-center justify-center gap-2 rounded-control border px-3',
+                    selected ? 'border-border bg-card' : 'border-transparent active:bg-accent',
+                    Platform.select({ web: !selected && 'hover:bg-accent' }),
+                  )}
                 >
                   <Icon
                     name={d.icon}
@@ -156,13 +151,17 @@ export function TopBar() {
             testID="top-bar-search"
             onPress={openSearch}
             accessibilityRole="button"
-            accessibilityLabel={t('nav.search')}
-            className="h-[38px] min-w-[160px] max-w-[360px] flex-1 flex-row items-center gap-2 rounded-xl border border-border bg-card px-3"
+            accessibilityLabel={web ? t('palette.omnisearch') : t('nav.search')}
+            className={cn(
+              'h-[38px] min-w-[160px] max-w-[360px] flex-1 flex-row items-center gap-2 rounded-control border border-border bg-card pl-3 pr-2.5',
+              Platform.select({ web: 'hover:border-border-strong' }),
+            )}
           >
             <Icon name="search" size={16} color={themed.mutedForeground} />
             <Text variant="muted" numberOfLines={1} className="flex-1">
               {t('search.placeholder')}
             </Text>
+            {web && desktop ? <Kbd>{shortcutHint(navigatorPlatform())}</Kbd> : null}
           </AnimatedPressable>
         </View>
 
@@ -173,9 +172,11 @@ export function TopBar() {
             accessibilityRole="button"
             aria-selected={active === '(me)'}
             accessibilityLabel={t('settings.title')}
-            className={`h-[38px] w-[38px] items-center justify-center rounded-[10px] border ${
-              active === '(me)' ? 'border-border bg-card' : 'border-transparent active:bg-accent'
-            }`}
+            className={cn(
+              'h-[38px] w-[38px] items-center justify-center rounded-control border',
+              active === '(me)' ? 'border-border bg-card' : 'border-transparent active:bg-accent',
+              Platform.select({ web: active !== '(me)' && 'hover:bg-accent' }),
+            )}
           >
             <Icon
               name="settings"
@@ -183,24 +184,16 @@ export function TopBar() {
               color={active === '(me)' ? themed.foreground : themed.mutedForeground}
             />
           </AnimatedPressable>
-          {user && defaultId ? (
-            <AnimatedPressable
-              testID="top-bar-profile"
-              onPress={() => router.push(accountHref(defaultId))}
-              accessibilityRole="button"
-              accessibilityLabel={t('shell.account', { name: user.username })}
-              className="flex-row items-center gap-2 rounded-full border border-border bg-card p-[3px] lg:pr-3"
-            >
-              <Monogram name={user.username} />
-              {desktop ? (
-                <Text variant="label" numberOfLines={1} className="max-w-[140px]">
-                  {user.username}
-                </Text>
-              ) : null}
-            </AnimatedPressable>
-          ) : null}
+          <ProfileMenu showName={desktop} />
         </View>
       </View>
     </View>
   );
+}
+
+/** The browser's platform string, for the key hint ('' off the web). */
+function navigatorPlatform(): string {
+  if (typeof navigator === 'undefined') return '';
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return nav.userAgentData?.platform ?? nav.platform ?? '';
 }

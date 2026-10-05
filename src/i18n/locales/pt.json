@@ -508,6 +508,51 @@
       "bookLeft": "Faltam {{time}}",
       "savedLocally": "Guardado neste dispositivo, será sincronizado",
       "expand": "Expandir o leitor"
+    },
+    "profile": {
+      "label": "Servidores e conta, {{name}}",
+      "servers": "Servidores",
+      "signedInAs": "Sessão iniciada como {{name}}",
+      "offline": "Offline",
+      "reconnect": "É preciso iniciar sessão de novo",
+      "accountOn": "Conta em {{name}}",
+      "dark": "Aspeto escuro",
+      "light": "Aspeto claro"
     }
+  },
+  "palette": {
+    "label": "Pesquisa e comandos",
+    "omnisearch": "Pesquisar ou executar um comando",
+    "placeholder": "Pesquise ou escreva um comando",
+    "hint": "Escreva para encontrar um livro ou uma ação. As setas percorrem os resultados e Enter abre um.",
+    "recent": "Recentes",
+    "groups": {
+      "actions": "Ações",
+      "books": "Livros",
+      "goTo": "Ir para"
+    },
+    "resume": "Retomar {{name}}",
+    "sleepMinutes_one": "Dormir em {{count}} minuto",
+    "sleepMinutes_other": "Dormir em {{count}} minutos",
+    "sleepFades": "Desvanece nos últimos 30 segundos",
+    "sleepChapter": "Dormir no fim do capítulo",
+    "openPlayer": "Abrir o leitor completo",
+    "settings": "Ir para as definições",
+    "settingsHint": "Servidores, aspeto e reprodução",
+    "dark": "Mudar para o aspeto escuro",
+    "light": "Mudar para o aspeto claro",
+    "listened": "{{percent}}% ouvido",
+    "searching": "A pesquisar",
+    "empty": "Nada chamado «{{query}}»",
+    "emptyHint": "Experimente um título ou um autor.",
+    "keys": {
+      "move": "mover",
+      "open": "abrir",
+      "close": "fechar"
+    },
+    "results_one": "{{count}} resultado",
+    "results_other": "{{count}} resultados",
+    "resultsOn_one": "{{count}} resultado · {{servers}}",
+    "resultsOn_other": "{{count}} resultados · {{servers}}"
   }
 }
