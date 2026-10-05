@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useId, useState } from 'react';
+import { type LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -8,61 +8,78 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-const PULSE_MS = 1000;
-const DIM = 0.55;
-
-// The fill is the themed `border` colour as a raw value, on the inner animated layer
-// rather than a className: animated style and className stay on separate views (why:
-// animated-pressable.native.tsx). `border`, not `muted`: muted barely separates from
-// the porcelain page.
+/** One sweep of the highlight across the block (STYLEGUIDE.md section 8: 1.4 s). */
+const SHIMMER_MS = 1400;
 
 export type SkeletonProps = {
-  /** Shape utilities for the placeholder, e.g. "h-4 w-32 rounded-md". */
+  /** Shape utilities for the placeholder, e.g. "h-4 w-32 rounded-md": the exact shape of
+   * what loads in its place, so nothing shifts when it does. */
   className?: string;
   testID?: string;
 };
 
 /**
- * A theme-aware placeholder block that gently pulses its opacity (~1s loop,
- * 0.55<->1). Pass `className` for the shape (size + rounding). Reduced motion
- * renders it static.
+ * A Stacks skeleton (react-native-reusables' Skeleton, reworked): a `muted` block with a
+ * soft highlight sweeping across it every 1.4 s. Reduced motion renders it static.
+ *
+ * The highlight is a react-native-svg gradient band moved by a reanimated transform, on
+ * its own inner view: animated style and className stay on separate views (why:
+ * animated-pressable.native.tsx).
  */
 export function Skeleton({ className, testID }: SkeletonProps) {
   const reduced = useReducedMotion();
-  const fill = useThemeColors().border;
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    if (reduced) {
-      opacity.value = 1;
-      return;
-    }
-    opacity.value = withRepeat(
-      withTiming(DIM, { duration: PULSE_MS, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    );
-  }, [reduced, opacity]);
-
-  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  // Outer: shape/size via className only (no animated style). Inner: the pulsing
-  // fill, clipped to the outer's rounding by overflow-hidden.
+  const [width, setWidth] = useState(0);
+  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
   return (
-    <View testID={testID} className={cn('overflow-hidden', className)}>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: fill }, style]} />
+    <View
+      testID={testID}
+      onLayout={onLayout}
+      className={cn('overflow-hidden rounded-md bg-muted', className)}
+    >
+      {!reduced && width > 0 ? <Shimmer width={width} /> : null}
     </View>
   );
 }
 
+function Shimmer({ width }: { width: number }) {
+  const { card } = useThemeColors();
+  // A per-instance gradient id: SVG ids are document-global on web.
+  const gradientId = `skeleton-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const x = useSharedValue(-width);
+  useEffect(() => {
+    x.value = -width;
+    x.value = withRepeat(
+      withTiming(width, { duration: SHIMMER_MS, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [width, x]);
+  const style = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+  return (
+    <Animated.View testID="skeleton-shimmer" style={[StyleSheet.absoluteFill, style]}>
+      <Svg width="100%" height="100%" preserveAspectRatio="none">
+        <Defs>
+          <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={card} stopOpacity={0} />
+            <Stop offset="0.5" stopColor={card} stopOpacity={0.55} />
+            <Stop offset="1" stopColor={card} stopOpacity={0} />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill={`url(#${gradientId})`} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
 /**
- * The app's most common loading silhouette: a short stack of full-width
- * elevated-row placeholders (matching the quiet surface rows used across the
- * Libraries/Favourites lists). `count` defaults to 4.
+ * The app's most common loading silhouette: a short stack of full-width row
+ * placeholders (the quiet RowSurface rows of the Libraries/Favourites lists). `count`
+ * defaults to 4.
  */
 export function RowSkeletonList({ count = 4 }: { count?: number }) {
   return (
@@ -88,7 +105,7 @@ export function SkeletonText({ lines = 2, className }: SkeletonTextProps) {
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton
           key={i}
-          className={`h-3.5 rounded-sm ${i === lines - 1 && lines > 1 ? 'w-2/3' : 'w-full'}`}
+          className={cn('h-3.5 rounded-sm', i === lines - 1 && lines > 1 ? 'w-2/3' : 'w-full')}
         />
       ))}
     </View>
