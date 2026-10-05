@@ -7,7 +7,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
 import { FullWindowOverlay, NativeOnlyAnimatedView, useOverlayInsets } from './overlay';
-import { TextClassContext } from './text';
+import { EYEBROW_CLASS, TextClassContext } from './text';
 
 /**
  * A Stacks menu (STYLEGUIDE.md section 8): react-native-reusables' DropdownMenu on a
@@ -105,10 +105,7 @@ export function DropdownMenuLabel({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Label> & { className?: string }) {
   return (
     <DropdownMenuPrimitive.Label
-      className={cn(
-        'px-2.5 pb-1 pt-1.5 font-sans-semibold text-xs uppercase tracking-wider text-subtle-foreground',
-        className,
-      )}
+      className={cn(EYEBROW_CLASS, 'px-2.5 pb-1 pt-1.5 text-subtle-foreground', className)}
       {...props}
     />
   );

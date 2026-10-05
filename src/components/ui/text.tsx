@@ -9,6 +9,11 @@ import { tabularNums } from '@/theme/tabular-nums';
  * Tailwind's rem steps (14px rem on native, 16px on web), the nearest to each role;
  * colours are themed tokens, so no variant needs a `dark:` pair.
  */
+/** The eyebrow role's classes, for primitives that render their own text node (a field
+ * label, a menu label) and so can't use `<Text variant="eyebrow">`. */
+export const EYEBROW_CLASS =
+  'font-sans-semibold text-xs uppercase tracking-wider text-muted-foreground';
+
 const variants = {
   /** Bricolage 750, set bold (static weights): book and series heroes. */
   'display-xl': 'font-display text-4xl tracking-tighter text-foreground',
@@ -27,7 +32,7 @@ const variants = {
   /** Figtree 400, small and muted: meta lines ("22h 27m left at 1.25x"). */
   caption: 'font-sans text-xs text-muted-foreground',
   /** Figtree 650 caps: kickers above a title, field labels. */
-  eyebrow: 'font-sans-semibold text-xs uppercase tracking-wider text-muted-foreground',
+  eyebrow: EYEBROW_CLASS,
   /** JetBrains Mono 500: paths, codes. */
   mono: 'font-mono text-xs text-foreground',
   /** Bricolage 750 (bold), tabular: stat values ("11h 6m"). */

@@ -28,6 +28,7 @@ import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { pathLeaf } from '@/lib/paths';
+import { isInProgress } from '@/lib/progress-view';
 import { flushQueue } from '@/playback/progress-sync';
 
 // Recently added / finished cap on home; the rest live on the /browse page.
@@ -72,7 +73,7 @@ export default function HomeScreen() {
   const { inProgress, finished } = useMemo(() => {
     const sorted = [...progress].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     return {
-      inProgress: sorted.filter((p) => !p.finished && p.position > 0),
+      inProgress: sorted.filter(isInProgress),
       finished: sorted.filter((p) => p.finished),
     };
   }, [progress]);

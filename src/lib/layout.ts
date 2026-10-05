@@ -1,4 +1,5 @@
-import { useWindowDimensions } from 'react-native';
+import { useSyncExternalStore } from 'react';
+import { Dimensions } from 'react-native';
 
 /**
  * The three Stacks form factors (STYLEGUIDE section 2), from the window width:
@@ -22,7 +23,20 @@ export function layoutFor(width: number): LayoutClass {
   return 'desktop';
 }
 
-/** The current form factor; re-renders when the window crosses a threshold. */
+/** The page column's width class: full width, capped at 1480 (STYLEGUIDE section 2). The
+ * shell's page column (`ShellFrame`) and the sub-nav row share it. */
+export const CONTENT_WIDTH = 'w-full max-w-[1480px]';
+
+function subscribeWindow(onChange: () => void): () => void {
+  const subscription = Dimensions.addEventListener('change', onChange);
+  return () => subscription.remove();
+}
+
+const currentLayout = (): LayoutClass => layoutFor(Dimensions.get('window').width);
+
+/** The current form factor. A store over the window size that yields the CLASS, so a
+ * consumer re-renders only when the window crosses a threshold, not on every resize
+ * step (`useWindowDimensions` would re-render it per pixel of a drag). */
 export function useLayout(): LayoutClass {
-  return layoutFor(useWindowDimensions().width);
+  return useSyncExternalStore(subscribeWindow, currentLayout, currentLayout);
 }

@@ -1,4 +1,4 @@
-import { progressFractionRemaining } from '@/lib/progress-view';
+import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 
 describe('progressFractionRemaining', () => {
   it('computes the fraction and remaining seconds', () => {
@@ -15,5 +15,13 @@ describe('progressFractionRemaining', () => {
 
   it('clamps a negative position to a zero fraction', () => {
     expect(progressFractionRemaining(-5, 3600)).toEqual({ fraction: 0, remaining: 3605 });
+  });
+});
+
+describe('isInProgress', () => {
+  it('is a started, unfinished book', () => {
+    expect(isInProgress({ finished: false, position: 12 })).toBe(true);
+    expect(isInProgress({ finished: false, position: 0 })).toBe(false);
+    expect(isInProgress({ finished: true, position: 12 })).toBe(false);
   });
 });

@@ -21,7 +21,13 @@ jest.mock('@/api/provider', () => ({
 
 const mockSetPref = jest.fn();
 jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'light', pref: 'light', setPref: mockSetPref }),
+  useTheme: () => ({
+    scheme: 'light',
+    pref: 'light',
+    setPref: mockSetPref,
+    // The provider's toggle, over the mocked setPref.
+    toggleScheme: () => mockSetPref('dark'),
+  }),
 }));
 
 const mockHolmes = {
@@ -37,13 +43,17 @@ const mockHound = {
   rel_path: 'Doyle/The Hound',
   title: 'The Hound of the Baskervilles',
 };
+const mockProgressOptions = jest.fn();
 jest.mock('@/api/hooks', () => ({
   useSearchAll: (q: string) => ({
     books: q.toLowerCase().includes('holmes') ? [mockHolmes, mockHound] : [],
     isFetching: false,
     error: null,
   }),
-  useAllProgressAll: () => ({
+  // One server, libraries unnamed: no source line (useSourceLabeller has its own tests).
+  useSourceLabeller: () => () => undefined,
+  useAllProgressAll: (options: unknown) => ({
+    _: mockProgressOptions(options),
     progress: [
       {
         connectionId: 'c1',
@@ -177,6 +187,20 @@ describe('CommandPalette', () => {
     });
     expect(usePalette.getState().open).toBe(false);
     expect(usePalette.getState().recent).toEqual(['holmes']);
+  });
+
+  it('reads Continue listening from the cache, and not at all while a query is typed', async () => {
+    await openWith();
+    expect(mockProgressOptions).toHaveBeenLastCalledWith({
+      enabled: true,
+      refetchOnMount: false,
+    });
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'holmes');
+    await act(async () => jest.runOnlyPendingTimers());
+    expect(mockProgressOptions).toHaveBeenLastCalledWith({
+      enabled: false,
+      refetchOnMount: false,
+    });
   });
 
   it('runs the sleep action and confirms it with a toast', async () => {

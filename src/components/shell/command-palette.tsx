@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { useAllProgressAll, useSearchAll } from '@/api/hooks';
+import { useAllProgressAll, useSearchAll, useSourceLabeller } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { DialogOverlay } from '@/components/ui/dialog';
 import { Cover } from '@/components/ui/cover';
@@ -23,8 +23,10 @@ import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
+import { isInProgress } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -67,7 +69,7 @@ function useActionItems(): PaletteItem[] {
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
   const chapter = usePlayer(selectCurrentChapter);
-  const { scheme, setPref } = useTheme();
+  const { scheme, toggleScheme } = useTheme();
   const { press } = useTabPress();
 
   return useMemo(() => {
@@ -131,10 +133,10 @@ function useActionItems(): PaletteItem[] {
       title: dark ? t('palette.light') : t('palette.dark'),
       subtitle: t('settings.appearance.label'),
       icon: 'settings',
-      run: () => setPref(dark ? 'light' : 'dark'),
+      run: toggleScheme,
     });
     return items;
-  }, [t, nowPlaying, isPlaying, chapter, scheme, setPref, press]);
+  }, [t, nowPlaying, isPlaying, chapter, scheme, toggleScheme, press]);
 }
 
 /** Go to: the top bar's destinations (Downloads only where this browser can keep books). */
@@ -154,7 +156,8 @@ function useGoToItems(): PaletteItem[] {
 }
 
 /** Books for the query (the cross-server search) and, with no query, Continue listening
- * from the progress Home already loads. */
+ * from the progress Home already loads: the cache as is (opening the palette must not
+ * refetch every server's progress), and nothing at all while a query is typed. */
 function useBookItems(query: string): {
   books: PaletteItem[];
   continueListening: PaletteItem[];
@@ -162,9 +165,9 @@ function useBookItems(query: string): {
 } {
   const { t } = useTranslation();
   const { openBook } = useOpen();
-  const multi = useSession((s) => s.connections.length > 1);
+  const sourceOf = useSourceLabeller();
   const search = useSearchAll(query);
-  const { progress } = useAllProgressAll();
+  const { progress } = useAllProgressAll({ enabled: !query, refetchOnMount: false });
 
   const books = useMemo(
     () =>
@@ -173,31 +176,34 @@ function useBookItems(query: string): {
         return {
           id: `book:${b.connectionId}:${b.library_id}:${b.rel_path}`,
           title,
-          subtitle: [b.author, multi ? b.connectionName : ''].filter(Boolean).join(' · '),
+          subtitle: [b.author, sourceOf(b.connectionId, b.library_id, b.connectionName)]
+            .filter(Boolean)
+            .join(' · '),
           cover: { connectionId: b.connectionId, libraryId: b.library_id, path: b.rel_path },
           run: () => openBook(b.connectionId, b.library_id, b.rel_path),
         };
       }),
-    [search.books, multi, openBook],
+    [search.books, sourceOf, openBook],
   );
 
   const continueListening = useMemo(
     () =>
-      progress
-        .filter((p) => !p.finished && p.position > 0)
-        .map((p): PaletteItem => {
-          const percent = p.duration > 0 ? Math.round((p.position / p.duration) * 100) : 0;
-          return {
-            id: `continue:${p.connectionId}:${p.library_id}:${p.path}`,
-            title: pathLeaf(p.path),
-            subtitle: [t('palette.listened', { percent }), multi ? p.connectionName : '']
-              .filter(Boolean)
-              .join(' · '),
-            cover: { connectionId: p.connectionId, libraryId: p.library_id, path: p.path },
-            run: () => openBook(p.connectionId, p.library_id, p.path),
-          };
-        }),
-    [progress, multi, t, openBook],
+      progress.filter(isInProgress).map((p): PaletteItem => {
+        const percent = p.duration > 0 ? Math.round((p.position / p.duration) * 100) : 0;
+        return {
+          id: `continue:${p.connectionId}:${p.library_id}:${p.path}`,
+          title: pathLeaf(p.path),
+          subtitle: [
+            t('palette.listened', { percent }),
+            sourceOf(p.connectionId, p.library_id, p.connectionName),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          cover: { connectionId: p.connectionId, libraryId: p.library_id, path: p.path },
+          run: () => openBook(p.connectionId, p.library_id, p.path),
+        };
+      }),
+    [progress, sourceOf, t, openBook],
   );
 
   return { books, continueListening, searching: search.isFetching };
@@ -295,13 +301,8 @@ function PaletteBody() {
   const remember = usePalette((s) => s.remember);
   const close = usePalette((s) => s.close);
   const connections = useSession((s) => s.connections);
-  const [debounced, setDebounced] = useState(query.trim());
+  const debounced = useDebouncedValue(query.trim(), DEBOUNCE_MS);
   const [selected, setSelected] = useState(0);
-
-  useEffect(() => {
-    const handle = setTimeout(() => setDebounced(query.trim()), DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-  }, [query]);
 
   const actions = useActionItems();
   const goTo = useGoToItems();
@@ -343,8 +344,6 @@ function PaletteBody() {
 
   const pending = query.trim() !== '' && (searching || debounced !== query.trim());
   const servers = connections.map((c) => c.name).join(' + ');
-  // Each group's first option index in the flat list (the listbox's numbering).
-  const offsets = groups.map((_, i) => groups.slice(0, i).reduce((n, g) => n + g.items.length, 0));
 
   return (
     <>
@@ -414,7 +413,7 @@ function PaletteBody() {
         className="max-h-[min(460px,60vh)]"
         contentContainerClassName="px-2 pb-2.5 pt-1.5"
       >
-        {groups.map((g, gi) => (
+        {groups.map((g) => (
           <View key={g.key} role="group" aria-label={t(GROUP_LABEL_KEY[g.key])}>
             <Text variant="eyebrow" aria-hidden className="px-2.5 pb-1.5 pt-3">
               {t(GROUP_LABEL_KEY[g.key])}
@@ -423,8 +422,8 @@ function PaletteBody() {
               <Option
                 key={item.id}
                 item={item}
-                index={offsets[gi] + i}
-                active={offsets[gi] + i === active}
+                index={g.start + i}
+                active={g.start + i === active}
                 query={query}
                 onHover={setSelected}
                 onRun={run}

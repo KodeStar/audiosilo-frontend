@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView } from 'react-native';
+import { ScrollView, type TextInput } from 'react-native';
 
 import { useSearchAll, useSourceLabeller } from '@/api/hooks';
 import { BookRow } from '@/components/library/book-row';
@@ -9,22 +9,22 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Input } from '@/components/ui/input';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useSearchStore } from '@/stores/search';
 
 export default function SearchScreen() {
   const { t } = useTranslation();
   const query = useSearchStore((s) => s.query);
   const setQuery = useSearchStore((s) => s.setQuery);
-  // Bumped by the top bar's omnisearch: re-keying the field remounts it, and `autoFocus`
-  // then takes the focus even when this tab was already open.
+  // Bumped by the top bar's omnisearch (a native tablet): focus the field, whether or not
+  // this tab was already open. A first mount takes the focus through `autoFocus`.
   const focusRequest = useSearchStore((s) => s.focusRequest);
-  const [debounced, setDebounced] = useState(query.trim());
-
-  // Debounce so we don't query on every keystroke.
+  const inputRef = useRef<TextInput>(null);
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 300);
-    return () => clearTimeout(t);
-  }, [query]);
+    if (focusRequest > 0) inputRef.current?.focus();
+  }, [focusRequest]);
+  // Debounce so we don't query on every keystroke.
+  const debounced = useDebouncedValue(query.trim(), 300);
 
   const { books, isFetching, error } = useSearchAll(debounced);
   const sourceOf = useSourceLabeller();
@@ -38,7 +38,7 @@ export default function SearchScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Input
-        key={focusRequest}
+        ref={inputRef}
         placeholder={t('search.placeholder')}
         value={query}
         onChangeText={setQuery}

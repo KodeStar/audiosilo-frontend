@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { CONTENT_WIDTH } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { BackGlyph } from './back-glyph';
@@ -31,7 +32,9 @@ export function SubNav() {
   return (
     <View testID="shell-sub-nav" className="border-b border-border bg-background">
       {/* Capped and padded like the page below it, so the title lines up with the content. */}
-      <View className="h-[50px] w-full max-w-[1480px] flex-row items-center gap-4 self-center px-4 lg:px-8">
+      <View
+        className={`${CONTENT_WIDTH} h-[50px] flex-row items-center gap-4 self-center px-4 lg:px-8`}
+      >
         {root ? (
           <Text accessibilityRole="header" className="font-display text-[15px]" numberOfLines={1}>
             {t(root.titleKey)}

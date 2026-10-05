@@ -68,6 +68,15 @@ describe('buildPaletteGroups', () => {
     expect(flat[3].id).toBe('c0');
     expect(flat[flat.length - 1].id).toBe('downloads');
   });
+
+  it("numbers each group's first item in the flat list", () => {
+    const groups = buildPaletteGroups({ query: '', actions, books, continueListening, goTo });
+    const flat = flattenGroups(groups);
+    for (const g of groups) {
+      g.items.forEach((it, i) => expect(flat[g.start + i]).toBe(it));
+    }
+    expect(groups.map((g) => g.start)).toEqual([0, 3, 3 + MAX_CONTINUE]);
+  });
 });
 
 describe('matchRange', () => {

@@ -512,12 +512,22 @@ export function useFavouritesAll() {
   });
 }
 
-export function useAllProgressAll() {
+export function useAllProgressAll({
+  enabled = true,
+  refetchOnMount = true,
+}: {
+  /** False: read whatever is cached, fetch nothing. */
+  enabled?: boolean;
+  /** False: a mount uses the cache as is (fetching only what was never loaded). */
+  refetchOnMount?: boolean;
+} = {}) {
   const apis = useApis();
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
       queryKey: qk.allProgress(connection.id),
       queryFn: () => client.allProgress(),
+      enabled,
+      refetchOnMount,
     })),
     combine: (results) => ({
       // Newest first across all connections (no cross-connection merge yet).

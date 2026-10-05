@@ -2,16 +2,13 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
 
 import { AccessoryPlayer } from '@/components/shell/accessory-player';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { TABS } from '@/components/shell/destinations';
-import { DockedPlayer } from '@/components/shell/docked-player';
-import { DrawerSlot } from '@/components/shell/drawer-slot';
+import { ShellFrame } from '@/components/shell/shell-frame';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
-import { WideTop } from '@/components/shell/wide-top';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
@@ -32,8 +29,7 @@ function NativeShell() {
   const { t } = useTranslation();
   const { scheme } = useTheme();
   const themed = useThemeColors();
-  const layout = useLayout();
-  const wide = layout !== 'phone';
+  const wide = useLayout() !== 'phone';
   const loaded = usePlayer((s) => s.nowPlaying != null);
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
@@ -55,43 +51,34 @@ function NativeShell() {
 
   return (
     <ThemeProvider value={navTheme}>
-      <View className="flex-1 bg-background">
-        {wide ? <WideTop /> : null}
-        <View className="flex-1 flex-row">
-          <View className="flex-1 items-center">
-            <View className="w-full max-w-[1480px] flex-1">
-              <NativeTabs
-                hidden={wide}
-                tintColor={themed.brand}
-                // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
-                // active one on a brand-soft pill.
-                labelVisibilityMode="labeled"
-                indicatorColor={themed.brandSoft}
-                minimizeBehavior="onScrollDown"
-                unstable_nativeProps={{ ios: { bottomAccessoryHidden: !loaded || wide } }}
-              >
-                {TABS.map((d) => (
-                  <NativeTabs.Trigger
-                    key={d.name}
-                    name={d.name}
-                    role={d.name === '(search)' ? 'search' : undefined}
-                  >
-                    <NativeTabs.Trigger.Icon sf={d.sf} md={d.md} />
-                    <NativeTabs.Trigger.Label>{t(d.labelKey)}</NativeTabs.Trigger.Label>
-                  </NativeTabs.Trigger>
-                ))}
-                {ACCESSORY_SUPPORTED ? (
-                  <NativeTabs.BottomAccessory>
-                    <AccessoryPlayer />
-                  </NativeTabs.BottomAccessory>
-                ) : null}
-              </NativeTabs>
-            </View>
-          </View>
-          {layout === 'desktop' ? <DrawerSlot /> : null}
-        </View>
-        {wide ? <DockedPlayer /> : null}
-      </View>
+      <ShellFrame>
+        <NativeTabs
+          hidden={wide}
+          tintColor={themed.brand}
+          // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
+          // active one on a brand-soft pill.
+          labelVisibilityMode="labeled"
+          indicatorColor={themed.brandSoft}
+          minimizeBehavior="onScrollDown"
+          unstable_nativeProps={{ ios: { bottomAccessoryHidden: !loaded || wide } }}
+        >
+          {TABS.map((d) => (
+            <NativeTabs.Trigger
+              key={d.name}
+              name={d.name}
+              role={d.name === '(search)' ? 'search' : undefined}
+            >
+              <NativeTabs.Trigger.Icon sf={d.sf} md={d.md} />
+              <NativeTabs.Trigger.Label>{t(d.labelKey)}</NativeTabs.Trigger.Label>
+            </NativeTabs.Trigger>
+          ))}
+          {ACCESSORY_SUPPORTED ? (
+            <NativeTabs.BottomAccessory>
+              <AccessoryPlayer />
+            </NativeTabs.BottomAccessory>
+          ) : null}
+        </NativeTabs>
+      </ShellFrame>
     </ThemeProvider>
   );
 }

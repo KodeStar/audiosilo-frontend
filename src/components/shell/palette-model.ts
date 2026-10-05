@@ -22,7 +22,12 @@ export type PaletteItem = {
   run: () => void;
 };
 
-export type PaletteGroup = { key: PaletteGroupKey; items: PaletteItem[] };
+export type PaletteGroup = {
+  key: PaletteGroupKey;
+  items: PaletteItem[];
+  /** The flat (listbox) index of the group's first item: item `i` is option `start + i`. */
+  start: number;
+};
 
 /** At most this many book results, and Continue listening rows on an empty query. */
 export const MAX_BOOKS = 8;
@@ -63,7 +68,7 @@ export function buildPaletteGroups({
   goTo: PaletteItem[];
 }): PaletteGroup[] {
   const q = query.trim();
-  const groups: PaletteGroup[] = [
+  const candidates: Omit<PaletteGroup, 'start'>[] = [
     {
       key: 'actions',
       items: q ? actions.filter((a) => matches(a.title, q) || matches(a.subtitle, q)) : actions,
@@ -73,7 +78,14 @@ export function buildPaletteGroups({
       : { key: 'continue', items: continueListening.slice(0, MAX_CONTINUE) },
     { key: 'goTo', items: q ? goTo.filter((g) => matches(g.title, q)) : goTo },
   ];
-  return groups.filter((g) => g.items.length > 0);
+  const groups: PaletteGroup[] = [];
+  let start = 0;
+  for (const g of candidates) {
+    if (g.items.length === 0) continue;
+    groups.push({ ...g, start });
+    start += g.items.length;
+  }
+  return groups;
 }
 
 /** The groups' items in display order: the listbox's options, indexed by the selection. */
