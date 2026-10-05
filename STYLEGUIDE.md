@@ -619,7 +619,7 @@ The CSS in section 3 is the design reference. In the app:
     web and native with no `dark:` pair; plus the fixed `palette` (`white`, `black`) as plain `@theme` colours;
   - `src/theme/tokens.ts`: `colors.white` / `colors.black` and `colors.light.<camelName>` /
     `colors.dark.<camelName>` (`brandInk`, `mutedForeground`, `chart1` ...) for native props. Read the current
-    theme's with `useThemeColors()` (`src/theme/use-theme-colors.ts`).
+    theme's with `useThemeColors()` (`src/theme/use-theme-colors.tsx`, a context `ThemeProvider` fills).
   - `npm test` fails on drift (`gen-tokens.mjs --check`), and `scripts/check-styles.cjs` checks through
     Uniwind's compiler that the themed variables switch on iOS and web.
 - **Every token in section 3 is there**, light and dark, with the same names: the shadcn set, `subtle-foreground`,
@@ -646,14 +646,19 @@ The section 8 primitives are react-native-reusables (`components.json`, `--styli
 `button` (variants `default` ink / `brand` / `outline` / `secondary` / `ghost` / `destructive` /
 `destructive-outline` / `link`, sizes `sm` 30 / `default` 38 / `lg` 46 / `xl` 54, `title` + `icon` + `loading`
 or composed children), `card`, `input` (`Input`, `Textarea`, with `label` / `error`), `dialog` (+ `DialogIcon`,
-a bottom sheet on a phone, `useLayout()`), `alert-dialog` (+ the `confirm-dialog` helper), `select`, `tabs` (`underline` /
-`segmented`, `scrollable`), `toggle-group` (+ the typed `SegmentedControl`), `popover`, `dropdown-menu`,
-`switch`, `separator`, `badge`, `tooltip`, `skeleton` and `kbd` (a key hint). Hand-built on primitives:
+a bottom sheet on a phone, `useLayout()`), `alert-dialog` (+ the `confirm-dialog` helper; both on one
+`DialogFrame`), `select`, `tabs` (the underline tabs, `scrollable`), `toggle-group` (+ the typed
+`SegmentedControl`, the segmented look), `popover`, `dropdown-menu`, `switch`, `separator`, `badge`, `tooltip`,
+`skeleton` (web: a CSS keyframe shimmer, the `skeleton-shimmer` utility; native: one shared clock for every
+skeleton) and `kbd` (a key hint). Hand-built on primitives:
 `slider`, `toast` (`toast({ title, description, action })`; the root `ShellToastHost` renders `<ToastHost>`
-lifted clear of the tab bar and mini player on a phone, or of the docked player bar) and `row-surface`
-(`RowSurface` / `PressableRow`, the quiet list row). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
-through `TextClassContext`. Overlays portal into the root `<PortalHost />` (`src/app/_layout.tsx`) and wrap in
-`FullWindowOverlay` on iOS (`overlay.tsx`). The bottom `sheet.tsx` is still hand-rolled (its comment says why).
+lifted clear of the measured bottom chrome: the tab bar and mini player on a phone, or the docked player bar) and `row-surface`
+(`RowSurface` / `PressableRow`, the quiet list row: the book page's chapter rows use it too). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
+through `TextClassContext`; a primitive that renders its own text node reuses `EYEBROW_CLASS`. Overlays portal into the root `<PortalHost />` (`src/app/_layout.tsx`) and wrap in
+`FullWindowOverlay` on iOS (`overlay.tsx`); they read the window's safe-area insets from `RootInsetsProvider`
+(`useRootInsets` / `useOverlayInsets`), wherever they are opened from, and every Content part goes through
+`withFlatStyle`. On web, Space presses any role-bearing pressable (tab, radio, switch, checkbox, option)
+through one react-native-web patch (`src/lib/rnw-button-fix.web.ts`). The bottom `sheet.tsx` is still hand-rolled (its comment says why).
 
 The shell's section 8 pieces live in `src/components/shell/`: the **command palette** (`command-palette.tsx`,
 web only, on the Dialog primitive: a combobox with `aria-activedescendant` over a grouped listbox, 48 px
@@ -668,7 +673,8 @@ glyph already means the sleep timer.
 
 One family per token, because React Native has no font fallback or synthetic weights (`src/global.css` `@theme`,
 loaded by `ThemeProvider` from `@expo-google-fonts/*`; web adds a system fallback stack). Bricolage ships static
-weights only, so its 650-750 design weights are set semibold or bold.
+weights only, so its 650-750 design weights are set semibold or bold. The Figtree and Bricolage weights hold the
+splash until they load; JetBrains Mono loads alongside without holding first paint (the system mono until then).
 
 | Class | Family | Weight |
 |---|---|---|
@@ -678,7 +684,6 @@ weights only, so its 650-750 design weights are set semibold or bold.
 | `font-sans-bold` | Figtree | 700 |
 | `font-display` | Bricolage Grotesque | 700 (the guide's 680-750) |
 | `font-display-semibold` | Bricolage Grotesque | 600 (the guide's 650) |
-| `font-display-extrabold` | Bricolage Grotesque | 800 |
 | `font-mono` | JetBrains Mono | 500 |
 
 Don't combine a font token with `font-medium` / `font-bold`: the family has one weight.
@@ -693,7 +698,9 @@ so `className="text-brand-ink"` recolours a variant in both themes.
 ### Theme default
 
 A new install follows the OS (`system`); an install that was already in use and never chose a theme keeps
-`dark` (written once on the first launch of this version). An explicit pick always wins. The rule is
-`initialSchemePref` (`src/theme/scheme-pref.ts`); the existing-install signal is `hasExistingInstall`
-(`src/stores/session.ts`).
+`dark` (written once on the first launch of this version). An explicit pick always wins; an unknown stored
+value reads as `dark` and is not written. The default is a step of the launch storage migration
+(`migrateStorage`, `src/lib/storage-migration.ts`), which writes `defaultSchemePref` (`src/theme/scheme-pref.ts`)
+only when nothing is stored, reading the existing-install signal (`hasExistingInstall`, `src/stores/session.ts`)
+before `resetStaleStorage` runs; `ThemeProvider` then reads the stored value (`restoredSchemePref`).
 

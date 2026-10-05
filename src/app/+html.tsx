@@ -10,7 +10,7 @@ import { colors } from '@/theme/tokens';
 // "/web" in the production export (see base-url.ts).
 
 // Paint the document backdrop in the OS colour scheme's background before React
-// mounts (a new install follows the system theme; see initialSchemePref), so there's no
+// mounts (a new install follows the system theme; see defaultSchemePref), so there's no
 // flash of the wrong colour on first paint, no white in the iOS PWA home-indicator gap,
 // and no white frame during the browser back-swipe. #root is included because
 // react-native-web can size its root container to innerHeight (short of the full
