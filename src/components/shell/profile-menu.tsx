@@ -39,7 +39,7 @@ function Monogram({ name }: { name: string }) {
 export function ProfileMenu({ showName }: { showName: boolean }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const { scheme, setPref } = useTheme();
+  const { scheme, toggleScheme } = useTheme();
   const user = useSession((s) => s.user);
   const connections = useSession((s) => s.connections);
   const defaultId = useSession((s) => s.defaultConnectionId);
@@ -101,7 +101,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
             </Text>
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem icon="settings" onPress={() => setPref(dark ? 'light' : 'dark')}>
+        <DropdownMenuItem icon="settings" onPress={toggleScheme}>
           <Text>{dark ? t('shell.profile.light') : t('shell.profile.dark')}</Text>
         </DropdownMenuItem>
       </DropdownMenuContent>

@@ -12,7 +12,13 @@ jest.mock('expo-router', () => ({
 let mockScheme: 'light' | 'dark' = 'light';
 const mockSetPref = jest.fn();
 jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: mockScheme, pref: mockScheme, setPref: mockSetPref }),
+  useTheme: () => ({
+    scheme: mockScheme,
+    pref: mockScheme,
+    setPref: mockSetPref,
+    // The provider's toggle, over the mocked setPref.
+    toggleScheme: () => mockSetPref(mockScheme === 'dark' ? 'light' : 'dark'),
+  }),
 }));
 
 /* eslint-disable import/first */

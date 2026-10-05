@@ -6,13 +6,22 @@ import { Uniwind } from 'uniwind';
 // global.css is compiled by Uniwind's Metro transformer; the Node test runtime can't
 // parse it. Fonts and the splash screen are native modules.
 jest.mock('@/global.css', () => ({}));
-jest.mock('expo-font', () => ({ useFonts: () => [true, null] }));
+const mockFontLoaded = jest.fn((_family: string) => true);
+jest.mock('expo-font', () => ({
+  // Loaded when every family in the map is.
+  useFonts: (map: Record<string, unknown>) => [
+    Object.keys(map).every((family) => mockFontLoaded(family)),
+    null,
+  ],
+}));
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(() => Promise.resolve()),
   hideAsync: jest.fn(() => Promise.resolve()),
 }));
 
 /* eslint-disable import/first */
+import { forgetStorageMigration } from '@/lib/storage-migration';
+
 import { ThemeProvider, useTheme, type SchemePref } from './theme-provider';
 /* eslint-enable import/first */
 
@@ -26,6 +35,7 @@ function Probe() {
       {PREFS.map((p) => (
         <Pressable key={p} testID={`set-${p}`} onPress={() => theme.setPref(p)} />
       ))}
+      <Pressable testID="toggle" onPress={theme.toggleScheme} />
     </>
   );
 }
@@ -46,6 +56,9 @@ describe('ThemeProvider (Uniwind)', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     Uniwind.setTheme('system');
+    // Each test is a fresh launch: the launch migration runs again.
+    forgetStorageMigration();
+    mockFontLoaded.mockImplementation(() => true);
   });
 
   it('follows the system on a new install, and writes that down', async () => {
@@ -61,6 +74,42 @@ describe('ThemeProvider (Uniwind)', () => {
     expect(screen.getByTestId('probe')).toHaveTextContent('dark:dark');
     expect(Uniwind.currentTheme).toBe('dark');
     expect(Uniwind.hasAdaptiveThemes).toBe(false);
+    expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('dark'));
+  });
+
+  it('reads the install signal before the launch reset wipes the connections', async () => {
+    // A pre-v2 install (no auth version): the reset clears its connections, but the theme
+    // default was decided first.
+    await AsyncStorage.setItem('audiosilo.connections', JSON.stringify([{ id: 's1' }]));
+    await mount();
+    expect(await AsyncStorage.getItem('audiosilo.connections')).toBeNull();
+    expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('dark'));
+  });
+
+  it('keeps a stored pick, even on a new install', async () => {
+    await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('dark'));
+    await mount();
+    expect(screen.getByTestId('probe')).toHaveTextContent('dark:dark');
+    expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('dark'));
+  });
+
+  it('paints without waiting for the deferred mono font', async () => {
+    mockFontLoaded.mockImplementation((family) => family !== 'JetBrainsMono_500Medium');
+    await mount();
+    expect(screen.getByTestId('probe')).toBeTruthy();
+  });
+
+  it('waits for the gating fonts', async () => {
+    mockFontLoaded.mockImplementation((family) => family !== 'Figtree_400Regular');
+    await mount();
+    expect(screen.queryByTestId('probe')).toBeNull();
+  });
+
+  it('toggles to the other explicit scheme', async () => {
+    await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('light'));
+    await mount();
+    await fireEvent.press(screen.getByTestId('toggle'));
+    expect(screen.getByTestId('probe')).toHaveTextContent('dark:dark');
     expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('dark'));
   });
 

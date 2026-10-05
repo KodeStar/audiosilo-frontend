@@ -130,9 +130,10 @@ export async function resetStaleStorage(): Promise<StorageResetResult> {
  * Whether this install has been used before: it holds a persisted connection, a
  * remembered server (`known-servers`, which survives signing out), or a session from
  * before multi-server. Read straight from storage, so it works before any store
- * hydrates. The theme default uses it to tell an update (keep dark) from a fresh install
- * (follow the OS). `resetStaleStorage`'s version keys are deliberately NOT a signal: it
- * writes them on a fresh install's first launch, possibly before this runs.
+ * hydrates. The theme default (`migrateStorage`, which reads it before running
+ * `resetStaleStorage`) uses it to tell an update (keep dark) from a fresh install (follow
+ * the OS). The version keys are deliberately NOT a signal: `resetStaleStorage` writes them
+ * on a fresh install's first launch.
  */
 export async function hasExistingInstall(): Promise<boolean> {
   const [connections, known, legacyServer] = await Promise.all([

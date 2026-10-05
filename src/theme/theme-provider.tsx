@@ -1,6 +1,5 @@
 import { BricolageGrotesque_600SemiBold } from '@expo-google-fonts/bricolage-grotesque/600SemiBold';
 import { BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque/700Bold';
-import { BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque/800ExtraBold';
 import { Figtree_400Regular } from '@expo-google-fonts/figtree/400Regular';
 import { Figtree_500Medium } from '@expo-google-fonts/figtree/500Medium';
 import { Figtree_600SemiBold } from '@expo-google-fonts/figtree/600SemiBold';
@@ -13,22 +12,22 @@ import { Platform } from 'react-native';
 import { Uniwind, useUniwind } from 'uniwind';
 
 import { getItem, setItem } from '@/lib/storage';
-import { hasExistingInstall } from '@/stores/session';
-import { initialSchemePref, type SchemePref } from '@/theme/scheme-pref';
+import { migrateStorage } from '@/lib/storage-migration';
+import { restoredSchemePref, type SchemePref, THEME_STORAGE_KEY } from '@/theme/scheme-pref';
 import { colors } from '@/theme/tokens';
+import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 
 import '@/global.css';
 
 void SplashScreen.preventAutoHideAsync();
 
 export type { SchemePref };
-const STORAGE_KEY = 'audiosilo.theme';
 
 /**
  * The Stacks fonts, one family per weight (React Native has no font fallback or
  * synthetic weights). The keys are the family names the `font-*` tokens in
  * src/global.css name; only the weights a token uses are imported, so only those are
- * bundled.
+ * bundled. These gate first paint (the splash stays up until they load).
  */
 const FONTS = {
   Figtree_400Regular,
@@ -37,9 +36,11 @@ const FONTS = {
   Figtree_700Bold,
   BricolageGrotesque_600SemiBold,
   BricolageGrotesque_700Bold,
-  BricolageGrotesque_800ExtraBold,
-  JetBrainsMono_500Medium,
 };
+
+/** Loaded alongside, WITHOUT holding first paint: mono is a minor role (paths, codes),
+ * and until it arrives the text shows in the system font (web: the `ui-monospace` stack). */
+const DEFERRED_FONTS = { JetBrainsMono_500Medium };
 
 type ThemeContextValue = {
   /** User preference, including "system". */
@@ -47,15 +48,18 @@ type ThemeContextValue = {
   /** Resolved scheme actually in effect. */
   scheme: 'light' | 'dark';
   setPref: (p: SchemePref) => void;
+  /** Flip to the other explicit scheme (light <-> dark) from the resolved one. */
+  toggleScheme: () => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 /**
- * Loads the Stacks fonts, restores the persisted color-scheme preference (a new install
- * follows the OS, an existing one that never chose stays dark: `initialSchemePref`), and
- * keeps the splash screen up until both are ready. A font that fails to load does not
- * hold the splash: the text falls back to the system font.
+ * Loads the Stacks fonts, restores the persisted color-scheme preference, and keeps the
+ * splash screen up until both are ready. A font that fails to load does not hold the
+ * splash: the text falls back to the system font. The preference is read only after the
+ * launch storage migration (`migrateStorage`), which writes the default when none is
+ * stored (a new install follows the OS, an existing one that never chose stays dark).
  *
  * The scheme lives in Uniwind alone: `Uniwind.setTheme` drives every themed colour token
  * and `dark:` class (and, for light/dark, React Native's `Appearance`, so native
@@ -69,18 +73,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [fontsLoaded, fontError] = useFonts(FONTS);
   const fontsReady = fontsLoaded || !!fontError;
+  useFonts(DEFERRED_FONTS);
 
   useEffect(() => {
     let active = true;
-    // Both reads are issued synchronously here, and this effect runs before the root
-    // layout's (a child's effects run first), so the install signal is read before
-    // resetStaleStorage can change the session keys.
-    void Promise.all([getItem<unknown>(STORAGE_KEY), hasExistingInstall()])
-      .then(([saved, existing]) => {
-        if (!active) return;
-        const { pref, persist } = initialSchemePref(saved, existing);
-        Uniwind.setTheme(pref);
-        if (persist) void setItem(STORAGE_KEY, pref);
+    void migrateStorage()
+      // A failed migration must not stop the theme read (the root layout reports it).
+      .catch(() => undefined)
+      .then(() => getItem<unknown>(THEME_STORAGE_KEY))
+      .then((saved) => {
+        if (active) Uniwind.setTheme(restoredSchemePref(saved));
       })
       .catch(() => {
         // Restoring the theme must not wedge first paint (render is gated on
@@ -111,15 +113,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setPref = (p: SchemePref) => {
     Uniwind.setTheme(p);
-    void setItem(STORAGE_KEY, p);
+    void setItem(THEME_STORAGE_KEY, p);
   };
+  const toggleScheme = () => setPref(theme === 'dark' ? 'light' : 'dark');
 
   if (!fontsReady || !hydrated) return null;
 
   const pref: SchemePref = hasAdaptiveThemes ? 'system' : theme;
   return (
-    <ThemeContext.Provider value={{ pref, scheme: theme, setPref }}>
-      {children}
+    <ThemeContext.Provider value={{ pref, scheme: theme, setPref, toggleScheme }}>
+      <ThemeColorsProvider>{children}</ThemeColorsProvider>
     </ThemeContext.Provider>
   );
 }

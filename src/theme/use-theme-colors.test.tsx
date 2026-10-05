@@ -3,7 +3,7 @@ import { Uniwind } from 'uniwind';
 
 import { colors } from '@/theme/tokens';
 
-import { useThemeColors } from './use-theme-colors';
+import { ThemeColorsProvider, useThemeColors } from './use-theme-colors';
 
 describe('useThemeColors', () => {
   afterEach(() => {
@@ -12,7 +12,9 @@ describe('useThemeColors', () => {
 
   it('returns the resolved theme and follows a theme change', async () => {
     Uniwind.setTheme('light');
-    const { result, unmount } = await renderHook(() => useThemeColors());
+    const { result, unmount } = await renderHook(() => useThemeColors(), {
+      wrapper: ThemeColorsProvider,
+    });
     expect(result.current).toBe(colors.light);
     expect(result.current.brand).toBe('#db2777');
 
@@ -22,5 +24,11 @@ describe('useThemeColors', () => {
     expect(result.current).toBe(colors.dark);
     expect(result.current.background).toBe('#0a0f1e');
     await unmount();
+  });
+
+  it('reads the current theme outside the provider', async () => {
+    Uniwind.setTheme('dark');
+    const { result } = await renderHook(() => useThemeColors());
+    expect(result.current).toBe(colors.dark);
   });
 });

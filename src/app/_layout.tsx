@@ -14,6 +14,7 @@ import { useDownloads } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
+import { migrateStorage } from '@/lib/storage-migration';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import '@/lib/register-sw';
 // Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
@@ -21,7 +22,7 @@ import '@/lib/register-sw';
 // evaluate before the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
 import { useSeriesOrderings } from '@/stores/series-orderings';
-import { resetStaleStorage, useSession } from '@/stores/session';
+import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { ThemeProvider } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -70,7 +71,8 @@ export default function RootLayout() {
       // (and defeat hydrate()'s own fail-safe).
       let didReset = false;
       try {
-        const { authReset, cacheReset } = await resetStaleStorage();
+        // The one memoised launch migration (ThemeProvider awaits the same run).
+        const { authReset, cacheReset } = await migrateStorage();
         didReset = authReset || cacheReset;
       } catch (e) {
         console.warn('[storage] stale-state reset failed', e);

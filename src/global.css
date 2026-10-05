@@ -242,7 +242,6 @@
   --font-sans-bold: 'Figtree_700Bold';
   --font-display: 'BricolageGrotesque_700Bold';
   --font-display-semibold: 'BricolageGrotesque_600SemiBold';
-  --font-display-extrabold: 'BricolageGrotesque_800ExtraBold';
   --font-mono: 'JetBrainsMono_500Medium';
 
   /*
@@ -367,7 +366,6 @@
       --font-sans-bold: 'Figtree_700Bold', var(--font-web-fallback);
       --font-display: 'BricolageGrotesque_700Bold', var(--font-web-fallback);
       --font-display-semibold: 'BricolageGrotesque_600SemiBold', var(--font-web-fallback);
-      --font-display-extrabold: 'BricolageGrotesque_800ExtraBold', var(--font-web-fallback);
       --font-mono: 'JetBrainsMono_500Medium', ui-monospace, 'SF Mono', Menlo, monospace;
     }
 
