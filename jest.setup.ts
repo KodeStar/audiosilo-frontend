@@ -91,6 +91,16 @@ jest.mock('react-native-reanimated', () => {
     Extrapolation: { CLAMP: 'clamp', EXTEND: 'extend', IDENTITY: 'identity' },
     Easing,
     ReduceMotion: { System: 'system', Never: 'never', Always: 'always' },
+    // Layout-animation builders (`FadeIn.duration(200).reduceMotion(...)`): every
+    // modifier returns the same chainable stub; the mocked Animated views ignore them.
+    ...Object.fromEntries(
+      ['FadeIn', 'FadeOut', 'FadeInUp', 'FadeInDown', 'SlideInDown', 'SlideOutDown'].map((n) => {
+        const builder: Record<string, unknown> = {};
+        for (const m of ['duration', 'delay', 'reduceMotion', 'withInitialValues', 'easing'])
+          builder[m] = () => builder;
+        return [n, builder];
+      }),
+    ),
   };
 });
 

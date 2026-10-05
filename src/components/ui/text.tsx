@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import { Text as RNText, type TextProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
@@ -38,18 +39,30 @@ export type TextVariant = keyof typeof variants;
 /** Roles whose figures must not jitter as digits change (the guide's tabular-nums). */
 const TABULAR: ReadonlySet<TextVariant> = new Set(['stat', 'mono']);
 
+/**
+ * Classes a control hands to the `<Text>` inside it (react-native-reusables'
+ * convention): a Button sets its label colour and weight here, so
+ * `<Button><Text>Resume</Text></Button>` needs no classes of its own. Merged after the
+ * variant and before the caller's `className`, so an explicit class still wins.
+ *
+ * Only controls set it - never a container (Card, Dialog, Popover): a container's
+ * colour would override every `muted`/`caption` variant inside it.
+ */
+export const TextClassContext = createContext<string | undefined>(undefined);
+
 export type AppTextProps = TextProps & { variant?: TextVariant; className?: string };
 
 /**
- * Themed text on the Stacks type scale. A caller's class replaces the variant's class
- * for the same property and variant (`cn`), so `<Text variant="caption"
- * className="text-brand-ink">` recolours the caption in both themes (the colour is one
- * themed token, not a light/dark pair).
+ * Themed text on the Stacks type scale, and the app's only Text component. A caller's
+ * class replaces the variant's class for the same property and variant (`cn`), so
+ * `<Text variant="caption" className="text-brand-ink">` recolours the caption in both
+ * themes (the colour is one themed token, not a light/dark pair).
  */
 export function Text({ variant = 'body', className, style, ...props }: AppTextProps) {
+  const contextClass = useContext(TextClassContext);
   return (
     <RNText
-      className={cn(variants[variant], className)}
+      className={cn(variants[variant], contextClass, className)}
       style={TABULAR.has(variant) ? [tabularNums, style] : style}
       {...props}
     />

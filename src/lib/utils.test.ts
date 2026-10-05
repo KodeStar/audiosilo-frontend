@@ -23,6 +23,12 @@ describe('cn', () => {
     expect(cn('text-sm', 'text-destructive')).toBe('text-sm text-destructive');
   });
 
+  it('knows the Stacks radii and overlay shadow', () => {
+    expect(cn('rounded-lg', 'rounded-control')).toBe('rounded-control');
+    expect(cn('rounded-dialog', 'rounded-full')).toBe('rounded-full');
+    expect(cn('shadow-xs', 'shadow-overlay')).toBe('shadow-overlay');
+  });
+
   it("understands this app's theme tokens", () => {
     // Custom font families are families, not weights.
     expect(cn('font-sans', 'font-sans-medium')).toBe('font-sans-medium');

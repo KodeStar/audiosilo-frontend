@@ -1,3 +1,4 @@
+import { PortalHost } from '@rn-primitives/portal';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -111,6 +112,11 @@ export default function RootLayout() {
             <ApiProvider>
               <RootNavigator />
               <StatusBar style="auto" />
+              {/* The native outlet for the portal-based overlays (Dialog, Select, menus,
+                  popovers: @rn-primitives). LAST, so portaled content stacks above every
+                  screen, and inside the providers it reads (theme, i18n, query client).
+                  Web overlays portal into document.body instead. */}
+              <PortalHost />
             </ApiProvider>
           </ThemeProvider>
         </LanguageProvider>

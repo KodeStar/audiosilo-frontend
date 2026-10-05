@@ -1,15 +1,22 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import type { IconName } from '@/components/ui/icon';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { ModalCard } from '@/components/ui/modal-card';
-import { Text } from '@/components/ui/text';
+import { DialogIcon } from '@/components/ui/dialog';
+import type { IconName } from '@/components/ui/icon';
 
 /**
- * A generic two-action confirmation dialog. The caller owns visibility and what
- * each action does; this only renders the title/message and the confirm/cancel
- * buttons over the shared {@link ModalCard}.
+ * A generic two-action confirmation on `AlertDialog`. The caller owns visibility and
+ * what each action does; Escape (web) and Android back count as cancel. Portaled, so it
+ * can be rendered from anywhere in the tree.
  */
 export function ConfirmDialog({
   visible,
@@ -17,6 +24,7 @@ export function ConfirmDialog({
   message,
   confirmLabel,
   confirmIcon,
+  destructive = false,
   onConfirm,
   onCancel,
 }: {
@@ -25,18 +33,33 @@ export function ConfirmDialog({
   message: string;
   confirmLabel: string;
   confirmIcon?: IconName;
+  /** The action loses something (a server, its downloads): a red confirm button. */
+  destructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <ModalCard visible={visible} onRequestClose={onCancel}>
-      <Text variant="title">{title}</Text>
-      <Text variant="muted">{message}</Text>
-      <View className="gap-2">
-        <Button title={confirmLabel} icon={confirmIcon} onPress={onConfirm} />
-        <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
-      </View>
-    </ModalCard>
+    <AlertDialog open={visible} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent>
+        <View className="flex-row items-start gap-3.5">
+          {confirmIcon ? (
+            <DialogIcon name={confirmIcon} tone={destructive ? 'destructive' : 'default'} />
+          ) : null}
+          <AlertDialogHeader className="flex-1">
+            <AlertDialogTitle>{title}</AlertDialogTitle>
+            <AlertDialogDescription>{message}</AlertDialogDescription>
+          </AlertDialogHeader>
+        </View>
+        <AlertDialogFooter>
+          <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
+          <Button
+            title={confirmLabel}
+            variant={destructive ? 'destructive' : 'default'}
+            onPress={onConfirm}
+          />
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

@@ -1,5 +1,16 @@
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+// Teach tailwind-merge the theme names it can't know: the Stacks radii and overlay
+// shadow (src/global.css), so `cn('rounded-control', 'rounded-full')` resolves to one.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      radius: ['control', 'menu', 'card', 'dialog', 'sheet'],
+      shadow: ['overlay'],
+    },
+  },
+});
 
 /**
  * Builds a className from conditional parts (`clsx`) and resolves Tailwind conflicts so

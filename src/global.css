@@ -269,6 +269,36 @@
    * the glyphs inside them shift by a sub-pixel); on native Uniwind would emit 99999.
    */
   --radius-full: 9999px;
+
+  /*
+   * The Stacks radii (STYLEGUIDE.md section 5) under their own names. shadcn's
+   * `--radius` scale (rounded-sm/md/lg/xl...) is NOT adopted: it would move every
+   * existing `rounded-*` class. The react-native-reusables primitives use these.
+   */
+  --radius-control: 10px; /* buttons, inputs, selects */
+  --radius-menu: 14px; /* menus, popovers, toasts, large buttons */
+  --radius-card: 16px; /* cards */
+  --radius-dialog: 20px; /* dialogs, the palette */
+  --radius-sheet: 24px; /* sheets, the Now card */
+}
+
+/*
+ * Stacks elevation level 3 (`--shadow-overlay`): dock, sheets, menus, dialogs, toasts.
+ * Web draws the guide's two-layer shadow; iOS a single box-shadow (one layer reads the
+ * same at RN's blur); Android has only `elevation`.
+ */
+@utility shadow-overlay {
+  box-shadow:
+    0 24px 64px -16px rgba(14, 22, 48, 0.3),
+    0 2px 6px rgba(14, 22, 48, 0.08);
+  @variant ios {
+    box-shadow: 0px 12px 32px rgba(14, 22, 48, 0.22);
+  }
+  @variant android {
+    box-shadow: none;
+    shadow-color: rgba(14, 22, 48, 0.5);
+    elevation: 12;
+  }
 }
 
 /*
