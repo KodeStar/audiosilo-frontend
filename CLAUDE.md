@@ -290,15 +290,19 @@ failure (an older server 404s, since it lacks the route) is a quiet caption + th
 entry's `web_url` link, never an error. Bodies: the work's `recap_summary.in_short`
 (else its furthest book-scope recap via `lastBookRecap`), and its `CharacterCard`s.
 `recap_summary.ending` is a **full spoiler** - always behind its own extra tap
-(`How it ends` + chip), and for the CURRENT book (whose `in_short` heads the Recaps tab)
-only offered once `progress.finished`. ONE exported predicate,
-`summaryIsVisible(summary, finished)` (`in_short`, or an `ending` once the ending is
-in play), is called by the screen (feeding both `bookTabs` and `BookMetaRecapsTab`),
-by `RecapSummaryBlock`'s own null-guard and by the render tests - so a Recaps tab can
-never open onto a panel that withholds everything; `bookTabs` likewise opens the
-Recaps/Characters tabs on `hasPreviousBooks` alone, and counts Chapters as present
-while `useChapters` is still in flight (so the row can't start on Bookmarks - firing
-its GET - and then snap over).
+(`How it ends` + chip), and for the CURRENT book only offered once `progress.finished`.
+`in_short` is **not** spoiler-free either: it is the whole book in one paragraph,
+ending included. A previous book (whose row the reader opened deliberately) and a
+finished current book show it inline under "In short"; an UNFINISHED current book
+heads its Recaps tab with a collapsed `Whole-book summary` + chip row instead
+(the shared `SpoilerAccordion`, which mounts its text only once opened). ONE exported
+predicate, `summaryIsVisible(summary, finished)` (`in_short` - inline or as that tap
+row - or an `ending` once the ending is in play), is called by the screen (feeding
+both `bookTabs` and `BookMetaRecapsTab`), by `RecapSummaryBlock`'s own null-guard
+and by the render tests - so a Recaps tab can never open onto a panel that withholds
+everything; `bookTabs` likewise opens the Recaps/Characters tabs on `hasPreviousBooks`
+alone, and counts Chapters as present while `useChapters` is still in flight (so the
+row can't start on Bookmarks - firing its GET - and then snap over).
 **Reading-order families** (rules in `src/lib/series-orderings.ts`, pick in
 `src/stores/series-orderings.ts`): the server collapses a primary series and its
 `ordering_of` variants into ONE rail (`BookMetaSeries` = main view + additive

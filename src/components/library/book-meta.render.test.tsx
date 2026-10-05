@@ -371,7 +371,7 @@ describe('previous books (Recaps tab)', () => {
     expect(screen.getByText('Frodo went east.')).toBeTruthy();
   });
 
-  it('keeps the ending behind its own extra tap', async () => {
+  it('shows the in_short inline but keeps the ending behind its own extra tap', async () => {
     mockUseMetaWork.mockReturnValue({
       data: fetched({
         recap_summary: { in_short: 'A journey.', ending: 'The ring is destroyed.' },
@@ -383,6 +383,10 @@ describe('previous books (Recaps tab)', () => {
     );
 
     await press('The Two Towers');
+    // The earlier book's in_short is inline (no "whole-book summary" tap), even
+    // though the CURRENT book is unfinished: the reader opened this row deliberately.
+    expect(screen.getByText('A journey.')).toBeTruthy();
+    expect(screen.queryByText('Whole-book summary')).toBeNull();
     expect(screen.getByText('How it ends')).toBeTruthy();
     expect(screen.queryByText('The ring is destroyed.')).toBeNull();
 
@@ -477,25 +481,61 @@ describe('previous books (Characters tab)', () => {
 });
 
 describe("the current book's own summary", () => {
+  // `in_short` is the whole book in one paragraph, ENDING INCLUDED - so mid-book it
+  // must never render without a deliberate tap.
   const summary = {
     in_short: 'A hobbit goes there and back again.',
     ending: 'He comes home rich.',
   };
 
-  it('introduces the tab with "In short", above the story-so-far accordion', async () => {
+  it('hides the in_short behind a "Whole-book summary" spoiler row while unfinished', async () => {
     await mount(
       <RecapsTab recaps={recaps} progress={{ chapter: 9, finished: false }} summary={summary} />,
     );
-    expect(screen.getByText('In short')).toBeTruthy();
-    expect(screen.getByText('A hobbit goes there and back again.')).toBeTruthy();
+    // Not mounted at all (not merely collapsed), so nothing leaks to a screen reader.
+    expect(screen.queryByText('A hobbit goes there and back again.')).toBeNull();
+    expect(screen.queryByText('In short')).toBeNull();
+    expect(screen.getByText('Whole-book summary')).toBeTruthy();
+    expect(screen.getByText('Spoiler')).toBeTruthy();
+    // The position-keyed recaps still follow under their own heading.
     expect(screen.getByText('Story so far')).toBeTruthy();
+
+    await press('Whole-book summary');
+    expect(screen.getByText('A hobbit goes there and back again.')).toBeTruthy();
+    // The label is a neutral heading, not an action: it stays put once expanded.
+    expect(screen.getByText('Whole-book summary')).toBeTruthy();
   });
 
-  it('withholds the ending entirely until the book is finished', async () => {
+  it('withholds the ending entirely until the book is finished, even after the tap', async () => {
     await mount(
       <RecapsTab recaps={recaps} progress={{ chapter: 9, finished: false }} summary={summary} />,
     );
     expect(screen.queryByText('How it ends')).toBeNull();
+    await press('Whole-book summary');
+    expect(screen.queryByText('How it ends')).toBeNull();
+    expect(screen.queryByText('He comes home rich.')).toBeNull();
+  });
+
+  it('renders the tap row for an in_short-only unfinished book, so the panel is never empty', async () => {
+    await mount(
+      <RecapsTab
+        recaps={[]}
+        progress={{ chapter: 2, finished: false }}
+        summary={{ in_short: 'A hobbit goes there and back again.' }}
+      />,
+    );
+    expect(screen.getByText('Whole-book summary')).toBeTruthy();
+    expect(screen.queryByText('A hobbit goes there and back again.')).toBeNull();
+  });
+
+  it('shows the in_short inline once finished, above the story-so-far accordion', async () => {
+    await mount(
+      <RecapsTab recaps={recaps} progress={{ chapter: 9, finished: true }} summary={summary} />,
+    );
+    expect(screen.getByText('In short')).toBeTruthy();
+    expect(screen.getByText('A hobbit goes there and back again.')).toBeTruthy();
+    expect(screen.queryByText('Whole-book summary')).toBeNull();
+    expect(screen.getByText('Story so far')).toBeTruthy();
   });
 
   it('offers the ending behind an extra tap once the book is finished', async () => {
@@ -521,6 +561,7 @@ describe("the current book's own summary", () => {
     );
     expect(screen.queryByText('How it ends')).toBeNull();
     expect(screen.queryByText('In short')).toBeNull();
+    expect(screen.queryByText('Whole-book summary')).toBeNull();
   });
 });
 

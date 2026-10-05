@@ -36,10 +36,10 @@ export type BookTabInput = {
    * block would otherwise be unreachable on exactly the book that needs it (book N
    * of a series you have not started, with no recaps of its own). */
   hasPreviousBooks: boolean;
-  /** The whole-book summary will actually RENDER in the Recaps tab (an `in_short`,
-   * or an `ending` on a finished book). The screen computes this once and passes
-   * the same flag to `BookMetaRecapsTab`, so a tab can never exist for a summary
-   * its own panel would withhold. */
+  /** Whether the whole-book summary will actually RENDER in the Recaps tab -
+   * `summaryIsVisible`'s result (see there). The screen computes this once and
+   * passes the same flag to `BookMetaRecapsTab`, so a tab can never exist for a
+   * summary its own panel would withhold. */
   summaryVisible: boolean;
 };
 
