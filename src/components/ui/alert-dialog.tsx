@@ -34,24 +34,31 @@ function AlertDialogOverlay({ className, children }: { className: string; childr
   );
 }
 
-export function AlertDialogContent({
-  className,
-  style,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & { className?: string }) {
-  const frame = useDialogFrame();
+type AlertDialogContentProps = React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+  className?: string;
+};
+
+export function AlertDialogContent(props: AlertDialogContentProps) {
   return (
     <AlertDialogPrimitive.Portal>
-      <AlertDialogOverlay className={frame.overlayClassName}>
-        <AlertDialogPrimitive.Content
-          className={cn(frame.contentClassName, className)}
-          // One flat object: on web Radix's Slot merges `style` by object spread, and an
-          // array turned into {0: ...} crashes react-native-web's style setter.
-          style={StyleSheet.flatten([frame.contentStyle, style])}
-          {...props}
-        />
-      </AlertDialogOverlay>
+      <AlertDialogFrame {...props} />
     </AlertDialogPrimitive.Portal>
+  );
+}
+
+/** Inside the portal, so the frame reads the root's safe-area insets (see DialogFrame). */
+function AlertDialogFrame({ className, style, ...props }: AlertDialogContentProps) {
+  const frame = useDialogFrame();
+  return (
+    <AlertDialogOverlay className={frame.overlayClassName}>
+      <AlertDialogPrimitive.Content
+        className={cn(frame.contentClassName, className)}
+        // One flat object: on web Radix's Slot merges `style` by object spread, and an
+        // array turned into {0: ...} crashes react-native-web's style setter.
+        style={StyleSheet.flatten([frame.contentStyle, style])}
+        {...props}
+      />
+    </AlertDialogOverlay>
   );
 }
 

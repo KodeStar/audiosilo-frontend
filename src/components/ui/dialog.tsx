@@ -5,13 +5,13 @@ import {
   type GestureResponderEvent,
   Platform,
   StyleSheet,
-  useWindowDimensions,
   View,
   type ViewProps,
 } from 'react-native';
 import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -20,21 +20,20 @@ import { FullWindowOverlay, NativeOnlyAnimatedView } from './overlay';
 
 /**
  * Stacks dialogs (STYLEGUIDE.md section 8): react-native-reusables' Dialog, restyled.
- * Radius 20 and a sensible width (at most 520) from the `sm` breakpoint; on a phone the
- * dialog rises from the bottom edge like a sheet (radius 24 top corners, clear of the
+ * Radius 20 and a sensible width (at most 520) on tablet and desktop; on a phone
+ * (`useLayout()`) the dialog rises from the bottom edge like a sheet (radius 24 top corners, clear of the
  * home indicator). Portaled (see ./overlay), so it can be opened from anywhere - inside a
  * card, a list row, a ScrollView.
  *
  * Shared with AlertDialog: `useDialogFrame` + the two class builders below.
  */
 
-/** Below `sm` (640) a dialog is presented as a bottom sheet. */
-const COMPACT_MAX = 640;
-
+/** The frame classes and the phone sheet's bottom padding. Call it from INSIDE the
+ * overlay's portal (the root's safe-area context), never from the screen. */
 export function useDialogFrame() {
-  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const compact = width < COMPACT_MAX;
+  // A phone presents a dialog as a bottom sheet.
+  const compact = useLayout() === 'phone';
   const web = Platform.OS === 'web';
   return {
     compact,
@@ -66,7 +65,9 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
-function DialogOverlay({ className, children }: { className: string; children: ReactNode }) {
+/** The scrim + dismiss-on-backdrop wrapper every dialog frame sits in (the command
+ * palette composes its own frame inside it). */
+export function DialogOverlay({ className, children }: { className: string; children: ReactNode }) {
   const { onOpenChange } = DialogPrimitive.useRootContext();
   // Web: a click on the backdrop itself (not on the card) dismisses; native wires the
   // same through the primitive's own overlay press.
@@ -97,22 +98,37 @@ function DialogOverlay({ className, children }: { className: string; children: R
   );
 }
 
-export function DialogContent({
+type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Content> & {
+  className?: string;
+  /** The top-right close button (default on). */
+  showClose?: boolean;
+};
+
+export function DialogContent(props: DialogContentProps) {
+  return (
+    <DialogPrimitive.Portal>
+      <DialogFrame {...props} />
+    </DialogPrimitive.Portal>
+  );
+}
+
+/**
+ * The overlay + card, rendered INSIDE the portal so `useDialogFrame` reads the root's
+ * safe-area insets: a tab screen's own context counts the native tab bar in its bottom
+ * inset, which padded a phone sheet ~100pt too tall (iOS).
+ */
+function DialogFrame({
   className,
   children,
   style,
   showClose = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & {
-  className?: string;
-  /** The top-right close button (default on). */
-  showClose?: boolean;
-}) {
+}: DialogContentProps) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const frame = useDialogFrame();
   return (
-    <DialogPrimitive.Portal>
+    <>
       <DialogOverlay className={frame.overlayClassName}>
         <DialogPrimitive.Content
           className={cn(frame.contentClassName, className)}
@@ -138,7 +154,7 @@ export function DialogContent({
           ) : null}
         </DialogPrimitive.Content>
       </DialogOverlay>
-    </DialogPrimitive.Portal>
+    </>
   );
 }
 

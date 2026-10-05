@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AccessibilityInfo, Platform, Pressable, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, View } from 'react-native';
 import Animated, { FadeInDown, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create } from 'zustand';
 
+import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -14,8 +15,9 @@ import { Text } from './text';
 
 /**
  * Stacks toasts (STYLEGUIDE.md section 8): ink cards with one line, an optional
- * description and at most one action, at the bottom of a phone (above the navigation and
- * mini player) and bottom-right from the `sm` breakpoint up.
+ * description and at most one action: full width at the bottom of a phone, bottom-right
+ * on tablet and desktop (`useLayout()`). The shell tells the host how far up to sit, clear
+ * of its tab bar, mini player or docked player (`ShellToastHost`).
  *
  *   toast({ title: 'Bookmark added', action: { label: 'Add note', onPress: openNote } });
  *
@@ -70,25 +72,19 @@ export function toast(options: ToastOptions): number {
   return id;
 }
 
-/** Phone layouts end below `sm`; the guide's phone/tablet split. */
-const PHONE_MAX = 640;
-/** Room for the phone's bottom navigation + mini player (the prototype's 150px). */
-const PHONE_BOTTOM = 150;
-/** Above the docked player bar on tablet and desktop. */
-const WIDE_BOTTOM = 104;
-
 /**
  * Renders the live toasts. Mount ONE, last in the root layout (next to the PortalHost).
- * The default offsets clear the shell's navigation; `bottomInset` overrides them.
+ * `bottomInset` is the distance from the window's bottom edge; the app passes the
+ * shell's (`ShellToastHost`), and without one the toasts sit just above the home
+ * indicator.
  */
 export function ToastHost({ bottomInset }: { bottomInset?: number }) {
   const { t } = useTranslation();
   const items = useToasts((s) => s.items);
-  const { width } = useWindowDimensions();
+  const phone = useLayout() === 'phone';
   const insets = useSafeAreaInsets();
   if (items.length === 0) return null;
-  const phone = width < PHONE_MAX;
-  const bottom = bottomInset ?? insets.bottom + (phone ? PHONE_BOTTOM : WIDE_BOTTOM);
+  const bottom = bottomInset ?? insets.bottom + 16;
   return (
     <FullWindowOverlay>
       <View

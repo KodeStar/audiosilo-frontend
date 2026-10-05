@@ -35,6 +35,8 @@ import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { setShellMetric } from './shell-metrics';
+
 /** The 3px whole-book progress line along the bar's top edge. A leaf: it subscribes to
  * the per-tick position so the rest of the bar re-renders only on real changes. */
 function BookProgressLine({ total }: { total: number }) {
@@ -164,6 +166,8 @@ export function DockedPlayer() {
       <View
         testID="shell-docked-player"
         accessibilityLabel={t('shell.dock.label')}
+        // The root toast host sits above the bar (`ShellToastHost`).
+        onLayout={(e) => setShellMetric('dockHeight', e.nativeEvent.layout.height)}
         style={{
           paddingBottom: insets.bottom,
           paddingLeft: insets.left,
