@@ -205,6 +205,17 @@ describe('TopBar', () => {
     });
   });
 
+  it("marks settings as the current page with aria-current, not a tab's aria-selected", async () => {
+    mockSegments = ['(app)', '(me)', 'settings'];
+    await render(<TopBar />);
+    const settings = screen.getByTestId('top-bar-settings');
+    expect(settings).toHaveProp('aria-current', 'page');
+    expect(settings.props['aria-selected']).toBeUndefined();
+    mockSegments = ['(app)', '(home)'];
+    await render(<TopBar />);
+    expect(screen.getByTestId('top-bar-settings').props['aria-current']).toBeUndefined();
+  });
+
   it('opens settings, and names the profile menu after the user', async () => {
     await render(<TopBar />);
     await fireEvent.press(screen.getByLabelText('Settings'));

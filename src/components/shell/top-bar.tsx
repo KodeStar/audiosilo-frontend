@@ -179,7 +179,9 @@ export function TopBar() {
             testID="top-bar-settings"
             onPress={() => press('(me)')}
             accessibilityRole="button"
-            aria-selected={active === '(me)'}
+            // A button outside the tablist: it marks the current destination, not a
+            // selected tab (web only; native has no aria-current).
+            aria-current={active === '(me)' ? 'page' : undefined}
             accessibilityLabel={t('settings.title')}
             className={cn(topBarItemClass(active === '(me)'), 'w-[38px]')}
           >
