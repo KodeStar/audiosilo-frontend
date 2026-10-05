@@ -34,12 +34,12 @@ import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
+import { PressableRow } from '@/components/ui/row-surface';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
@@ -47,6 +47,7 @@ import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
+import { cn } from '@/lib/utils';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
@@ -257,10 +258,10 @@ function BookDetailContent() {
     }
   };
 
-  // A quiet chapter/file row: a numbered tile (or a play glyph on a pink tile when
-  // this row is the one currently playing), the title, a tabular duration/bitrate
-  // line, and a small success check when the book is downloaded. The blue block is
-  // gone; the currently-playing row lifts to a soft brand tint.
+  // A quiet chapter/file row on the list-row surface: a numbered tile (or a play glyph
+  // on a pink tile when this row is the one currently playing), the title, a tabular
+  // duration/bitrate line, and a small success check when the book is downloaded. The
+  // currently-playing row lifts to a soft brand tint.
   const fileRow = (
     key: string | number,
     name: string,
@@ -270,14 +271,14 @@ function BookDetailContent() {
     index: number,
     active: boolean,
   ) => (
-    <AnimatedPressable
+    <PressableRow
       key={key}
       onPress={onPress}
       accessibilityRole="button"
-      // The dark border is on every row, playing or not, so a row keeps one height.
-      className={`my-1 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 dark:border dark:border-border ${
-        active ? 'bg-brand/10 dark:bg-brand/15' : 'bg-card shadow-xs dark:shadow-none'
-      }`}
+      className={cn(
+        'my-1 w-full flex-row items-center gap-3 px-3 py-2.5',
+        active && 'bg-brand/10 dark:bg-brand/15',
+      )}
     >
       <View
         className={`h-9 w-9 items-center justify-center rounded-lg ${active ? 'bg-brand' : 'bg-muted'}`}
@@ -305,7 +306,7 @@ function BookDetailContent() {
           <Icon name="check" size={11} color={themed.success} />
         </View>
       ) : null}
-    </AnimatedPressable>
+    </PressableRow>
   );
 
   const renderRows = () => {

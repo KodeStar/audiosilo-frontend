@@ -106,14 +106,13 @@ function MenuRow({
   onPress: () => void;
 }) {
   const themed = useThemeColors();
-  const neutral = themed.foreground;
   return (
     <AnimatedPressable
       onPress={onPress}
       accessibilityRole="button"
       className="flex-row items-center gap-3 rounded-xl px-4 py-3.5"
     >
-      <Icon name={icon} size={20} color={neutral} />
+      <Icon name={icon} size={20} color={themed.foreground} />
       <Text variant="title">{label}</Text>
     </AnimatedPressable>
   );
@@ -138,7 +137,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // The player fills the screen edge-to-edge (backdrop under the status bar); the
   // top controls + footer pad themselves clear of the notch / home indicator.
   const insets = useSafeAreaInsets();
-  const neutral = themed.foreground;
   const [sheet, setSheet] = useState<PlayerSheet>(null);
   // Live scrub preview (segment-relative seconds) while dragging the seek bar; the
   // time labels track it, and it commits on release.
@@ -345,7 +343,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           accessibilityRole="button"
           accessibilityLabel={t('player.controls.close')}
         >
-          <Icon name="chevron-down" size={26} color={neutral} />
+          <Icon name="chevron-down" size={26} color={themed.foreground} />
         </AnimatedPressable>
         <View className="ml-auto flex-row items-center gap-2">
           <AnimatedPressable
@@ -355,7 +353,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.notes.label')}
           >
-            <Icon name="notes" size={20} color={neutral} />
+            <Icon name="notes" size={20} color={themed.foreground} />
           </AnimatedPressable>
           <AnimatedPressable
             onPress={() => setSheet('bookmarks')}
@@ -364,7 +362,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.bookmarks.label')}
           >
-            <Icon name="bookmark" size={20} color={neutral} />
+            <Icon name="bookmark" size={20} color={themed.foreground} />
           </AnimatedPressable>
           <AnimatedPressable
             onPress={() => setSheet('menu')}
@@ -373,7 +371,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.menu.label')}
           >
-            <Icon name="ellipsis" size={20} color={neutral} />
+            <Icon name="ellipsis" size={20} color={themed.foreground} />
           </AnimatedPressable>
         </View>
       </View>
@@ -427,7 +425,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
                 <Text variant="heading" className="text-center" numberOfLines={2}>
                   {segTitle}
                 </Text>
-                <Icon name="list" size={14} color={neutral} />
+                <Icon name="list" size={14} color={themed.foreground} />
               </AnimatedPressable>
             ) : (
               <Text variant="heading" className="text-center" numberOfLines={2}>
@@ -484,14 +482,14 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
                 accessibilityRole="button"
                 accessibilityLabel={t('player.controls.previous')}
               >
-                <Icon name="prev" size={22} color={neutral} />
+                <Icon name="prev" size={22} color={themed.foreground} />
               </AnimatedPressable>
 
               <SkipButton
                 direction="back"
                 seconds={skipBackward}
                 onPress={() => void skipSeconds(-skipBackward)}
-                color={neutral}
+                color={themed.foreground}
                 fontSize={15}
                 className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
@@ -538,7 +536,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
                 direction="forward"
                 seconds={skipForward}
                 onPress={() => void skipSeconds(skipForward)}
-                color={neutral}
+                color={themed.foreground}
                 fontSize={15}
                 className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
@@ -551,7 +549,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
                 accessibilityRole="button"
                 accessibilityLabel={t('player.controls.next')}
               >
-                <Icon name="next" size={22} color={neutral} />
+                <Icon name="next" size={22} color={themed.foreground} />
               </AnimatedPressable>
             </View>
           </View>
@@ -572,7 +570,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           accessibilityRole="button"
           accessibilityLabel={t('player.history.label')}
         >
-          <Icon name="history" size={20} color={neutral} />
+          <Icon name="history" size={20} color={themed.foreground} />
         </AnimatedPressable>
         {/* AirPlay / cast: shown only where the engine can present a picker. A
             spacer keeps the row balanced when it's hidden. */}
@@ -584,7 +582,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.routePicker.label')}
           >
-            <Icon name="airplay" size={20} color={neutral} />
+            <Icon name="airplay" size={20} color={themed.foreground} />
           </AnimatedPressable>
         ) : (
           <View className="w-5" />

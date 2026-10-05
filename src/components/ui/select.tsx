@@ -6,7 +6,12 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
-import { FullWindowOverlay, NativeOnlyAnimatedView, useOverlayInsets } from './overlay';
+import {
+  FullWindowOverlay,
+  NativeOnlyAnimatedView,
+  useOverlayInsets,
+  withFlatStyle,
+} from './overlay';
 
 /**
  * A Stacks select (STYLEGUIDE.md section 8): react-native-reusables' Select, restyled -
@@ -79,6 +84,9 @@ export function SelectTrigger({
   );
 }
 
+/** Through `withFlatStyle` (see ./overlay). */
+const Content = withFlatStyle(SelectPrimitive.Content);
+
 export function SelectContent({
   className,
   children,
@@ -99,7 +107,7 @@ export function SelectContent({
             exiting={FadeOut.reduceMotion(ReduceMotion.System)}
             as="Pressable"
           >
-            <SelectPrimitive.Content
+            <Content
               insets={insets}
               className={cn(
                 'relative z-50 min-w-[10rem] rounded-menu border border-border bg-popover p-1.5 shadow-overlay',
@@ -126,7 +134,7 @@ export function SelectContent({
               >
                 {children}
               </SelectPrimitive.Viewport>
-            </SelectPrimitive.Content>
+            </Content>
           </NativeOnlyAnimatedView>
         </SelectPrimitive.Overlay>
       </FullWindowOverlay>

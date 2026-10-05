@@ -65,6 +65,15 @@ function ServerLine() {
   );
 }
 
+/** A top bar destination or icon button: a quiet card when selected, else a hover fill. */
+function topBarItemClass(selected: boolean): string {
+  return cn(
+    'h-[38px] items-center justify-center rounded-control border',
+    selected ? 'border-border bg-card' : 'border-transparent active:bg-accent',
+    Platform.select({ web: !selected && 'hover:bg-accent' }),
+  );
+}
+
 /**
  * The tablet/desktop top bar (64, STYLEGUIDE section 2): the mark with the server it
  * talks to, the destinations, the omnisearch, settings and the profile button. Tablet
@@ -126,11 +135,7 @@ export function TopBar() {
                   accessibilityRole="tab"
                   aria-selected={selected}
                   accessibilityLabel={label}
-                  className={cn(
-                    'h-[38px] min-w-[44px] flex-row items-center justify-center gap-2 rounded-control border px-3',
-                    selected ? 'border-border bg-card' : 'border-transparent active:bg-accent',
-                    Platform.select({ web: !selected && 'hover:bg-accent' }),
-                  )}
+                  className={cn(topBarItemClass(selected), 'min-w-[44px] flex-row gap-2 px-3')}
                 >
                   <Icon
                     name={d.icon}
@@ -176,11 +181,7 @@ export function TopBar() {
             accessibilityRole="button"
             aria-selected={active === '(me)'}
             accessibilityLabel={t('settings.title')}
-            className={cn(
-              'h-[38px] w-[38px] items-center justify-center rounded-control border',
-              active === '(me)' ? 'border-border bg-card' : 'border-transparent active:bg-accent',
-              Platform.select({ web: active !== '(me)' && 'hover:bg-accent' }),
-            )}
+            className={cn(topBarItemClass(active === '(me)'), 'w-[38px]')}
           >
             <Icon
               name="settings"

@@ -1,12 +1,13 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Platform, Pressable, type PressableProps } from 'react-native';
+import { Platform, Pressable, type PressableProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
 import { colors, type ThemeColors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
+import { Spinner } from './spinner';
 import { Text, TextClassContext } from './text';
 
 /**
@@ -135,7 +136,7 @@ export function Button({
         {...props}
       >
         {loading ? (
-          <ActivityIndicator size="small" color={tint} />
+          <Spinner color={tint} />
         ) : icon ? (
           <Icon name={icon} size={glyph} color={tint} />
         ) : null}
@@ -145,5 +146,3 @@ export function Button({
     </TextClassContext.Provider>
   );
 }
-
-export { buttonTextVariants, buttonVariants };

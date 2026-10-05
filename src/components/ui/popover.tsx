@@ -4,7 +4,12 @@ import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { cn } from '@/lib/utils';
 
-import { FullWindowOverlay, NativeOnlyAnimatedView, useOverlayInsets } from './overlay';
+import {
+  FullWindowOverlay,
+  NativeOnlyAnimatedView,
+  useOverlayInsets,
+  withFlatStyle,
+} from './overlay';
 
 /**
  * A Stacks popover (STYLEGUIDE.md section 8): react-native-reusables' Popover on a
@@ -13,6 +18,9 @@ import { FullWindowOverlay, NativeOnlyAnimatedView, useOverlayInsets } from './o
  */
 export const Popover = PopoverPrimitive.Root;
 export const PopoverTrigger = PopoverPrimitive.Trigger;
+
+/** Through `withFlatStyle` (see ./overlay). */
+const Content = withFlatStyle(PopoverPrimitive.Content);
 
 export function PopoverContent({
   className,
@@ -33,7 +41,7 @@ export function PopoverContent({
             exiting={FadeOut.reduceMotion(ReduceMotion.System)}
             as="Pressable"
           >
-            <PopoverPrimitive.Content
+            <Content
               align={align}
               sideOffset={sideOffset}
               insets={insets}

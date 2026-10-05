@@ -4,7 +4,12 @@ import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { cn } from '@/lib/utils';
 
-import { FullWindowOverlay, NativeOnlyAnimatedView, useOverlayInsets } from './overlay';
+import {
+  FullWindowOverlay,
+  NativeOnlyAnimatedView,
+  useOverlayInsets,
+  withFlatStyle,
+} from './overlay';
 import { TextClassContext } from './text';
 
 /**
@@ -15,6 +20,9 @@ import { TextClassContext } from './text';
  */
 export const Tooltip = TooltipPrimitive.Root;
 export const TooltipTrigger = TooltipPrimitive.Trigger;
+
+/** Through `withFlatStyle` (see ./overlay). */
+const Content = withFlatStyle(TooltipPrimitive.Content);
 
 export function TooltipContent({
   className,
@@ -36,7 +44,7 @@ export function TooltipContent({
             as="Pressable"
           >
             <TextClassContext.Provider value="font-sans-semibold text-xs text-primary-foreground">
-              <TooltipPrimitive.Content
+              <Content
                 sideOffset={sideOffset}
                 side={side}
                 insets={insets}

@@ -1,22 +1,22 @@
 import * as DialogPrimitive from '@rn-primitives/dialog';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   type GestureResponderEvent,
   Platform,
-  StyleSheet,
+  type StyleProp,
   View,
   type ViewProps,
+  type ViewStyle,
 } from 'react-native';
 import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
-import { FullWindowOverlay, NativeOnlyAnimatedView } from './overlay';
+import { FullWindowOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
 
 /**
  * Stacks dialogs (STYLEGUIDE.md section 8): react-native-reusables' Dialog, restyled.
@@ -25,13 +25,14 @@ import { FullWindowOverlay, NativeOnlyAnimatedView } from './overlay';
  * home indicator). Portaled (see ./overlay), so it can be opened from anywhere - inside a
  * card, a list row, a ScrollView.
  *
- * Shared with AlertDialog: `useDialogFrame` + the two class builders below.
+ * Shared with AlertDialog: `DialogFrame` (over `useDialogFrame`), the header/footer and
+ * the title/description classes below.
  */
 
-/** The frame classes and the phone sheet's bottom padding. Call it from INSIDE the
- * overlay's portal (the root's safe-area context), never from the screen. */
+/** The frame classes and the phone sheet's bottom padding. Reads the ROOT safe-area
+ * insets (`useRootInsets`), so it gives the same frame wherever it is called. */
 export function useDialogFrame() {
-  const insets = useSafeAreaInsets();
+  const insets = useRootInsets();
   // A phone presents a dialog as a bottom sheet.
   const compact = useLayout() === 'phone';
   const web = Platform.OS === 'web';
@@ -61,9 +62,41 @@ export function useDialogFrame() {
   };
 }
 
+type FrameContentProps = { className?: string; style?: StyleProp<ViewStyle> };
+
+/**
+ * The overlay + card every dialog kind shares: `Overlay` (the kind's scrim and its
+ * dismiss rules) around `Content` (the kind's Content part, through `withFlatStyle`),
+ * framed by `useDialogFrame`. The caller's `className` and `style` merge after the
+ * frame's.
+ */
+export function DialogFrame<P extends FrameContentProps>({
+  Overlay,
+  Content,
+  contentProps,
+}: {
+  Overlay: ComponentType<{ className: string; children: ReactNode }>;
+  Content: ComponentType<P>;
+  contentProps: P;
+}) {
+  const frame = useDialogFrame();
+  return (
+    <Overlay className={frame.overlayClassName}>
+      <Content
+        {...contentProps}
+        className={cn(frame.contentClassName, contentProps.className)}
+        style={[frame.contentStyle, contentProps.style]}
+      />
+    </Overlay>
+  );
+}
+
+/** Header and footer classes (shared with AlertDialog). */
+export const dialogHeaderClass = 'gap-2';
+export const dialogFooterClass = 'flex-col-reverse gap-2 sm:flex-row sm:justify-end';
+
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
-export const DialogClose = DialogPrimitive.Close;
 
 /** The scrim + dismiss-on-backdrop wrapper every dialog frame sits in (the command
  * palette composes its own frame inside it). */
@@ -104,71 +137,50 @@ type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Content> &
   showClose?: boolean;
 };
 
-export function DialogContent(props: DialogContentProps) {
+const Content = withFlatStyle(DialogPrimitive.Content);
+
+export function DialogContent({ children, showClose = true, ...props }: DialogContentProps) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
   return (
     <DialogPrimitive.Portal>
-      <DialogFrame {...props} />
+      <DialogFrame
+        Overlay={DialogOverlay}
+        Content={Content}
+        contentProps={{
+          ...props,
+          children: (
+            <>
+              {children}
+              {showClose ? (
+                <DialogPrimitive.Close
+                  accessibilityLabel={t('common.close')}
+                  hitSlop={4}
+                  className={cn(
+                    'absolute right-3 top-3 h-10 w-10 items-center justify-center rounded-full active:bg-accent',
+                    Platform.select({
+                      web: 'cursor-pointer outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+                    }),
+                  )}
+                >
+                  <Icon name="close" size={18} color={themed.mutedForeground} />
+                </DialogPrimitive.Close>
+              ) : null}
+            </>
+          ),
+        }}
+      />
     </DialogPrimitive.Portal>
   );
 }
 
-/**
- * The overlay + card, rendered INSIDE the portal so `useDialogFrame` reads the root's
- * safe-area insets: a tab screen's own context counts the native tab bar in its bottom
- * inset, which padded a phone sheet ~100pt too tall (iOS).
- */
-function DialogFrame({
-  className,
-  children,
-  style,
-  showClose = true,
-  ...props
-}: DialogContentProps) {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
-  const frame = useDialogFrame();
-  return (
-    <>
-      <DialogOverlay className={frame.overlayClassName}>
-        <DialogPrimitive.Content
-          className={cn(frame.contentClassName, className)}
-          // One flat object: on web Radix's Slot merges `style` by object spread, and an
-          // array turned into {0: ...} crashes react-native-web's style setter.
-          style={StyleSheet.flatten([frame.contentStyle, style])}
-          {...props}
-        >
-          <>{children}</>
-          {showClose ? (
-            <DialogPrimitive.Close
-              accessibilityLabel={t('common.close')}
-              hitSlop={4}
-              className={cn(
-                'absolute right-3 top-3 h-10 w-10 items-center justify-center rounded-full active:bg-accent',
-                Platform.select({
-                  web: 'cursor-pointer outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
-                }),
-              )}
-            >
-              <Icon name="close" size={18} color={themed.mutedForeground} />
-            </DialogPrimitive.Close>
-          ) : null}
-        </DialogPrimitive.Content>
-      </DialogOverlay>
-    </>
-  );
-}
-
 export function DialogHeader({ className, ...props }: ViewProps & { className?: string }) {
-  return <View className={cn('gap-2 pr-8', className)} {...props} />;
+  // Clear of the close button.
+  return <View className={cn(dialogHeaderClass, 'pr-8', className)} {...props} />;
 }
 
 export function DialogFooter({ className, ...props }: ViewProps & { className?: string }) {
-  return (
-    <View
-      className={cn('flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}
-      {...props}
-    />
-  );
+  return <View className={cn(dialogFooterClass, className)} {...props} />;
 }
 
 /** Dialog title classes (shared with AlertDialog): the Stacks heading role. */

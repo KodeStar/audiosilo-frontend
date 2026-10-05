@@ -26,7 +26,7 @@ const itemBase = cn(
 
 // The raised segment. Dark mode lifts it to `secondary`: the dark `card` is darker
 // than the `muted` track, so a card-coloured segment would read as sunken.
-export const segmentActive =
+const segmentActive =
   'border-border bg-card shadow-xs dark:border-border-strong dark:bg-secondary dark:shadow-none';
 
 export function ToggleGroup({

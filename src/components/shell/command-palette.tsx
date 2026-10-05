@@ -16,6 +16,7 @@ import {
 import { useAllProgressAll, useSearchAll, useSourceLabeller } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { DialogOverlay } from '@/components/ui/dialog';
+import { withFlatStyle } from '@/components/ui/overlay';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
@@ -58,6 +59,9 @@ const GROUP_LABEL_KEY = {
   books: 'palette.groups.books',
   goTo: 'palette.groups.goTo',
 } as const satisfies Record<PaletteGroupKey, string>;
+
+/** Through `withFlatStyle`, like every overlay's Content part (see ui/overlay). */
+const PaletteContent = withFlatStyle(DialogPrimitive.Content);
 
 const optionId = (index: number) => `palette-option-${index}`;
 const LIST_ID = 'palette-list';
@@ -492,7 +496,7 @@ export function CommandPalette() {
               Platform.select({ web: 'fixed animate-in fade-in-0 motion-reduce:animate-none' }),
             )}
           >
-            <DialogPrimitive.Content
+            <PaletteContent
               className={cn(
                 'w-full max-w-[700px] overflow-hidden rounded-dialog border border-border bg-popover shadow-overlay',
                 // Radix wraps the content in a shrink-to-fit node; a viewport width is
@@ -503,7 +507,7 @@ export function CommandPalette() {
               )}
             >
               <PaletteBody />
-            </DialogPrimitive.Content>
+            </PaletteContent>
           </DialogOverlay>
         </DialogPrimitive.Portal>
       ) : null}

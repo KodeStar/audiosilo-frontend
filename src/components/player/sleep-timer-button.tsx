@@ -39,9 +39,6 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
   // promise and the gesture are true in exactly the same windows.
   const extendable = useSleepTimer(selectSleepExtendable);
   const remaining = useSleepTimer((s) => s.remaining);
-  // Match the sibling footer icons' theme-aware neutral (history/airplay use the
-  // same `foreground`); a hardcoded dark color washed out on the light footer.
-  const neutral = themed.foreground;
 
   return (
     <AnimatedPressable
@@ -53,7 +50,7 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
         extendable ? t('player.sleepTimer.keepListening') : t('player.sleepTimer.title')
       }
     >
-      <Icon name="sleep" size={20} color={phase === 'idle' ? neutral : themed.brand} />
+      <Icon name="sleep" size={20} color={phase === 'idle' ? themed.foreground : themed.brand} />
       {phase === 'grace' ? (
         <RNText className="font-sans-semibold text-sm text-brand-ink">
           {t('player.sleepTimer.keepGoingShort')}

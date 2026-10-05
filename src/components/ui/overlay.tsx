@@ -1,7 +1,7 @@
-import { Fragment, type ReactNode } from 'react';
-import { Platform, Pressable } from 'react-native';
+import { createContext, Fragment, useContext, type ComponentType, type ReactNode } from 'react';
+import { Platform, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { type EdgeInsets, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay as RNFullWindowOverlay } from 'react-native-screens';
 
 /**
@@ -44,18 +44,61 @@ export function NativeOnlyAnimatedView(props: AnimatedViewProps | AnimatedPressa
   return <Animated.View {...rest} />;
 }
 
+const RootInsetsContext = createContext<EdgeInsets | null>(null);
+
+/**
+ * Captures the ROOT safe-area insets for the overlays. Mount it once, directly inside the
+ * root `SafeAreaProvider` (src/app/_layout.tsx). Overlays cover the whole window, so their
+ * frame must use the window's insets wherever they are called from: a tab screen's own
+ * safe-area context counts the native tab bar in `insets.bottom`, which made a phone
+ * sheet opened from a tab ~100pt too tall on iOS and pushed menus up off the bar.
+ */
+export function RootInsetsProvider({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return <RootInsetsContext.Provider value={insets}>{children}</RootInsetsContext.Provider>;
+}
+
+/** The root safe-area insets (`RootInsetsProvider`); the nearest context's outside it (an
+ * isolated test render). */
+export function useRootInsets(): EdgeInsets {
+  const local = useSafeAreaInsets();
+  return useContext(RootInsetsContext) ?? local;
+}
+
 /**
  * The safe-area insets for a positioned overlay (Popover, Select, DropdownMenu,
  * Tooltip): rn-primitives keeps native content inside these when it flips or clamps
  * against the screen edge, so a menu never slides under the notch or the home bar.
- * Web ignores them.
+ * The root's insets, so any call site gets the same answer. Web ignores them.
  */
 export function useOverlayInsets() {
-  const insets = useSafeAreaInsets();
+  const insets = useRootInsets();
   return {
     top: insets.top + 8,
     bottom: insets.bottom + 8,
     left: insets.left + 8,
     right: insets.right + 8,
   };
+}
+
+/**
+ * Wraps an rn-primitives Content part so its `style` always arrives as ONE flat object.
+ * On web, rn-primitives hands Content's props to a Radix DOM node through a Slot that
+ * merges `style` by object spread: an array turned into `{0: ..., 1: ...}` and crashed
+ * react-native-web's style setter. Every overlay's Content part goes through this, so a
+ * caller (or a frame) can pass an ordinary style array.
+ */
+export function withFlatStyle<P extends { style?: StyleProp<ViewStyle> }>(
+  Content: ComponentType<P>,
+): ComponentType<P> {
+  function FlatStyleContent(props: P) {
+    return (
+      <Content
+        {...props}
+        style={props.style == null ? undefined : StyleSheet.flatten(props.style)}
+      />
+    );
+  }
+  FlatStyleContent.displayName = `FlatStyle(${Content.displayName ?? Content.name ?? 'Content'})`;
+  return FlatStyleContent;
 }

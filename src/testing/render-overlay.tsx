@@ -3,6 +3,8 @@ import { render } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { RootInsetsProvider } from '@/components/ui/overlay';
+
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
@@ -14,7 +16,8 @@ type Measure = (
 
 /**
  * Renders `ui` the way the app does for the portal-based primitives (Dialog, Select,
- * Popover, menus): inside a SafeAreaProvider, with the root `<PortalHost />` after it -
+ * Popover, menus): inside a SafeAreaProvider + RootInsetsProvider, with the root
+ * `<PortalHost />` after it -
  * without the host, rn-primitives' native portals render nothing.
  *
  * The positioned overlays (Select, Popover, DropdownMenu, Tooltip) only render once
@@ -31,8 +34,10 @@ export function mountWithPortal(ui: ReactElement) {
   nativeMethods.measure.mockImplementation((cb) => cb(0, 0, 160, 40, 16, 120));
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
-      {ui}
-      <PortalHost />
+      <RootInsetsProvider>
+        {ui}
+        <PortalHost />
+      </RootInsetsProvider>
     </SafeAreaProvider>,
   );
 }

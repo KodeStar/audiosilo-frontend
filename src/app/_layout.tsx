@@ -9,6 +9,7 @@ import { ApiProvider } from '@/api/provider';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
 import { ShellToastHost } from '@/components/shell/shell-toast-host';
+import { RootInsetsProvider } from '@/components/ui/overlay';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
@@ -110,21 +111,24 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <LanguageProvider>
-          <ThemeProvider>
-            <ApiProvider>
-              <RootNavigator />
-              <StatusBar style="auto" />
-              {/* The native outlet for the portal-based overlays (Dialog, Select, menus,
+        {/* The window's insets, for every overlay wherever it is opened from. */}
+        <RootInsetsProvider>
+          <LanguageProvider>
+            <ThemeProvider>
+              <ApiProvider>
+                <RootNavigator />
+                <StatusBar style="auto" />
+                {/* The native outlet for the portal-based overlays (Dialog, Select, menus,
                   popovers: @rn-primitives). LAST, so portaled content stacks above every
                   screen, and inside the providers it reads (theme, i18n, query client).
                   Web overlays portal into document.body instead. Toasts sit above it,
                   lifted clear of the shell's bottom chrome. */}
-              <PortalHost />
-              <ShellToastHost />
-            </ApiProvider>
-          </ThemeProvider>
-        </LanguageProvider>
+                <PortalHost />
+                <ShellToastHost />
+              </ApiProvider>
+            </ThemeProvider>
+          </LanguageProvider>
+        </RootInsetsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -8,6 +8,7 @@ import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
+import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { Input } from '@/components/ui/input';
@@ -313,9 +314,9 @@ function ConnectServerScreen() {
 function LabeledDivider({ label }: { label: string }) {
   return (
     <View className="flex-row items-center gap-3">
-      <View className="h-px flex-1 bg-border" />
+      <Separator className="w-auto flex-1" />
       <Text variant="muted">{label}</Text>
-      <View className="h-px flex-1 bg-border" />
+      <Separator className="w-auto flex-1" />
     </View>
   );
 }

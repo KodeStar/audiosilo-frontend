@@ -17,6 +17,7 @@ import type {
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { SectionHeader } from '@/components/ui/section-header';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { SkeletonText } from '@/components/ui/skeleton';
@@ -377,7 +378,7 @@ function CharacterCard({
   const roleKey = roleLabelKey(character.role);
   const hasDescription = !!character.description;
   return (
-    <View className={`rounded-xl border border-border bg-card ${spoiler ? 'opacity-70' : ''}`}>
+    <RowSurface className={spoiler ? 'opacity-70' : undefined}>
       <AnimatedPressable
         onPress={hasDescription ? () => setOpen((v) => !v) : undefined}
         disabled={!hasDescription}
@@ -411,7 +412,7 @@ function CharacterCard({
           </Text>
         ) : null}
       </AnimatedPressable>
-    </View>
+    </RowSurface>
   );
 }
 

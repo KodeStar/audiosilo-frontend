@@ -6,7 +6,12 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
-import { FullWindowOverlay, NativeOnlyAnimatedView, useOverlayInsets } from './overlay';
+import {
+  FullWindowOverlay,
+  NativeOnlyAnimatedView,
+  useOverlayInsets,
+  withFlatStyle,
+} from './overlay';
 import { EYEBROW_CLASS, TextClassContext } from './text';
 
 /**
@@ -16,6 +21,9 @@ import { EYEBROW_CLASS, TextClassContext } from './text';
  */
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+
+/** Through `withFlatStyle` (see ./overlay). */
+const Content = withFlatStyle(DropdownMenuPrimitive.Content);
 
 export function DropdownMenuContent({
   className,
@@ -34,7 +42,7 @@ export function DropdownMenuContent({
             entering={FadeIn.reduceMotion(ReduceMotion.System)}
             as="Pressable"
           >
-            <DropdownMenuPrimitive.Content
+            <Content
               sideOffset={sideOffset}
               insets={insets}
               className={cn(

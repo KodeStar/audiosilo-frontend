@@ -44,11 +44,16 @@ const useToasts = create<{ items: ToastItem[] }>(() => ({ items: [] }));
 let nextId = 1;
 const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
-/** Removes a toast (a no-op when it has already gone). */
-export function dismissToast(id: number) {
+/** Cancels a toast's auto-dismiss timer, if it still has one. */
+function clearTimer(id: number) {
   const timer = timers.get(id);
   if (timer) clearTimeout(timer);
   timers.delete(id);
+}
+
+/** Removes a toast (a no-op when it has already gone). */
+export function dismissToast(id: number) {
+  clearTimer(id);
   useToasts.setState((s) => ({ items: s.items.filter((t) => t.id !== id) }));
 }
 
@@ -58,11 +63,7 @@ export function toast(options: ToastOptions): number {
   const duration = options.duration ?? (options.action ? 8000 : 5000);
   useToasts.setState((s) => {
     const items = [...s.items, { ...options, id }];
-    for (const old of items.slice(0, Math.max(0, items.length - MAX_VISIBLE))) {
-      const timer = timers.get(old.id);
-      if (timer) clearTimeout(timer);
-      timers.delete(old.id);
-    }
+    for (const old of items.slice(0, Math.max(0, items.length - MAX_VISIBLE))) clearTimer(old.id);
     return { items: items.slice(-MAX_VISIBLE) };
   });
   timers.set(

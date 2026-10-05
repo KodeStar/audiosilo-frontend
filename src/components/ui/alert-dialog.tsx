@@ -1,16 +1,22 @@
 import * as AlertDialogPrimitive from '@rn-primitives/alert-dialog';
 import type { ReactNode } from 'react';
-import { Platform, StyleSheet, View, type ViewProps } from 'react-native';
+import { Platform, View, type ViewProps } from 'react-native';
 import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { cn } from '@/lib/utils';
 
-import { dialogDescriptionClass, dialogTitleClass, useDialogFrame } from './dialog';
-import { FullWindowOverlay, NativeOnlyAnimatedView } from './overlay';
+import {
+  dialogDescriptionClass,
+  dialogFooterClass,
+  DialogFrame,
+  dialogHeaderClass,
+  dialogTitleClass,
+} from './dialog';
+import { FullWindowOverlay, NativeOnlyAnimatedView, withFlatStyle } from './overlay';
 
 /**
  * A confirmation that needs an answer (STYLEGUIDE.md section 8): react-native-reusables'
- * AlertDialog, framed like Dialog (`useDialogFrame`) but without a close button or a
+ * AlertDialog, framed like Dialog (`DialogFrame`) but without a close button or a
  * backdrop dismiss - only its own actions, Escape (web) and Android back close it.
  *
  * Use plain `Button`s for the actions and own `open` in the caller: rn-primitives'
@@ -38,41 +44,22 @@ type AlertDialogContentProps = React.ComponentProps<typeof AlertDialogPrimitive.
   className?: string;
 };
 
+const Content = withFlatStyle(AlertDialogPrimitive.Content);
+
 export function AlertDialogContent(props: AlertDialogContentProps) {
   return (
     <AlertDialogPrimitive.Portal>
-      <AlertDialogFrame {...props} />
+      <DialogFrame Overlay={AlertDialogOverlay} Content={Content} contentProps={props} />
     </AlertDialogPrimitive.Portal>
   );
 }
 
-/** Inside the portal, so the frame reads the root's safe-area insets (see DialogFrame). */
-function AlertDialogFrame({ className, style, ...props }: AlertDialogContentProps) {
-  const frame = useDialogFrame();
-  return (
-    <AlertDialogOverlay className={frame.overlayClassName}>
-      <AlertDialogPrimitive.Content
-        className={cn(frame.contentClassName, className)}
-        // One flat object: on web Radix's Slot merges `style` by object spread, and an
-        // array turned into {0: ...} crashes react-native-web's style setter.
-        style={StyleSheet.flatten([frame.contentStyle, style])}
-        {...props}
-      />
-    </AlertDialogOverlay>
-  );
-}
-
 export function AlertDialogHeader({ className, ...props }: ViewProps & { className?: string }) {
-  return <View className={cn('gap-2', className)} {...props} />;
+  return <View className={cn(dialogHeaderClass, className)} {...props} />;
 }
 
 export function AlertDialogFooter({ className, ...props }: ViewProps & { className?: string }) {
-  return (
-    <View
-      className={cn('flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}
-      {...props}
-    />
-  );
+  return <View className={cn(dialogFooterClass, className)} {...props} />;
 }
 
 export function AlertDialogTitle({

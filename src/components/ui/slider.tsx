@@ -61,7 +61,7 @@ export function Slider({
 }: SliderProps) {
   const themed = useThemeColors();
   const span = max - min;
-  const frac = span > 0 ? Math.max(0, Math.min(1, (value - min) / span)) : 0;
+  const frac = span > 0 ? clampFrac((value - min) / span) : 0;
   const width = useSharedValue(0);
   const dragging = useSharedValue(0);
   const dragFrac = useSharedValue(0);
