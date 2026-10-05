@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { type LayoutChangeEvent, Text as RNText, View } from 'react-native';
+import { useState } from 'react';
+import { Text as RNText, View } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
@@ -7,20 +8,24 @@ import { SafeAreaView } from '@/components/ui/safe-area-view';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { PHONE_TABS, useTabPress } from './destinations';
+import { useChromeEdge } from './shell-metrics';
 
 /**
  * The phone tab bar on web (iOS and Android use the native tab bar): the five
  * destinations, the active one in brand, 44 pt targets, padded past the home indicator.
- * `onLayout` reports its height so the mini player can float just above it.
+ * It publishes its height (its top edge: it sits on the window's bottom edge) for the
+ * root toasts (`useShellMetrics`).
  */
-export function PhoneTabBar({ onLayout }: { onLayout?: (e: LayoutChangeEvent) => void }) {
+export function PhoneTabBar() {
   const { t } = useTranslation();
+  const [height, setHeight] = useState<number>();
+  useChromeEdge('bar', height);
   const themed = useThemeColors();
   const { active, press } = useTabPress();
   return (
     <SafeAreaView
       edges={['bottom']}
-      onLayout={onLayout}
+      onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
       className="border-t border-border bg-background"
     >
       <View testID="shell-tab-bar" accessibilityRole="tablist" className="flex-row px-1.5 py-1.5">

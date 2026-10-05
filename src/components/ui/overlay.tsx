@@ -1,7 +1,19 @@
-import { createContext, Fragment, useContext, type ComponentType, type ReactNode } from 'react';
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useMemo,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 import { Platform, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { type EdgeInsets, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  type EdgeInsets,
+  type Rect,
+  useSafeAreaFrame,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { FullWindowOverlay as RNFullWindowOverlay } from 'react-native-screens';
 
 /**
@@ -44,25 +56,34 @@ export function NativeOnlyAnimatedView(props: AnimatedViewProps | AnimatedPressa
   return <Animated.View {...rest} />;
 }
 
-const RootInsetsContext = createContext<EdgeInsets | null>(null);
+const RootInsetsContext = createContext<{ insets: EdgeInsets; frame: Rect } | null>(null);
 
 /**
  * Captures the ROOT safe-area insets for the overlays. Mount it once, directly inside the
  * root `SafeAreaProvider` (src/app/_layout.tsx). Overlays cover the whole window, so their
  * frame must use the window's insets wherever they are called from: a tab screen's own
  * safe-area context counts the native tab bar in `insets.bottom`, which made a phone
- * sheet opened from a tab ~100pt too tall on iOS and pushed menus up off the bar.
+ * sheet opened from a tab ~100pt too tall on iOS and pushed menus up off the bar. It also
+ * holds the root frame (the window), for the shell's chrome measurements.
  */
 export function RootInsetsProvider({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
-  return <RootInsetsContext.Provider value={insets}>{children}</RootInsetsContext.Provider>;
+  const frame = useSafeAreaFrame();
+  const value = useMemo(() => ({ insets, frame }), [insets, frame]);
+  return <RootInsetsContext.Provider value={value}>{children}</RootInsetsContext.Provider>;
 }
 
 /** The root safe-area insets (`RootInsetsProvider`); the nearest context's outside it (an
  * isolated test render). */
 export function useRootInsets(): EdgeInsets {
   const local = useSafeAreaInsets();
-  return useContext(RootInsetsContext) ?? local;
+  return useContext(RootInsetsContext)?.insets ?? local;
+}
+
+/** The root frame, i.e. the window (`RootInsetsProvider`); the nearest context's outside it. */
+export function useRootFrame(): Rect {
+  const local = useSafeAreaFrame();
+  return useContext(RootInsetsContext)?.frame ?? local;
 }
 
 /**

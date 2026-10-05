@@ -73,12 +73,9 @@ const check = (ok, message) => ok || failures.push(message);
 
 (async () => {
   const { compileCSS, config, cssArtifactPath } = loadUniwindCompiler();
-  // The options metro.config.js passes (dtsFile included: generating artifacts rewrites it).
-  const uniwind = {
-    cssEntryFile: './src/global.css',
-    dtsFile: './src/uniwind-types.d.ts',
-    polyfills: { rem: 14 },
-  };
+  // The options metro.config.js passes, from the same module (dtsFile included:
+  // generating artifacts rewrites it).
+  const uniwind = require(path.join(root, 'uniwind.config.js'));
   const bundler = (platform) => config.UniwindBundlerConfig.fromMetroConfig(uniwind, platform);
   // Uniwind's CSS artifact (its variants + the @theme block for theme variables), as the
   // Metro transformer refreshes it before every compile.

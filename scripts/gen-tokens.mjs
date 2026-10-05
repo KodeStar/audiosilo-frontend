@@ -61,34 +61,16 @@ export function normalizeColor(value) {
 /** `card-foreground` -> `cardForeground`, `chart-1` -> `chart1`. */
 export const camelName = (name) => name.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 
-/** Shade keys in display order: DEFAULT first, then numeric (50, 100, ..., 750, 800, 840, ...). */
-const shadeKeys = (family) =>
-  keysOf(family).sort((a, b) =>
-    a === 'DEFAULT' ? -1 : b === 'DEFAULT' ? 1 : Number(a) - Number(b),
+/** Validates the fixed `palette` (plain colours, the same in both themes: `white`,
+ * `black`) and returns it normalised: `{ white: '#ffffff', ... }`. */
+export function parsePalette(palette) {
+  return Object.fromEntries(
+    keysOf(palette).map((name) => {
+      const v = normalizeColor(palette[name]);
+      if (!v) throw new Error(`tokens.json: palette "${name}" is not a colour`);
+      return [name, v];
+    }),
   );
-
-/**
- * Flattens the palette to `{ 'gray-50': colour, 'white': colour, ... }`. A family's shade
- * may name another palette colour ("red-500") instead of a value, one level deep.
- */
-export function flattenPalette(palette) {
-  const raw = {};
-  for (const name of keysOf(palette)) {
-    const value = palette[name];
-    if (typeof value === 'string') {
-      raw[name] = value;
-      continue;
-    }
-    for (const shade of shadeKeys(value)) {
-      raw[shade === 'DEFAULT' ? name : `${name}-${shade}`] = value[shade];
-    }
-  }
-  const colour = (key) => {
-    const v = normalizeColor(raw[key]) ?? normalizeColor(raw[raw[key]]);
-    if (!v) throw new Error(`tokens.json: palette "${key}" is not a colour or an alias of one`);
-    return v;
-  };
-  return Object.fromEntries(Object.keys(raw).map((k) => [k, colour(k)]));
 }
 
 /** Validates the `themes` block: same keys in the same order, every value a colour. */
@@ -117,7 +99,7 @@ export function parseThemes(themes, paletteNames = []) {
 }
 
 /** The generated CSS region (unformatted). */
-export function renderCss(flat, themes) {
+export function renderCss(palette, themes) {
   const vars = (values, indent) =>
     Object.entries(values).map(([k, v]) => `${indent}--color-${k}: ${v};`);
   return [
@@ -130,7 +112,7 @@ export function renderCss(flat, themes) {
     // are declared again here: the utility reads the variable, the @variant blocks
     // below give it each theme's value.
     '  --color-*: initial;',
-    ...vars(flat, '  '),
+    ...vars(palette, '  '),
     ...Object.keys(themes.light).map((k) => `  --color-${k}: unset;`),
     '}',
     '@layer theme {',
@@ -147,12 +129,8 @@ export function renderCss(flat, themes) {
 }
 
 /** src/theme/tokens.ts (unformatted). */
-export function renderTs(flat, themes) {
-  const fixed = Object.entries(flat)
-    // Only the palette's plain colours (white/black) are native-prop values; the
-    // shaded families exist for classes only.
-    .filter(([k]) => !/-\d+$/.test(k))
-    .map(([k, v]) => `  ${camelName(k)}: '${v}',`);
+export function renderTs(palette, themes) {
+  const fixed = Object.entries(palette).map(([k, v]) => `  ${camelName(k)}: '${v}',`);
   const scheme = (name) => [
     `  ${name}: {`,
     ...Object.entries(themes[name]).map(([k, v]) => `    ${camelName(k)}: '${v}', // --color-${k}`),
@@ -182,12 +160,12 @@ export function renderTs(flat, themes) {
 
 async function render() {
   const tokens = JSON.parse(await readFile(SOURCE, 'utf8'));
-  const flat = flattenPalette(tokens.palette);
-  const themes = parseThemes(tokens.themes, Object.keys(flat));
+  const palette = parsePalette(tokens.palette);
+  const themes = parseThemes(tokens.themes, Object.keys(palette));
   const fmt = async (text, filepath) =>
     prettier.format(text, { ...(await prettier.resolveConfig(filepath)), filepath });
 
-  const cssRegion = (await fmt(renderCss(flat, themes), CSS_OUT)).trimEnd();
+  const cssRegion = (await fmt(renderCss(palette, themes), CSS_OUT)).trimEnd();
   const currentCss = await readFile(CSS_OUT, 'utf8');
   const start = currentCss.indexOf(START_TAG);
   const end = currentCss.indexOf(CSS_END);
@@ -196,7 +174,7 @@ async function render() {
   }
   const css = currentCss.slice(0, start) + cssRegion + currentCss.slice(end + CSS_END.length);
 
-  const ts = await fmt(renderTs(flat, themes), TS_OUT);
+  const ts = await fmt(renderTs(palette, themes), TS_OUT);
   return { css, ts };
 }
 

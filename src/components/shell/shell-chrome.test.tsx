@@ -100,6 +100,7 @@ import { AccessoryPlayer } from './accessory-player';
 import { DockedPlayer } from './docked-player';
 import { usePalette } from './palette-store';
 import { PhoneTabBar } from './phone-tab-bar';
+import { useShellMetrics } from './shell-metrics';
 import { TopBar } from './top-bar';
 /* eslint-enable import/first */
 
@@ -226,6 +227,17 @@ describe('DockedPlayer', () => {
     expect(screen.queryByTestId('shell-docked-player')).toBeNull();
   });
 
+  it('publishes its measured top edge for the toasts, and withdraws it on unmount', async () => {
+    player.setState({ nowPlaying: book });
+    await render(<DockedPlayer />);
+    await fireEvent(screen.getByTestId('shell-docked-player'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 1024, height: 105 } },
+    });
+    expect(useShellMetrics.getState().edges.dock).toBe(105);
+    await screen.unmount();
+    expect(useShellMetrics.getState().edges.dock).toBeUndefined();
+  });
+
   it('carries the labelled transport once a book is loaded', async () => {
     player.setState({ nowPlaying: book });
     await render(<DockedPlayer />);
@@ -257,6 +269,10 @@ describe('DockedPlayer', () => {
 });
 
 describe('AccessoryPlayer', () => {
+  beforeEach(() => {
+    mockLayout = 'phone';
+  });
+
   it('is a pure function of the store and its placement', async () => {
     player.setState({
       nowPlaying: book,
@@ -279,6 +295,14 @@ describe('AccessoryPlayer', () => {
 
   it('renders nothing with no book', async () => {
     mockPlacement = 'regular';
+    await render(<AccessoryPlayer />);
+    expect(screen.queryByTestId('accessory-player-regular')).toBeNull();
+  });
+
+  it('renders nothing on tablet and desktop, where the bar (and its accessory) is hidden', async () => {
+    player.setState({ nowPlaying: book });
+    mockPlacement = 'regular';
+    mockLayout = 'tablet';
     await render(<AccessoryPlayer />);
     expect(screen.queryByTestId('accessory-player-regular')).toBeNull();
   });

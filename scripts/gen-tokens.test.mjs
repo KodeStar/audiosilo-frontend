@@ -7,8 +7,8 @@ import { test } from 'node:test';
 
 import {
   camelName,
-  flattenPalette,
   normalizeColor,
+  parsePalette,
   parseThemes,
   renderCss,
   renderTs,
@@ -44,21 +44,15 @@ test('camelName', () => {
   assert.equal(camelName('background'), 'background');
 });
 
-test('flattenPalette expands families and resolves one-level aliases', () => {
-  const flat = flattenPalette({
-    $comment: 'ignored',
-    red: { 500: '#EF4444', 600: '#dc2626' },
-    danger: { DEFAULT: 'red-500', 600: 'red-600' },
+test('parsePalette normalises plain colours and rejects anything else', () => {
+  assert.deepEqual(parsePalette({ $comment: 'ignored', white: '#FFFFFF', black: '#000000' }), {
     white: '#ffffff',
+    black: '#000000',
   });
-  assert.deepEqual(flat, {
-    'red-500': '#ef4444',
-    'red-600': '#dc2626',
-    danger: '#ef4444',
-    'danger-600': '#dc2626',
-    white: '#ffffff',
-  });
-  assert.throws(() => flattenPalette({ x: 'nope' }), /palette "x"/);
+  assert.throws(() => parsePalette({ x: 'nope' }), /palette "x"/);
+  // No shade families or aliases: the palette is only the fixed plain colours.
+  assert.throws(() => parsePalette({ red: { 500: '#ef4444' } }), /palette "red"/);
+  assert.throws(() => parsePalette({ white: '#ffffff', paper: 'white' }), /palette "paper"/);
 });
 
 test('parseThemes needs matching keys, valid colours and no palette clash', () => {
@@ -98,11 +92,10 @@ test('renderCss emits the palette as @theme and the themes as Uniwind variants',
 
 test('renderTs emits plain palette colours and camelCased theme colours', () => {
   const ts = renderTs(
-    { white: '#ffffff', 'gray-50': '#f9fafb' },
+    { white: '#ffffff' },
     { light: { 'card-foreground': '#121c36' }, dark: { 'card-foreground': '#e7ebf4' } },
   );
   assert.match(ts, /white: '#ffffff',/);
-  assert.doesNotMatch(ts, /gray/);
   assert.match(ts, /light: \{\n {4}cardForeground: '#121c36', \/\/ --color-card-foreground/);
   assert.match(ts, /dark: \{\n {4}cardForeground: '#e7ebf4',/);
 });

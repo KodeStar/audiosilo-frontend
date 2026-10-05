@@ -1,11 +1,11 @@
 import { TabList, TabSlot, TabTrigger, Tabs } from 'expo-router/ui';
+import { View } from 'react-native';
 
 import { MiniPlayer } from '@/components/player/mini-player';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { CommandPalette, usePaletteShortcut } from '@/components/shell/command-palette';
 import { TABS, useActiveTab } from '@/components/shell/destinations';
 import { PhoneTabBar } from '@/components/shell/phone-tab-bar';
-import { setShellMetric, useShellMetrics } from '@/components/shell/shell-metrics';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 
@@ -26,9 +26,6 @@ function WebShell() {
   useShellEffects();
   // Not over the full player or the finished screen (root modals: no active tab).
   usePaletteShortcut(useActiveTab() !== null);
-  // The mini player (and the toasts) float just above the tab bar, whose height includes
-  // the home indicator inset; measure it rather than guess (estimate until laid out).
-  const tabBarHeight = useShellMetrics((s) => s.tabBarHeight) ?? 64;
   return (
     <Tabs style={{ flex: 1 }}>
       <TabList style={{ display: 'none' }}>
@@ -38,12 +35,12 @@ function WebShell() {
       </TabList>
       <ShellFrame
         phoneBottom={
-          <>
-            <MiniPlayer bottomOffset={tabBarHeight} />
-            <PhoneTabBar
-              onLayout={(e) => setShellMetric('tabBarHeight', e.nativeEvent.layout.height)}
-            />
-          </>
+          // The mini player floats over the page, its bottom edge on the tab bar's top
+          // edge (`100%` of this wrapper, whatever the bar's height with the safe area).
+          <View>
+            <MiniPlayer bottomOffset="100%" />
+            <PhoneTabBar />
+          </View>
         }
       >
         <TabSlot />

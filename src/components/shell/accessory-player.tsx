@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Dimensions, View } from 'react-native';
 
 import { useApi } from '@/api/provider';
 import { useBookTimeLeft } from '@/components/player/book-progress';
@@ -10,10 +11,13 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { useLayout } from '@/lib/layout';
 import { chapterLabel } from '@/lib/chapter-label';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
+
+import { useChromeEdge } from './shell-metrics';
 
 /** "Title · 5h 27m left" at the current speed. A leaf, so only this line re-renders, and
  * only when its text changes. */
@@ -47,13 +51,33 @@ export function AccessoryPlayer() {
   const skipBackward = useSettings((s) => s.skipBackward);
   // The cover URL embeds the playing book's own server auth; match its headers to it.
   const api = useApi(nowPlaying?.connectionId);
-  if (!nowPlaying) return null;
-
+  // The tab bar (and so the accessory) is hidden on tablet/desktop, but iOS still renders
+  // both placements: render nothing there, so no per-tick leaf runs behind it.
+  const phone = useLayout() === 'phone';
+  const shown = nowPlaying != null && phone;
   const regular = placement === 'regular';
+
+  // The pill above the bar (`regular`) publishes its top edge for the root toasts. It is
+  // native chrome, so it is measured in the window; a reading outside the bottom half of
+  // the window (a copy iOS is not showing) is ignored.
+  const pill = useRef<View>(null);
+  const [edge, setEdge] = useState<number>();
+  useChromeEdge('accessory', shown ? edge : undefined, regular);
+  const measure = () =>
+    pill.current?.measureInWindow((_x, y, _w, h) => {
+      const height = Dimensions.get('window').height;
+      const top = height - y;
+      setEdge(h > 0 && top > 0 && top < height / 2 ? top : undefined);
+    });
+
+  if (!shown) return null;
+
   const heading = chapter ? chapterLabel(chapter, t) : nowPlaying.title;
 
   return (
     <View
+      ref={pill}
+      onLayout={regular ? measure : undefined}
       testID={`accessory-player-${placement}`}
       className="flex-1 flex-row items-center gap-1 pl-2 pr-1.5"
     >

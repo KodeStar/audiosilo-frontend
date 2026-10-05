@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +12,8 @@ import {
   tabStackListeners,
 } from '@/components/shell/destinations';
 import { PhoneHeader } from '@/components/shell/phone-header';
+import { useChromeEdge } from '@/components/shell/shell-metrics';
+import { useRootFrame } from '@/components/ui/overlay';
 import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -36,8 +39,21 @@ export default function TabStackLayout() {
   // bar, so the safe-area bottom inset there is the bar; Android insets the screen
   // content above its bar already. (Web places its own above its tab bar.)
   const floatCard = Platform.OS !== 'web' && !ACCESSORY_SUPPORTED && phone;
+
+  // The native tab bar's top edge, for the root toasts (web's own bar publishes itself):
+  // iOS lays the page out under its translucent bar, so the bar is the bottom safe-area
+  // inset here; Android lays it out above its bar, so the bar is what lies below the page
+  // in the window.
+  const native = Platform.OS !== 'web';
+  const rootHeight = useRootFrame().height;
+  const page = useRef<View>(null);
+  const [below, setBelow] = useState(0);
+  const measure = () =>
+    page.current?.measureInWindow((_x, y, _w, h) => setBelow(Math.max(0, rootHeight - (y + h))));
+  useChromeEdge('bar', phone ? Math.max(insets.bottom, below) : undefined, native);
+
   return (
-    <View style={{ flex: 1 }}>
+    <View ref={page} onLayout={native ? measure : undefined} style={{ flex: 1 }}>
       <Stack
         screenListeners={tabStackListeners}
         screenOptions={({ route }) => {

@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { type DimensionValue, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -14,6 +14,7 @@ import { useApi } from '@/api/provider';
 import { BookProgressLine, useBookTimeLeft } from '@/components/player/book-progress';
 import { SkipButton } from '@/components/player/skip-button';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
+import { useChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
@@ -64,11 +65,12 @@ function TimeLeft({ total }: { total: number }) {
 
 /** The phone mini player, shown whenever something is loaded, wherever the native tab
  * bar can't host it (web, Android, iOS before 26 - see `ACCESSORY_SUPPORTED`). Tap to
- * open the full player. It sits flush on top of the tab bar - `bottomOffset` is the
- * bar's height (which includes the home-indicator safe-area inset, so a fixed offset
- * would leave the bar hidden behind it). Content scrolls behind it; screens reserve
- * room with `useMiniPlayerInset()`. */
-export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
+ * open the full player. It sits flush on top of the tab bar: `bottomOffset` puts its
+ * bottom edge on the bar's top edge within its parent (which includes the home-indicator
+ * safe-area inset, so a fixed offset would leave the bar hidden behind it). Content
+ * scrolls behind it; screens reserve room with `useMiniPlayerInset()`. It publishes its
+ * top edge (the bar's, plus its own height) for the root toasts. */
+export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue }) {
   const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
@@ -89,6 +91,12 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   // actually appears mid-session. Instead reset to 0 and animate to 1 only when
   // `nowPlaying` goes from falsy to truthy - not on track/progress changes.
   const visible = nowPlaying != null;
+  const bar = useShellMetrics((s) => s.edges.bar);
+  const [height, setHeight] = useState<number>();
+  useChromeEdge(
+    'mini',
+    visible && bar !== undefined && height !== undefined ? bar + height : undefined,
+  );
   const wasVisible = useRef(false);
   const enter = useSharedValue(0);
   useEffect(() => {
@@ -111,6 +119,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
 
   return (
     <Animated.View
+      onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
       style={[{ position: 'absolute', left: 0, right: 0, bottom: bottomOffset }, entranceStyle]}
     >
       {/* Fully opaque so scrolling covers never bleed through the bar. Flush full

@@ -32,7 +32,7 @@ import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { setShellMetric } from './shell-metrics';
+import { useChromeEdge } from './shell-metrics';
 
 /** The chapter scrubber row: elapsed in the chapter, the scrubber, and the time left in
  * the whole book at the listener's speed. A per-tick leaf that moves in whole seconds
@@ -133,6 +133,10 @@ export function DockedPlayer() {
   const skipForward = useSettings((s) => s.skipForward);
   const skipBackward = useSettings((s) => s.skipBackward);
   const api = useApi(nowPlaying?.connectionId);
+  // The bar sits on the window's bottom edge, so its height is its top edge (published
+  // for the root toasts).
+  const [height, setHeight] = useState<number>();
+  useChromeEdge('dock', nowPlaying ? height : undefined);
   if (!nowPlaying) return null;
 
   const { queue, title, author } = nowPlaying;
@@ -151,8 +155,7 @@ export function DockedPlayer() {
       <View
         testID="shell-docked-player"
         accessibilityLabel={t('shell.dock.label')}
-        // The root toast host sits above the bar (`ShellToastHost`).
-        onLayout={(e) => setShellMetric('dockHeight', e.nativeEvent.layout.height)}
+        onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
         style={{
           paddingBottom: insets.bottom,
           paddingLeft: insets.left,
