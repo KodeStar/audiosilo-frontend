@@ -334,6 +334,14 @@ describe('summaryIsVisible', () => {
     expect(summaryIsVisible({ in_short: 'A summary.' }, true)).toBe(true);
   });
 
+  it('counts an in_short as visible while unfinished because it renders as the tap row', () => {
+    // in_short includes the ending, so mid-book it is NOT shown inline - but it still
+    // renders the collapsed "Whole-book summary" spoiler row, so the Recaps tab never
+    // opens onto an empty panel. With an ending too, the ending adds nothing yet.
+    expect(summaryIsVisible({ in_short: 'A summary.', ending: 'They win.' }, false)).toBe(true);
+    expect(summaryIsVisible({ in_short: '  ', ending: 'They win.' }, false)).toBe(false);
+  });
+
   it('withholds an ending-only summary until the book is finished', () => {
     expect(summaryIsVisible({ ending: 'They win.' }, false)).toBe(false);
     expect(summaryIsVisible({ ending: 'They win.' }, true)).toBe(true);

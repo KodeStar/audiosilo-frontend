@@ -153,11 +153,11 @@ export function previousWorks(rails: readonly SeriesRail[]): BookMetaSeriesWork[
  * at all, and `RecapSummaryBlock` guards on it - so a tab can never open onto a
  * panel that withholds everything.
  *
- * `in_short` is always safe; the `ending` counts only once `finished` says the
- * ending is in play (a finished current book, or a previous book whose row the
- * reader deliberately opened). The wire field is omitted when absent, but a
- * defensive empty-string check keeps an all-blank payload from drawing an empty
- * block.
+ * `in_short` is NOT spoiler-free (it contains the ending), but it always renders
+ * something - `RecapSummaryBlock` decides inline vs a tap-to-reveal row. The
+ * `ending` counts only once `finished` says the ending is in play. The wire field
+ * is omitted when absent, but a defensive empty-string check keeps an all-blank
+ * payload from drawing an empty block.
  */
 export function summaryIsVisible(
   summary: BookMetaRecapSummary | undefined,
@@ -566,11 +566,12 @@ function PreviousBooksSection({
   );
 }
 
-/** The full ending of a work, behind its own extra tap and a spoiler chip. Used
- * for a previous book (always - the reader opened that book's row deliberately)
- * and for the current book ONLY once it is finished. */
-function EndingAccordion({ text }: { text: string }) {
-  const { t } = useTranslation();
+/** A spoiler paragraph behind its own deliberate tap: a bordered header row
+ * (`label` + spoiler chip) whose `text` is only mounted once opened, so a closed
+ * row leaks nothing to a screen reader or the web DOM. Used for a work's ending
+ * (a previous book always; the current book only once finished) and for the
+ * current book's whole-book summary while the listener is still in it. */
+function SpoilerAccordion({ label, text }: { label: string; text: string }) {
   return (
     <Disclosure
       className="rounded-lg border border-black/10 dark:border-white/10"
@@ -578,7 +579,7 @@ function EndingAccordion({ text }: { text: string }) {
       header={
         <>
           <Text variant="subtitle" className="flex-1 font-roboto-medium">
-            {t('book.meta.howItEnds')}
+            {label}
           </Text>
           <SpoilerChip />
         </>
@@ -591,32 +592,41 @@ function EndingAccordion({ text }: { text: string }) {
   );
 }
 
-/** The "In short" whole-book summary paragraph, optionally followed by the
- * spoiler-gated ending. `showEnding` is the caller's decision (always true for a
- * previous book; only a FINISHED current book). Null when there is nothing. */
+/** A work's whole-book summary. `in_short` contains the ending too, so `finished`
+ * (the caller's decision: always true for a previous book, only a FINISHED current
+ * book) governs both fields: once finished, "In short" renders inline followed by
+ * the "How it ends" spoiler row; before that, `in_short` sits behind a collapsed
+ * "Whole-book summary" spoiler row and the ending is not offered at all. Null when
+ * there is nothing (see `summaryIsVisible`). */
 function RecapSummaryBlock({
   summary,
-  showEnding,
+  finished,
 }: {
   summary: BookMetaRecapSummary | undefined;
-  showEnding: boolean;
+  finished: boolean;
 }) {
   const { t } = useTranslation();
   const inShort = summary?.in_short?.trim();
   const ending = summary?.ending?.trim();
   // Same predicate the screen gates the Recaps TAB on, so the two can't disagree.
-  if (!summaryIsVisible(summary, showEnding)) return null;
+  if (!summaryIsVisible(summary, finished)) return null;
   return (
     <View className="gap-2">
       {inShort ? (
-        <View className="gap-1">
-          <Text variant="caption" className="uppercase">
-            {t('book.meta.inShort')}
-          </Text>
-          <Text variant="body">{inShort}</Text>
-        </View>
+        finished ? (
+          <View className="gap-1">
+            <Text variant="caption" className="uppercase">
+              {t('book.meta.inShort')}
+            </Text>
+            <Text variant="body">{inShort}</Text>
+          </View>
+        ) : (
+          <SpoilerAccordion label={t('book.meta.wholeBookSummary')} text={inShort} />
+        )
       ) : null}
-      {ending && showEnding ? <EndingAccordion text={ending} /> : null}
+      {ending && finished ? (
+        <SpoilerAccordion label={t('book.meta.howItEnds')} text={ending} />
+      ) : null}
     </View>
   );
 }
@@ -626,10 +636,10 @@ function RecapSummaryBlock({
  * book-scope "story so far", else a quiet note. */
 function PreviousRecapBody({ work, entry }: { work: BookMetaWork; entry: BookMetaSeriesWork }) {
   const { t } = useTranslation();
-  // `showEnding` (hence the predicate's `finished`) is true throughout: the reader
-  // opened this EARLIER book's row deliberately, so its ending is fair game.
+  // `finished` is true throughout: the reader opened this EARLIER book's row
+  // deliberately, so its summary renders inline and its ending is fair game.
   if (summaryIsVisible(work.recap_summary, true))
-    return <RecapSummaryBlock summary={work.recap_summary} showEnding />;
+    return <RecapSummaryBlock summary={work.recap_summary} finished />;
   const fallback = lastBookRecap(work.recaps);
   if (fallback) return <Text variant="body">{fallback.text}</Text>;
   return <PreviousBookNote message={t('book.meta.noRecap')} url={entry.web_url} />;
@@ -796,9 +806,10 @@ export function BookMetaRecapsTab({
 }: SpoilerReveal & {
   recaps: BookMetaRecap[];
   progress: ListeningProgress;
-  /** This book's own whole-work summary, when the service has one. Its `ending` is
-   * only offered once the listener has FINISHED - mid-book it would spoil the
-   * position-keyed recaps below it, which already cover where they are. */
+  /** This book's own whole-work summary, when the service has one. Until the
+   * listener has FINISHED, its `in_short` (which includes the ending) sits behind a
+   * deliberate tap on its "Whole-book summary" row and its `ending` is not offered
+   * at all - the position-keyed recaps below already cover where they are. */
   summary?: BookMetaRecapSummary;
   /** Whether that summary actually renders - the SCREEN's single predicate (it
    * decides whether this tab exists at all from the same flag), so a tab can never
@@ -812,9 +823,7 @@ export function BookMetaRecapsTab({
   const rows = spoilerRows(split, showSpoilers);
   return (
     <View className="gap-3">
-      {summaryVisible ? (
-        <RecapSummaryBlock summary={summary} showEnding={progress.finished} />
-      ) : null}
+      {summaryVisible ? <RecapSummaryBlock summary={summary} finished={progress.finished} /> : null}
       {rows.length > 0 ? (
         <View className="gap-2">
           {summaryVisible ? <SectionHeader title={t('book.meta.storySoFar')} /> : null}

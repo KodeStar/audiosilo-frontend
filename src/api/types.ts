@@ -270,10 +270,12 @@ export type BookMetaRecap = {
  * A whole-work summary pair, used to catch up on a book you have not read.
  * Omitted entirely when absent; when present at least one field is non-empty.
  *
- * `in_short` is a spoiler-light "what this book is about" paragraph.
+ * `in_short` is the whole book in one short paragraph, ENDING INCLUDED - so for a
+ * book the listener is still in, it is shown only behind a deliberate tap (or
+ * inline once they have finished it).
  * `ending` is a FULL SPOILER for the work by construction - only ever render it
- * behind a deliberate extra tap, and never for a book the listener is still in
- * the middle of.
+ * behind a deliberate extra tap, and never offer it for an unfinished current
+ * book.
  */
 export type BookMetaRecapSummary = { in_short?: string; ending?: string };
 
@@ -289,7 +291,7 @@ export type BookMetaWork = {
   /** Community expressive layer (CC BY-SA); absent on most works. */
   characters?: BookMetaCharacter[];
   recaps?: BookMetaRecap[];
-  /** Whole-work catch-up summary. `ending` is a full spoiler - gate it. */
+  /** Whole-work catch-up summary. Both fields reveal the ending - gate them. */
   recap_summary?: BookMetaRecapSummary;
 };
 

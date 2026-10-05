@@ -371,6 +371,7 @@
       "previousBooks": "Livros anteriores",
       "inShort": "Em resumo",
       "howItEnds": "Como termina",
+      "wholeBookSummary": "Resumo do livro inteiro",
       "noRecap": "Ainda não há resumo para este livro.",
       "noCharacters": "Ainda não há personagens para este livro.",
       "couldntLoad": "Não foi possível carregar os detalhes deste livro.",
