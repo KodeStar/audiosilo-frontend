@@ -442,7 +442,8 @@
       "title": "Vitesse de lecture"
     },
     "seek": {
-      "label": "Position de lecture"
+      "label": "Position de lecture",
+      "value": "{{position}} sur {{duration}}"
     },
     "finished": {
       "heading": "Livre terminé",

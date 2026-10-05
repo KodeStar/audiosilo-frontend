@@ -442,7 +442,8 @@
       "title": "Velocidad de reproducción"
     },
     "seek": {
-      "label": "Posición de reproducción"
+      "label": "Posición de reproducción",
+      "value": "{{position}} de {{duration}}"
     },
     "finished": {
       "heading": "Libro terminado",

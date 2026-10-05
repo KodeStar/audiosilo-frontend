@@ -442,7 +442,8 @@
       "title": "Playback speed"
     },
     "seek": {
-      "label": "Playback position"
+      "label": "Playback position",
+      "value": "{{position}} of {{duration}}"
     },
     "finished": {
       "heading": "Book finished",

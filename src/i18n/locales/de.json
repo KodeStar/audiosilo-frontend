@@ -442,7 +442,8 @@
       "title": "Wiedergabegeschwindigkeit"
     },
     "seek": {
-      "label": "Wiedergabeposition"
+      "label": "Wiedergabeposition",
+      "value": "{{position}} von {{duration}}"
     },
     "finished": {
       "heading": "Buch beendet",
