@@ -51,7 +51,16 @@ export type SheetProps = {
 /**
  * A bottom sheet: a fading backdrop plus a panel that slides up on open and down on
  * close. Our own reanimated animation drives both; the `OverlayHost` (default mode) is
- * only the dismissal host, so it never competes with the slide/fade.
+ * only the dismissal host, so it never competes with the slide/fade. Styled to Stacks
+ * (STYLEGUIDE.md section 8: `popover` panel, radius 24, grabber, the `overlay` scrim).
+ *
+ * Still hand-rolled (player redesign 0b), not the guide's `@expo/ui` BottomSheet: that
+ * hosts React Native content inside a SwiftUI/Compose sheet through `RNHostView`, and
+ * these sheets hold text inputs (bookmarks, notes), a FlatList scrolled to the current
+ * chapter and measured max heights, and open over the iOS `fullScreenModal` player -
+ * none of which can be verified without a device. Its web build (vaul) also paints a
+ * fixed white/black panel from the OS scheme, not the app theme. The player phase that
+ * redesigns these sheets is the place to move them, on a device.
  *
  * Both modes render the overlay IN PLACE (an absolute `inset-0` View) - an RN `Modal`
  * renders nothing on web in this stack, and this Sheet predates the portal primitives
@@ -159,9 +168,8 @@ export function Sheet({
     return () => sub.remove();
   }, [inline, visible, onClose]);
 
-  // Fades to a 0.55 black scrim at fully open (not solid) - dim enough that the
-  // content behind reads as pushed-back backdrop rather than "showing through".
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.55 }));
+  // Fades the themed `overlay` scrim in (Stacks: a translucent ink, deeper in dark).
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const panelStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.value) * panelHeight.value }],
   }));
@@ -175,7 +183,7 @@ export function Sheet({
   const overlay = (
     <View className="absolute inset-0 justify-end" pointerEvents="box-none">
       <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }, backdropStyle]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: themed.overlay }, backdropStyle]}
       >
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -186,23 +194,29 @@ export function Sheet({
       </Animated.View>
       <Animated.View style={panelStyle} onLayout={onLayout}>
         <View
-          className="rounded-t-2xl bg-card shadow-lg dark:border-t dark:border-border dark:shadow-none"
+          className="rounded-t-sheet border-t border-border bg-popover shadow-overlay"
           style={{
             maxHeight: Math.round(height * maxHeightFraction),
             paddingBottom: insets.bottom,
           }}
         >
+          {/* The grabber (decorative: the backdrop, the close button and back dismiss). */}
+          <View
+            className="mb-0.5 mt-2 h-[5px] w-[38px] self-center rounded-full bg-border-strong"
+            importantForAccessibility="no"
+            accessibilityElementsHidden
+          />
           {title ? (
-            <View className="flex-row items-center justify-between px-4 pb-2 pt-4">
+            <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
               <Text variant="title">{title}</Text>
               <Pressable
                 onPress={onClose}
                 hitSlop={12}
-                className="h-8 w-8 items-center justify-center"
+                className="h-9 w-9 items-center justify-center rounded-full active:bg-accent"
                 accessibilityRole="button"
                 accessibilityLabel={t('common.close')}
               >
-                <Icon name="close" size={22} color={neutral} />
+                <Icon name="close" size={20} color={neutral} />
               </Pressable>
             </View>
           ) : null}
