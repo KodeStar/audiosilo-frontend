@@ -142,6 +142,11 @@ export type FsEntry = {
   /** Per-folder detection override ("book" | "collection"); empty when auto-detected.
    * An admin-console concern - the player browses read-only - but mirrored for completeness. */
   override?: string;
+  /** A folder whose audio is only in disc folders (CD1, Disc 2) directly in it, each
+   * still indexed as its own book (false once joined), so the console can offer to
+   * join them. Sent to admins only; the player never acts on it, mirrored for
+   * completeness like `override`. */
+  split_discs?: boolean;
 };
 
 export type Listing = {
