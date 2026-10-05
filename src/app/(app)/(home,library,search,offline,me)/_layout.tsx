@@ -10,8 +10,7 @@ import {
   tabStackListeners,
 } from '@/components/shell/destinations';
 import { PhoneHeader } from '@/components/shell/phone-header';
-import { useChromeEdge } from '@/components/shell/shell-metrics';
-import { useRootFrame } from '@/components/ui/overlay';
+import { nativeBarEdge, useChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics';
 import { useLayout } from '@/lib/layout';
 import { connectionParam } from '@/lib/paths';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -37,22 +36,21 @@ export default function TabStackLayout() {
   // toasts and the shell's one floating mini player (`(app)/_layout.tsx`, over NativeTabs;
   // web's own bar publishes itself): iOS lays the page out under its translucent bar, so
   // the bar is the bottom safe-area inset here; Android lays it out above its bar, so the
-  // bar is what lies below the page in the window. Every tab stack measures the same
-  // bar, so each publishes only once it has measured (a stack that has not yet laid out
-  // must not overwrite the others' value), and a detached tab's empty frame is ignored.
+  // bar is what lies between the page's bottom and the shell frame's (which spans the
+  // window), both measured in the same `measureInWindow` space. Every tab stack measures
+  // the same bar, so each publishes only once it has measured (a stack that has not yet
+  // laid out must not overwrite the others' value), and a detached tab's empty frame is
+  // ignored.
   const native = Platform.OS !== 'web';
-  const rootHeight = useRootFrame().height;
+  const frameBottom = useShellMetrics((s) => s.frameBottom);
   const page = useRef<View>(null);
-  const [below, setBelow] = useState<number>();
+  const [pageBottom, setPageBottom] = useState<number>();
   const measure = () =>
     page.current?.measureInWindow((_x, y, _w, h) => {
-      if (h > 0) setBelow(Math.max(0, rootHeight - (y + h)));
+      if (h > 0) setPageBottom(y + h);
     });
-  useChromeEdge(
-    'bar',
-    phone ? Math.max(insets.bottom, below ?? 0) : undefined,
-    native && below !== undefined,
-  );
+  const bar = nativeBarEdge(insets.bottom, frameBottom, pageBottom);
+  useChromeEdge('bar', phone ? bar : undefined, native && bar !== undefined);
 
   return (
     <View ref={page} onLayout={native ? measure : undefined} style={{ flex: 1 }}>
