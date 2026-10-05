@@ -69,10 +69,6 @@ export default function LibrariesScreen() {
       contentContainerClassName="gap-0 p-4 lg:px-8"
       contentContainerStyle={{ paddingBottom }}
     >
-      <Text variant="heading" className="mb-1">
-        {t('library.list.title')}
-      </Text>
-
       {isLoading ? <RowSkeletonList /> : null}
       {error ? <ErrorNote message={t('library.list.loadLibrariesError')} /> : null}
 

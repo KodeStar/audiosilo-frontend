@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useWindowDimensions, View } from 'react-native';
+import { View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -12,12 +12,13 @@ import Animated, {
 
 import { useApi } from '@/api/provider';
 import { SkipButton } from '@/components/player/skip-button';
+import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
+import { useLayout } from '@/lib/layout';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { wallClockSeconds } from '@/playback/rate';
 import {
@@ -39,16 +40,17 @@ const MINI_PLAYER_HEIGHT = 66;
 const BASE_CONTENT_PADDING = 16;
 
 /**
- * Bottom padding a scrollable phone screen should give its scroll content so the
- * last row clears the docked mini-player. The bar is absolutely positioned and
- * content scrolls *behind* it, so without this the final items sit underneath it.
- * Returns just the normal base padding when nothing is docked, or on wide layouts
- * where the player is a side panel rather than a docked bar.
+ * Bottom padding a scrollable screen should give its scroll content so the last row
+ * clears the floating mini player. The bar is absolutely positioned and content
+ * scrolls *behind* it, so without this the final items sit underneath it. Returns just
+ * the normal base padding when nothing is loaded, on tablet/desktop (the docked player
+ * bar sits in the layout, below the page), and in the iOS 26 tab bar accessory (part
+ * of the native bar, which the system already insets scroll content for).
  */
 export function useMiniPlayerInset(): number {
-  const docked = usePlayer((s) => s.nowPlaying != null);
-  const { width } = useWindowDimensions();
-  const floating = docked && width < WIDE_BREAKPOINT;
+  const loaded = usePlayer((s) => s.nowPlaying != null);
+  const phone = useLayout() === 'phone';
+  const floating = loaded && phone && !ACCESSORY_SUPPORTED;
   return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT : 0);
 }
 
@@ -83,11 +85,12 @@ function TimeLeft({ total }: { total: number }) {
   );
 }
 
-/** Docked transport bar shown whenever something is loaded. Tap to open the full
- * player. It sits flush on top of the bottom nav - `bottomOffset` is the nav's
- * measured height (which on iOS includes the home-indicator safe-area inset, so a
- * fixed offset would leave the bar hidden behind it). Content scrolls behind it;
- * screens reserve room with `useMiniPlayerInset()`. */
+/** The phone mini player, shown whenever something is loaded, wherever the native tab
+ * bar can't host it (web, Android, iOS before 26 - see `ACCESSORY_SUPPORTED`). Tap to
+ * open the full player. It sits flush on top of the tab bar - `bottomOffset` is the
+ * bar's height (which includes the home-indicator safe-area inset, so a fixed offset
+ * would leave the bar hidden behind it). Content scrolls behind it; screens reserve
+ * room with `useMiniPlayerInset()`. */
 export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Pressable, useWindowDimensions, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useMarkFinished, type SourcedProgress } from '@/api/hooks';
 import { useApi } from '@/api/provider';
@@ -9,7 +9,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
+import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
@@ -123,8 +123,7 @@ export function ProgressCard({
   const menuColor = themed.mutedForeground;
   const api = useApi(item.connectionId);
   const { openBook, openPlayer } = useOpen();
-  const { width: screenWidth } = useWindowDimensions();
-  const wide = screenWidth >= WIDE_BREAKPOINT;
+  const phone = useLayout() === 'phone';
 
   // For the book loaded in the player right now, read the live whole-book position
   // from the store so "time left" ticks in real time instead of showing the stale
@@ -141,11 +140,11 @@ export function ProgressCard({
   const { fraction, remaining } = progressFractionRemaining(position, item.duration);
 
   // On phone open the full-screen player modal (scoped to this item's connection),
-  // or on desktop resume in the persistent player panel (fetch via the item's
-  // connection, start playback). The connection travels in the route, so there is
+  // or on tablet/desktop resume inline under the docked player bar (fetch via the
+  // item's connection, start playback). The connection travels in the route, so there is
   // no active-connection flip.
   const play = async () => {
-    if (!wide) {
+    if (phone) {
       // Land on the book page underneath the player (like tapping the cover does),
       // so closing the player returns there instead of back to Home.
       openBook(item.connectionId, item.library_id, item.path);

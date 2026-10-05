@@ -9,7 +9,7 @@ voice. Screens still carry the layouts ported from the old Nuxt client
 
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
 **M3 (offline downloads)** shipped (`src/downloads/` - `engine.native.ts`/
-`engine.web.ts`/`store.ts`, a `(app)/downloads` route, and the
+`engine.web.ts`/`store.ts`, a `(app)/(offline)/downloads` route, and the
 `download-control`/`download-badge` components); **M4 (PWA / service worker)**
 shipped (`public/sw.js`, `public/manifest.json`, `src/lib/register-sw{,.web}.ts`).
 Several features have landed since the original plan: **demo mode**, **favourites**,
@@ -238,14 +238,15 @@ re-pair additionally retires any *stale same-URL connection under a different `s
 (a rebuilt server mints a new id, so the old identity's dead token + scoped state are
 dropped via the `onConnectionRemoved` registry rather than left as a zombie the banner
 keeps re-flagging). It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
-rendered in `app-shell` beside the offline banner); tapping it pre-fills `pendingServerUrl`
+rendered by the shell beside the offline banner - under the phone header, or under the top bar
+on tablet/desktop); tapping it pre-fills `pendingServerUrl`
 and routes into the EXISTING connect → sign-in screens to re-enter a code/password.
 `setSession` also upserts a durable, tokenless **known-servers** entry
 (`src/lib/known-servers.ts`, AsyncStorage key `audiosilo.knownServers`, NOT touched by
 `resetStaleStorage`), so after a full logout the connect screen offers one-tap
 "Reconnect to <server>" shortcuts (with a per-entry forget).
 
-**Personal API keys.** The per-server account screen (`src/app/(app)/account.tsx`)
+**Personal API keys.** The per-server account screen (`src/app/(app)/(home,library,search,offline,me)/account.tsx`)
 renders an API-keys section (`src/components/account/api-keys-section.tsx` +
 `use-api-keys-manager.ts`, one-time secret via `api-key-created-modal.tsx`) for
 user-minted, non-expiring bearer tokens (dashboards, cron). It is **capability-gated**
@@ -256,15 +257,17 @@ returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated
 the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 `settings.apiKeys.*`.
 
-**The book screen is tabbed.** `src/app/(app)/book/[libraryId].tsx` shows an
+**The book screen is tabbed.** `src/app/(app)/(home,library,search,offline,me)/book/[libraryId].tsx` shows an
 **overview** (breadcrumbs, `BookVersions`, cover hero/stats/listen/`DownloadControl`,
 then the meta **About** block) and puts *everything else* behind a
 `Tabs` row (`src/components/ui/tabs.tsx`, the Stacks underline tabs with
 `scrollable`, so the row scrolls horizontally and carries tablist/tab/tabpanel
 a11y roles): **Chapters** (label
 switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
-**History** · **Notes** · **Series**. Both layouts share the same tab section; wide
-keeps its right-hand player/cover panel. A long chapter list used to bury the
+**History** · **Notes** · **Series**. Both layouts share the same tab section; tablet and
+desktop keep a right-hand cover panel (300 / 380 wide) whose button plays inline - the docked
+player bar is the transport there, so the panel never carries one (while this book plays its
+button opens the full player instead). A long chapter list used to bury the
 sections below it - with tabs each is one tap away, and the active panel renders
 inside the page's existing ScrollView (never a nested vertical scroller). Which tabs
 exist is the pure, tested `bookTabs()` (`src/components/library/book-tabs.ts`):
@@ -606,8 +609,45 @@ tokens, type and components; its section 17 maps them onto these files.
 Raw color values for native props: `useThemeColors()` (themed) or `colors.white`/`colors.black`
 from `src/theme/tokens.ts`.
 
-**Routing**: `src/app/(app)/*` is the authenticated shell (guarded in its
-`_layout.tsx`); `src/app/connect/*` is onboarding; `src/app/player.tsx` is a modal.
+**Routing**: `src/app/(app)/*` is the authenticated app (guarded by `<AuthGate>`,
+`src/components/shell/auth-gate.tsx`, in both platform layouts); `src/app/connect/*` is
+onboarding; `src/app/player.tsx` / `finished.tsx` are root full-screen modals. **ONE route tree
+on every platform**, five tab groups under `(app)`:
+```
+src/app/(app)/_layout.tsx        native: NativeTabs (5 triggers + BottomAccessory), hidden on tablet/desktop
+src/app/(app)/_layout.web.tsx    web: headless expo-router/ui Tabs + our chrome around ONE <TabSlot/>
+src/app/(app)/(home)/index.tsx                  /
+src/app/(app)/(library)/library/index.tsx       /library
+src/app/(app)/(search)/search.tsx               /search
+src/app/(app)/(offline)/downloads.tsx           /downloads
+src/app/(app)/(me)/settings.tsx                 /settings   (the "Me" tab; the Me hub is Phase 5)
+src/app/(app)/(home,library,search,offline,me)/_layout.tsx    one Stack per tab (array group)
+src/app/(app)/(home,library,search,offline,me)/{book/[libraryId],library/[libraryId],library/favourites,account,browse}.tsx
+```
+Groups are invisible in URLs, so every URL is unchanged. The destinations (labels, icons,
+SF Symbols / Material names, tab roots) are one table, `src/components/shell/destinations.ts`.
+- **The pushing tab owns a detail page** (a book pushed from Search stays in Search; back
+  returns there): the shared detail routes live once in the array group, and expo-router
+  resolves a push against the current segments.
+- **Cold deep link owner = Home.** A cold `/book/...` is given to the alphabetically FIRST tab
+  group, which is why Downloads is `(offline)`, not `(downloads)`. The array-group layout's
+  group-keyed `unstable_settings` (`TAB_STACK_SETTINGS`) insert each tab's root underneath, so
+  back works; `tabStackListeners` strips the link params React Navigation copies onto that root
+  and its ancestors (else back landed on `/?libraryId=1`).
+- **Tab presses from our chrome dispatch `JUMP_TO`** (`useTabPress`): another tab -
+  `navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } })`, which restores
+  its stack; a href can't (`router.navigate('/(home)')` resolves to `/` and pops Home). The
+  active tab again - `router.navigate(<its root>)`, pop to top.
+- **Web: `<TabSlot/>` stays at a FIXED ancestor path at every width**; only sibling chrome
+  toggles (moving it remounts every screen and jumps the URL on resize). **Native: never add or
+  remove tabs at runtime**; tablet/desktop toggle `NativeTabs hidden` (state survives).
+- Onboarding returns with `router.dismissTo('/')`, not `replace`: `(app)` is the root stack's
+  `anchor` and already sits under `/connect`, so replace stacked a second `(app)`. The
+  "signed in, nothing to add" bounce lives in `connect/index.tsx` (its own params), not the
+  connect layout, whose `useGlobalSearchParams` misses a warm link's params on first render.
+- Regression net: `src/components/shell/route-tree*.test.tsx` drive expo-router's
+  `renderRouter` over the REAL `src/app` file list (`src/testing/route-tree.tsx`).
+
 Content routes are **flat** - `library/[libraryId].tsx` (re-exports
 `src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -
 and carry **both the connection and the library-relative path as query params**
@@ -616,17 +656,31 @@ and carry **both the connection and the library-relative path as query params**
 resolve a tap into a route nested under a dynamic layout segment - it lands on the
 group's first child - whereas a flat route + query param pushes correctly (a direct URL
 load worked either way via `getStateFromPath`, which is why the bug only bit in-app
-navigation). The `(app)/_layout.tsx` reads `?connection=` and republishes it as the
-`ConnectionScope` the content hooks read via `useScopedCid()`. Path helpers +
-the full rationale are in `src/lib/paths.ts`.
+navigation). Each content screen scopes itself to its `?connection=` with
+`<ContentScope>` (its own local param); the content hooks read it via `useScopedCid()`.
+Path helpers + the full rationale are in `src/lib/paths.ts`.
+
+**Shell** (`src/components/shell/`): `useLayout()` (`src/lib/layout.ts`) is the one form-factor
+switch - `phone` < 640, `tablet` 640-1023, `desktop` >= 1024 (pure `layoutFor`); never compare a
+width yourself. Phone: tab bar (native on iOS/Android, `PhoneTabBar` on web), each page's Stack
+`header` is `PhoneHeader` (large title on a tab root, inline back named after the parent on iOS,
+banners under it), the mini player in the iOS 26 tab bar's bottom accessory (`AccessoryPlayer`,
+rendered twice by iOS - `regular` + `inline` - so it is stateless and reads the player store) or a
+floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`). Tablet/desktop (web and native):
+`TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch - jumps to Search and
+focuses it - settings, profile -> account), `SubNav` (50; title on a tab root, Back on a pushed
+page; tab roots leave their title to the chrome), banners, the page capped at 1480, a closed
+`DrawerSlot` on desktop (Up next fills it in Phase 2), and `DockedPlayer` (84) whenever a book is
+loaded (it mounts its speed/sleep sheets as siblings so they cover the app). Route-driven side
+effects (search reset on leaving the Search tab, browse scroll memory) are `useShellEffects`.
 
 ## Layout
 ```
-src/app/            Expo Router routes ((app) shell, connect/, player modal)
+src/app/            Expo Router routes ((app) tab groups, connect/, player + finished modals)
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
-src/components/      ui/ (primitives + Icon), layout/ (shell/header/nav), player/, library/
+src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers), layout/ (banners, ContentScope), player/, library/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider

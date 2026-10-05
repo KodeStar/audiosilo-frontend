@@ -124,7 +124,9 @@ export default function DemoScreen() {
               title={t('demo.browseHere')}
               icon="play"
               className="w-full"
-              onPress={() => router.replace('/')}
+              // dismissTo, not replace: `(app)` (the root stack's anchor) is already
+              // underneath, and replacing would stack a second one on top of it.
+              onPress={() => router.dismissTo('/')}
             />
           </View>
         )}

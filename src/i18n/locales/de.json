@@ -235,10 +235,6 @@
       "timeLeft": "{{duration}} übrig",
       "finished": "Abgeschlossen"
     },
-    "searchResults": {
-      "failed": "Suche fehlgeschlagen.",
-      "noResults": "Keine Ergebnisse für „{{query}}“."
-    },
     "notes": {
       "title": "Notizen",
       "placeholder": "Notiz hinzufügen (Markdown unterstützt)…",
@@ -281,7 +277,6 @@
       "downloading": "Download läuft {{percent}} %"
     },
     "list": {
-      "title": "Bibliothek",
       "recentlyAdded": "Kürzlich hinzugefügt",
       "recentlyFinished": "Kürzlich abgeschlossen",
       "added": "Hinzugefügt {{when}}",
@@ -303,7 +298,6 @@
     }
   },
   "downloads": {
-    "title": "Downloads",
     "storageUsed": "{{size}} belegt",
     "downloaded": "Heruntergeladen",
     "failed": "Download fehlgeschlagen",
@@ -381,7 +375,8 @@
         "supporting": "Nebenfigur",
         "minor": "Randfigur"
       }
-    }
+    },
+    "openPlayer": "Player öffnen"
   },
   "player": {
     "controls": {
@@ -475,11 +470,12 @@
     "library": "Bibliothek",
     "search": "Suchen",
     "downloads": "Downloads",
-    "settings": "Einstellungen",
     "logout": "Abmelden",
     "offline": "Offline – Änderungen werden bei erneuter Verbindung synchronisiert",
     "someOffline": "Einige Server offline",
-    "searchPlaceholder": "Suchen…"
+    "me": "Ich",
+    "back": "Zurück",
+    "backTo": "Zurück zu {{name}}"
   },
   "ui": {
     "error": "Etwas ist schiefgelaufen.",
@@ -499,5 +495,19 @@
     "qrLabel": "QR-Code, um die Demo in der App zu öffnen",
     "scanHint": "Scanne ihn mit deinem Handy, um in der AudioSilo-App weiterzumachen, oder erkunde weiter in diesem Browser.",
     "browseHere": "Demo hier durchstöbern"
+  },
+  "shell": {
+    "home": "AudioSilo-Startseite",
+    "offline": "Offline · Downloads spielen",
+    "serverMore": "{{name}} + {{count}} weitere",
+    "account": "Dein Konto, {{name}}",
+    "openPlayer": "Vollen Player für {{title}} öffnen",
+    "titleTimeLeft": "{{title}} · noch {{time}}",
+    "dock": {
+      "label": "Player",
+      "bookLeft": "Noch {{time}}",
+      "savedLocally": "Auf diesem Gerät gespeichert, wird synchronisiert",
+      "expand": "Player vergrößern"
+    }
   }
 }

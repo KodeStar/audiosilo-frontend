@@ -127,7 +127,7 @@ export function useApiRegistry(): ApiRegistry {
 }
 
 /** The default connection id (`''` when none) - the fallback cid for chrome that isn't
- * scoped to a specific server (the sidebar, the connect flow default). Internal to the
+ * scoped to a specific server (the top bar, the connect flow default). Internal to the
  * cid resolution order (`useCid`); consumers should use `useCid()`, not the raw default. */
 function useDefaultCid(): string {
   return useSession((s) => s.defaultConnectionId) ?? '';

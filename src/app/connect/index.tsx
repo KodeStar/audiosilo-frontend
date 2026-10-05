@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
@@ -23,7 +23,23 @@ import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
 
-export default function ConnectServerScreen() {
+/**
+ * An authenticated user can still reach /connect to ADD another server: the entry point
+ * passes ?add=1, a QR/invite carries ?token=, and the sign-in step is mid-flow
+ * (pendingServerUrl set). Otherwise they're bounced home. Decided here, from this route's
+ * own params (see the note in `_layout.tsx`).
+ */
+export default function ConnectRoute() {
+  const status = useSession((s) => s.status);
+  const pendingServerUrl = useSession((s) => s.pendingServerUrl);
+  const { add, token } = useLocalSearchParams<{ add?: string; token?: string }>();
+  if (status === 'authenticated' && !add && !token && !pendingServerUrl) {
+    return <Redirect href="/" />;
+  }
+  return <ConnectServerScreen />;
+}
+
+function ConnectServerScreen() {
   const themed = useThemeColors();
   const { t } = useTranslation();
   // A copy-invite link or pairing QR opens this screen with a pairing `token`
@@ -70,7 +86,9 @@ export default function ConnectServerScreen() {
           token: session.token,
           user: session.user,
         });
-        router.replace('/');
+        // Back to the app, not `replace`: `(app)` is the root stack's anchor and already sits
+        // under onboarding, so replacing would stack a second `(app)` on top of it.
+        router.dismissTo('/');
       } catch (e) {
         if (cancelled) return;
         setPairError(
@@ -157,7 +175,9 @@ export default function ConnectServerScreen() {
         token: demo.token,
         user: demo.user,
       });
-      router.replace('/');
+      // Back to the app, not `replace`: `(app)` is the root stack's anchor and already sits
+      // under onboarding, so replacing would stack a second `(app)` on top of it.
+      router.dismissTo('/');
     } catch (e) {
       setError(
         e instanceof ApiError

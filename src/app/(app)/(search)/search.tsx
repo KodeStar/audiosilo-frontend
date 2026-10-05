@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, useWindowDimensions } from 'react-native';
+import { ScrollView } from 'react-native';
 
 import { useSearchAll, useSourceLabeller } from '@/api/hooks';
 import { BookRow } from '@/components/library/book-row';
@@ -9,15 +9,15 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Input } from '@/components/ui/input';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { useSearchStore } from '@/stores/search';
 
 export default function SearchScreen() {
   const { t } = useTranslation();
-  const { width } = useWindowDimensions();
-  const wide = width >= WIDE_BREAKPOINT;
   const query = useSearchStore((s) => s.query);
   const setQuery = useSearchStore((s) => s.setQuery);
+  // Bumped by the top bar's omnisearch: re-keying the field remounts it, and `autoFocus`
+  // then takes the focus even when this tab was already open.
+  const focusRequest = useSearchStore((s) => s.focusRequest);
   const [debounced, setDebounced] = useState(query.trim());
 
   // Debounce so we don't query on every keystroke.
@@ -37,19 +37,16 @@ export default function SearchScreen() {
       contentContainerStyle={{ paddingBottom }}
       keyboardShouldPersistTaps="handled"
     >
-      {/* On desktop the always-visible top bar is the input; on phone we render one here. */}
-      {!wide ? (
-        <Input
-          containerClassName="mb-4"
-          placeholder={t('search.placeholder')}
-          value={query}
-          onChangeText={setQuery}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          autoFocus
-        />
-      ) : null}
+      <Input
+        key={focusRequest}
+        placeholder={t('search.placeholder')}
+        value={query}
+        onChangeText={setQuery}
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
+        autoFocus
+      />
 
       {debounced.length === 0 ? (
         <EmptyState icon="search" title={t('search.promptTitle')} hint={t('search.prompt')} />

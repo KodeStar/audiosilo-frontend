@@ -1,14 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useSearchAll, useSourceLabeller } from '@/api/hooks';
-import { BookRow } from '@/components/library/book-row';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorNote } from '@/components/ui/query-state';
 import { RowSurface } from '@/components/ui/row-surface';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useSearchStore } from '@/stores/search';
 
 /** A loading placeholder shaped like a BookRow: a small cover square and two
  * text lines. Shown while a search is in flight so the list mirrors its layout. */
@@ -32,51 +25,5 @@ export function BookRowSkeletonList({ count = 6 }: { count?: number }) {
         <BookRowSkeleton key={i} />
       ))}
     </>
-  );
-}
-
-/** Results for the desktop search bar, shown as an overlay over the content (no
- * route change). Selecting a result navigates away, which clears the query. */
-export function SearchResults() {
-  const { t } = useTranslation();
-  const query = useSearchStore((s) => s.query);
-  const [debounced, setDebounced] = useState(query.trim());
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 250);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  const { books, isFetching, error } = useSearchAll(debounced);
-  const sourceOf = useSourceLabeller();
-
-  return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="gap-2 p-6"
-      keyboardShouldPersistTaps="handled"
-    >
-      {isFetching ? (
-        <BookRowSkeletonList />
-      ) : error ? (
-        <ErrorNote message={t('library.searchResults.failed')} />
-      ) : books.length === 0 ? (
-        <EmptyState
-          icon="search"
-          title={t('search.noResultsTitle')}
-          hint={t('search.noResults', { query: debounced })}
-        />
-      ) : (
-        books.map((b) => (
-          <BookRow
-            key={`${b.connectionId}:${b.library_id}:${b.rel_path}`}
-            book={b}
-            connectionId={b.connectionId}
-            source={sourceOf(b.connectionId, b.library_id, b.connectionName)}
-            also={b.also}
-          />
-        ))
-      )}
-    </ScrollView>
   );
 }
