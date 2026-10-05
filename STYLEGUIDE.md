@@ -646,13 +646,23 @@ The section 8 primitives are react-native-reusables (`components.json`, `--styli
 `button` (variants `default` ink / `brand` / `outline` / `secondary` / `ghost` / `destructive` /
 `destructive-outline` / `link`, sizes `sm` 30 / `default` 38 / `lg` 46 / `xl` 54, `title` + `icon` + `loading`
 or composed children), `card`, `input` (`Input`, `Textarea`, with `label` / `error`), `dialog` (+ `DialogIcon`,
-a bottom sheet below 640), `alert-dialog` (+ the `confirm-dialog` helper), `select`, `tabs` (`underline` /
+a bottom sheet on a phone, `useLayout()`), `alert-dialog` (+ the `confirm-dialog` helper), `select`, `tabs` (`underline` /
 `segmented`, `scrollable`), `toggle-group` (+ the typed `SegmentedControl`), `popover`, `dropdown-menu`,
-`switch`, `separator`, `badge`, `tooltip` and `skeleton`. Hand-built on primitives: `slider`, `toast`
-(`toast({ title, description, action })` + `<ToastHost />`) and `row-surface` (`RowSurface` / `PressableRow`,
-the quiet list row). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
+`switch`, `separator`, `badge`, `tooltip`, `skeleton` and `kbd` (a key hint). Hand-built on primitives:
+`slider`, `toast` (`toast({ title, description, action })`; the root `ShellToastHost` renders `<ToastHost>`
+lifted clear of the tab bar and mini player on a phone, or of the docked player bar) and `row-surface`
+(`RowSurface` / `PressableRow`, the quiet list row). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
 through `TextClassContext`. Overlays portal into the root `<PortalHost />` (`src/app/_layout.tsx`) and wrap in
 `FullWindowOverlay` on iOS (`overlay.tsx`). The bottom `sheet.tsx` is still hand-rolled (its comment says why).
+
+The shell's section 8 pieces live in `src/components/shell/`: the **command palette** (`command-palette.tsx`,
+web only, on the Dialog primitive: a combobox with `aria-activedescendant` over a grouped listbox, 48 px
+options, the match in `brand-ink` bold, key hints and the result count in the footer; for now Actions,
+Books / Continue listening and Go to, since authors, series, narrators and characters need Phase 2) and the
+top bar's **profile menu** (`profile-menu.tsx`, a DropdownMenu: servers with their state, Add a server,
+the account, appearance; the household waits for Phase 8). The appearance items use the settings glyph:
+the vendored set has no sun or moon (adding one needs the FontAwesome generator's token), and the sleep
+glyph already means the sleep timer.
 
 ### Fonts
 

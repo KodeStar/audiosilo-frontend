@@ -526,8 +526,11 @@ tokens, type and components; its section 17 maps them onto these files.
   `<PortalHost />` on native (keep it LAST in `src/app/_layout.tsx`) and wrap in `FullWindowOverlay` on
   iOS, so they can open from inside a card or a ScrollView. Keep exactly one `@rn-primitives/portal`
   and one `@radix-ui/react-slot` (`npm ls`); the `@rn-primitives/*` family is pinned `~1.5.x` to move
-  together. On web, rn-primitives hands some props to Radix DOM nodes through a Slot that merges
-  `style` by object spread: pass those parts a FLAT style object (`StyleSheet.flatten`), never an
+  together. Anything that reads safe-area insets for an overlay's frame must do it INSIDE the portal
+  (`DialogFrame` / `AlertDialogFrame`): from the screen, a tab page's context counts the native tab
+  bar in `insets.bottom`, which made every phone sheet opened from a tab ~100pt too tall on iOS.
+  On web, rn-primitives hands some props to Radix DOM nodes through a Slot that merges `style` by
+  object spread: pass those parts a FLAT style object (`StyleSheet.flatten`), never an
   array (an array crashed react-native-web's style setter). Tests render overlays with
   `mountWithPortal` (`src/testing/render-overlay.tsx`).
 - **Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`**
@@ -667,12 +670,32 @@ width yourself. Phone: tab bar (native on iOS/Android, `PhoneTabBar` on web), ea
 banners under it), the mini player in the iOS 26 tab bar's bottom accessory (`AccessoryPlayer`,
 rendered twice by iOS - `regular` + `inline` - so it is stateless and reads the player store) or a
 floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`). Tablet/desktop (web and native):
-`TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch - jumps to Search and
-focuses it - settings, profile -> account), `SubNav` (50; title on a tab root, Back on a pushed
-page; tab roots leave their title to the chrome), banners, the page capped at 1480, a closed
-`DrawerSlot` on desktop (Up next fills it in Phase 2), and `DockedPlayer` (84) whenever a book is
-loaded (it mounts its speed/sleep sheets as siblings so they cover the app). Route-driven side
-effects (search reset on leaving the Search tab, browse scroll memory) are `useShellEffects`.
+`TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch, settings, `ProfileMenu`),
+`SubNav` (50; title on a tab root, Back on a pushed page; tab roots leave their title to the
+chrome), banners, the page capped at 1480, a closed `DrawerSlot` on desktop (Up next fills it in
+Phase 2), and `DockedPlayer` (84) whenever a book is loaded (it mounts its speed/sleep sheets as
+siblings so they cover the app). Route-driven side effects (search reset on leaving the Search
+tab, browse scroll memory) are `useShellEffects`.
+- **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
+  shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
+  omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:
+  never while typing in a field, over another dialog, or over the player modal). State (open, query,
+  recent searches persisted per device under `audiosilo.paletteRecent`) is `usePalette`
+  (`palette-store.ts`); which items show, the grouping, the arrow-key clamp and the shortcut test are
+  the pure `palette-model.ts`. Content is only what exists: Actions (pause / "Resume <chapter>",
+  sleep in 30 minutes, sleep at end of chapter - only with real chapters -, open the full player, go
+  to settings, switch light/dark), Books from `useSearchAll` (debounced; empty query: Continue
+  listening from the cached `useAllProgressAll`), Go to (the top bar's destinations). A book opens
+  with a plain push, so it lands in the current tab. Authors, series, narrators and characters wait
+  for Phase 2.
+- **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
+  (`serverStatus`: needs signing in again > offline > signed in as), opening its account screen;
+  Add a server (`/connect?add=1`); the account on the default server; a light/dark switch. Phone
+  keeps these in the Me tab.
+- **Toasts** clear the bottom chrome: the root `ShellToastHost` passes `<ToastHost bottomInset>`
+  from the pure `toastBottomOffset` (phone: above the tab bar + mini player, the web bar measured,
+  native bars estimated; tablet/desktop: above the measured dock; over a root modal: above the home
+  indicator). The shells publish the measured heights through `useShellMetrics`.
 
 ## Layout
 ```
