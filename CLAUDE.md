@@ -2,8 +2,10 @@
 
 The audiobook **player** frontend for **audiosilo-server** (a self-hosted Go
 audiobook server at `~/dev/audiosilo/audiosilo-server`). One Expo / React Native codebase
-shipping to **web PWA + iOS + Android**. Design is ported from the old Nuxt
-client at `~/dev/audiosilo-old` (pink-accented, Roboto, dark-mode-first).
+shipping to **web PWA + iOS + Android**. The design system is **Stacks** (the player
+redesign): [STYLEGUIDE.md](STYLEGUIDE.md) is authoritative for tokens, type, components and
+voice. Screens still carry the layouts ported from the old Nuxt client
+(`~/dev/audiosilo-old`) until their redesign phase.
 
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
 **M3 (offline downloads)** shipped (`src/downloads/` - `engine.native.ts`/
@@ -98,7 +100,7 @@ npm run web                 # expo start --web (testable without a dev build)
 npm run ios / npm run android
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
-npm test                    # colour-token drift + style guards (scripts/check-styles.cjs), then jest-expo (npm test -- --coverage for coverage)
+npm test                    # colour-token drift + generator tests + style guards (scripts/check-styles.cjs), then jest-expo (npm test -- --coverage for coverage)
 npm run format              # prettier --check . (CI-gated; fails on unformatted files)
 npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
@@ -511,38 +513,64 @@ runtime to cover web-vs-native branches.
 **Styling**: use `className` on core RN components (**Uniwind**, Tailwind v4; Metro wires
 it in via `withUniwindConfig` in `metro.config.js`, so there is no babel preset). Never
 import an icon lib directly - use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text
-via `<Text variant=... />`. Tokens: primary `#db2777`; grays `750/840/860`; Roboto weights
-as `font-roboto-{light,medium,semibold,bold}` (plain `font-sans` = regular; one family per
-token, since RN has no font fallback - web adds the system stack).
-- **Colour tokens have ONE source, `src/theme/tokens.json`.** `npm run gen:tokens`
-  (`scripts/gen-tokens.mjs`) writes the generated `@theme` region of `src/global.css` (the
-  classes) and `src/theme/tokens.ts` (raw `colors` for native props). Never hand-edit
-  either output: `npm test` runs `gen-tokens.mjs --check` first and fails on drift. The
-  default Tailwind families the app uses (gray/red/green/blue) are pinned to Tailwind
-  v3's hex values (v4's defaults are OKLCH and render slightly differently).
-- `src/global.css` also pins other v3-era values on purpose - NativeWind's `shadow-xs` /
+via `<Text variant=... />`. **[STYLEGUIDE.md](STYLEGUIDE.md) (Stacks) is authoritative** for
+tokens, type and components; its section 17 maps them onto these files.
+- **Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`**
+  (`themes.light` / `themes.dark`, plus a fixed `palette` of `white`/`black`). `npm run gen:tokens`
+  (`scripts/gen-tokens.mjs`) writes the generated region of `src/global.css` (each theme token as a
+  Uniwind theme variable, `--color-<name>` under `@variant light` / `@variant dark`) and
+  `src/theme/tokens.ts` (`colors.light.<camelName>` / `colors.dark.<camelName>`, `colors.white`).
+  Never hand-edit either output: `npm test` runs `gen-tokens.mjs --check` (and the generator's
+  unit tests) first and fails on drift.
+  - Use the semantic classes, which follow the theme on web AND native with **no `dark:` pair**:
+    page `bg-background`, surfaces `bg-card` (sheets/dialogs `bg-popover`), quiet fills and tracks
+    `bg-muted`, text `text-foreground` / `text-muted-foreground` / `text-subtle-foreground`,
+    hairlines `border-border`, pressed/hover `bg-accent`, status `text-destructive` / `success` /
+    `warning` / `info`. Opacity modifiers work (`bg-brand/10`).
+  - **`primary` is ink** (shadcn): the primary button / play button colour. **The pink is
+    `brand`**: fills, progress, selection `bg-brand` (+ `text-brand-foreground` on it), pink text
+    `text-brand-ink` (AA), tinted fills `bg-brand/10` or `bg-brand-soft`. One pink thing per view.
+  - **Tailwind's default palette is switched off** (`--color-*: initial` in the generated region),
+    so `bg-gray-200` / `text-red-500` compile to nothing. Add a token to `tokens.json` (both
+    themes) instead.
+  - Native props that need a colour string read `useThemeColors()` (`@/theme/use-theme-colors`),
+    which returns the resolved theme's `colors.light|dark`; don't pick `scheme === 'dark' ? ... : ...`.
+- **Fonts (Stacks):** Figtree (body), Bricolage Grotesque (display), JetBrains Mono, loaded by
+  `ThemeProvider` from `@expo-google-fonts/*` (only the weights a token uses). One family per token,
+  since RN has no font fallback or synthetic weights (web adds the system stack): `font-sans` (Figtree
+  400), `font-sans-medium`, `font-sans-semibold`, `font-sans-bold`, `font-display` (Bricolage 700),
+  `font-display-semibold`, `font-display-extrabold`, `font-mono` (JetBrains Mono 500). Never pair a
+  font token with `font-medium`/`font-bold`.
+- **`<Text>` variants are the Stacks type roles:** `display-xl`, `display`, `heading`, `title`,
+  `body` (default), `muted`, `label` (Figtree semibold, list-row titles; was `subtitle`), `caption`,
+  `eyebrow` (uppercase kicker; was `label`), `mono`, `stat` (`mono`/`stat` add tabular figures).
+- `src/global.css` also pins v3-era values on purpose - NativeWind's `shadow-xs` /
   `shadow-lg` values (the two the app uses; any other `shadow-*` is Tailwind v4's default
   until it is pinned the same way), px breakpoints, `rounded-full` = 9999px, native px
   letter-spacing (`tracking-*`), v3 `hover:` (no `(hover: hover)` gate), v3 preflight
   compat, and a `dark:` variant that still applies in browsers without CSS `@scope`
   (Uniwind scopes `dark:` rules on web) - Phase 0a was a no-visual-change migration.
-  `scripts/check-styles.cjs` (run by `npm test`) guards the last two through Uniwind's
-  real compiler: an unscoped web `dark:` rule, and native `tracking-wider` = 0.5.
+  `scripts/check-styles.cjs` (run by `npm test`) guards these through Uniwind's real compiler:
+  an unscoped web `dark:` rule, native `tracking-wider` = 0.5, and the themed tokens resolving
+  per theme on iOS and switching under `.dark` on web.
 - **rem is 14px on native** (`polyfills.rem` in `metro.config.js`, NativeWind's value);
   web uses real CSS rems against the browser's 16px root.
 - **Theme**: `ThemeProvider` drives `Uniwind.setTheme('light'|'dark'|'system')` and reads
   the resolved scheme from `useUniwind()`; `useTheme().scheme` is that resolved value.
+  **Default (owner decision 2026-10-05, "System, new installs only"):** a new install follows
+  the OS (`system`); an existing install (`hasExistingInstall` in `src/stores/session.ts`: a
+  persisted connection, a known server, or a legacy session) that never chose a theme gets
+  `dark` written once to `audiosilo.theme`. Explicit picks are untouched; an unknown stored value
+  falls back to `dark`. The pure rule is `initialSchemePref` (`src/theme/scheme-pref.ts`). The
+  static web shell (`+html.tsx`) paints the OS scheme's background before mount.
 - **Conflicting classes are not de-duplicated.** When two classes with the same variants
   set the same property, web resolves by stylesheet order and native by className order
   (the later class wins). A class with a variant (`dark:`, `active:`, `ios:`, `md:`...)
   outranks a plain one on every platform, whatever the order. A component that lets a
   caller override its classes must merge with `cn()` (`@/lib/utils`, clsx +
   tailwind-merge: a caller class replaces the component's class for the same property
-  AND variant). The themed `<Text>` does, so `<Text variant="caption"
-  className="text-primary">` is primary in light mode only - the variant's
-  `dark:text-gray-500` survives and wins in dark mode. To recolour both themes pass the
-  dark class too (`text-primary dark:text-primary`). This is also why the settings
-  language pills keep a raw RN `Text`.
+  AND variant). The themed `<Text>` does; its variants use themed tokens (no `dark:`
+  half), so `<Text variant="caption" className="text-brand-ink">` recolours both themes.
 - **Web cascade layers** (`src/app/+html.tsx` + the split Tailwind imports at the top of
   `src/global.css`): Tailwind's utilities are imported unlayered and the layer order puts
   react-native-web's resets above Tailwind's preflight, reproducing Tailwind v3's
@@ -563,7 +591,8 @@ token, since RN has no font fallback - web adds the system stack).
   need; the two shadowless thumbnail frames (book-meta's previous-book rows, the
   downloads list) keep their own classes.
 - Uniwind's free tier has no `group-*` variants and no `hover:` on native.
-Raw color values for native props: `colors` from `src/theme/tokens.ts`.
+Raw color values for native props: `useThemeColors()` (themed) or `colors.white`/`colors.black`
+from `src/theme/tokens.ts`.
 
 **Routing**: `src/app/(app)/*` is the authenticated shell (guarded in its
 `_layout.tsx`); `src/app/connect/*` is onboarding; `src/app/player.tsx` is a modal.
