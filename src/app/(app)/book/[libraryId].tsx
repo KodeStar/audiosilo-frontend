@@ -285,7 +285,7 @@ function BookDetailContent() {
         {active ? (
           <Icon name="play" size={13} color={colors.white} />
         ) : (
-          <Text className="text-sm dark:text-gray-400" style={tabularNums}>
+          <Text className="text-sm" style={tabularNums}>
             {index}
           </Text>
         )}

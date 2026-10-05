@@ -46,7 +46,7 @@ export function Cover({
       ) : (
         <View className="flex-1 items-center justify-center gap-0.5 p-2">
           {label ? (
-            <Text className="text-center text-xs text-gray-600" numberOfLines={3}>
+            <Text className="text-center text-xs" numberOfLines={3}>
               {label}
             </Text>
           ) : null}

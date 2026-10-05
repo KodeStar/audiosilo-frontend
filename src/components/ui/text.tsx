@@ -16,7 +16,11 @@ const variants: Record<Variant, string> = {
 
 export type AppTextProps = TextProps & { variant?: Variant; className?: string };
 
-/** Themed text. A caller's `className` wins over the variant's classes (`cn`). */
+/**
+ * Themed text. A caller's class replaces the variant's class for the same property and
+ * variant (`cn`). The variant's `dark:` colour is a different variant, so it stays and
+ * wins in dark mode: recolour both themes with e.g. `text-primary dark:text-primary`.
+ */
 export function Text({ variant = 'body', className, ...props }: AppTextProps) {
   return <RNText className={cn(variants[variant], className)} {...props} />;
 }

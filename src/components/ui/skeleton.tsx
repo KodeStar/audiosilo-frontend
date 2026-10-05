@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { cn } from '@/lib/utils';
 import { useTheme } from '@/theme/theme-provider';
 
 const PULSE_MS = 1000;
@@ -52,7 +53,7 @@ export function Skeleton({ className, testID }: SkeletonProps) {
   // Outer: shape/size via className only (no animated style). Inner: the pulsing
   // fill, clipped to the outer's rounding by overflow-hidden.
   return (
-    <View testID={testID} className={`overflow-hidden ${className ?? ''}`}>
+    <View testID={testID} className={cn('overflow-hidden', className)}>
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: FILL[scheme] }, style]} />
     </View>
   );
@@ -83,7 +84,7 @@ export type SkeletonTextProps = {
 /** A stack of skeleton text lines shaped like a paragraph. */
 export function SkeletonText({ lines = 2, className }: SkeletonTextProps) {
   return (
-    <View className={`gap-2 ${className ?? ''}`}>
+    <View className={cn('gap-2', className)}>
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton
           key={i}

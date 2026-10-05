@@ -8,8 +8,10 @@
 //   node scripts/gen-tokens.mjs --check     # exit 1 if either is stale (no writes)
 //
 // `npm test` (and so CI) runs `--check` before jest, so drift between the JSON and the
-// checked-in outputs fails the standard gate. Output goes through Prettier (the
-// repo's own config) so a regenerated file is already `format`-clean.
+// checked-in outputs fails the standard gate. The generated region and tokens.ts go
+// through Prettier (the repo's own config) so they are already `format`-clean; the
+// hand-written CSS around the region is kept byte for byte, so `--check` reports token
+// drift only (formatting is `npm run format`'s job).
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
@@ -29,17 +31,20 @@ const CSS_END = '/* @generated-tokens:end */';
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
+/** An object's keys minus `$`-prefixed annotations (`$comment`), at any level. */
+const keysOf = (obj) => Object.keys(obj).filter((k) => !k.startsWith('$'));
+
 /** Shade keys in display order: DEFAULT first, then numeric (50, 100, ..., 750, 800, 840, ...). */
 const shadeKeys = (family) =>
-  Object.keys(family)
-    .filter((k) => !k.startsWith('$'))
-    .sort((a, b) => (a === 'DEFAULT' ? -1 : b === 'DEFAULT' ? 1 : Number(a) - Number(b)));
+  keysOf(family).sort((a, b) =>
+    a === 'DEFAULT' ? -1 : b === 'DEFAULT' ? 1 : Number(a) - Number(b),
+  );
 
 /** Flattens the palette to `{ 'primary': hex, 'primary-50': hex, 'white': hex, ... }`. */
 function flattenPalette(palette) {
   const raw = {};
-  for (const [name, value] of Object.entries(palette)) {
-    if (name.startsWith('$')) continue;
+  for (const name of keysOf(palette)) {
+    const value = palette[name];
     if (typeof value === 'string') {
       raw[name] = value;
       continue;
@@ -62,18 +67,22 @@ async function render() {
   const tokens = JSON.parse(await readFile(SOURCE, 'utf8'));
   const flat = flattenPalette(tokens.palette);
   const hexOf = (ref) => {
-    if (!(ref in flat))
+    if (!Object.hasOwn(flat, ref))
       throw new Error(`tokens.json: semantic token names unknown colour "${ref}"`);
     return flat[ref];
   };
   const { light, dark } = tokens.semantic;
-  if (Object.keys(light).join() !== Object.keys(dark).join()) {
+  if (keysOf(light).join() !== keysOf(dark).join()) {
     throw new Error('tokens.json: semantic.light and semantic.dark must have the same keys');
   }
+  const fmt = async (text, filepath) =>
+    prettier.format(text, { ...(await prettier.resolveConfig(filepath)), filepath });
 
-  // --- src/global.css region ----------------------------------------------------------
+  // --- src/global.css region (only the region is generated and formatted) -------------
   const themeLines = Object.entries(flat).map(([k, hex]) => `  --color-${k}: ${hex};`);
-  const cssRegion = [CSS_START, '@theme {', ...themeLines, '}', CSS_END].join('\n');
+  const cssRegion = (
+    await fmt([CSS_START, '@theme {', ...themeLines, '}', CSS_END].join('\n'), CSS_OUT)
+  ).trimEnd();
 
   const currentCss = await readFile(CSS_OUT, 'utf8');
   const start = currentCss.indexOf(START_TAG);
@@ -92,29 +101,28 @@ async function render() {
     return lines;
   };
   const body = [];
-  for (const [key, spec] of Object.entries(tokens.semantic)) {
-    if (key.startsWith('$')) continue;
+  for (const key of keysOf(tokens.semantic)) {
+    const spec = tokens.semantic[key];
     if (typeof spec === 'object' && !('ref' in spec)) {
       body.push(`  ${key}: {`);
-      for (const [k, v] of Object.entries(spec)) body.push(...entry(k, v, '    '));
+      for (const k of keysOf(spec)) body.push(...entry(k, spec[k], '    '));
       body.push('  },');
     } else {
       body.push(...entry(key, spec, '  '));
     }
   }
+  const intro = tokens.semantic.$comment ? `${tokens.semantic.$comment} ` : '';
   const ts = [
     `// GENERATED FILE - DO NOT EDIT. Source: src/theme/tokens.json; regenerate with ${REGEN}.`,
     '',
-    `/** ${tokens.semantic.$comment} The same palette backs the Tailwind classes (src/global.css). */`,
+    `/** ${intro}The same palette backs the Tailwind classes (src/global.css). */`,
     'export const colors = {',
     ...body,
     '} as const;',
     '',
   ].join('\n');
 
-  const fmt = async (text, filepath) =>
-    prettier.format(text, { ...(await prettier.resolveConfig(filepath)), filepath });
-  return { css: await fmt(css, CSS_OUT), ts: await fmt(ts, TS_OUT) };
+  return { css, ts: await fmt(ts, TS_OUT) };
 }
 
 {

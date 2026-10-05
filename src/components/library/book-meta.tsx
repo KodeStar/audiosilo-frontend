@@ -32,6 +32,7 @@ import {
   viewHoldsWork,
 } from '@/lib/series-orderings';
 import { openExternalUrl } from '@/lib/support';
+import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 
 import { type ListeningProgress, type Split, splitCharacters, splitRecaps } from './meta-gating';
@@ -228,9 +229,7 @@ function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
         primary ? 'bg-primary/10 dark:bg-primary/15' : 'bg-gray-100 dark:bg-gray-800'
       }`}
     >
-      <Text
-        className={`uppercase ${primary ? 'text-primary dark:text-primary-400' : 'dark:text-gray-400'}`}
-      >
+      <Text className={primary ? 'uppercase text-primary dark:text-primary-400' : 'uppercase'}>
         {label}
       </Text>
     </View>
@@ -283,7 +282,7 @@ function Disclosure({
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         accessibilityLabel={accessibilityLabel}
-        className={`flex-row items-center ${headerClassName ?? ''}`}
+        className={cn('flex-row items-center', headerClassName)}
       >
         {header}
         <DisclosureChevron open={open} />

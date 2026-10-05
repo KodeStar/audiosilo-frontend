@@ -1,5 +1,6 @@
 import { ActivityIndicator, Pressable, Text as RNText, type PressableProps } from 'react-native';
 
+import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 
 import { Icon, type IconName } from './icon';
@@ -50,7 +51,12 @@ export function Button({
     <Pressable
       disabled={isDisabled}
       accessibilityRole="button"
-      className={`${containerBase} ${containerVariant[variant]} ${isDisabled ? 'opacity-50' : ''} ${className ?? ''}`}
+      className={cn(
+        containerBase,
+        containerVariant[variant],
+        isDisabled && 'opacity-50',
+        className,
+      )}
       {...props}
     >
       {loading ? (

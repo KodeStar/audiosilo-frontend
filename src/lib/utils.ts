@@ -10,6 +10,11 @@ import { twMerge } from 'tailwind-merge';
  * classes merges them with `cn`. The shadcn / react-native-reusables convention
  * (`@/lib/utils`).
  *
+ * Only classes with the SAME variants conflict: `cn('text-gray-500 dark:text-gray-400',
+ * 'text-primary')` keeps `dark:text-gray-400`, and a variant class (`dark:`, `active:`,
+ * `ios:`, `md:`...) outranks a plain one on every platform - so that text is still
+ * gray-400 in dark mode. Override the variant class too to change it.
+ *
  * Caveat: tailwind-merge treats a later shorthand as replacing an earlier longhand
  * (`cn('px-4', 'p-3')` drops `px-4`), whereas CSS and React Native keep the longhand -
  * only reach for `cn` where "last one wins" is the intended rule.

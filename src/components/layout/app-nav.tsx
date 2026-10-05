@@ -118,7 +118,7 @@ export function NavBar({ orientation }: { orientation: 'sidebar' | 'bottom' }) {
                   <View className="absolute -left-[1px] -bottom-[1px] top-0 w-1.5 rounded-tl-lg rounded-bl-lg bg-primary" />
                 ) : null}
                 <Icon name={item.icon} size={24} color={colors[scheme].text} />
-                <Text className="text-base text-gray-600">{label}</Text>
+                <Text>{label}</Text>
               </AnimatedPressable>
             </Link>
           );

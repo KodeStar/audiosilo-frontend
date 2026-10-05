@@ -62,6 +62,15 @@ describe('ThemeProvider (Uniwind)', () => {
     expect(Uniwind.hasAdaptiveThemes).toBe(false);
   });
 
+  it('falls back to dark for a stored value it does not know (never wedges the splash)', async () => {
+    // Uniwind.setTheme throws on an unregistered name; an unvalidated restore used to
+    // abort hydration, so the provider rendered nothing and the splash never hid.
+    await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('auto'));
+    await mount();
+    expect(screen.getByTestId('probe')).toHaveTextContent('dark:dark');
+    expect(Uniwind.currentTheme).toBe('dark');
+  });
+
   it('restores a persisted preference into Uniwind', async () => {
     await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('light'));
     await mount();

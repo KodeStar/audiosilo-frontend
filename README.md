@@ -41,7 +41,7 @@ Run the same checks CI runs, locally:
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
 npm run format              # prettier --check . (CI-gated; fails on unformatted files)
-npm test                    # colour-token drift check + jest-expo unit tests
+npm test                    # colour-token drift + style guards + jest-expo unit tests
 npm test -- --coverage      # …with coverage
 npx prettier --write .      # auto-fix formatting before committing
 ```

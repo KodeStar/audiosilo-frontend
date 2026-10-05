@@ -1,5 +1,7 @@
 import { Pressable, Text as RNText, View } from 'react-native';
 
+import { cn } from '@/lib/utils';
+
 import { Text } from './text';
 
 export type SectionHeaderProps = {
@@ -15,7 +17,7 @@ export type SectionHeaderProps = {
  */
 export function SectionHeader({ title, action, className }: SectionHeaderProps) {
   return (
-    <View className={`flex-row items-center justify-between ${className ?? ''}`}>
+    <View className={cn('flex-row items-center justify-between', className)}>
       <Text variant="heading">{title}</Text>
       {action ? (
         <Pressable

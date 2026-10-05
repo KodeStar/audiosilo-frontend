@@ -25,6 +25,39 @@
 @import 'uniwind';
 @import 'tw-animate-css';
 
+/*
+ * `dark:` for browsers without CSS `@scope` (Safari/iOS < 17.4, Chrome < 118,
+ * Firefox < 146 - all inside Tailwind v4's Safari 16.4 / Chrome 111 / Firefox 128
+ * floor). On web Uniwind wraps the first rule of every `dark:` class in
+ * `@scope (.dark) to (.light)`, which those browsers drop, and its
+ * prefers-color-scheme branch never matches once Uniwind has put `.dark`/`.light` on
+ * <html> - so dark mode would silently fall back to the light classes there. This
+ * keeps Uniwind's two branches and adds an unscoped `:where(.dark) &` copy (what
+ * NativeWind's `:is(.dark *)` did, at class specificity). Uniwind's native processor
+ * reads the first branch and skips the descendant one, so native output is unchanged.
+ */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:not(:where(.light, .light *, .dark, .dark *)) {
+      @slot;
+    }
+  }
+  :where(.dark) & {
+    @slot;
+  }
+}
+
+/*
+ * `hover:` as Tailwind v3 drew it (a plain `:hover`). v4 gates it behind
+ * `@media (hover: hover)`, which drops the hover highlight on an iPad with a trackpad
+ * (it reports `hover: none`) and the tap highlight on touch screens. Native never
+ * applied `hover:` under either engine.
+ */
+@custom-variant hover (&:hover);
+
 /* @generated-tokens:start - DO NOT EDIT this region. Source: src/theme/tokens.json; regenerate with `npm run gen:tokens`. */
 @theme {
   --color-primary: #db2777;
@@ -200,6 +233,21 @@
       --font-roboto-medium: 'Roboto_500Medium', var(--font-web-fallback);
       --font-roboto-semibold: 'Roboto_600SemiBold', var(--font-web-fallback);
       --font-roboto-bold: 'Roboto_700Bold', var(--font-web-fallback);
+    }
+
+    /*
+     * Native keeps the px letter-spacing scale NativeWind's native preset pinned.
+     * Tailwind v4's values are em, which native resolves against each element's own
+     * font size (`tracking-wider` on `text-base` would be 0.7 instead of 0.5). Web keeps
+     * the em values, which both engines emit there.
+     */
+    @variant native {
+      --tracking-tighter: -0.5px;
+      --tracking-tight: -0.25px;
+      --tracking-normal: 0px;
+      --tracking-wide: 0.25px;
+      --tracking-wider: 0.5px;
+      --tracking-widest: 1px;
     }
   }
 }
