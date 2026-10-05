@@ -13,20 +13,16 @@ import { Platform } from 'react-native';
 import { Uniwind, useUniwind } from 'uniwind';
 
 import { getItem, setItem } from '@/lib/storage';
+import { hasExistingInstall } from '@/stores/session';
+import { initialSchemePref, type SchemePref } from '@/theme/scheme-pref';
 import { colors } from '@/theme/tokens';
 
 import '@/global.css';
 
 void SplashScreen.preventAutoHideAsync();
 
-export type SchemePref = 'light' | 'dark' | 'system';
+export type { SchemePref };
 const STORAGE_KEY = 'audiosilo.theme';
-const SCHEME_PREFS: readonly SchemePref[] = ['light', 'dark', 'system'];
-
-/** Only a pref this build knows may reach `Uniwind.setTheme`, which throws on any other
- * name - a corrupt or foreign stored value must not keep the app on the splash screen. */
-const isSchemePref = (value: unknown): value is SchemePref =>
-  SCHEME_PREFS.includes(value as SchemePref);
 
 /**
  * The Stacks fonts, one family per weight (React Native has no font fallback or
@@ -56,8 +52,9 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 /**
- * Loads the Stacks fonts, restores the persisted color-scheme preference (dark-mode-first,
- * matching the old client), and keeps the splash screen up until both are ready. A font that fails to load does not
+ * Loads the Stacks fonts, restores the persisted color-scheme preference (a new install
+ * follows the OS, an existing one that never chose stays dark: `initialSchemePref`), and
+ * keeps the splash screen up until both are ready. A font that fails to load does not
  * hold the splash: the text falls back to the system font.
  *
  * The scheme lives in Uniwind alone: `Uniwind.setTheme` drives every themed colour token
@@ -75,9 +72,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void getItem<unknown>(STORAGE_KEY)
-      .then((saved) => {
-        if (active) Uniwind.setTheme(isSchemePref(saved) ? saved : 'dark');
+    // Both reads are issued synchronously here, and this effect runs before the root
+    // layout's (a child's effects run first), so the install signal is read before
+    // resetStaleStorage can change the session keys.
+    void Promise.all([getItem<unknown>(STORAGE_KEY), hasExistingInstall()])
+      .then(([saved, existing]) => {
+        if (!active) return;
+        const { pref, persist } = initialSchemePref(saved, existing);
+        Uniwind.setTheme(pref);
+        if (persist) void setItem(STORAGE_KEY, pref);
       })
       .catch(() => {
         // Restoring the theme must not wedge first paint (render is gated on
@@ -96,8 +99,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [fontsReady, hydrated]);
 
   // Keep the web document backdrop in sync with the resolved scheme. The static
-  // shell (+html.tsx) paints dark before mount; this corrects it for light theme
-  // and ensures the browser back-swipe gesture reveals the themed color, not white.
+  // shell (+html.tsx) paints the OS scheme's background before mount; this corrects it
+  // for an explicit pick and ensures the browser back-swipe gesture reveals the themed
+  // colour, not white.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     const bg = theme === 'dark' ? colors.dark.background : colors.light.background;

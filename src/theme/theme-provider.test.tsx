@@ -48,11 +48,20 @@ describe('ThemeProvider (Uniwind)', () => {
     Uniwind.setTheme('system');
   });
 
-  it('defaults to dark when no preference is stored', async () => {
+  it('follows the system on a new install, and writes that down', async () => {
+    await mount();
+    expect(Uniwind.hasAdaptiveThemes).toBe(true);
+    expect(screen.getByTestId('probe')).toHaveTextContent(`system:${Uniwind.currentTheme}`);
+    expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('system'));
+  });
+
+  it('keeps an existing install that never chose a theme dark, and writes that down', async () => {
+    await AsyncStorage.setItem('audiosilo.connections', JSON.stringify([{ id: 's1' }]));
     await mount();
     expect(screen.getByTestId('probe')).toHaveTextContent('dark:dark');
     expect(Uniwind.currentTheme).toBe('dark');
     expect(Uniwind.hasAdaptiveThemes).toBe(false);
+    expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('dark'));
   });
 
   it('falls back to dark for a stored value it does not know (never wedges the splash)', async () => {
@@ -62,6 +71,7 @@ describe('ThemeProvider (Uniwind)', () => {
     await mount();
     expect(screen.getByTestId('probe')).toHaveTextContent('dark:dark');
     expect(Uniwind.currentTheme).toBe('dark');
+    expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('auto'));
   });
 
   it('restores a persisted preference into Uniwind', async () => {

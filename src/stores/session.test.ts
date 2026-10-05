@@ -2,7 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import type { User } from '@/api/types';
-import { onConnectionRemoved, resetStaleStorage, useSession } from '@/stores/session';
+import {
+  hasExistingInstall,
+  onConnectionRemoved,
+  resetStaleStorage,
+  useSession,
+} from '@/stores/session';
 
 const mkUser = (name: string): User => ({
   id: 1,
@@ -125,6 +130,34 @@ describe('session store (multi-connection)', () => {
     expect(s.status).toBe('authenticated');
     await removeDefault(); // removes the last one
     expect(useSession.getState().status).toBe('unauthenticated');
+  });
+
+  describe('hasExistingInstall (the theme default signal)', () => {
+    it('is false for a fresh install, even after resetStaleStorage wrote its version keys', async () => {
+      expect(await hasExistingInstall()).toBe(false);
+      await resetStaleStorage();
+      expect(await hasExistingInstall()).toBe(false);
+      await AsyncStorage.setItem('audiosilo.connections', JSON.stringify([]));
+      expect(await hasExistingInstall()).toBe(false);
+    });
+
+    it('is true with a persisted connection', async () => {
+      await AsyncStorage.setItem('audiosilo.connections', JSON.stringify([{ id: 's1' }]));
+      expect(await hasExistingInstall()).toBe(true);
+    });
+
+    it('is true with only a remembered server (signed out of everything)', async () => {
+      await AsyncStorage.setItem(
+        'audiosilo.knownServers',
+        JSON.stringify([{ serverUrl: 'https://a', name: 'A', serverId: 's1' }]),
+      );
+      expect(await hasExistingInstall()).toBe(true);
+    });
+
+    it('is true with a pre-multi-server session', async () => {
+      await AsyncStorage.setItem('audiosilo.serverUrl', JSON.stringify('https://a'));
+      expect(await hasExistingInstall()).toBe(true);
+    });
   });
 
   describe('resetStaleStorage (split auth/cache versions)', () => {
