@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Mot de passe",
       "connect": "Se connecter",
       "submit": "Se connecter",
-      "failed": "Échec de la connexion. Veuillez réessayer."
+      "failed": "Échec de la connexion. Veuillez réessayer.",
+      "modeLabel": "Mode de connexion"
     },
     "scan": {
       "closeLabel": "Fermer le scanner",
@@ -287,7 +288,8 @@
       "noFinishedHint": "Terminez un livre et il apparaîtra ici.",
       "loadLibrariesError": "Impossible de charger les bibliothèques.",
       "noLibraries": "Aucune bibliothèque n’est encore partagée avec ton compte.",
-      "noLibrariesHint": "Demandez au propriétaire du serveur de vous en partager une."
+      "noLibrariesHint": "Demandez au propriétaire du serveur de vous en partager une.",
+      "viewLabel": "Liste de livres"
     },
     "favourites": {
       "title": "Favoris",

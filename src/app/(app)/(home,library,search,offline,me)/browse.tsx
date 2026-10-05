@@ -124,6 +124,7 @@ export default function BrowseScreen() {
           ]}
           value={type}
           onChange={onChange}
+          accessibilityLabel={t('library.list.viewLabel')}
           className="self-start"
         />
       </View>

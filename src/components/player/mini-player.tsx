@@ -29,7 +29,6 @@ import {
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
@@ -185,7 +184,8 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
             <AnimatedPressable
               onPress={() => void toggle()}
               hitSlop={8}
-              className={`h-10 w-10 items-center justify-center rounded-full bg-brand ${
+              // Ink, like every play button: the progress hairline is this bar's pink.
+              className={`h-10 w-10 items-center justify-center rounded-full bg-primary ${
                 isPlaying ? '' : 'pl-0.5'
               }`}
               accessibilityRole="button"
@@ -193,7 +193,11 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
                 isPlaying ? t('player.controls.pause') : t('player.controls.play')
               }
             >
-              <Icon name={isPlaying ? 'pause' : 'play'} size={18} color={colors.white} />
+              <Icon
+                name={isPlaying ? 'pause' : 'play'}
+                size={18}
+                color={themed.primaryForeground}
+              />
             </AnimatedPressable>
           </View>
         </View>

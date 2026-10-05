@@ -2,7 +2,7 @@ import { router, usePathname } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -37,15 +37,15 @@ export function SubNav() {
             {t(root.titleKey)}
           </Text>
         ) : (
-          <AnimatedPressable
+          <Button
+            variant="ghost"
             onPress={back}
-            accessibilityRole="button"
             accessibilityLabel={t('nav.back')}
-            className="-ml-2 h-9 flex-row items-center gap-1.5 rounded-[10px] px-2 active:bg-accent"
+            className="-ml-2 gap-1.5 px-2"
           >
             <BackGlyph size={16} color={themed.foreground} />
-            <Text variant="label">{t('nav.back')}</Text>
-          </AnimatedPressable>
+            <Text>{t('nav.back')}</Text>
+          </Button>
         )}
       </View>
     </View>

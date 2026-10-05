@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Passwort",
       "connect": "Verbinden",
       "submit": "Anmelden",
-      "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut."
+      "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
+      "modeLabel": "Anmeldeart"
     },
     "scan": {
       "closeLabel": "Scanner schließen",
@@ -287,7 +288,8 @@
       "noFinishedHint": "Schließe ein Buch ab und es erscheint hier.",
       "loadLibrariesError": "Bibliotheken konnten nicht geladen werden.",
       "noLibraries": "Mit deinem Konto wurde noch keine Bibliothek geteilt.",
-      "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben."
+      "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben.",
+      "viewLabel": "Bücherliste"
     },
     "favourites": {
       "title": "Favoriten",

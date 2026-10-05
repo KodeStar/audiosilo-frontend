@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Contraseña",
       "connect": "Conectar",
       "submit": "Iniciar sesión",
-      "failed": "Error al iniciar sesión. Inténtalo de nuevo."
+      "failed": "Error al iniciar sesión. Inténtalo de nuevo.",
+      "modeLabel": "Cómo iniciar sesión"
     },
     "scan": {
       "closeLabel": "Cerrar el escáner",
@@ -287,7 +288,8 @@
       "noFinishedHint": "Termina un libro y aparecerá aquí.",
       "loadLibrariesError": "No se pudieron cargar las bibliotecas.",
       "noLibraries": "Aún no se ha compartido ninguna biblioteca con tu cuenta.",
-      "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo."
+      "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo.",
+      "viewLabel": "Lista de libros"
     },
     "favourites": {
       "title": "Favoritos",

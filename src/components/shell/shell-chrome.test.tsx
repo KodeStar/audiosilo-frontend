@@ -267,7 +267,7 @@ describe('AccessoryPlayer', () => {
     expect(screen.getByTestId('accessory-player-regular')).toBeTruthy();
     expect(screen.getByLabelText('Pause')).toBeTruthy();
     expect(screen.getByLabelText('Skip back 15 seconds')).toBeTruthy();
-    screen.unmount();
+    await screen.unmount();
 
     mockPlacement = 'inline';
     await render(<AccessoryPlayer />);

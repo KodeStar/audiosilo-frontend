@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Palavra-passe",
       "connect": "Ligar",
       "submit": "Iniciar sessão",
-      "failed": "Falha ao iniciar sessão. Tenta novamente."
+      "failed": "Falha ao iniciar sessão. Tenta novamente.",
+      "modeLabel": "Como iniciar sessão"
     },
     "scan": {
       "closeLabel": "Fechar o leitor",
@@ -287,7 +288,8 @@
       "noFinishedHint": "Termina um livro e ele aparecerá aqui.",
       "loadLibrariesError": "Não foi possível carregar as bibliotecas.",
       "noLibraries": "Ainda não foi partilhada nenhuma biblioteca com a tua conta.",
-      "noLibrariesHint": "Peça ao proprietário do servidor para partilhar uma consigo."
+      "noLibrariesHint": "Peça ao proprietário do servidor para partilhar uma consigo.",
+      "viewLabel": "Lista de livros"
     },
     "favourites": {
       "title": "Favoritos",

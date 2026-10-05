@@ -17,6 +17,7 @@ import {
   segmentStarts,
 } from '@/components/player/transport';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
@@ -181,12 +182,12 @@ export function DockedPlayer() {
             onPress={openPlayer}
             accessibilityRole="button"
             accessibilityLabel={t('shell.openPlayer', { title })}
-            className="flex-1 flex-row items-center gap-3 rounded-[14px] p-1.5 active:bg-accent"
+            className="flex-1 flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent"
           >
             <Cover
               source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
               label={title}
-              rounded="rounded-[4px]"
+              rounded="rounded-[5px]"
               size={desktop ? 56 : 48}
             />
             <View className="flex-1">
@@ -267,14 +268,13 @@ export function DockedPlayer() {
           <View className="flex-1 flex-row items-center justify-end gap-3">
             <SpeedButton onPress={() => setSheet('speed')} />
             <SleepTimerButton onPress={() => setSheet('sleep')} />
-            <AnimatedPressable
+            <Button
+              variant="ghost"
+              size="icon"
+              icon="chevron-up"
               onPress={openPlayer}
-              accessibilityRole="button"
               accessibilityLabel={t('shell.dock.expand')}
-              className="h-9 w-9 items-center justify-center rounded-[10px] active:bg-accent"
-            >
-              <Icon name="chevron-up" size={18} color={themed.foreground} />
-            </AnimatedPressable>
+            />
           </View>
         </View>
       </View>

@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Password",
       "connect": "Connetti",
       "submit": "Accedi",
-      "failed": "Accesso non riuscito. Riprova."
+      "failed": "Accesso non riuscito. Riprova.",
+      "modeLabel": "Come accedere"
     },
     "scan": {
       "closeLabel": "Chiudi lo scanner",
@@ -287,7 +288,8 @@
       "noFinishedHint": "Finisci un libro e comparirà qui.",
       "loadLibrariesError": "Impossibile caricare le librerie.",
       "noLibraries": "Nessuna libreria è ancora condivisa con il tuo account.",
-      "noLibrariesHint": "Chiedi al proprietario del server di condividerne una."
+      "noLibrariesHint": "Chiedi al proprietario del server di condividerne una.",
+      "viewLabel": "Elenco dei libri"
     },
     "favourites": {
       "title": "Preferiti",

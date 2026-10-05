@@ -92,6 +92,7 @@ export default function SignInScreen() {
         <SegmentedControl
           options={modes}
           value={mode}
+          accessibilityLabel={t('connect.signIn.modeLabel')}
           onChange={(m) => {
             setMode(m);
             setError(null);

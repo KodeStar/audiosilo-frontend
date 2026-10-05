@@ -44,7 +44,7 @@ export function PhoneHeader({
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={namedBack ? t('nav.backTo', { name: backTitle }) : t('nav.back')}
-            className="min-h-[44px] min-w-[44px] flex-row items-center gap-1 rounded-[10px] px-1.5 active:bg-accent"
+            className="min-h-[44px] min-w-[44px] flex-row items-center gap-1 rounded-control px-1.5 active:bg-accent"
           >
             <BackGlyph size={20} color={themed.foreground} />
             {namedBack ? (

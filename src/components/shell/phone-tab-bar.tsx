@@ -40,7 +40,7 @@ export function PhoneTabBar({ onLayout }: { onLayout?: (e: LayoutChangeEvent) =>
               accessibilityRole="tab"
               aria-selected={selected}
               accessibilityLabel={label}
-              className="min-h-[44px] flex-1 items-center justify-center gap-0.5 rounded-[10px] py-1"
+              className="min-h-[44px] flex-1 items-center justify-center gap-0.5 rounded-control py-1"
             >
               <Icon
                 name={d.icon}
