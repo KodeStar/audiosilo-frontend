@@ -55,9 +55,10 @@ export type SheetProps = {
  * only the dismissal host, so it never competes with the slide/fade.
  *
  * Both modes render the overlay IN PLACE (an absolute `inset-0` View) - an RN `Modal`
- * renders nothing on web in this stack, and every cross-tree transport (portal, context
- * outlet) failed un-root-caused (see `OverlayHost`). So the Sheet MUST be mounted at
- * screen level (never inside a card/Pressable/clipped container) regardless of mode.
+ * renders nothing on web in this stack, and this Sheet predates the portal primitives
+ * (see `OverlayHost` for why portals looked broken here and now work). So the Sheet MUST
+ * be mounted at screen level (never inside a card/Pressable/clipped container)
+ * regardless of mode.
  * Two presentation modes differ only in who owns dismissal:
  * - **Hosted (default):** wraps the overlay in an `OverlayHost`, which owns Android
  *   hardware-back and web Escape - so the manual BackHandler below must NOT also run.

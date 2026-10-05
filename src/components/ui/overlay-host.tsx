@@ -4,23 +4,25 @@ import { BackHandler } from 'react-native';
 /**
  * A dismissable host for an overlay (a Sheet, a dialog card).
  *
- * THE JOURNEY (why this renders IN PLACE and is neither an RN Modal, a portal, nor
- * a cross-tree outlet):
+ * THE JOURNEY (why this renders IN PLACE rather than through an RN Modal or a portal):
  * - react-native-web's `Modal` renders NOTHING in this app's web build - with
  *   `visible` true no node is appended to the document and the children never mount,
  *   so every dialog/sheet routed through it was silently broken on web.
- * - Every attempt to render the overlay OUTSIDE its mount subtree failed in the live
- *   web build and none was root-caused in this React 19 / RN-web 0.21 / reanimated 4 /
- *   NativeWind (since replaced by Uniwind) stack: a react-dom `createPortal` COMMITS
- *   its content and is then torn down within the same instant; a context "outlet"
- *   (registering the node with a provider high in the shell) never presented.
- * - The ONLY overlay mechanism proven to work here is a plain absolute-positioned View
- *   rendered IN PLACE, in the ordinary tree (the player's inline sheets prove it).
+ * - Portals DO work in this stack (React 19 / RN-web 0.21 / reanimated 4 / Uniwind).
+ *   An earlier attempt saw a react-dom `createPortal` commit its content and tear it
+ *   down within the same instant, and a context "outlet" never present. That was not
+ *   the portal: React 19's concurrent replays discarded a render-phase setState in our
+ *   own `Sheet` (root-caused in e049175), which made every mechanism look broken. The
+ *   player redesign's Phase 0a spike (branch spike/player-0a-portals) then proved
+ *   react-native-reusables overlays (Radix portals into `document.body` on web, a
+ *   `PortalHost` outlet on native) stay mounted, under the real server CSP too.
  *
- * So this host simply renders its children in place when visible. That is the CONSUMER
- * CONTRACT: an OverlayHost (and anything built on it - Sheet, ModalCard) MUST be mounted
- * at SCREEN level - never inside a card, a Pressable, or a clipped/transformed container -
- * or the overlay will be clipped to that ancestor instead of covering the screen.
+ * This host still renders its children in place when visible, because today's Sheet and
+ * ModalCard are built on it. That is the CONSUMER CONTRACT: an OverlayHost (and anything
+ * built on it) MUST be mounted at SCREEN level - never inside a card, a Pressable, or a
+ * clipped/transformed container - or the overlay will be clipped to that ancestor
+ * instead of covering the screen. A new overlay that must escape a clipped container
+ * should use the portal-based primitives (Phase 0b) rather than extend this host.
  *
  * Dismissal is owned here: Android hardware-back and web Escape both call
  * `onRequestClose`, registered only while visible.
