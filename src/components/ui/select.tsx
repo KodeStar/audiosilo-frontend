@@ -50,11 +50,11 @@ export function SelectValue({
 export function SelectTrigger({
   className,
   children,
-  onKeyDown,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & { className?: string }) {
   const themed = useThemeColors();
-  const { open, onOpenChange } = SelectPrimitive.useRootContext();
+  // Web: Space opens it through Radix's own key handler, which react-native-web's press
+  // responder used to pre-empt (fixed once for every pressable: @/lib/rnw-button-fix).
   return (
     <SelectPrimitive.Trigger
       className={cn(
@@ -65,17 +65,6 @@ export function SelectTrigger({
         props.disabled && 'opacity-50',
         className,
       )}
-      // Web: Space must open the select like Enter does. react-native-web's press
-      // responder preventDefaults Space on a role="button" element before Radix's own
-      // key handler runs, and Radix skips default-prevented events - so it never
-      // opened (0a spike). This handler runs after the responder; open it ourselves.
-      onKeyDown={(e) => {
-        onKeyDown?.(e);
-        const key = (e as unknown as { key?: string }).key;
-        if (Platform.OS === 'web' && !open && (key === ' ' || key === 'Spacebar')) {
-          onOpenChange(true);
-        }
-      }}
       {...props}
     >
       <>{children}</>

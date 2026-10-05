@@ -23,9 +23,13 @@ export function PhoneHeader({
   title,
   backTitle,
   onBack,
+  connectionId,
 }: {
   /** The page title, shown large; empty on a pushed page (it renders its own heading). */
   title: string;
+  /** The page's own `?connection=` (a content page), so its offline banner speaks for
+   * that server. */
+  connectionId?: string;
   /** Set on a pushed page: the previous page's title ('' when it has none). */
   backTitle?: string;
   onBack: () => void;
@@ -72,7 +76,7 @@ export function PhoneHeader({
         </View>
       )}
       <ReconnectBanner />
-      <OfflineBanner />
+      <OfflineBanner connectionId={connectionId} />
     </View>
   );
 }

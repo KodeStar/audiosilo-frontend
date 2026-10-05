@@ -19,8 +19,9 @@ import { migrateStorage } from '@/lib/storage-migration';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import '@/lib/register-sw';
 // Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
-// (which nests illegally and hits an older-Safari flex bug). All top-level imports
-// evaluate before the first render, so this patches RNW in time. No-op on native.
+// (which nests illegally and hits an older-Safari flex bug), and let Space activate
+// role-bearing pressables (tab, radio, switch...). All top-level imports evaluate before
+// the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';

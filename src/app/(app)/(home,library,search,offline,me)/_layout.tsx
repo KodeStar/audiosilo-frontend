@@ -15,6 +15,7 @@ import { PhoneHeader } from '@/components/shell/phone-header';
 import { useChromeEdge } from '@/components/shell/shell-metrics';
 import { useRootFrame } from '@/components/ui/overlay';
 import { useLayout } from '@/lib/layout';
+import { connectionParam } from '@/lib/paths';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 /**
@@ -63,6 +64,9 @@ export default function TabStackLayout() {
             headerShown: phone,
             header: ({ back, options, navigation }) => (
               <PhoneHeader
+                connectionId={connectionParam(
+                  (route.params as { connection?: string | string[] } | undefined)?.connection,
+                )}
                 title={typeof options.title === 'string' ? options.title : ''}
                 // A tab root never goes back: React Navigation would otherwise pass
                 // a parent navigator's back (the root stack under a modal flow).

@@ -343,6 +343,39 @@
     elevation: 0;
   }
 }
+/*
+ * The skeleton shimmer on web (`Skeleton`): a `card` band, as wide as the block, sweeping
+ * across it every 1.4 s on the element's own background - no extra node, no JS loop. The
+ * image is three blocks wide with the band in its middle third, so moving its position
+ * from 100% to 0% carries the band from fully left of the block to fully right. Native
+ * draws the band with react-native-svg on one shared clock instead.
+ */
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@utility skeleton-shimmer {
+  @variant web {
+    background-image: linear-gradient(
+      90deg,
+      transparent 33.333%,
+      color-mix(in srgb, var(--color-card) 55%, transparent) 50%,
+      transparent 66.667%
+    );
+    background-size: 300% 100%;
+    background-repeat: no-repeat;
+    background-position: 0% 0;
+    animation: skeleton-shimmer 1.4s linear infinite;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
 /* No box-shadow on iOS for a shadowed `overflow-hidden` view (see above). */
 @utility ios-clipped-shadow {
   @variant ios {

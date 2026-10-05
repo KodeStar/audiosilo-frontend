@@ -1,10 +1,11 @@
-import { Redirect, router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 
 import { ApiClient, ApiError } from '@/api/client';
 import { Logo } from '@/components/brand/logo';
+import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
@@ -35,7 +36,7 @@ export default function ConnectRoute() {
   const pendingServerUrl = useSession((s) => s.pendingServerUrl);
   const { add, token } = useLocalSearchParams<{ add?: string; token?: string }>();
   if (status === 'authenticated' && !add && !token && !pendingServerUrl) {
-    return <Redirect href="/" />;
+    return <LeaveOnboarding />;
   }
   return <ConnectServerScreen />;
 }
@@ -87,9 +88,7 @@ function ConnectServerScreen() {
           token: session.token,
           user: session.user,
         });
-        // Back to the app, not `replace`: `(app)` is the root stack's anchor and already sits
-        // under onboarding, so replacing would stack a second `(app)` on top of it.
-        router.dismissTo('/');
+        leaveOnboarding();
       } catch (e) {
         if (cancelled) return;
         setPairError(
@@ -176,9 +175,7 @@ function ConnectServerScreen() {
         token: demo.token,
         user: demo.user,
       });
-      // Back to the app, not `replace`: `(app)` is the root stack's anchor and already sits
-      // under onboarding, so replacing would stack a second `(app)` on top of it.
-      router.dismissTo('/');
+      leaveOnboarding();
     } catch (e) {
       setError(
         e instanceof ApiError

@@ -1,10 +1,11 @@
-import { useEffect, useId, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { type LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
+  makeMutable,
   useAnimatedStyle,
   useReducedMotion,
-  useSharedValue,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
@@ -25,13 +26,28 @@ export type SkeletonProps = {
 
 /**
  * A Stacks skeleton (react-native-reusables' Skeleton, reworked): a `muted` block with a
- * soft highlight sweeping across it every 1.4 s. Reduced motion renders it static.
+ * soft `card` highlight sweeping across it every 1.4 s. Reduced motion renders it static.
  *
- * The highlight is a react-native-svg gradient band moved by a reanimated transform, on
- * its own inner view: animated style and className stay on separate views (why:
- * animated-pressable.native.tsx).
+ * Web: one element, the band a CSS gradient moved by a keyframe animation (the
+ * `skeleton-shimmer` utility in src/global.css, off under `prefers-reduced-motion`).
+ * Native: a react-native-svg gradient band on its own inner view, moved by ONE shared
+ * clock that every skeleton on screen reads (so a list of placeholders runs one
+ * animation, in step), started by the first and stopped with the last. Animated style
+ * and className stay on separate views (why: animated-pressable.native.tsx).
  */
 export function Skeleton({ className, testID }: SkeletonProps) {
+  if (Platform.OS === 'web') {
+    return (
+      <View
+        testID={testID}
+        className={cn('overflow-hidden rounded-md bg-muted skeleton-shimmer', className)}
+      />
+    );
+  }
+  return <NativeSkeleton className={className} testID={testID} />;
+}
+
+function NativeSkeleton({ className, testID }: SkeletonProps) {
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
@@ -46,31 +62,48 @@ export function Skeleton({ className, testID }: SkeletonProps) {
   );
 }
 
+/** The shared shimmer clock (native): 0 -> 1 every `SHIMMER_MS`, while any shimmer shows. */
+const clock = makeMutable(0);
+let shimmers = 0;
+
+function useShimmerClock() {
+  useEffect(() => {
+    shimmers += 1;
+    if (shimmers === 1) {
+      clock.value = 0;
+      clock.value = withRepeat(
+        withTiming(1, { duration: SHIMMER_MS, easing: Easing.linear }),
+        -1,
+        false,
+      );
+    }
+    return () => {
+      shimmers -= 1;
+      if (shimmers === 0) cancelAnimation(clock);
+    };
+  }, []);
+  return clock;
+}
+
 function Shimmer({ width }: { width: number }) {
   const { card } = useThemeColors();
-  // A per-instance gradient id: SVG ids are document-global on web.
-  const gradientId = `skeleton-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const x = useSharedValue(-width);
-  useEffect(() => {
-    x.value = -width;
-    x.value = withRepeat(
-      withTiming(width, { duration: SHIMMER_MS, easing: Easing.linear }),
-      -1,
-      false,
-    );
-  }, [width, x]);
-  const style = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+  const progress = useShimmerClock();
+  // The band (as wide as the block) sweeps from fully left of it to fully right.
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: (progress.value * 2 - 1) * width }],
+  }));
   return (
     <Animated.View testID="skeleton-shimmer" style={[StyleSheet.absoluteFill, style]}>
       <Svg width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
-          <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+          {/* Each Svg is its own document on native, so a fixed id is safe. */}
+          <LinearGradient id="skeleton-band" x1="0" y1="0" x2="1" y2="0">
             <Stop offset="0" stopColor={card} stopOpacity={0} />
             <Stop offset="0.5" stopColor={card} stopOpacity={0.55} />
             <Stop offset="1" stopColor={card} stopOpacity={0} />
           </LinearGradient>
         </Defs>
-        <Rect width="100%" height="100%" fill={`url(#${gradientId})`} />
+        <Rect width="100%" height="100%" fill="url(#skeleton-band)" />
       </Svg>
     </Animated.View>
   );

@@ -72,6 +72,8 @@ jest.mock('react-native-reanimated', () => {
       };
       return sv;
     },
+    // A module-level shared value (the skeletons' shared shimmer clock).
+    makeMutable: <V>(init: V) => ({ value: init }),
     useAnimatedStyle: (fn: () => unknown) => (typeof fn === 'function' ? fn() : {}),
     useDerivedValue: (fn: () => unknown) => ({
       value: typeof fn === 'function' ? fn() : undefined,

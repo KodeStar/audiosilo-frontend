@@ -64,16 +64,10 @@ describe('SegmentedControl', () => {
     expect(String(screen.getAllByRole('radio')[0].props.className)).not.toContain('flex-1');
   });
 
-  it('selects with Space on web', async () => {
-    Platform.OS = 'web';
+  it('presses a segment like a tap (Space on web reaches the same press: rnw-button-fix)', async () => {
     const onChange = jest.fn();
     await mount(<SegmentedControl options={[...options]} value="all" onChange={onChange} />);
-    const preventDefault = jest.fn();
-    await fireEvent(screen.getByRole('radio', { name: 'Books' }), 'keyDown', {
-      key: ' ',
-      preventDefault,
-    });
+    await fireEvent.press(screen.getByRole('radio', { name: 'Books' }));
     expect(onChange).toHaveBeenCalledWith('books');
-    expect(preventDefault).toHaveBeenCalled();
   });
 });

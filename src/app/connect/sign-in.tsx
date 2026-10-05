@@ -1,4 +1,4 @@
-import { Redirect, router, useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
+import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 
 type Mode = 'code' | 'password';
 
@@ -54,9 +55,7 @@ export default function SignInScreen() {
       token: session.token,
       user: session.user,
     });
-    // Back to the app, not `replace`: `(app)` is the root stack's anchor and already sits
-    // under onboarding, so replacing would stack a second `(app)` on top of it.
-    router.dismissTo('/');
+    leaveOnboarding();
   };
 
   const onSubmit = async () => {

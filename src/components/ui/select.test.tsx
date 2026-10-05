@@ -57,13 +57,8 @@ describe('Select', () => {
     expect(screen.getByText('30 min')).toBeTruthy();
   });
 
-  it('opens with Space on web (react-native-web swallows it before Radix)', async () => {
-    await mountWithPortal(<Harness onChange={jest.fn()} />);
-    Platform.OS = 'web';
-    await fireEvent(screen.getByRole('combobox', { name: 'Timer' }), 'keyDown', { key: ' ' });
-    // Open (on web Radix then renders the list; the native test renderer only flips state).
-    expect(screen.getByRole('combobox', { name: 'Timer' })).toBeExpanded();
-  });
+  // Space on web: Radix's own handler opens it once react-native-web stops pre-empting
+  // it, which @/lib/rnw-button-fix does for every pressable (tested there).
 
   it('ignores Space off the web (native has no keyboard path to fix)', async () => {
     await mountWithPortal(<Harness onChange={jest.fn()} />);

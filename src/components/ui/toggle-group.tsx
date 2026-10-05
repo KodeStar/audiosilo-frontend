@@ -50,9 +50,8 @@ export function ToggleGroupItem({
   children,
   ...props
 }: React.ComponentProps<typeof ToggleGroupPrimitive.Item> & { className?: string }) {
-  const { value, type, onValueChange } = ToggleGroupPrimitive.useRootContext();
+  const { value, type } = ToggleGroupPrimitive.useRootContext();
   const selected = ToggleGroupPrimitive.utils.getIsSelected(value, props.value);
-  const single = type === 'single';
   return (
     <TextClassContext.Provider
       value={cn(
@@ -69,22 +68,10 @@ export function ToggleGroupItem({
           props.disabled && 'opacity-50',
           className,
         )}
+        // Space presses a radio/checkbox like Enter (@/lib/rnw-button-fix).
         {...(Platform.OS === 'web' && {
-          role: single ? 'radio' : 'checkbox',
+          role: type === 'single' ? 'radio' : 'checkbox',
           'aria-checked': selected,
-          // Space selects (react-native-web only activates role="button" on Space).
-          onKeyDown: (e: { key?: string; preventDefault: () => void }) => {
-            if (e.key !== ' ' && e.key !== 'Spacebar') return;
-            e.preventDefault();
-            if (single) {
-              if (!selected) (onValueChange as (v: string) => void)(props.value);
-            } else {
-              const current = (value as string[] | undefined) ?? [];
-              (onValueChange as (v: string[]) => void)(
-                selected ? current.filter((v) => v !== props.value) : [...current, props.value],
-              );
-            }
-          },
         })}
         {...props}
       >

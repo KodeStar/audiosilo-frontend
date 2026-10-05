@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
@@ -15,6 +14,7 @@ import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
+import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
 
 /**
  * Public demo landing. On a demo server (e.g. demo.audiosilo.app), visiting this
@@ -80,7 +80,7 @@ export default function DemoScreen() {
   }
   // Returning visitor with an existing session and nothing newly provisioned: go in.
   if (status === 'authenticated' && !pairing) {
-    return <Redirect href="/" />;
+    return <LeaveOnboarding />;
   }
 
   return (
@@ -124,9 +124,7 @@ export default function DemoScreen() {
               title={t('demo.browseHere')}
               icon="play"
               className="w-full"
-              // dismissTo, not replace: `(app)` (the root stack's anchor) is already
-              // underneath, and replacing would stack a second one on top of it.
-              onPress={() => router.dismissTo('/')}
+              onPress={leaveOnboarding}
             />
           </View>
         )}
