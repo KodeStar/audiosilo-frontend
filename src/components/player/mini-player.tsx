@@ -48,6 +48,17 @@ export function useMiniPlayerInset(): number {
   return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT : 0);
 }
 
+/** The native phone's floating mini player (Android, iOS before 26): ONE card for the
+ * whole shell, rendered by the `(app)` layout over NativeTabs rather than once per tab
+ * stack (NativeTabs keeps visited tabs alive, so a card per stack meant up to five ticking
+ * instances, each replaying its entrance on a tab's first visit). Its bottom edge sits on
+ * the native bar's measured top edge (`bar`, published by the tab stacks), so it waits for
+ * that first measure rather than flashing over the bar. */
+export function FloatingMiniPlayer() {
+  const bar = useShellMetrics((s) => s.edges.bar);
+  return bar === undefined ? null : <MiniPlayer bottomOffset={bar} />;
+}
+
 /** "5h 27m left (1.4×)" - wall-clock time remaining at the current speed, with the
  * speed modifier appended. A leaf so only this line re-renders, when its text changes. */
 function TimeLeft({ total }: { total: number }) {

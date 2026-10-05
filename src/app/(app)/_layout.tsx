@@ -3,6 +3,8 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { FloatingMiniPlayer } from '@/components/player/mini-player';
+
 import { AccessoryPlayer } from '@/components/shell/accessory-player';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
 import { AuthGate } from '@/components/shell/auth-gate';
@@ -18,7 +20,8 @@ import { useThemeColors } from '@/theme/use-theme-colors';
  * The native (iOS/Android) shell: ONE navigator, NativeTabs, at every width - only the
  * chrome around it changes, so crossing 640 (iPad rotation, split view) keeps every
  * tab's stack. Phone: the native tab bar, with the mini player in its bottom accessory
- * (iOS 26) or floating above it (the tab stacks' layout). Tablet/desktop: the tab bar is
+ * (iOS 26) or ONE card floating above it (`FloatingMiniPlayer`, over NativeTabs - not one
+ * per tab stack: NativeTabs keeps visited tabs alive). Tablet/desktop: the tab bar is
  * hidden and our top bar, sub-nav and docked player bar take over. Tabs are never added
  * or removed at runtime (NativeTabs can't), only hidden as a whole.
  *
@@ -51,7 +54,12 @@ function NativeShell() {
 
   return (
     <ThemeProvider value={navTheme}>
-      <ShellFrame>
+      <ShellFrame
+        // Absolutely positioned in the frame, which spans the window: its bottom offset is
+        // the native bar's measured top edge, so it sits on the bar on every tab and over a
+        // pushed page, and a tab switch never remounts it.
+        phoneBottom={ACCESSORY_SUPPORTED ? null : <FloatingMiniPlayer />}
+      >
         <NativeTabs
           hidden={wide}
           tintColor={themed.brand}
