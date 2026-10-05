@@ -189,10 +189,11 @@ export default function SettingsScreen() {
                   className={`items-center rounded-md px-3 py-1.5 ${active ? 'bg-primary' : ''}`}
                 >
                   {/* Raw RN Text with the full explicit class string: the themed
-                    <Text> body variant injects its own text-color class, which
-                    NativeWind's class merge doesn't override last-wins with an
-                    appended text-white, so the active label rendered gray-on-pink
-                    (matches SegmentedControl's approach). */}
+                    <Text> body variant injects its own text-color class, and an
+                    appended text-white is not guaranteed to win (on web conflicting
+                    classes resolve by stylesheet order, not className order), so the
+                    active label rendered gray-on-pink (matches SegmentedControl's
+                    approach). */}
                   <RNText
                     className={`font-roboto-medium text-sm ${
                       active ? 'text-white' : 'text-gray-500 dark:text-gray-400'
@@ -207,7 +208,7 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title={t('settings.playback.label')}>
-          <View className="overflow-hidden rounded-lg bg-white shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+          <View className="overflow-hidden rounded-lg bg-white shadow-xs ios-clipped-shadow dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
             <StepperRow label={t('settings.playback.skipBack')} first>
               <Stepper
                 value={skipBackward}
@@ -277,7 +278,7 @@ export default function SettingsScreen() {
             {/* The window and the timer's kind only matter once the feature is on. */}
             {autoSleepTimer ? (
               <View className="gap-2">
-                <View className="overflow-hidden rounded-lg bg-white shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+                <View className="overflow-hidden rounded-lg bg-white shadow-xs ios-clipped-shadow dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
                   <StepperRow label={t('settings.sleep.from')} first>
                     <TimeStepper
                       value={autoSleepFrom}

@@ -25,7 +25,13 @@ See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the full stack;
 ```sh
 npm run web                     # expo start --web (no native build needed)
 npm run ios | npm run android   # needs a dev build (npx expo prebuild first)
+npm run gen:tokens              # after editing colour tokens in src/theme/tokens.json
 ```
+
+Styling is [Uniwind](https://docs.uniwind.dev) (Tailwind v4): the theme lives in
+[`src/global.css`](src/global.css), with its colour block generated from
+[`src/theme/tokens.json`](src/theme/tokens.json) - see the Styling notes in
+[CLAUDE.md](CLAUDE.md).
 
 ## Testing & CI
 

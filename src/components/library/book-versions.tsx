@@ -48,7 +48,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
         accessibilityRole="button"
         accessibilityLabel={t('library.versions.choose')}
         hitSlop={6}
-        className="flex-row items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+        className="flex-row items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
       >
         <Icon name="server" size={16} color={colors.primary} />
         <View className="flex-1">
@@ -77,7 +77,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
                 key={`${c.connectionId}:${c.libraryId}:${c.path}`}
                 onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
                 accessibilityRole="button"
-                className="ml-3 flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+                className="ml-3 flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
               >
                 <Icon name="chevron-right" size={14} color={colors.primary} />
                 <View className="flex-1">

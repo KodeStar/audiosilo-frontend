@@ -73,7 +73,7 @@ export function HistorySection({
         return (
           <View
             key={h.id}
-            className="gap-1.5 rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+            className="gap-1.5 rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
           >
             <View className="flex-row items-center gap-2">
               <Icon name="clock" size={13} color={colors.primary} />

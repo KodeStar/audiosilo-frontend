@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 
+import { cn } from '@/lib/utils';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
@@ -28,7 +29,9 @@ export function EmptyState({ icon = 'inbox', title, hint, action, className }: E
   const iconColor = colors[scheme].textMuted;
 
   return (
-    <View className={`items-center justify-center gap-3 px-6 py-12 ${className ?? ''}`}>
+    // cn: a caller's padding (e.g. a tab panel's py-6) must beat the default py-12 on
+    // every platform, not only where the stylesheet happens to order it last.
+    <View className={cn('items-center justify-center gap-3 px-6 py-12', className)}>
       <Icon name={icon} size={40} color={iconColor} />
       <Text variant="title" className="text-center">
         {title}

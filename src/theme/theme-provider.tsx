@@ -7,9 +7,9 @@ import {
   useFonts,
 } from '@expo-google-fonts/roboto';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'nativewind';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
+import { Uniwind, useUniwind } from 'uniwind';
 
 import { getItem, setItem } from '@/lib/storage';
 import { colors } from '@/theme/tokens';
@@ -34,9 +34,14 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 /**
  * Loads Roboto, restores the persisted color-scheme preference (dark-mode-first,
  * matching the old client), and keeps the splash screen up until both are ready.
+ *
+ * The scheme itself lives in Uniwind: `Uniwind.setTheme` drives every `dark:` class
+ * (and, for light/dark, React Native's `Appearance`, so native dialogs match), and
+ * `'system'` re-enables Uniwind's adaptive mode, which follows the OS. `useUniwind`
+ * reports the RESOLVED theme (light or dark, never 'system'), re-rendering on change.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const { colorScheme, setColorScheme } = useColorScheme();
+  const { theme } = useUniwind();
   const [pref, setPrefState] = useState<SchemePref>('dark');
   const [hydrated, setHydrated] = useState(false);
 
@@ -54,13 +59,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (!active) return;
       const next = saved ?? 'dark';
       setPrefState(next);
-      setColorScheme(next);
+      Uniwind.setTheme(next);
       setHydrated(true);
     });
     return () => {
       active = false;
     };
-  }, [setColorScheme]);
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded && hydrated) void SplashScreen.hideAsync();
@@ -69,7 +74,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Keep the web document backdrop in sync with the resolved scheme. The static
   // shell (+html.tsx) paints dark before mount; this corrects it for light theme
   // and ensures the browser back-swipe gesture reveals the themed color, not white.
-  const resolved = colorScheme ?? 'dark';
+  const resolved: 'light' | 'dark' = theme === 'light' ? 'light' : 'dark';
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     const bg = resolved === 'dark' ? colors.dark.bg : colors.light.bg;
@@ -79,14 +84,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setPref = (p: SchemePref) => {
     setPrefState(p);
-    setColorScheme(p);
+    Uniwind.setTheme(p);
     void setItem(STORAGE_KEY, p);
   };
 
   if (!fontsLoaded || !hydrated) return null;
 
   return (
-    <ThemeContext.Provider value={{ pref, scheme: colorScheme ?? 'dark', setPref }}>
+    <ThemeContext.Provider value={{ pref, scheme: resolved, setPref }}>
       {children}
     </ThemeContext.Provider>
   );

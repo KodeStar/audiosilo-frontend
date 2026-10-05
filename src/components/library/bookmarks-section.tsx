@@ -14,7 +14,7 @@ import { colors, tabularNums } from '@/theme/tokens';
 
 // Quiet row surface shared by the section's list items.
 const ROW =
-  'flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+  'flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
  *

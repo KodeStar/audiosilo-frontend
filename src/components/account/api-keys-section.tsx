@@ -81,7 +81,7 @@ function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: () => void 
   const { t } = useTranslation();
   const { scheme } = useTheme();
   return (
-    <View className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+    <View className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
       <View className="flex-1 flex-row items-center gap-3 px-3 py-3">
         <Icon name="settings" size={18} color={colors[scheme].textMuted} />
         <View className="flex-1">

@@ -14,7 +14,7 @@ import { colors } from '@/theme/tokens';
 
 // Quiet card surface shared by the composer and each rendered note.
 const CARD =
-  'rounded-xl bg-white p-3 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+  'rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** Renders one note's markdown. useMarkdown is a hook, so it lives in its own
  * component (one instance per note). */
@@ -64,7 +64,6 @@ export function NotesSection({
           multiline
           textAlignVertical="top"
           className="min-h-[64px]"
-          containerClassName="mb-0"
         />
         <Button
           title={t('library.notes.add')}

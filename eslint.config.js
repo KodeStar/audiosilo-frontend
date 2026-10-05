@@ -34,7 +34,7 @@ module.exports = [
       '*.config.js',
       'expo-env.d.ts',
       'expo-globals.d.ts',
-      'nativewind-env.d.ts',
+      'src/uniwind-types.d.ts',
     ],
   },
   {

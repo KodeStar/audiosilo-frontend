@@ -18,11 +18,23 @@ import { colors } from '@/theme/tokens';
 // web effect), which also covers the light-theme case.
 const backdropCss = `html, body, #root { background-color: ${colors.dark.bg}; }`;
 
+// Cascade-layer order for Uniwind (Tailwind v4) + react-native-web. Tailwind v4 ships
+// in layers (preflight in `base`, classes in `utilities`), and Uniwind moves RNW's
+// element resets (e.g. a View's `border: 0 solid black`, a Text's 14px system font)
+// into a `rnw` layer. Layer precedence follows the order layers are FIRST named, and
+// RNW's stylesheet sits above the Tailwind <link> in <head>, so without this `rnw`
+// would rank lowest and Tailwind's preflight would override RNW's resets - unlike
+// NativeWind (Tailwind v3), whose unlayered preflight lost to them. Naming the order
+// here, before either stylesheet, restores that: preflight < RNW resets < classes.
+const layerOrderCss = '@layer properties, theme, base, rnw, components, utilities;';
+
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
+        {/* Must precede every stylesheet - see layerOrderCss. */}
+        <style dangerouslySetInnerHTML={{ __html: layerOrderCss }} />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta
           name="viewport"

@@ -22,6 +22,7 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
+import { useClippedShadow } from '@/theme/clipped-shadow';
 
 import { endCreditsDecision } from './end-credits-logic';
 
@@ -47,6 +48,7 @@ export function EndCredits({
   const { t } = useTranslation();
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  const coverShadow = useClippedShadow('lg');
   const insets = useSafeAreaInsets();
 
   const cid = useCid(connectionId);
@@ -172,7 +174,10 @@ export function EndCredits({
 
       <ScrollView className="flex-1" contentContainerClassName="items-center gap-6 px-6 pb-10 pt-2">
         {/* The finished book. */}
-        <View className="w-40 overflow-hidden rounded-lg border border-black/10 shadow-lg dark:border-white/10">
+        <View
+          className="w-40 overflow-hidden rounded-lg border border-black/10 shadow-lg ios-clipped-shadow dark:border-white/10"
+          style={coverShadow}
+        >
           <Cover source={coverSource} label={book?.title ?? folderName} sublabel={book?.author} />
         </View>
         <View className="items-center gap-1">
@@ -195,7 +200,7 @@ export function EndCredits({
 
         {/* Up next / end-of-folder / still resolving. */}
         {nextBook ? (
-          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
+          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
             <Text variant="label">{t('player.finished.upNext')}</Text>
             <View className="gap-0.5">
               <Text variant="title" numberOfLines={2}>
@@ -225,7 +230,7 @@ export function EndCredits({
                   hitSlop={8}
                   accessibilityRole="button"
                 >
-                  <Text className="font-roboto-medium text-primary">{t('common.cancel')}</Text>
+                  <Text className="text-primary">{t('common.cancel')}</Text>
                 </AnimatedPressable>
               </View>
             ) : null}
@@ -234,9 +239,9 @@ export function EndCredits({
           <EmptyState icon="check" title={t('player.finished.endOfSeries')} />
         ) : (
           // Still resolving the next book: a card-shaped placeholder in its place.
-          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
-            <Skeleton className="h-3.5 w-20 rounded" />
-            <Skeleton className="h-5 w-3/4 rounded" />
+          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
+            <Skeleton className="h-3.5 w-20 rounded-sm" />
+            <Skeleton className="h-5 w-3/4 rounded-sm" />
             <Skeleton className="h-11 w-full rounded-lg" />
           </View>
         )}

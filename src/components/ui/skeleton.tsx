@@ -15,12 +15,13 @@ const PULSE_MS = 1000;
 const DIM = 0.55;
 
 // The fill color as a raw value (gray-300 light / gray-750 dark). It rides on the
-// inner animated layer as an explicit style, NOT a className: passing a
-// `useAnimatedStyle` result to a `cssInterop`'d (className-driven) component makes
-// NativeWind's native interop drop the className-resolved styles entirely (the same
-// regression that forced animated-pressable.native.tsx). So the shape/size stay on a
-// plain interop'd `View` (no animated style) and only the opacity pulse - with the
-// fill baked in as a raw color - lives on the inner `Animated.View`.
+// inner animated layer as an explicit style, NOT a className: under NativeWind (the
+// styling engine before Uniwind), passing a `useAnimatedStyle` result to a
+// className-driven component made its native interop drop the className-resolved
+// styles entirely (the same regression that forced animated-pressable.native.tsx). So
+// the shape/size stay on a plain className `View` (no animated style) and only the
+// opacity pulse - with the fill baked in as a raw color - lives on the inner
+// `Animated.View`. The split is kept under Uniwind; it renders the same.
 const FILL = { light: '#d1d5db', dark: '#2c3340' } as const;
 
 export type SkeletonProps = {
@@ -91,7 +92,7 @@ export function SkeletonText({ lines = 2, className }: SkeletonTextProps) {
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton
           key={i}
-          className={`h-3.5 rounded ${i === lines - 1 && lines > 1 ? 'w-2/3' : 'w-full'}`}
+          className={`h-3.5 rounded-sm ${i === lines - 1 && lines > 1 ? 'w-2/3' : 'w-full'}`}
         />
       ))}
     </View>

@@ -11,9 +11,9 @@ import { BackHandler } from 'react-native';
  *   so every dialog/sheet routed through it was silently broken on web.
  * - Every attempt to render the overlay OUTSIDE its mount subtree failed in the live
  *   web build and none was root-caused in this React 19 / RN-web 0.21 / reanimated 4 /
- *   NativeWind stack: a react-dom `createPortal` COMMITS its content and is then torn
- *   down within the same instant; a context "outlet" (registering the node with a
- *   provider high in the shell) never presented.
+ *   NativeWind (since replaced by Uniwind) stack: a react-dom `createPortal` COMMITS
+ *   its content and is then torn down within the same instant; a context "outlet"
+ *   (registering the node with a provider high in the shell) never presented.
  * - The ONLY overlay mechanism proven to work here is a plain absolute-positioned View
  *   rendered IN PLACE, in the ordinary tree (the player's inline sheets prove it).
  *

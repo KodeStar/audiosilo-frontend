@@ -15,7 +15,7 @@ import { colors } from '@/theme/tokens';
 // filled folder/book blocks are demoted to a tinted glyph tile - folders keep a
 // pink identity (primary/10), books/files a harmonized low-alpha blue tint.
 const ROW_SURFACE =
-  'rounded-xl bg-white shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+  'rounded-xl bg-white shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** One row in the filesystem browse view: a folder (pink glyph tile, drill in) or
  * an audio file (blue glyph tile, opens the book). `connectionId` is the browse

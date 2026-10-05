@@ -2,7 +2,6 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiClient, ApiError } from '@/api/client';
 import type { AuthSession } from '@/api/types';
@@ -12,6 +11,7 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
+import { SafeAreaView } from '@/components/ui/safe-area-view';
 
 type Mode = 'code' | 'password';
 
@@ -79,7 +79,7 @@ export default function SignInScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
       <ScrollView
-        contentContainerClassName="flex-grow justify-center gap-6 p-6"
+        contentContainerClassName="grow justify-center gap-6 p-6"
         keyboardShouldPersistTaps="handled"
       >
         <View className="items-center gap-1">
@@ -132,9 +132,7 @@ export default function SignInScreen() {
           </View>
         )}
 
-        {error ? (
-          <Text className="text-center text-sm text-danger-600 dark:text-danger">{error}</Text>
-        ) : null}
+        {error ? <Text className="text-center text-sm">{error}</Text> : null}
 
         <Button
           title={mode === 'code' ? t('connect.signIn.connect') : t('connect.signIn.submit')}

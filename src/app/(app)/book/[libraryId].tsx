@@ -53,10 +53,13 @@ import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { colors, tabularNums } from '@/theme/tokens';
+import { useClippedShadow } from '@/theme/clipped-shadow';
 
 // The cover art rounded corner + hairline border + soft shadow, applied wherever
-// the hero cover appears so dark covers separate from dark surfaces.
-const COVER_FRAME = 'overflow-hidden rounded-lg border border-black/10 dark:border-white/10';
+// the hero cover appears so dark covers separate from dark surfaces. Pair it with
+// `style={useClippedShadow('lg')}` (the iOS shadow, see src/theme/clipped-shadow.ts).
+const COVER_FRAME =
+  'ios-clipped-shadow overflow-hidden rounded-lg border border-black/10 dark:border-white/10';
 
 // How coarsely this screen samples the player's live position (seconds). The only
 // consumer is the spoiler gate, which just needs to know which CHAPTER the listener
@@ -78,8 +81,8 @@ function BookSkeleton({ paddingBottom }: { paddingBottom: number }) {
       <View className="items-center gap-4">
         <Skeleton className="aspect-square w-full max-w-[240px] rounded-lg" />
         <View className="w-full items-center gap-2">
-          <Skeleton className="h-4 w-1/2 rounded" />
-          <Skeleton className="h-6 w-3/4 rounded" />
+          <Skeleton className="h-4 w-1/2 rounded-sm" />
+          <Skeleton className="h-6 w-3/4 rounded-sm" />
         </View>
       </View>
       <Skeleton className="h-20 w-full rounded-xl" />
@@ -106,6 +109,7 @@ export default function BookDetailScreen() {
 
 function BookDetailContent() {
   const { t } = useTranslation();
+  const coverShadow = useClippedShadow('lg');
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
     path?: string | string[];
@@ -275,9 +279,13 @@ function BookDetailContent() {
       onPress={onPress}
       accessibilityRole="button"
       className={`my-1 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
+        // The active row keeps the dark-mode border so a row doesn't change height
+        // (and the list doesn't shift) when playback starts. Under NativeWind the web
+        // build got this by accident: re-rendering an AnimatedPressable with a new
+        // className appended to the old one, so the inactive border stayed on.
         active
-          ? 'bg-primary/10 dark:bg-primary/15'
-          : 'bg-white shadow-sm dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none'
+          ? 'bg-primary/10 dark:border dark:border-gray-750 dark:bg-primary/15'
+          : 'bg-white shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none'
       }`}
     >
       <View
@@ -286,10 +294,7 @@ function BookDetailContent() {
         {active ? (
           <Icon name="play" size={13} color={colors.white} />
         ) : (
-          <Text
-            className="text-sm font-roboto-semibold text-gray-500 dark:text-gray-400"
-            style={tabularNums}
-          >
+          <Text className="text-sm dark:text-gray-400" style={tabularNums}>
             {index}
           </Text>
         )}
@@ -487,7 +492,10 @@ function BookDetailContent() {
             <View className="flex-1 items-center justify-center">
               <CoverBackdrop source={coverSource} />
               <View className="w-full items-center gap-6 p-6">
-                <View className={`aspect-square w-full max-w-[300px] shadow-lg ${COVER_FRAME}`}>
+                <View
+                  className={`aspect-square w-full max-w-[300px] shadow-lg ${COVER_FRAME}`}
+                  style={coverShadow}
+                >
                   <Cover source={coverSource} label={book.title} sublabel={book.author} />
                 </View>
                 <View className="items-center gap-1">
@@ -538,7 +546,7 @@ function BookDetailContent() {
       <View className="overflow-hidden rounded-2xl">
         <CoverBackdrop source={coverSource} />
         <View className="items-center gap-4 p-5">
-          <View className={`w-full max-w-[240px] shadow-lg ${COVER_FRAME}`}>
+          <View className={`w-full max-w-[240px] shadow-lg ${COVER_FRAME}`} style={coverShadow}>
             <Cover source={coverSource} label={book.title} sublabel={book.author} />
           </View>
           <View className="w-full gap-1">

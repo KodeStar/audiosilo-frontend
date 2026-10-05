@@ -41,7 +41,8 @@ export function SkipButton({
       accessibilityLabel={accessibilityLabel}
     >
       {/* Raw RN Text + explicit color: the themed <Text> variant injects its own
-          color, which NativeWind won't reliably override with the caller's. */}
+          color, which a caller's class can't reliably override (conflicting classes
+          resolve by stylesheet order on web, className order on native). */}
       <RNText
         allowFontScaling={false}
         className="font-roboto-semibold"

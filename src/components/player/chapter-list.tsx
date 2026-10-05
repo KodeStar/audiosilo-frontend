@@ -68,7 +68,7 @@ export function ChapterListSheet({
               </View>
               <Text
                 numberOfLines={1}
-                className={`flex-1 ${current ? 'font-roboto-semibold text-primary' : 'text-gray-700 dark:text-gray-200'}`}
+                className={`flex-1 ${current ? 'text-primary' : 'text-gray-700'}`}
               >
                 {prettifyChapterTitle(item.label)}
               </Text>

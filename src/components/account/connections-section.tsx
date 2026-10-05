@@ -96,7 +96,7 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
         {connections.map((c) => (
           <View
             key={c.id}
-            className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-sm dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none"
+            className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none"
           >
             <AnimatedPressable
               onPress={() => router.push(accountHref(c.id))}

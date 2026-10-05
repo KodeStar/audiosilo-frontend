@@ -99,7 +99,7 @@ export function DownloadControl({
       <View className="flex-row items-center gap-2">
         <View className="flex-1 flex-row items-center gap-2 rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-840">
           <Icon name="check" size={16} color={colors.primary} />
-          <Text className="font-roboto-semibold text-gray-700 dark:text-gray-200">
+          <Text className="text-gray-700">
             {t('library.download.downloaded')}
             {totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : ''}
           </Text>
