@@ -636,7 +636,7 @@ from `src/theme/tokens.ts`.
 onboarding; `src/app/player.tsx` / `finished.tsx` are root full-screen modals. **ONE route tree
 on every platform**, five tab groups under `(app)`:
 ```
-src/app/(app)/_layout.tsx        native: NativeTabs (5 triggers + BottomAccessory), hidden on tablet/desktop
+src/app/(app)/_layout.tsx        native: NativeTabs (5 triggers + BottomAccessory), hidden on tablet/desktop; the one floating mini player
 src/app/(app)/_layout.web.tsx    web: headless expo-router/ui Tabs + our chrome around ONE <TabSlot/>
 src/app/(app)/(home)/index.tsx                  /
 src/app/(app)/(library)/library/index.tsx       /library
@@ -692,7 +692,12 @@ when the window crosses a threshold. Both platform layouts wrap their one naviga
 `header` is `PhoneHeader` (large title on a tab root, inline back named after the parent on iOS,
 banners under it), the mini player in the iOS 26 tab bar's bottom accessory (`AccessoryPlayer`,
 rendered twice by iOS - `regular` + `inline` - so it is stateless and reads the player store) or a
-floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`). Tablet/desktop (web and native):
+floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`). On native that card is ONE
+`FloatingMiniPlayer`, rendered by `(app)/_layout.tsx` as the shell frame's `phoneBottom` over
+NativeTabs (never per tab stack: NativeTabs keeps visited tabs alive, so a card per stack ticked up to
+five times), absolutely positioned on the native bar's measured `bar` edge, so it sits on the bar on
+every tab and over pushed pages and a tab switch never remounts it; web puts its card on its own tab
+bar. Tablet/desktop (web and native):
 `TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch, settings, `ProfileMenu`),
 `SubNav` (50; title on a tab root, Back on a pushed page; tab roots leave their title to the
 chrome), banners, the page capped at 1480 (`CONTENT_WIDTH`), a closed `DrawerSlot` on desktop (Up next fills it in
@@ -720,7 +725,10 @@ tab, browse scroll memory) are `useShellEffects`.
   keeps these in the Me tab.
 - **Toasts** clear the bottom chrome: each piece publishes its measured TOP edge (distance from the
   window's bottom) into `useShellMetrics` with `useChromeEdge` - `bar` (the web tab bar by layout; the
-  native bar from the tab stacks' layout: iOS's bottom inset there, Android's gap below the page),
+  native bar from the tab stacks' layout: iOS's bottom inset there, Android's gap between the page's
+  and the shell frame's bottoms, both from `measureInWindow` (`nativeBarEdge`; Android's
+  `measureInWindow` is offset by the status bar under edge-to-edge, so comparing with the window
+  height made the bar a status bar too tall); each stack publishes only once it has measured),
   `mini` (the floating card: bar + its height), `accessory` (the iOS 26 pill, measured in the window),
   `dock` - and the root `ShellToastHost` passes `<ToastHost bottomInset>` from the pure
   `toastBottomOffset` over `bottomChromeTop` (the highest piece; one fallback before the first layout;
