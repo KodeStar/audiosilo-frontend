@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -60,14 +60,20 @@ export function Slider({
   className,
 }: SliderProps) {
   const themed = useThemeColors();
+  const span = max - min;
+  const frac = span > 0 ? Math.max(0, Math.min(1, (value - min) / span)) : 0;
   const width = useSharedValue(0);
   const dragging = useSharedValue(0);
   const dragFrac = useSharedValue(0);
-  const posFrac = useSharedValue(0);
+  const posFrac = useSharedValue(frac);
 
-  const span = max - min;
-  // Track the live value from props on the UI thread (read inside worklets).
-  posFrac.value = span > 0 ? Math.max(0, Math.min(1, (value - min) / span)) : 0;
+  // Track the live value from props on the UI thread (read inside worklets). In an
+  // effect, never during render: Reanimated warns about a shared-value write made while
+  // rendering ("Writing to `value` during component render").
+  // `set()` rather than `.value =`: the React Compiler-safe form.
+  useEffect(() => {
+    posFrac.set(frac);
+  }, [frac, posFrac]);
 
   const gesture = useMemo(() => {
     const preview = (v: number | null) => onPreview?.(v);
@@ -90,7 +96,7 @@ export function Slider({
       })
       .onEnd((e) => {
         const f = fracAt(e.x);
-        posFrac.value = f; // hold the thumb at release, no snap-back before the prop catches up
+        posFrac.set(f); // hold the thumb at release, no snap-back before the prop catches up
         runOnJS(commit)(f);
       })
       .onFinalize(() => {
@@ -105,7 +111,7 @@ export function Slider({
       .enabled(!disabled)
       .onEnd((e) => {
         const f = fracAt(e.x);
-        posFrac.value = f;
+        posFrac.set(f);
         runOnJS(commit)(f);
       });
 

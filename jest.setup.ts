@@ -61,7 +61,17 @@ jest.mock('react-native-reanimated', () => {
     Text,
     ScrollView,
     createAnimatedComponent: identity,
-    useSharedValue: <V>(init: V) => ({ value: init }),
+    // `get`/`set` too: the React Compiler-safe accessors the Slider uses.
+    useSharedValue: <V>(init: V) => {
+      const sv = {
+        value: init,
+        get: () => sv.value,
+        set: (next: unknown) => {
+          sv.value = (typeof next === 'function' ? next(sv.value) : next) as V;
+        },
+      };
+      return sv;
+    },
     useAnimatedStyle: (fn: () => unknown) => (typeof fn === 'function' ? fn() : {}),
     useDerivedValue: (fn: () => unknown) => ({
       value: typeof fn === 'function' ? fn() : undefined,

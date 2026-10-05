@@ -74,6 +74,7 @@ function ChapterScrubber({ total }: { total: number }) {
           duration={segment.length}
           onSeek={onSeek}
           onScrub={setScrub}
+          tone="ink"
         />
       </View>
       <Text variant="caption" style={tabularNums} className="min-w-[44px]" numberOfLines={1}>
