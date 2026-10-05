@@ -11,6 +11,7 @@ import type { FsEntry } from '@/api/types';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Cover } from '@/components/ui/cover';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -195,7 +196,7 @@ export function EndCredits({
 
         {/* Up next / end-of-folder / still resolving. */}
         {nextBook ? (
-          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-card p-4 shadow-xs dark:border dark:border-border dark:shadow-none">
+          <Card className="w-full max-w-[420px] gap-3 p-4">
             <Text variant="eyebrow">{t('player.finished.upNext')}</Text>
             <View className="gap-0.5">
               <Text variant="title" numberOfLines={2}>
@@ -212,7 +213,12 @@ export function EndCredits({
                 </Text>
               ) : null}
             </View>
-            <Button title={t('player.finished.playNext')} icon="play" onPress={playNext} />
+            <Button
+              size="lg"
+              title={t('player.finished.playNext')}
+              icon="play"
+              onPress={playNext}
+            />
             {decision.showCountdown ? (
               <View className="flex-row items-center justify-center gap-3">
                 <Text variant="muted">
@@ -229,16 +235,16 @@ export function EndCredits({
                 </AnimatedPressable>
               </View>
             ) : null}
-          </View>
+          </Card>
         ) : nextBook === null ? (
           <EmptyState icon="check" title={t('player.finished.endOfSeries')} />
         ) : (
           // Still resolving the next book: a card-shaped placeholder in its place.
-          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-card p-4 shadow-xs dark:border dark:border-border dark:shadow-none">
+          <Card className="w-full max-w-[420px] gap-3 p-4">
             <Skeleton className="h-3.5 w-20 rounded-sm" />
             <Skeleton className="h-5 w-3/4 rounded-sm" />
             <Skeleton className="h-11 w-full rounded-lg" />
-          </View>
+          </Card>
         )}
 
         {/* Secondary actions. */}

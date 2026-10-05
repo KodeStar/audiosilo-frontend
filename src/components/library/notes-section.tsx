@@ -8,7 +8,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Textarea } from '@/components/ui/input';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -57,13 +57,11 @@ export function NotesSection({
   return (
     <View className="gap-2">
       <View className={`gap-2 ${CARD}`}>
-        <TextField
+        <Textarea
+          containerClassName="mb-4"
           placeholder={t('library.notes.placeholder')}
           value={draft}
           onChangeText={setDraft}
-          multiline
-          textAlignVertical="top"
-          className="min-h-[64px]"
         />
         <Button
           title={t('library.notes.add')}

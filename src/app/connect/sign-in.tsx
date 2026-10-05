@@ -6,9 +6,9 @@ import { ScrollView, View } from 'react-native';
 import { ApiClient, ApiError } from '@/api/client';
 import type { AuthSession } from '@/api/types';
 import { Button } from '@/components/ui/button';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SegmentedControl } from '@/components/ui/toggle-group';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
@@ -98,7 +98,9 @@ export default function SignInScreen() {
         />
 
         {mode === 'code' ? (
-          <TextField
+          <Input
+            containerClassName="mb-4"
+            size="lg"
             label={t('connect.signIn.codeLabel')}
             placeholder={t('connect.signIn.codePlaceholder')}
             value={code}
@@ -110,7 +112,8 @@ export default function SignInScreen() {
           />
         ) : (
           <View>
-            <TextField
+            <Input
+              containerClassName="mb-4"
               label={t('connect.signIn.usernameLabel')}
               placeholder={t('connect.signIn.usernamePlaceholder')}
               value={username}
@@ -119,7 +122,8 @@ export default function SignInScreen() {
               autoCorrect={false}
               textContentType="username"
             />
-            <TextField
+            <Input
+              containerClassName="mb-4"
               label={t('connect.signIn.passwordLabel')}
               placeholder={t('connect.signIn.passwordPlaceholder')}
               value={password}
@@ -135,6 +139,7 @@ export default function SignInScreen() {
         {error ? <Text className="text-center text-sm text-destructive">{error}</Text> : null}
 
         <Button
+          size="lg"
           title={mode === 'code' ? t('connect.signIn.connect') : t('connect.signIn.submit')}
           loading={loading}
           onPress={onSubmit}

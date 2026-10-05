@@ -1,17 +1,23 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, Text as RNText, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { ConnectionsSection, useConnectionRemoval } from '@/components/account/connections-section';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control';
-import { SelectRow, SelectSheet, type SelectOption } from '@/components/ui/select-row';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  type SelectOption,
+} from '@/components/ui/select';
 import { Stepper } from '@/components/ui/stepper';
 import { Text } from '@/components/ui/text';
 import { TimeStepper } from '@/components/ui/time-stepper';
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/toggle-group';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { isSupportAvailable, openSupport } from '@/lib/support';
@@ -126,9 +132,8 @@ export default function SettingsScreen() {
   const setAutoSleepUntil = useSettings((s) => s.setAutoSleepUntil);
   const setAutoSleepType = useSettings((s) => s.setAutoSleepType);
   // Five options is too many to stay readable in a SegmentedControl on a phone, so
-  // the timer type is a select row + bottom sheet (mounted at screen level below).
-  const [sleepTypeOpen, setSleepTypeOpen] = useState(false);
-  const sleepTypeOptions: SelectOption<AutoSleepType>[] = [
+  // the timer type is a Select.
+  const sleepTypeOptions: (SelectOption & { value: AutoSleepType })[] = [
     { value: 'chapter', label: t('settings.sleep.type.chapter') },
     // The player's own timer menu already owns a pluralised "N min" string; reusing
     // it keeps the two lists worded identically and plural-correct in every locale.
@@ -137,8 +142,8 @@ export default function SettingsScreen() {
       label: t('player.sleepTimer.minutes', { count: Number(value) }),
     })),
   ];
-  const sleepTypeLabel =
-    sleepTypeOptions.find((o) => o.value === autoSleepType)?.label ?? sleepTypeOptions[0].label;
+  const sleepTypeOption =
+    sleepTypeOptions.find((o) => o.value === autoSleepType) ?? sleepTypeOptions[0];
 
   const onOff: SegmentedOption<'on' | 'off'>[] = [
     { value: 'on', label: t('common.on') },
@@ -152,9 +157,7 @@ export default function SettingsScreen() {
 
   const paddingBottom = useMiniPlayerInset();
 
-  // The remove-connection confirm dialog is rendered at screen level (below, outside
-  // the ScrollView): a ModalCard/OverlayHost renders in place and must not be mounted
-  // inside a scroll container.
+  // The remove-connection confirm dialog's state lives in this screen (see the hook).
   const connectionRemoval = useConnectionRemoval();
 
   return (
@@ -169,42 +172,29 @@ export default function SettingsScreen() {
         <ConnectionsSection onRemove={connectionRemoval.onRemove} />
 
         <Section title={t('settings.appearance.label')}>
-          <SegmentedControl options={appearanceOptions} value={pref} onChange={setPref} grow />
+          <SegmentedControl
+            options={appearanceOptions}
+            value={pref}
+            onChange={setPref}
+            grow
+            accessibilityLabel={t('settings.appearance.label')}
+          />
         </Section>
 
         <Section title={t('settings.language.label')}>
-          {/* A long, wrapping list, so it stays a pill group rather than a single-row
-            segmented control - but the pills share the SegmentedControl idiom (a quiet
-            track with the active option filled in brand pink). */}
-          <View className="flex-row flex-wrap gap-2 rounded-lg bg-muted p-1">
-            {languages.map((o) => {
-              const active = langPref === o.value;
-              return (
-                <AnimatedPressable
-                  key={o.value}
-                  onPress={() => setLangPref(o.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={o.label}
-                  className={`items-center rounded-md px-3 py-1.5 ${active ? 'bg-brand' : ''}`}
-                >
-                  {/* Raw RN Text with the full class string, as SegmentedControl's
-                    pills do. */}
-                  <RNText
-                    className={`font-sans-medium text-sm ${
-                      active ? 'text-brand-foreground' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {o.label}
-                  </RNText>
-                </AnimatedPressable>
-              );
-            })}
-          </View>
+          {/* A long list, so the segments wrap onto more lines instead of one row. */}
+          <SegmentedControl
+            options={languages}
+            value={langPref}
+            onChange={setLangPref}
+            wrap
+            accessibilityLabel={t('settings.language.label')}
+            className="self-start"
+          />
         </Section>
 
         <Section title={t('settings.playback.label')}>
-          <View className="overflow-hidden rounded-lg bg-card shadow-xs ios-clipped-shadow dark:border dark:border-border dark:shadow-none">
+          <Card className="overflow-hidden p-0">
             <StepperRow label={t('settings.playback.skipBack')} first>
               <Stepper
                 value={skipBackward}
@@ -255,7 +245,7 @@ export default function SettingsScreen() {
                 format={mins}
               />
             </StepperRow>
-          </View>
+          </Card>
         </Section>
 
         <Section title={t('settings.sleep.label')}>
@@ -269,12 +259,13 @@ export default function SettingsScreen() {
                 value={autoSleepTimer ? 'on' : 'off'}
                 onChange={(v) => setAutoSleepTimer(v === 'on')}
                 grow
+                accessibilityLabel={t('settings.sleep.auto.label')}
               />
             </ChoiceRow>
             {/* The window and the timer's kind only matter once the feature is on. */}
             {autoSleepTimer ? (
               <View className="gap-2">
-                <View className="overflow-hidden rounded-lg bg-card shadow-xs ios-clipped-shadow dark:border dark:border-border dark:shadow-none">
+                <Card className="overflow-hidden p-0">
                   <StepperRow label={t('settings.sleep.from')} first>
                     <TimeStepper
                       value={autoSleepFrom}
@@ -289,12 +280,27 @@ export default function SettingsScreen() {
                       label={t('settings.sleep.until')}
                     />
                   </StepperRow>
-                  <SelectRow
-                    label={t('settings.sleep.type.label')}
-                    value={sleepTypeLabel}
-                    onPress={() => setSleepTypeOpen(true)}
-                  />
-                </View>
+                  <StepperRow label={t('settings.sleep.type.label')}>
+                    <Select
+                      value={sleepTypeOption}
+                      onValueChange={(o) => {
+                        if (o) setAutoSleepType(o.value as AutoSleepType);
+                      }}
+                    >
+                      <SelectTrigger
+                        className="min-w-[150px] shrink"
+                        accessibilityLabel={t('settings.sleep.type.label')}
+                      >
+                        <SelectValue placeholder={sleepTypeOption.label} />
+                      </SelectTrigger>
+                      <SelectContent align="end">
+                        {sleepTypeOptions.map((o) => (
+                          <SelectItem key={o.value} value={o.value} label={o.label} />
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </StepperRow>
+                </Card>
                 {/* Both bounds on the same time is a zero-length window, which
                   `withinAutoSleepWindow` reads as NEVER - and the stepper wraps in 30
                   minute steps, so walking "Until" back onto "From" takes one tap. Without
@@ -319,6 +325,7 @@ export default function SettingsScreen() {
                 value={autoPlayNext ? 'on' : 'off'}
                 onChange={(v) => setAutoPlayNext(v === 'on')}
                 grow
+                accessibilityLabel={t('settings.upNext.autoPlay.label')}
               />
             </ChoiceRow>
             <ChoiceRow
@@ -330,6 +337,7 @@ export default function SettingsScreen() {
                 value={autoDownloadNext}
                 onChange={setAutoDownloadNext}
                 grow
+                accessibilityLabel={t('settings.upNext.autoDownload.label')}
               />
             </ChoiceRow>
             <ChoiceRow
@@ -341,6 +349,7 @@ export default function SettingsScreen() {
                 value={autoDeleteFinished ? 'on' : 'off'}
                 onChange={(v) => setAutoDeleteFinished(v === 'on')}
                 grow
+                accessibilityLabel={t('settings.upNext.autoDelete.label')}
               />
             </ChoiceRow>
           </View>
@@ -367,16 +376,6 @@ export default function SettingsScreen() {
           {t('settings.version', { version: APP_VERSION })}
         </Text>
       </ScrollView>
-      {/* Mounted at screen level, outside the ScrollView: a Sheet renders in place and
-        would be clipped inside a scroll container (same reason as the dialog below). */}
-      <SelectSheet
-        visible={sleepTypeOpen}
-        title={t('settings.sleep.type.label')}
-        options={sleepTypeOptions}
-        value={autoSleepType}
-        onChange={setAutoSleepType}
-        onClose={() => setSleepTypeOpen(false)}
-      />
       {connectionRemoval.dialog}
     </>
   );

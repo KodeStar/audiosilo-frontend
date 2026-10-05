@@ -14,18 +14,15 @@ import { useApiKeysManager } from '@/components/account/use-api-keys-manager';
 import { useSignOut } from '@/components/account/use-sign-out';
 import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import { shareText } from '@/lib/share';
 import { APP_VERSION } from '@/lib/version';
-import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSession } from '@/stores/session';
 
 const PW_MIN = 8;
@@ -49,7 +46,6 @@ export default function AccountScreen() {
 }
 
 function AccountContent() {
-  const themed = useThemeColors();
   const { t } = useTranslation();
   const cid = useScopedCid();
   const api = useOptionalApi();
@@ -177,7 +173,8 @@ function AccountContent() {
                 {pwOpen ? (
                   <View className="gap-2">
                     {user?.has_password ? (
-                      <TextField
+                      <Input
+                        containerClassName="mb-4"
                         label={t('settings.account.password.current')}
                         placeholder={t('settings.account.password.currentPlaceholder')}
                         secureTextEntry
@@ -186,7 +183,8 @@ function AccountContent() {
                         onChangeText={setCurPw}
                       />
                     ) : null}
-                    <TextField
+                    <Input
+                      containerClassName="mb-4"
                       label={t('settings.account.password.new')}
                       placeholder={t('settings.account.password.newPlaceholder', {
                         count: PW_MIN,
@@ -232,17 +230,13 @@ function AccountContent() {
               </View>
             )}
 
-            <AnimatedPressable
-              accessibilityRole="button"
-              accessibilityLabel={t('settings.account.signOut')}
+            <Button
+              variant="destructive-outline"
+              size="lg"
+              icon="logout"
+              title={t('settings.account.signOut')}
               onPress={() => void signOut.requestSignOut()}
-              className="flex-row items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 active:bg-destructive/10"
-            >
-              <Icon name="logout" size={16} color={themed.destructive} />
-              <Text className="font-sans-semibold text-destructive">
-                {t('settings.account.signOut')}
-              </Text>
-            </AnimatedPressable>
+            />
           </Card>
         </View>
 
@@ -320,6 +314,7 @@ function AccountContent() {
         message={t('settings.apiKeys.revokeConfirm.message')}
         confirmLabel={t('settings.apiKeys.revokeConfirm.confirm')}
         confirmIcon="trash"
+        destructive
         onConfirm={apiKeys.confirmRevoke}
         onCancel={apiKeys.cancelRevoke}
       />

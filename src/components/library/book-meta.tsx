@@ -18,7 +18,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { SectionHeader } from '@/components/ui/section-header';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SegmentedControl } from '@/components/ui/toggle-group';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import {
@@ -853,7 +853,6 @@ function ReadingOrderToggle({
       options={options}
       value={rail.view.id}
       onChange={(id) => onSelectView?.(rail.family, id)}
-      role="radio"
       accessibilityLabel={t('book.meta.readingOrder')}
       scrollable
       className="max-w-full self-start"

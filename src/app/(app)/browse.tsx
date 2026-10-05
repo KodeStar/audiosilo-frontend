@@ -19,7 +19,7 @@ import { ProgressCard, ProgressMenuSheet, progressKey } from '@/components/libra
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorNote } from '@/components/ui/query-state';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SegmentedControl } from '@/components/ui/toggle-group';
 import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
 import { WIDE_BREAKPOINT } from '@/lib/layout';

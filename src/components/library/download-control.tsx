@@ -41,6 +41,7 @@ export function DownloadControl({
         <Button
           icon="download"
           variant="secondary"
+          size="lg"
           disabled
           accessibilityLabel={t('library.download.unavailable')}
         />
@@ -53,7 +54,7 @@ export function DownloadControl({
         <Button
           icon="trash"
           variant="secondary"
-          className="px-5"
+          size="lg"
           onPress={remove}
           accessibilityLabel={t('library.download.delete')}
         />
@@ -64,7 +65,7 @@ export function DownloadControl({
         <Button
           icon="circle-stop"
           variant="secondary"
-          className="px-5"
+          size="lg"
           onPress={cancel}
           accessibilityLabel={t('library.download.cancel')}
         />
@@ -74,7 +75,7 @@ export function DownloadControl({
       <Button
         icon="download"
         variant="secondary"
-        className="px-5"
+        size="lg"
         disabled={disabled || !book}
         onPress={start}
         accessibilityLabel={

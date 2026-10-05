@@ -16,14 +16,10 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSession, type Connection } from '@/stores/session';
 
 /**
- * The remove-connection flow, split into a hook so its confirm dialog can be rendered
- * at SCREEN level by the owning screen. `ConnectionsSection` lives inside the settings
- * `ScrollView`, but `ConfirmDialog` -> `ModalCard` -> `OverlayHost` renders IN PLACE and
- * must NOT be mounted inside a scroll container (an absolute/flex backdrop positions
- * against the scroll content, not the viewport, so the dialog renders mis-sized and
- * wedged into the scroll flow instead of covering the screen). So the screen calls this
- * hook, threads `onRemove` into the section, and renders `dialog` as a SIBLING of the
- * ScrollView.
+ * The remove-connection flow, split into a hook so the owning screen holds the confirm
+ * dialog's state: the screen calls this hook, threads `onRemove` into the section, and
+ * renders `dialog` (a portaled `ConfirmDialog`, so where it sits in the tree doesn't
+ * matter).
  *
  * Removing a connection purges its downloads (unreachable once its id is gone), so a
  * connection with downloaded books gets a confirm step first. The count is snapshotted
@@ -65,6 +61,7 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
       })}
       confirmLabel={t('account.connections.removeConfirm.confirm')}
       confirmIcon="trash"
+      destructive
       onConfirm={() => {
         const c = pendingRemoval?.connection;
         setPendingRemoval(null);
@@ -81,8 +78,8 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
  * remove a connection, or add another. Content from every connection appears in the
  * unified Home/Search; tapping a row opens that server's per-connection account
  * screen (`/account?connection=<id>`). The remove flow's confirm dialog is owned by
- * `useConnectionRemoval` and rendered by the screen at top level (a Sheet/ModalCard must
- * not live inside this scrolled section); this section just invokes `onRemove`. */
+ * `useConnectionRemoval` and rendered by the screen; this section just invokes
+ * `onRemove`. */
 export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => void }) {
   const themed = useThemeColors();
   const { t } = useTranslation();

@@ -16,7 +16,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import {
   filterEntries,
   groupByLetter,
@@ -221,8 +221,8 @@ function BrowseContent() {
         <View className="px-4 pt-4 lg:px-8">
           {crumbs.length > 1 ? <BreadCrumbs crumbs={crumbs} /> : null}
           {showTools ? (
-            <TextField
-              containerClassName={crumbs.length > 1 ? 'mt-3' : ''}
+            <Input
+              containerClassName={crumbs.length > 1 ? 'mb-4 mt-3' : 'mb-4'}
               placeholder={t('library.browse.filterPlaceholder')}
               value={query}
               onChangeText={setQuery}

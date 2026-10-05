@@ -8,7 +8,7 @@ import { BookRowSkeletonList } from '@/components/library/search-results';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorNote } from '@/components/ui/query-state';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import { WIDE_BREAKPOINT } from '@/lib/layout';
 import { useSearchStore } from '@/stores/search';
 
@@ -39,7 +39,8 @@ export default function SearchScreen() {
     >
       {/* On desktop the always-visible top bar is the input; on phone we render one here. */}
       {!wide ? (
-        <TextField
+        <Input
+          containerClassName="mb-4"
           placeholder={t('search.placeholder')}
           value={query}
           onChangeText={setQuery}

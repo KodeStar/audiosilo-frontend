@@ -43,7 +43,7 @@ import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TabBar } from '@/components/ui/tab-bar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
@@ -440,17 +440,19 @@ function BookDetailContent() {
     }
   };
 
-  // The tab bar + the active panel, shared by both layouts. Rendered inside the
-  // page's own vertical ScrollView (no nested vertical scrollers).
+  // The tab row + the active panel, shared by both layouts. Rendered inside the page's
+  // own vertical ScrollView (no nested vertical scrollers); the row scrolls sideways.
   const tabSection = (
-    <View className="gap-4">
-      <TabBar
-        options={tabs.map((v) => ({ value: v, label: tabLabel(v) }))}
-        value={activeTab}
-        onChange={setTab}
-      />
-      {tabContent()}
-    </View>
+    <Tabs value={activeTab} onValueChange={(v) => setTab(v as BookTab)} className="gap-4">
+      <TabsList scrollable>
+        {tabs.map((v) => (
+          <TabsTrigger key={v} value={v}>
+            <Text>{tabLabel(v)}</Text>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      <TabsContent value={activeTab}>{tabContent()}</TabsContent>
+    </Tabs>
   );
 
   if (wide) {
@@ -499,6 +501,7 @@ function BookDetailContent() {
                 </View>
                 <BookStats libraryId={libraryId} path={path} book={book} />
                 <Button
+                  size="lg"
                   title={t('book.listen')}
                   icon="play"
                   className="w-full"
@@ -555,6 +558,7 @@ function BookDetailContent() {
       <View className="gap-3">
         <View className="flex-row gap-2">
           <Button
+            size="lg"
             title={t('book.listen')}
             icon="play"
             className="flex-1"

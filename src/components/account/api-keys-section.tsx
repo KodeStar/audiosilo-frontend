@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import { formatRelative } from '@/lib/format';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -21,9 +21,8 @@ import type { ApiKeysManager } from './use-api-keys-manager';
  * by the screen-level dialog). Gated by the caller on the server's `api_keys`
  * capability and the non-demo rule, so it renders only where keys are supported.
  *
- * State lives in {@link useApiKeysManager} (owned by the account screen so the reveal
- * modal and revoke confirmation can be hoisted out of the scroll container); this
- * component is the in-scroll view over it.
+ * State lives in {@link useApiKeysManager} (owned by the account screen, which renders
+ * the reveal dialog and the revoke confirmation); this component is the view over it.
  */
 export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
   const { t } = useTranslation();
@@ -36,7 +35,8 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
         </Text>
 
         <View>
-          <TextField
+          <Input
+            containerClassName="mb-4"
             label={t('settings.apiKeys.nameLabel')}
             placeholder={t('settings.apiKeys.namePlaceholder')}
             autoCapitalize="none"

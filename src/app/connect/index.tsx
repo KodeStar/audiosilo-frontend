@@ -10,7 +10,7 @@ import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import {
@@ -200,6 +200,7 @@ export default function ConnectServerScreen() {
               <View key={entry.serverId} className="flex-row items-center gap-2">
                 <View className="flex-1">
                   <Button
+                    size="lg"
                     title={t('reconnect.connect.action', { name: entry.name })}
                     icon="server"
                     variant="secondary"
@@ -225,7 +226,9 @@ export default function ConnectServerScreen() {
           <Text className="text-center text-sm text-destructive">{pairError}</Text>
         ) : null}
         <View>
-          <TextField
+          <Input
+            containerClassName="mb-4"
+            size="lg"
             label={t('connect.server.addressLabel')}
             placeholder="https://books.example.com"
             value={url}
@@ -239,6 +242,7 @@ export default function ConnectServerScreen() {
             onSubmitEditing={onConnect}
           />
           <Button
+            size="lg"
             title={t('connect.server.connect')}
             icon="server"
             loading={busy === 'manual'}
@@ -253,12 +257,14 @@ export default function ConnectServerScreen() {
               {t('connect.server.demoIntro')}
             </Text>
             <Button
+              size="lg"
               title={t('connect.server.tryDemo')}
               icon="play"
               loading={demoLoading}
               onPress={onTryDemo}
             />
             <Button
+              size="lg"
               title={t('connect.server.signInInstead')}
               variant="secondary"
               onPress={() => router.push('/connect/sign-in')}
@@ -269,6 +275,7 @@ export default function ConnectServerScreen() {
           <View className="gap-4">
             <LabeledDivider label={t('connect.server.or')} />
             <Button
+              size="lg"
               title={t('connect.server.scanQr')}
               icon="qrcode"
               variant="secondary"

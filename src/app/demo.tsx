@@ -99,7 +99,7 @@ export default function DemoScreen() {
         {error ? (
           <View className="items-center gap-4">
             <Text className="text-center text-sm text-destructive">{error}</Text>
-            <Button title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
+            <Button size="lg" title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
           </View>
         ) : !pairing ? (
           <View className="items-center gap-4">
@@ -120,6 +120,7 @@ export default function DemoScreen() {
               {t('demo.scanHint')}
             </Text>
             <Button
+              size="lg"
               title={t('demo.browseHere')}
               icon="play"
               className="w-full"
