@@ -4,14 +4,14 @@ import { View } from 'react-native';
 import { useApi } from '@/api/provider';
 import type { Book } from '@/api/types';
 import { DownloadBadge } from '@/components/library/download-badge';
-import { CoverFrame } from '@/components/library/poster-grid';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle, formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
 
 /** A book result row (search lists) linking to its detail screen on the given
  * connection. `also` names other servers that also have this (de-duplicated) book. */

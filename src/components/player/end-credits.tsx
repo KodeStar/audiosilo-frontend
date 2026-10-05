@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CoverFrame } from '@/components/library/cover-frame';
 import { useBook } from '@/api/hooks';
 import { useCid, useOptionalApi } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
@@ -22,7 +23,6 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
-import { useClippedShadow } from '@/theme/clipped-shadow';
 
 import { endCreditsDecision } from './end-credits-logic';
 
@@ -48,7 +48,6 @@ export function EndCredits({
   const { t } = useTranslation();
   const { scheme } = useTheme();
   const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
-  const coverShadow = useClippedShadow('lg');
   const insets = useSafeAreaInsets();
 
   const cid = useCid(connectionId);
@@ -174,12 +173,9 @@ export function EndCredits({
 
       <ScrollView className="flex-1" contentContainerClassName="items-center gap-6 px-6 pb-10 pt-2">
         {/* The finished book. */}
-        <View
-          className="w-40 overflow-hidden rounded-lg border border-black/10 shadow-lg ios-clipped-shadow dark:border-white/10"
-          style={coverShadow}
-        >
+        <CoverFrame size="lg" className="w-40">
           <Cover source={coverSource} label={book?.title ?? folderName} sublabel={book?.author} />
-        </View>
+        </CoverFrame>
         <View className="items-center gap-1">
           <Text variant="label" className="text-primary">
             {t('player.finished.heading')}

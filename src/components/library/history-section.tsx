@@ -11,7 +11,8 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatDuration } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 /** Recent listening spans for a book. Each span shows its START (▶) and END (⏸)
  * positions, both independently tappable, so you can jump to either - the end is

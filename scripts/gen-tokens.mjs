@@ -7,9 +7,9 @@
 //   npm run gen:tokens                      # rewrite both outputs
 //   node scripts/gen-tokens.mjs --check     # exit 1 if either is stale (no writes)
 //
-// `--check` is what the drift test (src/theme/tokens.test.ts) runs, so `npm test`
-// and CI fail when the JSON and the checked-in outputs disagree. Output goes through
-// Prettier (the repo's own config) so a regenerated file is already `format`-clean.
+// `npm test` (and so CI) runs `--check` before jest, so drift between the JSON and the
+// checked-in outputs fails the standard gate. Output goes through Prettier (the
+// repo's own config) so a regenerated file is already `format`-clean.
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
@@ -28,17 +28,6 @@ const CSS_START = `${START_TAG} - DO NOT EDIT this region. Source: src/theme/tok
 const CSS_END = '/* @generated-tokens:end */';
 
 const HEX = /^#[0-9a-f]{6}$/i;
-
-/** Word-wraps prose into JSDoc lines (` * ...`) at `indent`, within the 100-column print width. */
-const jsdoc = (text, indent) => {
-  const lines = [''];
-  for (const word of text.split(/\s+/)) {
-    const line = lines[lines.length - 1];
-    if (line && indent.length + 3 + line.length + 1 + word.length > 92) lines.push(word);
-    else lines[lines.length - 1] = line ? `${line} ${word}` : word;
-  }
-  return [`${indent}/**`, ...lines.map((l) => `${indent} * ${l}`), `${indent} */`];
-};
 
 /** Shade keys in display order: DEFAULT first, then numeric (50, 100, ..., 750, 800, 840, ...). */
 const shadeKeys = (family) =>
@@ -59,18 +48,17 @@ function flattenPalette(palette) {
       raw[shade === 'DEFAULT' ? name : `${name}-${shade}`] = value[shade];
     }
   }
-  // A shade may name another shade ("red-500") instead of a hex value.
-  const resolveRef = (key, seen = []) => {
-    const v = raw[key];
-    if (v === undefined) throw new Error(`tokens.json: unknown colour "${key}"`);
-    if (HEX.test(v)) return v.toLowerCase();
-    if (seen.includes(v)) throw new Error(`tokens.json: circular reference ${[...seen, v]}`);
-    return resolveRef(v, [...seen, key]);
+  // A shade may alias another shade's hex value ("red-500"), one level deep.
+  const hex = (key) => {
+    const v = HEX.test(raw[key]) ? raw[key] : raw[raw[key]];
+    if (!HEX.test(v ?? ''))
+      throw new Error(`tokens.json: "${key}" is not a hex colour or an alias of one`);
+    return v.toLowerCase();
   };
-  return Object.fromEntries(Object.keys(raw).map((k) => [k, resolveRef(k)]));
+  return Object.fromEntries(Object.keys(raw).map((k) => [k, hex(k)]));
 }
 
-export async function render() {
+async function render() {
   const tokens = JSON.parse(await readFile(SOURCE, 'utf8'));
   const flat = flattenPalette(tokens.palette);
   const hexOf = (ref) => {
@@ -78,6 +66,10 @@ export async function render() {
       throw new Error(`tokens.json: semantic token names unknown colour "${ref}"`);
     return flat[ref];
   };
+  const { light, dark } = tokens.semantic;
+  if (Object.keys(light).join() !== Object.keys(dark).join()) {
+    throw new Error('tokens.json: semantic.light and semantic.dark must have the same keys');
+  }
 
   // --- src/global.css region ----------------------------------------------------------
   const themeLines = Object.entries(flat).map(([k, hex]) => `  --color-${k}: ${hex};`);
@@ -95,7 +87,7 @@ export async function render() {
   const entry = (key, spec, indent) => {
     const { ref, note } = typeof spec === 'string' ? { ref: spec, note: undefined } : spec;
     const lines = [];
-    if (note) lines.push(...jsdoc(note, indent));
+    if (note) lines.push(`${indent}/** ${note} */`);
     lines.push(`${indent}${key}: '${hexOf(ref)}', // ${ref}`);
     return lines;
   };
@@ -113,15 +105,10 @@ export async function render() {
   const ts = [
     `// GENERATED FILE - DO NOT EDIT. Source: src/theme/tokens.json; regenerate with ${REGEN}.`,
     '',
-    ...jsdoc(
-      `${tokens.semantic.$comment} The same palette backs the Tailwind classes (the @theme block in src/global.css).`,
-      '',
-    ),
+    `/** ${tokens.semantic.$comment} The same palette backs the Tailwind classes (src/global.css). */`,
     'export const colors = {',
     ...body,
     '} as const;',
-    '',
-    "export { tabularNums } from './tabular-nums';",
     '',
   ].join('\n');
 
@@ -130,8 +117,7 @@ export async function render() {
   return { css: await fmt(css, CSS_OUT), ts: await fmt(ts, TS_OUT) };
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) {
+{
   const check = process.argv.includes('--check');
   const { css, ts } = await render();
   const outputs = [

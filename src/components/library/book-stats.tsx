@@ -7,7 +7,8 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatBytes, formatDuration } from '@/lib/format';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 // A fixed-height top slot keeps the heart icon and the value text on the same
 // baseline so every column's label sits on one line.

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
+import { CoverFrame } from '@/components/library/cover-frame';
 import { useMetaWork } from '@/api/hooks';
 import type {
   BookMeta,
@@ -32,7 +33,6 @@ import {
 } from '@/lib/series-orderings';
 import { openExternalUrl } from '@/lib/support';
 import { colors } from '@/theme/tokens';
-import { useClippedShadow } from '@/theme/clipped-shadow';
 
 import { type ListeningProgress, type Split, splitCharacters, splitRecaps } from './meta-gating';
 
@@ -884,7 +884,6 @@ export function BookMetaSeriesTab({
   onSelectView?: (family: string, viewId: string) => void;
 }) {
   const { t } = useTranslation();
-  const coverShadow = useClippedShadow('xs', { lightOnly: true });
   const multipleSeries = rails.length > 1;
   return (
     <View className="gap-6">
@@ -914,12 +913,9 @@ export function BookMetaSeriesTab({
                 accessibilityLabel={w.title}
                 className="w-28"
               >
-                <View
-                  className="overflow-hidden rounded-lg border border-black/10 shadow-xs ios-clipped-shadow dark:border-white/10 dark:shadow-none"
-                  style={coverShadow}
-                >
+                <CoverFrame>
                   <Cover source={w.cover_url ?? null} label={w.title} />
-                </View>
+                </CoverFrame>
                 {w.position ? (
                   <Text variant="caption" className="mt-1.5">
                     {t('book.meta.seriesPosition', { position: w.position })}

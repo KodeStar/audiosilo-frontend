@@ -98,7 +98,7 @@ npm run web                 # expo start --web (testable without a dev build)
 npm run ios / npm run android
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
-npm test                    # jest-expo unit tests (npm test -- --coverage for coverage)
+npm test                    # colour-token drift check, then jest-expo unit tests (npm test -- --coverage for coverage)
 npm run format              # prettier --check . (CI-gated; fails on unformatted files)
 npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
@@ -517,7 +517,7 @@ token, since RN has no font fallback - web adds the system stack).
 - **Colour tokens have ONE source, `src/theme/tokens.json`.** `npm run gen:tokens`
   (`scripts/gen-tokens.mjs`) writes the generated `@theme` region of `src/global.css` (the
   classes) and `src/theme/tokens.ts` (raw `colors` for native props). Never hand-edit
-  either output: `src/theme/tokens.test.ts` regenerates in memory and fails on drift. The
+  either output: `npm test` runs `gen-tokens.mjs --check` first and fails on drift. The
   default Tailwind families the app uses (gray/red/green/blue) are pinned to Tailwind
   v3's hex values (v4's defaults are OKLCH and render slightly differently).
 - `src/global.css` also pins other v3-era values on purpose (NativeWind's shadow scale,
@@ -530,8 +530,7 @@ token, since RN has no font fallback - web adds the system stack).
   web resolves by stylesheet order and native by className order (the later class wins).
   A component that lets a caller override its classes must merge with `cn()`
   (`@/lib/utils`, clsx + tailwind-merge; caller wins everywhere). The themed `<Text>`
-  variants are NOT merged that way: for a specific colour/font use raw `RNText` with the
-  full class string (see `speed-button.tsx`).
+  does, so `<Text variant="caption" className="text-primary">` gets primary.
 - **Web cascade layers** (`src/app/+html.tsx` + the split Tailwind imports at the top of
   `src/global.css`): Tailwind's utilities are imported unlayered and the layer order puts
   react-native-web's resets above Tailwind's preflight, reproducing Tailwind v3's
@@ -541,13 +540,14 @@ token, since RN has no font fallback - web adds the system stack).
   so `tsc` passes without Metro; it gives RN components their `className` props.
 - **`className` only works on React Native's own components** (Uniwind's Metro resolver
   swaps those). A third-party component needs a one-time `withUniwind` wrapper - e.g.
-  `SafeAreaView` from `@/components/ui/safe-area-view`, never straight from
-  react-native-safe-area-context when you pass a className (its classes are silently
-  dropped on native; NativeWind used to wrap it for us).
+  `SafeAreaView` from `@/components/ui/safe-area-view` (lint forbids importing it from
+  react-native-safe-area-context, whose classes are silently dropped on native;
+  NativeWind used to wrap it for us).
 - **Native shadows** mirror NativeWind's legacy output (see the notes in `src/global.css`):
   iOS draws `shadow-*` as a box-shadow with doubled blur, Android uses `elevation`. A
-  shadowed `overflow-hidden` view adds `ios-clipped-shadow` (+ `style={useClippedShadow(..)}`
-  from `@/theme/clipped-shadow` on a cover frame with a translucent border).
+  shadowed `overflow-hidden` view adds `ios-clipped-shadow`. Frame cover art with
+  `CoverFrame` (`@/components/library/cover-frame`, `size` xs/lg + layout `className`),
+  which owns the frame classes and the iOS inline shadow they need.
 - Uniwind's free tier has no `group-*` variants and no `hover:` on native.
 Raw color values for native props: `colors` from `src/theme/tokens.ts`.
 

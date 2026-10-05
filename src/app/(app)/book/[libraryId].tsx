@@ -11,6 +11,7 @@ import {
   useLibraries,
   useServerInfo,
 } from '@/api/hooks';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { useApi, useScopedCid } from '@/api/provider';
 import { ContentColumn } from '@/components/layout/content-column';
 import { ContentScope } from '@/components/layout/content-scope';
@@ -52,14 +53,8 @@ import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { useSeriesOrderings } from '@/stores/series-orderings';
-import { colors, tabularNums } from '@/theme/tokens';
-import { useClippedShadow } from '@/theme/clipped-shadow';
-
-// The cover art rounded corner + hairline border + soft shadow, applied wherever
-// the hero cover appears so dark covers separate from dark surfaces. Pair it with
-// `style={useClippedShadow('lg')}` (the iOS shadow, see src/theme/clipped-shadow.ts).
-const COVER_FRAME =
-  'ios-clipped-shadow overflow-hidden rounded-lg border border-black/10 dark:border-white/10';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 // How coarsely this screen samples the player's live position (seconds). The only
 // consumer is the spoiler gate, which just needs to know which CHAPTER the listener
@@ -109,7 +104,6 @@ export default function BookDetailScreen() {
 
 function BookDetailContent() {
   const { t } = useTranslation();
-  const coverShadow = useClippedShadow('lg');
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
     libraryId: string;
     path?: string | string[];
@@ -278,14 +272,11 @@ function BookDetailContent() {
       key={key}
       onPress={onPress}
       accessibilityRole="button"
-      className={`my-1 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
-        // The active row keeps the dark-mode border so a row doesn't change height
-        // (and the list doesn't shift) when playback starts. Under NativeWind the web
-        // build got this by accident: re-rendering an AnimatedPressable with a new
-        // className appended to the old one, so the inactive border stayed on.
+      // The dark border is on every row, playing or not, so a row keeps one height.
+      className={`my-1 w-full flex-row items-center gap-3 rounded-xl px-3 py-2.5 dark:border dark:border-gray-750 ${
         active
-          ? 'bg-primary/10 dark:border dark:border-gray-750 dark:bg-primary/15'
-          : 'bg-white shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none'
+          ? 'bg-primary/10 dark:bg-primary/15'
+          : 'bg-white shadow-xs dark:bg-gray-840 dark:shadow-none'
       }`}
     >
       <View
@@ -492,12 +483,9 @@ function BookDetailContent() {
             <View className="flex-1 items-center justify-center">
               <CoverBackdrop source={coverSource} />
               <View className="w-full items-center gap-6 p-6">
-                <View
-                  className={`aspect-square w-full max-w-[300px] shadow-lg ${COVER_FRAME}`}
-                  style={coverShadow}
-                >
+                <CoverFrame size="lg" className="aspect-square w-full max-w-[300px]">
                   <Cover source={coverSource} label={book.title} sublabel={book.author} />
-                </View>
+                </CoverFrame>
                 <View className="items-center gap-1">
                   {book.author ? (
                     <Text variant="muted" className="text-center opacity-80">
@@ -546,9 +534,9 @@ function BookDetailContent() {
       <View className="overflow-hidden rounded-2xl">
         <CoverBackdrop source={coverSource} />
         <View className="items-center gap-4 p-5">
-          <View className={`w-full max-w-[240px] shadow-lg ${COVER_FRAME}`} style={coverShadow}>
+          <CoverFrame size="lg" className="w-full max-w-[240px]">
             <Cover source={coverSource} label={book.title} sublabel={book.author} />
-          </View>
+          </CoverFrame>
           <View className="w-full gap-1">
             {book.author ? (
               <Text variant="body" className="text-center opacity-80">

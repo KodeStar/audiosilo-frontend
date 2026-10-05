@@ -29,4 +29,20 @@ describe('cn', () => {
     expect(cn('bg-gray-840', 'bg-gray-750')).toBe('bg-gray-750');
     expect(cn('shadow-xs', 'dark:shadow-none')).toBe('shadow-xs dark:shadow-none');
   });
+
+  it("merges a <Text> variant with this app's custom font and colour classes", () => {
+    // The Roboto families replace each other (and font-sans), never a weight.
+    expect(cn('font-roboto-semibold text-xl', 'font-roboto-medium')).toBe(
+      'text-xl font-roboto-medium',
+    );
+    expect(cn('font-roboto-regular text-xs', 'font-sans')).toBe('text-xs font-sans');
+    // Custom shades and semantic colours are text COLOURS, so they replace the
+    // variant's colour but keep its size.
+    expect(cn('text-base text-gray-600', 'text-danger-600')).toBe('text-base text-danger-600');
+    expect(cn('text-sm text-gray-700', 'text-gray-840')).toBe('text-sm text-gray-840');
+    expect(cn('dark:text-gray-200', 'dark:text-primary-400')).toBe('dark:text-primary-400');
+    expect(cn('text-gray-500 dark:text-gray-400', 'text-primary')).toBe(
+      'dark:text-gray-400 text-primary',
+    );
+  });
 });

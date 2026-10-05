@@ -10,7 +10,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 // Quiet row surface shared by the section's list items.
 const ROW =

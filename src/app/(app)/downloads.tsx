@@ -14,7 +14,8 @@ import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { colors, tabularNums } from '@/theme/tokens';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 function DownloadRow({ entry }: { entry: DownloadEntry }) {
   const { t } = useTranslation();

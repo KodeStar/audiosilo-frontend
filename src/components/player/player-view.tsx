@@ -13,6 +13,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
+import { CoverFrame } from '@/components/library/cover-frame';
 import { useAddBookmark } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
@@ -43,8 +44,8 @@ import {
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useTheme } from '@/theme/theme-provider';
-import { colors, tabularNums } from '@/theme/tokens';
-import { useClippedShadow } from '@/theme/clipped-shadow';
+import { tabularNums } from '@/theme/tabular-nums';
+import { colors } from '@/theme/tokens';
 
 type PlayerSheet =
   'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | 'menu' | null;
@@ -131,7 +132,6 @@ function MenuRow({
 export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const { scheme } = useTheme();
-  const coverShadow = useClippedShadow('lg');
   const { height } = useWindowDimensions();
   // The player fills the screen edge-to-edge (backdrop under the status bar); the
   // top controls + footer pad themselves clear of the notch / home indicator.
@@ -401,12 +401,9 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
       <View className="flex-1 items-center justify-center gap-6 px-6">
         <Animated.View style={[{ width: '100%', alignItems: 'center' }, coverStyle]}>
           <View className="w-full max-w-[320px]">
-            <View
-              className="aspect-square overflow-hidden rounded-lg border border-black/10 shadow-lg ios-clipped-shadow dark:border-white/10"
-              style={coverShadow}
-            >
+            <CoverFrame size="lg" className="aspect-square">
               <Cover source={coverSource} label={title} rounded="rounded-lg" />
-            </View>
+            </CoverFrame>
             {sleepPhase !== 'idle' ? (
               // The glanceable sleep badge. It goes solid pink for the last stretch
               // (the `ending` window) and through the post-pause grace, so "it is
@@ -419,10 +416,6 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 }`}
               >
                 <Icon name="sleep" size={12} color={colors.white} />
-                {/* Raw RN Text + explicit classes: the themed <Text> variant injects
-                    its own text color, which an appended class can't reliably override
-                    (stylesheet order on web, className order on native) - so a
-                    specific color must not go through <Text>. */}
                 {sleepPhase === 'grace' ? (
                   <RNText className="font-roboto-medium text-xs text-white dark:text-white">
                     {t('player.sleepTimer.keepGoingShort')}

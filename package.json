@@ -73,7 +73,7 @@
     "gen:icons": "node ./scripts/gen-icons.mjs",
     "gen:tokens": "node ./scripts/gen-tokens.mjs",
     "lint": "expo lint",
-    "test": "jest",
+    "test": "node scripts/gen-tokens.mjs --check && jest",
     "format": "prettier --check ."
   },
   "private": true

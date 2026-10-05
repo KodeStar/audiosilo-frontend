@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Pressable, Text } from 'react-native';
 import { Uniwind } from 'uniwind';
 
@@ -38,19 +38,15 @@ function Probe() {
 }
 
 async function choose(p: SchemePref) {
-  await act(async () => {
-    fireEvent.press(screen.getByTestId(`set-${p}`));
-  });
+  await fireEvent.press(screen.getByTestId(`set-${p}`));
 }
 
 async function mount() {
-  await act(async () => {
-    render(
-      <ThemeProvider>
-        <Probe />
-      </ThemeProvider>,
-    );
-  });
+  await render(
+    <ThemeProvider>
+      <Probe />
+    </ThemeProvider>,
+  );
 }
 
 describe('ThemeProvider (Uniwind)', () => {

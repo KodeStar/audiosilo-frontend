@@ -7,7 +7,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/roboto';
 import * as SplashScreen from 'expo-splash-screen';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { Uniwind, useUniwind } from 'uniwind';
 
@@ -53,19 +53,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     Roboto_700Bold,
   });
 
+  const apply = useCallback((p: SchemePref) => {
+    setPrefState(p);
+    Uniwind.setTheme(p);
+  }, []);
+
   useEffect(() => {
     let active = true;
     void getItem<SchemePref>(STORAGE_KEY).then((saved) => {
       if (!active) return;
-      const next = saved ?? 'dark';
-      setPrefState(next);
-      Uniwind.setTheme(next);
+      apply(saved ?? 'dark');
       setHydrated(true);
     });
     return () => {
       active = false;
     };
-  }, []);
+  }, [apply]);
 
   useEffect(() => {
     if (fontsLoaded && hydrated) void SplashScreen.hideAsync();
@@ -83,8 +86,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [resolved]);
 
   const setPref = (p: SchemePref) => {
-    setPrefState(p);
-    Uniwind.setTheme(p);
+    apply(p);
     void setItem(STORAGE_KEY, p);
   };
 

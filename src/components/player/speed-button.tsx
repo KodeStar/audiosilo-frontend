@@ -25,9 +25,6 @@ export function SpeedButton({ onPress }: { onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={t('player.speed.title')}
     >
-      {/* Raw RN Text + explicit classes: the themed <Text> variant injects its own
-          text color, which an appended class can't reliably override (conflicting
-          classes resolve by stylesheet order on web, className order on native). */}
       <RNText className="font-roboto-medium text-base text-gray-700 dark:text-gray-200">
         {fmt(rate)}
       </RNText>

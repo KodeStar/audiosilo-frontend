@@ -1,27 +1,13 @@
 // GENERATED FILE - DO NOT EDIT. Source: src/theme/tokens.json; regenerate with `npm run gen:tokens`.
 
-/**
- * Raw values for native props that need a colour string rather than a className (status
- * bar, ActivityIndicator, TextInput placeholders, react-native-svg fills, navigation
- * theme). The same palette backs the Tailwind classes (the @theme block in src/global.css).
- */
+/** Raw values for native props that need a colour string rather than a className (status bar, ActivityIndicator, TextInput placeholders, react-native-svg fills, navigation theme). The same palette backs the Tailwind classes (src/global.css). */
 export const colors = {
   primary: '#db2777', // primary
-  /**
-   * LEGACY: the loud blue that filled chapter/file tiles. The design refresh demotes it
-   * (books/chapters distinguish by icon + subtle tint, not a filled block); screens migrate
-   * off it in later tasks. Kept until then - still referenced by existing code. Prefer the
-   * semantic tokens below for new work.
-   */
+  /** LEGACY: the loud blue that filled chapter/file tiles. The design refresh demotes it (books/chapters distinguish by icon + subtle tint, not a filled block); screens migrate off it in later tasks. Kept until then - still referenced by existing code. Prefer the semantic tokens below for new work. */
   blue: '#3b82f6', // blue-500
-  /**
-   * Status colours for native props (icon fills, ActivityIndicator, svg). For text on light
-   * surfaces use the danger-600/700 classes.
-   */
+  /** Status colours for native props (icon fills, ActivityIndicator, svg). For text on light surfaces use the danger-600/700 classes. */
   danger: '#ef4444', // danger
-  /**
-   * Downloaded/done indicators.
-   */
+  /** Downloaded/done indicators. */
   success: '#22c55e', // success
   white: '#ffffff', // white
   light: {
@@ -43,5 +29,3 @@ export const colors = {
     border: '#2c3340', // gray-750
   },
 } as const;
-
-export { tabularNums } from './tabular-nums';

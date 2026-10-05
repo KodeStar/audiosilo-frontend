@@ -188,12 +188,6 @@ export default function SettingsScreen() {
                   accessibilityLabel={o.label}
                   className={`items-center rounded-md px-3 py-1.5 ${active ? 'bg-primary' : ''}`}
                 >
-                  {/* Raw RN Text with the full explicit class string: the themed
-                    <Text> body variant injects its own text-color class, and an
-                    appended text-white is not guaranteed to win (on web conflicting
-                    classes resolve by stylesheet order, not className order), so the
-                    active label rendered gray-on-pink (matches SegmentedControl's
-                    approach). */}
                   <RNText
                     className={`font-roboto-medium text-sm ${
                       active ? 'text-white' : 'text-gray-500 dark:text-gray-400'

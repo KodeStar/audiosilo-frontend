@@ -4,11 +4,11 @@ import { View } from 'react-native';
 import { useApi } from '@/api/provider';
 import { DownloadBadge } from '@/components/library/download-badge';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { Cover } from '@/components/ui/cover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
-import { useClippedShadow } from '@/theme/clipped-shadow';
 
 // Grid sizing: pick as many columns as fit at a comfortable minimum card width,
 // then divide the measured row width evenly (numeric widths avoid the flex-gap
@@ -24,23 +24,6 @@ export function gridColumns(width: number) {
 export function Grid({ children }: { children: ReactNode }) {
   return (
     <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
-      {children}
-    </View>
-  );
-}
-
-/**
- * Frames cover art so dark covers separate from dark surfaces: a hairline border
- * on both themes plus a soft shadow in light mode only (the house "shadow light /
- * border dark" pattern). Wrap every cover in this for consistent treatment.
- */
-export function CoverFrame({ children }: { children: ReactNode }) {
-  const shadow = useClippedShadow('xs', { lightOnly: true });
-  return (
-    <View
-      className="overflow-hidden rounded-lg border border-black/10 shadow-xs ios-clipped-shadow dark:border-white/10 dark:shadow-none"
-      style={shadow}
-    >
       {children}
     </View>
   );

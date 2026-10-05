@@ -15,9 +15,10 @@
  * styles are unlayered CSS classes (e.g. a horizontal ScrollView's `flex-grow: 1`),
  * and unlayered CSS beats every layer - so layered utilities (`@import 'tailwindcss'`)
  * would lose to them, where v3's later-in-the-document utilities won. The layer order
- * for the rest (with RNW's resets) is pinned in src/app/+html.tsx.
+ * (with RNW's resets in `rnw`) must match `layerOrderCss` in src/app/+html.tsx, which
+ * declares it before any stylesheet loads.
  */
-@layer theme, base, components, utilities;
+@layer properties, theme, base, rnw, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/preflight.css' layer(base);
 @import 'tailwindcss/utilities.css';
@@ -109,16 +110,11 @@
   --font-roboto-bold: 'Roboto_700Bold';
 
   /*
-   * Shadows: NativeWind's preset values (it replaced Tailwind's shadow scale with
-   * single-layer shadows React Native can draw), shifted to Tailwind v4's names -
-   * v3 `shadow-sm` is v4 `shadow-xs`, v3 `shadow` is v4 `shadow-sm`.
+   * Web shadows: NativeWind's preset values for the two the app uses, under Tailwind
+   * v4's names (v3 `shadow-sm` is v4 `shadow-xs`). Native: see below.
    */
   --shadow-xs: 0px 1px 1px rgba(0, 0, 0, 0.35);
-  --shadow-sm: 0px 1px 4px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0px 3px 10px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0px 4px 10px rgba(0, 0, 0, 0.35);
-  --shadow-xl: 0px 6px 19px rgba(0, 0, 0, 0.35);
-  --shadow-2xl: 0px 12px 38px rgba(0, 0, 0, 0.35);
 
   /*
    * Breakpoints in px, as in Tailwind v3. v4's defaults are rems (lg = 64rem), which
@@ -140,24 +136,21 @@
 }
 
 /*
- * Native shadows, mirroring exactly what NativeWind rendered (web keeps the `--shadow-*`
- * box-shadows above; the browser ignores these `@media ios/android` blocks).
- *
- * NativeWind compiled `shadow-*` to React Native's legacy shadow props, per class:
- *   shadow-xs (v3 `shadow-sm`): shadowColor #00000059, shadowOffset 0/1, shadowRadius 1,
- *     shadowOpacity 1, Android elevation 1
- *   shadow-lg: same colour, shadowOffset 0/4, shadowRadius 10, Android elevation 8
- *   shadow-none: transparent, offset 0/0, radius 0, Android elevation 0
- * Uniwind emits CSS `boxShadow` instead, and cannot emit the legacy `shadowOffset`
- * (an object), so:
+ * Native shadows, matching what NativeWind rendered. NativeWind compiled `shadow-*` to
+ * React Native's legacy shadow props (shadowColor/Offset/Radius/Opacity, plus Android
+ * `elevation`); Uniwind emits CSS `boxShadow` and cannot emit `shadowOffset` (an
+ * object). So, per platform (the browser ignores these `@media ios/android` blocks):
  * - iOS: `boxShadow` with blur = 2 x NativeWind's shadowRadius. React Native draws an
  *   iOS box-shadow as a CALayer shadow with shadowRadius = blur / 2 on the view's
- *   rounded-rect path (RCTBoxShadow.mm), which is what a legacy shadow on a view with
- *   a solid background drew. A legacy shadow on an `overflow-hidden` view was clipped
- *   away on iOS (masksToBounds), while a box-shadow is not - so those views also carry
- *   `ios-clipped-shadow` (below) to keep iOS shadowless there, as it always was.
- * - Android: the legacy props NativeWind set, minus the iOS-only ones: `elevation` +
- *   `shadowColor` (which tints elevation shadows on Android 9+), no box-shadow.
+ *   rounded-rect path (RCTBoxShadow.mm), which is what the legacy shadow drew on a
+ *   view with a solid background.
+ * - iOS, `overflow-hidden` views: the legacy shadow was clipped by masksToBounds,
+ *   while a box-shadow is not, so those views add `ios-clipped-shadow` (no
+ *   box-shadow). A cover frame with a translucent border showed a sliver of the
+ *   clipped shadow through the border; CoverFrame reproduces that with the legacy
+ *   props inline (src/theme/clipped-shadow.ios.ts).
+ * - Android: NativeWind's Android props, `elevation` + `shadowColor` (which tints
+ *   elevation shadows on Android 9+), and no box-shadow.
  */
 @utility shadow-xs {
   @variant ios {
@@ -185,7 +178,7 @@
     elevation: 0;
   }
 }
-/* No shadow on iOS for a shadowed `overflow-hidden` view (see above). Web/Android keep it. */
+/* No box-shadow on iOS for a shadowed `overflow-hidden` view (see above). */
 @utility ios-clipped-shadow {
   @variant ios {
     box-shadow: none !important;
@@ -199,21 +192,14 @@
      * fallback its CSS pipeline expanded `system-ui, sans-serif` into.
      */
     @variant web {
-      --font-sans:
-        'Roboto_400Regular', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
-      --font-roboto-light:
-        'Roboto_300Light', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
-      --font-roboto-medium:
-        'Roboto_500Medium', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
-      --font-roboto-semibold:
-        'Roboto_600SemiBold', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
-      --font-roboto-bold:
-        'Roboto_700Bold', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+      --font-web-fallback:
+        system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu,
+        Cantarell, 'Helvetica Neue', sans-serif;
+      --font-sans: 'Roboto_400Regular', var(--font-web-fallback);
+      --font-roboto-light: 'Roboto_300Light', var(--font-web-fallback);
+      --font-roboto-medium: 'Roboto_500Medium', var(--font-web-fallback);
+      --font-roboto-semibold: 'Roboto_600SemiBold', var(--font-web-fallback);
+      --font-roboto-bold: 'Roboto_700Bold', var(--font-web-fallback);
     }
   }
 }
