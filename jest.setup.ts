@@ -61,17 +61,19 @@ jest.mock('react-native-reanimated', () => {
     Text,
     ScrollView,
     createAnimatedComponent: identity,
-    // `get`/`set` too: the React Compiler-safe accessors the Slider uses.
-    useSharedValue: <V>(init: V) => {
-      const sv = {
-        value: init,
-        get: () => sv.value,
-        set: (next: unknown) => {
-          sv.value = (typeof next === 'function' ? next(sv.value) : next) as V;
-        },
-      };
-      return sv;
-    },
+    // `get`/`set` too: the React Compiler-safe accessors the Slider uses. One object per
+    // component instance, like the real hook (a memo that lists it stays stable).
+    useSharedValue: <V>(init: V) =>
+      require('react').useState(() => {
+        const sv = {
+          value: init,
+          get: () => sv.value,
+          set: (next: unknown) => {
+            sv.value = (typeof next === 'function' ? next(sv.value) : next) as V;
+          },
+        };
+        return sv;
+      })[0],
     // A module-level shared value (the skeletons' shared shimmer clock).
     makeMutable: <V>(init: V) => ({ value: init }),
     useAnimatedStyle: (fn: () => unknown) => (typeof fn === 'function' ? fn() : {}),

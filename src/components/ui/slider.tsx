@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -14,6 +14,17 @@ const THUMB = 16; // resting thumb diameter
 function clampFrac(v: number): number {
   'worklet';
   return Math.max(0, Math.min(1, v));
+}
+
+/** A stable function that calls the latest `fn` (kept current in a layout effect, never
+ * during render), so a memo can list it without rebuilding when the caller's closure
+ * changes. */
+function useLatest<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn);
+  useLayoutEffect(() => {
+    latest.current = fn;
+  });
+  return useCallback((...args: A) => latest.current(...args), []);
 }
 
 export type SliderProps = {
@@ -75,24 +86,29 @@ export function Slider({
     posFrac.set(frac);
   }, [frac, posFrac]);
 
+  // Stable stand-ins that call the latest callbacks: consumers pass fresh closures (the
+  // dock's chapter scrubber re-renders every second), and rebuilding the gesture for each
+  // one reattached its handlers every tick, mid-drag included.
+  const commitValue = useLatest(onValueCommit);
+  const previewValue = useLatest((v: number | null) => onPreview?.(v));
+
   const gesture = useMemo(() => {
-    const preview = (v: number | null) => onPreview?.(v);
-    const commit = (f: number) => onValueCommit(min + f * (span > 0 ? span : 0));
+    const commit = (f: number) => commitValue(min + f * (span > 0 ? span : 0));
     const fracAt = (x: number) => {
       'worklet';
-      return clampFrac(width.value > 0 ? x / width.value : 0);
+      return clampFrac(width.get() > 0 ? x / width.get() : 0);
     };
 
     const pan = Gesture.Pan()
       .enabled(!disabled)
       .onBegin((e) => {
-        dragging.value = 1;
-        dragFrac.value = fracAt(e.x);
-        if (span > 0) runOnJS(preview)(min + dragFrac.value * span);
+        dragging.set(1);
+        dragFrac.set(fracAt(e.x));
+        if (span > 0) runOnJS(previewValue)(min + dragFrac.get() * span);
       })
       .onUpdate((e) => {
-        dragFrac.value = fracAt(e.x);
-        if (span > 0) runOnJS(preview)(min + dragFrac.value * span);
+        dragFrac.set(fracAt(e.x));
+        if (span > 0) runOnJS(previewValue)(min + dragFrac.get() * span);
       })
       .onEnd((e) => {
         const f = fracAt(e.x);
@@ -100,8 +116,8 @@ export function Slider({
         runOnJS(commit)(f);
       })
       .onFinalize(() => {
-        dragging.value = 0;
-        runOnJS(preview)(null);
+        dragging.set(0);
+        runOnJS(previewValue)(null);
       });
 
     // Gesture-handler's default tap window (500ms), not a tight cap: a deliberate,
@@ -116,23 +132,22 @@ export function Slider({
       });
 
     return Gesture.Race(pan, tap);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared values are stable refs
-  }, [min, span, disabled, onValueCommit, onPreview]);
+  }, [min, span, disabled, width, dragging, dragFrac, posFrac, commitValue, previewValue]);
 
   const fillStyle = useAnimatedStyle(() => {
-    const f = dragging.value ? dragFrac.value : posFrac.value;
-    return { transform: [{ translateX: -(1 - f) * width.value }] };
+    const f = dragging.get() ? dragFrac.get() : posFrac.get();
+    return { transform: [{ translateX: -(1 - f) * width.get() }] };
   });
 
   const thumbStyle = useAnimatedStyle(() => {
-    const f = dragging.value ? dragFrac.value : posFrac.value;
+    const f = dragging.get() ? dragFrac.get() : posFrac.get();
     return {
-      transform: [{ translateX: f * width.value - THUMB / 2 }, { scale: 1 + dragging.value * 0.4 }],
+      transform: [{ translateX: f * width.get() - THUMB / 2 }, { scale: 1 + dragging.get() * 0.4 }],
     };
   });
 
   const onLayout = (e: LayoutChangeEvent) => {
-    width.value = e.nativeEvent.layout.width;
+    width.set(e.nativeEvent.layout.width);
   };
 
   const stepBy = (delta: number) => {

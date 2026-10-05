@@ -3,9 +3,15 @@ import { Platform } from 'react-native';
 
 // The gestures are gesture-handler + reanimated on the UI thread (no jest runtime for
 // that); this suite covers the a11y and keyboard paths, so the detector just renders.
+// It records the gesture it was handed, so a test can check its identity and call its
+// handlers directly.
+const mockGestures: unknown[] = [];
 jest.mock('react-native-gesture-handler', () => ({
   ...jest.requireActual('react-native-gesture-handler'),
-  GestureDetector: ({ children }: { children: React.ReactNode }) => children,
+  GestureDetector: ({ children, gesture }: { children: React.ReactNode; gesture: unknown }) => {
+    mockGestures.push(gesture);
+    return children;
+  },
 }));
 
 /* eslint-disable import/first */
@@ -77,5 +83,32 @@ describe('Slider', () => {
       nativeEvent: { actionName: 'increment' },
     });
     expect(p.onValueCommit).not.toHaveBeenCalled();
+  });
+  it('keeps one gesture while the callbacks change, and commits through the latest', async () => {
+    // The dock's scrubber hands a fresh onSeek every second; rebuilding the gesture for
+    // each reattached its handlers every tick, mid-drag included.
+    mockGestures.length = 0;
+    const first = jest.fn();
+    const latest = jest.fn();
+    const onPreview = jest.fn();
+    const base = { value: 60, max: 300, step: 15, accessibilityLabel: 'Playback position' };
+    await render(<Slider {...base} onValueCommit={first} />);
+    const slider = screen.getByRole('adjustable');
+    await fireEvent(slider, 'layout', { nativeEvent: { layout: { width: 200, height: 44 } } });
+    await screen.rerender(
+      <Slider {...base} value={61} onValueCommit={latest} onPreview={onPreview} />,
+    );
+
+    const gestures = new Set(mockGestures);
+    expect(gestures.size).toBe(1);
+
+    type Handlers = { onEnd: (e: { x: number }, success: boolean) => void };
+    type Gestures = { toGestureArray: () => { handlers: Handlers }[] };
+    const [pan, tap] = (mockGestures[0] as Gestures).toGestureArray();
+    tap.handlers.onEnd({ x: 100 }, true);
+    expect(latest).toHaveBeenLastCalledWith(150);
+    expect(first).not.toHaveBeenCalled();
+    pan.handlers.onEnd({ x: 50 }, true);
+    expect(latest).toHaveBeenLastCalledWith(75);
   });
 });
