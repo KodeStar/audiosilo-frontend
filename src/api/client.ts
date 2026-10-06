@@ -13,24 +13,41 @@ import type {
   BookMetaWork,
   Bookmark,
   BookPage,
+  BookRef,
   BookSort,
   ChaptersResponse,
+  Collection,
+  CollectionDetail,
+  CollectionInput,
+  CollectionPatch,
   CoverSize,
   DemoSession,
   Favourite,
   History,
   Library,
+  ListeningGoalStatus,
   Listing,
+  MyDevice,
+  MyDeviceRevoked,
+  MyListening,
   NextBook,
   Note,
   PairingPayload,
   PeopleList,
   PersonCount,
   Progress,
+  ProgressEdit,
   ProgressInput,
+  QueueEntry,
+  RatedBook,
+  Rating,
+  RatingValue,
   SeriesCount,
   ServerInfo,
+  ShareTarget,
+  StatsRange,
   User,
+  UserStats,
 } from './types';
 
 export class ApiError extends Error {
@@ -507,6 +524,18 @@ export class ApiClient {
     );
     return r.progress;
   }
+  /** The caller's own edit of a book's progress (capability `progress_edit`; see
+   * {@link ProgressEdit}): mark it finished or unfinished, move the position, set or
+   * clear the dates. Returns the stored progress, dates included. A 404 means no
+   * progress and no book at the path; a 403 that it is outside the caller's access. */
+  async editProgress(libraryId: number, path: string, edit: ProgressEdit) {
+    const r = await this.request<{ progress: Progress }>(
+      'PATCH',
+      `/libraries/${libraryId}/progress`,
+      { query: { path }, body: edit },
+    );
+    return r.progress;
+  }
 
   async bookmarks(libraryId: number, path: string) {
     const r = await this.request<{ bookmarks: Bookmark[] }>(
@@ -564,6 +593,188 @@ export class ApiClient {
     return this.request<void>('DELETE', `/libraries/${libraryId}/favourites`, { query: { path } });
   }
 
+  // --- Up next (capability `queue`) ----------------------------------------
+  // The caller's queue, in order, at most 500 books. Every write answers with the
+  // whole stored queue, so the caller reconciles with what the server kept.
+  async queue(signal?: AbortSignal) {
+    const r = await this.request<{ queue: QueueEntry[] | null }>('GET', '/me/queue', { signal });
+    return r.queue ?? [];
+  }
+  /** Replace the whole queue with `items`, in this order. Duplicates collapse (the
+   * first wins) and an entry that is not an indexed book inside the caller's access
+   * is skipped, not an error. More than 500 items is a 400. */
+  async setQueue(items: BookRef[]) {
+    const r = await this.request<{ queue: QueueEntry[] | null }>('PUT', '/me/queue', {
+      body: { items },
+    });
+    return r.queue ?? [];
+  }
+  /** Queue one book (a part/disc path queues its book). `position` is a 0-based index
+   * in the stored order (absent or past the end: the end). A book already queued moves
+   * to `position` when one is given, else stays. A full queue is a 409 (`queue_full`). */
+  async addToQueue(libraryId: number, path: string, position?: number) {
+    const r = await this.request<{ queue: QueueEntry[] | null }>('POST', '/me/queue', {
+      body: { library_id: libraryId, path, position },
+    });
+    return r.queue ?? [];
+  }
+  /** Remove one book from the queue (idempotent, 204). */
+  removeFromQueue(libraryId: number, path: string) {
+    return this.request<void>('DELETE', '/me/queue', { query: { library_id: libraryId, path } });
+  }
+
+  // --- Collections (capability `collections`) -------------------------------
+  // Owned by the caller or shared with them read-only. A collection that is neither
+  // is a 404; a viewer's write is a 403 (`not_owner`).
+  /** Owned collections first, then those shared with the caller, each newest first. */
+  async collections(signal?: AbortSignal) {
+    const r = await this.request<{ collections: Collection[] | null }>('GET', '/me/collections', {
+      signal,
+    });
+    return (r.collections ?? []).map(normalizeCollection);
+  }
+  /** Create a collection. Over 100 owned is a 409 (`collections_full`); a bad name a
+   * 400. */
+  async createCollection(input: CollectionInput) {
+    const r = await this.request<{ collection: Collection }>('POST', '/me/collections', {
+      body: input,
+    });
+    return normalizeCollection(r.collection);
+  }
+  /** A collection and its items in order, limited to the caller's own access. */
+  async collection(id: number, signal?: AbortSignal) {
+    const r = await this.request<CollectionDetail>('GET', `/me/collections/${id}`, { signal });
+    return normalizeCollectionDetail(r);
+  }
+  /** Rename it or change its description (owner only). */
+  async updateCollection(id: number, patch: CollectionPatch) {
+    const r = await this.request<{ collection: Collection }>('PATCH', `/me/collections/${id}`, {
+      body: patch,
+    });
+    return normalizeCollection(r.collection);
+  }
+  /** The owner deletes the collection; a viewer leaves it (only their share goes). */
+  deleteCollection(id: number) {
+    return this.request<void>('DELETE', `/me/collections/${id}`);
+  }
+  /** Replace the items (owner only), with the queue's rules: duplicates collapse and
+   * an entry that is not an indexed book in the caller's access is skipped. More than
+   * 1000 is a 400. Returns the stored detail. */
+  async setCollectionItems(id: number, items: BookRef[]) {
+    const r = await this.request<CollectionDetail>('PUT', `/me/collections/${id}/items`, {
+      body: { items },
+    });
+    return normalizeCollectionDetail(r);
+  }
+  /** Add one book (owner only), placed like {@link addToQueue}. A full collection is
+   * a 409 (`collection_full`). Returns the stored detail. */
+  async addCollectionItem(id: number, libraryId: number, path: string, position?: number) {
+    const r = await this.request<CollectionDetail>('POST', `/me/collections/${id}/items`, {
+      body: { library_id: libraryId, path, position },
+    });
+    return normalizeCollectionDetail(r);
+  }
+  /** Remove one book (owner only; idempotent, 204). */
+  removeCollectionItem(id: number, libraryId: number, path: string) {
+    return this.request<void>('DELETE', `/me/collections/${id}/items`, {
+      query: { library_id: libraryId, path },
+    });
+  }
+  /** Replace who the collection is shared with (owner only, at most 50). An id that is
+   * not a share target rejects the whole request (400 `unknown user`); a demo owner
+   * gets a 403. */
+  async setCollectionShares(id: number, userIds: number[]) {
+    const r = await this.request<{ collection: Collection }>(
+      'PUT',
+      `/me/collections/${id}/shares`,
+      { body: { user_ids: userIds } },
+    );
+    return normalizeCollection(r.collection);
+  }
+  /** The users the caller can share with, by username. A demo account gets a 403. */
+  async shareTargets(signal?: AbortSignal) {
+    const r = await this.request<{ users: ShareTarget[] | null }>('GET', '/me/share-targets', {
+      signal,
+    });
+    return r.users ?? [];
+  }
+
+  // --- Ratings (capability `ratings`) --------------------------------------
+  /** The caller's rating of exactly this path, or null when there is none. */
+  async rating(libraryId: number, path: string, signal?: AbortSignal) {
+    const r = await this.request<{ rating: Rating | null }>(
+      'GET',
+      `/libraries/${libraryId}/rating`,
+      { query: { path }, signal },
+    );
+    return r.rating ?? null;
+  }
+  /** Rate a book 1-5 with an optional note (at most 500 characters, trimmed). A
+   * part/disc path rates its book: the returned rating carries the book's own path. */
+  async setRating(libraryId: number, path: string, rating: RatingValue, note?: string) {
+    const r = await this.request<{ rating: Rating }>('PUT', `/libraries/${libraryId}/rating`, {
+      query: { path },
+      body: note === undefined ? { rating } : { rating, note },
+    });
+    return r.rating;
+  }
+  /** Remove the caller's rating of this path (idempotent, 204). */
+  deleteRating(libraryId: number, path: string) {
+    return this.request<void>('DELETE', `/libraries/${libraryId}/rating`, { query: { path } });
+  }
+  /** Every rating the caller can still see, newest change first. */
+  async myRatings(signal?: AbortSignal) {
+    const r = await this.request<{ ratings: RatedBook[] | null }>('GET', '/me/ratings', {
+      signal,
+    });
+    return r.ratings ?? [];
+  }
+
+  // --- Your listening (capability `user_stats`) -----------------------------
+  // `range` defaults to `30d` on the server when omitted (see StatsRange).
+  /** The caller's own listening stats for a period. */
+  async myStats(range?: StatsRange, signal?: AbortSignal) {
+    const r = await this.request<{ stats: UserStats }>('GET', '/me/stats', {
+      query: { range },
+      signal,
+    });
+    return normalizeStats(r.stats);
+  }
+  /** The caller's listening day by day for a period. */
+  async myListening(range?: StatsRange, signal?: AbortSignal) {
+    const r = await this.request<MyListening>('GET', '/me/listening', { query: { range }, signal });
+    return { ...r, days: r.days ?? [] };
+  }
+  /** The caller's yearly goal (null when unset) and this year's finished books. */
+  listeningGoal(signal?: AbortSignal) {
+    return this.request<ListeningGoalStatus>('GET', '/me/goal', { signal });
+  }
+  /** Set the goal: books finished per year, 1-1000 (else a 400). */
+  setListeningGoal(booksPerYear: number) {
+    return this.request<ListeningGoalStatus>('PUT', '/me/goal', {
+      body: { books_per_year: booksPerYear },
+    });
+  }
+  /** Clear the goal (idempotent, 204). */
+  clearListeningGoal() {
+    return this.request<void>('DELETE', '/me/goal');
+  }
+
+  // --- My devices (capability `my_devices`) --------------------------------
+  /** The caller's own live sessions and API keys, most recently seen first. */
+  async myDevices(signal?: AbortSignal) {
+    const r = await this.request<{ devices: MyDevice[] | null }>('GET', '/me/devices', {
+      signal,
+    });
+    return r.devices ?? [];
+  }
+  /** Sign out one of the caller's own devices. `current: true` means it was this very
+   * token, which every later request is refused with (the caller signs out locally).
+   * Someone else's, unknown or already revoked is a 404. */
+  revokeMyDevice(id: number) {
+    return this.request<MyDeviceRevoked>('DELETE', `/me/devices/${id}`);
+  }
+
   async history(libraryId: number, path: string) {
     const r = await this.request<{ history: History[] | null }>(
       'GET',
@@ -582,4 +793,34 @@ export class ApiClient {
       body: span,
     });
   }
+}
+
+// Go encodes an empty slice as null when it was never made: the user-state readers
+// below turn null arrays into [], so a screen never has to.
+
+function normalizeCollection(c: Collection): Collection {
+  const out: Collection = { ...c, preview: c.preview ?? [] };
+  // `shared_with` is meaningful by absence (a viewer never gets it), so only an owner's
+  // null becomes [].
+  if (c.owned) out.shared_with = c.shared_with ?? [];
+  return out;
+}
+
+function normalizeCollectionDetail(d: CollectionDetail): CollectionDetail {
+  return { collection: normalizeCollection(d.collection), items: d.items ?? [] };
+}
+
+function normalizeStats(s: UserStats): UserStats {
+  return {
+    ...s,
+    days: s.days ?? [],
+    hour_weekday: s.hour_weekday ?? [],
+    top_books: s.top_books ?? [],
+    top_authors: s.top_authors ?? [],
+    top_narrators: s.top_narrators ?? [],
+    top_series: s.top_series ?? [],
+    finished_books: s.finished_books ?? [],
+    playback: s.playback ?? [],
+    clients: s.clients ?? [],
+  };
 }
