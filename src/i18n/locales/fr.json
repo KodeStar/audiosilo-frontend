@@ -314,11 +314,7 @@
     },
     "progressCard": {
       "markFinished": "Marquer comme terminé",
-      "moreInSeries": "Plus dans la série",
-      "resume": "Reprendre",
-      "moreActions": "Plus d’actions",
-      "timeLeft": "{{duration}} restant",
-      "finished": "Terminé"
+      "moreInSeries": "Plus dans la série"
     },
     "notes": {
       "title": "Notes",
@@ -364,7 +360,6 @@
     "list": {
       "recentlyAdded": "Ajoutés récemment",
       "recentlyFinished": "Terminés récemment",
-      "added": "Ajouté {{when}}",
       "loadError": "Impossible de charger.",
       "noBooks": "Aucun livre pour l’instant.",
       "noBooksHint": "Les livres que vous ajoutez à votre bibliothèque apparaissent ici.",
@@ -402,7 +397,6 @@
       "serverPlaceholder": "Choisir un serveur"
     },
     "detail": {
-      "soon": "Cette page arrive bientôt.",
       "badLink": "Ce lien ne mène à rien ici.",
       "collection": "Collection"
     },
@@ -858,7 +852,6 @@
     "library": "Bibliothèque",
     "search": "Rechercher",
     "downloads": "Téléchargements",
-    "logout": "Déconnexion",
     "offline": "Hors ligne - les modifications se synchronisent à la reconnexion",
     "someOffline": "Certains serveurs hors ligne",
     "me": "Moi",
@@ -888,7 +881,6 @@
     "home": "Accueil AudioSilo",
     "offline": "Hors ligne · les téléchargements sont lus",
     "serverMore": "{{name}} + {{count}} autres",
-    "account": "Ton compte, {{name}}",
     "openPlayer": "Ouvrir le lecteur complet pour {{title}}",
     "titleTimeLeft": "{{title}} · {{time}} restantes",
     "dock": {

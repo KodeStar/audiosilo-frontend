@@ -13,7 +13,6 @@ import {
 } from '@/api/hooks';
 import { CoverTile } from '@/components/library/cover-tile';
 import { libraryModeHref } from '@/components/library/library-modes';
-import { ProgressMenuSheet } from '@/components/library/progress-card';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
@@ -43,6 +42,7 @@ import { HomeSection } from './home-section';
 import { NowEmpty, NowError } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
+import { ProgressMenuSheet } from './progress-menu-sheet';
 import { SmartShelves } from './smart-shelves';
 import { ThisWeekCard } from './this-week-card';
 import { useNarratorShelf } from './use-narrator-shelf';

@@ -314,11 +314,7 @@
     },
     "progressCard": {
       "markFinished": "Segna come finito",
-      "moreInSeries": "Altro della serie",
-      "resume": "Riprendi",
-      "moreActions": "Altre azioni",
-      "timeLeft": "{{duration}} rimanenti",
-      "finished": "Finito"
+      "moreInSeries": "Altro della serie"
     },
     "notes": {
       "title": "Note",
@@ -364,7 +360,6 @@
     "list": {
       "recentlyAdded": "Aggiunti di recente",
       "recentlyFinished": "Finiti di recente",
-      "added": "Aggiunto {{when}}",
       "loadError": "Impossibile caricare.",
       "noBooks": "Ancora nessun libro.",
       "noBooksHint": "I libri che aggiungi alla tua libreria appaiono qui.",
@@ -402,7 +397,6 @@
       "serverPlaceholder": "Scegli un server"
     },
     "detail": {
-      "soon": "Questa pagina sta arrivando.",
       "badLink": "Questo link non porta a niente qui.",
       "collection": "Raccolta"
     },
@@ -858,7 +852,6 @@
     "library": "Libreria",
     "search": "Cerca",
     "downloads": "Download",
-    "logout": "Esci",
     "offline": "Offline - le modifiche si sincronizzano alla riconnessione",
     "someOffline": "Alcuni server offline",
     "me": "Io",
@@ -888,7 +881,6 @@
     "home": "Home di AudioSilo",
     "offline": "Offline · i download si riproducono",
     "serverMore": "{{name}} + altri {{count}}",
-    "account": "Il tuo account, {{name}}",
     "openPlayer": "Apri il lettore completo per {{title}}",
     "titleTimeLeft": "{{title}} · mancano {{time}}",
     "dock": {

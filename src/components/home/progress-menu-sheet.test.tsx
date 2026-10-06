@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import type { ReactNode } from 'react';
 
 import type { SourcedProgress } from '@/api/hooks';
 
@@ -8,31 +7,18 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-// The poster card renders a cover image + navigation we don't care about here; the
-// only part under test is the `footer` (progress bar + resume + overflow button).
-jest.mock('@/components/library/poster-grid', () => ({
-  GridCard: ({ footer }: { footer?: ReactNode }) => footer ?? null,
-}));
-
 const mockMutate = jest.fn();
 jest.mock('@/api/hooks', () => ({
   useMarkFinished: () => ({ mutate: mockMutate }),
 }));
-
-jest.mock('@/api/provider', () => ({ useApi: () => ({}) }));
 
 const mockOpenLibrary = jest.fn();
 jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openLibrary: mockOpenLibrary, openBook: jest.fn(), openPlayer: jest.fn() }),
 }));
 
-jest.mock('@/playback/store', () => ({
-  usePlayer: Object.assign(() => 100, { getState: () => ({ nowPlaying: null }) }),
-  selectBookPosition: () => 100,
-}));
-
 /* eslint-disable import/first */
-import { ProgressCard, ProgressMenuSheet } from './progress-card';
+import { ProgressMenuSheet } from './progress-menu-sheet';
 /* eslint-enable import/first */
 
 const item = {
@@ -56,21 +42,6 @@ async function mount(ui: React.ReactElement) {
 beforeEach(() => {
   mockMutate.mockClear();
   mockOpenLibrary.mockClear();
-});
-
-describe('ProgressCard', () => {
-  it('fires onMenu with its item when the overflow button is pressed', async () => {
-    const onMenu = jest.fn();
-    await mount(<ProgressCard item={item} width={160} onMenu={onMenu} />);
-
-    fireEvent.press(screen.getByLabelText('More actions'));
-    expect(onMenu).toHaveBeenCalledWith(item);
-  });
-
-  it('hides the overflow button when no onMenu is provided', async () => {
-    await mount(<ProgressCard item={item} width={160} />);
-    expect(screen.queryByLabelText('More actions')).toBeNull();
-  });
 });
 
 describe('ProgressMenuSheet', () => {

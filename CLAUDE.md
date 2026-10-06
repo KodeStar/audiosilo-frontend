@@ -10,7 +10,7 @@ voice. Screens still carry the layouts ported from the old Nuxt client
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
 **M3 (offline downloads)** shipped (`src/downloads/` - `engine.native.ts`/
 `engine.web.ts`/`store.ts`, a `(app)/(offline)/downloads` route, and the
-`download-control`/`download-badge` components); **M4 (PWA / service worker)**
+`download-control` component); **M4 (PWA / service worker)**
 shipped (`public/sw.js`, `public/manifest.json`, `src/lib/register-sw{,.web}.ts`).
 Several features have landed since the original plan: **demo mode**, **favourites**,
 **self-service password**, and **i18n** (`src/i18n/`). M5 (release/store) is the main

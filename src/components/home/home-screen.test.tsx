@@ -84,8 +84,8 @@ let mockNext: { answers: unknown[]; supported: boolean | undefined; isLoading: b
   isLoading: false,
 };
 jest.mock('./use-next-in-series', () => ({ useNextInSeries: () => mockNext }));
-// The long-press menu is the old ProgressCard sheet; its own tests cover it.
-jest.mock('@/components/library/progress-card', () => ({ ProgressMenuSheet: () => null }));
+// The long-press menu has its own tests.
+jest.mock('./progress-menu-sheet', () => ({ ProgressMenuSheet: () => null }));
 jest.mock('./use-narrator-shelf', () => ({ useNarratorShelf: () => undefined }));
 jest.mock('./use-sync-pill', () => ({ useSyncPill: () => null }));
 
