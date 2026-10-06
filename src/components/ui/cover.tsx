@@ -16,12 +16,16 @@ export function Cover({
   sublabel,
   rounded = 'rounded-lg',
   size,
+  onError,
 }: {
   source?: ImageSource | string | null;
   label?: string;
   sublabel?: string;
   rounded?: string;
   size?: number;
+  /** Called when the image fails to load (after the fallback takes over), so a caller
+   * can try another source (a thumbnail falling back to the full art). */
+  onError?: () => void;
 }) {
   // Track which source URI failed (rather than a bare boolean) so the error state
   // resets automatically when the source changes - list rows recycle covers.
@@ -41,7 +45,10 @@ export function Cover({
           contentFit="cover"
           transition={150}
           recyclingKey={key}
-          onError={() => setFailedKey(key)}
+          onError={() => {
+            setFailedKey(key);
+            onError?.();
+          }}
         />
       ) : (
         <View className="flex-1 items-center justify-center gap-0.5 p-2">
