@@ -78,20 +78,21 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       // files are still on disk. Without this the existence check below fails and
       // the book is dropped *and deleted* - the download vanishes after a rebuild.
       const e = relocateEntry(raw);
-      // Only fully-downloaded books survive a relaunch; our engine can't resume a
-      // download interrupted by an app kill, so partials are dropped + cleaned up.
-      const present =
-        e.status === 'downloaded' &&
+      // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
+      const allPresent =
         e.manifest.files.length > 0 &&
         (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
           Boolean,
         );
+      const revived = reviveEntry(e, allPresent);
       // Key on the entry's own connection-scoped id (stale un-scoped entries from before
       // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
       const key = downloadKey(e.connectionId, e.libraryId, e.path);
-      if (present) {
-        cleaned[key] = e;
-        seedQueryCache(e.connectionId, e.libraryId, e.path, e.manifest);
+      if (revived) {
+        cleaned[key] = revived;
+        if (revived.status === 'downloaded') {
+          seedQueryCache(e.connectionId, e.libraryId, e.path, e.manifest);
+        }
       } else {
         void engine.removeBook(e.connectionId, e.libraryId, e.path);
       }
@@ -174,6 +175,35 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 }));
 
 // --- helpers ---------------------------------------------------------------
+
+/**
+ * What a saved entry becomes on launch (`allPresent`: every file it lists is on disk):
+ * - a downloaded book stays downloaded;
+ * - a failed download, or one the app closed mid-way (still `queued` / `downloading`:
+ *   the engines can't resume a transfer, but the files it FINISHED are listed as they
+ *   land), stays as a failure keeping those files, so Retry fetches only the rest. One
+ *   cut short by the app closing says so (`interrupted`);
+ * - anything else is dropped (and its folder deleted by the caller): an entry with no
+ *   finished file, or one whose files are no longer all there.
+ * The kept share is recomputed from the files, so it is what is really on the device.
+ */
+export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntry | null {
+  const files = e.manifest.files;
+  if (files.length === 0 || !allPresent) return null;
+  if (e.status === 'downloaded') return e;
+  const of = bookFileSpecs(e.manifest.book, e.manifest.chapters ?? undefined).length;
+  const kept = Math.min(1, files.length / Math.max(of, files.length));
+  const failure: DownloadFailure =
+    e.status === 'error' && e.failure ? { ...e.failure, kept } : { kind: 'interrupted', kept };
+  return {
+    ...e,
+    status: 'error',
+    progress: kept,
+    bytes: files.reduce((sum, f) => sum + (f.bytes ?? 0), 0),
+    error: e.status === 'error' ? e.error : 'Interrupted',
+    failure,
+  };
+}
 
 function persist(): Promise<void> {
   return setItem(KEY, useDownloads.getState().entries);
@@ -339,6 +369,16 @@ async function runOne(key: string) {
       priorBytes += curBytes;
       files.push({ relPath: s.path, localUri, bytes: curBytes });
       progressFiles.set(key, { files: [...files], of: specs.length });
+      // List each finished file as it lands, so a download the app is closed in the
+      // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
+      // finished further on stay listed in their places (the name on disk is the index).
+      const cur = useDownloads.getState().entries[key];
+      if (cur) {
+        patchEntry(key, {
+          manifest: { ...cur.manifest, files: [...files, ...earlier.slice(files.length)] },
+        });
+        void persist();
+      }
     }
 
     const manifest: DownloadManifest = {

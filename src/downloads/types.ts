@@ -13,12 +13,14 @@ export type DownloadedFile = { relPath: string; localUri: string; bytes?: number
  * - `storage`: this device or browser ran out of room;
  * - `unservable`: saved, but the web service worker can't play it offline yet;
  * - `removed`: the server's connection was removed while it waited;
+ * - `interrupted`: the app closed (or was killed) before it finished;
  * - `unknown`: anything else. */
 export type DownloadFailure = {
-  kind: 'network' | 'server' | 'storage' | 'unservable' | 'removed' | 'unknown';
+  kind: 'network' | 'server' | 'storage' | 'unservable' | 'removed' | 'interrupted' | 'unknown';
   status?: number;
   /** The share of the book (0..1) whose files finished before it stopped: they stay on
-   * the device for this session, and a retry skips them. */
+   * the device (across a restart, while every one of them is still there), and a retry
+   * skips them. */
   kept?: number;
 };
 

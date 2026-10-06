@@ -621,6 +621,7 @@
       "storageBrowser": "Le navigateur n’a plus d’espace.",
       "unservable": "Enregistré, mais la lecture hors ligne n’est pas encore prête. Rechargez l’app, puis réessayez.",
       "removed": "Vous n’êtes plus connecté à ce serveur.",
+      "interrupted": "L’app s’est fermée avant la fin.",
       "unknown": "Le téléchargement s’est arrêté.",
       "kept": "Vos {{percent}} % sont conservés.",
       "restart": "Réessayer le reprend depuis le début."

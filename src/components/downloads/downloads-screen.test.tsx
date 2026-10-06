@@ -201,6 +201,12 @@ describe('DownloadsScreen', () => {
     ).toBeTruthy();
   });
 
+  it('says when the app closed in the middle, and what is kept', async () => {
+    setEntries(entry('Cut', 'error', { failure: { kind: 'interrupted', kept: 0.5 } }));
+    await mount();
+    expect(screen.getByText('The app closed before it finished. Your 50% is kept.')).toBeTruthy();
+  });
+
   it('groups books ready offline by server and asks before removing one', async () => {
     mockProgress = [
       {

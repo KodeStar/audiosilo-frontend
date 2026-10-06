@@ -621,6 +621,7 @@
       "storageBrowser": "O navegador ficou sem espaço.",
       "unservable": "Salvo, mas a reprodução offline ainda não está pronta. Recarregue o app e tente de novo.",
       "removed": "Você não está mais conectado a este servidor.",
+      "interrupted": "A app fechou antes de terminar.",
       "unknown": "O download parou.",
       "kept": "Seus {{percent}}% estão guardados.",
       "restart": "Tentar de novo recomeça do início."

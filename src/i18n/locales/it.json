@@ -621,6 +621,7 @@
       "storageBrowser": "Il browser ha esaurito lo spazio.",
       "unservable": "Salvato, ma la riproduzione offline non è ancora pronta. Ricarica l’app, poi riprova.",
       "removed": "Non hai più accesso a questo server.",
+      "interrupted": "L’app si è chiusa prima che finisse.",
       "unknown": "Il download si è interrotto.",
       "kept": "Il tuo {{percent}}% è conservato.",
       "restart": "Riprovando ricomincia da capo."

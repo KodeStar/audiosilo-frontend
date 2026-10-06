@@ -621,6 +621,7 @@
       "storageBrowser": "El navegador se quedó sin espacio.",
       "unservable": "Guardado, pero la reproducción sin conexión aún no está lista. Recarga la app y vuelve a intentarlo.",
       "removed": "Ya no tienes la sesión iniciada en este servidor.",
+      "interrupted": "La app se cerró antes de que terminara.",
       "unknown": "La descarga se detuvo.",
       "kept": "Tu {{percent}} % se conserva.",
       "restart": "Al reintentar empieza de nuevo."

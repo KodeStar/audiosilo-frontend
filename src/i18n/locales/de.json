@@ -621,6 +621,7 @@
       "storageBrowser": "Dem Browser ist der Speicher ausgegangen.",
       "unservable": "Gespeichert, aber die Offline-Wiedergabe ist noch nicht bereit. Lade die App neu und versuche es dann erneut.",
       "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
+      "interrupted": "Die App wurde geschlossen, bevor der Download fertig war.",
       "unknown": "Der Download wurde angehalten.",
       "kept": "Deine {{percent}} % bleiben erhalten.",
       "restart": "Ein neuer Versuch beginnt von vorn."

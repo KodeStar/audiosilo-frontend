@@ -621,6 +621,7 @@
       "storageBrowser": "The browser ran out of space.",
       "unservable": "Saved, but offline playback isn't ready yet. Reload the app, then retry.",
       "removed": "You're no longer signed in to this server.",
+      "interrupted": "The app closed before it finished.",
       "unknown": "The download stopped.",
       "kept": "Your {{percent}}% is kept.",
       "restart": "Retry starts it again."

@@ -46,7 +46,9 @@ export function failureText(
             ? t('downloads.failure.unservable')
             : f.kind === 'removed'
               ? t('downloads.failure.removed')
-              : t('downloads.failure.unknown');
+              : f.kind === 'interrupted'
+                ? t('downloads.failure.interrupted')
+                : t('downloads.failure.unknown');
   // An unservable download is fully saved: the cause already says what to do.
   if (f.kind === 'unservable' || f.kind === 'removed') return cause;
   const kept = f.kept ?? 0;
