@@ -38,6 +38,7 @@ import { useRecentSearches } from '@/stores/search';
 import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { isEditable, isModalOpen } from '@/lib/keyboard';
 
 import { TOP_BAR_TABS, useTabPress } from './destinations';
 import {
@@ -609,18 +610,6 @@ export function CommandPalette() {
   );
 }
 
-/** Whether the focus is in something you type into (no shortcut fires there). */
-function isEditable(el: Element | null): boolean {
-  if (!el) return false;
-  const tag = el.tagName;
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    tag === 'SELECT' ||
-    (el as HTMLElement).isContentEditable === true
-  );
-}
-
 /**
  * The palette's global shortcuts (web): ⌘K / Ctrl+K and `/` open it from any tab page -
  * not over the full player, not over another dialog, and never while typing in a field.
@@ -631,7 +620,7 @@ export function usePaletteShortcut(enabled: boolean) {
     if (!enabled || Platform.OS !== 'web' || typeof document === 'undefined') return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (!isPaletteShortcut(e, isEditable(document.activeElement))) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
+      if (isModalOpen(document)) return;
       e.preventDefault();
       openPalette();
     };
