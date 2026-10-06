@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
@@ -35,7 +36,7 @@ const CARD = cn(
 );
 
 /** "4 books · 31h 20m": a person's line. */
-function personLine(p: PersonCount, t: ReturnType<typeof useTranslation>['t']): string {
+function personLine(p: PersonCount, t: TFunction): string {
   return [t('people.books', { count: p.books }), formatDuration(p.duration)]
     .filter(Boolean)
     .join(' · ');
