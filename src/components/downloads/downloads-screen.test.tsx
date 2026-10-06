@@ -266,6 +266,15 @@ describe('DownloadsScreen', () => {
     expect(store().cancel).toHaveBeenCalledWith('a', 1, 'Next');
   });
 
+  it('stacks the storage and rules cards when the page is too narrow for both', async () => {
+    await mount();
+    const cards = screen.getByTestId('downloads-cards');
+    expect(String(cards.props.className)).toContain('flex-row');
+    // A 1024 desktop with the Up next drawer open.
+    await fireEvent(cards, 'layout', { nativeEvent: { layout: { width: 600, height: 400 } } });
+    expect(String(screen.getByTestId('downloads-cards').props.className)).not.toContain('flex-row');
+  });
+
   it('binds the rules to the settings store', async () => {
     await mount();
     await fireEvent.press(screen.getByRole('radio', { name: '2' }));

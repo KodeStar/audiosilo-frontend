@@ -90,9 +90,14 @@ function useProgressLabels(): Map<string, string> {
  * room it takes per server, the automatic download rules, the browser's limits (web),
  * what is downloading or waiting, and the books ready offline grouped by server.
  */
+/** The narrowest row that takes the storage and rules cards side by side (two 350s). */
+const CARDS_BESIDE_MIN = 716;
+
 export function DownloadsScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
+  const [cardsWidth, setCardsWidth] = useState(0);
+  const besideCards = !phone && (cardsWidth === 0 || cardsWidth >= CARDS_BESIDE_MIN);
   const paddingBottom = useMiniPlayerInset();
   const { openBook, openPlayer } = useOpen();
   const { press } = useTabPress();
@@ -175,15 +180,21 @@ export function DownloadsScreen() {
           </Text>
         </SubNavActions>
 
-        {/* Top-aligned: the storage card is shorter than the rules and keeps its own height. */}
-        <View className={phone ? 'gap-4' : 'flex-row items-start gap-4'}>
+        {/* Top-aligned: the storage card is shorter than the rules and keeps its own height.
+            Side by side only where the page fits both (the Up next drawer takes up to 480
+            of a desktop, and a 300 rules card cut "On Wi-Fi" short). */}
+        <View
+          testID="downloads-cards"
+          onLayout={(e) => setCardsWidth(e.nativeEvent.layout.width)}
+          className={besideCards ? 'flex-row items-start gap-4' : 'gap-4'}
+        >
           <StorageCard
             bar={bar}
             scope={scope}
             estimate={storage.estimate}
-            className={phone ? undefined : 'flex-1'}
+            className={besideCards ? 'flex-1' : undefined}
           />
-          <RulesCard className={phone ? undefined : 'flex-1'} />
+          <RulesCard className={besideCards ? 'flex-1' : undefined} />
         </View>
 
         {Platform.OS === 'web' ? (
