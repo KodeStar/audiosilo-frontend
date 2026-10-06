@@ -66,6 +66,9 @@ jest.mock('./modes/authors-mode', () => ({
     return <T>{`Authors of ${connectionId}/${libraryId}`}</T>;
   },
 }));
+// The other mode bodies (their own tests cover them) pull in the player chrome.
+jest.mock('./modes/series-mode', () => ({ SeriesMode: () => null }));
+jest.mock('./modes/narrators-mode', () => ({ NarratorsMode: () => null }));
 
 /* eslint-disable import/first */
 import { LibraryPicker } from './library-picker';
