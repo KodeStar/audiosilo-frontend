@@ -48,10 +48,21 @@ export function libraryHref(connectionId: string, libraryId: number, relPath = '
   };
 }
 
-export function bookHref(connectionId: string, libraryId: number, relPath: string): Href {
+/** A book page; `tab` opens it on that tab (`parseBookTab`) instead of the first. */
+export function bookHref(
+  connectionId: string,
+  libraryId: number,
+  relPath: string,
+  tab?: string,
+): Href {
   return {
     pathname: '/book/[libraryId]',
-    params: { libraryId: String(libraryId), connection: connectionId, path: relPath },
+    params: {
+      libraryId: String(libraryId),
+      connection: connectionId,
+      path: relPath,
+      ...(tab ? { tab } : {}),
+    },
   };
 }
 

@@ -62,3 +62,21 @@ export function bookTabs(input: BookTabInput): BookTab[] {
   if (input.hasSeries) tabs.push('series');
   return tabs;
 }
+
+const BOOK_TABS: readonly BookTab[] = [
+  'chapters',
+  'recaps',
+  'characters',
+  'bookmarks',
+  'history',
+  'notes',
+  'series',
+];
+
+/** The tab a book link's `?tab=` asks to open on (Expo Router may hand back `string[]`),
+ * or null for none or an unknown one. Only an intent: the screen still falls back to the
+ * first tab that exists. */
+export function parseBookTab(param?: string | string[]): BookTab | null {
+  const v = Array.isArray(param) ? param[0] : param;
+  return (BOOK_TABS as readonly string[]).includes(v ?? '') ? (v as BookTab) : null;
+}

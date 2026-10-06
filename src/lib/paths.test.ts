@@ -95,6 +95,12 @@ describe('bookHref', () => {
       params: { libraryId: '3', connection: 'c1', path: 'Author/Book Title' },
     });
   });
+  it('opens on a tab when asked', () => {
+    expect(bookHref('c1', 3, 'B', 'characters')).toEqual({
+      pathname: '/book/[libraryId]',
+      params: { libraryId: '3', connection: 'c1', path: 'B', tab: 'characters' },
+    });
+  });
 });
 
 describe('accountHref', () => {

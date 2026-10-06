@@ -1,4 +1,4 @@
-import { bookTabs, TAB_LABEL_KEY } from './book-tabs';
+import { bookTabs, parseBookTab, TAB_LABEL_KEY } from './book-tabs';
 
 const none = {
   hasList: false,
@@ -87,5 +87,14 @@ describe('TAB_LABEL_KEY', () => {
     expect(TAB_LABEL_KEY.history).toBe('library.history.title');
     expect(TAB_LABEL_KEY.notes).toBe('library.notes.title');
     expect(TAB_LABEL_KEY.characters).toBe('book.meta.characters');
+  });
+});
+
+describe('parseBookTab', () => {
+  it('reads a known tab from a link and ignores anything else', () => {
+    expect(parseBookTab('characters')).toBe('characters');
+    expect(parseBookTab(['recaps', 'notes'])).toBe('recaps');
+    expect(parseBookTab('spoilers')).toBeNull();
+    expect(parseBookTab(undefined)).toBeNull();
   });
 });
