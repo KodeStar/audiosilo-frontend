@@ -1452,17 +1452,29 @@ function progressIndex(rows: readonly Progress[]): Map<string, Progress> {
  * bar. One fetch per connection, shared with Home and the palette; the lookup keeps its
  * identity until a list changes, and each list is indexed once.
  */
-export function useProgressLookup(): { progressOf: SavedProgressOf; isLoading: boolean } {
+export function useProgressLookup(): {
+  progressOf: SavedProgressOf;
+  isLoading: boolean;
+  /** Whether ONE connection's list is still loading (a screen about one server must not
+   * wait on another that is slow or unreachable). */
+  loadingOf: (connectionId: string) => boolean;
+} {
   const apis = useApis();
   const ids = apis.map((a) => a.connection.id).join('\n');
   const combine = useCallback(
     (results: { data?: Progress[]; isLoading: boolean }[]) => {
-      const byCid = new Map(ids.split('\n').map((cid, i) => [cid, results[i]?.data]));
+      const cids = ids.split('\n');
+      const byCid = new Map(cids.map((cid, i) => [cid, results[i]?.data]));
       const progressOf: SavedProgressOf = (cid, lib, path) => {
         const rows = byCid.get(cid);
         return rows ? progressIndex(rows).get(`${lib}\n${path}`) : undefined;
       };
-      return { progressOf, isLoading: results.some((r) => r.isLoading) };
+      const loading = new Set(cids.filter((_, i) => results[i]?.isLoading));
+      return {
+        progressOf,
+        isLoading: loading.size > 0,
+        loadingOf: (cid: string) => loading.has(cid),
+      };
     },
     [ids],
   );

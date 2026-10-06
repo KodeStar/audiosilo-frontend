@@ -46,6 +46,7 @@ jest.mock('@/api/hooks', () => ({
   useProgressLookup: () => ({
     progressOf: (c: string, l: number, p: string) => mockProgress[`${c}:${l}:${p}`],
     isLoading: false,
+    loadingOf: () => false,
   }),
 }));
 

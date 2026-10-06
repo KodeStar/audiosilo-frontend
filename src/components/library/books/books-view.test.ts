@@ -198,6 +198,15 @@ describe('letterGrid', () => {
       letterGrid(sorted).items.map((i) => (i.kind === 'head' ? `#${i.letter}` : i.item.title)),
     ).toEqual(['#A', 'Anathem', '#B', 'Babel', 'The Body', '#E', 'Émile', '##', '1984']);
   });
+
+  it('sorts and files an untitled book by the folder name it is shown with', () => {
+    const untitled = book('', { rel_path: 'Lib/Middlemarch' });
+    const sorted = sortBooks([book('Zorba'), untitled, book('Anathem')], 'title');
+    expect(sorted.map((b) => b.rel_path)).toEqual(['Lib/Anathem', 'Lib/Middlemarch', 'Lib/Zorba']);
+    expect(
+      letterGrid(sorted).items.map((i) => (i.kind === 'head' ? `#${i.letter}` : i.item.rel_path)),
+    ).toEqual(['#A', 'Lib/Anathem', '#M', 'Lib/Middlemarch', '#Z', 'Lib/Zorba']);
+  });
 });
 
 describe('unfinishedPosition', () => {

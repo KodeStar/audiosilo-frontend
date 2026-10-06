@@ -85,14 +85,14 @@ function useProgressLabels(): Map<string, string> {
   }, [progress, t]);
 }
 
+/** The narrowest row that takes the storage and rules cards side by side (two 350s). */
+const CARDS_BESIDE_MIN = 716;
+
 /**
  * The Downloads tab (Stacks prototype `Downloads`): what is on this device and how much
  * room it takes per server, the automatic download rules, the browser's limits (web),
  * what is downloading or waiting, and the books ready offline grouped by server.
  */
-/** The narrowest row that takes the storage and rules cards side by side (two 350s). */
-const CARDS_BESIDE_MIN = 716;
-
 export function DownloadsScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';

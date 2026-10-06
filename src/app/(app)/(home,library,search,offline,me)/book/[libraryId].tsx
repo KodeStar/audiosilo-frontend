@@ -574,13 +574,25 @@ function BookDetailContent() {
 
       <View className="gap-3">
         <View className="flex-row gap-2">
-          <Button
-            size="lg"
-            title={t('book.listen')}
-            icon="play"
-            className="flex-1"
-            onPress={() => goPlay({})}
-          />
+          {/* A tablet or desktop page too narrow for two panes plays inline too: while this
+              book plays, its button opens the player rather than restarting the book. */}
+          {wide && isThisPlaying ? (
+            <Button
+              size="lg"
+              title={t('book.openPlayer')}
+              icon="chevron-up"
+              className="flex-1"
+              onPress={() => router.push('/player')}
+            />
+          ) : (
+            <Button
+              size="lg"
+              title={t('book.listen')}
+              icon="play"
+              className="flex-1"
+              onPress={() => goPlay({})}
+            />
+          )}
           <DownloadControl
             libraryId={libraryId}
             path={path}

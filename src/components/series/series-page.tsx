@@ -103,7 +103,10 @@ export function SeriesPage({
   const cid = useCid();
   const here = useConnectionName(cid);
   const paddingBottom = useMiniPlayerInset();
-  const { progressOf, isLoading: progressLoading } = useProgressLookup();
+  const { progressOf, loadingOf } = useProgressLookup();
+  // The anchor and the rail wait below read only THIS server's progress: another server
+  // that is slow or unreachable must not hold the page on its skeleton.
+  const progressLoading = loadingOf(cid);
   const owned = useAllLibraryBooks(libraryId, { series: name });
   const metadata = useCapability('metadata');
   // Wait for the progress so the anchor is the book you're on, not one asked for first

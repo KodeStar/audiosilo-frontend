@@ -1,6 +1,7 @@
 import type { Book, BookMetaSeries, BookMetaSeriesWork, CoverColor, Progress } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { foldAccents } from '@/lib/names';
+import { bookTitle } from '@/lib/paths';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import type { SeriesView } from '@/lib/series-orderings';
 
@@ -178,7 +179,12 @@ function elsewhereEntry(
   progressOf: ProgressLookup,
 ): SeriesEntry {
   const copy = bookCopy(match, match.connectionId, match.connectionName);
-  return copyEntry('elsewhere', { ...fields, title: match.title }, copy, progressOf);
+  return copyEntry(
+    'elsewhere',
+    { ...fields, title: bookTitle(match.title, match.rel_path) },
+    copy,
+    progressOf,
+  );
 }
 
 /** An owned book by its own `series_index`. */
@@ -189,7 +195,7 @@ function ownedBookEntry(b: Book, src: Source): SeriesEntry {
     {
       key: `b:${contentKey(src.connectionId, b.library_id, b.rel_path)}`,
       position: indexLabel(b.series_index),
-      title: b.title,
+      title: bookTitle(b.title, b.rel_path),
     },
     copy,
     src.progressOf,

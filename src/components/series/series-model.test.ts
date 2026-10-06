@@ -91,6 +91,12 @@ describe('localEntries', () => {
     ]);
   });
 
+  it('names an untitled book by its folder, as the rest of the app shows it', () => {
+    const untitled = book('', 2, { rel_path: 'Corey/Expanse/Caliban' });
+    const entries = localEntries([book('One', 1), untitled], src);
+    expect(entries.map((e) => e.title)).toEqual(['One', 'Caliban']);
+  });
+
   it('fills a gap from another server by series number', () => {
     const maya: ElsewhereBook = {
       ...book('Three', 3, { library_id: 1 }),

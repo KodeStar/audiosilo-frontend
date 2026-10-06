@@ -3,7 +3,7 @@ import type { Href } from 'expo-router';
 import type { Book, Progress } from '@/api/types';
 import { type LetterItem, letterItems } from '@/lib/alpha-sections';
 import { foldAccents } from '@/lib/names';
-import { firstParam, type RawParams } from '@/lib/paths';
+import { bookTitle, firstParam, type RawParams } from '@/lib/paths';
 import { isInProgress } from '@/lib/progress-view';
 
 /**
@@ -161,12 +161,15 @@ const COMPARE: Record<BooksSort, (a: Keyed, b: Keyed) => number> = {
   length: (a, b) => b.book.duration - a.book.duration || collator.compare(a.title, b.title),
 };
 
+/** A book's title key as it is shown: its own title, else its folder or file name. */
+const shownTitleKey = (book: Book) => titleKey(bookTitle(book.title, book.rel_path));
+
 /** A sorted copy (books without a title sort by their folder name's title, as shown). */
 export function sortBooks(books: readonly Book[], sort: BooksSort): Book[] {
   return books
     .map((book): Keyed => ({
       book,
-      title: titleKey(book.title),
+      title: shownTitleKey(book),
       added: book.added_at ? Date.parse(book.added_at) || 0 : 0,
     }))
     .sort(COMPARE[sort])
@@ -178,7 +181,7 @@ export type BooksGridItem = LetterItem<Book>;
 
 /** The title-ordered grid: the books under their A-Z heads (see `letterItems`). */
 export function letterGrid(sorted: readonly Book[]) {
-  return letterItems(sorted, (b) => titleKey(b.title));
+  return letterItems(sorted, shownTitleKey);
 }
 
 /** Where a book marked as not finished resumes. One stored at (or within a minute of)
