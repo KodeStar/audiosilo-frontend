@@ -12,16 +12,23 @@ import type {
   BookMeta,
   BookMetaWork,
   Bookmark,
+  BookPage,
+  BookSort,
   ChaptersResponse,
+  CoverSize,
   DemoSession,
   Favourite,
   History,
   Library,
   Listing,
+  NextBook,
   Note,
   PairingPayload,
+  PeopleList,
+  PersonCount,
   Progress,
   ProgressInput,
+  SeriesCount,
   ServerInfo,
   User,
 } from './types';
@@ -50,6 +57,25 @@ export class TimeoutError extends Error {
 
 type QueryValue = string | number | boolean | undefined | null;
 type Query = Record<string, QueryValue>;
+
+/** Options of `bookMeta` (capability `meta_bundle`; an older server ignores both). */
+export type BookMetaOptions = { includePrevious?: boolean; hideSpoilers?: boolean };
+
+/** Exact-match filters and sort of GET /libraries/{id}/books (`listBooks`). An empty
+ * value is no filter. */
+export type BookListQuery = {
+  author?: string;
+  series?: string;
+  narrator?: string;
+  sort?: BookSort;
+};
+
+/** The timeout of a request that waits on the community metadata service. The server
+ * can spend its whole metadata budget (15 s, meta's composeTimeout) before it answers
+ * from local data or does more upstream work, so this is the server's own request
+ * budget instead (30 s, api requestTimeout), by which it always answers (a 503 at
+ * worst). */
+const UPSTREAM_TIMEOUT_MS = 30_000;
 
 function toQueryString(query?: Query): string {
   if (!query) return '';
@@ -131,22 +157,24 @@ export class ApiClient {
   private async request<T>(
     method: string,
     path: string,
-    opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {},
+    opts: { query?: Query; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
-    // Abort after timeoutMs so a frozen/unreachable server can't hang the caller
-    // (and the 15s save loop) indefinitely; still honour a caller-supplied signal.
+    // Abort after timeoutMs (the client's, unless this request sets its own) so a
+    // frozen/unreachable server can't hang the caller (and the 15s save loop)
+    // indefinitely; still honour a caller-supplied signal.
     // A timeout surfaces as a TimeoutError rather than the AbortError a caller
     // cancel raises, so reachability counts it as unreachable instead of ignoring
     // it as a cancellation.
+    const timeoutMs = opts.timeoutMs ?? this.timeoutMs;
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, this.timeoutMs);
+    }, timeoutMs);
     const onCallerAbort = () => controller.abort();
     if (opts.signal) {
       if (opts.signal.aborted) controller.abort();
@@ -182,7 +210,7 @@ export class ApiClient {
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
       // the same tick): report it as a timeout so it's classified as unreachable.
-      if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(this.timeoutMs);
+      if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(timeoutMs);
       // A 401 ApiError means the server answered and rejected our token - fire the
       // dead-token callback (both ApiError throw sites above land here). 403 is a scope
       // denial (valid token, forbidden) and a network/timeout failure has no status, so
@@ -292,6 +320,72 @@ export class ApiClient {
     });
     return r.books ?? [];
   }
+  /** One page of a library's indexed books (the computed view), optionally filtered
+   * by an exact `author`, `series` or `narrator` value (see {@link BookListQuery}).
+   * Pass the previous page's `next_cursor` as `cursor`, with the same filters and
+   * sort, to continue. `limit` is 1-200: the server sends 50 for anything else
+   * (including more than 200). `narrator` needs the `browse_people` capability: an
+   * older server ignores it and returns the unfiltered list, so prefer
+   * `useLibraryBooks`, which waits for the flag. */
+  async listBooks(
+    libraryId: number,
+    opts: BookListQuery & { limit?: number; cursor?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<BookPage> {
+    const r = await this.request<BookPage>('GET', `/libraries/${libraryId}/books`, {
+      query: opts,
+      signal,
+    });
+    return { ...r, books: r.books ?? [] };
+  }
+  // The browse lists (capability `browse_people`): every distinct author, narrator
+  // or series in a library with counts, limited to the caller's share scope.
+  /** Authors of a library, sorted case-insensitively, plus the count of books with
+   * no author. */
+  authors(libraryId: number, signal?: AbortSignal): Promise<PeopleList> {
+    return this.people(libraryId, 'authors', signal);
+  }
+  /** Narrators of a library, sorted case-insensitively, plus the count of books
+   * with no narrator. */
+  narrators(libraryId: number, signal?: AbortSignal): Promise<PeopleList> {
+    return this.people(libraryId, 'narrators', signal);
+  }
+  private async people(
+    libraryId: number,
+    kind: 'authors' | 'narrators',
+    signal?: AbortSignal,
+  ): Promise<PeopleList> {
+    // The wire envelopes: `{ authors, unknown }` and `{ narrators, unknown }`.
+    const r = await this.request<{
+      authors?: PersonCount[] | null;
+      narrators?: PersonCount[] | null;
+      unknown?: number;
+    }>('GET', `/libraries/${libraryId}/${kind}`, { signal });
+    return { people: r[kind] ?? [], unknown: r.unknown ?? 0 };
+  }
+  /** Series of a library, sorted case-insensitively. */
+  async seriesList(libraryId: number, signal?: AbortSignal) {
+    const r = await this.request<{ series: SeriesCount[] | null }>(
+      'GET',
+      `/libraries/${libraryId}/series`,
+      { signal },
+    );
+    return r.series ?? [];
+  }
+  /** What to play after a book, resolved server-side: the community series rail when it
+   * places its next work on one of the caller's books, else the local series, else the
+   * parent folder, else none (see {@link NextBook}: `source` names the step that
+   * answered, a `work` without `local` is the rail's next work this server couldn't
+   * place, and a community `next` can be in another of the caller's libraries).
+   * Only call this when the server advertises `next_book`. It gets more time than other
+   * requests: the server can spend its whole community-metadata budget first. */
+  nextBook(libraryId: number, path: string, signal?: AbortSignal) {
+    return this.request<NextBook>('GET', `/libraries/${libraryId}/next`, {
+      query: { path },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
+    });
+  }
   item(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<Book>('GET', `/libraries/${libraryId}/item`, { query: { path }, signal });
   }
@@ -306,11 +400,25 @@ export class ApiClient {
    * this when the server advertises the `metadata` capability. Returns
    * `{ matched: false }` when the book has no ids or no upstream match; throws an
    * `ApiError` (502) when the meta service is unreachable, so the caller can render
-   * nothing rather than block the page. */
-  bookMeta(libraryId: number, path: string, signal?: AbortSignal) {
+   * nothing rather than block the page.
+   *
+   * `opts` needs the `meta_bundle` capability (an older server ignores both and
+   * sends the full envelope, without saying so): `includePrevious` adds `previous`
+   * (the works before this one, see {@link BookMeta}), `hideSpoilers` has the server
+   * drop what the caller's SAVED progress had not reached when it answered (by the
+   * stored chapter offsets). That is for thin clients: the player keeps gating on the
+   * device (meta-gating.ts, by its live position and corrected offsets) either way.
+   * Without them the request is exactly `?path=`. With `includePrevious` it gets more
+   * time: the server fetches the previous works upstream after the envelope itself. */
+  bookMeta(libraryId: number, path: string, signal?: AbortSignal, opts?: BookMetaOptions) {
     return this.request<BookMeta>('GET', `/libraries/${libraryId}/meta`, {
-      query: { path },
+      query: {
+        path,
+        include: opts?.includePrevious ? 'previous' : undefined,
+        spoilers: opts?.hideSpoilers ? 'hide' : undefined,
+      },
       signal,
+      timeoutMs: opts?.includePrevious ? Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS) : undefined,
     });
   }
   /** One work from the community metadata service, by its meta-site work id (the
@@ -340,8 +448,20 @@ export class ApiClient {
   private mediaTokenQuery(): Query {
     return this.token ? { token: this.token } : {};
   }
-  coverUrl(libraryId: number, path: string) {
-    return this.apiUrl(`/libraries/${libraryId}/cover`, { path, ...this.mediaTokenQuery() });
+  /** Build a cover URL. `size` asks for a JPEG thumbnail ({@link CoverSize}; only
+   * when the server advertises `cover_sizes`, an older one ignores it and sends the
+   * full art). A thumbnail is a 404 when none can be made, which includes art the
+   * server can't decode or that is too large while the full-art URL still serves it,
+   * so fall back to the URL without `size`. `version` is the book's `cover_version`,
+   * appended as `v` purely as a cache buster (the server ignores it); see
+   * `Book.cover_version` for when it moves. */
+  coverUrl(libraryId: number, path: string, opts?: { size?: CoverSize; version?: string }) {
+    return this.apiUrl(`/libraries/${libraryId}/cover`, {
+      path,
+      size: opts?.size,
+      v: opts?.version || undefined,
+      ...this.mediaTokenQuery(),
+    });
   }
   /** Build a stream URL. `transcode` requests an on-the-fly MP3 re-encode for
    * codecs the client can't decode natively (only useful when the server's

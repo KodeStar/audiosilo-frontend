@@ -1,4 +1,5 @@
 import {
+  skipToken,
   useInfiniteQuery,
   useMutation,
   useQueries,
@@ -10,10 +11,10 @@ import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 
-import { ApiError, type ApiClient } from './client';
+import { ApiError, type ApiClient, type BookListQuery, type BookMetaOptions } from './client';
 import { useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteError } from './reachability';
-import type { Book, Favourite, Library, Progress } from './types';
+import type { Book, Capabilities, Favourite, Library, Progress } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. Every key leads with
  * the connection id (`cid`) so two servers with the same (libraryId, path) never share
@@ -25,8 +26,26 @@ export const qk = {
   browse: (cid: string, lib: number, path: string) => ['browse', cid, lib, path] as const,
   item: (cid: string, lib: number, path: string) => ['item', cid, lib, path] as const,
   chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path] as const,
-  bookMeta: (cid: string, lib: number, path: string) => ['bookMeta', cid, lib, path] as const,
+  /** A book's /meta envelope. Each request variant (`include=previous`,
+   * `spoilers=hide`) answers differently, so it gets its own entry, under the plain
+   * key as a prefix (invalidating that reaches every variant). */
+  bookMeta: (cid: string, lib: number, path: string, opts?: BookMetaOptions) =>
+    opts?.includePrevious || opts?.hideSpoilers
+      ? ([
+          'bookMeta',
+          cid,
+          lib,
+          path,
+          { previous: !!opts.includePrevious, hide: !!opts.hideSpoilers },
+        ] as const)
+      : (['bookMeta', cid, lib, path] as const),
   metaWork: (cid: string, workId: string) => ['metaWork', cid, workId] as const,
+  authors: (cid: string, lib: number) => ['authors', cid, lib] as const,
+  narrators: (cid: string, lib: number) => ['narrators', cid, lib] as const,
+  seriesList: (cid: string, lib: number) => ['seriesList', cid, lib] as const,
+  libraryBooks: (cid: string, lib: number, query: BookListQuery) =>
+    ['libraryBooks', cid, lib, query] as const,
+  nextBook: (cid: string, lib: number, path: string) => ['nextBook', cid, lib, path] as const,
   allProgress: (cid: string) => ['progress', 'all', cid] as const,
   progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path] as const,
   bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
@@ -43,16 +62,35 @@ export const qk = {
 
 /** The scoped connection's server identity/capabilities (incl. its release version).
  * Resolves via `useCid()` (route scope → active), so the per-connection account screen
- * gets *its* server's version. Tolerates an unconfigured server (returns disabled). */
-export function useServerInfo() {
-  const api = useOptionalApi();
-  const cid = useCid();
+ * gets *its* server's version; pass `connectionId` to address a specific connection
+ * instead. Tolerates an unconfigured server (returns disabled). */
+export function useServerInfo(connectionId?: string) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
   return useQuery({
     queryKey: qk.server(cid),
     queryFn: ({ signal }) => api!.serverInfo(signal),
     enabled: !!api,
     staleTime: 5 * 60_000, // the server version doesn't change within a session
+    // Kept while nothing observes it, so a capability-gated hook mounted later starts
+    // from the known flags (refreshed in the background once stale) instead of
+    // waiting on another /server round trip.
+    gcTime: Infinity,
   });
+}
+
+/** Whether the connection's server advertises a capability: `undefined` while that is
+ * not known (its `/server` info still loading, or unreachable), then `true` or `false`
+ * (an older server that lacks the flag reads `false`). The gated hooks below only
+ * ever ask a server whose flag is `true`; elsewhere their query never runs and stays
+ * pending. So a screen chooses its fallback (or hides the feature) on `false`, and on
+ * `undefined` waits or decides for itself. */
+export function useCapability(
+  flag: keyof Capabilities,
+  connectionId?: string,
+): boolean | undefined {
+  const caps = useServerInfo(connectionId).data?.capabilities;
+  return caps ? !!caps[flag] : undefined;
 }
 
 export function useLibraries() {
@@ -109,15 +147,23 @@ export function useChapters(libraryId: number, path: string, connectionId?: stri
 /** Enriched community metadata for a book. `enabled` gates the query on the
  * server's `metadata` capability (older servers never advertise it, so we never
  * probe an endpoint they lack). Long `staleTime` (the server caches too) and no
- * retry (a 502 from a down meta service should render nothing, not spin). */
-export function useBookMeta(libraryId: number, path: string, enabled: boolean) {
+ * retry (a 502 from a down meta service should render nothing, not spin). `opts`
+ * (capability `meta_bundle`) are part of the cache key, so each variant is its own
+ * entry; a `hideSpoilers` envelope is cut at the caller's saved progress when it is
+ * fetched, so it keeps only the default `staleTime`. */
+export function useBookMeta(
+  libraryId: number,
+  path: string,
+  enabled: boolean,
+  opts?: BookMetaOptions,
+) {
   const api = useOptionalApi();
   const cid = useCid();
   return useQuery({
-    queryKey: qk.bookMeta(cid, libraryId, path),
-    queryFn: ({ signal }) => api!.bookMeta(libraryId, path, signal),
+    queryKey: qk.bookMeta(cid, libraryId, path, opts),
+    queryFn: ({ signal }) => api!.bookMeta(libraryId, path, signal, opts),
     enabled: enabled && !!api && path.length > 0,
-    staleTime: 60 * 60_000,
+    ...(opts?.hideSpoilers ? {} : { staleTime: 60 * 60_000 }),
     retry: false,
   });
 }
@@ -136,6 +182,118 @@ export function useMetaWork(workId: string, enabled: boolean) {
     enabled: enabled && !!api && workId.length > 0,
     staleTime: 60 * 60_000,
     retry: false,
+  });
+}
+
+// --- Browse lists & next book ----------------------------------------------
+// Each is gated on its own capability flag (via `useCapability`), so an older server
+// is never asked for an endpoint it lacks: until the flag is known to be on, the query
+// has no function at all (`skipToken`), so not even a manual `refetch` reaches the
+// server (React Query rejects it instead). Each takes the optional `connectionId` like
+// `useBook`, for a screen outside any route scope.
+
+/** The browse lists are whole-library aggregates the server computes per request,
+ * so they are kept fresh for a while rather than refetched on every mount. */
+const BROWSE_STALE_MS = 5 * 60_000;
+
+/** One browse list (capability `browse_people`). */
+function useBrowseList<T>(
+  queryKey: (cid: string) => readonly unknown[],
+  load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
+  connectionId?: string,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability('browse_people', connectionId) === true;
+  return useQuery({
+    queryKey: queryKey(cid),
+    queryFn: supported && api ? ({ signal }) => load(api, signal) : skipToken,
+    staleTime: BROWSE_STALE_MS,
+  });
+}
+
+/** A library's authors with book counts (capability `browse_people`). */
+export function useAuthors(libraryId: number, connectionId?: string) {
+  return useBrowseList(
+    (cid) => qk.authors(cid, libraryId),
+    (api, signal) => api.authors(libraryId, signal),
+    connectionId,
+  );
+}
+
+/** A library's narrators with book counts (capability `browse_people`). */
+export function useNarrators(libraryId: number, connectionId?: string) {
+  return useBrowseList(
+    (cid) => qk.narrators(cid, libraryId),
+    (api, signal) => api.narrators(libraryId, signal),
+    connectionId,
+  );
+}
+
+/** A library's series with book counts and positions (capability `browse_people`). */
+export function useSeriesList(libraryId: number, connectionId?: string) {
+  return useBrowseList(
+    (cid) => qk.seriesList(cid, libraryId),
+    (api, signal) => api.seriesList(libraryId, signal),
+    connectionId,
+  );
+}
+
+/** Page size of `useLibraryBooks` (the server takes 1-200). */
+const BOOKS_PAGE_SIZE = 100;
+
+/** A library's indexed books (GET /libraries/{id}/books), page by page on the
+ * server's cursor, optionally narrowed by exact `author`/`series`/`narrator` values
+ * and sorted. `author`/`series` work on every server; a `narrator` filter needs
+ * `browse_people` (an older server ignores it and would answer with the whole
+ * library), so with one the query only runs once the server advertises the flag. */
+export function useLibraryBooks(
+  libraryId: number,
+  query: BookListQuery = {},
+  connectionId?: string,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const narratorOk = useCapability('browse_people', connectionId) === true;
+  return useInfiniteQuery({
+    queryKey: qk.libraryBooks(cid, libraryId, query),
+    queryFn:
+      api && (!query.narrator || narratorOk)
+        ? ({ pageParam, signal }) =>
+            api.listBooks(
+              libraryId,
+              { ...query, limit: BOOKS_PAGE_SIZE, cursor: pageParam },
+              signal,
+            )
+        : skipToken,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
+  });
+}
+
+/** What to play after a book, resolved by the server (capability `next_book`).
+ * Takes the optional `connectionId` like `useBook`, so the player (outside any route
+ * scope) can ask the playing book's own server, and an `enabled` flag so the caller
+ * fetches only when it needs the answer. On a server without the flag
+ * (`useCapability('next_book', connectionId) === false`) it never asks: keep the
+ * client-side folder-sibling fallback there. Keeps the short default `staleTime`: the
+ * answer moves as books are added to the library. */
+export function useNextBook(
+  libraryId: number,
+  path: string,
+  enabled = true,
+  connectionId?: string,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability('next_book', connectionId) === true;
+  return useQuery({
+    queryKey: qk.nextBook(cid, libraryId, path),
+    queryFn:
+      supported && api && path.length > 0
+        ? ({ signal }) => api.nextBook(libraryId, path, signal)
+        : skipToken,
+    enabled,
   });
 }
 
