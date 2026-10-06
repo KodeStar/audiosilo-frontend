@@ -45,6 +45,9 @@ export function GhostCover({
   const elsewhere = !!server;
   const note = elsewhere ? t('covers.onServer', { server }) : t('covers.notInLibrary');
   const has = position !== undefined && position !== '';
+  // A thumbnail (a list row's 56-72) has room for the number and title only; the note
+  // stays in the accessible name.
+  const small = width < 100;
   // Type scales with the cover (the prototype's container units), with readable floors.
   const fs = (k: number, min: number) => Math.max(min, Math.round(width * k));
   return (
@@ -93,23 +96,25 @@ export function GhostCover({
         <Text
           className="text-center font-display text-foreground"
           style={{ fontSize: fs(0.1, 12), lineHeight: fs(0.105, 13) }}
-          numberOfLines={3}
+          numberOfLines={small ? 2 : 3}
         >
           {title}
         </Text>
-        <View className="flex-row items-center gap-1">
-          {elsewhere ? <Icon name="server" size={fs(0.06, 10)} color={themed.info} /> : null}
-          <Text
-            className={cn(
-              'text-center font-sans-semibold',
-              elsewhere ? 'text-info' : 'text-muted-foreground',
-            )}
-            style={{ fontSize: fs(0.054, 9) }}
-            numberOfLines={2}
-          >
-            {note}
-          </Text>
-        </View>
+        {small ? null : (
+          <View className="flex-row items-center gap-1">
+            {elsewhere ? <Icon name="server" size={fs(0.06, 10)} color={themed.info} /> : null}
+            <Text
+              className={cn(
+                'text-center font-sans-semibold',
+                elsewhere ? 'text-info' : 'text-muted-foreground',
+              )}
+              style={{ fontSize: fs(0.054, 9) }}
+              numberOfLines={2}
+            >
+              {note}
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
