@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -66,6 +67,21 @@ function ServerLine() {
   );
 }
 
+/** The narrowest the omnisearch field reads as a field ("Search books, ..." and its
+ * glyph); below it the top bar shows a search icon button instead. */
+export const OMNISEARCH_MIN = 180;
+const MIDDLE_GAP = 16;
+
+/**
+ * Whether the omnisearch field fits beside the destinations in the top bar's middle
+ * (`middle` wide, the destinations `tabs` wide). Unknown widths (0, before the first
+ * layout) count as fitting, so a wide desktop never starts collapsed.
+ */
+export function omnisearchFits(middle: number, tabs: number): boolean {
+  if (middle <= 0) return true;
+  return middle - tabs - MIDDLE_GAP >= OMNISEARCH_MIN;
+}
+
 /** A top bar destination or icon button: a quiet card when selected, else a hover fill. */
 function topBarItemClass(selected: boolean): string {
   return cn(
@@ -82,8 +98,11 @@ function topBarItemClass(selected: boolean): string {
  * keeps the destinations as icons only.
  *
  * The omnisearch is a field-shaped button: on web it opens the command palette (⌘K);
- * on a native tablet it jumps to the Search tab and focuses its input. The profile
- * button opens the profile menu (servers, account, appearance).
+ * on a native tablet it jumps to the Search tab and focuses its input. Where the middle
+ * of the bar is too narrow for the field (a narrow tablet, a long server line), it is a
+ * search icon button doing the same (`omnisearchFits`), so it never runs under the
+ * buttons on the right. The profile button opens the profile menu (servers, account,
+ * appearance).
  */
 export function TopBar() {
   const { t } = useTranslation();
@@ -94,6 +113,11 @@ export function TopBar() {
   const requestFocus = useSearchStore((s) => s.requestFocus);
   const openPalette = usePalette((s) => s.openPalette);
   const web = Platform.OS === 'web';
+  // The middle's width (flex-1, so set by the mark and the right-hand buttons, never by
+  // the search) and the destinations' width decide field or icon.
+  const [middle, setMiddle] = useState(0);
+  const [tabs, setTabs] = useState(0);
+  const field = omnisearchFits(middle, tabs);
 
   const openSearch = () => {
     if (web) return openPalette();
@@ -124,8 +148,15 @@ export function TopBar() {
           </View>
         </AnimatedPressable>
 
-        <View className="flex-1 flex-row items-center justify-center gap-4">
-          <View accessibilityRole="tablist" className="flex-row gap-0.5">
+        <View
+          className="min-w-0 flex-1 flex-row items-center justify-center gap-4"
+          onLayout={(e) => setMiddle(e.nativeEvent.layout.width)}
+        >
+          <View
+            accessibilityRole="tablist"
+            className="flex-row gap-0.5"
+            onLayout={(e) => setTabs(e.nativeEvent.layout.width)}
+          >
             {TOP_BAR_TABS.map((d) => {
               const selected = active === d.name;
               const label = t(d.labelKey);
@@ -163,16 +194,22 @@ export function TopBar() {
             onPress={openSearch}
             accessibilityRole="button"
             accessibilityLabel={web ? t('palette.omnisearch') : t('nav.search')}
-            className={cn(
-              'h-[38px] min-w-[160px] max-w-[360px] flex-1 flex-row items-center gap-2 rounded-control border border-border bg-card pl-3 pr-2.5',
-              Platform.select({ web: 'hover:border-border-strong' }),
-            )}
+            className={
+              field
+                ? cn(
+                    'h-[38px] min-w-0 max-w-[360px] flex-1 flex-row items-center gap-2 rounded-control border border-border bg-card pl-3 pr-2.5',
+                    Platform.select({ web: 'hover:border-border-strong' }),
+                  )
+                : cn(topBarItemClass(false), 'w-[38px]')
+            }
           >
-            <Icon name="search" size={16} color={themed.mutedForeground} />
-            <Text variant="muted" numberOfLines={1} className="flex-1">
-              {t('search.placeholder')}
-            </Text>
-            {web && desktop ? <Kbd>{shortcutHint(navigatorPlatform())}</Kbd> : null}
+            <Icon name="search" size={field ? 16 : 18} color={themed.mutedForeground} />
+            {field ? (
+              <Text variant="muted" numberOfLines={1} className="flex-1">
+                {t('search.placeholder')}
+              </Text>
+            ) : null}
+            {field && web && desktop ? <Kbd>{shortcutHint(navigatorPlatform())}</Kbd> : null}
           </AnimatedPressable>
         </View>
 

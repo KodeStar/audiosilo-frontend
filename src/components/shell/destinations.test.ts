@@ -17,7 +17,7 @@ import {
   tabStackListeners,
   TOP_BAR_TABS,
 } from './destinations';
-import { serverLine } from './top-bar';
+import { OMNISEARCH_MIN, omnisearchFits, serverLine } from './top-bar';
 /* eslint-enable import/first */
 
 describe('destinations', () => {
@@ -147,5 +147,16 @@ describe('derived destination lists', () => {
   it('lists the top bar destinations without Search and Me', () => {
     expect(TOP_BAR_TABS.map((t) => t.name)).toEqual(['(home)', '(library)', '(offline)']);
     expect(PHONE_TABS).toHaveLength(5);
+  });
+});
+
+describe('omnisearchFits', () => {
+  it('keeps the field while the middle has room beside the destinations', () => {
+    expect(omnisearchFits(140 + 16 + OMNISEARCH_MIN, 140)).toBe(true);
+    expect(omnisearchFits(140 + 16 + OMNISEARCH_MIN - 1, 140)).toBe(false);
+  });
+
+  it('counts an unmeasured bar as fitting', () => {
+    expect(omnisearchFits(0, 0)).toBe(true);
   });
 });

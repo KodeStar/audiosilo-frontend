@@ -49,7 +49,8 @@ export function SubNav() {
             {tablet && sections ? null : (
               <Text
                 accessibilityRole="header"
-                className="font-display text-[15px]"
+                // The sections scroll; the page title never gives way to them.
+                className="shrink-0 font-display text-[15px]"
                 numberOfLines={1}
               >
                 {t(root.titleKey)}
