@@ -26,6 +26,7 @@ import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
+import { percentHeard } from '@/lib/progress-view';
 
 import { ActiveRow, PlannedRow, ReadyRow } from './download-rows';
 import {
@@ -75,9 +76,7 @@ function useProgressLabels(): Map<string, string> {
         p.finished
           ? t('downloads.row.finished')
           : p.position > 0 && p.duration > 0
-            ? t('downloads.row.percent', {
-                percent: Math.floor(Math.min(1, p.position / p.duration) * 100),
-              })
+            ? t('downloads.row.percent', { percent: percentHeard(p.position, p.duration, false) })
             : t('downloads.row.notStarted'),
       );
     }

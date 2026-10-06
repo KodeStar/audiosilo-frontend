@@ -13,6 +13,7 @@ import { openExternalUrl } from '@/lib/support';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { usePlayBook } from '@/components/player/use-play-book';
+import { percentOf } from '@/lib/progress-view';
 
 import type { SeriesEntry } from './series-model';
 
@@ -52,7 +53,7 @@ export function EntryBadge({ entry, current }: { entry: SeriesEntry; current: bo
     return (
       <Badge variant="brand">
         <Text style={tabularNums}>
-          {t('series.listening', { percent: Math.min(99, Math.round(entry.fraction * 100)) })}
+          {t('series.listening', { percent: percentOf(entry.fraction) })}
         </Text>
       </Badge>
     );

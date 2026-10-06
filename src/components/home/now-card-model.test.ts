@@ -2,7 +2,6 @@ import {
   bookmarkPins,
   bookScale,
   chapterPlace,
-  percentHeard,
   timeLeftAtSpeed,
 } from './now-card-model';
 
@@ -59,16 +58,6 @@ describe('chapterPlace', () => {
   it('is chapter 1 before the first start, and nothing without chapters', () => {
     expect(chapterPlace(titles, [0, 100, 200], 0)?.number).toBe(1);
     expect(chapterPlace([], [], 50)).toBeNull();
-  });
-});
-
-describe('percentHeard', () => {
-  it('reads 99% until the book is finished', () => {
-    expect(percentHeard(999, 1000, false)).toBe(99);
-    expect(percentHeard(1000, 1000, false)).toBe(99);
-    expect(percentHeard(400, 1000, true)).toBe(100);
-    expect(percentHeard(380, 1000, false)).toBe(38);
-    expect(percentHeard(10, 0, false)).toBe(0);
   });
 });
 

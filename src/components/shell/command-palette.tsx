@@ -33,7 +33,7 @@ import { useLayout } from '@/lib/layout';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
-import { isInProgress } from '@/lib/progress-view';
+import { isInProgress, percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -189,7 +189,7 @@ function useBookItems(
   const continueListening = useMemo(
     () =>
       progress.filter(isInProgress).map((p): PaletteItem => {
-        const percent = p.duration > 0 ? Math.round((p.position / p.duration) * 100) : 0;
+        const percent = percentHeard(p.position, p.duration, false);
         return {
           id: `continue:${p.connectionId}:${p.library_id}:${p.path}`,
           title: pathLeaf(p.path),

@@ -1,6 +1,7 @@
 import type { Book, BookMetaSeries, BookMetaSeriesWork, CoverColor, Progress } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import type { SeriesView } from '@/lib/series-orderings';
+import { progressFractionRemaining } from '@/lib/progress-view';
 
 /**
  * The series page's model (pure, tested): one ordered list of ENTRIES, built from the
@@ -99,7 +100,7 @@ function progressFields(
   const p = progressOf(copy.connectionId, copy.libraryId, copy.path);
   if (!p) return { fraction: 0, started: false, finished: false };
   const total = p.duration > 0 ? p.duration : (copy.book?.duration ?? 0);
-  const fraction = p.finished ? 1 : total > 0 ? Math.min(1, Math.max(0, p.position / total)) : 0;
+  const fraction = p.finished ? 1 : progressFractionRemaining(p.position, total).fraction;
   return { fraction, started: p.position > 0, finished: p.finished, updatedAt: p.updated_at };
 }
 

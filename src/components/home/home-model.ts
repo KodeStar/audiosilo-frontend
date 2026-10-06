@@ -5,7 +5,7 @@ import type { Book, BookMetaSeriesWork, NextBook } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import type { MergedBook } from '@/lib/dedup';
 import { pathLeaf } from '@/lib/paths';
-import { isInProgress } from '@/lib/progress-view';
+import { isInProgress, percentHeard } from '@/lib/progress-view';
 
 /**
  * Home's rules (STYLEGUIDE section 2, Home): which book leads, what each shelf holds,
@@ -94,7 +94,7 @@ export function nextCandidates(
   for (const p of inProgress) {
     if (out.length >= NEXT_IN_PROGRESS) break;
     if (keyOf(progressAt(p)) === nowKey) continue;
-    const percent = p.duration > 0 ? Math.floor((p.position / p.duration) * 100) : 0;
+    const percent = percentHeard(p.position, p.duration, false);
     out.push({ ...progressAt(p), reason: { kind: 'progress', of: progressAt(p), percent } });
   }
   for (const p of finished) {

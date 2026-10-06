@@ -140,7 +140,7 @@ describe('progress', () => {
     expect(entryState(undefined)).toEqual({ kind: 'new' });
     expect(entryState(prog('A', 0, 100))).toEqual({ kind: 'new' });
     expect(entryState(prog('A', 55, 100))).toEqual({ kind: 'progress', percent: 55 });
-    expect(entryState(prog('A', 0.1, 100))).toEqual({ kind: 'progress', percent: 1 });
+    expect(entryState(prog('A', 0.1, 100))).toEqual({ kind: 'progress', percent: 0 });
     expect(entryState(prog('A', 99.9, 100))).toEqual({ kind: 'progress', percent: 99 });
     expect(entryState(prog('A', 100, 100, true))).toEqual({ kind: 'finished' });
   });

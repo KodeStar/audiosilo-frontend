@@ -28,6 +28,7 @@ import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
+import { percentOf } from '@/lib/progress-view';
 
 import { Bookcase, bookcaseScale } from './bookcase';
 import { EmptyShelf } from './empty-shelf';
@@ -181,11 +182,11 @@ export function SeriesPage({
     current
       ? current.position
         ? t('series.progress.into', {
-            percent: Math.min(99, Math.round(current.fraction * 100)),
+            percent: percentOf(current.fraction),
             position: current.position,
           })
         : t('series.progress.intoTitle', {
-            percent: Math.min(99, Math.round(current.fraction * 100)),
+            percent: percentOf(current.fraction),
             title: current.title,
           })
       : t('series.progress.finished', { finished: stats.finished, total: stats.entries }),

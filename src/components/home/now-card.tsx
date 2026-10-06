@@ -25,6 +25,7 @@ import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
+import { percentHeard } from '@/lib/progress-view';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -38,7 +39,6 @@ import {
   bookmarkPins,
   bookScale,
   chapterPlace,
-  percentHeard,
   timeLeftAtSpeed,
 } from './now-card-model';
 

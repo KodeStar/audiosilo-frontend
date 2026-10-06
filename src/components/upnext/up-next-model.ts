@@ -1,4 +1,5 @@
 import type { BookRef, NextBook, Progress, QueueEntry } from '@/api/types';
+import { percentHeard } from '@/lib/progress-view';
 
 /**
  * The pure rules behind Up next (the desktop drawer and the tablet/phone sheet): which
@@ -170,10 +171,7 @@ export function entryState(
   if (!progress) return { kind: 'new' };
   if (progress.finished) return { kind: 'finished' };
   if (progress.position <= 0 || progress.duration <= 0) return { kind: 'new' };
-  return {
-    kind: 'progress',
-    percent: Math.max(1, Math.min(99, Math.round((progress.position / progress.duration) * 100))),
-  };
+  return { kind: 'progress', percent: percentHeard(progress.position, progress.duration, false) };
 }
 
 /** Listening time left across the queue (seconds, at 1x): each book's length less the

@@ -13,6 +13,7 @@ import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { percentOf } from '@/lib/progress-view';
 
 import { EntryActionButton, EntryBadge } from './entry-actions';
 import type { SeriesEntry, SeriesStats, TrackSegment } from './series-model';
@@ -233,7 +234,7 @@ function entryLine(entry: SeriesEntry, t: TFunction): string {
       : entry.kind === 'ghost'
         ? t('covers.notInLibrary')
         : entry.fraction > 0
-          ? `${Math.min(99, Math.round(entry.fraction * 100))}%`
+          ? `${percentOf(entry.fraction)}%`
           : '';
   return [entry.year ?? '', formatDuration(entry.seconds), state].filter(Boolean).join(' · ');
 }

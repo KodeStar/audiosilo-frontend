@@ -8,7 +8,7 @@ import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { pathLeaf } from '@/lib/paths';
-import { progressFractionRemaining } from '@/lib/progress-view';
+import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -100,7 +100,7 @@ function ProgressCell({ book, progress }: { book: Book; progress?: Progress }) {
       </View>
       <Text variant="caption" numberOfLines={1} style={tabularNums}>
         {t('library.books.progress', {
-          percent: Math.min(99, Math.round(fraction * 100)),
+          percent: percentOf(fraction),
           left: formatDuration(remaining),
         })}
       </Text>
@@ -180,7 +180,7 @@ export function BookListRow({
       ? t('covers.finished')
       : status === 'progress'
         ? t('covers.listened', {
-            percent: Math.min(99, Math.round((progress!.position / (book.duration || 1)) * 100)),
+            percent: percentHeard(progress!.position, book.duration, false),
           })
         : '',
   ]

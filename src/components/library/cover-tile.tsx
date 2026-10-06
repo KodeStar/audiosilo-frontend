@@ -14,6 +14,7 @@ import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
+import { percentOf } from '@/lib/progress-view';
 
 import { BookCover } from './book-cover';
 import { TileActions } from './tile-actions';
@@ -44,7 +45,7 @@ export function tileStateLabels(opts: {
   const out: string[] = [];
   if (opts.finished) out.push(t('covers.finished'));
   else if (opts.progress !== undefined && opts.progress > 0) {
-    out.push(t('covers.listened', { percent: Math.min(99, Math.round(opts.progress * 100)) }));
+    out.push(t('covers.listened', { percent: percentOf(opts.progress) }));
   }
   if (opts.downloaded) out.push(t('covers.downloaded'));
   if (opts.server) out.push(t('covers.onServer', { server: opts.server }));

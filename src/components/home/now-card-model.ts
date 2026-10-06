@@ -66,13 +66,6 @@ export function chapterPlace(
   return { number, count: titles.length, title: titles[number - 1] ?? '' };
 }
 
-/** Whole percent heard: 100 only once finished, so an almost-done book reads 99%. */
-export function percentHeard(position: number, total: number, finished: boolean): number {
-  if (finished) return 100;
-  if (total <= 0) return 0;
-  return Math.min(99, Math.max(0, Math.floor((position / total) * 100)));
-}
-
 /** Listening left in wall-clock seconds at the book's own speed. */
 export function timeLeftAtSpeed(position: number, total: number, speed: number): number {
   return Math.max(0, total - position) / (speed > 0 ? speed : 1);

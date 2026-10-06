@@ -4,9 +4,10 @@ import { type SourcedProgress, useBook } from '@/api/hooks';
 import { CoverTile } from '@/components/library/cover-tile';
 import { formatDuration, formatRelative } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
+import { percentHeard } from '@/lib/progress-view';
 
 import type { BookAt } from './home-model';
-import { percentHeard, timeLeftAtSpeed } from './now-card-model';
+import { timeLeftAtSpeed } from './now-card-model';
 
 /**
  * A progress row carries only a path, so Home asks the book itself (`useBook`, the

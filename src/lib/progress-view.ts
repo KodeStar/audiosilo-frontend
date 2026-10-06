@@ -19,3 +19,16 @@ export function progressFractionRemaining(
 export function isInProgress(p: { finished: boolean; position: number }): boolean {
   return !p.finished && p.position > 0;
 }
+
+/** Whole percent heard of a 0..1 fraction: rounded down, and 100 only once finished, so
+ * an almost-done book reads 99%. Every screen that shows a listening percent uses it. */
+export function percentOf(fraction: number, finished = false): number {
+  if (finished) return 100;
+  return Math.min(99, Math.max(0, Math.floor(fraction * 100)));
+}
+
+/** {@link percentOf} from a position and a total (an unknown total reads 0%). */
+export function percentHeard(position: number, total: number, finished: boolean): number {
+  if (finished) return 100;
+  return total > 0 ? percentOf(position / total) : 0;
+}
