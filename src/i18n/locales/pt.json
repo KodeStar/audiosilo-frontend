@@ -54,10 +54,7 @@
       },
       "autoDownload": {
         "label": "Transferir livros automaticamente",
-        "description": "Transfere o livro que começa a ouvir para o ouvir sem ligação.",
-        "never": "Nunca",
-        "wifi": "Apenas Wi-Fi",
-        "always": "Sempre"
+        "description": "Transfere o livro que começa a ouvir para o ouvir sem ligação."
       },
       "autoDelete": {
         "label": "Eliminar automaticamente os livros terminados",

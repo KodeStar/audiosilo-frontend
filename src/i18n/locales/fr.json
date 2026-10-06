@@ -54,10 +54,7 @@
       },
       "autoDownload": {
         "label": "Télécharger les livres automatiquement",
-        "description": "Télécharge le livre que vous commencez à écouter pour l'entendre hors ligne.",
-        "never": "Jamais",
-        "wifi": "Wi-Fi uniquement",
-        "always": "Toujours"
+        "description": "Télécharge le livre que vous commencez à écouter pour l'entendre hors ligne."
       },
       "autoDelete": {
         "label": "Supprimer automatiquement les livres terminés",

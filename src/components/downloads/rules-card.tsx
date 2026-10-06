@@ -29,6 +29,17 @@ export function useKeepAheadOptions(): SegmentedOption<KeepAheadValue>[] {
   }));
 }
 
+/** Never / On Wi-Fi / Always, shared with the Settings screen (one wording for one
+ * setting). */
+export function useAutoDownloadModes(): SegmentedOption<AutoDownloadMode>[] {
+  const { t } = useTranslation();
+  return [
+    { value: 'never', label: t('downloads.rules.mode.never') },
+    { value: 'wifi', label: t('downloads.rules.mode.wifi') },
+    { value: 'always', label: t('downloads.rules.mode.always') },
+  ];
+}
+
 export const keepAheadValue = (n: KeepAhead): KeepAheadValue => `${n}`;
 export const parseKeepAhead = (v: KeepAheadValue): KeepAhead => toKeepAhead(Number(v));
 
@@ -94,11 +105,7 @@ export function RulesCard({ className }: { className?: string }) {
   const setAutoDelete = useSettings((s) => s.setAutoDeleteFinished);
   const keepAheadOptions = useKeepAheadOptions();
 
-  const modes: SegmentedOption<AutoDownloadMode>[] = [
-    { value: 'never', label: t('downloads.rules.mode.never') },
-    { value: 'wifi', label: t('downloads.rules.mode.wifi') },
-    { value: 'always', label: t('downloads.rules.mode.always') },
-  ];
+  const modes = useAutoDownloadModes();
 
   return (
     <Card className={className}>

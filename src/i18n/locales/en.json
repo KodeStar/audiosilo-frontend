@@ -54,10 +54,7 @@
       },
       "autoDownload": {
         "label": "Automatically download books",
-        "description": "Download the book you start listening to so it is ready to hear offline.",
-        "never": "Never",
-        "wifi": "Wi-Fi only",
-        "always": "Always"
+        "description": "Download the book you start listening to so it is ready to hear offline."
       },
       "autoDelete": {
         "label": "Automatically delete finished books",

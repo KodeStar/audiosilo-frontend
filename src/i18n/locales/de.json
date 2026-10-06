@@ -54,10 +54,7 @@
       },
       "autoDownload": {
         "label": "Bücher automatisch herunterladen",
-        "description": "Lädt das Buch herunter, das du zu hören beginnst, damit es offline bereitsteht.",
-        "never": "Nie",
-        "wifi": "Nur WLAN",
-        "always": "Immer"
+        "description": "Lädt das Buch herunter, das du zu hören beginnst, damit es offline bereitsteht."
       },
       "autoDelete": {
         "label": "Beendete Bücher automatisch löschen",

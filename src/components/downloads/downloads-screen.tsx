@@ -168,7 +168,8 @@ export function DownloadsScreen() {
           </Text>
         </SubNavActions>
 
-        <View className={phone ? 'gap-4' : 'flex-row items-stretch gap-4'}>
+        {/* Top-aligned: the storage card is shorter than the rules and keeps its own height. */}
+        <View className={phone ? 'gap-4' : 'flex-row items-start gap-4'}>
           <StorageCard
             bar={bar}
             scope={scope}

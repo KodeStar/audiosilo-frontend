@@ -5,6 +5,7 @@ import { ScrollView, View } from 'react-native';
 import { ConnectionsSection, useConnectionRemoval } from '@/components/account/connections-section';
 import {
   KeepAheadStatusLine,
+  useAutoDownloadModes,
   keepAheadValue,
   parseKeepAhead,
   useKeepAheadOptions,
@@ -28,7 +29,7 @@ import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
-import { useSettings, type AutoDownloadMode, type AutoSleepType } from '@/stores/settings';
+import { useSettings, type AutoSleepType } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
 
 const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
@@ -158,11 +159,7 @@ export default function SettingsScreen() {
     { value: 'on', label: t('common.on') },
     { value: 'off', label: t('common.off') },
   ];
-  const downloadOptions: SegmentedOption<AutoDownloadMode>[] = [
-    { value: 'never', label: t('settings.upNext.autoDownload.never') },
-    { value: 'wifi', label: t('settings.upNext.autoDownload.wifi') },
-    { value: 'always', label: t('settings.upNext.autoDownload.always') },
-  ];
+  const downloadOptions = useAutoDownloadModes();
 
   const paddingBottom = useMiniPlayerInset();
 
