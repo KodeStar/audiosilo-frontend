@@ -16,7 +16,7 @@ import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useDownloads } from '@/downloads/store';
 import { downloadedPaths } from '@/downloads/downloads-view';
-import { headIndexForLetter } from '@/lib/alpha-sections';
+import { headIndexForLetter, presentLetters } from '@/lib/alpha-sections';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -90,6 +90,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   );
   const setView = (next: Partial<BooksView>) =>
     router.setParams(booksViewParams({ ...view, ...next }));
+  const clearFilters = () => setView({ status: undefined, dl: false, len: undefined });
   const [booksLayout, setBooksLayout] = useBooksLayout();
   const libraryName = useSelectedLibrary().library?.name ?? '';
 
@@ -133,7 +134,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
         : { items: shown.map((item): BooksGridItem => ({ kind: 'item', item })), heads: [] },
     [az, shown],
   );
-  const present = useMemo(() => new Set(grid.heads.map((h) => h.letter)), [grid.heads]);
+  const present = useMemo(() => presentLetters(grid.heads), [grid.heads]);
 
   const listRef = useRef<FlashListRef<BooksGridItem>>(null);
   const jump = (letter: string) => {
@@ -199,7 +200,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
             size="sm"
             icon="close"
             title={t('library.books.filters.clear')}
-            onPress={() => setView({ status: undefined, dl: false, len: undefined })}
+            onPress={clearFilters}
           />
         ) : null}
       </ChipRow>
@@ -225,37 +226,48 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
     </View>
   );
 
-  const clear = () => setView({ status: undefined, dl: false, len: undefined });
-  const empty = whole.isLoading ? (
-    booksLayout === 'grid' ? (
-      <CoverGridSkeleton rows={3} gutter={0} />
-    ) : (
-      <RowSkeletonList count={6} />
-    )
-  ) : whole.error && total === 0 ? (
-    <LoadError
-      title={t('library.books.error.title')}
-      hint={t('library.books.error.hint')}
-      retryLabel={t('common.retry')}
-      onRetry={whole.retry}
-    />
-  ) : total === 0 ? (
-    <EmptyState
-      variant="card"
-      art={<GhostSpines />}
-      title={t('library.books.empty.title', { library: libraryName })}
-      hint={t('library.books.empty.hint')}
-      action={{ label: t('library.books.empty.action'), onPress: whole.refresh }}
-    />
-  ) : whole.complete ? (
-    <EmptyState
-      variant="card"
-      art={<GhostCovers />}
-      title={t('library.books.noMatches.title')}
-      hint={t('library.books.noMatches.hint')}
-      action={{ label: t('library.books.noMatches.action'), onPress: clear }}
-    />
-  ) : null;
+  const emptyBody = () => {
+    if (whole.isLoading) {
+      return booksLayout === 'grid' ? (
+        <CoverGridSkeleton rows={3} gutter={0} />
+      ) : (
+        <RowSkeletonList count={6} />
+      );
+    }
+    if (whole.error && total === 0) {
+      return (
+        <LoadError
+          title={t('library.books.error.title')}
+          hint={t('library.books.error.hint')}
+          retryLabel={t('common.retry')}
+          onRetry={whole.retry}
+        />
+      );
+    }
+    if (total === 0) {
+      return (
+        <EmptyState
+          variant="card"
+          art={<GhostSpines />}
+          title={t('library.books.empty.title', { library: libraryName })}
+          hint={t('library.books.empty.hint')}
+          action={{ label: t('library.books.empty.action'), onPress: whole.refresh }}
+        />
+      );
+    }
+    // Still loading pages: what matches may be on the next one.
+    if (!whole.complete) return null;
+    return (
+      <EmptyState
+        variant="card"
+        art={<GhostCovers />}
+        title={t('library.books.noMatches.title')}
+        hint={t('library.books.noMatches.hint')}
+        action={{ label: t('library.books.noMatches.action'), onPress: clearFilters }}
+      />
+    );
+  };
+  const empty = emptyBody();
 
   const footer =
     !whole.complete && !whole.error && total > 0 ? (

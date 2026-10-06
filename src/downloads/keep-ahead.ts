@@ -152,6 +152,20 @@ export type KeepAheadInput = {
   pending: number;
 };
 
+/** What the plan says it is doing, by the first slot state found in this order. */
+const STATUS_BY_STATE: [SlotState[], KeepAheadStatus][] = [
+  [['start', 'active', 'later'], 'working'],
+  [['no-space'], 'no-space'],
+  [['waiting'], 'waiting'],
+  [['failed'], 'failed'],
+  [['ready'], 'ready'],
+];
+
+function planStatus(slots: readonly KeepAheadSlot[]): KeepAheadStatus {
+  const found = STATUS_BY_STATE.find(([states]) => slots.some((s) => states.includes(s.state)));
+  return found ? found[1] : 'declined';
+}
+
 /** Decide what keeping the window ready means now (see the module comment). */
 export function planKeepAhead(input: KeepAheadInput): KeepAheadPlan {
   if (input.count === 0) return { status: 'off', slots: [], start: [] };
@@ -194,18 +208,5 @@ export function planKeepAhead(input: KeepAheadInput): KeepAheadPlan {
   });
 
   const start = slots.filter((s) => s.state === 'start').map((s) => s.book);
-  const has = (state: SlotState) => slots.some((s) => s.state === state);
-  const status: KeepAheadStatus =
-    has('start') || has('active') || has('later')
-      ? 'working'
-      : has('no-space')
-        ? 'no-space'
-        : has('waiting')
-          ? 'waiting'
-          : has('failed')
-            ? 'failed'
-            : has('ready')
-              ? 'ready'
-              : 'declined';
-  return { status, slots, start };
+  return { status: planStatus(slots), slots, start };
 }

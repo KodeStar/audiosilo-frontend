@@ -77,7 +77,27 @@ export function LibraryScreen() {
   const setMode = (next: LibraryMode) =>
     router.setParams({ mode: next === DEFAULT_LIBRARY_MODE ? undefined : next });
 
-  const Body = mode === 'folders' ? null : MODE_BODY[mode];
+  const body = () => {
+    if (mode === 'folders') return <FoldersMode />;
+    if (selection) {
+      const Body = MODE_BODY[mode];
+      return <Body key={`${cid}:${libraryId}`} connectionId={cid} libraryId={libraryId} />;
+    }
+    if (isLoading) {
+      return (
+        <View className="p-4 lg:px-8">
+          <RowSkeletonList />
+        </View>
+      );
+    }
+    return (
+      <EmptyState
+        icon="library"
+        title={t('library.list.noLibraries')}
+        hint={t('library.list.noLibrariesHint')}
+      />
+    );
+  };
 
   return (
     <View className="flex-1">
@@ -99,21 +119,7 @@ export function LibraryScreen() {
           </SubNavActions>
         )}
       </View>
-      {Body === null ? (
-        <FoldersMode />
-      ) : selection ? (
-        <Body key={`${cid}:${libraryId}`} connectionId={cid} libraryId={libraryId} />
-      ) : isLoading ? (
-        <View className="p-4 lg:px-8">
-          <RowSkeletonList />
-        </View>
-      ) : (
-        <EmptyState
-          icon="library"
-          title={t('library.list.noLibraries')}
-          hint={t('library.list.noLibrariesHint')}
-        />
-      )}
+      {body()}
     </View>
   );
 }

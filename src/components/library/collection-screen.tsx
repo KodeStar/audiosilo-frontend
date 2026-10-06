@@ -46,6 +46,22 @@ import { CoverGrid, CoverGridSkeleton, CoverListRow } from './cover-grid';
 import { pageGutter } from './cover-layout';
 import { CoverTile } from './cover-tile';
 
+/** The two confirms of a collection: deleting your own, leaving a shared one. */
+const CONFIRM = {
+  delete: {
+    title: 'library.collection.deleteConfirm.title',
+    message: 'library.collection.deleteConfirm.message',
+    label: 'library.collection.delete',
+    icon: 'trash',
+  },
+  leave: {
+    title: 'library.collection.leaveConfirm.title',
+    message: 'library.collection.leaveConfirm.message',
+    label: 'library.collection.leave',
+    icon: 'logout',
+  },
+} as const;
+
 /**
  * A collection page: `/collection?connection=&id=` (`collectionHref`). Scoped to its
  * own `?connection=`.
@@ -174,38 +190,34 @@ function CollectionBody({
     if (!owned) return [];
     const up = moveIndex(index, -1, items.length);
     const down = moveIndex(index, 1, items.length);
-    return [
-      ...(up === null
-        ? []
-        : [
-            {
-              key: 'up',
-              icon: 'chevron-up' as const,
-              label: t('library.collection.moveUp'),
-              onPress: () => void moveTo(item, up),
-              group: true,
-            },
-          ]),
-      ...(down === null
-        ? []
-        : [
-            {
-              key: 'down',
-              icon: 'chevron-down' as const,
-              label: t('library.collection.moveDown'),
-              onPress: () => void moveTo(item, down),
-              group: up === null,
-            },
-          ]),
-      {
-        key: 'remove',
-        icon: 'trash',
-        label: t('library.collection.remove'),
-        onPress: () => void removeItem(item, index),
-        destructive: true,
-        group: items.length < 2,
-      },
-    ];
+    const out: BookAction[] = [];
+    if (up !== null) {
+      out.push({
+        key: 'up',
+        icon: 'chevron-up',
+        label: t('library.collection.moveUp'),
+        onPress: () => void moveTo(item, up),
+        group: true,
+      });
+    }
+    if (down !== null) {
+      out.push({
+        key: 'down',
+        icon: 'chevron-down',
+        label: t('library.collection.moveDown'),
+        onPress: () => void moveTo(item, down),
+        group: up === null,
+      });
+    }
+    out.push({
+      key: 'remove',
+      icon: 'trash',
+      label: t('library.collection.remove'),
+      onPress: () => void removeItem(item, index),
+      destructive: true,
+      group: items.length < 2,
+    });
+    return out;
   };
 
   const header = (
@@ -326,6 +338,7 @@ function CollectionHeader({
   const remove = useDeleteCollection(connectionId);
   const [dialog, setDialog] = useState<null | 'edit' | 'share' | 'delete' | 'leave'>(null);
   const close = () => setDialog(null);
+  const confirm = dialog === 'delete' || dialog === 'leave' ? CONFIRM[dialog] : null;
   const owned = collection.owned;
   const length = formatDuration(totalDuration(items));
   const stats = [
@@ -422,23 +435,13 @@ function CollectionHeader({
         />
       ) : null}
       <ConfirmDialog
-        visible={dialog === 'delete' || dialog === 'leave'}
-        title={t(
-          dialog === 'leave'
-            ? 'library.collection.leaveConfirm.title'
-            : 'library.collection.deleteConfirm.title',
-          { name: collection.name },
-        )}
-        message={t(
-          dialog === 'leave'
-            ? 'library.collection.leaveConfirm.message'
-            : 'library.collection.deleteConfirm.message',
-          { owner: collection.owner.username },
-        )}
-        confirmLabel={t(
-          dialog === 'leave' ? 'library.collection.leave' : 'library.collection.delete',
-        )}
-        confirmIcon={dialog === 'leave' ? 'logout' : 'trash'}
+        visible={!!confirm}
+        title={t(confirm?.title ?? CONFIRM.delete.title, { name: collection.name })}
+        message={t(confirm?.message ?? CONFIRM.delete.message, {
+          owner: collection.owner.username,
+        })}
+        confirmLabel={t(confirm?.label ?? CONFIRM.delete.label)}
+        confirmIcon={confirm?.icon ?? CONFIRM.delete.icon}
         destructive
         onConfirm={destroy}
         onCancel={close}

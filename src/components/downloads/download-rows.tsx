@@ -11,7 +11,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { bytesToGo, entryBytes } from '@/downloads/downloads-view';
 import type { AheadBook, SlotState } from '@/downloads/keep-ahead';
 import { useDownloadEntry } from '@/downloads/store';
-import type { DownloadEntry } from '@/downloads/types';
+import type { DownloadEntry, DownloadFailure } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
@@ -34,23 +34,21 @@ export function failureText(
   server: string,
   scope: StorageScope,
 ): string {
-  const f = entry.failure ?? { kind: 'unknown' as const };
-  const cause =
-    f.kind === 'network'
-      ? t('downloads.failure.network', { server })
-      : f.kind === 'server'
-        ? t('downloads.failure.server', { server, status: f.status })
-        : f.kind === 'storage'
-          ? scope === 'browser'
-            ? t('downloads.failure.storageBrowser')
-            : t('downloads.failure.storageDevice')
-          : f.kind === 'unservable'
-            ? t('downloads.failure.unservable')
-            : f.kind === 'removed'
-              ? t('downloads.failure.removed')
-              : f.kind === 'interrupted'
-                ? t('downloads.failure.interrupted')
-                : t('downloads.failure.unknown');
+  const f: DownloadFailure = entry.failure ?? { kind: 'unknown' };
+  const cause = {
+    network: () => t('downloads.failure.network', { server }),
+    server: () => t('downloads.failure.server', { server, status: f.status }),
+    storage: () =>
+      t(
+        scope === 'browser'
+          ? 'downloads.failure.storageBrowser'
+          : 'downloads.failure.storageDevice',
+      ),
+    unservable: () => t('downloads.failure.unservable'),
+    removed: () => t('downloads.failure.removed'),
+    interrupted: () => t('downloads.failure.interrupted'),
+    unknown: () => t('downloads.failure.unknown'),
+  }[f.kind]();
   // An unservable download is fully saved: the cause already says what to do.
   if (f.kind === 'unservable' || f.kind === 'removed') return cause;
   const kept = f.kept ?? 0;
