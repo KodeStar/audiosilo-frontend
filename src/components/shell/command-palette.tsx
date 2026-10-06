@@ -49,7 +49,6 @@ import {
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
-  MAX_NAMED,
   moveSelection,
   type PaletteCover,
   type PaletteGroupKey,
@@ -361,19 +360,11 @@ function PaletteBody() {
 
   const actions = useActionItems();
   const goTo = useGoToItems();
-  const results = useSearch(debounced, { limit: MAX_NAMED, refetchProgress: false });
+  const results = useSearch(debounced, { refetchProgress: false });
   const { books, continueListening } = useBookItems(debounced, results.books);
   const named = useNamedItems(results);
-  // Results belong to the debounced query; none while the field is empty.
-  const typed = query.trim() !== '';
-  const groups = buildPaletteGroups({
-    query,
-    actions,
-    books: typed ? books : [],
-    continueListening,
-    ...(typed ? named : {}),
-    goTo,
-  });
+  // The model shows results only while the field has a query, and caps each group.
+  const groups = buildPaletteGroups({ query, actions, books, continueListening, ...named, goTo });
   const flat = flattenGroups(groups);
   const active = Math.min(selected, Math.max(0, flat.length - 1));
 
@@ -401,7 +392,7 @@ function PaletteBody() {
     }
   };
 
-  const pending = typed && (!results.settled || debounced !== query.trim());
+  const pending = query.trim() !== '' && (!results.settled || debounced !== query.trim());
   const servers = connections.map((c) => c.name).join(' + ');
 
   return (

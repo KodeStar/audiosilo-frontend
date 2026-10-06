@@ -336,9 +336,9 @@ describe('CommandPalette', () => {
     expect(usePalette.getState().query).toBe('holmes');
   });
 
-  it('searches with the shared model, three of each named group, from the cached progress', async () => {
+  it('searches with the shared model, from the cached progress', async () => {
     await openWith('holmes');
-    expect(mockSearch).toHaveBeenLastCalledWith('holmes', { limit: 3, refetchProgress: false });
+    expect(mockSearch).toHaveBeenLastCalledWith('holmes', { refetchProgress: false });
   });
 
   it('lists series and met characters, and only counts the others (not an option)', async () => {
