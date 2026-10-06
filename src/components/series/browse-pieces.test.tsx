@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, PeopleList } from '@/api/types';
+import { settleFlashList } from '@/testing/flash-list';
 
 const mockPush = jest.fn();
 const mockSetParams = jest.fn();
@@ -127,6 +128,13 @@ describe('cardRows / cardGridMetrics', () => {
   });
 });
 
+/** Render a FlashList screen and let its first-load frame land inside act. */
+async function show(ui: React.ReactElement) {
+  const r = await render(ui);
+  await settleFlashList();
+  return r;
+}
+
 describe('PeopleMode', () => {
   const list = (data?: PeopleList, isPending = false) => ({
     data,
@@ -135,14 +143,14 @@ describe('PeopleMode', () => {
   });
 
   it('shows placeholders while the list loads', async () => {
-    await render(
+    await show(
       <PeopleMode kind="author" connectionId="home" libraryId={1} list={list(undefined, true)} />,
     );
     expect(screen.getByTestId('people-mode-loading')).toBeTruthy();
   });
 
   it('lists people, opens one, and counts the unnamed books', async () => {
-    await render(
+    await show(
       <PeopleMode
         kind="narrator"
         connectionId="home"
@@ -151,6 +159,7 @@ describe('PeopleMode', () => {
       />,
     );
     await fireEvent(screen.getByTestId('card-grid'), 'layout', layoutEvent);
+    await settleFlashList();
     await fireEvent.press(screen.getByRole('button', { name: 'Kate Reading, 2 books · 2h' }));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/narrator',
@@ -160,7 +169,7 @@ describe('PeopleMode', () => {
   });
 
   it('says when there is nobody, and goes back to the books', async () => {
-    await render(
+    await show(
       <PeopleMode
         kind="author"
         connectionId="home"
@@ -175,7 +184,7 @@ describe('PeopleMode', () => {
 
   it('offers Retry when the list fails', async () => {
     const failed = list(undefined, false);
-    await render(<PeopleMode kind="author" connectionId="home" libraryId={1} list={failed} />);
+    await show(<PeopleMode kind="author" connectionId="home" libraryId={1} list={failed} />);
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(failed.refetch).toHaveBeenCalled();
   });
@@ -197,8 +206,9 @@ describe('SeriesMode', () => {
       ],
       refetch: jest.fn(),
     };
-    await render(<SeriesMode connectionId="home" libraryId={1} />);
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
     await fireEvent(screen.getByTestId('card-grid'), 'layout', layoutEvent);
+    await settleFlashList();
     await fireEvent.press(
       screen.getByRole('button', { name: 'Codex Alera, Jim Butcher · 4h 15m, 3 of 4' }),
     );
@@ -210,7 +220,7 @@ describe('SeriesMode', () => {
 
   it('has an empty state', async () => {
     mockSeries = { isPending: false, data: [], refetch: jest.fn() };
-    await render(<SeriesMode connectionId="home" libraryId={1} />);
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
     expect(screen.getByText('No series here yet')).toBeTruthy();
   });
 });
@@ -219,7 +229,7 @@ describe('PersonPage', () => {
   it("says a server without the narrator filter can't list a narrator's books", async () => {
     mockCaps = { browse_people: false };
     mockBooks = { books: [], isLoading: false, isIdle: true, error: null, refetch: jest.fn() };
-    await render(<PersonPage kind="narrator" libraryId={1} name="Kate Reading" />);
+    await show(<PersonPage kind="narrator" libraryId={1} name="Kate Reading" />);
     expect(screen.getByText("This server can't list books by narrator yet")).toBeTruthy();
   });
 
@@ -245,7 +255,7 @@ describe('PersonPage', () => {
       error: null,
       refetch: jest.fn(),
     };
-    await render(<PersonPage kind="author" libraryId={1} name="Jim Butcher" />);
+    await show(<PersonPage kind="author" libraryId={1} name="Jim Butcher" />);
     await fireEvent(screen.getByTestId('cover-grid'), 'layout', layoutEvent);
     expect(screen.getByRole('header', { name: 'Jim Butcher' })).toBeTruthy();
     await fireEvent.press(screen.getByRole('link', { name: 'Open the series The Dresden Files' }));
