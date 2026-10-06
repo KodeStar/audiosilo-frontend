@@ -6,13 +6,13 @@ import { Text } from './text';
 
 export type SectionHeaderProps = {
   title: string;
-  /** Optional quiet primary text button on the right (e.g. "See all"). */
+  /** Optional quiet brand-ink text button on the right (e.g. "See all"). */
   action?: { label: string; onPress: () => void };
   className?: string;
 };
 
 /**
- * A section heading row: a `heading`-variant title with an optional quiet primary
+ * A section heading row: a `heading`-variant title with an optional quiet brand-ink
  * text action on the right. Used to give shelves/lists consistent rhythm.
  */
 export function SectionHeader({ title, action, className }: SectionHeaderProps) {
@@ -26,7 +26,7 @@ export function SectionHeader({ title, action, className }: SectionHeaderProps) 
           accessibilityRole="button"
           className="active:opacity-70"
         >
-          <RNText className="font-roboto-medium text-sm text-primary">{action.label}</RNText>
+          <RNText className="font-sans-medium text-sm text-brand-ink">{action.label}</RNText>
         </Pressable>
       ) : null}
     </View>

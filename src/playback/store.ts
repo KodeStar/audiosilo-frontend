@@ -274,8 +274,9 @@ function invalidateProgressLists() {
   if (!np) return;
   void queryClient.invalidateQueries({ queryKey: qk.allProgress(np.connectionId) });
   // ...and this book's own progress entry: a book screen mounted alongside the player
-  // (the wide layout's side panel) reads `useBookProgress` for its position/finished
-  // gating, which would otherwise stay stale for as long as the screen stays mounted.
+  // (tablet/desktop, where the docked player bar plays under the page) reads
+  // `useBookProgress` for its position/finished gating, which would otherwise stay stale
+  // for as long as the screen stays mounted.
   void queryClient.invalidateQueries({
     queryKey: qk.progress(np.connectionId, np.libraryId, np.path),
   });
@@ -803,8 +804,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     stopSaveLoop();
     void persist({ forceFinished: true });
     // Refresh the "continue listening" / "finished" lists for this book's connection,
-    // plus the book's own progress entry so a book screen mounted beside the player
-    // (wide layout) re-reads its finished state instead of staying stale. nowPlaying is
+    // plus the book's own progress entry so a book screen mounted above the docked
+    // player (tablet/desktop) re-reads its finished state instead of staying stale. nowPlaying is
     // nulled just below, so invalidate against the captured identity directly.
     void queryClient.invalidateQueries({ queryKey: qk.allProgress(finished.connectionId) });
     void queryClient.invalidateQueries({

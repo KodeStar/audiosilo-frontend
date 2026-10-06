@@ -13,3 +13,9 @@ export function progressFractionRemaining(
   const remaining = Math.max(0, duration - position);
   return { fraction, remaining };
 }
+
+/** A book the listener has started and not finished: Home's Continue listening shelf and
+ * the palette's Continue listening group. */
+export function isInProgress(p: { finished: boolean; position: number }): boolean {
+  return !p.finished && p.position > 0;
+}

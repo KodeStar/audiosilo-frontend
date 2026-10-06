@@ -6,12 +6,6 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-// Mock the theme hook so the primitive doesn't need a ThemeProvider (whose module
-// also side-effect-imports global.css, unparseable in the Node test runtime).
-jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
-}));
-
 /* eslint-disable import/first */
 import { Sheet } from './sheet';
 /* eslint-enable import/first */

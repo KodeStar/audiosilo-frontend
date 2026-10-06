@@ -37,7 +37,7 @@ The **old client** at `~/dev/audiosilo-old` - a Nuxt 2 / Vue / Tailwind v2 PWA w
 | Capacitor | Expo prebuild + EAS Build |
 | FA Pro Kit (CDN) | FontAwesome Pro glyphs vendored as SVG (`icon-data.ts`) + `react-native-svg` (no `@fortawesome/*` dep) |
 | HTML5 `<audio>` + Cache API | Hybrid: custom `audiosilo-player` native module (AVQueuePlayer / Media3) / HTML5 (web) |
-| Google Fonts Roboto | `@expo-google-fonts/roboto` |
+| Google Fonts Roboto | Stacks fonts (Figtree, Bricolage Grotesque, JetBrains Mono) via `@expo-google-fonts/*` since player-redesign Phase 0b |
 | Shake-to-cancel (DeviceMotion) | `expo-sensors` Accelerometer (M2) |
 | Offline download (Cache API) | `expo-file-system` (native) / SW (web) (M3) |
 

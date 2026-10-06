@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Password",
       "connect": "Connect",
       "submit": "Sign in",
-      "failed": "Sign in failed. Please try again."
+      "failed": "Sign in failed. Please try again.",
+      "modeLabel": "How to sign in"
     },
     "scan": {
       "closeLabel": "Close scanner",
@@ -235,10 +236,6 @@
       "timeLeft": "{{duration}} left",
       "finished": "Finished"
     },
-    "searchResults": {
-      "failed": "Search failed.",
-      "noResults": "No results for “{{query}}”."
-    },
     "notes": {
       "title": "Notes",
       "placeholder": "Add a note (markdown supported)…",
@@ -281,7 +278,6 @@
       "downloading": "Downloading {{percent}}%"
     },
     "list": {
-      "title": "Library",
       "recentlyAdded": "Recently added",
       "recentlyFinished": "Recently finished",
       "added": "Added {{when}}",
@@ -292,7 +288,8 @@
       "noFinishedHint": "Finish a book and it lands here.",
       "loadLibrariesError": "Could not load libraries.",
       "noLibraries": "No libraries are shared with your account yet.",
-      "noLibrariesHint": "Ask the server owner to share one with you."
+      "noLibrariesHint": "Ask the server owner to share one with you.",
+      "viewLabel": "Book list"
     },
     "favourites": {
       "title": "Favourites",
@@ -303,7 +300,6 @@
     }
   },
   "downloads": {
-    "title": "Downloads",
     "storageUsed": "{{size}} used",
     "downloaded": "Downloaded",
     "failed": "Download failed",
@@ -381,7 +377,8 @@
         "supporting": "Supporting",
         "minor": "Minor"
       }
-    }
+    },
+    "openPlayer": "Open the player"
   },
   "player": {
     "controls": {
@@ -442,7 +439,8 @@
       "title": "Playback speed"
     },
     "seek": {
-      "label": "Playback position"
+      "label": "Playback position",
+      "value": "{{position}} of {{duration}}"
     },
     "finished": {
       "heading": "Book finished",
@@ -474,14 +472,19 @@
     "library": "Library",
     "search": "Search",
     "downloads": "Downloads",
-    "settings": "Settings",
     "logout": "Logout",
     "offline": "Offline - changes sync when reconnected",
     "someOffline": "Some servers offline",
-    "searchPlaceholder": "Search…"
+    "me": "Me",
+    "back": "Back",
+    "backTo": "Back to {{name}}"
   },
   "ui": {
-    "error": "Something went wrong."
+    "error": "Something went wrong.",
+    "toast": {
+      "dismiss": "Dismiss",
+      "region": "Notifications"
+    }
   },
   "demo": {
     "title": "AudioSilo demo",
@@ -494,5 +497,64 @@
     "qrLabel": "QR code to open the demo in the app",
     "scanHint": "Scan with your phone to continue in the AudioSilo app, or keep exploring in this browser.",
     "browseHere": "Browse the demo here"
+  },
+  "shell": {
+    "home": "AudioSilo home",
+    "offline": "Offline · downloads play",
+    "serverMore": "{{name}} + {{count}} more",
+    "account": "Your account, {{name}}",
+    "openPlayer": "Open the full player for {{title}}",
+    "titleTimeLeft": "{{title}} · {{time}} left",
+    "dock": {
+      "label": "Player",
+      "bookLeft": "{{time}} left",
+      "savedLocally": "Saved on this device, will sync",
+      "expand": "Expand player"
+    },
+    "profile": {
+      "label": "Servers and account, {{name}}",
+      "servers": "Servers",
+      "signedInAs": "Signed in as {{name}}",
+      "offline": "Offline",
+      "reconnect": "Needs signing in again",
+      "accountOn": "Account on {{name}}",
+      "dark": "Dark appearance",
+      "light": "Light appearance"
+    }
+  },
+  "palette": {
+    "label": "Search and commands",
+    "omnisearch": "Search or run a command",
+    "placeholder": "Search or type a command",
+    "hint": "Type to find a book or an action. The arrow keys move through the results and Enter opens one.",
+    "recent": "Recent",
+    "groups": {
+      "actions": "Actions",
+      "books": "Books",
+      "goTo": "Go to"
+    },
+    "resume": "Resume {{name}}",
+    "sleepMinutes_one": "Sleep in {{count}} minute",
+    "sleepMinutes_other": "Sleep in {{count}} minutes",
+    "sleepFades": "Fades out over the last 30 seconds",
+    "sleepChapter": "Sleep at end of chapter",
+    "openPlayer": "Open the full player",
+    "settings": "Go to settings",
+    "settingsHint": "Servers, appearance and playback",
+    "dark": "Switch to dark appearance",
+    "light": "Switch to light appearance",
+    "listened": "{{percent}}% listened",
+    "searching": "Searching",
+    "empty": "Nothing called \"{{query}}\"",
+    "emptyHint": "Try a title or an author.",
+    "keys": {
+      "move": "move",
+      "open": "open",
+      "close": "close"
+    },
+    "results_one": "{{count}} result",
+    "results_other": "{{count}} results",
+    "resultsOn_one": "{{count}} result · {{servers}}",
+    "resultsOn_other": "{{count}} results · {{servers}}"
   }
 }

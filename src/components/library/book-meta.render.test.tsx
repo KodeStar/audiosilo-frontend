@@ -16,8 +16,8 @@ const mockUseMetaWork = jest.fn();
 jest.mock('@/api/hooks', () => ({
   useMetaWork: (workId: string, enabled: boolean) => mockUseMetaWork(workId, enabled),
 }));
-// The in-flight placeholder is the shared Skeleton, whose theme-provider
-// side-effect-imports global.css (unparseable in Node); stub the hook.
+// CoverFrame's iOS shadow hook reads the theme provider, whose module side-effect-
+// imports global.css (unparseable in Node); stub the hook.
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
 }));

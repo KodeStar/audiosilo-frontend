@@ -7,7 +7,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Download affordance on the book detail screen: download / progress+cancel /
  * downloaded+delete / retry, with a fallback when offline storage is unavailable
@@ -28,6 +28,7 @@ export function DownloadControl({
   /** Render an icon-only square button (sits inline next to the Listen button). */
   compact?: boolean;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { supported, status, error, progress, bytes, totalBytes, start, cancel, remove } =
     useDownloadControls(libraryId, path, book, chapterData);
@@ -40,6 +41,7 @@ export function DownloadControl({
         <Button
           icon="download"
           variant="secondary"
+          size="lg"
           disabled
           accessibilityLabel={t('library.download.unavailable')}
         />
@@ -52,7 +54,7 @@ export function DownloadControl({
         <Button
           icon="trash"
           variant="secondary"
-          className="px-5"
+          size="lg"
           onPress={remove}
           accessibilityLabel={t('library.download.delete')}
         />
@@ -63,7 +65,7 @@ export function DownloadControl({
         <Button
           icon="circle-stop"
           variant="secondary"
-          className="px-5"
+          size="lg"
           onPress={cancel}
           accessibilityLabel={t('library.download.cancel')}
         />
@@ -73,7 +75,7 @@ export function DownloadControl({
       <Button
         icon="download"
         variant="secondary"
-        className="px-5"
+        size="lg"
         disabled={disabled || !book}
         onPress={start}
         accessibilityLabel={
@@ -97,9 +99,9 @@ export function DownloadControl({
   if (status === 'downloaded') {
     return (
       <View className="flex-row items-center gap-2">
-        <View className="flex-1 flex-row items-center gap-2 rounded-lg bg-gray-100 px-4 py-3 dark:bg-gray-840">
-          <Icon name="check" size={16} color={colors.primary} />
-          <Text className="text-gray-700">
+        <View className="flex-1 flex-row items-center gap-2 rounded-lg bg-muted px-4 py-3">
+          <Icon name="check" size={16} color={themed.brand} />
+          <Text className="font-sans-semibold">
             {t('library.download.downloaded')}
             {totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : ''}
           </Text>
@@ -109,9 +111,9 @@ export function DownloadControl({
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel={t('library.download.delete')}
-          className="h-11 w-11 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-840"
+          className="h-11 w-11 items-center justify-center rounded-lg bg-muted"
         >
-          <Icon name="trash" size={16} color={colors.dark.textMuted} />
+          <Icon name="trash" size={16} color={themed.mutedForeground} />
         </Pressable>
       </View>
     );
@@ -134,12 +136,12 @@ export function DownloadControl({
             accessibilityLabel={t('library.download.cancel')}
             className="h-8 w-8 items-center justify-center"
           >
-            <Icon name="close" size={16} color={colors.dark.textMuted} />
+            <Icon name="close" size={16} color={themed.mutedForeground} />
           </Pressable>
         </View>
-        <View className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <View className="h-1.5 overflow-hidden rounded-full bg-muted">
           <View
-            className="h-full rounded-full bg-primary"
+            className="h-full rounded-full bg-brand"
             style={{ width: `${Math.max(4, progress * 100)}%` }}
           />
         </View>
@@ -150,7 +152,7 @@ export function DownloadControl({
   return (
     <View className="gap-1.5">
       {status === 'error' && error ? (
-        <Text className="text-xs text-red-500" numberOfLines={2}>
+        <Text className="text-xs text-destructive" numberOfLines={2}>
           {error}
         </Text>
       ) : null}
@@ -180,9 +182,9 @@ export function DownloadProgress({ libraryId, path }: { libraryId: number; path:
           : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
-      <View className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+      <View className="h-1.5 overflow-hidden rounded-full bg-muted">
         <View
-          className="h-full rounded-full bg-primary"
+          className="h-full rounded-full bg-brand"
           style={{ width: `${Math.max(4, progress * 100)}%` }}
         />
       </View>

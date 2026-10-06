@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { formatTimeOfDay } from '@/lib/format';
 import { formatHhMm, parseHhMm } from '@/lib/hhmm';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
 import { Text } from './text';
@@ -27,6 +27,7 @@ export function TimeStepper({
   /** The row's label, used to build the buttons' accessibility labels. */
   label: string;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const minutes = parseHhMm(value) ?? 0;
   const shift = (delta: number) => onChange(formatHhMm(minutes + delta));
@@ -36,20 +37,20 @@ export function TimeStepper({
         onPress={() => shift(-TIME_STEP_MINUTES)}
         accessibilityRole="button"
         accessibilityLabel={t('settings.sleep.earlier', { label, minutes: TIME_STEP_MINUTES })}
-        className="h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-860"
+        className="h-9 w-9 items-center justify-center rounded-full bg-muted"
       >
-        <Icon name="minus" size={14} color={colors.primary} />
+        <Icon name="minus" size={14} color={themed.brand} />
       </Pressable>
-      <Text variant="subtitle" className="w-24 text-center">
+      <Text variant="label" className="w-24 text-center">
         {formatTimeOfDay(value)}
       </Text>
       <Pressable
         onPress={() => shift(TIME_STEP_MINUTES)}
         accessibilityRole="button"
         accessibilityLabel={t('settings.sleep.later', { label, minutes: TIME_STEP_MINUTES })}
-        className="h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-860"
+        className="h-9 w-9 items-center justify-center rounded-full bg-muted"
       >
-        <Icon name="plus" size={14} color={colors.primary} />
+        <Icon name="plus" size={14} color={themed.brand} />
       </Pressable>
     </View>
   );

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Pressable, useWindowDimensions, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useMarkFinished, type SourcedProgress } from '@/api/hooks';
 import { useApi } from '@/api/provider';
@@ -9,14 +9,14 @@ import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
+import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { parentPath, pathLeaf } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-import { useTheme } from '@/theme/theme-provider';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Stable list key for a progress entry across connections. */
 export const progressKey = (it: SourcedProgress) =>
@@ -88,13 +88,13 @@ function MenuRow({
   label: string;
   onPress: () => void;
 }) {
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  const themed = useThemeColors();
+  const neutral = themed.foreground;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      className="flex-row items-center gap-3 rounded-lg px-4 py-3 active:bg-gray-200 dark:active:bg-gray-860"
+      className="flex-row items-center gap-3 rounded-lg px-4 py-3 active:bg-accent"
     >
       <Icon name={icon} size={20} color={neutral} />
       <Text variant="title">{label}</Text>
@@ -118,13 +118,12 @@ export function ProgressCard({
   width: number;
   onMenu?: (item: SourcedProgress) => void;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
-  const menuColor = scheme === 'dark' ? colors.dark.text : colors.light.textMuted;
+  const menuColor = themed.mutedForeground;
   const api = useApi(item.connectionId);
   const { openBook, openPlayer } = useOpen();
-  const { width: screenWidth } = useWindowDimensions();
-  const wide = screenWidth >= WIDE_BREAKPOINT;
+  const phone = useLayout() === 'phone';
 
   // For the book loaded in the player right now, read the live whole-book position
   // from the store so "time left" ticks in real time instead of showing the stale
@@ -141,11 +140,11 @@ export function ProgressCard({
   const { fraction, remaining } = progressFractionRemaining(position, item.duration);
 
   // On phone open the full-screen player modal (scoped to this item's connection),
-  // or on desktop resume in the persistent player panel (fetch via the item's
-  // connection, start playback). The connection travels in the route, so there is
+  // or on tablet/desktop resume inline under the docked player bar (fetch via the
+  // item's connection, start playback). The connection travels in the route, so there is
   // no active-connection flip.
   const play = async () => {
-    if (!wide) {
+    if (phone) {
       // Land on the book page underneath the player (like tapping the cover does),
       // so closing the player returns there instead of back to Home.
       openBook(item.connectionId, item.library_id, item.path);
@@ -177,16 +176,16 @@ export function ProgressCard({
         !item.finished ? (
           <View className="gap-1.5">
             <View className="flex-row items-center gap-2.5">
-              <View className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-300 dark:bg-gray-750">
+              <View className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                 <View
-                  className="h-full rounded-full bg-primary"
+                  className="h-full rounded-full bg-brand"
                   style={{ width: `${fraction * 100}%` }}
                 />
               </View>
               <Pressable
                 onPress={() => void play()}
                 hitSlop={8}
-                className="h-9 w-9 items-center justify-center rounded-full bg-primary pl-0.5 active:opacity-80"
+                className="h-9 w-9 items-center justify-center rounded-full bg-brand pl-0.5 active:opacity-80"
                 accessibilityRole="button"
                 accessibilityLabel={t('library.progressCard.resume')}
               >
@@ -212,7 +211,7 @@ export function ProgressCard({
           </View>
         ) : (
           <View className="flex-row items-center gap-1.5">
-            <Icon name="check" size={13} color={colors.primary} />
+            <Icon name="check" size={13} color={themed.brand} />
             <Text variant="caption">{t('library.progressCard.finished')}</Text>
           </View>
         )

@@ -104,7 +104,7 @@ export default function PlayerScreen() {
     return (
       <View
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
-        className="flex-1 bg-gray-200 dark:bg-gray-800"
+        className="flex-1 bg-background"
       >
         <Spinner center />
       </View>
@@ -115,9 +115,9 @@ export default function PlayerScreen() {
     // No safe-area padding here: the atmospheric backdrop must paint edge-to-edge
     // under the status bar / notch. PlayerView pads its own top controls + footer
     // down by the insets instead (so nothing sits under the status bar).
-    <View className="flex-1 bg-gray-200 dark:bg-gray-800">
-      {/* The close button is the only mobile-specific chrome; PlayerView renders
-          it in its top toolbar when given onClose. */}
+    <View className="flex-1 bg-background">
+      {/* Opened from the mini player (phone) or the docked bar's expand button
+          (tablet/desktop); PlayerView renders the close button in its toolbar. */}
       <PlayerView onClose={() => router.back()} />
     </View>
   );

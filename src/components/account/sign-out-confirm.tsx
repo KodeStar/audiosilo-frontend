@@ -1,8 +1,15 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { ModalCard } from '@/components/ui/modal-card';
+import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
 
@@ -35,24 +42,33 @@ export function SignOutConfirm({
     visible ? downloadedCountFor(s.entries, connectionId) : 0,
   );
   return (
-    <ModalCard visible={visible} onRequestClose={onCancel}>
-      <Text variant="title">{t('account.signOut.title')}</Text>
-      <Text variant="muted">{t('account.signOut.warning')}</Text>
-      {downloadCount > 0 ? (
-        <Text variant="muted">
-          {t('account.signOut.downloadsWarning', { count: downloadCount })}
-        </Text>
-      ) : null}
-      <View className="gap-2">
-        <Button title={t('account.signOut.setPassword')} onPress={onSetPassword} />
-        <Button
-          title={t('account.signOut.confirm')}
-          variant="secondary"
-          icon="logout"
-          onPress={onSignOut}
-        />
-        <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
-      </View>
-    </ModalCard>
+    <AlertDialog open={visible} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent>
+        <View className="flex-row items-start gap-3.5">
+          <DialogIcon name="logout" tone="destructive" />
+          <AlertDialogHeader className="flex-1">
+            <AlertDialogTitle>{t('account.signOut.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('account.signOut.warning')}</AlertDialogDescription>
+            {downloadCount > 0 ? (
+              <Text variant="muted">
+                {t('account.signOut.downloadsWarning', { count: downloadCount })}
+              </Text>
+            ) : null}
+          </AlertDialogHeader>
+        </View>
+        {/* Stacked, the way out first: setting a password is the recommended answer. */}
+        <View className="gap-2">
+          <Button title={t('account.signOut.setPassword')} size="lg" onPress={onSetPassword} />
+          <Button
+            title={t('account.signOut.confirm')}
+            variant="destructive-outline"
+            size="lg"
+            icon="logout"
+            onPress={onSignOut}
+          />
+          <Button title={t('common.cancel')} variant="ghost" size="lg" onPress={onCancel} />
+        </View>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

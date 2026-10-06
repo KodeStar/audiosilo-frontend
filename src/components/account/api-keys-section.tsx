@@ -8,10 +8,10 @@ import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
+import { RowSurface } from '@/components/ui/row-surface';
 import { formatRelative } from '@/lib/format';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { ApiKeysManager } from './use-api-keys-manager';
 
@@ -22,22 +22,22 @@ import type { ApiKeysManager } from './use-api-keys-manager';
  * by the screen-level dialog). Gated by the caller on the server's `api_keys`
  * capability and the non-demo rule, so it renders only where keys are supported.
  *
- * State lives in {@link useApiKeysManager} (owned by the account screen so the reveal
- * modal and revoke confirmation can be hoisted out of the scroll container); this
- * component is the in-scroll view over it.
+ * State lives in {@link useApiKeysManager} (owned by the account screen, which renders
+ * the reveal dialog and the revoke confirmation); this component is the view over it.
  */
 export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
   const { t } = useTranslation();
   return (
     <View className="gap-2">
-      <Text variant="label">{t('settings.apiKeys.label')}</Text>
+      <Text variant="eyebrow">{t('settings.apiKeys.label')}</Text>
       <Card className="gap-4">
         <Text variant="muted" className="text-xs">
           {t('settings.apiKeys.hint')}
         </Text>
 
         <View>
-          <TextField
+          <Input
+            containerClassName="mb-4"
             label={t('settings.apiKeys.nameLabel')}
             placeholder={t('settings.apiKeys.namePlaceholder')}
             autoCapitalize="none"
@@ -70,7 +70,7 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
         )}
 
         {manager.revokeError ? (
-          <Text className="text-xs text-red-500">{manager.revokeError}</Text>
+          <Text className="text-xs text-destructive">{manager.revokeError}</Text>
         ) : null}
       </Card>
     </View>
@@ -78,14 +78,14 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
 }
 
 function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: () => void }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   return (
-    <View className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none">
+    <RowSurface className="flex-row items-center gap-1 pr-1">
       <View className="flex-1 flex-row items-center gap-3 px-3 py-3">
-        <Icon name="settings" size={18} color={colors[scheme].textMuted} />
+        <Icon name="settings" size={18} color={themed.mutedForeground} />
         <View className="flex-1">
-          <Text variant="subtitle" numberOfLines={1}>
+          <Text variant="label" numberOfLines={1}>
             {apiKey.label}
           </Text>
           <Text variant="caption" numberOfLines={1}>
@@ -102,10 +102,10 @@ function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: () => void 
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('settings.apiKeys.revoke', { name: apiKey.label })}
-        className="h-9 w-9 items-center justify-center rounded-full active:bg-danger/10"
+        className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10"
       >
-        <Icon name="trash" size={16} color={colors.danger} />
+        <Icon name="trash" size={16} color={themed.destructive} />
       </AnimatedPressable>
-    </View>
+    </RowSurface>
   );
 }

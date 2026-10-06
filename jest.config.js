@@ -11,7 +11,7 @@ module.exports = {
   // jest-expo excludes node_modules from transform; re-include the ESM packages
   // this app imports so they're transpiled rather than failing on `import`.
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|@react-navigation/.*|react-native-.*|uniwind|@tanstack/.*|zustand))',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|@rn-primitives/.*|@react-navigation/.*|react-native-.*|uniwind|@tanstack/.*|zustand|standard-navigation))',
   ],
   collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts', '!src/app/**'],
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],

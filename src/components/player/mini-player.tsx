@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useWindowDimensions, View } from 'react-native';
+import { type DimensionValue, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,25 +11,20 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useApi } from '@/api/provider';
+import { BookProgressLine, useBookTimeLeft } from '@/components/player/book-progress';
 import { SkipButton } from '@/components/player/skip-button';
+import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
+import { useChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { formatDuration } from '@/lib/format';
-import { WIDE_BREAKPOINT } from '@/lib/layout';
-import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { wallClockSeconds } from '@/playback/rate';
-import {
-  selectBookPosition,
-  selectCurrentChapter,
-  selectIsPlaying,
-  usePlayer,
-} from '@/playback/store';
+import { chapterLabel } from '@/lib/chapter-label';
+import { useLayout } from '@/lib/layout';
+import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { useTheme } from '@/theme/theme-provider';
 import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
 const COVER_SIZE = 64;
@@ -39,63 +34,61 @@ const MINI_PLAYER_HEIGHT = 66;
 const BASE_CONTENT_PADDING = 16;
 
 /**
- * Bottom padding a scrollable phone screen should give its scroll content so the
- * last row clears the docked mini-player. The bar is absolutely positioned and
- * content scrolls *behind* it, so without this the final items sit underneath it.
- * Returns just the normal base padding when nothing is docked, or on wide layouts
- * where the player is a side panel rather than a docked bar.
+ * Bottom padding a scrollable screen should give its scroll content so the last row
+ * clears the floating mini player. The bar is absolutely positioned and content
+ * scrolls *behind* it, so without this the final items sit underneath it. Returns just
+ * the normal base padding when nothing is loaded, on tablet/desktop (the docked player
+ * bar sits in the layout, below the page), and in the iOS 26 tab bar accessory (part
+ * of the native bar, which the system already insets scroll content for).
  */
 export function useMiniPlayerInset(): number {
-  const docked = usePlayer((s) => s.nowPlaying != null);
-  const { width } = useWindowDimensions();
-  const floating = docked && width < WIDE_BREAKPOINT;
+  const loaded = usePlayer((s) => s.nowPlaying != null);
+  const phone = useLayout() === 'phone';
+  const floating = loaded && phone && !ACCESSORY_SUPPORTED;
   return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT : 0);
 }
 
-/** The 2px whole-book progress hairline along the bar's BOTTOM edge, so it sits
- * flush on top of the nav bar below. It subscribes to the per-tick playback
- * position on its own, so only this leaf re-renders each tick - the always-mounted
- * bar around it reconciles just on play/pause/track changes. */
-function ProgressHairline({ total }: { total: number }) {
-  const bookPosition = usePlayer(selectBookPosition);
-  const fraction = total > 0 ? Math.max(0, Math.min(1, bookPosition / total)) : 0;
-  return (
-    <View className="h-0.5 bg-gray-300 dark:bg-gray-750">
-      <View className="h-full bg-primary" style={{ width: `${fraction * 100}%` }} />
-    </View>
-  );
+/** The native phone's floating mini player (Android, iOS before 26): ONE card for the
+ * whole shell, rendered by the `(app)` layout over NativeTabs rather than once per tab
+ * stack (NativeTabs keeps visited tabs alive, so a card per stack meant up to five ticking
+ * instances, each replaying its entrance on a tab's first visit). Its bottom edge sits on
+ * the native bar's measured top edge (`bar`, published by the tab stacks), so it waits for
+ * that first measure rather than flashing over the bar. */
+export function FloatingMiniPlayer() {
+  const bar = useShellMetrics((s) => s.edges.bar);
+  return bar === undefined ? null : <MiniPlayer bottomOffset={bar} />;
 }
 
 /** "5h 27m left (1.4×)" - wall-clock time remaining at the current speed, with the
- * speed modifier appended. A leaf so only this line re-renders as the position
- * ticks (it reads the live whole-book position + rate from the store). */
+ * speed modifier appended. A leaf so only this line re-renders, when its text changes. */
 function TimeLeft({ total }: { total: number }) {
   const { t } = useTranslation();
-  const position = usePlayer(selectBookPosition);
+  const time = useBookTimeLeft(total);
   const rate = usePlayer((s) => s.rate);
-  const remaining = wallClockSeconds(total - position, rate);
-  if (remaining <= 0) return null;
+  if (!time) return null;
   const rateLabel = `${Number(rate.toFixed(2))}×`;
   return (
     <Text variant="caption" numberOfLines={1} style={tabularNums}>
-      {t('player.controls.timeLeft', { time: formatDuration(remaining), rate: rateLabel })}
+      {t('player.controls.timeLeft', { time, rate: rateLabel })}
     </Text>
   );
 }
 
-/** Docked transport bar shown whenever something is loaded. Tap to open the full
- * player. It sits flush on top of the bottom nav - `bottomOffset` is the nav's
- * measured height (which on iOS includes the home-indicator safe-area inset, so a
- * fixed offset would leave the bar hidden behind it). Content scrolls behind it;
- * screens reserve room with `useMiniPlayerInset()`. */
-export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
+/** The phone mini player, shown whenever something is loaded, wherever the native tab
+ * bar can't host it (web, Android, iOS before 26 - see `ACCESSORY_SUPPORTED`). Tap to
+ * open the full player. It sits flush on top of the tab bar: `bottomOffset` puts its
+ * bottom edge on the bar's top edge within its parent (which includes the home-indicator
+ * safe-area inset, so a fixed offset would leave the bar hidden behind it). Content
+ * scrolls behind it; screens reserve room with `useMiniPlayerInset()`. It publishes its
+ * top edge (the bar's, plus its own height) for the root toasts. */
+export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue }) {
+  const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
   const toggle = usePlayer((s) => s.toggle);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const skipBackward = useSettings((s) => s.skipBackward);
-  const { scheme } = useTheme();
   // The cover URL embeds the playing book's own server auth (`?token=`); its request
   // headers must match that connection too, not whatever happens to be default - the
   // mini-player can outlive a switch away from the connection the book plays through.
@@ -109,6 +102,12 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
   // actually appears mid-session. Instead reset to 0 and animate to 1 only when
   // `nowPlaying` goes from falsy to truthy - not on track/progress changes.
   const visible = nowPlaying != null;
+  const bar = useShellMetrics((s) => s.edges.bar);
+  const [height, setHeight] = useState<number>();
+  useChromeEdge(
+    'mini',
+    visible && bar !== undefined && height !== undefined ? bar + height : undefined,
+  );
   const wasVisible = useRef(false);
   const enter = useSharedValue(0);
   useEffect(() => {
@@ -127,16 +126,11 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
 
   // Muted caption line: the current chapter (prettified, like the full player) when the
   // book carries chapters, else the author. Display-only - reads from the store.
-  const chapterLabel = currentChapter
-    ? prettifyChapterTitle(
-        currentChapter.title ||
-          t('player.chapters.chapterNumber', { number: currentChapter.index + 1 }),
-      )
-    : '';
-  const caption = chapterLabel || nowPlaying.author;
+  const caption = (currentChapter ? chapterLabel(currentChapter, t) : '') || nowPlaying.author;
 
   return (
     <Animated.View
+      onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
       style={[{ position: 'absolute', left: 0, right: 0, bottom: bottomOffset }, entranceStyle]}
     >
       {/* Fully opaque so scrolling covers never bleed through the bar. Flush full
@@ -145,13 +139,13 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
           nav. */}
       <AnimatedPressable
         onPress={() => router.push('/player')}
-        className="overflow-hidden border-t border-gray-100 bg-gray-50 dark:border-gray-750 dark:bg-gray-840"
+        className="overflow-hidden border-t border-border bg-card"
         accessibilityRole="button"
         accessibilityLabel={nowPlaying.title}
       >
         {/* Cover sits flush against the bar's left edge, full content-row height - the
             artwork anchors the bar. */}
-        <View className="flex-row items-stretch bg-gray-50 dark:bg-gray-840">
+        <View className="flex-row items-stretch bg-card">
           <Cover
             source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
             label={nowPlaying.title}
@@ -160,7 +154,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
           />
           <View className="flex-1 flex-row items-center gap-3 px-3">
             <View className="flex-1">
-              <Text variant="subtitle" numberOfLines={1}>
+              <Text variant="label" numberOfLines={1}>
                 {nowPlaying.title}
               </Text>
               {caption ? (
@@ -174,7 +168,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
               direction="back"
               seconds={skipBackward}
               onPress={() => void skipSeconds(-skipBackward)}
-              color={colors[scheme].textMuted}
+              color={themed.mutedForeground}
               fontSize={12}
               className="px-1 items-center justify-center"
               accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
@@ -182,6 +176,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
             <AnimatedPressable
               onPress={() => void toggle()}
               hitSlop={8}
+              // Ink, like every play button: the progress hairline is this bar's pink.
               className={`h-10 w-10 items-center justify-center rounded-full bg-primary ${
                 isPlaying ? '' : 'pl-0.5'
               }`}
@@ -190,11 +185,17 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: number }) {
                 isPlaying ? t('player.controls.pause') : t('player.controls.play')
               }
             >
-              <Icon name={isPlaying ? 'pause' : 'play'} size={18} color={colors.white} />
+              <Icon
+                name={isPlaying ? 'pause' : 'play'}
+                size={18}
+                color={themed.primaryForeground}
+              />
             </AnimatedPressable>
           </View>
         </View>
-        <ProgressHairline total={nowPlaying.queue.total} />
+        {/* The 2px whole-book hairline along the bar's BOTTOM edge, flush on the nav
+            below. A leaf: the bar around it reconciles only on play/pause/track. */}
+        <BookProgressLine total={nowPlaying.queue.total} className="h-0.5 bg-muted" />
       </AnimatedPressable>
     </Animated.View>
   );

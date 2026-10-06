@@ -1,4 +1,4 @@
-import { Redirect, Stack, useGlobalSearchParams } from 'expo-router';
+import { Stack } from 'expo-router';
 
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
@@ -6,13 +6,6 @@ import { useSession } from '@/stores/session';
 
 export default function ConnectLayout() {
   const status = useSession((s) => s.status);
-  const pendingServerUrl = useSession((s) => s.pendingServerUrl);
-  // An authenticated user can still reach /connect to ADD another server: the
-  // entry point passes ?add=1, a QR/invite carries ?token=, and the sign-in step
-  // is mid-flow (pendingServerUrl set). Otherwise they're bounced home.
-  const { add, token } = useGlobalSearchParams<{ add?: string; token?: string }>();
-  const adding = !!add || !!token || !!pendingServerUrl;
-
   if (status === 'loading') {
     return (
       <Screen>
@@ -20,8 +13,10 @@ export default function ConnectLayout() {
       </Screen>
     );
   }
-  if (status === 'authenticated' && !adding) {
-    return <Redirect href="/" />;
-  }
+  // A signed-in user who reaches /connect with no intent to add a server is bounced home
+  // by the index route itself (`connect/index.tsx`), from its OWN params. The layout can't
+  // decide it: on a link arriving while the app runs, the child's params only reach the
+  // layout after the child mounts, so `useGlobalSearchParams` read no `token` on the first
+  // render and a pairing link bounced home before it could pair.
   return <Stack screenOptions={{ headerShown: false }} />;
 }

@@ -8,14 +8,13 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
 import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // Quiet row surface shared by the section's list items.
-const ROW =
-  'flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
 
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
  *
@@ -41,6 +40,7 @@ export function BookmarksSection({
   adding?: boolean;
   addLabel?: string;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { data: bookmarks } = useBookmarks(libraryId, path, connectionId);
   const del = useDeleteBookmark(libraryId, path, connectionId);
@@ -72,15 +72,15 @@ export function BookmarksSection({
         <EmptyState icon="bookmark" title={emptyLabel} className="py-6" />
       ) : null}
       {(bookmarks ?? []).map((bm) => (
-        <View key={bm.id} className={ROW}>
+        <RowSurface key={bm.id} className="flex-row items-center gap-3 p-3">
           <AnimatedPressable
             className="flex-1 flex-row items-center gap-3"
             accessibilityRole="button"
             onPress={() => void jump(bm.position)}
           >
-            <Icon name="bookmark" size={16} color={colors.primary} />
+            <Icon name="bookmark" size={16} color={themed.brand} />
             <View className="flex-1">
-              <Text variant="subtitle" style={tabularNums}>
+              <Text variant="label" style={tabularNums}>
                 {formatClock(bm.position)}
               </Text>
               {bm.note ? (
@@ -97,9 +97,9 @@ export function BookmarksSection({
             accessibilityLabel={t('library.bookmarks.delete')}
             className="h-8 w-8 items-center justify-center"
           >
-            <Icon name="trash" size={16} color={colors.danger} />
+            <Icon name="trash" size={16} color={themed.destructive} />
           </AnimatedPressable>
-        </View>
+        </RowSurface>
       ))}
     </View>
   );

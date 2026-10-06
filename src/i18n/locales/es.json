@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Contraseña",
       "connect": "Conectar",
       "submit": "Iniciar sesión",
-      "failed": "Error al iniciar sesión. Inténtalo de nuevo."
+      "failed": "Error al iniciar sesión. Inténtalo de nuevo.",
+      "modeLabel": "Cómo iniciar sesión"
     },
     "scan": {
       "closeLabel": "Cerrar el escáner",
@@ -235,10 +236,6 @@
       "timeLeft": "{{duration}} restante",
       "finished": "Terminado"
     },
-    "searchResults": {
-      "failed": "La búsqueda falló.",
-      "noResults": "Sin resultados para «{{query}}»."
-    },
     "notes": {
       "title": "Notas",
       "placeholder": "Añade una nota (admite markdown)…",
@@ -281,7 +278,6 @@
       "downloading": "Descargando {{percent}} %"
     },
     "list": {
-      "title": "Biblioteca",
       "recentlyAdded": "Añadidos recientemente",
       "recentlyFinished": "Terminados recientemente",
       "added": "Añadido {{when}}",
@@ -292,7 +288,8 @@
       "noFinishedHint": "Termina un libro y aparecerá aquí.",
       "loadLibrariesError": "No se pudieron cargar las bibliotecas.",
       "noLibraries": "Aún no se ha compartido ninguna biblioteca con tu cuenta.",
-      "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo."
+      "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo.",
+      "viewLabel": "Lista de libros"
     },
     "favourites": {
       "title": "Favoritos",
@@ -303,7 +300,6 @@
     }
   },
   "downloads": {
-    "title": "Descargas",
     "storageUsed": "{{size}} usados",
     "downloaded": "Descargado",
     "failed": "Error al descargar",
@@ -381,7 +377,8 @@
         "supporting": "Secundario",
         "minor": "Menor"
       }
-    }
+    },
+    "openPlayer": "Abrir el reproductor"
   },
   "player": {
     "controls": {
@@ -442,7 +439,8 @@
       "title": "Velocidad de reproducción"
     },
     "seek": {
-      "label": "Posición de reproducción"
+      "label": "Posición de reproducción",
+      "value": "{{position}} de {{duration}}"
     },
     "finished": {
       "heading": "Libro terminado",
@@ -474,14 +472,19 @@
     "library": "Biblioteca",
     "search": "Buscar",
     "downloads": "Descargas",
-    "settings": "Ajustes",
     "logout": "Cerrar sesión",
     "offline": "Sin conexión: los cambios se sincronizan al reconectar",
     "someOffline": "Algunos servidores sin conexión",
-    "searchPlaceholder": "Buscar…"
+    "me": "Yo",
+    "back": "Atrás",
+    "backTo": "Volver a {{name}}"
   },
   "ui": {
-    "error": "Algo salió mal."
+    "error": "Algo salió mal.",
+    "toast": {
+      "dismiss": "Descartar",
+      "region": "Notificaciones"
+    }
   },
   "demo": {
     "title": "Demo de AudioSilo",
@@ -494,5 +497,64 @@
     "qrLabel": "Código QR para abrir la demo en la app",
     "scanHint": "Escanéalo con tu teléfono para continuar en la app de AudioSilo, o sigue explorando en este navegador.",
     "browseHere": "Explorar la demo aquí"
+  },
+  "shell": {
+    "home": "Inicio de AudioSilo",
+    "offline": "Sin conexión · las descargas se reproducen",
+    "serverMore": "{{name}} + {{count}} más",
+    "account": "Tu cuenta, {{name}}",
+    "openPlayer": "Abrir el reproductor completo de {{title}}",
+    "titleTimeLeft": "{{title}} · quedan {{time}}",
+    "dock": {
+      "label": "Reproductor",
+      "bookLeft": "Quedan {{time}}",
+      "savedLocally": "Guardado en este dispositivo, se sincronizará",
+      "expand": "Ampliar el reproductor"
+    },
+    "profile": {
+      "label": "Servidores y cuenta, {{name}}",
+      "servers": "Servidores",
+      "signedInAs": "Sesión iniciada como {{name}}",
+      "offline": "Sin conexión",
+      "reconnect": "Hay que volver a iniciar sesión",
+      "accountOn": "Cuenta en {{name}}",
+      "dark": "Apariencia oscura",
+      "light": "Apariencia clara"
+    }
+  },
+  "palette": {
+    "label": "Búsqueda y comandos",
+    "omnisearch": "Buscar o ejecutar un comando",
+    "placeholder": "Busca o escribe un comando",
+    "hint": "Escribe para encontrar un libro o una acción. Las flechas recorren los resultados e Intro abre uno.",
+    "recent": "Recientes",
+    "groups": {
+      "actions": "Acciones",
+      "books": "Libros",
+      "goTo": "Ir a"
+    },
+    "resume": "Reanudar {{name}}",
+    "sleepMinutes_one": "Dormir en {{count}} minuto",
+    "sleepMinutes_other": "Dormir en {{count}} minutos",
+    "sleepFades": "Se desvanece en los últimos 30 segundos",
+    "sleepChapter": "Dormir al final del capítulo",
+    "openPlayer": "Abrir el reproductor completo",
+    "settings": "Ir a ajustes",
+    "settingsHint": "Servidores, apariencia y reproducción",
+    "dark": "Cambiar a apariencia oscura",
+    "light": "Cambiar a apariencia clara",
+    "listened": "{{percent}} % escuchado",
+    "searching": "Buscando",
+    "empty": "Nada llamado «{{query}}»",
+    "emptyHint": "Prueba con un título o un autor.",
+    "keys": {
+      "move": "mover",
+      "open": "abrir",
+      "close": "cerrar"
+    },
+    "results_one": "{{count}} resultado",
+    "results_other": "{{count}} resultados",
+    "resultsOn_one": "{{count}} resultado · {{servers}}",
+    "resultsOn_other": "{{count}} resultados · {{servers}}"
   }
 }

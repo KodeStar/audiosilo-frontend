@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import { ApiError } from '@/api/client';
 import type { User } from '@/api/types';
-import { remember as rememberServer } from '@/lib/known-servers';
+import { list as listKnownServers, remember as rememberServer } from '@/lib/known-servers';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { getItem, removeItem, setItem } from '@/lib/storage';
 
@@ -124,6 +124,26 @@ export async function resetStaleStorage(): Promise<StorageResetResult> {
   }
 
   return { authReset, cacheReset };
+}
+
+/**
+ * Whether this install has been used before: it holds a persisted connection, a
+ * remembered server (`known-servers`, which survives signing out), or a session from
+ * before multi-server. Read straight from storage, so it works before any store
+ * hydrates. The theme default (`migrateStorage`, which reads it before running
+ * `resetStaleStorage`) uses it to tell an update (keep dark) from a fresh install (follow
+ * the OS). The version keys are deliberately NOT a signal: `resetStaleStorage` writes them
+ * on a fresh install's first launch.
+ */
+export async function hasExistingInstall(): Promise<boolean> {
+  const [connections, known, legacyServer] = await Promise.all([
+    getItem<unknown[]>(CONNECTIONS_KEY),
+    listKnownServers(),
+    getItem<string>(LEGACY_SERVER),
+  ]);
+  return (
+    (Array.isArray(connections) && connections.length > 0) || known.length > 0 || !!legacyServer
+  );
 }
 
 export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated';

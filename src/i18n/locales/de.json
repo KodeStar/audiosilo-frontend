@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Passwort",
       "connect": "Verbinden",
       "submit": "Anmelden",
-      "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut."
+      "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
+      "modeLabel": "Anmeldeart"
     },
     "scan": {
       "closeLabel": "Scanner schließen",
@@ -235,10 +236,6 @@
       "timeLeft": "{{duration}} übrig",
       "finished": "Abgeschlossen"
     },
-    "searchResults": {
-      "failed": "Suche fehlgeschlagen.",
-      "noResults": "Keine Ergebnisse für „{{query}}“."
-    },
     "notes": {
       "title": "Notizen",
       "placeholder": "Notiz hinzufügen (Markdown unterstützt)…",
@@ -281,7 +278,6 @@
       "downloading": "Download läuft {{percent}} %"
     },
     "list": {
-      "title": "Bibliothek",
       "recentlyAdded": "Kürzlich hinzugefügt",
       "recentlyFinished": "Kürzlich abgeschlossen",
       "added": "Hinzugefügt {{when}}",
@@ -292,7 +288,8 @@
       "noFinishedHint": "Schließe ein Buch ab und es erscheint hier.",
       "loadLibrariesError": "Bibliotheken konnten nicht geladen werden.",
       "noLibraries": "Mit deinem Konto wurde noch keine Bibliothek geteilt.",
-      "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben."
+      "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben.",
+      "viewLabel": "Bücherliste"
     },
     "favourites": {
       "title": "Favoriten",
@@ -303,7 +300,6 @@
     }
   },
   "downloads": {
-    "title": "Downloads",
     "storageUsed": "{{size}} belegt",
     "downloaded": "Heruntergeladen",
     "failed": "Download fehlgeschlagen",
@@ -381,7 +377,8 @@
         "supporting": "Nebenfigur",
         "minor": "Randfigur"
       }
-    }
+    },
+    "openPlayer": "Player öffnen"
   },
   "player": {
     "controls": {
@@ -442,7 +439,8 @@
       "title": "Wiedergabegeschwindigkeit"
     },
     "seek": {
-      "label": "Wiedergabeposition"
+      "label": "Wiedergabeposition",
+      "value": "{{position}} von {{duration}}"
     },
     "finished": {
       "heading": "Buch beendet",
@@ -474,14 +472,19 @@
     "library": "Bibliothek",
     "search": "Suchen",
     "downloads": "Downloads",
-    "settings": "Einstellungen",
     "logout": "Abmelden",
     "offline": "Offline – Änderungen werden bei erneuter Verbindung synchronisiert",
     "someOffline": "Einige Server offline",
-    "searchPlaceholder": "Suchen…"
+    "me": "Ich",
+    "back": "Zurück",
+    "backTo": "Zurück zu {{name}}"
   },
   "ui": {
-    "error": "Etwas ist schiefgelaufen."
+    "error": "Etwas ist schiefgelaufen.",
+    "toast": {
+      "dismiss": "Schließen",
+      "region": "Benachrichtigungen"
+    }
   },
   "demo": {
     "title": "AudioSilo-Demo",
@@ -494,5 +497,64 @@
     "qrLabel": "QR-Code, um die Demo in der App zu öffnen",
     "scanHint": "Scanne ihn mit deinem Handy, um in der AudioSilo-App weiterzumachen, oder erkunde weiter in diesem Browser.",
     "browseHere": "Demo hier durchstöbern"
+  },
+  "shell": {
+    "home": "AudioSilo-Startseite",
+    "offline": "Offline · Downloads spielen",
+    "serverMore": "{{name}} + {{count}} weitere",
+    "account": "Dein Konto, {{name}}",
+    "openPlayer": "Vollen Player für {{title}} öffnen",
+    "titleTimeLeft": "{{title}} · noch {{time}}",
+    "dock": {
+      "label": "Player",
+      "bookLeft": "Noch {{time}}",
+      "savedLocally": "Auf diesem Gerät gespeichert, wird synchronisiert",
+      "expand": "Player vergrößern"
+    },
+    "profile": {
+      "label": "Server und Konto, {{name}}",
+      "servers": "Server",
+      "signedInAs": "Angemeldet als {{name}}",
+      "offline": "Offline",
+      "reconnect": "Erneute Anmeldung nötig",
+      "accountOn": "Konto auf {{name}}",
+      "dark": "Dunkle Darstellung",
+      "light": "Helle Darstellung"
+    }
+  },
+  "palette": {
+    "label": "Suche und Befehle",
+    "omnisearch": "Suchen oder Befehl ausführen",
+    "placeholder": "Suchen oder Befehl eingeben",
+    "hint": "Tippe, um ein Buch oder eine Aktion zu finden. Mit den Pfeiltasten wählst du ein Ergebnis, mit der Eingabetaste öffnest du es.",
+    "recent": "Zuletzt",
+    "groups": {
+      "actions": "Aktionen",
+      "books": "Bücher",
+      "goTo": "Gehe zu"
+    },
+    "resume": "{{name}} fortsetzen",
+    "sleepMinutes_one": "Schlafen in {{count}} Minute",
+    "sleepMinutes_other": "Schlafen in {{count}} Minuten",
+    "sleepFades": "Blendet in den letzten 30 Sekunden aus",
+    "sleepChapter": "Schlafen am Kapitelende",
+    "openPlayer": "Vollen Player öffnen",
+    "settings": "Zu den Einstellungen",
+    "settingsHint": "Server, Darstellung und Wiedergabe",
+    "dark": "Zur dunklen Darstellung wechseln",
+    "light": "Zur hellen Darstellung wechseln",
+    "listened": "{{percent}} % gehört",
+    "searching": "Suche läuft",
+    "empty": "Nichts namens „{{query}}“",
+    "emptyHint": "Versuche einen Titel oder einen Autor.",
+    "keys": {
+      "move": "bewegen",
+      "open": "öffnen",
+      "close": "schließen"
+    },
+    "results_one": "{{count}} Ergebnis",
+    "results_other": "{{count}} Ergebnisse",
+    "resultsOn_one": "{{count}} Ergebnis · {{servers}}",
+    "resultsOn_other": "{{count}} Ergebnisse · {{servers}}"
   }
 }

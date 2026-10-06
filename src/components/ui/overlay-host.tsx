@@ -17,12 +17,12 @@ import { BackHandler } from 'react-native';
  *   react-native-reusables overlays (Radix portals into `document.body` on web, a
  *   `PortalHost` outlet on native) stay mounted, under the real server CSP too.
  *
- * This host still renders its children in place when visible, because today's Sheet and
- * ModalCard are built on it. That is the CONSUMER CONTRACT: an OverlayHost (and anything
+ * This host still renders its children in place when visible, because the hand-rolled
+ * Sheet is built on it. That is the CONSUMER CONTRACT: an OverlayHost (and anything
  * built on it) MUST be mounted at SCREEN level - never inside a card, a Pressable, or a
  * clipped/transformed container - or the overlay will be clipped to that ancestor
- * instead of covering the screen. A new overlay that must escape a clipped container
- * should use the portal-based primitives (Phase 0b) rather than extend this host.
+ * instead of covering the screen. Dialogs, selects, menus and popovers are the
+ * portal-based primitives now (dialog.tsx, select.tsx ...); don't extend this host.
  *
  * Dismissal is owned here: Android hardware-back and web Escape both call
  * `onRequestClose`, registered only while visible.

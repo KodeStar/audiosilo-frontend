@@ -11,6 +11,7 @@ import type { FsEntry } from '@/api/types';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Cover } from '@/components/ui/cover';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -21,8 +22,7 @@ import { bookHref, libraryHref, parentPath, pathLeaf, playerHref } from '@/lib/p
 import { resolveNextBook } from '@/playback/next-book';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { endCreditsDecision } from './end-credits-logic';
 
@@ -45,9 +45,9 @@ export function EndCredits({
   libraryId: number;
   path: string;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  const neutral = themed.foreground;
   const insets = useSafeAreaInsets();
 
   const cid = useCid(connectionId);
@@ -153,7 +153,7 @@ export function EndCredits({
   return (
     <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
-      className="flex-1 bg-gray-200 dark:bg-gray-800"
+      className="flex-1 bg-background"
     >
       {/* Ambient backdrop from the finished book's cover - visual continuity from the
           player through to the credits (painted under the header + hero cover). */}
@@ -177,7 +177,7 @@ export function EndCredits({
           <Cover source={coverSource} label={book?.title ?? folderName} sublabel={book?.author} />
         </CoverFrame>
         <View className="items-center gap-1">
-          <Text variant="label" className="text-primary">
+          <Text variant="eyebrow" className="text-brand-ink">
             {t('player.finished.heading')}
           </Text>
           <Text variant="heading" className="text-center" numberOfLines={2}>
@@ -196,8 +196,8 @@ export function EndCredits({
 
         {/* Up next / end-of-folder / still resolving. */}
         {nextBook ? (
-          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
-            <Text variant="label">{t('player.finished.upNext')}</Text>
+          <Card className="w-full max-w-[420px] gap-3 p-4">
+            <Text variant="eyebrow">{t('player.finished.upNext')}</Text>
             <View className="gap-0.5">
               <Text variant="title" numberOfLines={2}>
                 {nextBook.name}
@@ -213,7 +213,12 @@ export function EndCredits({
                 </Text>
               ) : null}
             </View>
-            <Button title={t('player.finished.playNext')} icon="play" onPress={playNext} />
+            <Button
+              size="lg"
+              title={t('player.finished.playNext')}
+              icon="play"
+              onPress={playNext}
+            />
             {decision.showCountdown ? (
               <View className="flex-row items-center justify-center gap-3">
                 <Text variant="muted">
@@ -226,20 +231,20 @@ export function EndCredits({
                   hitSlop={8}
                   accessibilityRole="button"
                 >
-                  <Text className="text-primary">{t('common.cancel')}</Text>
+                  <Text className="font-sans-medium text-brand-ink">{t('common.cancel')}</Text>
                 </AnimatedPressable>
               </View>
             ) : null}
-          </View>
+          </Card>
         ) : nextBook === null ? (
           <EmptyState icon="check" title={t('player.finished.endOfSeries')} />
         ) : (
           // Still resolving the next book: a card-shaped placeholder in its place.
-          <View className="w-full max-w-[420px] gap-3 rounded-2xl bg-white p-4 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none">
+          <Card className="w-full max-w-[420px] gap-3 p-4">
             <Skeleton className="h-3.5 w-20 rounded-sm" />
             <Skeleton className="h-5 w-3/4 rounded-sm" />
             <Skeleton className="h-11 w-full rounded-lg" />
-          </View>
+          </Card>
         )}
 
         {/* Secondary actions. */}

@@ -2,11 +2,14 @@
  * Styling entry for Uniwind (Tailwind v4) on every platform. metro.config.js points
  * `cssEntryFile` here, so Tailwind scans for classNames from src/. There is no
  * tailwind.config.js: theme tokens live in `@theme` blocks below. Colours come from
- * src/theme/tokens.json via `npm run gen:tokens` (the generated region); the rest is
+ * src/theme/tokens.json via `npm run gen:tokens` (the generated region: the Stacks
+ * semantic tokens as Uniwind theme variables, see STYLEGUIDE.md); the rest is
  * hand-written.
  *
  * Phase 0a of the player redesign moved this app from NativeWind v4 (Tailwind v3.4)
- * with NO visual change, so several blocks below pin v3-era values on purpose.
+ * with NO visual change, so several blocks below pin v3-era values on purpose
+ * (shadows, breakpoints, radii, letter-spacing, preflight). Phase 0b swapped the
+ * colours and fonts for the Stacks ones.
  */
 
 /*
@@ -60,87 +63,186 @@
 
 /* @generated-tokens:start - DO NOT EDIT this region. Source: src/theme/tokens.json; regenerate with `npm run gen:tokens`. */
 @theme {
-  --color-primary: #db2777;
-  --color-primary-50: #fdf2f8;
-  --color-primary-100: #fce7f3;
-  --color-primary-200: #fbcfe8;
-  --color-primary-300: #f9a8d4;
-  --color-primary-400: #f472b6;
-  --color-primary-500: #ec4899;
-  --color-primary-600: #db2777;
-  --color-primary-700: #be185d;
-  --color-primary-800: #9d174d;
-  --color-primary-900: #831843;
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f3f4f6;
-  --color-gray-200: #e5e7eb;
-  --color-gray-300: #d1d5db;
-  --color-gray-400: #9ca3af;
-  --color-gray-500: #6b7280;
-  --color-gray-600: #4b5563;
-  --color-gray-700: #374151;
-  --color-gray-750: #2c3340;
-  --color-gray-800: #1f2937;
-  --color-gray-840: #1a2331;
-  --color-gray-860: #161f2c;
-  --color-gray-900: #111827;
-  --color-gray-950: #030712;
-  --color-red-50: #fef2f2;
-  --color-red-100: #fee2e2;
-  --color-red-200: #fecaca;
-  --color-red-300: #fca5a5;
-  --color-red-400: #f87171;
-  --color-red-500: #ef4444;
-  --color-red-600: #dc2626;
-  --color-red-700: #b91c1c;
-  --color-red-800: #991b1b;
-  --color-red-900: #7f1d1d;
-  --color-red-950: #450a0a;
-  --color-green-50: #f0fdf4;
-  --color-green-100: #dcfce7;
-  --color-green-200: #bbf7d0;
-  --color-green-300: #86efac;
-  --color-green-400: #4ade80;
-  --color-green-500: #22c55e;
-  --color-green-600: #16a34a;
-  --color-green-700: #15803d;
-  --color-green-800: #166534;
-  --color-green-900: #14532d;
-  --color-green-950: #052e16;
-  --color-blue-50: #eff6ff;
-  --color-blue-100: #dbeafe;
-  --color-blue-200: #bfdbfe;
-  --color-blue-300: #93c5fd;
-  --color-blue-400: #60a5fa;
-  --color-blue-500: #3b82f6;
-  --color-blue-600: #2563eb;
-  --color-blue-700: #1d4ed8;
-  --color-blue-800: #1e40af;
-  --color-blue-900: #1e3a8a;
-  --color-blue-950: #172554;
-  --color-danger: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-danger-700: #b91c1c;
-  --color-success: #22c55e;
-  --color-success-600: #16a34a;
-  --color-success-700: #15803d;
+  --color-*: initial;
   --color-black: #000000;
   --color-white: #ffffff;
+  --color-background: unset;
+  --color-foreground: unset;
+  --color-card: unset;
+  --color-card-foreground: unset;
+  --color-popover: unset;
+  --color-popover-foreground: unset;
+  --color-primary: unset;
+  --color-primary-foreground: unset;
+  --color-secondary: unset;
+  --color-secondary-foreground: unset;
+  --color-muted: unset;
+  --color-muted-foreground: unset;
+  --color-subtle-foreground: unset;
+  --color-accent: unset;
+  --color-accent-foreground: unset;
+  --color-destructive: unset;
+  --color-destructive-soft: unset;
+  --color-border: unset;
+  --color-border-strong: unset;
+  --color-input: unset;
+  --color-ring: unset;
+  --color-brand: unset;
+  --color-brand-foreground: unset;
+  --color-brand-soft: unset;
+  --color-brand-ink: unset;
+  --color-success: unset;
+  --color-success-soft: unset;
+  --color-warning: unset;
+  --color-warning-soft: unset;
+  --color-info: unset;
+  --color-info-soft: unset;
+  --color-community: unset;
+  --color-community-soft: unset;
+  --color-chart-1: unset;
+  --color-chart-2: unset;
+  --color-chart-3: unset;
+  --color-chart-4: unset;
+  --color-chart-5: unset;
+  --color-seq-0: unset;
+  --color-seq-1: unset;
+  --color-seq-2: unset;
+  --color-seq-3: unset;
+  --color-seq-4: unset;
+  --color-seq-5: unset;
+  --color-shelf-edge: unset;
+  --color-shelf-shadow: unset;
+  --color-topbar: unset;
+  --color-glass: unset;
+  --color-glass-border: unset;
+  --color-overlay: unset;
+}
+@layer theme {
+  :root {
+    @variant light {
+      --color-background: #f5f7fa;
+      --color-foreground: #121c36;
+      --color-card: #ffffff;
+      --color-card-foreground: #121c36;
+      --color-popover: #ffffff;
+      --color-popover-foreground: #121c36;
+      --color-primary: #15203d;
+      --color-primary-foreground: #f5f7fa;
+      --color-secondary: #eaedf3;
+      --color-secondary-foreground: #18244a;
+      --color-muted: #eef1f5;
+      --color-muted-foreground: #5b6680;
+      --color-subtle-foreground: #8590a6;
+      --color-accent: #e8ecf3;
+      --color-accent-foreground: #121c36;
+      --color-destructive: #c42b3c;
+      --color-destructive-soft: #fde8ea;
+      --color-border: #e0e5ed;
+      --color-border-strong: #cdd4df;
+      --color-input: #d4dae4;
+      --color-ring: #db2777;
+      --color-brand: #db2777;
+      --color-brand-foreground: #ffffff;
+      --color-brand-soft: #fce7f1;
+      --color-brand-ink: #a3195a;
+      --color-success: #0d7f5a;
+      --color-success-soft: #e1f5ec;
+      --color-warning: #a86206;
+      --color-warning-soft: #fdf1dc;
+      --color-info: #2c56c9;
+      --color-info-soft: #e6edfd;
+      --color-community: #6a3fd4;
+      --color-community-soft: #efe9fd;
+      --color-chart-1: #db2777;
+      --color-chart-2: #3b5bdb;
+      --color-chart-3: #0d9488;
+      --color-chart-4: #d97706;
+      --color-chart-5: #7c3aed;
+      --color-seq-0: #e9edf3;
+      --color-seq-1: #fbd5e6;
+      --color-seq-2: #f5a3c7;
+      --color-seq-3: #e8649f;
+      --color-seq-4: #cc2b78;
+      --color-seq-5: #8f1550;
+      --color-shelf-edge: #d9dfe8;
+      --color-shelf-shadow: rgba(18, 28, 54, 0.16);
+      --color-topbar: rgba(245, 247, 250, 0.84);
+      --color-glass: rgba(255, 255, 255, 0.72);
+      --color-glass-border: rgba(18, 28, 54, 0.08);
+      --color-overlay: rgba(14, 20, 38, 0.38);
+    }
+    @variant dark {
+      --color-background: #0a0f1e;
+      --color-foreground: #e7ebf4;
+      --color-card: #10172b;
+      --color-card-foreground: #e7ebf4;
+      --color-popover: #131b31;
+      --color-popover-foreground: #e7ebf4;
+      --color-primary: #eef1f8;
+      --color-primary-foreground: #0a0f1e;
+      --color-secondary: #1a2340;
+      --color-secondary-foreground: #dfe5f2;
+      --color-muted: #151d34;
+      --color-muted-foreground: #8f9ab3;
+      --color-subtle-foreground: #66718b;
+      --color-accent: #1a2340;
+      --color-accent-foreground: #e7ebf4;
+      --color-destructive: #f0606e;
+      --color-destructive-soft: #3a1720;
+      --color-border: #1d2640;
+      --color-border-strong: #2a3555;
+      --color-input: #283252;
+      --color-ring: #ec4f95;
+      --color-brand: #ec4f95;
+      --color-brand-foreground: #ffffff;
+      --color-brand-soft: #3a1530;
+      --color-brand-ink: #f78bbb;
+      --color-success: #3cc994;
+      --color-success-soft: #0f2e26;
+      --color-warning: #f0b04d;
+      --color-warning-soft: #33260f;
+      --color-info: #7d9bf2;
+      --color-info-soft: #17234a;
+      --color-community: #b59cff;
+      --color-community-soft: #251b45;
+      --color-chart-1: #e4458b;
+      --color-chart-2: #6680ec;
+      --color-chart-3: #17a093;
+      --color-chart-4: #cc7f16;
+      --color-chart-5: #8f72f2;
+      --color-seq-0: #161e36;
+      --color-seq-1: #3a1a37;
+      --color-seq-2: #6b1f4f;
+      --color-seq-3: #a12a6a;
+      --color-seq-4: #d9418a;
+      --color-seq-5: #f58bbb;
+      --color-shelf-edge: #1f2944;
+      --color-shelf-shadow: rgba(0, 0, 0, 0.5);
+      --color-topbar: rgba(10, 15, 30, 0.8);
+      --color-glass: rgba(22, 30, 54, 0.7);
+      --color-glass-border: rgba(255, 255, 255, 0.07);
+      --color-overlay: rgba(3, 6, 14, 0.62);
+    }
+  }
 }
 /* @generated-tokens:end */
 
 @theme {
   /*
-   * Fonts: ONE family per token, because React Native has no font fallback (each
-   * Roboto weight is its own loaded family, see ThemeProvider). Per-weight families
-   * avoid clashing with the font-weight utilities (font-light / font-medium / ...).
-   * Web gets the same families with the system fallback stack, below.
+   * Fonts (the Stacks trio): ONE family per token, because React Native has no font
+   * fallback or synthetic weights (each weight is its own loaded family, see
+   * ThemeProvider). Per-weight families avoid clashing with the font-weight utilities
+   * (font-medium / font-bold ...), which would pick a weight the family doesn't have.
+   * Bricolage's 650-750 design weights map to its static semibold/bold. Web gets the
+   * same families with a system fallback stack, below.
    */
-  --font-sans: 'Roboto_400Regular';
-  --font-roboto-light: 'Roboto_300Light';
-  --font-roboto-medium: 'Roboto_500Medium';
-  --font-roboto-semibold: 'Roboto_600SemiBold';
-  --font-roboto-bold: 'Roboto_700Bold';
+  --font-sans: 'Figtree_400Regular';
+  --font-sans-medium: 'Figtree_500Medium';
+  --font-sans-semibold: 'Figtree_600SemiBold';
+  --font-sans-bold: 'Figtree_700Bold';
+  --font-display: 'BricolageGrotesque_700Bold';
+  --font-display-semibold: 'BricolageGrotesque_600SemiBold';
+  --font-mono: 'JetBrainsMono_500Medium';
 
   /*
    * Web shadows: NativeWind's preset values for the two the app uses, under Tailwind
@@ -166,6 +268,36 @@
    * the glyphs inside them shift by a sub-pixel); on native Uniwind would emit 99999.
    */
   --radius-full: 9999px;
+
+  /*
+   * The Stacks radii (STYLEGUIDE.md section 5) under their own names. shadcn's
+   * `--radius` scale (rounded-sm/md/lg/xl...) is NOT adopted: it would move every
+   * existing `rounded-*` class. The react-native-reusables primitives use these.
+   */
+  --radius-control: 10px; /* buttons, inputs, selects */
+  --radius-menu: 14px; /* menus, popovers, toasts, large buttons */
+  --radius-card: 16px; /* cards */
+  --radius-dialog: 20px; /* dialogs, the palette */
+  --radius-sheet: 24px; /* sheets, the Now card */
+}
+
+/*
+ * Stacks elevation level 3 (`--shadow-overlay`): dock, sheets, menus, dialogs, toasts.
+ * Web draws the guide's two-layer shadow; iOS a single box-shadow (one layer reads the
+ * same at RN's blur); Android has only `elevation`.
+ */
+@utility shadow-overlay {
+  box-shadow:
+    0 24px 64px -16px rgba(14, 22, 48, 0.3),
+    0 2px 6px rgba(14, 22, 48, 0.08);
+  @variant ios {
+    box-shadow: 0px 12px 32px rgba(14, 22, 48, 0.22);
+  }
+  @variant android {
+    box-shadow: none;
+    shadow-color: rgba(14, 22, 48, 0.5);
+    elevation: 12;
+  }
 }
 
 /*
@@ -211,6 +343,39 @@
     elevation: 0;
   }
 }
+/*
+ * The skeleton shimmer on web (`Skeleton`): a `card` band, as wide as the block, sweeping
+ * across it every 1.4 s on the element's own background - no extra node, no JS loop. The
+ * image is three blocks wide with the band in its middle third, so moving its position
+ * from 100% to 0% carries the band from fully left of the block to fully right. Native
+ * draws the band with react-native-svg on one shared clock instead.
+ */
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@utility skeleton-shimmer {
+  @variant web {
+    background-image: linear-gradient(
+      90deg,
+      transparent 33.333%,
+      color-mix(in srgb, var(--color-card) 55%, transparent) 50%,
+      transparent 66.667%
+    );
+    background-size: 300% 100%;
+    background-repeat: no-repeat;
+    background-position: 0% 0;
+    animation: skeleton-shimmer 1.4s linear infinite;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
 /* No box-shadow on iOS for a shadowed `overflow-hidden` view (see above). */
 @utility ios-clipped-shadow {
   @variant ios {
@@ -221,18 +386,20 @@
 @layer theme {
   :root {
     /*
-     * Web keeps the exact font stacks NativeWind emitted: the family, then the system
-     * fallback its CSS pipeline expanded `system-ui, sans-serif` into.
+     * Web: each family, then a system fallback (the stack NativeWind expanded
+     * `system-ui, sans-serif` into) for the moment before the font loads.
      */
     @variant web {
       --font-web-fallback:
         system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu,
         Cantarell, 'Helvetica Neue', sans-serif;
-      --font-sans: 'Roboto_400Regular', var(--font-web-fallback);
-      --font-roboto-light: 'Roboto_300Light', var(--font-web-fallback);
-      --font-roboto-medium: 'Roboto_500Medium', var(--font-web-fallback);
-      --font-roboto-semibold: 'Roboto_600SemiBold', var(--font-web-fallback);
-      --font-roboto-bold: 'Roboto_700Bold', var(--font-web-fallback);
+      --font-sans: 'Figtree_400Regular', var(--font-web-fallback);
+      --font-sans-medium: 'Figtree_500Medium', var(--font-web-fallback);
+      --font-sans-semibold: 'Figtree_600SemiBold', var(--font-web-fallback);
+      --font-sans-bold: 'Figtree_700Bold', var(--font-web-fallback);
+      --font-display: 'BricolageGrotesque_700Bold', var(--font-web-fallback);
+      --font-display-semibold: 'BricolageGrotesque_600SemiBold', var(--font-web-fallback);
+      --font-mono: 'JetBrainsMono_500Medium', ui-monospace, 'SF Mono', Menlo, monospace;
     }
 
     /*
@@ -257,19 +424,19 @@
  * the Tailwind v4 upgrade guide, so the browser renders what v3 did.
  */
 @layer base {
-  /* v4 defaults borders to currentColor; v3 used gray-200. */
+  /* v4 defaults borders to currentColor; v3 used a light gray. Use the themed hairline. */
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentColor);
+    border-color: var(--color-border, currentColor);
   }
 
-  /* v4 placeholders are currentColor at 50%; v3 used gray-400. */
+  /* v4 placeholders are currentColor at 50%; v3 used a mid gray. */
   input::placeholder,
   textarea::placeholder {
-    color: var(--color-gray-400);
+    color: var(--color-muted-foreground);
   }
 
   /* v4 buttons use the default cursor; v3 used a pointer. */

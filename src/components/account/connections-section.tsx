@@ -8,23 +8,19 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
 import { accountHref } from '@/lib/paths';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSession, type Connection } from '@/stores/session';
 
 /**
- * The remove-connection flow, split into a hook so its confirm dialog can be rendered
- * at SCREEN level by the owning screen. `ConnectionsSection` lives inside the settings
- * `ScrollView`, but `ConfirmDialog` -> `ModalCard` -> `OverlayHost` renders IN PLACE and
- * must NOT be mounted inside a scroll container (an absolute/flex backdrop positions
- * against the scroll content, not the viewport, so the dialog renders mis-sized and
- * wedged into the scroll flow instead of covering the screen). So the screen calls this
- * hook, threads `onRemove` into the section, and renders `dialog` as a SIBLING of the
- * ScrollView.
+ * The remove-connection flow, split into a hook so the owning screen holds the confirm
+ * dialog's state: the screen calls this hook, threads `onRemove` into the section, and
+ * renders `dialog` (a portaled `ConfirmDialog`, so where it sits in the tree doesn't
+ * matter).
  *
  * Removing a connection purges its downloads (unreachable once its id is gone), so a
  * connection with downloaded books gets a confirm step first. The count is snapshotted
@@ -66,6 +62,7 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
       })}
       confirmLabel={t('account.connections.removeConfirm.confirm')}
       confirmIcon="trash"
+      destructive
       onConfirm={() => {
         const c = pendingRemoval?.connection;
         setPendingRemoval(null);
@@ -82,49 +79,46 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
  * remove a connection, or add another. Content from every connection appears in the
  * unified Home/Search; tapping a row opens that server's per-connection account
  * screen (`/account?connection=<id>`). The remove flow's confirm dialog is owned by
- * `useConnectionRemoval` and rendered by the screen at top level (a Sheet/ModalCard must
- * not live inside this scrolled section); this section just invokes `onRemove`. */
+ * `useConnectionRemoval` and rendered by the screen; this section just invokes
+ * `onRemove`. */
 export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => void }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   const connections = useSession((s) => s.connections);
 
   return (
     <View className="gap-2">
-      <Text variant="label">{t('account.connections.label')}</Text>
+      <Text variant="eyebrow">{t('account.connections.label')}</Text>
       <View className="gap-2">
         {connections.map((c) => (
-          <View
-            key={c.id}
-            className="flex-row items-center gap-1 rounded-xl bg-white pr-1 shadow-xs dark:border dark:border-gray-860 dark:bg-gray-840 dark:shadow-none"
-          >
+          <RowSurface key={c.id} className="flex-row items-center gap-1 pr-1">
             <AnimatedPressable
               onPress={() => router.push(accountHref(c.id))}
               accessibilityRole="button"
               accessibilityLabel={t('account.connections.manage', { name: c.name })}
               className="flex-1 flex-row items-center gap-3 rounded-xl px-3 py-3"
             >
-              <Icon name="server" size={18} color={colors[scheme].textMuted} />
+              <Icon name="server" size={18} color={themed.mutedForeground} />
               <View className="flex-1">
-                <Text variant="subtitle" numberOfLines={1}>
+                <Text variant="label" numberOfLines={1}>
                   {c.name}
                 </Text>
                 <Text variant="caption" numberOfLines={1}>
                   {c.user.username} · {c.serverUrl}
                 </Text>
               </View>
-              <Icon name="chevron-right" size={16} color={colors[scheme].textMuted} />
+              <Icon name="chevron-right" size={16} color={themed.mutedForeground} />
             </AnimatedPressable>
             <AnimatedPressable
               onPress={() => onRemove(c)}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={t('account.connections.remove', { name: c.name })}
-              className="h-9 w-9 items-center justify-center rounded-full active:bg-danger/10"
+              className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10"
             >
-              <Icon name="trash" size={16} color={colors.danger} />
+              <Icon name="trash" size={16} color={themed.destructive} />
             </AnimatedPressable>
-          </View>
+          </RowSurface>
         ))}
         <Button
           title={t('account.connections.add')}

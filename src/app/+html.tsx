@@ -9,14 +9,18 @@ import { colors } from '@/theme/tokens';
 // hrefs so they resolve from nested routes too - empty base in dev (served at root),
 // "/web" in the production export (see base-url.ts).
 
-// Paint the document backdrop dark (the dark-mode-first default) before React
-// mounts, so there's no white flash on first paint, no white in the iOS PWA
-// home-indicator gap, and no white frame during the browser back-swipe. #root is
-// included because react-native-web can size its root container to innerHeight
-// (short of the full screen in a standalone PWA), leaving a strip the backdrop
-// must cover. The live theme keeps these in sync at runtime (see ThemeProvider's
-// web effect), which also covers the light-theme case.
-const backdropCss = `html, body, #root { background-color: ${colors.dark.bg}; }`;
+// Paint the document backdrop in the OS colour scheme's background before React
+// mounts (a new install follows the system theme; see defaultSchemePref), so there's no
+// flash of the wrong colour on first paint, no white in the iOS PWA home-indicator gap,
+// and no white frame during the browser back-swipe. #root is included because
+// react-native-web can size its root container to innerHeight (short of the full
+// screen in a standalone PWA), leaving a strip the backdrop must cover. The live theme
+// keeps these in sync at runtime (see ThemeProvider's web effect), which also covers an
+// explicit light/dark pick that differs from the OS.
+const backdropCss = [
+  `html, body, #root { background-color: ${colors.light.background}; }`,
+  `@media (prefers-color-scheme: dark) { html, body, #root { background-color: ${colors.dark.background}; } }`,
+].join('\n');
 
 // Cascade-layer order for Uniwind (Tailwind v4) + react-native-web. Tailwind v4 ships
 // in layers (preflight in `base`, classes in `utilities`), and Uniwind moves RNW's

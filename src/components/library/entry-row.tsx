@@ -4,18 +4,16 @@ import { View } from 'react-native';
 
 import { useFavourites, useToggleFavourite } from '@/api/hooks';
 import type { FsEntry } from '@/api/types';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { bookHref, libraryHref } from '@/lib/paths';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
-// A quiet surface row: soft shadow in light, hairline border in dark. The loud
-// filled folder/book blocks are demoted to a tinted glyph tile - folders keep a
-// pink identity (primary/10), books/files a harmonized low-alpha blue tint.
-const ROW_SURFACE =
-  'rounded-xl bg-white shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none';
+// A quiet surface row (PressableRow). The loud filled folder/book blocks are demoted to
+// a tinted glyph tile - folders keep a pink identity (brand/10), books/files a
+// low-alpha info-blue tint.
 
 /** One row in the filesystem browse view: a folder (pink glyph tile, drill in) or
  * an audio file (blue glyph tile, opens the book). `connectionId` is the browse
@@ -29,6 +27,7 @@ export function EntryRow({
   connectionId: string;
   libraryId: number;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const isDir = entry.is_dir;
   const { data: favourites } = useFavourites();
@@ -60,21 +59,21 @@ export function EntryRow({
   return (
     <View className="my-1 w-full flex-row items-center gap-2">
       <Link href={href} asChild>
-        <AnimatedPressable
+        <PressableRow
           accessibilityRole="link"
-          className={`flex-1 flex-row items-center gap-3 px-3 py-2 ${ROW_SURFACE}`}
+          className="flex-1 flex-row items-center gap-3 px-3 py-2"
         >
           <View
-            className={`h-10 w-10 items-center justify-center rounded-lg ${isDir ? 'bg-primary/10' : 'bg-blue-500/10 dark:bg-blue-500/15'}`}
+            className={`h-10 w-10 items-center justify-center rounded-lg ${isDir ? 'bg-brand/10' : 'bg-info/10'}`}
           >
             <Icon
               name={isDir ? 'folder' : 'book'}
               size={18}
-              color={isDir ? colors.primary : colors.blue}
+              color={isDir ? themed.brand : themed.info}
             />
           </View>
           <View className="flex-1">
-            <Text variant="subtitle" numberOfLines={1}>
+            <Text variant="label" numberOfLines={1}>
               {title}
             </Text>
             {meta ? (
@@ -84,23 +83,23 @@ export function EntryRow({
             ) : null}
           </View>
           <Icon name="chevron-right" size={16} />
-        </AnimatedPressable>
+        </PressableRow>
       </Link>
-      <AnimatedPressable
+      <PressableRow
         onPress={() => toggleFavourite.mutate({ libraryId, path: entry.path, on: !isFavourite })}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={
           isFavourite ? t('library.favourite.remove') : t('library.favourite.add')
         }
-        className={`h-11 w-11 items-center justify-center ${ROW_SURFACE}`}
+        className="h-11 w-11 items-center justify-center"
       >
         <Icon
           name={isFavourite ? 'heart-solid' : 'heart'}
           size={18}
-          color={isFavourite ? colors.primary : undefined}
+          color={isFavourite ? themed.brand : undefined}
         />
-      </AnimatedPressable>
+      </PressableRow>
     </View>
   );
 }

@@ -5,12 +5,14 @@ import { Platform, Pressable, ScrollView, View } from 'react-native';
 
 import { ApiClient, ApiError } from '@/api/client';
 import { Logo } from '@/components/brand/logo';
+import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
+import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import {
@@ -20,10 +22,27 @@ import {
 } from '@/lib/known-servers';
 import { normalizeUrl } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
 
-export default function ConnectServerScreen() {
+/**
+ * An authenticated user can still reach /connect to ADD another server: the entry point
+ * passes ?add=1, a QR/invite carries ?token=, and the sign-in step is mid-flow
+ * (pendingServerUrl set). Otherwise they're bounced home. Decided here, from this route's
+ * own params (see the note in `_layout.tsx`).
+ */
+export default function ConnectRoute() {
+  const status = useSession((s) => s.status);
+  const pendingServerUrl = useSession((s) => s.pendingServerUrl);
+  const { add, token } = useLocalSearchParams<{ add?: string; token?: string }>();
+  if (status === 'authenticated' && !add && !token && !pendingServerUrl) {
+    return <LeaveOnboarding />;
+  }
+  return <ConnectServerScreen />;
+}
+
+function ConnectServerScreen() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   // A copy-invite link or pairing QR opens this screen with a pairing `token`
   // (and, on native, the `server` it belongs to). When present we exchange it for
@@ -69,7 +88,7 @@ export default function ConnectServerScreen() {
           token: session.token,
           user: session.user,
         });
-        router.replace('/');
+        leaveOnboarding();
       } catch (e) {
         if (cancelled) return;
         setPairError(
@@ -156,7 +175,7 @@ export default function ConnectServerScreen() {
         token: demo.token,
         user: demo.user,
       });
-      router.replace('/');
+      leaveOnboarding();
     } catch (e) {
       setError(
         e instanceof ApiError
@@ -179,7 +198,7 @@ export default function ConnectServerScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <SafeAreaView className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="grow justify-center gap-8 p-6"
         keyboardShouldPersistTaps="handled"
@@ -187,16 +206,19 @@ export default function ConnectServerScreen() {
         <View className="items-center gap-3">
           <Logo size={64} />
           {/* eslint-disable-next-line i18next/no-literal-string -- brand wordmark, never translated */}
-          <Text className="text-primary">AudioSilo</Text>
+          <Text variant="display" className="text-brand">
+            AudioSilo
+          </Text>
           <Text variant="muted">{t('connect.server.subtitle')}</Text>
         </View>
         {connectionCount === 0 && known.length > 0 ? (
           <View className="gap-3">
-            <Text variant="label">{t('reconnect.connect.heading')}</Text>
+            <Text variant="eyebrow">{t('reconnect.connect.heading')}</Text>
             {known.map((entry) => (
               <View key={entry.serverId} className="flex-row items-center gap-2">
                 <View className="flex-1">
                   <Button
+                    size="lg"
                     title={t('reconnect.connect.action', { name: entry.name })}
                     icon="server"
                     variant="secondary"
@@ -211,16 +233,20 @@ export default function ConnectServerScreen() {
                   onPress={() => onForget(entry.serverId)}
                   className="h-11 w-11 items-center justify-center rounded-lg active:opacity-60"
                 >
-                  <Icon name="close" size={16} color={colors.dark.textMuted} />
+                  <Icon name="close" size={16} color={themed.mutedForeground} />
                 </Pressable>
               </View>
             ))}
             <LabeledDivider label={t('connect.server.or')} />
           </View>
         ) : null}
-        {pairError ? <Text className="text-center text-sm">{pairError}</Text> : null}
+        {pairError ? (
+          <Text className="text-center text-sm text-destructive">{pairError}</Text>
+        ) : null}
         <View>
-          <TextField
+          <Input
+            containerClassName="mb-4"
+            size="lg"
             label={t('connect.server.addressLabel')}
             placeholder="https://books.example.com"
             value={url}
@@ -234,6 +260,7 @@ export default function ConnectServerScreen() {
             onSubmitEditing={onConnect}
           />
           <Button
+            size="lg"
             title={t('connect.server.connect')}
             icon="server"
             loading={busy === 'manual'}
@@ -248,12 +275,14 @@ export default function ConnectServerScreen() {
               {t('connect.server.demoIntro')}
             </Text>
             <Button
+              size="lg"
               title={t('connect.server.tryDemo')}
               icon="play"
               loading={demoLoading}
               onPress={onTryDemo}
             />
             <Button
+              size="lg"
               title={t('connect.server.signInInstead')}
               variant="secondary"
               onPress={() => router.push('/connect/sign-in')}
@@ -264,6 +293,7 @@ export default function ConnectServerScreen() {
           <View className="gap-4">
             <LabeledDivider label={t('connect.server.or')} />
             <Button
+              size="lg"
               title={t('connect.server.scanQr')}
               icon="qrcode"
               variant="secondary"
@@ -281,9 +311,9 @@ export default function ConnectServerScreen() {
 function LabeledDivider({ label }: { label: string }) {
   return (
     <View className="flex-row items-center gap-3">
-      <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+      <Separator className="w-auto flex-1" />
       <Text variant="muted">{label}</Text>
-      <View className="h-px flex-1 bg-gray-300 dark:bg-gray-750" />
+      <Separator className="w-auto flex-1" />
     </View>
   );
 }

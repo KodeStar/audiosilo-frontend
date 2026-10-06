@@ -6,7 +6,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** One row in the chapter/file picker. `sublabel` carries an optional time. */
 export type ChapterItem = { key: string; label: string; sublabel?: string };
@@ -16,7 +16,7 @@ const ROW_H = 56;
 /**
  * The player's chapter (or file) list, shown in the shared bottom `Sheet` (which
  * itself avoids RN `<Modal>` so it presents inside the iOS full-screen player).
- * Opens scrolled to the current chapter, highlighted in primary with a glyph.
+ * Opens scrolled to the current chapter, highlighted in brand pink with a glyph.
  */
 export function ChapterListSheet({
   title,
@@ -33,6 +33,7 @@ export function ChapterListSheet({
   onClose: () => void;
   visible?: boolean;
 }) {
+  const themed = useThemeColors();
   const { height } = useWindowDimensions();
   const startIndex = items.length > 0 ? Math.max(0, Math.min(currentIndex, items.length - 1)) : 0;
 
@@ -60,7 +61,7 @@ export function ChapterListSheet({
             >
               <View className="w-6 items-center">
                 {current ? (
-                  <Icon name="play" size={12} color={colors.primary} />
+                  <Icon name="play" size={12} color={themed.brand} />
                 ) : (
                   <Text variant="caption" style={tabularNums}>
                     {index + 1}
@@ -69,7 +70,7 @@ export function ChapterListSheet({
               </View>
               <Text
                 numberOfLines={1}
-                className={`flex-1 ${current ? 'text-primary' : 'text-gray-700'}`}
+                className={`flex-1 ${current ? 'font-sans-semibold text-brand-ink' : ''}`}
               >
                 {prettifyChapterTitle(item.label)}
               </Text>
@@ -77,7 +78,7 @@ export function ChapterListSheet({
                 <Text
                   variant="caption"
                   style={tabularNums}
-                  className={current ? 'text-primary' : undefined}
+                  className={current ? 'text-brand-ink' : undefined}
                 >
                   {item.sublabel}
                 </Text>

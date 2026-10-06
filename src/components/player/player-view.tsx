@@ -25,12 +25,14 @@ import { SeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
+import { currentSegment, stepSegment } from '@/components/player/transport';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock } from '@/lib/format';
 import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
@@ -43,9 +45,9 @@ import {
   usePlayer,
 } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { useTheme } from '@/theme/theme-provider';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 type PlayerSheet =
   'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | 'menu' | null;
@@ -103,15 +105,14 @@ function MenuRow({
   label: string;
   onPress: () => void;
 }) {
-  const { scheme } = useTheme();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
+  const themed = useThemeColors();
   return (
     <AnimatedPressable
       onPress={onPress}
       accessibilityRole="button"
       className="flex-row items-center gap-3 rounded-xl px-4 py-3.5"
     >
-      <Icon name={icon} size={20} color={neutral} />
+      <Icon name={icon} size={20} color={themed.foreground} />
       <Text variant="title">{label}</Text>
     </AnimatedPressable>
   );
@@ -119,9 +120,9 @@ function MenuRow({
 
 /**
  * The full transport for the currently-playing book, driven by the player store.
- * Rendered inside the player modal (phone) and as the right-hand panel on the
- * desktop book screen - identical everywhere except the close button, which the
- * phone modal supplies via `onClose` (the desktop panel has nothing to close).
+ * Rendered by the full-screen player modal (`src/app/player.tsx`), which supplies the
+ * close button via `onClose`. (Tablet and desktop also have the docked player bar,
+ * `src/components/shell/docked-player.tsx`, whose expand button opens this modal.)
  *
  * The body is an ambient "listening room": a blurred rendition of the cover fills
  * the background under a scrim, the cover floats, and the transport sits directly
@@ -129,14 +130,13 @@ function MenuRow({
  * `Sheet` renders inline, so it must sit at a top-level position, not nested in a
  * footer control).
  */
-export function PlayerView({ onClose }: { onClose?: () => void }) {
+export function PlayerView({ onClose }: { onClose: () => void }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { scheme } = useTheme();
   const { height } = useWindowDimensions();
   // The player fills the screen edge-to-edge (backdrop under the status bar); the
   // top controls + footer pad themselves clear of the notch / home indicator.
   const insets = useSafeAreaInsets();
-  const neutral = scheme === 'dark' ? colors.dark.textStrong : colors.light.textStrong;
   const [sheet, setSheet] = useState<PlayerSheet>(null);
   // Live scrub preview (segment-relative seconds) while dragging the seek bar; the
   // time labels track it, and it commits on release.
@@ -245,14 +245,11 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const { queue, title, author, libraryId, path, connectionId } = nowPlaying;
   const total = queue.total;
 
-  // Overflow-menu actions. In the phone modal (`onClose` present) we replace the
-  // player screen so the target takes its place; in the desktop inline panel (no
-  // modal to close) we push. Playback keeps running for the first two - only "mark
-  // finished" tears it down.
+  // Overflow-menu actions replace the player modal so the target takes its place.
+  // Playback keeps running for the first two - only "mark finished" tears it down.
   const goTo = (href: Parameters<typeof router.replace>[0]) => {
     setSheet(null);
-    if (onClose) router.replace(href);
-    else router.push(href);
+    router.replace(href);
   };
   const onViewDetails = () => goTo(bookHref(connectionId, libraryId, path));
   const onViewCredits = () => goTo(finishedHref(connectionId, libraryId, path));
@@ -264,10 +261,6 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     goTo(finishedHref(info.connectionId, info.libraryId, info.path, true));
   };
   const rateLabel = `${Number(rate.toFixed(2))}×`;
-  // When file durations are unknown (total 0), the whole-book timeline isn't
-  // reliable - drive the UI from the engine's current-track position/duration
-  // and navigate per-file instead.
-  const perTrack = total <= 0;
   // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
   // playback). Surface it with a retry rather than silently sitting on a dead
   // stream where the play button does nothing. While buffering ('loading') show a
@@ -275,15 +268,21 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   const isError = playbackState === 'error';
   const isLoading = playbackState === 'loading';
 
-  const segStart = currentChapter ? currentChapter.book_offset : 0;
-  const segLength = perTrack
-    ? Math.max(1, trackDur)
-    : currentChapter
-      ? Math.max(1, currentChapter.end - currentChapter.start)
-      : total;
-  const segElapsedRaw = perTrack
-    ? trackPos
-    : Math.max(0, Math.min(segLength, bookPosition - segStart));
+  // When file durations are unknown (total 0), the whole-book timeline isn't
+  // reliable - drive the UI from the engine's current-track position/duration
+  // and navigate per-file instead.
+  const {
+    perTrack,
+    start: segStart,
+    length: segLength,
+    elapsed: segElapsedRaw,
+  } = currentSegment({
+    total,
+    bookPosition,
+    chapter: currentChapter,
+    trackPosition: trackPos,
+    trackDuration: trackDur,
+  });
   // While scrubbing, the labels preview the drag position.
   const segElapsed = scrubPreview ?? segElapsedRaw;
   const segRemaining = Math.max(0, segLength - segElapsed);
@@ -296,30 +295,14 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
   // Title line: the current chapter, else the current file's name.
   const track = queue.tracks[trackIndex];
   const trackName = track ? pathLeaf(track.id.split(':').slice(1).join(':')) || title : title;
-  const segTitleRaw = currentChapter
-    ? currentChapter.title ||
-      t('player.chapters.chapterNumber', { number: currentChapter.index + 1 })
-    : trackName;
-  const segTitle = prettifyChapterTitle(segTitleRaw);
+  const segTitle = currentChapter
+    ? chapterLabel(currentChapter, t)
+    : prettifyChapterTitle(trackName);
   const secondaryLine = author ? `${title} · ${author}` : title;
 
   // Prev/next: per file when there's no timeline, else by chapter/file boundary.
-  const segs = queue.chapters.length > 0 ? queue.chapters.map((c) => c.book_offset) : queue.offsets;
-  const curStart = [...segs].reverse().find((s) => s <= bookPosition + 0.01) ?? 0;
-  const goNext = () => {
-    if (perTrack) return void goToTrack(trackIndex + 1);
-    const n = segs.find((s) => s > bookPosition + 1.5);
-    if (n !== undefined) void seekBook(n);
-  };
-  const goPrev = () => {
-    if (perTrack) {
-      if (trackPos > 3) return void seekInTrack(0);
-      return void goToTrack(trackIndex - 1);
-    }
-    if (bookPosition - curStart > 3) return void seekBook(curStart);
-    const prior = segs.filter((s) => s < curStart - 0.01);
-    void seekBook(prior.length ? prior[prior.length - 1] : 0);
-  };
+  const goNext = () => stepSegment(usePlayer.getState(), 1);
+  const goPrev = () => stepSegment(usePlayer.getState(), -1);
 
   // Tapping the chapter title opens a list of all chapters (or files, when the
   // book has no chapters), scrolled to the current one.
@@ -349,21 +332,19 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
     <View className="flex-1">
       <CoverBackdrop source={coverSource} />
 
-      {/* Header (auto height). The close button is mobile-only; the right side is
-          the shared action area (notes + bookmarks). Padded below the status-bar
-          inset so it clears the notch (the backdrop paints under it). */}
+      {/* Header (auto height): close on the left, the action area (notes + bookmarks +
+          menu) on the right. Padded below the status-bar inset so it clears the notch
+          (the backdrop paints under it). */}
       <View className="flex-row items-center px-4 py-2" style={{ paddingTop: insets.top + 8 }}>
-        {onClose ? (
-          <AnimatedPressable
-            onPress={onClose}
-            hitSlop={12}
-            className="h-9 w-9 items-center justify-center"
-            accessibilityRole="button"
-            accessibilityLabel={t('player.controls.close')}
-          >
-            <Icon name="chevron-down" size={26} color={neutral} />
-          </AnimatedPressable>
-        ) : null}
+        <AnimatedPressable
+          onPress={onClose}
+          hitSlop={12}
+          className="h-9 w-9 items-center justify-center"
+          accessibilityRole="button"
+          accessibilityLabel={t('player.controls.close')}
+        >
+          <Icon name="chevron-down" size={26} color={themed.foreground} />
+        </AnimatedPressable>
         <View className="ml-auto flex-row items-center gap-2">
           <AnimatedPressable
             onPress={() => setSheet('notes')}
@@ -372,7 +353,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.notes.label')}
           >
-            <Icon name="notes" size={20} color={neutral} />
+            <Icon name="notes" size={20} color={themed.foreground} />
           </AnimatedPressable>
           <AnimatedPressable
             onPress={() => setSheet('bookmarks')}
@@ -381,7 +362,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.bookmarks.label')}
           >
-            <Icon name="bookmark" size={20} color={neutral} />
+            <Icon name="bookmark" size={20} color={themed.foreground} />
           </AnimatedPressable>
           <AnimatedPressable
             onPress={() => setSheet('menu')}
@@ -390,7 +371,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.menu.label')}
           >
-            <Icon name="ellipsis" size={20} color={neutral} />
+            <Icon name="ellipsis" size={20} color={themed.foreground} />
           </AnimatedPressable>
         </View>
       </View>
@@ -412,19 +393,16 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
               // badge whether or not that window fades the audio.
               <View
                 className={`absolute right-2 top-2 flex-row items-center gap-1 rounded-full px-2 py-1 ${
-                  sleepPhase === 'running' ? 'bg-black/60' : 'bg-primary'
+                  sleepPhase === 'running' ? 'bg-black/60' : 'bg-brand'
                 }`}
               >
                 <Icon name="sleep" size={12} color={colors.white} />
                 {sleepPhase === 'grace' ? (
-                  <RNText className="font-roboto-medium text-xs text-white dark:text-white">
+                  <RNText className="font-sans-medium text-xs text-white">
                     {t('player.sleepTimer.keepGoingShort')}
                   </RNText>
                 ) : sleepRemaining !== null ? (
-                  <RNText
-                    className="font-sans text-xs text-white dark:text-white"
-                    style={tabularNums}
-                  >
+                  <RNText className="font-sans text-xs text-white" style={tabularNums}>
                     {formatClock(sleepRemaining)}
                   </RNText>
                 ) : null}
@@ -447,7 +425,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 <Text variant="heading" className="text-center" numberOfLines={2}>
                   {segTitle}
                 </Text>
-                <Icon name="list" size={14} color={neutral} />
+                <Icon name="list" size={14} color={themed.foreground} />
               </AnimatedPressable>
             ) : (
               <Text variant="heading" className="text-center" numberOfLines={2}>
@@ -482,16 +460,14 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             </View>
 
             {isError ? (
-              <View className="mt-3 flex-row items-center justify-center gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
-                <RNText className="font-sans text-xs text-danger-600 dark:text-danger">
-                  {t('ui.error')}
-                </RNText>
+              <View className="mt-3 flex-row items-center justify-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+                <RNText className="font-sans text-xs text-destructive">{t('ui.error')}</RNText>
                 <AnimatedPressable
                   onPress={() => void retry()}
-                  className="rounded-lg bg-primary px-4 py-1.5"
+                  className="rounded-lg bg-brand px-4 py-1.5"
                   accessibilityRole="button"
                 >
-                  <RNText className="font-roboto-medium text-base text-white dark:text-white">
+                  <RNText className="font-sans-medium text-base text-brand-foreground">
                     {t('common.retry')}
                   </RNText>
                 </AnimatedPressable>
@@ -506,14 +482,14 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 accessibilityRole="button"
                 accessibilityLabel={t('player.controls.previous')}
               >
-                <Icon name="prev" size={22} color={neutral} />
+                <Icon name="prev" size={22} color={themed.foreground} />
               </AnimatedPressable>
 
               <SkipButton
                 direction="back"
                 seconds={skipBackward}
                 onPress={() => void skipSeconds(-skipBackward)}
-                color={neutral}
+                color={themed.foreground}
                 fontSize={15}
                 className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
@@ -521,7 +497,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
 
               <AnimatedPressable
                 onPress={() => (isError ? void retry() : void toggle())}
-                className="h-[112px] w-[112px] items-center justify-center rounded-full bg-primary"
+                className="h-[112px] w-[112px] items-center justify-center rounded-full bg-brand"
                 accessibilityRole="button"
                 accessibilityLabel={
                   isPlaying ? t('player.controls.pause') : t('player.controls.play')
@@ -560,7 +536,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 direction="forward"
                 seconds={skipForward}
                 onPress={() => void skipSeconds(skipForward)}
-                color={neutral}
+                color={themed.foreground}
                 fontSize={15}
                 className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
                 accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
@@ -573,7 +549,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
                 accessibilityRole="button"
                 accessibilityLabel={t('player.controls.next')}
               >
-                <Icon name="next" size={22} color={neutral} />
+                <Icon name="next" size={22} color={themed.foreground} />
               </AnimatedPressable>
             </View>
           </View>
@@ -594,7 +570,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
           accessibilityRole="button"
           accessibilityLabel={t('player.history.label')}
         >
-          <Icon name="history" size={20} color={neutral} />
+          <Icon name="history" size={20} color={themed.foreground} />
         </AnimatedPressable>
         {/* AirPlay / cast: shown only where the engine can present a picker. A
             spacer keeps the row balanced when it's hidden. */}
@@ -606,7 +582,7 @@ export function PlayerView({ onClose }: { onClose?: () => void }) {
             accessibilityRole="button"
             accessibilityLabel={t('player.routePicker.label')}
           >
-            <Icon name="airplay" size={20} color={neutral} />
+            <Icon name="airplay" size={20} color={themed.foreground} />
           </AnimatedPressable>
         ) : (
           <View className="w-5" />

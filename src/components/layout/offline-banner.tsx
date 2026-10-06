@@ -1,17 +1,16 @@
-import { useGlobalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { anyOffline, useReachability } from '@/api/reachability';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { connectionParam } from '@/lib/paths';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 function Bar({ label }: { label: string }) {
+  const themed = useThemeColors();
   return (
-    <View className="flex-row items-center justify-center gap-2 border-b border-gray-200 bg-gray-100 py-1.5 dark:border-gray-750 dark:bg-gray-860">
-      <Icon name="offline" size={12} color={colors.dark.textMuted} />
+    <View className="flex-row items-center justify-center gap-2 border-b border-border bg-muted py-1.5">
+      <Icon name="offline" size={12} color={themed.mutedForeground} />
       <Text variant="caption">{label}</Text>
     </View>
   );
@@ -22,21 +21,22 @@ function Bar({ label }: { label: string }) {
  * walked away from). Playback of downloaded books carries on; progress is saved locally
  * and syncs automatically when the server comes back.
  *
- * Reachability is per-connection, so the message depends on where you are:
- *  - on a connection-scoped screen (a content route carrying `?connection=<cid>`): shows
- *    *that* server's own state;
- *  - on an aggregated screen (Home/Search/Libraries): a muted "some servers offline"
- *    when ANY connection is down (it can't point at one server).
+ * Reachability is per-connection, so the message depends on the page it heads:
+ *  - a connection-scoped page (a content route carrying `?connection=<cid>`, passed as
+ *    `connectionId`): *that* server's own state;
+ *  - an aggregated page (Home/Search/Libraries): a muted "some servers offline" when ANY
+ *    connection is down (it can't point at one server).
+ *
+ * The caller passes the page's connection (each phone header its own route's param; the
+ * wide shell the focused page's), so a banner subscribes to no route state, and it
+ * selects only which message shows, re-rendering when that changes.
  */
-export function OfflineBanner() {
+export function OfflineBanner({ connectionId }: { connectionId?: string }) {
   const { t } = useTranslation();
-  const online = useReachability((s) => s.online);
-  const { connection } = useGlobalSearchParams<{ connection?: string | string[] }>();
-  const scopeCid = connectionParam(connection);
-
-  if (scopeCid) {
-    const reachable = online[scopeCid] ?? true;
-    return reachable ? null : <Bar label={t('nav.offline')} />;
-  }
-  return anyOffline(online) ? <Bar label={t('nav.someOffline')} /> : null;
+  const message = useReachability((s) => {
+    if (connectionId) return s.online[connectionId] === false ? 'scoped' : null;
+    return anyOffline(s.online) ? 'some' : null;
+  });
+  if (message === 'scoped') return <Bar label={t('nav.offline')} />;
+  return message === 'some' ? <Bar label={t('nav.someOffline')} /> : null;
 }

@@ -1,68 +1,118 @@
-import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { type LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
+  makeMutable,
   useAnimatedStyle,
   useReducedMotion,
-  useSharedValue,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/theme/theme-provider';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
-const PULSE_MS = 1000;
-const DIM = 0.55;
-
-// The fill color as a raw value (gray-300 light / gray-750 dark), on the inner
-// animated layer rather than a className: animated style and className stay on
-// separate views (why: animated-pressable.native.tsx).
-const FILL = { light: '#d1d5db', dark: '#2c3340' } as const;
+/** One sweep of the highlight across the block (STYLEGUIDE.md section 8: 1.4 s). */
+const SHIMMER_MS = 1400;
 
 export type SkeletonProps = {
-  /** Shape utilities for the placeholder, e.g. "h-4 w-32 rounded-md". */
+  /** Shape utilities for the placeholder, e.g. "h-4 w-32 rounded-md": the exact shape of
+   * what loads in its place, so nothing shifts when it does. */
   className?: string;
   testID?: string;
 };
 
 /**
- * A theme-aware placeholder block that gently pulses its opacity (~1s loop,
- * 0.55<->1). Pass `className` for the shape (size + rounding). Reduced motion
- * renders it static.
+ * A Stacks skeleton (react-native-reusables' Skeleton, reworked): a `muted` block with a
+ * soft `card` highlight sweeping across it every 1.4 s. Reduced motion renders it static.
+ *
+ * Web: one element, the band a CSS gradient moved by a keyframe animation (the
+ * `skeleton-shimmer` utility in src/global.css, off under `prefers-reduced-motion`).
+ * Native: a react-native-svg gradient band on its own inner view, moved by ONE shared
+ * clock that every skeleton on screen reads (so a list of placeholders runs one
+ * animation, in step), started by the first and stopped with the last. Animated style
+ * and className stay on separate views (why: animated-pressable.native.tsx).
  */
 export function Skeleton({ className, testID }: SkeletonProps) {
-  const reduced = useReducedMotion();
-  const { scheme } = useTheme();
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    if (reduced) {
-      opacity.value = 1;
-      return;
-    }
-    opacity.value = withRepeat(
-      withTiming(DIM, { duration: PULSE_MS, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
+  if (Platform.OS === 'web') {
+    return (
+      <View
+        testID={testID}
+        className={cn('overflow-hidden rounded-md bg-muted skeleton-shimmer', className)}
+      />
     );
-  }, [reduced, opacity]);
+  }
+  return <NativeSkeleton className={className} testID={testID} />;
+}
 
-  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  // Outer: shape/size via className only (no animated style). Inner: the pulsing
-  // fill, clipped to the outer's rounding by overflow-hidden.
+function NativeSkeleton({ className, testID }: SkeletonProps) {
+  const reduced = useReducedMotion();
+  const [width, setWidth] = useState(0);
+  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
   return (
-    <View testID={testID} className={cn('overflow-hidden', className)}>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: FILL[scheme] }, style]} />
+    <View
+      testID={testID}
+      onLayout={onLayout}
+      className={cn('overflow-hidden rounded-md bg-muted', className)}
+    >
+      {!reduced && width > 0 ? <Shimmer width={width} /> : null}
     </View>
   );
 }
 
+/** The shared shimmer clock (native): 0 -> 1 every `SHIMMER_MS`, while any shimmer shows. */
+const clock = makeMutable(0);
+let shimmers = 0;
+
+function useShimmerClock() {
+  useEffect(() => {
+    shimmers += 1;
+    if (shimmers === 1) {
+      clock.value = 0;
+      clock.value = withRepeat(
+        withTiming(1, { duration: SHIMMER_MS, easing: Easing.linear }),
+        -1,
+        false,
+      );
+    }
+    return () => {
+      shimmers -= 1;
+      if (shimmers === 0) cancelAnimation(clock);
+    };
+  }, []);
+  return clock;
+}
+
+function Shimmer({ width }: { width: number }) {
+  const { card } = useThemeColors();
+  const progress = useShimmerClock();
+  // The band (as wide as the block) sweeps from fully left of it to fully right.
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: (progress.value * 2 - 1) * width }],
+  }));
+  return (
+    <Animated.View testID="skeleton-shimmer" style={[StyleSheet.absoluteFill, style]}>
+      <Svg width="100%" height="100%" preserveAspectRatio="none">
+        <Defs>
+          {/* Each Svg is its own document on native, so a fixed id is safe. */}
+          <LinearGradient id="skeleton-band" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={card} stopOpacity={0} />
+            <Stop offset="0.5" stopColor={card} stopOpacity={0.55} />
+            <Stop offset="1" stopColor={card} stopOpacity={0} />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#skeleton-band)" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
 /**
- * The app's most common loading silhouette: a short stack of full-width
- * elevated-row placeholders (matching the quiet surface rows used across the
- * Libraries/Favourites lists). `count` defaults to 4.
+ * The app's most common loading silhouette: a short stack of full-width row
+ * placeholders (the quiet RowSurface rows of the Libraries/Favourites lists). `count`
+ * defaults to 4.
  */
 export function RowSkeletonList({ count = 4 }: { count?: number }) {
   return (
@@ -88,7 +138,7 @@ export function SkeletonText({ lines = 2, className }: SkeletonTextProps) {
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton
           key={i}
-          className={`h-3.5 rounded-sm ${i === lines - 1 && lines > 1 ? 'w-2/3' : 'w-full'}`}
+          className={cn('h-3.5 rounded-sm', i === lines - 1 && lines > 1 ? 'w-2/3' : 'w-full')}
         />
       ))}
     </View>

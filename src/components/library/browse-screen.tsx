@@ -16,7 +16,8 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
+import { RowSurface } from '@/components/ui/row-surface';
 import {
   filterEntries,
   groupByLetter,
@@ -45,16 +46,13 @@ function BrowseSkeleton() {
   return (
     <View className="px-4 pt-2 lg:px-8">
       {Array.from({ length: 8 }).map((_, i) => (
-        <View
-          key={i}
-          className="my-1 h-14 flex-row items-center gap-3 rounded-xl bg-white px-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
-        >
+        <RowSurface key={i} className="my-1 h-14 flex-row items-center gap-3 px-3">
           <Skeleton className="h-10 w-10 rounded-lg" />
           <View className="flex-1 gap-2">
             <Skeleton className="h-3.5 w-1/2 rounded-sm" />
             <Skeleton className="h-3 w-1/3 rounded-sm" />
           </View>
-        </View>
+        </RowSurface>
       ))}
     </View>
   );
@@ -201,13 +199,10 @@ function BrowseContent() {
 
   const renderItem: ListRenderItem<Row> = ({ item }) =>
     item.type === 'header' ? (
-      // Background matches the page (gray-200/gray-800) so the sticky header
+      // Background matches the page (bg-background) so the sticky header
       // occludes scrolled rows without showing as a distinct block.
-      <View
-        style={{ height: HEADER_H }}
-        className="justify-end bg-gray-200 px-4 pb-2 dark:bg-gray-800 lg:px-8"
-      >
-        <Text variant="label">{item.letter}</Text>
+      <View style={{ height: HEADER_H }} className="justify-end bg-background px-4 pb-2 lg:px-8">
+        <Text variant="eyebrow">{item.letter}</Text>
       </View>
     ) : (
       <View style={{ height: ENTRY_H }} className="px-4 lg:px-8">
@@ -224,8 +219,8 @@ function BrowseContent() {
         <View className="px-4 pt-4 lg:px-8">
           {crumbs.length > 1 ? <BreadCrumbs crumbs={crumbs} /> : null}
           {showTools ? (
-            <TextField
-              containerClassName={crumbs.length > 1 ? 'mt-3' : ''}
+            <Input
+              containerClassName={crumbs.length > 1 ? 'mb-4 mt-3' : 'mb-4'}
               placeholder={t('library.browse.filterPlaceholder')}
               value={query}
               onChangeText={setQuery}
@@ -297,7 +292,11 @@ function BrowseContent() {
                     accessibilityLabel={t('library.browse.jumpTo', { letter: l })}
                     className="w-7 flex-1 items-center justify-center rounded-full"
                   >
-                    <Text className={active ? 'text-primary' : 'dark:text-gray-700'}>{l}</Text>
+                    <Text
+                      className={`font-sans-semibold text-[11px] ${active ? 'text-brand-ink' : 'text-subtle-foreground'}`}
+                    >
+                      {l}
+                    </Text>
                   </AnimatedPressable>
                 );
               })}

@@ -1,26 +1,75 @@
+import { createContext, useContext } from 'react';
 import { Text as RNText, type TextProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
-
-type Variant = 'body' | 'muted' | 'heading' | 'title' | 'subtitle' | 'label' | 'caption';
-
-const variants: Record<Variant, string> = {
-  body: 'font-sans text-base text-gray-600 dark:text-gray-400',
-  muted: 'font-sans text-sm text-gray-500 dark:text-gray-500',
-  heading: 'font-roboto-semibold text-xl text-gray-700 dark:text-gray-100',
-  title: 'font-roboto-medium text-lg text-gray-700 dark:text-gray-200',
-  subtitle: 'font-roboto-medium text-sm text-gray-700 dark:text-gray-200',
-  label: 'font-roboto-regular text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400',
-  caption: 'font-sans text-xs text-gray-500 dark:text-gray-500',
-};
-
-export type AppTextProps = TextProps & { variant?: Variant; className?: string };
+import { tabularNums } from '@/theme/tabular-nums';
 
 /**
- * Themed text. A caller's class replaces the variant's class for the same property and
- * variant (`cn`). The variant's `dark:` colour is a different variant, so it stays and
- * wins in dark mode: recolour both themes with e.g. `text-primary dark:text-primary`.
+ * The Stacks type scale (STYLEGUIDE.md section 4), one variant per role. Sizes are
+ * Tailwind's rem steps (14px rem on native, 16px on web), the nearest to each role;
+ * colours are themed tokens, so no variant needs a `dark:` pair.
  */
-export function Text({ variant = 'body', className, ...props }: AppTextProps) {
-  return <RNText className={cn(variants[variant], className)} {...props} />;
+/** The eyebrow role's classes, for primitives that render their own text node (a field
+ * label, a menu label) and so can't use `<Text variant="eyebrow">`. */
+export const EYEBROW_CLASS =
+  'font-sans-semibold text-xs uppercase tracking-wider text-muted-foreground';
+
+const variants = {
+  /** Bricolage 750, set bold (static weights): book and series heroes. */
+  'display-xl': 'font-display text-4xl tracking-tighter text-foreground',
+  /** Bricolage 700: page greetings, onboarding titles. */
+  display: 'font-display text-3xl tracking-tight text-foreground',
+  /** Bricolage 680 (bold): section and page headings. */
+  heading: 'font-display text-xl tracking-tight text-foreground',
+  /** Bricolage 650 (semibold): card and sheet titles, book titles in lists. */
+  title: 'font-display-semibold text-base text-foreground',
+  /** Figtree 400: running text. */
+  body: 'font-sans text-base text-foreground',
+  /** Figtree 400, smaller and muted: secondary lines. */
+  muted: 'font-sans text-sm text-muted-foreground',
+  /** Figtree 650 (semibold): control labels, list-row titles. */
+  label: 'font-sans-semibold text-sm text-foreground',
+  /** Figtree 400, small and muted: meta lines ("22h 27m left at 1.25x"). */
+  caption: 'font-sans text-xs text-muted-foreground',
+  /** Figtree 650 caps: kickers above a title, field labels. */
+  eyebrow: EYEBROW_CLASS,
+  /** JetBrains Mono 500: paths, codes. */
+  mono: 'font-mono text-xs text-foreground',
+  /** Bricolage 750 (bold), tabular: stat values ("11h 6m"). */
+  stat: 'font-display text-2xl tracking-tight text-foreground',
+} as const;
+
+export type TextVariant = keyof typeof variants;
+
+/** Roles whose figures must not jitter as digits change (the guide's tabular-nums). */
+const TABULAR: ReadonlySet<TextVariant> = new Set(['stat', 'mono']);
+
+/**
+ * Classes a control hands to the `<Text>` inside it (react-native-reusables'
+ * convention): a Button sets its label colour and weight here, so
+ * `<Button><Text>Resume</Text></Button>` needs no classes of its own. Merged after the
+ * variant and before the caller's `className`, so an explicit class still wins.
+ *
+ * Only controls set it - never a container (Card, Dialog, Popover): a container's
+ * colour would override every `muted`/`caption` variant inside it.
+ */
+export const TextClassContext = createContext<string | undefined>(undefined);
+
+export type AppTextProps = TextProps & { variant?: TextVariant; className?: string };
+
+/**
+ * Themed text on the Stacks type scale, and the app's only Text component. A caller's
+ * class replaces the variant's class for the same property and variant (`cn`), so
+ * `<Text variant="caption" className="text-brand-ink">` recolours the caption in both
+ * themes (the colour is one themed token, not a light/dark pair).
+ */
+export function Text({ variant = 'body', className, style, ...props }: AppTextProps) {
+  const contextClass = useContext(TextClassContext);
+  return (
+    <RNText
+      className={cn(variants[variant], contextClass, className)}
+      style={TABULAR.has(variant) ? [tabularNums, style] : style}
+      {...props}
+    />
+  );
 }

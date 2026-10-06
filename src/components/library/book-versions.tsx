@@ -4,13 +4,13 @@ import { View } from 'react-native';
 
 import { useBookCopies, useSourceLabeller } from '@/api/hooks';
 import type { Book } from '@/api/types';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { useSession } from '@/stores/session';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // Reuse the shared, locale-aware byte formatter (so a GB-sized copy reads "2 GB",
 // not "2048 MB"); null drops the size hint from the `· `-joined quality line.
@@ -21,6 +21,7 @@ const mb = (n?: number) => (n && n > 0 ? formatBytes(n) : null);
  * copies across servers/libraries (with quality hints) to switch to. Hidden when
  * there's only one copy. Sits near the top of the book screen, under the breadcrumb. */
 export function BookVersions({ book, connectionId }: { book: Book; connectionId: string | null }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { copies, isLoading } = useBookCopies(book);
   const sourceOf = useSourceLabeller();
@@ -43,16 +44,16 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
 
   return (
     <View className="gap-1">
-      <AnimatedPressable
+      <PressableRow
         onPress={() => setOpen((v) => !v)}
         accessibilityRole="button"
         accessibilityLabel={t('library.versions.choose')}
         hitSlop={6}
-        className="flex-row items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+        className="flex-row items-center gap-3 px-4 py-3"
       >
-        <Icon name="server" size={16} color={colors.primary} />
+        <Icon name="server" size={16} color={themed.brand} />
         <View className="flex-1">
-          <Text variant="subtitle" numberOfLines={1}>
+          <Text variant="label" numberOfLines={1}>
             {currentSource || t('library.versions.thisCopy')}
           </Text>
           <Text variant="caption" numberOfLines={1}>
@@ -60,7 +61,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
           </Text>
         </View>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} />
-      </AnimatedPressable>
+      </PressableRow>
 
       {open
         ? others.map((c) => {
@@ -73,15 +74,15 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
               .filter(Boolean)
               .join(' · ');
             return (
-              <AnimatedPressable
+              <PressableRow
                 key={`${c.connectionId}:${c.libraryId}:${c.path}`}
                 onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
                 accessibilityRole="button"
-                className="ml-3 flex-row items-center gap-3 rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
+                className="ml-3 flex-row items-center gap-3 p-3"
               >
-                <Icon name="chevron-right" size={14} color={colors.primary} />
+                <Icon name="chevron-right" size={14} color={themed.brand} />
                 <View className="flex-1">
-                  <Text variant="subtitle" numberOfLines={1}>
+                  <Text variant="label" numberOfLines={1}>
                     {src}
                   </Text>
                   {quality ? (
@@ -90,7 +91,7 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
                     </Text>
                   ) : null}
                 </View>
-              </AnimatedPressable>
+              </PressableRow>
             );
           })
         : null}

@@ -1,3 +1,4 @@
+import { PortalHost } from '@rn-primitives/portal';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -7,22 +8,26 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiProvider } from '@/api/provider';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
+import { ShellToastHost } from '@/components/shell/shell-toast-host';
+import { RootInsetsProvider } from '@/components/ui/overlay';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
+import { migrateStorage } from '@/lib/storage-migration';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import '@/lib/register-sw';
 // Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
-// (which nests illegally and hits an older-Safari flex bug). All top-level imports
-// evaluate before the first render, so this patches RNW in time. No-op on native.
+// (which nests illegally and hits an older-Safari flex bug), and let Space activate
+// role-bearing pressables (tab, radio, switch...). All top-level imports evaluate before
+// the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
 import { useSeriesOrderings } from '@/stores/series-orderings';
-import { resetStaleStorage, useSession } from '@/stores/session';
+import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
-import { ThemeProvider, useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { ThemeProvider } from '@/theme/theme-provider';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 export const unstable_settings = {
   anchor: '(app)',
@@ -34,8 +39,7 @@ export const unstable_settings = {
  * transitions (and the swipe-back gesture) flash the default white card.
  */
 function RootNavigator() {
-  const { scheme } = useTheme();
-  const background = scheme === 'dark' ? colors.dark.bg : colors.light.bg;
+  const { background } = useThemeColors();
   return (
     <>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: background } }}>
@@ -69,7 +73,8 @@ export default function RootLayout() {
       // (and defeat hydrate()'s own fail-safe).
       let didReset = false;
       try {
-        const { authReset, cacheReset } = await resetStaleStorage();
+        // The one memoised launch migration (ThemeProvider awaits the same run).
+        const { authReset, cacheReset } = await migrateStorage();
         didReset = authReset || cacheReset;
       } catch (e) {
         console.warn('[storage] stale-state reset failed', e);
@@ -107,14 +112,24 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <LanguageProvider>
-          <ThemeProvider>
-            <ApiProvider>
-              <RootNavigator />
-              <StatusBar style="auto" />
-            </ApiProvider>
-          </ThemeProvider>
-        </LanguageProvider>
+        {/* The window's insets, for every overlay wherever it is opened from. */}
+        <RootInsetsProvider>
+          <LanguageProvider>
+            <ThemeProvider>
+              <ApiProvider>
+                <RootNavigator />
+                <StatusBar style="auto" />
+                {/* The native outlet for the portal-based overlays (Dialog, Select, menus,
+                  popovers: @rn-primitives). LAST, so portaled content stacks above every
+                  screen, and inside the providers it reads (theme, i18n, query client).
+                  Web overlays portal into document.body instead. Toasts sit above it,
+                  lifted clear of the shell's bottom chrome. */}
+                <PortalHost />
+                <ShellToastHost />
+              </ApiProvider>
+            </ThemeProvider>
+          </LanguageProvider>
+        </RootInsetsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

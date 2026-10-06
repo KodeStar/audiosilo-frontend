@@ -25,9 +25,7 @@ export function SpeedButton({ onPress }: { onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={t('player.speed.title')}
     >
-      <RNText className="font-roboto-medium text-base text-gray-700 dark:text-gray-200">
-        {fmt(rate)}
-      </RNText>
+      <RNText className="font-sans-medium text-base text-foreground">{fmt(rate)}</RNText>
     </AnimatedPressable>
   );
 }

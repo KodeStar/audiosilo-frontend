@@ -8,11 +8,13 @@ import type { Chapter } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
+import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
 import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Recent listening spans for a book. Each span shows its START (▶) and END (⏸)
  * positions, both independently tappable, so you can jump to either - the end is
@@ -36,6 +38,7 @@ export function HistorySection({
   emptyLabel?: string;
   chapters?: Chapter[];
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { data: history } = useHistory(libraryId, path, connectionId);
   // The book's own connection: passed in (player sheet) or the route scope (book
@@ -61,7 +64,7 @@ export function HistorySection({
 
   const labelAt = (pos: number): string => {
     const c = chapters && chapters.length > 0 ? chapterAt(chapters, pos) : null;
-    const name = c ? c.title || t('player.chapters.chapterNumber', { number: c.index + 1 }) : null;
+    const name = c ? chapterLabel(c, t) : null;
     return name ? `${formatClock(pos)} · ${name}` : formatClock(pos);
   };
 
@@ -72,12 +75,9 @@ export function HistorySection({
         const covered = Math.max(0, h.to_pos - h.from_pos);
         const speed = wall > 0 ? covered / wall : 0;
         return (
-          <View
-            key={h.id}
-            className="gap-1.5 rounded-xl bg-white p-3 shadow-xs dark:border dark:border-gray-750 dark:bg-gray-840 dark:shadow-none"
-          >
+          <RowSurface key={h.id} className="gap-1.5 p-3">
             <View className="flex-row items-center gap-2">
-              <Icon name="clock" size={13} color={colors.primary} />
+              <Icon name="clock" size={13} color={themed.brand} />
               <Text variant="caption" style={tabularNums}>
                 {new Date(h.started_at).toLocaleString()}
               </Text>
@@ -89,8 +89,8 @@ export function HistorySection({
               className="flex-row items-center gap-2 py-0.5"
               accessibilityRole="button"
             >
-              <Icon name="pause" size={13} color={colors.primary} />
-              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabularNums}>
+              <Icon name="pause" size={13} color={themed.brand} />
+              <Text variant="label" numberOfLines={1} className="flex-1" style={tabularNums}>
                 {labelAt(h.to_pos)}
               </Text>
             </AnimatedPressable>
@@ -100,7 +100,7 @@ export function HistorySection({
               accessibilityRole="button"
             >
               <Icon name="play" size={13} />
-              <Text variant="subtitle" numberOfLines={1} className="flex-1" style={tabularNums}>
+              <Text variant="label" numberOfLines={1} className="flex-1" style={tabularNums}>
                 {labelAt(h.from_pos)}
               </Text>
             </AnimatedPressable>
@@ -110,7 +110,7 @@ export function HistorySection({
                 {speed > 0 ? ` · ${Number(speed.toFixed(2))}×` : ''}
               </Text>
             ) : null}
-          </View>
+          </RowSurface>
         );
       })}
     </View>

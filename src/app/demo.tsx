@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
@@ -15,6 +14,7 @@ import { webOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
+import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
 
 /**
  * Public demo landing. On a demo server (e.g. demo.audiosilo.app), visiting this
@@ -80,15 +80,17 @@ export default function DemoScreen() {
   }
   // Returning visitor with an existing session and nothing newly provisioned: go in.
   if (status === 'authenticated' && !pairing) {
-    return <Redirect href="/" />;
+    return <LeaveOnboarding />;
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <SafeAreaView className="flex-1 bg-background">
       <ScrollView contentContainerClassName="grow items-center justify-center gap-8 p-6">
         <View className="items-center gap-3">
           <Logo size={64} />
-          <Text className="text-primary">{t('demo.title')}</Text>
+          <Text variant="display" className="text-brand">
+            {t('demo.title')}
+          </Text>
           <Text variant="muted" className="text-center">
             {t('demo.intro')}
           </Text>
@@ -96,8 +98,8 @@ export default function DemoScreen() {
 
         {error ? (
           <View className="items-center gap-4">
-            <Text className="text-center text-sm">{error}</Text>
-            <Button title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
+            <Text className="text-center text-sm text-destructive">{error}</Text>
+            <Button size="lg" title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />
           </View>
         ) : !pairing ? (
           <View className="items-center gap-4">
@@ -118,10 +120,11 @@ export default function DemoScreen() {
               {t('demo.scanHint')}
             </Text>
             <Button
+              size="lg"
               title={t('demo.browseHere')}
               icon="play"
               className="w-full"
-              onPress={() => router.replace('/')}
+              onPress={leaveOnboarding}
             />
           </View>
         )}

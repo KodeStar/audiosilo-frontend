@@ -5,7 +5,7 @@ import { Pressable } from 'react-native';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useSession } from '@/stores/session';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 /**
  * Slim, accent-bordered bar shown when a connection's token is being rejected (or its
@@ -19,6 +19,7 @@ import { colors } from '@/theme/tokens';
  * keeping the chrome unobtrusive.
  */
 export function ReconnectBanner() {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const connections = useSession((s) => s.connections);
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
@@ -42,14 +43,14 @@ export function ReconnectBanner() {
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      className="flex-row items-center gap-2 border-b border-l-4 border-b-gray-200 border-l-primary bg-primary/10 px-3 py-2 active:opacity-80 dark:border-b-gray-750"
+      className="flex-row items-center gap-2 border-b border-l-4 border-b-border border-l-brand bg-brand/10 px-3 py-2 active:opacity-80"
     >
-      <Icon name="server" size={13} color={colors.primary} />
-      <Text variant="caption" className="flex-1 text-primary">
+      <Icon name="server" size={13} color={themed.brand} />
+      <Text variant="caption" className="flex-1 text-brand-ink">
         {label}
         {extra > 0 ? ` ${t('reconnect.banner.more', { count: extra })}` : ''}
       </Text>
-      <Icon name="chevron-right" size={13} color={colors.primary} />
+      <Icon name="chevron-right" size={13} color={themed.brand} />
     </Pressable>
   );
 }

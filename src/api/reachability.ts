@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 
-import { onConnectionRemoved } from '@/stores/session';
+import { type Connection, onConnectionRemoved } from '@/stores/session';
 
 import { ApiError, type ApiClient } from './client';
 
@@ -41,6 +41,18 @@ export function isReachable(connectionId: string): boolean {
 /** Whether ANY known connection is currently marked offline (for the aggregated banner). */
 export function anyOffline(online: Record<string, boolean>): boolean {
   return Object.values(online).some((v) => !v);
+}
+
+export type ServerStatus = 'online' | 'offline' | 'reconnect';
+
+/** One connection's state as the chrome shows it: it needs signing in again (the
+ * reconnect flag wins - nothing syncs until then), it is unreachable, or it is fine. */
+export function serverStatus(
+  connection: Pick<Connection, 'id' | 'needsReconnect'>,
+  online: Record<string, boolean>,
+): ServerStatus {
+  if (connection.needsReconnect) return 'reconnect';
+  return online[connection.id] === false ? 'offline' : 'online';
 }
 
 /** Run `cb(connectionId)` whenever a connection's connectivity is restored. Returns an

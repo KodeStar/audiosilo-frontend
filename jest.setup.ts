@@ -61,7 +61,21 @@ jest.mock('react-native-reanimated', () => {
     Text,
     ScrollView,
     createAnimatedComponent: identity,
-    useSharedValue: <V>(init: V) => ({ value: init }),
+    // `get`/`set` too: the React Compiler-safe accessors the Slider uses. One object per
+    // component instance, like the real hook (a memo that lists it stays stable).
+    useSharedValue: <V>(init: V) =>
+      require('react').useState(() => {
+        const sv = {
+          value: init,
+          get: () => sv.value,
+          set: (next: unknown) => {
+            sv.value = (typeof next === 'function' ? next(sv.value) : next) as V;
+          },
+        };
+        return sv;
+      })[0],
+    // A module-level shared value (the skeletons' shared shimmer clock).
+    makeMutable: <V>(init: V) => ({ value: init }),
     useAnimatedStyle: (fn: () => unknown) => (typeof fn === 'function' ? fn() : {}),
     useDerivedValue: (fn: () => unknown) => ({
       value: typeof fn === 'function' ? fn() : undefined,
@@ -91,6 +105,16 @@ jest.mock('react-native-reanimated', () => {
     Extrapolation: { CLAMP: 'clamp', EXTEND: 'extend', IDENTITY: 'identity' },
     Easing,
     ReduceMotion: { System: 'system', Never: 'never', Always: 'always' },
+    // Layout-animation builders (`FadeIn.duration(200).reduceMotion(...)`): every
+    // modifier returns the same chainable stub; the mocked Animated views ignore them.
+    ...Object.fromEntries(
+      ['FadeIn', 'FadeOut', 'FadeInUp', 'FadeInDown', 'SlideInDown', 'SlideOutDown'].map((n) => {
+        const builder: Record<string, unknown> = {};
+        for (const m of ['duration', 'delay', 'reduceMotion', 'withInitialValues', 'easing'])
+          builder[m] = () => builder;
+        return [n, builder];
+      }),
+    ),
   };
 });
 

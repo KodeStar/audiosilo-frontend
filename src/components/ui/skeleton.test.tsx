@@ -1,15 +1,8 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-// theme-provider side-effect-imports global.css (unparseable in Node); stub the hook
-// (Skeleton reads `scheme` for its raw fill color).
-jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
-}));
-
-/* eslint-disable import/first */
 import { Skeleton, SkeletonText } from './skeleton';
-/* eslint-enable import/first */
 
 async function mount(ui: React.ReactElement) {
   await act(async () => {
@@ -37,5 +30,33 @@ describe('Skeleton', () => {
     (useReducedMotion as jest.Mock).mockReturnValue(true);
     await mount(<Skeleton className="h-4 w-32" testID="sk" />);
     expect(screen.getByTestId('sk')).toBeTruthy();
+  });
+
+  it('sweeps a shimmer once it has a width, and none under reduced motion', async () => {
+    await render(<Skeleton className="h-4 w-32" testID="sk" />);
+    const layout = { nativeEvent: { layout: { x: 0, y: 0, width: 128, height: 16 } } };
+    await fireEvent(screen.getByTestId('sk'), 'layout', layout);
+    expect(screen.getByTestId('skeleton-shimmer')).toBeTruthy();
+
+    (useReducedMotion as jest.Mock).mockReturnValue(true);
+    await render(<Skeleton className="h-4 w-32" testID="sk2" />);
+    await fireEvent(screen.getByTestId('sk2'), 'layout', layout);
+    expect(screen.queryByTestId('skeleton-shimmer')).toBeNull();
+  });
+});
+
+describe('Skeleton on web', () => {
+  const prevOS = Platform.OS;
+  afterEach(() => {
+    Platform.OS = prevOS;
+  });
+
+  it('is one element with the CSS shimmer: no band node, no JS animation', async () => {
+    Platform.OS = 'web';
+    await render(<Skeleton className="h-4 w-32" testID="sk" />);
+    const layout = { nativeEvent: { layout: { x: 0, y: 0, width: 128, height: 16 } } };
+    await fireEvent(screen.getByTestId('sk'), 'layout', layout);
+    expect(String(screen.getByTestId('sk').props.className)).toContain('skeleton-shimmer');
+    expect(screen.queryByTestId('skeleton-shimmer')).toBeNull();
   });
 });

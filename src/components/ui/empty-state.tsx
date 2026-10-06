@@ -1,8 +1,7 @@
 import { View } from 'react-native';
 
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Button } from './button';
 import { Icon, type IconName } from './icon';
@@ -25,8 +24,8 @@ export type EmptyStateProps = {
  * padding - it teaches rather than boxing off a gray sentence.
  */
 export function EmptyState({ icon = 'inbox', title, hint, action, className }: EmptyStateProps) {
-  const { scheme } = useTheme();
-  const iconColor = colors[scheme].textMuted;
+  const themed = useThemeColors();
+  const iconColor = themed.mutedForeground;
 
   return (
     // cn: a caller's padding (e.g. a tab panel's py-6) must beat the default py-12 on

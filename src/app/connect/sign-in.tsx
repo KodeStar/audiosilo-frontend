@@ -1,4 +1,4 @@
-import { Redirect, router, useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
@@ -6,12 +6,13 @@ import { ScrollView, View } from 'react-native';
 import { ApiClient, ApiError } from '@/api/client';
 import type { AuthSession } from '@/api/types';
 import { Button } from '@/components/ui/button';
-import { SegmentedControl } from '@/components/ui/segmented-control';
+import { SegmentedControl } from '@/components/ui/toggle-group';
 import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
+import { Input } from '@/components/ui/input';
 import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
+import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 
 type Mode = 'code' | 'password';
 
@@ -54,7 +55,7 @@ export default function SignInScreen() {
       token: session.token,
       user: session.user,
     });
-    router.replace('/');
+    leaveOnboarding();
   };
 
   const onSubmit = async () => {
@@ -77,7 +78,7 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-200 dark:bg-gray-800">
+    <SafeAreaView className="flex-1 bg-background">
       <ScrollView
         contentContainerClassName="grow justify-center gap-6 p-6"
         keyboardShouldPersistTaps="handled"
@@ -90,6 +91,7 @@ export default function SignInScreen() {
         <SegmentedControl
           options={modes}
           value={mode}
+          accessibilityLabel={t('connect.signIn.modeLabel')}
           onChange={(m) => {
             setMode(m);
             setError(null);
@@ -98,7 +100,9 @@ export default function SignInScreen() {
         />
 
         {mode === 'code' ? (
-          <TextField
+          <Input
+            containerClassName="mb-4"
+            size="lg"
             label={t('connect.signIn.codeLabel')}
             placeholder={t('connect.signIn.codePlaceholder')}
             value={code}
@@ -110,7 +114,8 @@ export default function SignInScreen() {
           />
         ) : (
           <View>
-            <TextField
+            <Input
+              containerClassName="mb-4"
               label={t('connect.signIn.usernameLabel')}
               placeholder={t('connect.signIn.usernamePlaceholder')}
               value={username}
@@ -119,7 +124,8 @@ export default function SignInScreen() {
               autoCorrect={false}
               textContentType="username"
             />
-            <TextField
+            <Input
+              containerClassName="mb-4"
               label={t('connect.signIn.passwordLabel')}
               placeholder={t('connect.signIn.passwordPlaceholder')}
               value={password}
@@ -132,9 +138,10 @@ export default function SignInScreen() {
           </View>
         )}
 
-        {error ? <Text className="text-center text-sm">{error}</Text> : null}
+        {error ? <Text className="text-center text-sm text-destructive">{error}</Text> : null}
 
         <Button
+          size="lg"
           title={mode === 'code' ? t('connect.signIn.connect') : t('connect.signIn.submit')}
           loading={loading}
           onPress={onSubmit}

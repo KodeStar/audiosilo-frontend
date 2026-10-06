@@ -182,7 +182,8 @@
       "passwordPlaceholder": "Password",
       "connect": "Connetti",
       "submit": "Accedi",
-      "failed": "Accesso non riuscito. Riprova."
+      "failed": "Accesso non riuscito. Riprova.",
+      "modeLabel": "Come accedere"
     },
     "scan": {
       "closeLabel": "Chiudi lo scanner",
@@ -235,10 +236,6 @@
       "timeLeft": "{{duration}} rimanenti",
       "finished": "Finito"
     },
-    "searchResults": {
-      "failed": "Ricerca non riuscita.",
-      "noResults": "Nessun risultato per «{{query}}»."
-    },
     "notes": {
       "title": "Note",
       "placeholder": "Aggiungi una nota (markdown supportato)…",
@@ -281,7 +278,6 @@
       "downloading": "Download {{percent}} %"
     },
     "list": {
-      "title": "Libreria",
       "recentlyAdded": "Aggiunti di recente",
       "recentlyFinished": "Finiti di recente",
       "added": "Aggiunto {{when}}",
@@ -292,7 +288,8 @@
       "noFinishedHint": "Finisci un libro e comparirà qui.",
       "loadLibrariesError": "Impossibile caricare le librerie.",
       "noLibraries": "Nessuna libreria è ancora condivisa con il tuo account.",
-      "noLibrariesHint": "Chiedi al proprietario del server di condividerne una."
+      "noLibrariesHint": "Chiedi al proprietario del server di condividerne una.",
+      "viewLabel": "Elenco dei libri"
     },
     "favourites": {
       "title": "Preferiti",
@@ -303,7 +300,6 @@
     }
   },
   "downloads": {
-    "title": "Download",
     "storageUsed": "{{size}} usati",
     "downloaded": "Scaricato",
     "failed": "Download non riuscito",
@@ -381,7 +377,8 @@
         "supporting": "Secondario",
         "minor": "Minore"
       }
-    }
+    },
+    "openPlayer": "Apri il lettore"
   },
   "player": {
     "controls": {
@@ -442,7 +439,8 @@
       "title": "Velocità di riproduzione"
     },
     "seek": {
-      "label": "Posizione di riproduzione"
+      "label": "Posizione di riproduzione",
+      "value": "{{position}} di {{duration}}"
     },
     "finished": {
       "heading": "Libro terminato",
@@ -474,14 +472,19 @@
     "library": "Libreria",
     "search": "Cerca",
     "downloads": "Download",
-    "settings": "Impostazioni",
     "logout": "Esci",
     "offline": "Offline - le modifiche si sincronizzano alla riconnessione",
     "someOffline": "Alcuni server offline",
-    "searchPlaceholder": "Cerca…"
+    "me": "Io",
+    "back": "Indietro",
+    "backTo": "Torna a {{name}}"
   },
   "ui": {
-    "error": "Qualcosa è andato storto."
+    "error": "Qualcosa è andato storto.",
+    "toast": {
+      "dismiss": "Ignora",
+      "region": "Notifiche"
+    }
   },
   "demo": {
     "title": "Demo di AudioSilo",
@@ -494,5 +497,64 @@
     "qrLabel": "Codice QR per aprire la demo nell'app",
     "scanHint": "Scansiona con il telefono per continuare nell'app AudioSilo, oppure continua a esplorare in questo browser.",
     "browseHere": "Esplora la demo qui"
+  },
+  "shell": {
+    "home": "Home di AudioSilo",
+    "offline": "Offline · i download si riproducono",
+    "serverMore": "{{name}} + altri {{count}}",
+    "account": "Il tuo account, {{name}}",
+    "openPlayer": "Apri il lettore completo per {{title}}",
+    "titleTimeLeft": "{{title}} · mancano {{time}}",
+    "dock": {
+      "label": "Lettore",
+      "bookLeft": "Mancano {{time}}",
+      "savedLocally": "Salvato su questo dispositivo, verrà sincronizzato",
+      "expand": "Espandi il lettore"
+    },
+    "profile": {
+      "label": "Server e account, {{name}}",
+      "servers": "Server",
+      "signedInAs": "Accesso come {{name}}",
+      "offline": "Offline",
+      "reconnect": "Serve un nuovo accesso",
+      "accountOn": "Account su {{name}}",
+      "dark": "Aspetto scuro",
+      "light": "Aspetto chiaro"
+    }
+  },
+  "palette": {
+    "label": "Ricerca e comandi",
+    "omnisearch": "Cerca o esegui un comando",
+    "placeholder": "Cerca o digita un comando",
+    "hint": "Digita per trovare un libro o un'azione. Le frecce scorrono i risultati e Invio ne apre uno.",
+    "recent": "Recenti",
+    "groups": {
+      "actions": "Azioni",
+      "books": "Libri",
+      "goTo": "Vai a"
+    },
+    "resume": "Riprendi {{name}}",
+    "sleepMinutes_one": "Spegni tra {{count}} minuto",
+    "sleepMinutes_other": "Spegni tra {{count}} minuti",
+    "sleepFades": "Sfuma negli ultimi 30 secondi",
+    "sleepChapter": "Spegni a fine capitolo",
+    "openPlayer": "Apri il player completo",
+    "settings": "Vai alle impostazioni",
+    "settingsHint": "Server, aspetto e riproduzione",
+    "dark": "Passa all'aspetto scuro",
+    "light": "Passa all'aspetto chiaro",
+    "listened": "{{percent}}% ascoltato",
+    "searching": "Ricerca in corso",
+    "empty": "Niente si chiama «{{query}}»",
+    "emptyHint": "Prova con un titolo o un autore.",
+    "keys": {
+      "move": "sposta",
+      "open": "apri",
+      "close": "chiudi"
+    },
+    "results_one": "{{count}} risultato",
+    "results_other": "{{count}} risultati",
+    "resultsOn_one": "{{count}} risultato · {{servers}}",
+    "resultsOn_other": "{{count}} risultati · {{servers}}"
   }
 }

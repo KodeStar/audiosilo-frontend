@@ -8,7 +8,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatBytes, formatDuration } from '@/lib/format';
 import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 // A fixed-height top slot keeps the heart icon and the value text on the same
 // baseline so every column's label sits on one line.
@@ -31,7 +31,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 function Divider() {
-  return <View className="my-1 w-px self-stretch bg-black/10 dark:bg-white/10" />;
+  return <View className="my-1 w-px self-stretch bg-border" />;
 }
 
 /**
@@ -50,13 +50,14 @@ export function BookStats({
   path: string;
   book: Book;
 }) {
+  const themed = useThemeColors();
   const { t } = useTranslation();
   const { data: favourites } = useFavourites();
   const toggleFavourite = useToggleFavourite();
   const isFavourite = !!favourites?.some((f) => f.library_id === libraryId && f.path === path);
 
   return (
-    <View className="w-full flex-row items-stretch rounded-xl border border-black/10 bg-white/70 py-4 dark:border-white/10 dark:bg-gray-840/70">
+    <View className="w-full flex-row items-stretch rounded-xl border border-border bg-card/70 py-4">
       <AnimatedPressable
         onPress={() => toggleFavourite.mutate({ libraryId, path, on: !isFavourite })}
         accessibilityRole="button"
@@ -69,7 +70,7 @@ export function BookStats({
           <Icon
             name={isFavourite ? 'heart-solid' : 'heart'}
             size={24}
-            color={isFavourite ? colors.primary : undefined}
+            color={isFavourite ? themed.brand : undefined}
           />
         </View>
         <Text variant="muted">{t('library.bookStats.favourite')}</Text>

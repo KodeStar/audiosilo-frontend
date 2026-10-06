@@ -2,12 +2,14 @@
 
 The audiobook **player** frontend for **audiosilo-server** (a self-hosted Go
 audiobook server at `~/dev/audiosilo/audiosilo-server`). One Expo / React Native codebase
-shipping to **web PWA + iOS + Android**. Design is ported from the old Nuxt
-client at `~/dev/audiosilo-old` (pink-accented, Roboto, dark-mode-first).
+shipping to **web PWA + iOS + Android**. The design system is **Stacks** (the player
+redesign): [STYLEGUIDE.md](STYLEGUIDE.md) is authoritative for tokens, type, components and
+voice. Screens still carry the layouts ported from the old Nuxt client
+(`~/dev/audiosilo-old`) until their redesign phase.
 
 Full roadmap and milestone status: [docs/PLAN.md](docs/PLAN.md). M1–M2 complete;
 **M3 (offline downloads)** shipped (`src/downloads/` - `engine.native.ts`/
-`engine.web.ts`/`store.ts`, a `(app)/downloads` route, and the
+`engine.web.ts`/`store.ts`, a `(app)/(offline)/downloads` route, and the
 `download-control`/`download-badge` components); **M4 (PWA / service worker)**
 shipped (`public/sw.js`, `public/manifest.json`, `src/lib/register-sw{,.web}.ts`).
 Several features have landed since the original plan: **demo mode**, **favourites**,
@@ -98,7 +100,7 @@ npm run web                 # expo start --web (testable without a dev build)
 npm run ios / npm run android
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
-npm test                    # colour-token drift + style guards (scripts/check-styles.cjs), then jest-expo (npm test -- --coverage for coverage)
+npm test                    # colour-token drift + generator tests + style guards (scripts/check-styles.cjs), then jest-expo (npm test -- --coverage for coverage)
 npm run format              # prettier --check . (CI-gated; fails on unformatted files)
 npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
@@ -146,7 +148,8 @@ onto another. The seam is `src/api/connection-clients.ts` - framework-free modul
 reading storage, without importing React; removing/signing out of a connection
 **purges** its scoped state through the `onConnectionRemoved` registry in
 `src/stores/session.ts`. Stale persisted state is reconciled once, before any store
-hydrates, by `resetStaleStorage()` along **two independent version axes** so cache churn
+hydrates, by `resetStaleStorage()` (run inside the memoised launch migration `migrateStorage()`,
+`src/lib/storage-migration.ts`, which the root layout and ThemeProvider both await) along **two independent version axes** so cache churn
 can never log anyone out (`{ authReset, cacheReset }`):
 - **`AUTH_STORAGE_VERSION`** gates the auth wipe (connections + their secure-store session
   tokens). Session tokens never expire server-side, so wiping them is the ONLY thing that
@@ -161,6 +164,8 @@ can never log anyone out (`{ authReset, cacheReset }`):
   the cache version silently, without wiping its downloads.
 
 `_layout.tsx` wipes the downloads root via `engine.clearAll()` when **either** axis reset.
+`migrateStorage()` first writes the theme default (see Theme below), so the existing-install signal is read
+before the reset can rewrite the session keys - no effect-order contract.
 See `src/api/client.ts` + `src/api/types.ts`.
 
 **API envelopes** (from the Go handlers): auth returns `{ token, user }`; `/me`
@@ -236,14 +241,15 @@ re-pair additionally retires any *stale same-URL connection under a different `s
 (a rebuilt server mints a new id, so the old identity's dead token + scoped state are
 dropped via the `onConnectionRemoved` registry rather than left as a zombie the banner
 keeps re-flagging). It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
-rendered in `app-shell` beside the offline banner); tapping it pre-fills `pendingServerUrl`
+rendered by the shell beside the offline banner - under the phone header, or under the top bar
+on tablet/desktop); tapping it pre-fills `pendingServerUrl`
 and routes into the EXISTING connect → sign-in screens to re-enter a code/password.
 `setSession` also upserts a durable, tokenless **known-servers** entry
 (`src/lib/known-servers.ts`, AsyncStorage key `audiosilo.knownServers`, NOT touched by
 `resetStaleStorage`), so after a full logout the connect screen offers one-tap
 "Reconnect to <server>" shortcuts (with a per-entry forget).
 
-**Personal API keys.** The per-server account screen (`src/app/(app)/account.tsx`)
+**Personal API keys.** The per-server account screen (`src/app/(app)/(home,library,search,offline,me)/account.tsx`)
 renders an API-keys section (`src/components/account/api-keys-section.tsx` +
 `use-api-keys-manager.ts`, one-time secret via `api-key-created-modal.tsx`) for
 user-minted, non-expiring bearer tokens (dashboards, cron). It is **capability-gated**
@@ -254,16 +260,17 @@ returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated
 the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 `settings.apiKeys.*`.
 
-**The book screen is tabbed.** `src/app/(app)/book/[libraryId].tsx` shows an
+**The book screen is tabbed.** `src/app/(app)/(home,library,search,offline,me)/book/[libraryId].tsx` shows an
 **overview** (breadcrumbs, `BookVersions`, cover hero/stats/listen/`DownloadControl`,
 then the meta **About** block) and puts *everything else* behind a
-`TabBar` (`src/components/ui/tab-bar.tsx` - a thin wrapper naming
-`SegmentedControl`'s `scrollable` + `role="tab"` mode, so the pill row scrolls
-horizontally, carries tablist/tab a11y roles, and can never drift from the
-equal-width, non-scrolling default the rest of the app uses): **Chapters** (label
+`Tabs` row (`src/components/ui/tabs.tsx`, the Stacks underline tabs with
+`scrollable`, so the row scrolls horizontally and carries tablist/tab/tabpanel
+a11y roles): **Chapters** (label
 switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
-**History** · **Notes** · **Series**. Both layouts share the same tab section; wide
-keeps its right-hand player/cover panel. A long chapter list used to bury the
+**History** · **Notes** · **Series**. Both layouts share the same tab section; tablet and
+desktop keep a right-hand cover panel (300 / 380 wide) whose button plays inline - the docked
+player bar is the transport there, so the panel never carries one (while this book plays its
+button opens the full player instead). A long chapter list used to bury the
 sections below it - with tabs each is one tap away, and the active panel renders
 inside the page's existing ScrollView (never a nested vertical scroller). Which tabs
 exist is the pure, tested `bookTabs()` (`src/components/library/book-tabs.ts`):
@@ -511,38 +518,96 @@ runtime to cover web-vs-native branches.
 **Styling**: use `className` on core RN components (**Uniwind**, Tailwind v4; Metro wires
 it in via `withUniwindConfig` in `metro.config.js`, so there is no babel preset). Never
 import an icon lib directly - use `<Icon name=... />` (`src/components/ui/icon.tsx`). Text
-via `<Text variant=... />`. Tokens: primary `#db2777`; grays `750/840/860`; Roboto weights
-as `font-roboto-{light,medium,semibold,bold}` (plain `font-sans` = regular; one family per
-token, since RN has no font fallback - web adds the system stack).
-- **Colour tokens have ONE source, `src/theme/tokens.json`.** `npm run gen:tokens`
-  (`scripts/gen-tokens.mjs`) writes the generated `@theme` region of `src/global.css` (the
-  classes) and `src/theme/tokens.ts` (raw `colors` for native props). Never hand-edit
-  either output: `npm test` runs `gen-tokens.mjs --check` first and fails on drift. The
-  default Tailwind families the app uses (gray/red/green/blue) are pinned to Tailwind
-  v3's hex values (v4's defaults are OKLCH and render slightly differently).
-- `src/global.css` also pins other v3-era values on purpose - NativeWind's `shadow-xs` /
+via `<Text variant=... />`. **[STYLEGUIDE.md](STYLEGUIDE.md) (Stacks) is authoritative** for
+tokens, type and components; its section 17 maps them onto these files.
+- **Primitives are react-native-reusables** (`components.json`, Uniwind) in `src/components/ui/`,
+  restyled to Stacks (list: STYLEGUIDE.md section 17, "Components in this codebase"). Add more with
+  `npx @react-native-reusables/cli add <name> --styling-library uniwind -p <scratch dir>` (it would
+  overwrite our same-named files), then port: lucide -> `<Icon>`, strings through `t()`, the
+  Stacks tokens (shadcn's `bg-black/50`, `text-zinc-*`... compile to nothing here), `rounded-control`
+  etc. Overlays (Dialog, AlertDialog, Select, Popover, DropdownMenu, Tooltip) portal into the root
+  `<PortalHost />` on native (keep it LAST in `src/app/_layout.tsx`) and wrap in `FullWindowOverlay` on
+  iOS, so they can open from inside a card or a ScrollView. Keep exactly one `@rn-primitives/portal`
+  and one `@radix-ui/react-slot` (`npm ls`); the `@rn-primitives/*` family is pinned `~1.5.x` to move
+  together. Overlays read the WINDOW's safe-area insets: `RootInsetsProvider` (`overlay.tsx`, mounted
+  once directly inside the root `SafeAreaProvider`) captures them, and `useOverlayInsets` /
+  `useDialogFrame` read them (`useRootInsets`), so the call site doesn't matter - a tab page's own
+  context counts the native tab bar in `insets.bottom`, which made phone sheets ~100pt too tall and
+  pushed menus up on iOS. Dialog and AlertDialog share one `DialogFrame`. On web, rn-primitives hands
+  Content's props to Radix DOM nodes through a Slot that merges `style` by object spread (an array
+  crashed react-native-web's style setter): every Content part is wrapped once in `withFlatStyle`
+  (`overlay.tsx`), so a style array is fine at the call site. Tests render overlays with
+  `mountWithPortal` (`src/testing/render-overlay.tsx`, which adds the RootInsetsProvider too).
+- **Web keyboard (Space):** `src/lib/rnw-button-fix.web.ts` (imported first by the root layout) also
+  patches react-native-web's press responder: Space presses any role-bearing pressable (`tab`, `radio`,
+  `switch`, `checkbox`, `option`, menu items; RNW only did `button`), and a `role="button"` pressable
+  with no `onPress` leaves Space to its own handlers (so Radix opens a Select). No per-primitive Space
+  shims.
+- **Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`**
+  (`themes.light` / `themes.dark`, plus a fixed `palette` of `white`/`black`). `npm run gen:tokens`
+  (`scripts/gen-tokens.mjs`) writes the generated region of `src/global.css` (each theme token as a
+  Uniwind theme variable, `--color-<name>` under `@variant light` / `@variant dark`) and
+  `src/theme/tokens.ts` (`colors.light.<camelName>` / `colors.dark.<camelName>`, `colors.white`).
+  Never hand-edit either output: `npm test` runs `gen-tokens.mjs --check` (and the generator's
+  unit tests) first and fails on drift. The `palette` holds plain colours only (no shade families or
+  aliases).
+  - Use the semantic classes, which follow the theme on web AND native with **no `dark:` pair**:
+    page `bg-background`, surfaces `bg-card` (sheets/dialogs `bg-popover`), quiet fills and tracks
+    `bg-muted`, text `text-foreground` / `text-muted-foreground` / `text-subtle-foreground`,
+    hairlines `border-border`, pressed/hover `bg-accent`, status `text-destructive` / `success` /
+    `warning` / `info`. Opacity modifiers work (`bg-brand/10`).
+  - **`primary` is ink** (shadcn): the primary button / play button colour. **The pink is
+    `brand`**: fills, progress, selection `bg-brand` (+ `text-brand-foreground` on it), pink text
+    `text-brand-ink` (AA), tinted fills `bg-brand/10` or `bg-brand-soft`. One pink thing per view.
+  - **Tailwind's default palette is switched off** (`--color-*: initial` in the generated region),
+    so `bg-gray-200` / `text-red-500` compile to nothing. Add a token to `tokens.json` (both
+    themes) instead.
+  - Native props that need a colour string read `useThemeColors()` (`@/theme/use-theme-colors`),
+    which returns the resolved theme's `colors.light|dark` from a context `ThemeProvider` fills (one
+    `useUniwind` subscription, not one per Icon); don't pick `scheme === 'dark' ? ... : ...`.
+- **Fonts (Stacks):** Figtree (body), Bricolage Grotesque (display), JetBrains Mono, loaded by
+  `ThemeProvider` from `@expo-google-fonts/*` (only the weights a token uses). One family per token,
+  since RN has no font fallback or synthetic weights (web adds the system stack): `font-sans` (Figtree
+  400), `font-sans-medium`, `font-sans-semibold`, `font-sans-bold`, `font-display` (Bricolage 700),
+  `font-display-semibold`, `font-mono` (JetBrains Mono 500). Figtree and Bricolage gate first paint
+  (the splash); JetBrains Mono loads alongside without gating (system mono until then). Never pair a
+  font token with `font-medium`/`font-bold`.
+- **`<Text>` variants are the Stacks type roles:** `display-xl`, `display`, `heading`, `title`,
+  `body` (default), `muted`, `label` (Figtree semibold, list-row titles; was `subtitle`), `caption`,
+  `eyebrow` (uppercase kicker; was `label`), `mono`, `stat` (`mono`/`stat` add tabular figures).
+- `metro.config.js` and `scripts/check-styles.cjs` read the same Uniwind options (`uniwind.config.js`),
+  so the guard compiles exactly what Metro does.
+- `src/global.css` also pins v3-era values on purpose - NativeWind's `shadow-xs` /
   `shadow-lg` values (the two the app uses; any other `shadow-*` is Tailwind v4's default
   until it is pinned the same way), px breakpoints, `rounded-full` = 9999px, native px
   letter-spacing (`tracking-*`), v3 `hover:` (no `(hover: hover)` gate), v3 preflight
   compat, and a `dark:` variant that still applies in browsers without CSS `@scope`
   (Uniwind scopes `dark:` rules on web) - Phase 0a was a no-visual-change migration.
-  `scripts/check-styles.cjs` (run by `npm test`) guards the last two through Uniwind's
-  real compiler: an unscoped web `dark:` rule, and native `tracking-wider` = 0.5.
+  `scripts/check-styles.cjs` (run by `npm test`) guards these through Uniwind's real compiler:
+  an unscoped web `dark:` rule, native `tracking-wider` = 0.5, and the themed tokens resolving
+  per theme on iOS and switching under `.dark` on web.
 - **rem is 14px on native** (`polyfills.rem` in `metro.config.js`, NativeWind's value);
   web uses real CSS rems against the browser's 16px root.
 - **Theme**: `ThemeProvider` drives `Uniwind.setTheme('light'|'dark'|'system')` and reads
   the resolved scheme from `useUniwind()`; `useTheme().scheme` is that resolved value.
+  **Default (owner decision 2026-10-05, "System, new installs only"):** a new install follows
+  the OS (`system`); an existing install (`hasExistingInstall` in `src/stores/session.ts`: a
+  persisted connection, a known server, or a legacy session) that never chose a theme gets
+  `dark` written once to `audiosilo.theme`. Explicit picks are untouched; an unknown stored value
+  reads as `dark` and is not written. The default is a step of the memoised launch migration
+  (`migrateStorage`, `src/lib/storage-migration.ts`): only when no pref is stored, it reads
+  `hasExistingInstall` BEFORE `resetStaleStorage` and writes `defaultSchemePref`; ThemeProvider awaits
+  the same run, then only reads `audiosilo.theme` (`restoredSchemePref`, `src/theme/scheme-pref.ts`).
+  `useTheme().toggleScheme()` flips light/dark (the profile menu, the palette). The
+  static web shell (`+html.tsx`) paints the OS scheme's background before mount.
 - **Conflicting classes are not de-duplicated.** When two classes with the same variants
   set the same property, web resolves by stylesheet order and native by className order
   (the later class wins). A class with a variant (`dark:`, `active:`, `ios:`, `md:`...)
   outranks a plain one on every platform, whatever the order. A component that lets a
   caller override its classes must merge with `cn()` (`@/lib/utils`, clsx +
   tailwind-merge: a caller class replaces the component's class for the same property
-  AND variant). The themed `<Text>` does, so `<Text variant="caption"
-  className="text-primary">` is primary in light mode only - the variant's
-  `dark:text-gray-500` survives and wins in dark mode. To recolour both themes pass the
-  dark class too (`text-primary dark:text-primary`). This is also why the settings
-  language pills keep a raw RN `Text`.
+  AND variant). The themed `<Text>` does; its variants use themed tokens (no `dark:`
+  half), so `<Text variant="caption" className="text-brand-ink">` recolours both themes.
 - **Web cascade layers** (`src/app/+html.tsx` + the split Tailwind imports at the top of
   `src/global.css`): Tailwind's utilities are imported unlayered and the layer order puts
   react-native-web's resets above Tailwind's preflight, reproducing Tailwind v3's
@@ -563,10 +628,50 @@ token, since RN has no font fallback - web adds the system stack).
   need; the two shadowless thumbnail frames (book-meta's previous-book rows, the
   downloads list) keep their own classes.
 - Uniwind's free tier has no `group-*` variants and no `hover:` on native.
-Raw color values for native props: `colors` from `src/theme/tokens.ts`.
+Raw color values for native props: `useThemeColors()` (themed) or `colors.white`/`colors.black`
+from `src/theme/tokens.ts`.
 
-**Routing**: `src/app/(app)/*` is the authenticated shell (guarded in its
-`_layout.tsx`); `src/app/connect/*` is onboarding; `src/app/player.tsx` is a modal.
+**Routing**: `src/app/(app)/*` is the authenticated app (guarded by `<AuthGate>`,
+`src/components/shell/auth-gate.tsx`, in both platform layouts); `src/app/connect/*` is
+onboarding; `src/app/player.tsx` / `finished.tsx` are root full-screen modals. **ONE route tree
+on every platform**, five tab groups under `(app)`:
+```
+src/app/(app)/_layout.tsx        native: NativeTabs (5 triggers + BottomAccessory), hidden on tablet/desktop; the one floating mini player
+src/app/(app)/_layout.web.tsx    web: headless expo-router/ui Tabs + our chrome around ONE <TabSlot/>
+src/app/(app)/(home)/index.tsx                  /
+src/app/(app)/(library)/library/index.tsx       /library
+src/app/(app)/(search)/search.tsx               /search
+src/app/(app)/(offline)/downloads.tsx           /downloads
+src/app/(app)/(me)/settings.tsx                 /settings   (the "Me" tab; the Me hub is Phase 5)
+src/app/(app)/(home,library,search,offline,me)/_layout.tsx    one Stack per tab (array group)
+src/app/(app)/(home,library,search,offline,me)/{book/[libraryId],library/[libraryId],library/favourites,account,browse}.tsx
+```
+Groups are invisible in URLs, so every URL is unchanged. The destinations (labels, icons,
+SF Symbols / Material names, tab roots) are one table, `src/components/shell/destinations.ts`.
+- **The pushing tab owns a detail page** (a book pushed from Search stays in Search; back
+  returns there): the shared detail routes live once in the array group, and expo-router
+  resolves a push against the current segments.
+- **Cold deep link owner = Home.** A cold `/book/...` is given to the alphabetically FIRST tab
+  group, which is why Downloads is `(offline)`, not `(downloads)`. The array-group layout's
+  group-keyed `unstable_settings` (`TAB_STACK_SETTINGS`) insert each tab's root underneath, so
+  back works; `tabStackListeners` strips the link params React Navigation copies onto that root
+  and its ancestors (else back landed on `/?libraryId=1`).
+- **Tab presses from our chrome dispatch `JUMP_TO`** (`useTabPress`): another tab -
+  `navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } })`, which restores
+  its stack; a href can't (`router.navigate('/(home)')` resolves to `/` and pops Home). The
+  active tab again - `router.navigate(<its root>)`, pop to top.
+- **Web: `<TabSlot/>` stays at a FIXED ancestor path at every width**; only sibling chrome
+  toggles (moving it remounts every screen and jumps the URL on resize). **Native: never add or
+  remove tabs at runtime**; tablet/desktop toggle `NativeTabs hidden` (state survives).
+- Onboarding returns with `leaveOnboarding()` (`src/components/shell/leave-onboarding.tsx`,
+  `router.dismissTo('/')`; `<LeaveOnboarding />` at render time), never `replace` or `<Redirect href="/">`
+  (also a replace): `(app)` is the root stack's `anchor` and already sits under `/connect`, so a replace
+  stacked a second `(app)`. The
+  "signed in, nothing to add" bounce lives in `connect/index.tsx` (its own params), not the
+  connect layout, whose `useGlobalSearchParams` misses a warm link's params on first render.
+- Regression net: `src/components/shell/route-tree*.test.tsx` drive expo-router's
+  `renderRouter` over the REAL `src/app` file list (`src/testing/route-tree.tsx`).
+
 Content routes are **flat** - `library/[libraryId].tsx` (re-exports
 `src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -
 and carry **both the connection and the library-relative path as query params**
@@ -575,17 +680,71 @@ and carry **both the connection and the library-relative path as query params**
 resolve a tap into a route nested under a dynamic layout segment - it lands on the
 group's first child - whereas a flat route + query param pushes correctly (a direct URL
 load worked either way via `getStateFromPath`, which is why the bug only bit in-app
-navigation). The `(app)/_layout.tsx` reads `?connection=` and republishes it as the
-`ConnectionScope` the content hooks read via `useScopedCid()`. Path helpers +
-the full rationale are in `src/lib/paths.ts`.
+navigation). Each content screen scopes itself to its `?connection=` with
+`<ContentScope>` (its own local param); the content hooks read it via `useScopedCid()`.
+Path helpers + the full rationale are in `src/lib/paths.ts`.
+
+**Shell** (`src/components/shell/`): `useLayout()` (`src/lib/layout.ts`) is the one form-factor
+switch - `phone` < 640, `tablet` 640-1023, `desktop` >= 1024 (pure `layoutFor`); never compare a
+width yourself. It is a store over `Dimensions` that yields the class, so a consumer re-renders only
+when the window crosses a threshold. Both platform layouts wrap their one navigator in `ShellFrame`
+(`shell-frame.tsx`); the page column is `CONTENT_WIDTH` (`src/lib/layout.ts`). Phone: tab bar (native on iOS/Android, `PhoneTabBar` on web), each page's Stack
+`header` is `PhoneHeader` (large title on a tab root, inline back named after the parent on iOS,
+banners under it), the mini player in the iOS 26 tab bar's bottom accessory (`AccessoryPlayer`,
+rendered twice by iOS - `regular` + `inline` - so it is stateless and reads the player store) or a
+floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`). On native that card is ONE
+`FloatingMiniPlayer`, rendered by `(app)/_layout.tsx` as the shell frame's `phoneBottom` over
+NativeTabs (never per tab stack: NativeTabs keeps visited tabs alive, so a card per stack ticked up to
+five times), absolutely positioned on the native bar's measured `bar` edge, so it sits on the bar on
+every tab and over pushed pages and a tab switch never remounts it; web puts its card on its own tab
+bar. Tablet/desktop (web and native):
+`TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch, settings, `ProfileMenu`),
+`SubNav` (50; title on a tab root, Back on a pushed page; tab roots leave their title to the
+chrome), banners, the page capped at 1480 (`CONTENT_WIDTH`), a closed `DrawerSlot` on desktop (Up next fills it in
+Phase 2), and `DockedPlayer` (84) whenever a book is loaded (it mounts its speed/sleep sheets as
+siblings so they cover the app). Route-driven side effects (search reset on leaving the Search
+tab, browse scroll memory) are `useShellEffects`.
+- **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
+  shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
+  omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:
+  never while typing in a field, over another dialog, or over the player modal). State (open, query,
+  recent searches persisted per device under `audiosilo.paletteRecent`) is `usePalette`
+  (`palette-store.ts`); which items show, the grouping, the arrow-key clamp and the shortcut test are
+  the pure `palette-model.ts`. Content is only what exists: Actions (pause / "Resume <chapter>",
+  sleep in 30 minutes, sleep at end of chapter - only with real chapters -, open the full player, go
+  to settings, switch light/dark), Books from `useSearchAll` (debounced, `useDebouncedValue`; sources
+  from `useSourceLabeller`; empty query: Continue listening from the cached `useAllProgressAll` with
+  `refetchOnMount: false`, disabled while a query is typed, `isInProgress` shared with Home), Go to (the
+  top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do). A book opens
+  with a plain push, so it lands in the current tab. Authors, series, narrators and characters wait
+  for Phase 2.
+- **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
+  (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
+  saved-locally line: needs signing in again > offline > signed in as), opening its account screen;
+  Add a server (`/connect?add=1`); the account on the default server; a light/dark switch. Phone
+  keeps these in the Me tab.
+- **Toasts** clear the bottom chrome: each piece publishes its measured TOP edge (distance from the
+  window's bottom) into `useShellMetrics` with `useChromeEdge` - `bar` (the web tab bar by layout; the
+  native bar from the tab stacks' layout: iOS's bottom inset there, Android's gap between the page's
+  and the shell frame's bottoms, both from `measureInWindow` (`nativeBarEdge`; Android's
+  `measureInWindow` is offset by the status bar under edge-to-edge, so comparing with the window
+  height made the bar a status bar too tall); each stack publishes only once it has measured),
+  `mini` (the floating card: bar + its height), `accessory` (the iOS 26 pill, measured in the window),
+  `dock` - and the root `ShellToastHost` passes `<ToastHost bottomInset>` from the pure
+  `toastBottomOffset` over `bottomChromeTop` (the highest piece; one fallback before the first layout;
+  tablet/desktop with nothing loaded and over a root modal: just above the home indicator). The web mini
+  player sits on its tab bar through a `100%` bottom offset, no measured height. The accessory renders
+  nothing on tablet/desktop (iOS mounts both placements behind the hidden bar).
+- **Banners**: `OfflineBanner` takes the page's connection as a prop (each phone header its own
+  route's `?connection=`, the wide `WideTop` the focused page's) and selects only which message shows.
 
 ## Layout
 ```
-src/app/            Expo Router routes ((app) shell, connect/, player modal)
+src/app/            Expo Router routes ((app) tab groups, connect/, player + finished modals)
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
-src/components/      ui/ (primitives + Icon), layout/ (shell/header/nav), player/, library/
+src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers), layout/ (banners, ContentScope), player/, library/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider
