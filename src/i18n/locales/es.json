@@ -1093,7 +1093,8 @@
       "emptyHint": "Los libros con una serie aparecen aquí como una estantería de lomos.",
       "emptyAction": "Ver los libros",
       "errorTitle": "No se pudieron cargar las series"
-    }
+    },
+    "keepAhead": "Adelantarse sin conexión"
   },
   "people": {
     "author": "Autor",

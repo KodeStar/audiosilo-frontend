@@ -1093,7 +1093,8 @@
       "emptyHint": "Books tagged with a series show up here as a shelf of spines.",
       "emptyAction": "Browse books",
       "errorTitle": "Couldn't load the series"
-    }
+    },
+    "keepAhead": "Keep ahead offline"
   },
   "people": {
     "author": "Author",

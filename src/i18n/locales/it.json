@@ -1093,7 +1093,8 @@
       "emptyHint": "I libri con una serie compaiono qui come uno scaffale di dorsi.",
       "emptyAction": "Sfoglia i libri",
       "errorTitle": "Impossibile caricare le serie"
-    }
+    },
+    "keepAhead": "Portati avanti offline"
   },
   "people": {
     "author": "Autore",

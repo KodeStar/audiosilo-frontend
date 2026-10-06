@@ -1093,7 +1093,8 @@
       "emptyHint": "Bücher mit einer Reihe erscheinen hier als Regal voller Buchrücken.",
       "emptyAction": "Bücher durchsehen",
       "errorTitle": "Die Reihen konnten nicht geladen werden"
-    }
+    },
+    "keepAhead": "Offline vorausladen"
   },
   "people": {
     "author": "Autor",

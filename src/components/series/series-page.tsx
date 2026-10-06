@@ -31,6 +31,7 @@ import { useSession } from '@/stores/session';
 
 import { Bookcase, bookcaseScale } from './bookcase';
 import { EmptyShelf } from './empty-shelf';
+import { KeepAheadCard } from './keep-ahead-card';
 import {
   currentEntry,
   defaultSelection,
@@ -284,6 +285,7 @@ export function SeriesPage({
             <Text variant="caption">{t('series.stats.entries', { count: entries.length })}</Text>
           </View>
           <EntryList entries={entries} currentKey={current?.key} />
+          <KeepAheadCard />
           {rail ? <SourceLine /> : null}
         </View>
       </View>

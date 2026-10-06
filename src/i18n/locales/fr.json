@@ -1093,7 +1093,8 @@
       "emptyHint": "Les livres rattachés à une série apparaissent ici, en rangée de dos.",
       "emptyAction": "Parcourir les livres",
       "errorTitle": "Impossible de charger les séries"
-    }
+    },
+    "keepAhead": "Garder de l’avance hors ligne"
   },
   "people": {
     "author": "Auteur",

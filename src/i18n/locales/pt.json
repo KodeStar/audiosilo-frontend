@@ -1093,7 +1093,8 @@
       "emptyHint": "Os livros com uma série aparecem aqui como uma estante de lombadas.",
       "emptyAction": "Ver os livros",
       "errorTitle": "Não foi possível carregar as séries"
-    }
+    },
+    "keepAhead": "Adiantar offline"
   },
   "people": {
     "author": "Autor",
