@@ -25,7 +25,7 @@ import {
   summaryIsVisible,
 } from '@/components/library/book-meta';
 import { type BookTab, bookTabs, TAB_LABEL_KEY } from '@/components/library/book-tabs';
-import { listeningProgressFor } from '@/components/library/meta-gating';
+import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
 import { BookVersions } from '@/components/library/book-versions';
@@ -48,7 +48,6 @@ import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { useSeriesOrderings } from '@/stores/series-orderings';
@@ -182,11 +181,7 @@ function BookDetailContent() {
   // so it is recomputed from the cumulative file durations (shared with book-queue) -
   // an O(chapters x files) pass, memoized because the History and metadata tabs read
   // it on every render, including while parked on another tab.
-  const chapterStarts = useMemo(() => {
-    if (files.length === 0) return chapters.map((ch) => ch.book_offset);
-    const fileDurations = files.map((f) => ({ path: f.rel_path, duration: f.duration }));
-    return chapters.map((ch) => chapterBookOffset(fileDurations, ch));
-  }, [chapters, files]);
+  const chapterStarts = useMemo(() => chapterStartsOf(chapters, files), [chapters, files]);
   // Chapters carrying the corrected offset, so the History tab can label each
   // listening span with its chapter.
   const historyChapters = useMemo(

@@ -1,7 +1,8 @@
-import type { BookMetaCharacter, BookMetaRecap } from '@/api/types';
+import type { BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
 
 import {
   chapterNumberAt,
+  chapterStartsOf,
   characterIsVisible,
   listeningProgressFor,
   recapIsVisible,
@@ -136,5 +137,31 @@ describe('splitting', () => {
     });
     expect(visible.map((r) => r.through.chapter)).toEqual([0, 2]);
     expect(hidden.map((r) => r.through.chapter)).toEqual([9]);
+  });
+});
+
+describe('chapterStartsOf', () => {
+  const ch = (file_path: string, file_index: number, start: number, book_offset = 0): Chapter => ({
+    index: 0,
+    title: '',
+    file_index,
+    file_path,
+    start,
+    end: start + 10,
+    book_offset,
+  });
+
+  it('places each chapter after the files before it, not on the server offset', () => {
+    const files = [
+      { rel_path: 'a.mp3', duration: 100 },
+      { rel_path: 'b.mp3', duration: 50 },
+    ];
+    expect(
+      chapterStartsOf([ch('a.mp3', 0, 0), ch('a.mp3', 0, 60), ch('b.mp3', 1, 5)], files),
+    ).toEqual([0, 60, 105]);
+  });
+
+  it('falls back to the server offset without a file list', () => {
+    expect(chapterStartsOf([ch('x', 0, 0, 0), ch('x', 0, 30, 30)], [])).toEqual([0, 30]);
   });
 });

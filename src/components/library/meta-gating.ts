@@ -1,4 +1,5 @@
-import type { BookMetaCharacter, BookMetaRecap } from '@/api/types';
+import type { BookFile, BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
+import { chapterBookOffset } from '@/playback/book-queue';
 
 /**
  * How far the listener has got, expressed the way the community metadata talks
@@ -31,6 +32,21 @@ export function chapterNumberAt(starts: number[], position: number): number {
     else break;
   }
   return n;
+}
+
+/**
+ * The whole-book start offset of every chapter, recomputed from the cumulative file
+ * durations (the server's `book_offset` is unreliable for some on-demand-indexed books,
+ * so it is only used when there is no file list). Shared by the book page and Search's
+ * character gate, so both place the listener on the same chapter.
+ */
+export function chapterStartsOf(
+  chapters: Chapter[],
+  files: Pick<BookFile, 'rel_path' | 'duration'>[],
+): number[] {
+  if (files.length === 0) return chapters.map((ch) => ch.book_offset);
+  const fileDurations = files.map((f) => ({ path: f.rel_path, duration: f.duration }));
+  return chapters.map((ch) => chapterBookOffset(fileDurations, ch));
 }
 
 /**
