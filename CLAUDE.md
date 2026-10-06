@@ -358,6 +358,21 @@ content), rail entries `local`, the recording `chapter_count`. Nothing consumes 
 Phase 2+ of PLAYER-REDESIGN-PLAN.md does, so the screens above still gate spoilers and
 pick the next book on the device.
 
+**Player-redesign user state (Phase 1b: wire only, no UI yet).** Same pattern, six more
+flags: `queue` (`useQueue` + set/add/remove), `collections` (`useCollections`,
+`useCollection(id)`, `useShareTargets(enabled)` - pass false for demo accounts, which
+get a 403 - and the collection/items/shares mutations; read-only sharing, a viewer's
+`shared_with` is absent), `ratings` (`useRating`, `useMyRatings`, set/delete; a PUT
+replaces the whole rating, so an omitted `note` clears it), `progress_edit`
+(`useEditProgress`: PATCH dates / mark unfinished; it does NOT touch the local progress
+mirror or offline queue, decision 7), `user_stats` (`useMyStats(range)`,
+`useMyListening(range)`, `useListeningGoal` + set/clear; server time) and `my_devices`
+(`useMyDevices`, `useRevokeMyDevice`: `current: true` means this device's token is dead,
+so the caller signs out locally). **Mutations check their flag at call time** and reject
+with `CapabilityError` (not an `ApiError`, so no reconnect banner) without sending
+anything when the flag is false or `/server` hasn't answered yet. Gating tests live in
+`hooks-capability.test.tsx`; each was checked to fail with its gate removed.
+
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
 from **ONE whole-book POSITION** - the player's live position

@@ -709,7 +709,8 @@ export class ApiClient {
     );
     return r.rating ?? null;
   }
-  /** Rate a book 1-5 with an optional note (at most 500 characters, trimmed). A
+  /** Rate a book 1-5 with an optional note (at most 500 characters, trimmed). The
+   * PUT replaces the whole rating, so leaving `note` out clears a saved note. A
    * part/disc path rates its book: the returned rating carries the book's own path. */
   async setRating(libraryId: number, path: string, rating: RatingValue, note?: string) {
     const r = await this.request<{ rating: Rating }>('PUT', `/libraries/${libraryId}/rating`, {
