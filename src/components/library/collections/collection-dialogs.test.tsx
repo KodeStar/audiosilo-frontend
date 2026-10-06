@@ -23,6 +23,7 @@ jest.mock('@/api/hooks', () => {
     useAddCollectionItem: () => mutation(mockAdd),
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
+    useUpdateCollection: () => mutation(jest.fn()),
   };
 });
 

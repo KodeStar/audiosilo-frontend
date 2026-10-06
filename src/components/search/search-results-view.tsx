@@ -299,10 +299,7 @@ function BooksGroup({
   const { t } = useTranslation();
   const layout = useLayout();
   const [width, setWidth] = useState(0);
-  const [all, setAll] = useState(false);
   const { columns, tile, columnGap, rowGap } = gridMetrics(width, layout);
-  const preview = Math.max(6, columns * BOOK_ROWS);
-  const shown = all ? books : books.slice(0, preview);
 
   if (!loading && books.length === 0) {
     return state.isError ? (
@@ -311,44 +308,36 @@ function BooksGroup({
   }
   return (
     <Group title={t('search.groups.books')} count={loading ? undefined : books.length}>
-      <View
-        testID="search-books"
-        onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-        className="flex-row flex-wrap"
-        style={{ columnGap, rowGap }}
+      <Preview
+        items={books}
+        limit={Math.max(6, columns * BOOK_ROWS)}
+        label={t('search.groups.books')}
       >
-        {width === 0
-          ? null
-          : loading
-            ? Array.from({ length: columns }).map((_, i) => (
-                <CoverTileSkeleton key={i} width={tile} />
-              ))
-            : shown.map((b) => (
-                <BookTile
-                  key={contentKey(b.connectionId, b.library_id, b.rel_path)}
-                  book={b}
-                  width={tile}
-                  onOpened={onOpened}
-                />
-              ))}
-      </View>
-      {state.isError ? (
-        <View className="flex-row flex-wrap items-center gap-3">
-          <Text variant="muted" className="shrink">
-            {t('search.booksPartial')}
-          </Text>
-          <Button variant="outline" size="sm" title={t('common.retry')} onPress={state.retry} />
-        </View>
-      ) : null}
-      {books.length > preview ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="self-start"
-          title={all ? t('search.showFewer') : t('search.showAll', { count: books.length })}
-          onPress={() => setAll((v) => !v)}
-        />
-      ) : null}
+        {(shown) => (
+          <View
+            testID="search-books"
+            onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+            className="flex-row flex-wrap"
+            style={{ columnGap, rowGap }}
+          >
+            {width === 0
+              ? null
+              : loading
+                ? Array.from({ length: columns }).map((_, i) => (
+                    <CoverTileSkeleton key={i} width={tile} />
+                  ))
+                : shown.map((b) => (
+                    <BookTile
+                      key={contentKey(b.connectionId, b.library_id, b.rel_path)}
+                      book={b}
+                      width={tile}
+                      onOpened={onOpened}
+                    />
+                  ))}
+          </View>
+        )}
+      </Preview>
+      <GroupError state={state} message={t('search.booksPartial')} />
     </Group>
   );
 }

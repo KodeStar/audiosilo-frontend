@@ -113,38 +113,78 @@ function CheckRow({
   );
 }
 
-/** The name and description fields of a new or edited collection. */
-function CollectionFields({
-  name,
-  description,
-  onName,
-  onDescription,
+/** The name and description of a new or edited collection, and saving them. */
+function useCollectionForm(connectionId: string, collection?: Collection) {
+  const [name, setName] = useState(collection?.name ?? '');
+  const [description, setDescription] = useState(collection?.description ?? '');
+  const create = useCreateCollection(connectionId);
+  const update = useUpdateCollection(connectionId);
+  const pending = create.isPending || update.isPending;
+  /** The stored collection, or null when there was nothing to save; rejects on a failed
+   * write. */
+  const save = async (): Promise<Collection | null> => {
+    if (!validName(name) || pending) return null;
+    const fields = { name: name.trim(), description: description.trim() };
+    return collection
+      ? update.mutateAsync({ id: collection.id, ...fields })
+      : create.mutateAsync(fields);
+  };
+  return { name, setName, description, setDescription, pending, save };
+}
+
+/** The form's fields and its Cancel / submit footer. */
+function CollectionForm({
+  form,
+  submitLabel,
+  loading,
   onSubmit,
+  onCancel,
 }: {
-  name: string;
-  description: string;
-  onName: (v: string) => void;
-  onDescription: (v: string) => void;
+  form: ReturnType<typeof useCollectionForm>;
+  submitLabel: string;
+  loading: boolean;
   onSubmit: () => void;
+  onCancel: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <View className="gap-3">
-      <Input
-        label={t('library.collection.form.name')}
-        value={name}
-        onChangeText={onName}
-        maxLength={NAME_MAX}
-        autoFocus
-        returnKeyType="done"
-        onSubmitEditing={onSubmit}
-      />
-      <Textarea
-        label={t('library.collection.form.description')}
-        value={description}
-        onChangeText={onDescription}
-        maxLength={DESCRIPTION_MAX}
-      />
+    <>
+      <View className="gap-3">
+        <Input
+          label={t('library.collection.form.name')}
+          value={form.name}
+          onChangeText={form.setName}
+          maxLength={NAME_MAX}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={onSubmit}
+        />
+        <Textarea
+          label={t('library.collection.form.description')}
+          value={form.description}
+          onChangeText={form.setDescription}
+          maxLength={DESCRIPTION_MAX}
+        />
+      </View>
+      <DialogFooter>
+        <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
+        <Button
+          title={submitLabel}
+          disabled={!validName(form.name)}
+          loading={loading}
+          onPress={onSubmit}
+        />
+      </DialogFooter>
+    </>
+  );
+}
+
+/** A list's loading rows inside a dialog. */
+function ListSkeleton() {
+  return (
+    <View className="gap-2">
+      <Skeleton className="h-11 w-full rounded-xl" />
+      <Skeleton className="h-11 w-full rounded-xl" />
     </View>
   );
 }
@@ -167,19 +207,12 @@ export function CollectionFormDialog({
   onSaved?: (c: Collection) => void;
 }) {
   const { t } = useTranslation();
-  const [name, setName] = useState(collection?.name ?? '');
-  const [description, setDescription] = useState(collection?.description ?? '');
-  const create = useCreateCollection(connectionId);
-  const update = useUpdateCollection(connectionId);
-  const pending = create.isPending || update.isPending;
+  const form = useCollectionForm(connectionId, collection);
 
   const submit = async () => {
-    if (!validName(name) || pending) return;
-    const fields = { name: name.trim(), description: description.trim() };
     try {
-      const saved = collection
-        ? await update.mutateAsync({ id: collection.id, ...fields })
-        : await create.mutateAsync(fields);
+      const saved = await form.save();
+      if (!saved) return;
       onOpenChange(false);
       onSaved?.(saved);
     } catch (e) {
@@ -200,22 +233,13 @@ export function CollectionFormDialog({
             <DialogDescription>{t('library.collection.form.newHint')}</DialogDescription>
           )}
         </DialogHeader>
-        <CollectionFields
-          name={name}
-          description={description}
-          onName={setName}
-          onDescription={setDescription}
+        <CollectionForm
+          form={form}
+          submitLabel={t(collection ? 'common.save' : 'library.collection.form.create')}
+          loading={form.pending}
           onSubmit={() => void submit()}
+          onCancel={() => onOpenChange(false)}
         />
-        <DialogFooter>
-          <Button title={t('common.cancel')} variant="ghost" onPress={() => onOpenChange(false)} />
-          <Button
-            title={t(collection ? 'common.save' : 'library.collection.form.create')}
-            disabled={!validName(name)}
-            loading={pending}
-            onPress={() => void submit()}
-          />
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -289,15 +313,13 @@ export function AddToCollectionDialog({
   const { data, isLoading, error, refetch } = useCollections(connectionId);
   const own = ownCollections(data);
   const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const create = useCreateCollection(connectionId);
+  const form = useCollectionForm(connectionId);
   const add = useAddCollectionItem(connectionId);
 
   const submit = async () => {
-    if (!validName(name) || create.isPending) return;
     try {
-      const c = await create.mutateAsync({ name: name.trim(), description: description.trim() });
+      const c = await form.save();
+      if (!c) return;
       await add.mutateAsync({ id: c.id, libraryId, path });
       toast({ title: t('library.collection.added', { name: c.name }) });
       onOpenChange(false);
@@ -316,37 +338,19 @@ export function AddToCollectionDialog({
           <DialogDescription numberOfLines={2}>{title}</DialogDescription>
         </DialogHeader>
         {creating ? (
-          <>
-            <CollectionFields
-              name={name}
-              description={description}
-              onName={setName}
-              onDescription={setDescription}
-              onSubmit={() => void submit()}
-            />
-            <DialogFooter>
-              <Button
-                title={t('common.cancel')}
-                variant="ghost"
-                onPress={() => setCreating(false)}
-              />
-              <Button
-                title={t('library.collection.form.createAndAdd')}
-                disabled={!validName(name)}
-                loading={create.isPending || add.isPending}
-                onPress={() => void submit()}
-              />
-            </DialogFooter>
-          </>
+          <CollectionForm
+            form={form}
+            submitLabel={t('library.collection.form.createAndAdd')}
+            loading={form.pending || add.isPending}
+            onSubmit={() => void submit()}
+            onCancel={() => setCreating(false)}
+          />
         ) : (
           <>
             {error && !data ? (
               <ErrorNote message={t('library.collections.error')} onRetry={() => refetch()} />
             ) : isLoading ? (
-              <View className="gap-2">
-                <Skeleton className="h-11 w-full rounded-xl" />
-                <Skeleton className="h-11 w-full rounded-xl" />
-              </View>
+              <ListSkeleton />
             ) : own.length === 0 ? (
               <Text variant="muted">{t('library.collection.addTo.none')}</Text>
             ) : (
@@ -423,10 +427,7 @@ export function ShareCollectionDialog({
             onRetry={() => targets.refetch()}
           />
         ) : !targets.data ? (
-          <View className="gap-2">
-            <Skeleton className="h-11 w-full rounded-xl" />
-            <Skeleton className="h-11 w-full rounded-xl" />
-          </View>
+          <ListSkeleton />
         ) : targets.data.length === 0 ? (
           <Text variant="muted">{t('library.collection.share.none')}</Text>
         ) : (
