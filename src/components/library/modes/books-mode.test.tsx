@@ -39,6 +39,23 @@ jest.mock('../books/book-items', () => {
 jest.mock('../books/books-controls', () => ({ BooksControls: () => null }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
+// The real FlashList, its ref's scrollToOffset spied on and its keys recorded: what a
+// view change asks of the list.
+const mockScrollToOffset = jest.fn();
+let mockKeyOf: ((item: unknown, index: number) => string) | undefined;
+jest.mock('@shopify/flash-list', () => {
+  const actual = jest.requireActual('@shopify/flash-list');
+  const { useImperativeHandle, useRef } = jest.requireActual('react');
+  return {
+    ...actual,
+    FlashList: ({ ref, ...props }: { ref?: unknown; keyExtractor?: typeof mockKeyOf }) => {
+      const inner = useRef(null);
+      useImperativeHandle(ref, () => ({ scrollToOffset: mockScrollToOffset }));
+      mockKeyOf = props.keyExtractor;
+      return <actual.FlashList {...props} ref={inner} />;
+    },
+  };
+});
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => 'phone',
@@ -91,6 +108,7 @@ describe('BooksMode', () => {
   beforeEach(() => {
     mockParams = {};
     mockSetParams.mockReset();
+    mockScrollToOffset.mockReset();
     mockProgress = [];
     mockWhole = {
       books: [book('Dune', 20 * H), book('Emma'), book('Beowulf', 2 * H)],
@@ -169,6 +187,44 @@ describe('BooksMode', () => {
     await mount();
     expect(screen.getByText('3+ books')).toBeTruthy();
     expect(screen.getByText('Loading more...')).toBeTruthy();
+  });
+
+  it('opens a new sort or filter at the top, and keeps the place as pages arrive', async () => {
+    mockWhole.complete = false;
+    await mount();
+    const dune = (keyOf = mockKeyOf!) => keyOf({ kind: 'item', item: mockWhole.books[0] }, 0);
+    const recentKey = dune();
+    const again = () => screen.rerender(<BooksMode connectionId="c" libraryId={1} />);
+
+    // A page arrives: same keys (FlashList anchors the listener's place on them), no scroll.
+    mockWhole = { ...mockWhole, books: [...mockWhole.books, book('Aesop'), book('Zola')] };
+    await again();
+    await settleFlashList();
+    expect(screen.getByText('5+ books')).toBeTruthy();
+    expect(dune()).toBe(recentKey);
+    expect(mockScrollToOffset).not.toHaveBeenCalled();
+
+    // A new sort: new keys (nothing to anchor across the change) and back to the top.
+    mockParams = { sort: 'title' };
+    await again();
+    await settleFlashList();
+    expect(screen.getByRole('header', { name: 'A' })).toBeTruthy();
+    expect(dune()).not.toBe(recentKey);
+    expect(mockScrollToOffset).toHaveBeenCalledTimes(1);
+    expect(mockScrollToOffset).toHaveBeenLastCalledWith({ offset: 0, animated: false });
+
+    // A filter too.
+    mockParams = { sort: 'title', len: 'long' };
+    await again();
+    await settleFlashList();
+    expect(mockScrollToOffset).toHaveBeenCalledTimes(2);
+
+    // And another page in the filtered view stays put.
+    mockWhole = { ...mockWhole, books: [...mockWhole.books, book('Ulysses', 30 * H)] };
+    await again();
+    await settleFlashList();
+    expect(screen.getByText('Ulysses')).toBeTruthy();
+    expect(mockScrollToOffset).toHaveBeenCalledTimes(2);
   });
 
   it('offers Retry on a failed load, keeping what loaded', async () => {

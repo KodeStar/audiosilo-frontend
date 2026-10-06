@@ -71,6 +71,12 @@ export function booksViewParams(view: BooksView): Record<string, string | undefi
   };
 }
 
+/** The identity of `view` (its sort and every filter), equal for equal views: the Books
+ * list scopes its item keys to it, so a new order or filter is a new list. */
+export function booksViewKey(view: BooksView): string {
+  return [view.sort, view.status ?? '', view.dl ? 'dl' : '', view.len ?? ''].join('|');
+}
+
 /** Whether any filter narrows the list (the sort doesn't). */
 export function hasFilters(view: BooksView): boolean {
   return !!view.status || view.dl || !!view.len;

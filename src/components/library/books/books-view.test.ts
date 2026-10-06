@@ -4,6 +4,7 @@ import { sectionLetter } from '@/lib/alpha-sections';
 import {
   type BookFacts,
   bookStatus,
+  booksViewKey,
   booksViewParams,
   filterBooks,
   hasFilters,
@@ -80,6 +81,18 @@ describe('parseBooksView / booksViewParams', () => {
   it('round-trips', () => {
     const view = { sort: 'author', status: 'finished', dl: true, len: 'mid' } as const;
     expect(parseBooksView(booksViewParams(view))).toEqual(view);
+  });
+
+  it('names a view by its sort and every filter', () => {
+    const key = booksViewKey({ sort: 'recent', dl: false });
+    expect(booksViewKey(parseBooksView({}))).toBe(key);
+    const others = [
+      booksViewKey({ sort: 'title', dl: false }),
+      booksViewKey({ sort: 'recent', status: 'new', dl: false }),
+      booksViewKey({ sort: 'recent', dl: true }),
+      booksViewKey({ sort: 'recent', dl: false, len: 'short' }),
+    ];
+    expect(new Set([key, ...others]).size).toBe(5);
   });
 
   it('knows when a filter narrows the list (sort alone does not)', () => {

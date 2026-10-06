@@ -1,7 +1,7 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { FlashList } from '@shopify/flash-list';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -34,6 +34,7 @@ import {
   type BookFacts,
   type BooksGridItem,
   type BooksView,
+  booksViewKey,
   booksViewParams,
   bookStatus,
   filterBooks,
@@ -138,6 +139,20 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const present = useMemo(() => presentLetters(grid.heads), [grid.heads]);
 
   const listRef = useRef<FlashListRef<BooksGridItem>>(null);
+  // A new sort or filter opens the list at the top. FlashList keeps the first visible
+  // item in place when its data changes (`maintainVisibleContentPosition`, by item
+  // key): right while pages arrive, wrong for a new order (Title opened at "M", where
+  // the old top book files). So the item keys are scoped to the view, leaving nothing
+  // to anchor to across a change, and the change scrolls to the top; a page arriving
+  // changes neither, so the listener keeps their place.
+  const viewKey = booksViewKey(view);
+  const keyOf = useCallback((item: BooksGridItem) => `${viewKey}/${itemKey(item)}`, [viewKey]);
+  const shownView = useRef(viewKey);
+  useEffect(() => {
+    if (shownView.current === viewKey) return;
+    shownView.current = viewKey;
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [viewKey]);
   const jump = (letter: string) => {
     const index = headIndexForLetter(grid.heads, letter);
     if (index >= 0) void listRef.current?.scrollToIndex({ index, animated: !reduceMotion });
@@ -295,7 +310,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       <CoverGrid
         listRef={listRef}
         data={grid.items}
-        keyExtractor={itemKey}
+        keyExtractor={keyOf}
         isFullRow={(item) => item.kind === 'head'}
         renderItem={(item, tile) =>
           item.kind === 'head' ? (
@@ -318,6 +333,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       <BooksList
         listRef={listRef}
         items={grid.items}
+        keyExtractor={keyOf}
         gutter={gutter}
         renderHead={renderHead}
         renderBook={(book) => (
@@ -361,6 +377,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
 function BooksList({
   listRef,
   items,
+  keyExtractor,
   gutter,
   renderHead,
   renderBook,
@@ -370,6 +387,7 @@ function BooksList({
 }: {
   listRef: React.Ref<FlashListRef<BooksGridItem>>;
   items: BooksGridItem[];
+  keyExtractor: (item: BooksGridItem) => string;
   gutter: number;
   renderHead: (letter: string) => React.ReactElement;
   renderBook: (book: Book) => React.ReactElement;
@@ -382,7 +400,7 @@ function BooksList({
     <FlashList
       ref={listRef}
       data={items}
-      keyExtractor={itemKey}
+      keyExtractor={keyExtractor}
       getItemType={(item) => item.kind}
       renderItem={({ item }) =>
         item.kind === 'head' ? (
