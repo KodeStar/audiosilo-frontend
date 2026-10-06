@@ -337,13 +337,19 @@ union in `types.ts`) is hand-mirrored from the server.
 
 **Player-redesign data API (Phase 1a: wire only, no UI yet).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on
-older servers = false; the hooks use a private `useCapability`, so an older server is
-never asked): `client.authors`/`narrators` (normalised to `PeopleList {people, unknown}`)
-and `seriesList` with `useAuthors`/`useNarrators`/`useSeriesList` (`browse_people`, also
-`listBooks({narrator})`); `client.nextBook` + `useNextBook` (`next_book`, server-resolved
-community -> series -> folder -> none); `coverUrl(lib, path, {size, version})`
-(`cover_sizes`; `version` is the book's `cover_version`, sent as `v=` purely as a cache
-buster); `bookMeta(..., {includePrevious, hideSpoilers})` (`meta_bundle`). `Book` gains
+older servers = false). `useCapability(flag, connectionId?)` reads a flag as `undefined`
+(not known yet) / `true` / `false`, and the gated hooks give a server without the flag
+no query function at all (`skipToken`), so it is never asked, not even by a manual
+`refetch`: `client.authors`/`narrators` (normalised to `PeopleList {people, unknown}`)
+and `seriesList` with `useAuthors`/`useNarrators`/`useSeriesList` (`browse_people`), and
+`client.listBooks` with `useLibraryBooks` (a `narrator` filter waits for
+`browse_people`); `client.nextBook` + `useNextBook` (`next_book`, server-resolved, first
+answer of community -> series -> folder -> none; `next` can be in another library);
+`coverUrl(lib, path, {size, version})` (`cover_sizes`; `size` bounds the longer side;
+`version` is the book's `cover_version`, sent as `v=` purely as a cache buster);
+`bookMeta(..., {includePrevious, hideSpoilers})` and `useBookMeta(..., opts)`
+(`meta_bundle`; each variant has its own `qk.bookMeta` key; `nextBook` and an
+`includePrevious` request get the server's 30 s budget, not 15 s). `Book` gains
 `published`, `description` (item only), `cover_color`, `cover_version`; `BookMetaWork`
 gains `community_description` + `attribution` (render the server's text beside CC BY-SA
 content), rail entries `local`, the recording `chapter_count`. Nothing consumes them yet:

@@ -26,7 +26,7 @@ jest.mock('@/api/provider', () => ({
 }));
 
 /* eslint-disable import/first */
-import { fetchBookProgress } from '@/api/hooks';
+import { fetchBookProgress, qk } from '@/api/hooks';
 /* eslint-enable import/first */
 
 function makeProgress(): Progress {
@@ -133,5 +133,25 @@ describe('fetchBookProgress', () => {
     );
     expect(mockMirroredProgress).not.toHaveBeenCalled();
     expect(mockNoteError).not.toHaveBeenCalled();
+  });
+});
+
+describe('qk.bookMeta', () => {
+  // Each /meta request variant answers differently (`previous` added, or cut at the
+  // caller's saved progress), so none may be served another's cached envelope.
+  it('keys each request variant apart, under the plain key', () => {
+    const plain = qk.bookMeta('c1', 2, 'A/Book');
+    expect(plain).toEqual(['bookMeta', 'c1', 2, 'A/Book']);
+    // No option set is the plain request (exactly `?path=`).
+    expect(qk.bookMeta('c1', 2, 'A/Book', {})).toEqual(plain);
+    expect(qk.bookMeta('c1', 2, 'A/Book', { includePrevious: false })).toEqual(plain);
+    const variants = [
+      qk.bookMeta('c1', 2, 'A/Book', { includePrevious: true }),
+      qk.bookMeta('c1', 2, 'A/Book', { hideSpoilers: true }),
+      qk.bookMeta('c1', 2, 'A/Book', { includePrevious: true, hideSpoilers: true }),
+    ];
+    expect(new Set(variants.map((k) => JSON.stringify(k))).size).toBe(3);
+    // The plain key prefixes every variant, so invalidating it reaches them all.
+    for (const k of variants) expect(k.slice(0, 4)).toEqual(plain);
   });
 });

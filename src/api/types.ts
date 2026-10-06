@@ -240,9 +240,13 @@ export type Book = {
   /** Colours taken from the cover art, for theming the book's screens. Absent
    * until the server first makes a thumbnail of this art, and on older servers. */
   cover_color?: CoverColor;
-  /** Opaque token that changes whenever the cover art changes. Pass it to
-   * `coverUrl(..., { version })` so a cached image is refetched after a cover is
-   * replaced. Absent until known, and on older servers. */
+  /** Opaque token for the cover art, the cache buster for `coverUrl(..., { version })`.
+   * It changes when a custom cover is set or removed, but it is not a pure content
+   * hash: it starts from index data and moves to the art's own version the first time
+   * the server makes a thumbnail of it (so a cover first seen before then is fetched
+   * once more), a re-index moves it back until the next thumbnail, and a sidecar
+   * image overwritten in place keeps its token until a thumbnail reads the new art.
+   * Absent on older servers. */
   cover_version?: string;
 };
 
@@ -254,8 +258,10 @@ export type Book = {
  * rebuildable on the server, never user state. */
 export type CoverColor = { bg: string; accent?: string; on_accent?: string };
 
-/** Thumbnail widths GET cover accepts as `?size=` (capability `cover_sizes`).
- * Any other value is a 400. */
+/** Thumbnail sizes GET cover accepts as `?size=` (capability `cover_sizes`): the art
+ * scaled to fit within size x size, so its LONGER side is at most `size` pixels (a
+ * 2:3 portrait cover at 320 comes back 213x320). Never scaled up: smaller art comes
+ * back at its own size. Any other value is a 400. */
 export type CoverSize = 160 | 320 | 640;
 
 /** A content address, (library_id, path): a book the caller can open. */
@@ -276,7 +282,9 @@ export type PersonCount = { name: string; books: number; duration: number };
 /** GET /libraries/{id}/authors or /narrators (capability `browse_people`),
  * normalized by the client: `people` is the `authors`/`narrators` array (sorted
  * case-insensitively by the server), `unknown` the number of books with the field
- * blank. Counts cover only books inside the caller's share scope. */
+ * blank (or only spaces). `unknown` is a count only: an empty filter value is no
+ * filter on GET /libraries/{id}/books, so those books cannot be listed. Counts cover
+ * only books inside the caller's share scope. */
 export type PeopleList = { people: PersonCount[]; unknown: number };
 
 /** One distinct series in a library (GET /libraries/{id}/series, capability
@@ -291,18 +299,23 @@ export type SeriesCount = {
 };
 
 /** Response of GET /libraries/{id}/next (capability `next_book`): what to play
- * after a book, and how the server decided.
- * - `community`: the next work on the book's community series rail. `work` is
- *   always set; `next`+`book` only when the caller owns that work. A missing `next`
- *   with a `work` means the next book is not in the library - do not skip ahead.
- *   No `work` at all means this was the last book of the series.
- * - `series`: the next higher `series_index` of the same series in the library; no
- *   `next` means the end of the series.
+ * after a book, from the FIRST of these sources that answers at all (a later one is
+ * not consulted, even when an earlier one says its series has ended):
+ * - `community`: the book's community series rail. `work` is the next work on the
+ *   rail, with `next`+`book` when the server could place one of the caller's books
+ *   on it, in ANY of their libraries, so `next.library_id` can differ from the
+ *   library asked. A `work` without `next` means no copy could be placed (placing
+ *   needs the book's series to be named like the rail), so treat it as not owned
+ *   rather than skip ahead. No `work` at all means nothing follows on the community
+ *   rail, which can lag a library that already holds a newer book.
+ * - `series`: the next higher `series_index` of the same, exactly named, series in
+ *   the same library; no `next` means nothing higher in that series.
  * - `folder`: the next item in the book's parent folder (`book` only when indexed).
  * - `none`: nothing follows. */
 export type NextBook = {
   source: 'community' | 'series' | 'folder' | 'none';
-  /** What to play next; a book the caller can open. */
+  /** What to play next: a book the caller can open. Open it by its own
+   * `library_id`, which for `community` need not be the library asked. */
   next?: BookRef;
   /** The next book's indexed metadata in the list shape (no files, chapters or
    * description). */
@@ -444,7 +457,9 @@ export type BookMetaSeriesWork = {
   cover_url?: string;
   web_url: string;
   /** A book the CALLER can open that is this work (resolved per request against
-   * their libraries and share scope). Absent when they have no copy, and on older
+   * their libraries and share scope, so it can be in another library than the
+   * envelope's). Absent when none could be placed, which needs the book's series to be
+   * named like the rail (or the book to be the one the envelope is for), and on older
    * servers. */
   local?: BookRef;
 };
@@ -497,7 +512,10 @@ export type BookMeta =
       web_url: string;
       /** The works before this one in its series, nearest first (at most 5). Only
        * sent when asked for with `include=previous` (capability `meta_bundle`);
-       * absent when there are none and on older servers. With `spoilers=hide` each
+       * absent when there are none and on older servers. Read from each rail's MAIN
+       * view only (numbered positions, never an alternate reading order), so it is
+       * not the reader's picked order that the book screen's own previous books
+       * follow; a work that fails to load is left out. With `spoilers=hide` each
        * one's `recap_summary.ending` is left out. */
       previous?: BookMetaWork[];
     };

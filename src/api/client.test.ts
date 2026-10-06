@@ -364,6 +364,38 @@ describe('ApiClient', () => {
     );
   });
 
+  // --- The player Book's new fields ------------------------------------------
+
+  it('mirrors published, description, cover_color and cover_version on a Book', async () => {
+    const body = {
+      id: 9,
+      library_id: 2,
+      rel_path: 'Saga/Book 3',
+      is_folder: false,
+      title: 'Book 3',
+      author: 'A',
+      series: 'Saga',
+      series_index: 3,
+      narrator: 'N',
+      duration: 3600,
+      format: 'm4b',
+      size: 1,
+      published: '2014-02',
+      description: 'A long blurb.',
+      cover_color: { bg: '#102030', accent: '#ff6699', on_accent: '#000000' },
+      cover_version: 'ab12cd34ef',
+    };
+    installFetch(() => ({ status: 200, body }));
+    const book = await new ApiClient('https://h', 'tok').item(2, 'Saga/Book 3');
+    // Typed reads, so a misnamed mirror field fails the type check, not only a match.
+    expect(book.published).toBe('2014-02');
+    expect(book.description).toBe('A long blurb.');
+    expect(book.cover_color?.bg).toBe('#102030');
+    expect(book.cover_color?.accent).toBe('#ff6699');
+    expect(book.cover_color?.on_accent).toBe('#000000');
+    expect(book.cover_version).toBe('ab12cd34ef');
+  });
+
   // --- Browse lists & books filter -------------------------------------------
 
   it('lists books with filters, cursor and sort encoded, and returns the page', async () => {
@@ -464,6 +496,36 @@ describe('ApiClient', () => {
     // A TimeoutError (not the AbortError a caller cancel raises) lets reachability
     // classify a frozen server as unreachable instead of ignoring it as a cancel.
     await expect(c.serverInfo()).rejects.toMatchObject({ name: 'TimeoutError' });
+  });
+
+  // The server may spend its whole 15 s community-metadata budget on /next before it
+  // answers from the local series or folder, and on /meta before it fetches the previous
+  // works, so those two wait out the server's own 30 s request budget instead.
+  it('gives the requests that wait on community metadata the server budget', async () => {
+    jest.useFakeTimers();
+    try {
+      installHangingFetch();
+      const c = new ApiClient('https://h', 'tok'); // the default 15 s
+      const outcomes: Record<string, unknown> = {};
+      const settle = (name: string, p: Promise<unknown>) =>
+        p.catch((e: unknown) => {
+          outcomes[name] = e;
+        });
+      const pending = [
+        settle('next', c.nextBook(2, 'Saga/Book 2')),
+        settle('previous', c.bookMeta(2, 'Saga/Book 2', undefined, { includePrevious: true })),
+        settle('plain', c.bookMeta(2, 'Saga/Book 2')),
+      ];
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(Object.keys(outcomes)).toEqual(['plain']);
+      await jest.advanceTimersByTimeAsync(15_000);
+      await Promise.all(pending);
+      expect(outcomes.next).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
+      expect(outcomes.previous).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
+      expect(outcomes.plain).toMatchObject({ name: 'TimeoutError', timeoutMs: 15_000 });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('propagates a caller-cancel as AbortError, not a timeout', async () => {
