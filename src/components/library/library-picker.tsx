@@ -19,11 +19,47 @@ const optionValue = (connectionId: string, libraryId: number) => `${connectionId
  * Picks the library the Library tab's browse modes show (`useSelectedLibrary`). Libraries
  * are grouped under their server's name when more than one server has any. Renders
  * nothing when there is only one library in all (nothing to choose).
+ *
+ * `by="server"` is for a mode that belongs to a server rather than a library
+ * (Collections): it lists and names the servers only, so it can't read as a library
+ * filter, and is hidden with one server. Picking another server selects its first
+ * library; the current server keeps the library it has.
  */
-export function LibraryPicker({ className }: { className?: string }) {
+export function LibraryPicker({
+  by = 'library',
+  className,
+}: {
+  by?: 'library' | 'server';
+  className?: string;
+}) {
   const { t } = useTranslation();
   const { groups, library, select } = useSelectedLibrary();
   const withLibraries = groups.filter((g) => g.libraries.length > 0);
+  if (by === 'server') {
+    if (withLibraries.length < 2) return null;
+    return (
+      <Select
+        value={library ? { value: library.connectionId, label: library.connectionName } : undefined}
+        onValueChange={(o) => {
+          if (!o || o.value === library?.connectionId) return;
+          const first = withLibraries.find((g) => g.connectionId === o.value)?.libraries[0];
+          if (first) select({ connectionId: o.value, libraryId: first.id });
+        }}
+      >
+        <SelectTrigger
+          className={cn('h-[34px] min-w-[140px] max-w-[260px] shrink', className)}
+          accessibilityLabel={t('library.picker.serverLabel')}
+        >
+          <SelectValue placeholder={t('library.picker.serverPlaceholder')} />
+        </SelectTrigger>
+        <SelectContent align="end">
+          {withLibraries.map((g) => (
+            <SelectItem key={g.connectionId} value={g.connectionId} label={g.connectionName} />
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
   const total = withLibraries.reduce((n, g) => n + g.libraries.length, 0);
   if (total < 2) return null;
   const grouped = withLibraries.length > 1;

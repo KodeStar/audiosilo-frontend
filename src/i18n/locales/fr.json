@@ -397,7 +397,9 @@
     },
     "picker": {
       "label": "Bibliothèque",
-      "placeholder": "Choisir une bibliothèque"
+      "placeholder": "Choisir une bibliothèque",
+      "serverLabel": "Serveur",
+      "serverPlaceholder": "Choisir un serveur"
     },
     "detail": {
       "soon": "Cette page arrive bientôt.",

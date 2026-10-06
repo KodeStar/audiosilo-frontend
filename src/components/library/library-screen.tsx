@@ -92,7 +92,10 @@ export function LibraryScreen() {
         />
         {mode === 'folders' ? null : (
           <SubNavActions tab="(library)" id="library-picker" order={-100}>
-            <LibraryPicker className={phone ? 'max-w-full self-start' : undefined} />
+            <LibraryPicker
+              by={mode === 'collections' ? 'server' : 'library'}
+              className={phone ? 'max-w-full self-start' : undefined}
+            />
           </SubNavActions>
         )}
       </View>

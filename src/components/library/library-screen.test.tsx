@@ -187,4 +187,37 @@ describe('LibraryPicker', () => {
     await fireEvent.press(screen.getByText("Audiobooks · Maya's Shelf"));
     expect(mockSelect).toHaveBeenCalledWith({ connectionId: 'b', libraryId: 1 });
   });
+  it('in server mode names the server only and is hidden with one server', async () => {
+    mockGroups = [
+      group('a', [
+        [1, 'Audiobooks'],
+        [2, 'Kids'],
+      ]),
+    ];
+    mockSelection = { connectionId: 'a', libraryId: 2 };
+    const r = await render(<LibraryPicker by="server" />);
+    expect(r.toJSON()).toBeNull();
+  });
+
+  it('in server mode switches to the first library of the picked server', async () => {
+    mockGroups = [
+      group('a', [
+        [1, 'Audiobooks'],
+        [2, 'Kids'],
+      ]),
+      group('b', [
+        [3, 'Shelf'],
+        [4, 'Other'],
+      ]),
+    ];
+    mockSelection = { connectionId: 'a', libraryId: 2 };
+    await mountWithPortal(<LibraryPicker by="server" />);
+    expect(screen.queryByText('Kids · Hearthside')).toBeNull();
+    await fireEvent.press(screen.getByRole('combobox', { name: 'Server' }));
+    expect(screen.queryByText('Audiobooks · Hearthside')).toBeNull();
+    // The trigger and the open list both say the current server's name.
+    expect(screen.getAllByText('Hearthside')).toHaveLength(2);
+    await fireEvent.press(screen.getByText("Maya's Shelf"));
+    expect(mockSelect).toHaveBeenCalledWith({ connectionId: 'b', libraryId: 3 });
+  });
 });
