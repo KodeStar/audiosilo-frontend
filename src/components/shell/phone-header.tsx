@@ -6,6 +6,7 @@ import { OfflineBanner } from '@/components/layout/offline-banner';
 import { ReconnectBanner } from '@/components/layout/reconnect-banner';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Text } from '@/components/ui/text';
+import { UpNextButton } from '@/components/upnext/up-next-button';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { BackGlyph } from './back-glyph';
@@ -13,7 +14,7 @@ import { BackGlyph } from './back-glyph';
 /**
  * The phone page header (STYLEGUIDE section 10), rendered by each tab Stack as its
  * screens' `header` on every platform, so it slides with the page on a push:
- * - a tab root gets a large display title;
+ * - a tab root gets a large display title, with the Up next button (and its count) beside it;
  * - a pushed page gets an inline back button, named after the page it returns to on
  *   iOS ("< Library"), a bare arrow on Android and web.
  * The app-wide banners (reconnect, offline) sit under it. It pads the status-bar inset
@@ -64,15 +65,16 @@ export function PhoneHeader({
           ) : null}
         </View>
       ) : (
-        <View className="px-4 pb-2.5 pt-1.5">
+        <View className="flex-row items-center gap-2 pb-2.5 pl-4 pr-2 pt-1.5">
           <Text
             variant="display"
             accessibilityRole="header"
-            className="text-[30px] leading-[36px]"
+            className="flex-1 text-[30px] leading-[36px]"
             numberOfLines={1}
           >
             {title}
           </Text>
+          <UpNextButton variant="header" />
         </View>
       )}
       <ReconnectBanner />

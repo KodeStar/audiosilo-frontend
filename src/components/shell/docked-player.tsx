@@ -18,6 +18,7 @@ import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { UpNextButton } from '@/components/upnext/up-next-button';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -111,7 +112,7 @@ type DockSheet = 'speed' | 'sleep' | null;
  * The docked player bar (84, STYLEGUIDE section 8) on tablet and desktop, whenever a
  * book is loaded: a whole-book progress line on top; the cover, chapter and book on the
  * left (tap for the full player); previous chapter / back / play / forward / next
- * chapter over a chapter scrubber in the centre; speed, sleep and expand on the right.
+ * chapter over a chapter scrubber in the centre; speed, sleep, Up next and expand on the right.
  *
  * Renders a fragment: the bar, then its speed and sleep sheets, so the sheets (which
  * render in place, `absolute inset-0`) are siblings of the bar in the shell's root
@@ -256,6 +257,7 @@ export function DockedPlayer() {
           <View className="flex-1 flex-row items-center justify-end gap-3">
             <SpeedButton onPress={() => setSheet('speed')} />
             <SleepTimerButton onPress={() => setSheet('sleep')} />
+            <UpNextButton variant="dock" />
             <Button
               variant="ghost"
               size="icon"

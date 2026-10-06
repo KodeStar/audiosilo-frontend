@@ -1,17 +1,16 @@
 import { View } from 'react-native';
 
+import { UpNextDrawer } from '@/components/upnext/up-next-drawer';
+
 /**
  * The desktop right-hand drawer region, beside the page (STYLEGUIDE section 2: 300-480,
- * resizable). The Up next drawer fills it in Phase 2; until there is a queue it is
- * closed (zero width) and nothing opens it - only the layout slot exists.
+ * resizable), between the top chrome and the docked player. Up next fills it
+ * (`UpNextDrawer`), which renders nothing while it is hidden or the server has no queue.
  */
 export function DrawerSlot() {
   return (
-    <View
-      testID="shell-drawer-slot"
-      importantForAccessibility="no-hide-descendants"
-      accessibilityElementsHidden
-      style={{ width: 0 }}
-    />
+    <View testID="shell-drawer-slot" className="flex-row">
+      <UpNextDrawer />
+    </View>
   );
 }

@@ -82,6 +82,13 @@ jest.mock('@/playback/store', () => {
 
 // The scrubber and the speed/sleep controls have their own suites; stub them here.
 jest.mock('@/components/player/seek-bar', () => ({ SeekBar: () => null }));
+// The Up next entry point has its own suite (upnext/up-next-button.test.tsx).
+jest.mock('@/components/upnext/up-next-button', () => {
+  const { Text: RNText } = jest.requireActual('react-native');
+  return {
+    UpNextButton: ({ variant }: { variant: string }) => <RNText>{`upnext-${variant}`}</RNText>,
+  };
+});
 jest.mock('@/components/player/speed-button', () => {
   const { Text: RNText } = jest.requireActual('react-native');
   return { SpeedButton: () => <RNText>speed</RNText>, SpeedSheet: () => null };
@@ -170,6 +177,7 @@ describe('TopBar', () => {
     expect(screen.queryByTestId('top-bar-(search)')).toBeNull();
     expect(screen.getByText('Hearthside + 1 more')).toBeTruthy();
     expect(screen.getByText('chris')).toBeTruthy();
+    expect(screen.getByText('upnext-bar')).toBeTruthy();
   });
 
   it('drops the destination labels on a tablet', async () => {
@@ -265,6 +273,7 @@ describe('DockedPlayer', () => {
       expect(screen.getByLabelText(label)).toBeTruthy();
     }
     expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
+    expect(screen.getByText('upnext-dock')).toBeTruthy();
   });
 
   it('plays, skips by chapter and expands to the full player', async () => {
