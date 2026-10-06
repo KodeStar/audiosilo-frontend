@@ -8,6 +8,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
+import { UpNextButton } from '@/components/upnext/up-next-button';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useSearchStore } from '@/stores/search';
@@ -76,7 +77,8 @@ function topBarItemClass(selected: boolean): string {
 
 /**
  * The tablet/desktop top bar (64, STYLEGUIDE section 2): the mark with the server it
- * talks to, the destinations, the omnisearch, settings and the profile button. Tablet
+ * talks to, the destinations, the omnisearch, Up next (with its count), settings and the
+ * profile button. Tablet
  * keeps the destinations as icons only.
  *
  * The omnisearch is a field-shaped button: on web it opens the command palette (⌘K);
@@ -175,6 +177,7 @@ export function TopBar() {
         </View>
 
         <View className="flex-row items-center gap-1.5">
+          <UpNextButton variant="bar" />
           <AnimatedPressable
             testID="top-bar-settings"
             onPress={() => press('(me)')}

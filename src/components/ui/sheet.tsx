@@ -46,6 +46,9 @@ export type SheetProps = {
    * mounted at screen level (never inside a card/Pressable) - see `OverlayHost`.
    */
   inline?: boolean;
+  /** Cap the panel's width and centre it (a tablet's floating sheet); full width by
+   * default. */
+  maxWidth?: number;
 };
 
 /**
@@ -96,6 +99,7 @@ export function Sheet({
   children,
   maxHeightFraction = 0.85,
   inline = false,
+  maxWidth,
 }: SheetProps) {
   const themed = useThemeColors();
   const { t } = useTranslation();
@@ -192,7 +196,10 @@ export function Sheet({
           accessibilityLabel={t('common.close')}
         />
       </Animated.View>
-      <Animated.View style={panelStyle} onLayout={onLayout}>
+      <Animated.View
+        style={[panelStyle, maxWidth ? { width: '100%', maxWidth, alignSelf: 'center' } : null]}
+        onLayout={onLayout}
+      >
         <View
           className="rounded-t-sheet border-t border-border bg-popover shadow-overlay"
           style={{

@@ -597,5 +597,51 @@
     "undo": "Annuler",
     "full": "À suivre est plein. Retirez un livre pour en ajouter un autre.",
     "failed": "Impossible de mettre à jour À suivre. Réessayez."
+  },
+  "upnext": {
+    "title": "À suivre",
+    "heading": "À suivre · {{count}}",
+    "hide": "Masquer À suivre",
+    "resize": "Redimensionner À suivre",
+    "queued": "{{time}} en file",
+    "nothingQueued": "Rien en file",
+    "nowPlaying": "En cours de lecture",
+    "leftAtSpeed": "{{time}} restantes à {{speed}}x",
+    "clear": "Vider",
+    "clearLabel": "Vider À suivre",
+    "cleared": "À suivre vidé",
+    "loadFailed": "Impossible de charger À suivre.",
+    "refreshFailed": "Impossible d'actualiser À suivre. Voici la dernière liste connue.",
+    "empty": {
+      "title": "Rien en file pour l'instant",
+      "hint": "Utilisez Mettre en file sur un livre pour l'ajouter ici.",
+      "dropHint": "Faites glisser une couverture ici, ou utilisez Mettre en file sur un livre."
+    },
+    "drop": {
+      "hint": "Faites glisser une couverture ici pour la mettre en file",
+      "over": "Déposez pour ajouter à À suivre",
+      "otherServer": "Seuls les livres de {{server}} peuvent aller ici"
+    },
+    "finished": "Terminé",
+    "percent": "{{percent}} %",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "reorder": "Déplacer {{title}}",
+    "reorderHint": "Utilisez les flèches pour le déplacer.",
+    "playNow": "Lire {{title}} maintenant",
+    "remove": "Retirer {{title}} de À suivre",
+    "playFailed": "Impossible de lancer {{title}}. Réessayez.",
+    "suggestions": "Continuer la série et plus",
+    "nextInSeries": "Suite de {{series}}",
+    "nextAfter": "Après ce livre",
+    "continueAt": "{{percent}} % · reprendre",
+    "ghost": "{{title}} n'est pas sur {{server}}",
+    "ghostNoServer": "{{title}} n'est pas sur ce serveur",
+    "seeSeries": "Voir la série",
+    "add": "Ajouter {{title}} à À suivre",
+    "autoPlay": "Lire automatiquement le livre suivant de la série",
+    "buttonLabel_one": "À suivre, {{count}} livre",
+    "buttonLabel_other": "À suivre, {{count}} livres",
+    "buttonLabelEmpty": "À suivre"
   }
 }

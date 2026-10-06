@@ -3,6 +3,8 @@
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'light', pref: 'light', setPref: jest.fn() }),
 }));
+// top-bar -> the Up next button -> the playback store (a native module).
+jest.mock('@/components/upnext/up-next-button', () => ({ UpNextButton: () => null }));
 
 /* eslint-disable import/first */
 import {

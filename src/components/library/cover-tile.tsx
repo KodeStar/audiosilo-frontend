@@ -1,11 +1,12 @@
 import type { TFunction } from 'i18next';
-import type { ReactNode } from 'react';
+import { type ReactNode, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { useBookDragSource } from '@/components/upnext/drag-source';
 import { useDownloadEntry } from '@/downloads/store';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -78,7 +79,8 @@ export type CoverTileProps = {
  * `CoverGrid`): the cover (`BookCover`), a progress bar along its bottom while in
  * progress, flags in its corner (a friend's server, downloaded on this device - read from
  * the downloads registry -, finished), then the title (two lines) and one caption line.
- * The whole tile is one button whose name carries the title, caption and state.
+ * The whole tile is one button whose name carries the title, caption and state. On the
+ * web desktop the cover can be dragged onto Up next (`useBookDragSource`).
  */
 export function CoverTile({
   connectionId,
@@ -100,6 +102,9 @@ export function CoverTile({
   const { t } = useTranslation();
   const { openBook } = useOpen();
   const downloaded = useDownloadEntry(connectionId, libraryId, path)?.status === 'downloaded';
+  // Web desktop: the cover drags onto Up next's drop zone.
+  const coverRef = useRef<View>(null);
+  useBookDragSource(coverRef, { connectionId, libraryId, path, title });
   const inProgress = !finished && progress !== undefined && progress > 0 && progress < 1;
   const label = [title, caption, ...tileStateLabels({ progress, finished, downloaded, server, t })]
     .filter(Boolean)
@@ -114,7 +119,7 @@ export function CoverTile({
       style={{ width }}
       className={cn('gap-2.5 rounded-[5px]', className)}
     >
-      <View>
+      <View ref={coverRef}>
         <BookCover
           connectionId={connectionId}
           libraryId={libraryId}
