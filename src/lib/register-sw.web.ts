@@ -15,11 +15,17 @@ export function registerServiceWorker() {
   if (typeof window !== 'undefined' && !window.isSecureContext) return;
 
   const url = `${BASE_URL}/sw.js${IS_DEV ? '?dev=1' : ''}`;
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker.register(url).catch((err) => {
       console.warn('[sw] registration failed', err);
     });
-  });
+  };
+  // This module runs when the root layout is first required, which is during React's
+  // first (scheduled) render: in the static export that is usually AFTER `load` has
+  // fired, and a listener added then never runs, so the worker was never registered
+  // (no offline shell, and downloads never became playable offline).
+  if (document.readyState === 'complete') register();
+  else window.addEventListener('load', register, { once: true });
 }
 
 registerServiceWorker();
