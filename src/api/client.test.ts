@@ -770,6 +770,16 @@ describe('ApiClient user state (Phase 1b)', () => {
       });
     });
 
+    it('sends only name and description, even given a whole cached collection', async () => {
+      // The server decodes these bodies strictly: a spread Collection's other fields would
+      // make the create or the rename a 400.
+      const fetchMock = installFetch(() => ({ status: 200, body: { collection: collectionWire } }));
+      await c().createCollection({ ...collectionWire, name: 'Road trip 2' });
+      await c().updateCollection(5, { ...collectionWire, name: 'Renamed' });
+      expect(sent(fetchMock, 0).body).toEqual({ name: 'Road trip 2', description: '' });
+      expect(sent(fetchMock, 1).body).toEqual({ name: 'Renamed', description: '' });
+    });
+
     it('surfaces the collections cap as a 409 ApiError', async () => {
       installFetch(() => ({ status: 409, body: { error: 'too many', code: 'collections_full' } }));
       await expect(c().createCollection({ name: 'x' })).rejects.toMatchObject({ status: 409 });
@@ -956,6 +966,16 @@ describe('ApiClient user state (Phase 1b)', () => {
         method: 'PATCH',
         body: { finished: false, started_at: '2026-09-01', finished_at: null },
         contentType: 'application/json',
+      });
+    });
+
+    it('sends only the edit fields, even given a whole progress row', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { progress } }));
+      await c().editProgress(2, 'Saga/Book 1', { ...progress, finished: false });
+      expect(sent(fetchMock).body).toEqual({
+        finished: false,
+        position: 0,
+        started_at: '2026-09-01T08:00:00Z',
       });
     });
 

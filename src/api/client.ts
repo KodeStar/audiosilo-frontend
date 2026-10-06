@@ -534,12 +534,18 @@ export class ApiClient {
   /** The caller's own edit of a book's progress (capability `progress_edit`; see
    * {@link ProgressEdit}): mark it finished or unfinished, move the position, set or
    * clear the dates. Returns the stored progress, dates included. A 404 means no
-   * progress and no book at the path; a 403 that it is outside the caller's access. */
-  async editProgress(libraryId: number, path: string, edit: ProgressEdit) {
+   * progress and no book at the path; a 403 that it is outside the caller's access.
+   * Only the edit's own fields are sent (the server decodes the body strictly, so a
+   * spread `Progress` row would otherwise be a 400); `null` still clears a date. */
+  async editProgress(
+    libraryId: number,
+    path: string,
+    { finished, position, started_at, finished_at }: ProgressEdit,
+  ) {
     const r = await this.request<{ progress: Progress }>(
       'PATCH',
       `/libraries/${libraryId}/progress`,
-      { query: { path }, body: edit },
+      { query: { path }, body: { finished, position, started_at, finished_at } },
     );
     return r.progress;
   }
@@ -609,7 +615,10 @@ export class ApiClient {
   }
   /** Replace the whole queue with `items`, in this order. Duplicates collapse (the
    * first wins) and an entry that is not an indexed book inside the caller's access
-   * is skipped, not an error. More than 500 items is a 400. */
+   * is skipped, not an error. More than 500 items is a 400. Every stored entry not
+   * listed is deleted, including the caller's hidden ones (outside their current
+   * access, which a read leaves out but keeps): to move one book, use
+   * {@link addToQueue} with a `position`, which leaves hidden entries alone. */
   async setQueue(items: BookRef[]) {
     const r = await this.request<{ queue: QueueEntry[] }>('PUT', '/me/queue', {
       body: { items: bareRefs(items) },
@@ -625,7 +634,8 @@ export class ApiClient {
     });
     return r.queue;
   }
-  /** Remove one book from the queue (idempotent, 204). */
+  /** Remove one book from the queue (idempotent, 204). Exact path, unlike an add: pass
+   * the entry's own `path` (a part/disc path the add resolved removes nothing). */
   removeFromQueue(libraryId: number, path: string) {
     return this.request<void>('DELETE', '/me/queue', { query: { library_id: libraryId, path } });
   }
@@ -641,10 +651,10 @@ export class ApiClient {
     return r.collections;
   }
   /** Create a collection. Over 100 owned is a 409 (`collections_full`); a bad name a
-   * 400. */
-  async createCollection(input: CollectionInput) {
+   * 400. Only `name` and `description` are sent (the server decodes strictly). */
+  async createCollection({ name, description }: CollectionInput) {
     const r = await this.request<{ collection: Collection }>('POST', '/me/collections', {
-      body: input,
+      body: { name, description },
     });
     return r.collection;
   }
@@ -652,10 +662,12 @@ export class ApiClient {
   collection(id: number, signal?: AbortSignal) {
     return this.request<CollectionDetail>('GET', `/me/collections/${id}`, { signal });
   }
-  /** Rename it or change its description (owner only). */
-  async updateCollection(id: number, patch: CollectionPatch) {
+  /** Rename it or change its description (owner only). Only `name` and `description`
+   * are sent (the server decodes strictly, so a spread `Collection` would otherwise be a
+   * 400); an absent one is left as it is. */
+  async updateCollection(id: number, { name, description }: CollectionPatch) {
     const r = await this.request<{ collection: Collection }>('PATCH', `/me/collections/${id}`, {
-      body: patch,
+      body: { name, description },
     });
     return r.collection;
   }
@@ -663,9 +675,11 @@ export class ApiClient {
   deleteCollection(id: number) {
     return this.request<void>('DELETE', `/me/collections/${id}`);
   }
-  /** Replace the items (owner only), with the queue's rules: duplicates collapse and
-   * an entry that is not an indexed book in the caller's access is skipped. More than
-   * 1000 is a 400. Returns the stored detail. */
+  /** Replace the items (owner only), with the queue's rules: duplicates collapse, an
+   * entry that is not an indexed book in the caller's access is skipped, and every
+   * stored item not listed is deleted, the caller's hidden ones included (to move one
+   * book, use {@link addCollectionItem} with a `position`). More than 1000 is a 400.
+   * Returns the stored detail. */
   setCollectionItems(id: number, items: BookRef[]) {
     return this.request<CollectionDetail>('PUT', `/me/collections/${id}/items`, {
       body: { items: bareRefs(items) },
@@ -678,7 +692,8 @@ export class ApiClient {
       body: { library_id: libraryId, path, position },
     });
   }
-  /** Remove one book (owner only; idempotent, 204). */
+  /** Remove one book (owner only; idempotent, 204). Exact path, unlike an add: pass the
+   * item's own `path`. */
   removeCollectionItem(id: number, libraryId: number, path: string) {
     return this.request<void>('DELETE', `/me/collections/${id}/items`, {
       query: { library_id: libraryId, path },
@@ -719,11 +734,12 @@ export class ApiClient {
   async setRating(libraryId: number, path: string, rating: RatingValue, note?: string) {
     const r = await this.request<{ rating: Rating }>('PUT', `/libraries/${libraryId}/rating`, {
       query: { path },
-      body: note === undefined ? { rating } : { rating, note },
+      body: { rating, note },
     });
     return r.rating;
   }
-  /** Remove the caller's rating of this path (idempotent, 204). */
+  /** Remove the caller's rating of exactly this path (idempotent, 204): unlike a rate,
+   * a part/disc path is not resolved, so pass the path the rating came back with. */
   deleteRating(libraryId: number, path: string) {
     return this.request<void>('DELETE', `/libraries/${libraryId}/rating`, { query: { path } });
   }
@@ -774,7 +790,10 @@ export class ApiClient {
   }
   /** Sign out one of the caller's own devices. `current: true` means it was this very
    * token, which every later request is refused with (the caller signs out locally).
-   * Someone else's, unknown or already revoked is a 404. */
+   * Someone else's, unknown or already revoked is a 404. Don't use it for the device
+   * the caller is on (its row has `current: true`): the token would be dead before the
+   * app's own sign-out could save the final position and the queued progress; sign out
+   * of the connection the usual way instead. */
   revokeMyDevice(id: number) {
     return this.request<MyDeviceRevoked>('DELETE', `/me/devices/${id}`);
   }

@@ -567,13 +567,19 @@ export type Progress = {
  * own edit, stamped with server time and a newer version (it beats older device saves;
  * a device with the book loaded overrides it on its next save). Every field is
  * optional: absent leaves it as it is.
- * - `finished: true` moves the position to the end and sets `finished_at` to now
- *   unless one is given.
+ * - `finished: true` on a book not yet finished moves the position to the end and
+ *   sets `finished_at` to now unless one is given; on a book already finished it
+ *   changes neither.
  * - `finished: false` (mark unfinished) keeps the position unless one is given and
- *   clears `finished_at`.
+ *   clears `finished_at`. A book finished at its end is stored at (or within a few
+ *   seconds of) its duration, and the player resumes an unfinished book at its saved
+ *   position, so it would finish again at once: send a `position` (say 0) with
+ *   `finished: false` for such a book.
  * - Dates are RFC3339 or `YYYY-MM-DD` (server time; a day-only finish is the end of
  *   that day, or now if sooner); `null` clears one. A date in the future, a finish
  *   before the start, or a finish on a book that isn't (becoming) finished is a 400.
+ *   An edit that creates the progress (none yet) starts the book now, so a past
+ *   `finished_at` there needs a `started_at` at or before it (or `null`).
  * It is not playback, so it records no listening session. */
 export type ProgressEdit = {
   finished?: boolean;
@@ -644,7 +650,8 @@ export type History = {
 // --- User state & personal stats (player redesign Phase 1b) --------------------
 // Each route is gated on its own capability flag (see Capabilities). Stored rows are
 // path-keyed and survive re-indexing; a list read leaves out a row whose path is
-// outside the caller's CURRENT access (kept on the server, not returned, not counted).
+// outside the caller's CURRENT access (kept on the server, not returned, not counted),
+// but a whole-list replace (PUT) deletes such rows like any other row it doesn't list.
 
 /** A user on the same server, as the collection share list names them. */
 export type UserRef = { id: number; username: string };

@@ -363,15 +363,27 @@ flags: `queue` (`useQueue` + set/add/remove), `collections` (`useCollections`,
 `useCollection(id)`, `useShareTargets(enabled)` - pass false for demo accounts, which
 get a 403 - and the collection/items/shares mutations; read-only sharing, a viewer's
 `shared_with` is absent), `ratings` (`useRating`, `useMyRatings`, set/delete; a PUT
-replaces the whole rating, so an omitted `note` clears it), `progress_edit`
+replaces the whole rating, so an omitted `note` clears it; PUT resolves a part path to
+its book but GET/DELETE are exact, so key rating UI on the book's path; list adds resolve
+too and list removes are exact, so remove with the entry's own path), `progress_edit`
 (`useEditProgress`: PATCH dates / mark unfinished; it does NOT touch the local progress
-mirror or offline queue, decision 7), `user_stats` (`useMyStats(range)`,
-`useMyListening(range)`, `useListeningGoal` + set/clear; server time) and `my_devices`
-(`useMyDevices`, `useRevokeMyDevice`: `current: true` means this device's token is dead,
-so the caller signs out locally). **Mutations check their flag at call time** and reject
-with `CapabilityError` (not an `ApiError`, so no reconnect banner) without sending
-anything when the flag is false or `/server` hasn't answered yet. Gating tests live in
-`hooks-capability.test.tsx`; each was checked to fail with its gate removed.
+mirror or offline queue, decision 7; to mark unfinished a book finished at its end, send
+a `position` too, or the player resumes it at the end and it finishes again), `user_stats`
+(`useMyStats(range)`, `useMyListening(range)`, `useListeningGoal` + set/clear; server
+time) and `my_devices` (`useMyDevices`, `useRevokeMyDevice`: NOT for the `current: true`
+row - revoking it kills the token before `teardownBeforeTokenRevoke` can save the final
+position and the queued progress, so that row signs out through `useSignOut`). A
+whole-list PUT (`useSetQueue`, `useSetCollectionItems`) deletes the caller's hidden
+(out-of-access) rows too; move one book with an add and a `position` (an index in the
+visible order) instead. **Mutations check their flag at call time** and reject with
+`CapabilityError` without sending anything when the flag is false or `/server` hasn't
+answered yet (no request, so no 401 and no reconnect flag; never hand it to `noteError`,
+which reads any non-`ApiError` as an unreachable server). Each mutation stores its answer
+through `storeAnswer` (cancels a read of the same key in flight, which would land over
+it, and reads again), is keyed by connection (`mutationKey`, so a pending write keeps
+its own connection) and runs one at a time per capability and connection (`scope`).
+Gating tests live in `hooks-capability.test.tsx`; each was checked to fail with its gate
+removed.
 
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived

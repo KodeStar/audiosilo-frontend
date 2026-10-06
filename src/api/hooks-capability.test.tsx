@@ -56,6 +56,8 @@ function makeClient() {
     clearListeningGoal: jest.fn(async () => undefined),
     myDevices: jest.fn(async () => []),
     revokeMyDevice: jest.fn(async () => ({ current: false })),
+    createApiKey: jest.fn(async () => ({ id: 13, token: 'secret' })),
+    revokeApiKey: jest.fn(async () => undefined),
   };
 }
 type StubClient = ReturnType<typeof makeClient>;
@@ -85,12 +87,14 @@ import {
   useClearListeningGoal,
   useCollection,
   useCollections,
+  useCreateApiKey,
   useCreateCollection,
   useDeleteCollection,
   useDeleteRating,
   useEditProgress,
   useLibraryBooks,
   useListeningGoal,
+  useMarkFinished,
   useMyDevices,
   useMyListening,
   useMyRatings,
@@ -101,6 +105,7 @@ import {
   useRating,
   useRemoveCollectionItem,
   useRemoveFromQueue,
+  useRevokeApiKey,
   useRevokeMyDevice,
   useSeriesList,
   useSetCollectionItems,
@@ -342,15 +347,15 @@ describe('useBookMeta', () => {
 // all, sends a request and fails), the positive ones against a server with that flag
 // alone.
 
-type Flag = 'queue' | 'collections' | 'ratings' | 'progress_edit' | 'user_stats' | 'my_devices';
-const ALL_1B: Flag[] = [
+const ALL_1B = [
   'queue',
   'collections',
   'ratings',
   'progress_edit',
   'user_stats',
   'my_devices',
-];
+] as const;
+type Flag = (typeof ALL_1B)[number];
 /** Every Phase 1b flag on except `flag` (and every 1a flag on, too). */
 function allBut(flag: Flag): Partial<Capabilities> {
   const caps: Partial<Capabilities> = {
@@ -485,14 +490,16 @@ describe('Phase 1b gated queries', () => {
   });
 
   it('holds useCollection without an id and useShareTargets while disabled', async () => {
+    // The control is a collection read only: a share-targets control would share the held
+    // query's key, and React Query would dedupe an ungated request into it unnoticed.
     const { result } = await mount({ c1: { collections: true } }, () => ({
       held: [useCollection(0), useShareTargets(false)],
-      control: [useCollection(7), useShareTargets(true)],
+      control: useCollection(7),
     }));
-    await waitFor(() => expect(result.current.control.every((q) => q.isSuccess)).toBe(true));
+    await waitFor(() => expect(result.current.control.isSuccess).toBe(true));
     expect(mockClients.c1.collection).toHaveBeenCalledTimes(1);
     expect(mockClients.c1.collection).toHaveBeenCalledWith(7, expect.anything());
-    expect(mockClients.c1.shareTargets).toHaveBeenCalledTimes(1);
+    expect(mockClients.c1.shareTargets).not.toHaveBeenCalled();
   });
 
   it('keys each stats range on its own', async () => {
@@ -646,6 +653,15 @@ const mutationCases: MutationCase[] = [
   },
 ];
 
+/** A stub answer held open until the test settles it with `release(value)`. */
+function heldAnswer() {
+  let settle: (value: unknown) => void = () => {};
+  const promise = new Promise<never>((resolve) => {
+    settle = resolve as (value: unknown) => void;
+  });
+  return { promise, release: (value: unknown) => settle(value) };
+}
+
 /** Mount mutation useHook `useHook` beside the flag it needs, and wait until that is known. */
 async function mountMutation<T>(caps: Partial<Capabilities>, flag: Flag, useHook: () => T) {
   const r = await mount({ c1: caps }, () => ({ m: useHook(), known: useCapability(flag) }));
@@ -663,7 +679,7 @@ describe('Phase 1b gated mutations', () => {
         await result.current.m.mutateAsync(vars as never).catch((e: unknown) => (error = e));
       });
       expect(error).toBeInstanceOf(CapabilityError);
-      expect(error).toMatchObject({ capability: flag });
+      expect(error).toMatchObject({ capability: flag, unknown: false });
       expect(mockClients.c1[method]).not.toHaveBeenCalled();
     },
   );
@@ -693,6 +709,8 @@ describe('Phase 1b gated mutations', () => {
         .catch((e: unknown) => (error = e));
     });
     expect(error).toBeInstanceOf(CapabilityError);
+    // Not known yet is not "unsupported": the error says which it is.
+    expect(error).toMatchObject({ capability: 'queue', unknown: true });
     expect(mockClients.c1.addToQueue).not.toHaveBeenCalled();
   });
 });
@@ -710,6 +728,9 @@ describe('Phase 1b mutation cache updates', () => {
 
   /** A cached progress row (only the fields the cache updates look at). */
   const row = (path: string, extra: object = {}) => ({ library_id: 2, path, ...extra });
+  /** A/Book's metadata, cut at the saved progress (spoilers=hide) and in full. */
+  const hiddenMeta = qk.bookMeta('c1', 2, 'A/Book', { hideSpoilers: true });
+  const fullMeta = qk.bookMeta('c1', 2, 'A/Book');
 
   it('a finishing progress edit patches its row in place and refreshes the stats and goal', async () => {
     const { result, qc } = await mountMutation(
@@ -722,6 +743,8 @@ describe('Phase 1b mutation cache updates', () => {
     qc.setQueryData(qk.allProgress('c1'), [row('Other'), row('A/Book', { finished: false })]);
     qc.setQueryData(qk.myStats('c1', '30d'), {});
     qc.setQueryData(qk.listeningGoal('c1'), {});
+    qc.setQueryData(hiddenMeta, {});
+    qc.setQueryData(fullMeta, {});
     await act(async () => {
       await result.current.m.mutateAsync({
         libraryId: 2,
@@ -735,6 +758,9 @@ describe('Phase 1b mutation cache updates', () => {
     expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(false);
     expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(true);
+    // The server cuts the spoilers=hide envelope at the saved progress; the full one isn't.
+    expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(fullMeta)?.isInvalidated).toBe(false);
   });
 
   it('clearing a finish date also refreshes the stats and goal', async () => {
@@ -745,6 +771,7 @@ describe('Phase 1b mutation cache updates', () => {
     );
     qc.setQueryData(qk.myStats('c1', '7d'), {});
     qc.setQueryData(qk.listeningGoal('c1'), {});
+    qc.setQueryData(hiddenMeta, {});
     await act(async () => {
       await result.current.m.mutateAsync({
         libraryId: 2,
@@ -755,6 +782,8 @@ describe('Phase 1b mutation cache updates', () => {
     await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
     expect(qc.getQueryState(qk.myStats('c1', '7d'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(true);
+    // A date moves no position: the spoilers=hide cut stands.
+    expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(false);
   });
 
   it('a progress edit that moves no finish inserts its row and leaves the stats and goal', async () => {
@@ -766,6 +795,7 @@ describe('Phase 1b mutation cache updates', () => {
     qc.setQueryData(qk.allProgress('c1'), [row('Other')]);
     qc.setQueryData(qk.myStats('c1', '30d'), {});
     qc.setQueryData(qk.listeningGoal('c1'), {});
+    qc.setQueryData(hiddenMeta, {});
     await act(async () => {
       await result.current.m.mutateAsync({
         libraryId: 2,
@@ -778,25 +808,27 @@ describe('Phase 1b mutation cache updates', () => {
     expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(false);
     expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(false);
     expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(false);
+    // A new position moves where the server cuts the spoilers=hide envelope.
+    expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(true);
   });
 
-  it('a progress edit on a part path is cached under its book, and the asked path refreshes', async () => {
+  it('a progress edit keeps a refresh another writer left pending on the all-progress list', async () => {
     const { result, qc } = await mountMutation(
       { progress_edit: true },
       'progress_edit',
       useEditProgress,
     );
-    mockClients.c1.editProgress.mockResolvedValueOnce(row('A/Book') as never);
-    qc.setQueryData(qk.progress('c1', 2, 'A/Book/CD1'), null);
+    qc.setQueryData(qk.allProgress('c1'), [row('Other')]);
+    // Playback stopped another book while no screen showed the list: only marked stale.
+    await act(() => qc.invalidateQueries({ queryKey: qk.allProgress('c1') }));
     await act(async () => {
-      await result.current.m.mutateAsync({ libraryId: 2, path: 'A/Book/CD1', edit: {} });
+      await result.current.m.mutateAsync({ libraryId: 2, path: 'A/Book', edit: { position: 5 } });
     });
-    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
-    expect(qc.getQueryData(qk.progress('c1', 2, 'A/Book'))).toEqual(row('A/Book'));
-    expect(qc.getQueryState(qk.progress('c1', 2, 'A/Book/CD1'))?.isInvalidated).toBe(true);
+    expect(qc.getQueryData(qk.allProgress('c1'))).toEqual([row('A/Book'), row('Other')]);
+    expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(true);
   });
 
-  it("a rating on a part path is cached under its book's path, and the asked path refreshes", async () => {
+  it("a rating on a part path is cached under its book's path (the only one it changes)", async () => {
     const { result, qc } = await mountMutation({ ratings: true }, 'ratings', useSetRating);
     mockClients.c1.setRating.mockResolvedValueOnce({ library_id: 2, path: 'A/Book', rating: 5 });
     qc.setQueryData(qk.rating('c1', 2, 'A/Book/CD1'), null);
@@ -806,7 +838,8 @@ describe('Phase 1b mutation cache updates', () => {
     });
     await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
     expect(qc.getQueryData(qk.rating('c1', 2, 'A/Book'))).toMatchObject({ rating: 5 });
-    expect(qc.getQueryState(qk.rating('c1', 2, 'A/Book/CD1'))?.isInvalidated).toBe(true);
+    // GET rating is exact-path: the part path's answer is unchanged, so not asked again.
+    expect(qc.getQueryState(qk.rating('c1', 2, 'A/Book/CD1'))?.isInvalidated).toBe(false);
     expect(qc.getQueryState(qk.myRatings('c1'))?.isInvalidated).toBe(true);
   });
 
@@ -877,7 +910,6 @@ describe('Phase 1b mutation cache updates', () => {
       collection: stored,
       items: ['kept'],
     });
-    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
     expect(qc.getQueryData(qk.collections('c1'))).toEqual([stored, other]);
     expect(qc.getQueryState(qk.collections('c1'))?.isInvalidated).toBe(false);
   });
@@ -978,5 +1010,185 @@ describe('Phase 1b mutation cache updates', () => {
       year: '2026',
       finished: 4,
     });
+  });
+
+  it("keeps a write's answer over a read of the same key that was already in flight", async () => {
+    const { result, qc } = await mountMutation({ queue: true }, 'queue', () => ({
+      queue: useQueue(),
+      add: useAddToQueue(),
+    }));
+    await waitFor(() => expect(result.current.m.queue.isSuccess).toBe(true));
+    const stored = [{ library_id: 2, path: 'A/Book', added_at: 'now' }];
+    const oldRead = heldAnswer();
+    mockClients.c1.queue
+      .mockImplementationOnce(() => oldRead.promise)
+      .mockResolvedValue(stored as never);
+    mockClients.c1.addToQueue.mockResolvedValueOnce(stored as never);
+    // A read starts (a mount refetch, a reconnect) and is still out when the add answers.
+    await act(async () => {
+      void result.current.m.queue.refetch();
+    });
+    await act(async () => {
+      await result.current.m.add.mutateAsync({ libraryId: 2, path: 'A/Book' });
+    });
+    // The old read now lands with the queue from before the add: it must not win.
+    await act(async () => oldRead.release([]));
+    await waitFor(() => expect(qc.getQueryState(qk.queue('c1'))?.fetchStatus).toBe('idle'));
+    expect(qc.getQueryData(qk.queue('c1'))).toEqual(stored);
+  });
+
+  it('reads a list again when its first load was in flight during a write', async () => {
+    const before = col(1, true, '2026-10-01T00:00:00.000Z');
+    const after = col(1, true, '2026-10-06T00:00:00.000Z', { item_count: 2 });
+    const firstLoad = heldAnswer();
+    const { result } = await mount(
+      { c1: { collections: true } },
+      () => ({ list: useCollections(), add: useAddCollectionItem() }),
+      () =>
+        mockClients.c1.collections
+          .mockImplementationOnce(() => firstLoad.promise)
+          .mockResolvedValue([after] as never),
+    );
+    const qc = queryClients[queryClients.length - 1];
+    await waitFor(() =>
+      expect(qc.getQueryState(qk.collections('c1'))?.fetchStatus).toBe('fetching'),
+    );
+    mockClients.c1.addCollectionItem.mockResolvedValueOnce({
+      collection: after,
+      items: [],
+    } as never);
+    await act(async () => {
+      await result.current.add.mutateAsync({ id: 1, libraryId: 2, path: 'A/Book' });
+    });
+    await act(async () => firstLoad.release([before]));
+    await waitFor(() => expect(result.current.list.data).toEqual([after]));
+  });
+
+  it('reads an errored list again after a write', async () => {
+    const renamed = col(1, true, '2026-10-06T00:00:00.000Z', { name: 'Renamed' });
+    const { result } = await mount(
+      { c1: { collections: true } },
+      () => ({ list: useCollections(), rename: useUpdateCollection() }),
+      () =>
+        mockClients.c1.collections
+          .mockRejectedValueOnce(new Error('503 from a proxy'))
+          .mockResolvedValue([renamed] as never),
+    );
+    await waitFor(() => expect(result.current.list.isError).toBe(true));
+    mockClients.c1.updateCollection.mockResolvedValueOnce(renamed as never);
+    await act(async () => {
+      await result.current.rename.mutateAsync({ id: 1, name: 'Renamed' });
+    });
+    await waitFor(() => expect(result.current.list.data).toEqual([renamed]));
+  });
+
+  it('deleting the collection a screen shows keeps its data and asks nothing more', async () => {
+    const { result, qc } = await mountMutation({ collections: true }, 'collections', () => ({
+      detail: useCollection(5),
+      remove: useDeleteCollection(),
+    }));
+    await waitFor(() => expect(result.current.m.detail.isSuccess).toBe(true));
+    await act(async () => {
+      await result.current.m.remove.mutateAsync(5);
+    });
+    await act(async () => {});
+    expect(mockClients.c1.collection).toHaveBeenCalledTimes(1);
+    expect(result.current.m.detail.data).toEqual({ collection: { id: 5 }, items: [] });
+    // Marked stale, so the next screen to show it asks the server (and learns it's gone).
+    expect(qc.getQueryState(qk.collection('c1', 5))?.isInvalidated).toBe(true);
+  });
+
+  it('marking a book finished refreshes the stats, the goal and the spoilers=hide metadata', async () => {
+    const { result, qc } = await mountMutation({ user_stats: true }, 'user_stats', useMarkFinished);
+    qc.setQueryData(qk.myStats('c1', '30d'), {});
+    qc.setQueryData(qk.listeningGoal('c1'), {});
+    qc.setQueryData(hiddenMeta, {});
+    qc.setQueryData(fullMeta, {});
+    await act(async () => {
+      await result.current.m.mutateAsync({
+        libraryId: 2,
+        path: 'A/Book',
+        position: 10,
+        duration: 100,
+      });
+    });
+    expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(fullMeta)?.isInvalidated).toBe(false);
+  });
+
+  it('creating or revoking an API key refreshes the device list too', async () => {
+    const { result, qc } = await mountMutation({ my_devices: true }, 'my_devices', () => ({
+      create: useCreateApiKey(),
+      revoke: useRevokeApiKey(),
+    }));
+    qc.setQueryData(qk.myDevices('c1'), []);
+    await act(async () => {
+      await result.current.m.create.mutateAsync('cron');
+    });
+    expect(qc.getQueryState(qk.myDevices('c1'))?.isInvalidated).toBe(true);
+    qc.setQueryData(qk.myDevices('c1'), []);
+    await act(async () => {
+      await result.current.m.revoke.mutateAsync(13);
+    });
+    expect(qc.getQueryState(qk.myDevices('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it("runs a connection's writes of one capability one at a time, in order", async () => {
+    const { result, qc } = await mountMutation({ queue: true }, 'queue', useAddToQueue);
+    const first = [{ library_id: 2, path: 'A', added_at: '1' }];
+    const second = [...first, { library_id: 2, path: 'B', added_at: '2' }];
+    const firstAdd = heldAnswer();
+    mockClients.c1.addToQueue
+      .mockImplementationOnce(() => firstAdd.promise)
+      .mockResolvedValueOnce(second as never);
+    let writes: Promise<unknown>[] = [];
+    await act(async () => {
+      writes = [
+        result.current.m.mutateAsync({ libraryId: 2, path: 'A' }),
+        result.current.m.mutateAsync({ libraryId: 2, path: 'B' }),
+      ];
+    });
+    // The second add waits for the first, so the server applies them in order...
+    expect(mockClients.c1.addToQueue).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      firstAdd.release(first);
+      await Promise.all(writes);
+    });
+    expect(mockClients.c1.addToQueue).toHaveBeenCalledTimes(2);
+    // ...and the cache ends on the later answer.
+    expect(qc.getQueryData(qk.queue('c1'))).toEqual(second);
+  });
+
+  it('keeps each write on the connection it was made on when the hook switches', async () => {
+    let connection = 'c1';
+    const { result, rerender } = await mount({ c1: { queue: true }, c2: { queue: true } }, () => ({
+      m: useSetQueue(connection),
+      known: useCapability('queue', connection),
+    }));
+    await waitFor(() => expect(result.current.known).toBe(true));
+    const qc = queryClients[queryClients.length - 1];
+    const stored = [{ library_id: 2, path: 'A/Book', added_at: 'now' }];
+    const first = heldAnswer();
+    mockClients.c1.setQueue
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValueOnce(stored as never);
+    let writes: Promise<unknown>[] = [];
+    await act(async () => {
+      // The second write waits for the first (same capability and connection).
+      writes = [result.current.m.mutateAsync([]), result.current.m.mutateAsync([])];
+    });
+    // The hook switches to another connection while both are out.
+    connection = 'c2';
+    await act(async () => rerender({}));
+    await act(async () => {
+      first.release([]);
+      await Promise.all(writes);
+    });
+    expect(mockClients.c1.setQueue).toHaveBeenCalledTimes(2);
+    expect(mockClients.c2.setQueue).not.toHaveBeenCalled();
+    expect(qc.getQueryData(qk.queue('c1'))).toEqual(stored);
+    expect(qc.getQueryData(qk.queue('c2'))).toBeUndefined();
   });
 });
