@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 import { type SourcedLibrary, useLibrariesAll } from '@/api/hooks';
 import {
   type LibraryGroup,
@@ -12,7 +14,8 @@ export type LibraryChoiceGroup = LibraryGroup & { libraries: SourcedLibrary[] };
  * The library the Library tab's browse modes act on, across every signed-in server:
  * the device's stored pick (`useLibrarySelection`) reconciled with the libraries the
  * servers list now (`resolveLibrarySelection`: a pick that is gone falls back to the
- * first library of the first server, an offline server keeps its pick).
+ * first library listed, an offline server keeps its pick, and a fallback once shown
+ * stays put).
  * - `selection` / `library`: what to show (null while there is nothing yet);
  * - `groups`: every server's libraries in connection order, for `LibraryPicker`;
  * - `select`: remember another library.
@@ -25,7 +28,12 @@ export function useSelectedLibrary() {
     ...g,
     libraryIds: g.libraries.map((l) => l.id),
   }));
-  const selection = resolveLibrarySelection(stored, groups);
+  const shown = useLibrarySelection((s) => s.shown);
+  const hold = useLibrarySelection((s) => s.hold);
+  const selection = resolveLibrarySelection(stored, groups, shown);
+  useEffect(() => {
+    if (selection) hold(selection);
+  }, [selection?.connectionId, selection?.libraryId]); // eslint-disable-line react-hooks/exhaustive-deps
   const library = selection
     ? (groups
         .find((g) => g.connectionId === selection.connectionId)

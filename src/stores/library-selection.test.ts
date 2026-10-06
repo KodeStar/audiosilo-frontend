@@ -112,13 +112,29 @@ describe('resolveLibrarySelection', () => {
     expect(mod.resolveLibrarySelection(null, [group('a', [1, 2])])).toEqual(first);
   });
 
-  it('waits at a connection still loading, and skips empty or failing ones', () => {
-    expect(
-      mod.resolveLibrarySelection(null, [group('a', [], 'loading'), group('b', [3])]),
-    ).toBeNull();
+  it('skips connections still loading, empty or failing', () => {
+    // A slow or unreachable first server must not hold the Library up (the iPhone showed
+    // no library and only Books and Folders while one hung).
+    expect(mod.resolveLibrarySelection(null, [group('a', [], 'loading'), group('b', [3])])).toEqual(
+      { connectionId: 'b', libraryId: 3 },
+    );
     expect(
       mod.resolveLibrarySelection(null, [group('a', []), group('x', [], 'error'), group('b', [3])]),
     ).toEqual({ connectionId: 'b', libraryId: 3 });
+    expect(mod.resolveLibrarySelection(null, [group('a', [], 'loading')])).toBeNull();
     expect(mod.resolveLibrarySelection(null, [])).toBeNull();
+  });
+
+  it('keeps showing a fallback when an earlier server arrives late', () => {
+    const shown = { connectionId: 'b', libraryId: 3 };
+    expect(mod.resolveLibrarySelection(null, [group('a', [1]), group('b', [3])], shown)).toBe(
+      shown,
+    );
+    // A stored pick still wins; a shown library that is gone gives way.
+    const pick = { connectionId: 'a', libraryId: 1 };
+    expect(mod.resolveLibrarySelection(pick, [group('a', [1]), group('b', [3])], shown)).toBe(pick);
+    expect(mod.resolveLibrarySelection(null, [group('a', [1]), group('b', [4])], shown)).toEqual(
+      pick,
+    );
   });
 });

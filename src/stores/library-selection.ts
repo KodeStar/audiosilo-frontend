@@ -31,11 +31,17 @@ function parseDoc(raw: unknown): Partial<Doc> {
 const stored = persistedDocument<Doc>('audiosilo.librarySelection', parseDoc);
 
 type LibrarySelectionState = Doc & {
+  /** The library the browse modes last showed, in memory only: a fallback (no pick, or
+   * a pick that is gone) stays put while the app runs instead of moving to an earlier
+   * server whose list arrives later (`resolveLibrarySelection`). */
+  shown: LibrarySelection | null;
   hydrate: () => Promise<void>;
   /** Remember the library the browse modes show. */
   select: (selection: LibrarySelection) => void;
   /** Forget the pick (the browse modes fall back to the first library). */
   clear: () => void;
+  /** Note what the browse modes show now (`shown`). */
+  hold: (selection: LibrarySelection) => void;
 };
 
 /**
@@ -46,6 +52,7 @@ type LibrarySelectionState = Doc & {
  */
 export const useLibrarySelection = create<LibrarySelectionState>()((set, get) => ({
   selection: null,
+  shown: null,
   hydrate: () => stored.hydrate({ selection: null }, (doc) => set(doc)),
   select: (selection) => {
     const cur = get().selection;
@@ -59,6 +66,13 @@ export const useLibrarySelection = create<LibrarySelectionState>()((set, get) =>
     if (!get().selection) return;
     set({ selection: null });
     stored.write({ selection: null }, { selection: null });
+  },
+  hold: (selection) => {
+    const cur = get().shown;
+    if (cur?.connectionId === selection.connectionId && cur.libraryId === selection.libraryId) {
+      return;
+    }
+    set({ shown: selection });
   },
 }));
 
@@ -81,29 +95,29 @@ export type LibraryGroup = {
   status: 'loading' | 'ready' | 'error';
 };
 
+/** A pick still stands while its connection is here and its server's loaded list has
+ * it; a list still loading or failing (offline is not "gone") keeps it too. */
+function stands(pick: LibrarySelection, groups: readonly LibraryGroup[]): boolean {
+  const group = groups.find((g) => g.connectionId === pick.connectionId);
+  return !!group && (group.status !== 'ready' || group.libraryIds.includes(pick.libraryId));
+}
+
 /**
- * The library the browse modes show: the stored pick while it still exists, else the
- * first library of the first connection that has one. A pick is kept while its server's
- * list is loading or failing (offline is not "gone"); it is replaced only once its
- * connection is gone or its server's loaded list lacks it. The fallback walks the
- * connections in order and waits (null) at one still loading, so the pick doesn't jump
- * from a later server to an earlier one as the lists arrive. Null when there is nothing
- * to show (yet).
+ * The library the browse modes show: the stored pick while it stands, else the one they
+ * already showed (`shown`) while that stands, else the first library of the first
+ * connection that has one. The fallback passes over a connection still loading: a slow
+ * or unreachable first server would otherwise hold the whole Library up (no library,
+ * only the modes every server has) until its request gave up. Holding `shown` keeps
+ * such a fallback from jumping to that earlier server when its list does arrive. Null
+ * when there is nothing to show (yet).
  */
 export function resolveLibrarySelection(
   stored: LibrarySelection | null,
   groups: readonly LibraryGroup[],
+  shown: LibrarySelection | null = null,
 ): LibrarySelection | null {
-  if (stored) {
-    const group = groups.find((g) => g.connectionId === stored.connectionId);
-    if (group && (group.status !== 'ready' || group.libraryIds.includes(stored.libraryId))) {
-      return stored;
-    }
-  }
-  for (const g of groups) {
-    if (g.libraryIds.length > 0)
-      return { connectionId: g.connectionId, libraryId: g.libraryIds[0] };
-    if (g.status === 'loading') return null;
-  }
-  return null;
+  if (stored && stands(stored, groups)) return stored;
+  if (shown && stands(shown, groups)) return shown;
+  const first = groups.find((g) => g.libraryIds.length > 0);
+  return first ? { connectionId: first.connectionId, libraryId: first.libraryIds[0] } : null;
 }
