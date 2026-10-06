@@ -1,5 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
-import { type ReactElement } from 'react';
+import { type ReactElement, useMemo } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -46,45 +46,47 @@ export function Ledge({ top }: { top: number }) {
   );
 }
 
+function gapSeparator(width: number) {
+  const Gap = () => <View style={{ width }} />;
+  Gap.displayName = 'ShelfGap';
+  return Gap;
+}
+
 /**
  * A horizontal, snap-scrolling row of cover tiles standing on a shelf ledge (STYLEGUIDE
  * section 8), on FlashList. Tiles are 164 wide (132 on a phone); `renderItem` gets the
  * tile width - give it a `CoverTile` with `onShelf` (its titles hang below the ledge) or
- * a `GhostCover`. The row bleeds to the window edge past the page's own padding
- * (`gutter`, the page gutter by default), so pass the gutter of the page it sits in.
- * The ledge is drawn behind the scroller directly under the covers, so it stays put
- * while the covers scroll over it.
+ * a `GhostCover`. The row bleeds to the window edge past the page gutter. The ledge is
+ * drawn behind the scroller directly under the covers, so it stays put while the covers
+ * scroll over it.
  */
 export function ShelfRow<T>({
   data,
   keyExtractor,
   renderItem,
-  gutter,
-  ledge = true,
   accessibilityLabel,
 }: {
   data: readonly T[];
   keyExtractor: (item: T, index: number) => string;
   renderItem: (item: T, tileWidth: number) => ReactElement;
-  /** The page padding to bleed past (defaults to the page gutter of this form factor). */
-  gutter?: number;
-  /** Draw the ledge (a plain scroller of covers without). */
-  ledge?: boolean;
   /** Names the row for assistive tech (usually the shelf's heading). */
   accessibilityLabel?: string;
 }) {
   const layout = useLayout();
   const { tile, gap } = shelfMetrics(layout);
-  const pad = gutter ?? pageGutter(layout);
+  const pad = pageGutter(layout);
+  // One separator type per gap: an inline component would be a new type each render,
+  // which remounts every separator.
+  const Separator = useMemo(() => gapSeparator(gap), [gap]);
   return (
     <View style={{ marginHorizontal: -pad }} accessibilityLabel={accessibilityLabel}>
-      {ledge ? <Ledge top={TOP + tile} /> : null}
+      <Ledge top={TOP + tile} />
       <FlashList
         horizontal
         data={data}
         keyExtractor={keyExtractor}
         renderItem={({ item }) => renderItem(item, tile)}
-        ItemSeparatorComponent={() => <View style={{ width: gap }} />}
+        ItemSeparatorComponent={Separator}
         showsHorizontalScrollIndicator={false}
         snapToInterval={tile + gap}
         snapToAlignment="start"

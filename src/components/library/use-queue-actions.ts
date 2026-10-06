@@ -37,7 +37,8 @@ export function findQueued(
  *   then a toast whose Undo puts it back where it was.
  * Both resolve to whether the change was made. A `CapabilityError` (no request was sent)
  * is swallowed quietly and never reaches the reachability tracker; a full queue and other
- * failures say so in a toast.
+ * failures say so in a toast (`fail`, for a caller's own writes through `add`/`remove`,
+ * the same mutations, so `pending` covers them too).
  */
 export function useQueueActions(connectionId?: string) {
   const { t } = useTranslation();
@@ -104,6 +105,9 @@ export function useQueueActions(connectionId?: string) {
     isQueued: (libraryId: number, path: string) => !!findQueued(entries, libraryId, path),
     queue,
     unqueue,
+    add,
+    remove,
+    fail,
     pending: add.isPending || remove.isPending,
   };
 }

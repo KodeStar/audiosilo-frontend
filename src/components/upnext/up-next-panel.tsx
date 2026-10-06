@@ -5,7 +5,6 @@ import { useBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
-import { useQueueActions } from '@/components/library/use-queue-actions';
 import { useBookTimeLeft } from '@/components/player/book-progress';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
@@ -69,7 +68,7 @@ export function UpNextPanel({
   const desktopWeb = useLayout() === 'desktop' && Platform.OS === 'web';
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const serverName = useConnectionName(cid);
-  const actions = useQueueActions(cid);
+  const { actions } = data;
   const playNow = usePlayNow(cid, data.dropPlayed);
   const { entries } = data;
   const loaded = nowPlaying?.connectionId === cid ? nowPlaying : null;

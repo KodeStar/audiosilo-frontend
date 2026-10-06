@@ -5,12 +5,10 @@ import {
   clampDrawerWidth,
   dragShift,
   dragTarget,
-  entryKey,
   entryState,
   isUpNextShortcut,
   keyMove,
   moveItem,
-  orderByKeys,
   parseDragPayload,
   pickSuggestions,
   progressIndex,
@@ -57,12 +55,6 @@ describe('reordering', () => {
   it('moves one item to its final index', () => {
     expect(moveItem(['a', 'b', 'c', 'd'], 0, 2)).toEqual(['b', 'c', 'a', 'd']);
     expect(moveItem(['a', 'b', 'c', 'd'], 3, 1)).toEqual(['a', 'd', 'b', 'c']);
-  });
-
-  it('orders entries by an optimistic key list, keeping unknown entries at the end', () => {
-    const q = [entry('A'), entry('B'), entry('C')];
-    const out = orderByKeys(q, [entryKey(q[2]), entryKey(q[0]), 'gone']);
-    expect(out.map((e) => e.path)).toEqual(['C', 'A', 'B']);
   });
 
   it('turns a drag distance into a target row, clamped to the list', () => {

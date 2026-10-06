@@ -1,17 +1,9 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError } from '@/api/client';
-import {
-  CapabilityError,
-  useAddToQueue,
-  useAllProgressAll,
-  useCapability,
-  useNextBook,
-  useQueue,
-  useRemoveFromQueue,
-} from '@/api/hooks';
+import { useAllProgressAll, useCapability, useNextBook, useQueue } from '@/api/hooks';
 import type { BookRef, QueueEntry } from '@/api/types';
+import { useQueueActions } from '@/components/library/use-queue-actions';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
@@ -38,18 +30,6 @@ export function useUpNextBadge() {
   return { supported, count: data?.length ?? 0 };
 }
 
-/** A failed queue write, said once: quiet for a `CapabilityError` (nothing was sent),
- * "full" for a 409, else a plain failure. */
-function useFail() {
-  const { t } = useTranslation();
-  return (e: unknown) => {
-    if (e instanceof CapabilityError) return;
-    toast({
-      title: e instanceof ApiError && e.status === 409 ? t('queue.full') : t('queue.failed'),
-    });
-  };
-}
-
 /**
  * Everything the Up next panel shows and does, for ONE connection's queue: the entries,
  * the listener's place in each (from the cached progress list), the time queued, the
@@ -59,10 +39,11 @@ function useFail() {
  */
 export function useUpNextData(cid: string | undefined) {
   const { t } = useTranslation();
-  const fail = useFail();
   const queue = useQueue(cid);
-  const add = useAddToQueue(cid);
-  const remove = useRemoveFromQueue(cid);
+  // The panel's own writes (Remove, a dropped book, a suggestion) go through the same
+  // mutations, so one `busy` covers them all.
+  const actions = useQueueActions(cid);
+  const { add, remove, fail } = actions;
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const loaded = nowPlaying && nowPlaying.connectionId === cid ? nowPlaying : null;
   const next = useNextBook(loaded?.libraryId ?? 0, loaded?.path ?? '', !!loaded, cid);
@@ -141,7 +122,8 @@ export function useUpNextData(cid: string | undefined) {
     move,
     clear,
     dropPlayed,
-    busy: add.isPending || remove.isPending,
+    actions,
+    busy: actions.pending,
   };
 }
 

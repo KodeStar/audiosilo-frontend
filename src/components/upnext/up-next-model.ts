@@ -50,21 +50,6 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   return out;
 }
 
-/** `entries` in the order of `keys` (an optimistic reorder), entries the keys don't
- * know kept at the end in their own order. */
-export function orderByKeys(entries: readonly QueueEntry[], keys: readonly string[]): QueueEntry[] {
-  const byKey = new Map(entries.map((e) => [entryKey(e), e]));
-  const out: QueueEntry[] = [];
-  for (const k of keys) {
-    const e = byKey.get(k);
-    if (e) {
-      out.push(e);
-      byKey.delete(k);
-    }
-  }
-  return [...out, ...byKey.values()];
-}
-
 /** Where a row dragged `dy` points from `from` lands, rows being `rowHeight` apart.
  * A worklet: the reorder gesture calls it on the UI thread. */
 export function dragTarget(from: number, dy: number, rowHeight: number, count: number): number {

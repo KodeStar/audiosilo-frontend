@@ -14,9 +14,6 @@ jest.mock('@/api/hooks', () => ({
 }));
 const mockQueue = jest.fn();
 const mockUnqueue = jest.fn();
-jest.mock('@/components/library/use-queue-actions', () => ({
-  useQueueActions: () => ({ queue: mockQueue, unqueue: mockUnqueue }),
-}));
 jest.mock('./use-up-next', () => ({ usePlayNow: () => jest.fn() }));
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
@@ -55,6 +52,7 @@ const data = (over: Partial<Data> = {}): Data => ({
   move: jest.fn(),
   clear: jest.fn(),
   dropPlayed: jest.fn(),
+  actions: { queue: mockQueue, unqueue: mockUnqueue } as unknown as Data['actions'],
   busy: false,
   ...over,
 });

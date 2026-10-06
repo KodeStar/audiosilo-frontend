@@ -32,7 +32,6 @@ import {
   entryState,
   keyMove,
   moveItem,
-  orderByKeys,
   type ProgressIndex,
 } from './up-next-model';
 
@@ -95,14 +94,12 @@ export function QueueList({
   onRemove: (entry: QueueEntry) => void;
   onPlay: (entry: QueueEntry) => void;
 }) {
-  // An optimistic order (entry keys) until the server's queue next changes.
-  const [pending, setPending] = useState<{ base: readonly QueueEntry[]; keys: string[] } | null>(
-    null,
-  );
-  const shown = useMemo(
-    () => (pending && pending.base === entries ? orderByKeys(entries, pending.keys) : entries),
-    [pending, entries],
-  );
+  // An optimistic order (the same entries, moved) until the server's queue next changes.
+  const [pending, setPending] = useState<{
+    base: readonly QueueEntry[];
+    list: QueueEntry[];
+  } | null>(null);
+  const shown = pending && pending.base === entries ? pending.list : entries;
   const { t } = useTranslation();
   const [refocus, setRefocus] = useState<string | null>(null);
   const from = useSharedValue(-1);
@@ -118,7 +115,7 @@ export function QueueList({
     drag.dy.set(0);
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || toIndex >= shown.length) return;
     const entry = shown[fromIndex];
-    setPending({ base: entries, keys: moveItem(shown, fromIndex, toIndex).map(entryKey) });
+    setPending({ base: entries, list: moveItem(shown, fromIndex, toIndex) });
     if (viaKeyboard) setRefocus(entryKey(entry));
     void onMove(entry, toIndex).then((ok) => {
       if (!ok) setPending(null);
