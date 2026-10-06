@@ -28,6 +28,7 @@ jest.mock('@/stores/session', () => ({
 
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockMeta: BookMeta | undefined;
+let mockMetaLoading = false;
 const mockMetaCalls: { path: string; enabled: boolean }[] = [];
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
@@ -35,7 +36,10 @@ jest.mock('@/api/hooks', () => ({
   useCapability: (flag: string) => mockCaps[flag],
   useBookMeta: (_lib: number, path: string, enabled: boolean) => {
     mockMetaCalls.push({ path, enabled });
-    return { data: enabled ? mockMeta : undefined };
+    return {
+      data: enabled && !mockMetaLoading ? mockMeta : undefined,
+      isLoading: enabled && mockMetaLoading,
+    };
   },
   useMetaWork: () => ({ isLoading: false, data: undefined }),
   useAllLibraryBooks: () => mockBooks,
@@ -122,6 +126,7 @@ function loaded(books: Book[]): BooksResult {
 beforeEach(() => {
   mockCaps = { metadata: false };
   mockMeta = undefined;
+  mockMetaLoading = false;
   mockMetaCalls.length = 0;
   mockElsewhere = [];
   for (const k of Object.keys(mockProgress)) delete mockProgress[k];
@@ -241,6 +246,19 @@ describe('SeriesPage, community rail', () => {
       expect.objectContaining({ connectionId: 'home', libraryId: 1, path: cw.rel_path }),
     );
     expect(screen.getByText('40% into book 2 · 26h of listening ahead')).toBeTruthy();
+  });
+
+  it('waits for the rail before laying out, instead of reflowing from the local series', async () => {
+    mockMetaLoading = true;
+    await render(<SeriesPage libraryId={1} name="The Expanse" />);
+    expect(screen.getByTestId('series-skeleton', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.queryByText('2 entries')).toBeNull();
+    mockMetaLoading = false;
+    await render(<SeriesPage libraryId={1} name="The Expanse" />);
+    expect(screen.queryByTestId('series-skeleton', { includeHiddenElements: true })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Book 4, Cibola Burn, Not in your library' }),
+    ).toBeTruthy();
   });
 
   it('links a book on no server out to AudioSilo Meta', async () => {

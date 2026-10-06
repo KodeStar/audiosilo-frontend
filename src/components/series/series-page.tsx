@@ -160,7 +160,13 @@ export function SeriesPage({
       : undefined,
   );
 
-  if (owned.isLoading) return <SeriesSkeleton />;
+  // With community metadata on, the page waits for the rail before it lays out: a local
+  // series ("6 entries") that then reflowed into the whole one (17) jumped on a deep link.
+  // A failed or unmatched lookup falls back to the local series.
+  const railPending =
+    metadata === true &&
+    ((!owned.complete && !owned.error) || progressLoading || (!!anchor && meta.isLoading));
+  if (owned.isLoading || railPending) return <SeriesSkeleton />;
   if (owned.error && owned.books.length === 0) {
     return (
       <EmptyShelf
