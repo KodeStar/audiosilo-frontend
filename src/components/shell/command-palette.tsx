@@ -13,8 +13,11 @@ import {
   View,
 } from 'react-native';
 
-import { useAllProgressAll, useSearchAll, useSourceLabeller } from '@/api/hooks';
-import { useApi } from '@/api/provider';
+import { type MergedBook, useAllProgressAll, useSourceLabeller } from '@/api/hooks';
+import { useApi, useApis } from '@/api/provider';
+import { roleLabelKey } from '@/components/library/book-meta';
+import { NameToken } from '@/components/search/name-token';
+import { type SearchResults, useSearch } from '@/components/search/use-search';
 import { DialogOverlay } from '@/components/ui/dialog';
 import { withFlatStyle } from '@/components/ui/overlay';
 import { Cover } from '@/components/ui/cover';
@@ -31,6 +34,7 @@ import { isInProgress } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
+import { useRecentSearches } from '@/stores/search';
 import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -41,6 +45,7 @@ import {
   flattenGroups,
   isPaletteShortcut,
   matchRange,
+  MAX_NAMED,
   moveSelection,
   type PaletteCover,
   type PaletteGroupKey,
@@ -57,6 +62,10 @@ const GROUP_LABEL_KEY = {
   actions: 'palette.groups.actions',
   continue: 'home.continueListening',
   books: 'palette.groups.books',
+  series: 'palette.groups.series',
+  authors: 'palette.groups.authors',
+  narrators: 'palette.groups.narrators',
+  characters: 'palette.groups.characters',
   goTo: 'palette.groups.goTo',
 } as const satisfies Record<PaletteGroupKey, string>;
 
@@ -159,23 +168,25 @@ function useGoToItems(): PaletteItem[] {
   );
 }
 
-/** Books for the query (the cross-server search) and, with no query, Continue listening
- * from the progress Home already loads: the cache as is (opening the palette must not
- * refetch every server's progress), and nothing at all while a query is typed. */
-function useBookItems(query: string): {
+/** Books for the query (the cross-server search, from `useSearch`) and, with no query,
+ * Continue listening from the progress Home already loads: the cache as is (opening the
+ * palette must not refetch every server's progress), and nothing at all while a query
+ * is typed. */
+function useBookItems(
+  query: string,
+  found: MergedBook[],
+): {
   books: PaletteItem[];
   continueListening: PaletteItem[];
-  searching: boolean;
 } {
   const { t } = useTranslation();
   const { openBook } = useOpen();
   const sourceOf = useSourceLabeller();
-  const search = useSearchAll(query);
   const { progress } = useAllProgressAll({ enabled: !query, refetchOnMount: false });
 
   const books = useMemo(
     () =>
-      search.books.map((b): PaletteItem => {
+      found.map((b): PaletteItem => {
         const title = b.title || pathLeaf(b.rel_path);
         return {
           id: `book:${b.connectionId}:${b.library_id}:${b.rel_path}`,
@@ -187,7 +198,7 @@ function useBookItems(query: string): {
           run: () => openBook(b.connectionId, b.library_id, b.rel_path),
         };
       }),
-    [search.books, sourceOf, openBook],
+    [found, sourceOf, openBook],
   );
 
   const continueListening = useMemo(
@@ -210,7 +221,61 @@ function useBookItems(query: string): {
     [progress, sourceOf, t, openBook],
   );
 
-  return { books, continueListening, searching: search.isFetching };
+  return { books, continueListening };
+}
+
+/** Series, authors, narrators and the characters the listener has met, as palette items
+ * (the search model already matched, ranked, capped and spoiler-gated them), plus the
+ * count of characters not met yet. */
+function useNamedItems(results: SearchResults) {
+  const { t } = useTranslation();
+  const { openSeries, openAuthor, openNarrator, openBook } = useOpen();
+  const many = useApis().length > 1;
+  const where = (connectionName: string) => (many ? connectionName : null);
+  const books = (count: number) => t('search.bookCount', { count });
+  return {
+    series: results.series.map((s): PaletteItem => ({
+      id: `series:${s.source.connectionId}:${s.source.libraryId}:${s.name}`,
+      title: s.name,
+      subtitle: [books(s.books), s.author, where(s.source.connectionName)]
+        .filter(Boolean)
+        .join(' · '),
+      icon: 'layers',
+      run: () => openSeries(s.source.connectionId, s.source.libraryId, { name: s.name }),
+    })),
+    authors: results.authors.map((p): PaletteItem => ({
+      id: `author:${p.source.connectionId}:${p.source.libraryId}:${p.name}`,
+      title: p.name,
+      subtitle: [t('search.roleAuthor'), books(p.books), where(p.source.connectionName)]
+        .filter(Boolean)
+        .join(' · '),
+      token: { kind: 'author', name: p.name },
+      run: () => openAuthor(p.source.connectionId, p.source.libraryId, p.name),
+    })),
+    narrators: results.narrators.map((p): PaletteItem => ({
+      id: `narrator:${p.source.connectionId}:${p.source.libraryId}:${p.name}`,
+      title: p.name,
+      subtitle: [t('search.roleNarrator'), books(p.books), where(p.source.connectionName)]
+        .filter(Boolean)
+        .join(' · '),
+      token: { kind: 'narrator', name: p.name },
+      run: () => openNarrator(p.source.connectionId, p.source.libraryId, p.name),
+    })),
+    characters: results.characters.hits.map((c): PaletteItem => {
+      const roleKey = roleLabelKey(c.role);
+      return {
+        id: `character:${c.key}`,
+        title: c.name,
+        subtitle: [roleKey ? t(roleKey) : null, c.bookTitle].filter(Boolean).join(' · '),
+        token: { kind: 'character', name: c.name },
+        run: () => openBook(c.connectionId, c.libraryId, c.path),
+      };
+    }),
+    charactersNote:
+      results.characters.hidden > 0
+        ? t('palette.hiddenCharacters', { count: results.characters.hidden })
+        : undefined,
+  };
 }
 
 /** The title with the first match of the query in `brand-ink` bold. */
@@ -282,6 +347,8 @@ function Option({
     >
       {item.cover ? (
         <CoverThumb cover={item.cover} label={item.title} />
+      ) : item.token ? (
+        <NameToken name={item.token.name} kind={item.token.kind} size={36} />
       ) : (
         <View className="h-9 w-9 items-center justify-center rounded-control bg-muted">
           <Icon name={item.icon ?? 'chevron-right'} size={17} color={themed.mutedForeground} />
@@ -300,13 +367,30 @@ function Option({
   );
 }
 
+/** A group's quiet line that is not an option: the characters the listener hasn't met
+ * yet, counted (never named), so the arrows skip it. */
+function GroupNote({ text }: { text: string }) {
+  const { t } = useTranslation();
+  return (
+    <View className="min-h-[48px] flex-row items-center gap-3 px-2.5 py-2">
+      <NameToken kind="character" size={36} hidden />
+      <View className="flex-1">
+        <Text variant="label" numberOfLines={2}>
+          {text}
+        </Text>
+        <Text variant="caption">{t('palette.hiddenHint')}</Text>
+      </View>
+    </View>
+  );
+}
+
 function PaletteBody() {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const query = usePalette((s) => s.query);
   const setQuery = usePalette((s) => s.setQuery);
-  const recent = usePalette((s) => s.recent);
-  const remember = usePalette((s) => s.remember);
+  const recent = useRecentSearches((s) => s.recent);
+  const remember = useRecentSearches((s) => s.remember);
   const close = usePalette((s) => s.close);
   const connections = useSession((s) => s.connections);
   const debounced = useDebouncedValue(query.trim(), DEBOUNCE_MS);
@@ -314,13 +398,17 @@ function PaletteBody() {
 
   const actions = useActionItems();
   const goTo = useGoToItems();
-  const { books, continueListening, searching } = useBookItems(debounced);
+  const results = useSearch(debounced, { limit: MAX_NAMED, refetchProgress: false });
+  const { books, continueListening } = useBookItems(debounced, results.books);
+  const named = useNamedItems(results);
+  // Results belong to the debounced query; none while the field is empty.
+  const typed = query.trim() !== '';
   const groups = buildPaletteGroups({
     query,
     actions,
-    // Results belong to the debounced query; none while the field is empty.
-    books: query.trim() ? books : [],
+    books: typed ? books : [],
     continueListening,
+    ...(typed ? named : {}),
     goTo,
   });
   const flat = flattenGroups(groups);
@@ -350,7 +438,7 @@ function PaletteBody() {
     }
   };
 
-  const pending = query.trim() !== '' && (searching || debounced !== query.trim());
+  const pending = typed && (!results.settled || debounced !== query.trim());
   const servers = connections.map((c) => c.name).join(' + ');
 
   return (
@@ -437,6 +525,7 @@ function PaletteBody() {
                 onRun={run}
               />
             ))}
+            {g.note ? <GroupNote text={g.note} /> : null}
           </View>
         ))}
         {pending && !groups.some((g) => g.key === 'books') ? (
@@ -444,7 +533,7 @@ function PaletteBody() {
             {t('palette.searching')}
           </Text>
         ) : null}
-        {flat.length === 0 && !pending ? (
+        {groups.length === 0 && !pending ? (
           <View className="items-center gap-1 px-4 py-7">
             <Text variant="label">{t('palette.empty', { query: query.trim() })}</Text>
             <Text variant="muted">{t('palette.emptyHint')}</Text>
@@ -480,7 +569,8 @@ function PaletteBody() {
 
 /**
  * The web command palette (STYLEGUIDE section 8, "Command palette"): a combobox over a
- * grouped listbox - Actions, Books (or Continue listening), Go to - on the Dialog
+ * grouped listbox - Actions, Books (or Continue listening), Series, Authors, Narrators,
+ * Characters (met only; the rest counted), Go to - on the Dialog
  * primitive (focus trap, Esc, `aria-modal`). Open it with `usePalette().openPalette()`:
  * the top bar's omnisearch, ⌘K / Ctrl+K or `/` (`usePaletteShortcut`). Mounted once, by
  * the web shell; native tablets keep the omnisearch's jump to the Search tab.

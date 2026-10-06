@@ -1,11 +1,11 @@
 import {
-  addRecent,
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
   matchRange,
   MAX_BOOKS,
   MAX_CONTINUE,
+  MAX_NAMED,
   moveSelection,
   type PaletteItem,
   shortcutHint,
@@ -79,6 +79,71 @@ describe('buildPaletteGroups', () => {
   });
 });
 
+describe('buildPaletteGroups: series, people and characters', () => {
+  const series = Array.from({ length: 5 }, (_, i) => item(`s${i}`, `Series ${i}`));
+  const authors = [item('a0', 'Jim Butcher')];
+  const narrators = [item('n0', 'James Marsters')];
+  const characters = [item('c0', 'Harry Dresden')];
+
+  it('adds them after Books, in order, capped, only with a query', () => {
+    const groups = buildPaletteGroups({
+      query: 'har',
+      actions: [],
+      books: [item('b', 'Storm Front')],
+      continueListening,
+      series,
+      authors,
+      narrators,
+      characters,
+      goTo: [],
+    });
+    expect(groups.map((g) => g.key)).toEqual([
+      'books',
+      'series',
+      'authors',
+      'narrators',
+      'characters',
+    ]);
+    expect(groups[1].items).toHaveLength(MAX_NAMED);
+    expect(groups.map((g) => g.start)).toEqual([0, 1, 1 + MAX_NAMED, 2 + MAX_NAMED, 3 + MAX_NAMED]);
+
+    const empty = buildPaletteGroups({
+      query: '',
+      actions: [],
+      books: [],
+      continueListening: [],
+      series,
+      authors,
+      narrators,
+      characters,
+      charactersNote: '2 more',
+      goTo: [],
+    });
+    expect(empty).toEqual([]);
+  });
+
+  it('keeps Characters for its unmet count alone, which is not an option', () => {
+    const groups = buildPaletteGroups({
+      query: 'jas',
+      actions: [],
+      books: [],
+      continueListening,
+      characters: [],
+      charactersNote: '1 more matches after your place in the book',
+      goTo,
+    });
+    expect(groups).toEqual([
+      {
+        key: 'characters',
+        items: [],
+        note: '1 more matches after your place in the book',
+        start: 0,
+      },
+    ]);
+    expect(flattenGroups(groups)).toEqual([]);
+  });
+});
+
 describe('matchRange', () => {
   it('finds the first case-insensitive match, or nothing', () => {
     expect(matchRange('The Adventures of Sherlock Holmes', 'holmes')).toEqual([27, 33]);
@@ -94,15 +159,6 @@ describe('moveSelection', () => {
     expect(moveSelection(2, 1, 3)).toBe(2);
     expect(moveSelection(0, -1, 3)).toBe(0);
     expect(moveSelection(5, 0, 0)).toBe(0);
-  });
-});
-
-describe('addRecent', () => {
-  it('puts the newest first, trimmed, de-duplicated ignoring case, at most five', () => {
-    expect(addRecent([], '  holmes ')).toEqual(['holmes']);
-    expect(addRecent(['holmes', 'alice'], 'Alice')).toEqual(['Alice', 'holmes']);
-    expect(addRecent(['a', 'b', 'c', 'd', 'e'], 'f')).toEqual(['f', 'a', 'b', 'c', 'd']);
-    expect(addRecent(['a'], '   ')).toEqual(['a']);
   });
 });
 

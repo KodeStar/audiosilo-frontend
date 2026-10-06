@@ -220,10 +220,6 @@
       "emptyHint": "There's nothing to play in this folder.",
       "noMatchesHint": "Try a different search term."
     },
-    "bookRow": {
-      "alsoOn": "Also on {{servers}}",
-      "alsoIn": "Also in {{libraries}}"
-    },
     "entryRow": {
       "duration": "Duration: {{value}}",
       "bitrate": "Bitrate: {{value}}"
@@ -330,13 +326,52 @@
     "remove": "Remove {{title}}"
   },
   "search": {
-    "placeholder": "Search titles, authors, series…",
+    "placeholder": "Search books, people, series, characters",
     "promptTitle": "Find your next listen",
-    "prompt": "Search titles, authors, and series.",
-    "failed": "Search failed.",
-    "noResultsTitle": "No results",
-    "noResults": "No results for “{{query}}”.",
-    "clear": "Clear search"
+    "prompt": "Search titles, authors, series, narrators and characters.",
+    "clear": "Clear search",
+    "label": "Search",
+    "fieldPlaceholder": "Books, authors, series, narrators, characters",
+    "fieldPlaceholderShort": "Books, people, series, characters",
+    "recentTitle": "Recent searches",
+    "clearRecent": "Clear",
+    "clearRecentLabel": "Clear recent searches",
+    "searchAgain": "Search for {{query}}",
+    "browse": "Browse",
+    "browseIn": "In {{library}}",
+    "browseCard": "{{label}}, {{count}}",
+    "searching": "Searching",
+    "resultsFor_one": "{{count}} result for \"{{query}}\"",
+    "resultsFor_other": "{{count}} results for \"{{query}}\"",
+    "resultsAcross_one": "{{count}} result for \"{{query}}\" across {{servers}}",
+    "resultsAcross_other": "{{count}} results for \"{{query}}\" across {{servers}}",
+    "someOffline": "Offline, so not searched: {{servers}}",
+    "offlineTitle": "You're offline",
+    "offlineHint": "Search asks your servers. Books you've downloaded are in Downloads.",
+    "noMatchesTitle": "Nothing called \"{{query}}\" on your servers",
+    "noMatchesHint": "Check the spelling, or search for the author instead.",
+    "groups": {
+      "books": "Books",
+      "series": "Series",
+      "people": "People",
+      "characters": "Characters"
+    },
+    "charactersSub": "Only people you've already met",
+    "hiddenCharacters_one": "{{count}} more matches after your place in the book, hidden to avoid spoilers.",
+    "hiddenCharacters_other": "{{count}} more match after your place in the book, hidden to avoid spoilers.",
+    "roleAuthor": "Author",
+    "roleNarrator": "Narrator",
+    "seriesRole": "Series",
+    "bookCount_one": "{{count}} book",
+    "bookCount_other": "{{count}} books",
+    "alsoOn": "Also on {{servers}}",
+    "alsoIn": "Also in {{libraries}}",
+    "showAll": "Show all {{count}}",
+    "showFewer": "Show fewer",
+    "booksFailed": "Your servers didn't answer this search.",
+    "booksPartial": "Some servers didn't answer, so their books may be missing.",
+    "peopleFailed": "Authors, narrators and series couldn't be searched just now.",
+    "charactersFailed": "Characters couldn't be checked just now."
   },
   "book": {
     "loadError": "Could not load this book.",
@@ -551,7 +586,11 @@
     "groups": {
       "actions": "Actions",
       "books": "Books",
-      "goTo": "Go to"
+      "goTo": "Go to",
+      "series": "Series",
+      "authors": "Authors",
+      "narrators": "Narrators",
+      "characters": "Characters"
     },
     "resume": "Resume {{name}}",
     "sleepMinutes_one": "Sleep in {{count}} minute",
@@ -566,7 +605,7 @@
     "listened": "{{percent}}% listened",
     "searching": "Searching",
     "empty": "Nothing called \"{{query}}\"",
-    "emptyHint": "Try a title or an author.",
+    "emptyHint": "Try an author, a narrator or a character you've met.",
     "keys": {
       "move": "move",
       "open": "open",
@@ -575,7 +614,10 @@
     "results_one": "{{count}} result",
     "results_other": "{{count}} results",
     "resultsOn_one": "{{count}} result · {{servers}}",
-    "resultsOn_other": "{{count}} results · {{servers}}"
+    "resultsOn_other": "{{count}} results · {{servers}}",
+    "hiddenCharacters_one": "{{count}} more matches after your place in the book",
+    "hiddenCharacters_other": "{{count}} more match after your place in the book",
+    "hiddenHint": "Hidden to avoid spoilers"
   },
   "covers": {
     "notInLibrary": "Not in your library",

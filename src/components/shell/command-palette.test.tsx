@@ -17,6 +17,7 @@ jest.mock('@/lib/layout', () => ({ useLayout: () => 'desktop' }));
 jest.mock('@/downloads/engine', () => ({ engine: { supported: true } }));
 jest.mock('@/api/provider', () => ({
   useApi: () => ({ coverUrl: () => 'https://x/cover', authHeaders: () => ({}) }),
+  useApis: () => [{ connection: { id: 'c1', name: 'Hearthside' } }],
 }));
 
 const mockSetPref = jest.fn();
@@ -43,13 +44,68 @@ const mockHound = {
   rel_path: 'Doyle/The Hound',
   title: 'The Hound of the Baskervilles',
 };
+const mockSource = { connectionId: 'c1', connectionName: 'Hearthside', libraryId: 1 };
+const mockIdle = { supported: true, isLoading: false, isError: false, retry: jest.fn() };
+// The search model has its own tests (search-model.test.ts): here, what it hands over.
+const mockSearch = jest.fn((q: string, _opts?: unknown) => {
+  const lower = q.toLowerCase();
+  const holmes = lower.includes('holmes');
+  const dresden = lower.includes('dres');
+  return {
+    books: holmes
+      ? [
+          { ...mockHolmes, also: [] },
+          { ...mockHound, also: [] },
+        ]
+      : [],
+    booksState: mockIdle,
+    series: dresden
+      ? [
+          {
+            name: 'The Dresden Files',
+            author: 'Jim Butcher',
+            books: 4,
+            duration: 1,
+            positions: [],
+            source: mockSource,
+            also: [],
+          },
+        ]
+      : [],
+    authors: holmes
+      ? [{ name: 'Sherlock Holmes Society', books: 2, duration: 1, source: mockSource, also: [] }]
+      : [],
+    narrators: [],
+    peopleState: mockIdle,
+    characters: dresden
+      ? {
+          hits: [
+            {
+              key: 'k1',
+              name: 'Harry Dresden',
+              role: 'protagonist',
+              bookTitle: 'Storm Front',
+              connectionId: 'c1',
+              libraryId: 1,
+              path: 'Butcher/Storm Front',
+            },
+          ],
+          total: 1,
+          hidden: 2,
+          attributions: [],
+        }
+      : { hits: [], total: 0, hidden: 0, attributions: [] },
+    charactersState: mockIdle,
+    settled: true,
+    total: 0,
+  };
+});
+jest.mock('@/components/search/use-search', () => ({
+  useSearch: (q: string, opts: unknown) => mockSearch(q, opts),
+}));
+
 const mockProgressOptions = jest.fn();
 jest.mock('@/api/hooks', () => ({
-  useSearchAll: (q: string) => ({
-    books: q.toLowerCase().includes('holmes') ? [mockHolmes, mockHound] : [],
-    isFetching: false,
-    error: null,
-  }),
   // One server, libraries unnamed: no source line (useSourceLabeller has its own tests).
   useSourceLabeller: () => () => undefined,
   useAllProgressAll: (options: unknown) => ({
@@ -105,6 +161,7 @@ jest.mock('@/playback/store', () => {
 });
 
 /* eslint-disable import/first */
+import { useRecentSearches } from '@/stores/search';
 import { useSession } from '@/stores/session';
 
 import { CommandPalette } from './command-palette';
@@ -132,7 +189,8 @@ async function openWith(query = '') {
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
-  usePalette.setState({ open: false, query: '', recent: [] });
+  usePalette.setState({ open: false, query: '' });
+  useRecentSearches.setState({ recent: [] });
   useSession.setState({
     connections: [{ id: 'c1', name: 'Hearthside', serverUrl: 'u', token: 't', user: {} as never }],
     defaultConnectionId: 'c1',
@@ -170,13 +228,17 @@ describe('CommandPalette', () => {
       screen.getByLabelText('The Adventures of Sherlock Holmes, Arthur Conan Doyle'),
     ).toBeTruthy();
     const options = screen.getAllByRole('option');
-    expect(options).toHaveLength(2);
+    // Two books, then one author.
+    expect(options).toHaveLength(3);
     expect(options[0]).toBeSelected();
+    expect(screen.getByLabelText('Authors')).toHaveProp('role', 'group');
 
     await keyPress('ArrowDown');
     expect(screen.getAllByRole('option')[1]).toBeSelected();
+    await keyPress('ArrowDown');
     await keyPress('ArrowDown'); // clamped at the end
-    expect(screen.getAllByRole('option')[1]).toBeSelected();
+    expect(screen.getAllByRole('option')[2]).toBeSelected();
+    await keyPress('ArrowUp');
     await keyPress('ArrowUp');
     await keyPress('ArrowDown');
 
@@ -186,7 +248,7 @@ describe('CommandPalette', () => {
       params: { libraryId: '1', connection: 'c1', path: 'Doyle/The Hound' },
     });
     expect(usePalette.getState().open).toBe(false);
-    expect(usePalette.getState().recent).toEqual(['holmes']);
+    expect(useRecentSearches.getState().recent).toEqual(['holmes']);
   });
 
   it("bolds the match at the line's own label size", async () => {
@@ -241,7 +303,7 @@ describe('CommandPalette', () => {
   });
 
   it('says so when nothing matches, and offers recent searches on an empty query', async () => {
-    usePalette.setState({ recent: ['holmes'] });
+    useRecentSearches.setState({ recent: ['holmes'] });
     await openWith('zebra');
     expect(screen.getByText('Nothing called "zebra"')).toBeTruthy();
     expect(screen.getByText('0 results · Hearthside')).toBeTruthy();
@@ -249,5 +311,29 @@ describe('CommandPalette', () => {
     await fireEvent.changeText(screen.getByTestId('palette-input'), '');
     await fireEvent.press(screen.getByText('holmes'));
     expect(usePalette.getState().query).toBe('holmes');
+  });
+
+  it('searches with the shared model, three of each named group, from the cached progress', async () => {
+    await openWith('holmes');
+    expect(mockSearch).toHaveBeenLastCalledWith('holmes', { limit: 3, refetchProgress: false });
+  });
+
+  it('lists series and met characters, and only counts the others (not an option)', async () => {
+    await openWith('dres');
+    expect(screen.getByLabelText('Series')).toHaveProp('role', 'group');
+    expect(screen.getByLabelText('The Dresden Files, 4 books · Jim Butcher')).toBeTruthy();
+    expect(screen.getByLabelText('Harry Dresden, Protagonist · Storm Front')).toBeTruthy();
+    expect(screen.getByText('2 more match after your place in the book')).toBeTruthy();
+    expect(screen.getByText('Hidden to avoid spoilers')).toBeTruthy();
+    // The series and the character are the options; the count is not one.
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(screen.getByText('2 results · Hearthside')).toBeTruthy();
+
+    await keyPress('ArrowDown');
+    await keyPress('Enter');
+    expect(mockRouter.push).toHaveBeenCalledWith({
+      pathname: '/book/[libraryId]',
+      params: { libraryId: '1', connection: 'c1', path: 'Butcher/Storm Front' },
+    });
   });
 });
