@@ -1,7 +1,7 @@
 import type { Book } from '@/api/types';
 import { sectionLetter } from '@/lib/alpha-sections';
+import { hashString } from '@/lib/monogram';
 
-import { hashString } from './spine-fit';
 import { type ProgressLookup, sortSeriesBooks } from './series-model';
 
 /**

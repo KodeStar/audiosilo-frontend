@@ -13,6 +13,8 @@
  * errs a little wide: a title that "fits" here has room to spare in the real font.
  */
 
+import { hashString } from '@/lib/monogram';
+
 /** The two families a spine sets its title in: the cover's display face, or the body
  * face (ghost spines, which have no cover). */
 export type SpineFont = 'display' | 'sans';
@@ -161,16 +163,6 @@ export function fitSpineTitle({
     return { lines: [text], fontSize: fsOne, letterSpacing: TRACK_TIGHT, ellipsize: false };
   }
   return { lines: [text], fontSize: SPINE_MIN_FONT, letterSpacing: TRACK_TIGHT, ellipsize: true };
-}
-
-/** A small, stable string hash (FNV-1a), for per-title variation. */
-export function hashString(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
 }
 
 /** A spine's listening length when it is unknown (a book on no server): ten hours. */

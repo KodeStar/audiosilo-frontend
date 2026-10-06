@@ -1,12 +1,7 @@
-import { contrast, luminance, SPINE_FALLBACK, spinePalette } from './spine-colors';
-import {
-  fitSpineTitle,
-  hashString,
-  SPINE_MIN_FONT,
-  spineDims,
-  spineGeometry,
-  textAdvance,
-} from './spine-fit';
+import { CLOTH_COLORS, hashString } from '@/lib/monogram';
+
+import { contrast, luminance, spinePalette } from './spine-colors';
+import { fitSpineTitle, SPINE_MIN_FONT, spineDims, spineGeometry, textAdvance } from './spine-fit';
 
 describe('textAdvance', () => {
   it('weights character classes', () => {
@@ -102,7 +97,7 @@ describe('spinePalette', () => {
 
   it('falls back to a stable palette colour by title', () => {
     const p = spinePalette(undefined, 'Blood Rites');
-    expect(SPINE_FALLBACK).toContain(p.body);
+    expect(CLOTH_COLORS).toContain(p.body);
     expect(spinePalette(undefined, 'Blood Rites')).toEqual(p);
     expect(p.ink).toBe('#ffffff');
   });

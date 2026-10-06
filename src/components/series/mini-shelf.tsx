@@ -3,10 +3,11 @@ import { View } from 'react-native';
 
 import { Ledge } from '@/components/library/shelf-row';
 import { Skeleton } from '@/components/ui/skeleton';
+import { hashString } from '@/lib/monogram';
 
 import type { SeriesEntry } from './series-model';
 import { Spine } from './spine';
-import { hashString, spineDims } from './spine-fit';
+import { spineDims } from './spine-fit';
 
 /** The full-size spine height the mini shelves scale down from. */
 const FULL = 200;

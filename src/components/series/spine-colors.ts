@@ -1,6 +1,5 @@
 import type { CoverColor } from '@/api/types';
-
-import { hashString } from './spine-fit';
+import { clothColor } from '@/lib/monogram';
 
 /**
  * A spine's colours (STYLEGUIDE section 8, "Spine": "in the cover's palette"): the body
@@ -11,18 +10,6 @@ import { hashString } from './spine-fit';
  * visits. These are content colours (like cover art), not theme tokens.
  */
 export type SpinePalette = { body: string; band: string; ink: string };
-
-/** Deep cloth colours for spines without a cover colour. */
-export const SPINE_FALLBACK = [
-  '#27365f',
-  '#6d2635',
-  '#24584a',
-  '#6a4a14',
-  '#46305f',
-  '#1d4b67',
-  '#76391b',
-  '#3b4a27',
-] as const;
 
 const INK = '#121c36';
 const WHITE = '#ffffff';
@@ -45,10 +32,7 @@ export function contrast(a: string, b: string): number {
 }
 
 export function spinePalette(color: CoverColor | undefined, title: string): SpinePalette {
-  const body =
-    color && HEX.test(color.bg)
-      ? color.bg.toLowerCase()
-      : SPINE_FALLBACK[hashString(title) % SPINE_FALLBACK.length];
+  const body = color && HEX.test(color.bg) ? color.bg.toLowerCase() : clothColor(title);
   const ink = contrast(body, WHITE) >= contrast(body, INK) ? WHITE : INK;
   // The vibrant colour makes the bands when it stands off the body; otherwise the type
   // colour does (drawn translucent by the spine).

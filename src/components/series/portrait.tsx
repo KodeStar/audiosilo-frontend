@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { Text } from '@/components/ui/text';
+import { hashString } from '@/lib/monogram';
 
-import { hashString } from './spine-fit';
 import { initials, portraitColors } from './people-model';
 
 const BARS = 24;
