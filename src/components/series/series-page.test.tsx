@@ -35,6 +35,11 @@ jest.mock('@/api/hooks', () => ({
     return { data: enabled ? mockMeta : undefined };
   },
   useMetaWork: () => ({ isLoading: false, data: undefined }),
+  useAllLibraryBooks: () => mockBooks,
+  useProgressLookup: () => ({
+    progressOf: (c: string, l: number, p: string) => mockProgress[`${c}:${l}:${p}`],
+    isLoading: false,
+  }),
 }));
 
 const mockQueue = jest.fn();
@@ -59,7 +64,7 @@ type BooksResult = {
   isIdle: boolean;
   complete: boolean;
   error: unknown;
-  refetch: jest.Mock;
+  retry: jest.Mock;
 };
 let mockBooks: BooksResult;
 let mockElsewhere: unknown[] = [];
@@ -68,11 +73,6 @@ const mockProgress: Record<
   { position: number; duration: number; finished: boolean; updated_at: string }
 > = {};
 jest.mock('./use-series-data', () => ({
-  useAllLibraryBooks: () => mockBooks,
-  useProgressLookup: () => ({
-    progressOf: (c: string, l: number, p: string) => mockProgress[`${c}:${l}:${p}`],
-    isLoading: false,
-  }),
   useElsewhereBooks: () => mockElsewhere,
   usePlacedBooks: () => [],
 }));
@@ -112,7 +112,7 @@ function loaded(books: Book[]): BooksResult {
     isIdle: false,
     complete: true,
     error: null,
-    refetch: jest.fn(),
+    retry: jest.fn(),
   };
 }
 
@@ -154,7 +154,7 @@ describe('SeriesPage, local series', () => {
     await render(<SeriesPage libraryId={1} name="The Expanse" />);
     expect(screen.getByText("Couldn't load this series")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
-    expect(mockBooks.refetch).toHaveBeenCalled();
+    expect(mockBooks.retry).toHaveBeenCalled();
   });
 
   it('keeps the books it has when a later page fails', async () => {

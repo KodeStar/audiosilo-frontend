@@ -21,7 +21,7 @@ async function mount() {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
-  return (await renderHook(() => useWholeLibrary('c1', 1, 'title'), { wrapper })).result;
+  return (await renderHook(() => useWholeLibrary('c1', 1), { wrapper })).result;
 }
 
 describe('useWholeLibrary', () => {
@@ -40,7 +40,7 @@ describe('useWholeLibrary', () => {
     expect(result.current.books.map((b) => b.title)).toEqual(['A', 'B', 'C', 'D']);
     expect(mockListBooks).toHaveBeenCalledTimes(3);
     expect(mockListBooks.mock.calls[0][1]).toEqual({
-      sort: 'title',
+      sort: 'recent',
       limit: 200,
       cursor: undefined,
     });

@@ -1,13 +1,19 @@
-import { Platform } from 'react-native';
-import * as Network from 'expo-network';
 import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
+import {
+  allProgressQuery,
+  chaptersQuery,
+  isQueueKey,
+  itemQuery,
+  nextBookQuery,
+  queueQuery,
+  serverInfoQuery,
+} from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import type { Capabilities, Progress, QueueEntry } from '@/api/types';
-import { canAutoDownload } from '@/lib/network';
+import type { Capabilities, Progress } from '@/api/types';
+import { canAutoDownload, onNetworkChange } from '@/lib/network';
 import { bookTitle } from '@/lib/paths';
 import { resolveNextBook } from '@/playback/next-book';
 import { usePlayer } from '@/playback/store';
@@ -56,27 +62,17 @@ export const useKeepAhead = create<KeepAheadView>()(() => ({ status: 'off', slot
  * tapping the setting several times plans once, and the book just started is queued
  * first. */
 export const SETTLE_MS = 4000;
-const NEXT_STALE_MS = 10 * 60_000;
 
 type Current = { connectionId: string; libraryId: number; path: string };
 
 async function capabilities(client: ApiClient, cid: string): Promise<Capabilities> {
-  const info = await queryClient.fetchQuery({
-    queryKey: qk.server(cid),
-    queryFn: ({ signal }) => client.serverInfo(signal),
-    staleTime: 5 * 60_000,
-  });
-  return info.capabilities;
+  return (await queryClient.fetchQuery(serverInfoQuery(cid, client))).capabilities;
 }
 
 /** The queue as `AheadBook`s (entries the server didn't index, with no `book`, can't be
  * downloaded and are skipped). */
 async function queueAhead(client: ApiClient, cid: string): Promise<AheadBook[]> {
-  const queue = await queryClient.fetchQuery<QueueEntry[]>({
-    queryKey: qk.queue(cid),
-    queryFn: ({ signal }) => client.queue(signal),
-    staleTime: 30_000,
-  });
+  const queue = await queryClient.fetchQuery({ ...queueQuery(cid, client), staleTime: 30_000 });
   return queue.flatMap((e) =>
     e.book
       ? [
@@ -111,11 +107,7 @@ async function seriesAhead(
     let next: AheadBook | null = null;
     if (nextBook) {
       const { libraryId, path } = at;
-      const r = await queryClient.fetchQuery({
-        queryKey: qk.nextBook(cid, libraryId, path),
-        queryFn: ({ signal }) => client.nextBook(libraryId, path, signal),
-        staleTime: NEXT_STALE_MS,
-      });
+      const r = await queryClient.fetchQuery(nextBookQuery(cid, client, libraryId, path));
       if (r.next)
         next = {
           connectionId: cid,
@@ -148,9 +140,8 @@ async function seriesAhead(
 }
 
 async function finishedKeys(client: ApiClient, cid: string): Promise<Set<string>> {
-  const rows = await queryClient.fetchQuery<Progress[]>({
-    queryKey: qk.allProgress(cid),
-    queryFn: () => client.allProgress(),
+  const rows = await queryClient.fetchQuery({
+    ...allProgressQuery(cid, client),
     staleTime: 60_000,
   });
   return new Set(
@@ -169,14 +160,10 @@ async function networkGate(): Promise<NetworkGate> {
  * give the list shape, which has no files), unless something changed while it waited. */
 async function startOne(client: ApiClient, book: AheadBook): Promise<void> {
   const { connectionId: cid, libraryId, path } = book;
-  const item = await queryClient.fetchQuery({
-    queryKey: qk.item(cid, libraryId, path),
-    queryFn: ({ signal }) => client.item(libraryId, path, signal),
-  });
-  const chapters = await queryClient.fetchQuery({
-    queryKey: qk.chapters(cid, libraryId, path),
-    queryFn: ({ signal }) => client.chapters(libraryId, path, signal),
-  });
+  const [item, chapters] = await Promise.all([
+    queryClient.fetchQuery(itemQuery(cid, client, libraryId, path)),
+    queryClient.fetchQuery(chaptersQuery(cid, client, libraryId, path)),
+  ]);
   if (isDeclined(cid, libraryId, path)) return;
   if (useDownloads.getState().entries[aheadKey(book)]) return;
   useDownloads.getState().download(cid, libraryId, item, chapters, 'keep-ahead');
@@ -207,8 +194,10 @@ export async function runKeepAhead(): Promise<void> {
   if (!client) return publish('idle');
   try {
     const caps = await capabilities(client, current.connectionId);
-    const queue = caps.queue ? await queueAhead(client, current.connectionId) : [];
-    const finished = await finishedKeys(client, current.connectionId);
+    const [queue, finished] = await Promise.all([
+      caps.queue ? queueAhead(client, current.connectionId) : [],
+      finishedKeys(client, current.connectionId),
+    ]);
     // The series only fills what the queue leaves.
     const fromQueue = aheadWindow({ count, current, queue, series: [], finished });
     const series =
@@ -316,19 +305,12 @@ export function startKeepAhead(): () => void {
       if (
         event.type === 'updated' &&
         event.action.type === 'success' &&
-        event.query.queryKey[0] === 'queue'
+        isQueueKey(event.query.queryKey)
       )
         schedule();
     }),
+    onNetworkChange(schedule),
   ];
-  if (Platform.OS !== 'web') {
-    try {
-      const sub = Network.addNetworkStateListener(() => schedule());
-      unsubs.push(() => sub.remove());
-    } catch {
-      // No network events on this platform: the other triggers still plan.
-    }
-  }
   schedule();
 
   return () => {

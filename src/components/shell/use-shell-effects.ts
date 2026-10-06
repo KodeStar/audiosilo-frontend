@@ -3,16 +3,13 @@ import { useEffect } from 'react';
 
 import { clearScrollMemory } from '@/lib/scroll-memory';
 import { useSearchStore } from '@/stores/search';
+import { BROWSE_PATHS } from '@/lib/paths';
 
 import { useActiveTab } from './destinations';
 
-/** The browse section's pages: the Library root and folders, and the detail pages a
- * browse can push (a book, a series, an author or narrator, a collection). */
-const BROWSE_ROOTS = ['/library', '/book', '/series', '/author', '/narrator', '/collection'];
-
 /** Whether a pathname is inside the browse section (its scroll memory is kept). */
 export function isBrowsePath(pathname: string): boolean {
-  return BROWSE_ROOTS.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+  return BROWSE_PATHS.some((r) => pathname === r || pathname.startsWith(`${r}/`));
 }
 
 /**

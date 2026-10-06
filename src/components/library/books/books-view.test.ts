@@ -11,7 +11,6 @@ import {
   letterGrid,
   parseBooksView,
   progressByPath,
-  serverSort,
   sortBooks,
   statusCounts,
   titleKey,
@@ -87,11 +86,6 @@ describe('parseBooksView / booksViewParams', () => {
     expect(hasFilters({ sort: 'title', dl: false })).toBe(false);
     expect(hasFilters({ sort: 'recent', dl: true })).toBe(true);
     expect(hasFilters({ sort: 'recent', dl: false, len: 'long' })).toBe(true);
-  });
-
-  it('asks the server for newest first while a length order loads', () => {
-    expect(serverSort('length')).toBe('recent');
-    expect(serverSort('title')).toBe('title');
   });
 });
 

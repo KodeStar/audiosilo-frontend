@@ -29,18 +29,14 @@ jest.mock('@/api/hooks', () => ({
   useCollections: () => ({ data: [{}] }),
   useAllProgressAll: () => ({ progress: [], isLoading: false, error: null }),
   // A series result's mini shelf asks for that series' books.
-  useLibraryBooks: (_lib: number, query: { series?: string }) =>
-    mockSeriesBooks(query.series ?? ''),
+  useAllLibraryBooks: (_lib: number, query: { series?: string }) => {
+    mockSeriesBooks(query.series ?? '');
+    return { books: [], complete: false, isLoading: true };
+  },
+  useProgressLookup: () => ({ progressOf: () => undefined, isLoading: false }),
+  useSavedProgress: () => undefined,
 }));
-const mockSeriesBooks = jest.fn((_series: string) => ({
-  data: undefined,
-  isPending: true,
-  fetchStatus: 'fetching',
-  hasNextPage: false,
-  isFetchingNextPage: false,
-  isError: false,
-  fetchNextPage: jest.fn(),
-}));
+const mockSeriesBooks = jest.fn((_series: string) => undefined);
 jest.mock('@/components/library/use-selected-library', () => ({
   useSelectedLibrary: () => ({
     selection: { connectionId: 'a', libraryId: 1 },

@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { useBookMeta, useCapability, useMetaWork } from '@/api/hooks';
+import {
+  useAllLibraryBooks,
+  useBookMeta,
+  useCapability,
+  useMetaWork,
+  useProgressLookup,
+} from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { BookRef } from '@/api/types';
 import { CoverWash } from '@/components/library/cover-wash';
@@ -54,12 +60,7 @@ import {
   statsLine,
 } from './series-parts';
 import { spineDims } from './spine-fit';
-import {
-  useAllLibraryBooks,
-  useElsewhereBooks,
-  usePlacedBooks,
-  useProgressLookup,
-} from './use-series-data';
+import { useElsewhereBooks, usePlacedBooks } from './use-series-data';
 import { useResumeChapter } from './use-resume-chapter';
 
 const ORDER_NOTE_KEY = {
@@ -165,7 +166,7 @@ export function SeriesPage({
       <EmptyShelf
         title={t('series.error.title')}
         hint={t('series.error.hint')}
-        action={{ label: t('common.retry'), icon: 'rotate', onPress: () => void owned.refetch() }}
+        action={{ label: t('common.retry'), icon: 'rotate', onPress: () => owned.retry() }}
       />
     );
   }

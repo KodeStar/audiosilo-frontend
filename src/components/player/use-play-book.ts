@@ -1,4 +1,5 @@
-import { useApis } from '@/api/provider';
+import { chaptersQuery, itemQuery } from '@/api/hooks';
+import { queryClient, useApiRegistry } from '@/api/provider';
 import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -28,7 +29,7 @@ export type PlayOptions = {
 export function usePlayBook() {
   const phone = useLayout() === 'phone';
   const { openBook, openPlayer } = useOpen();
-  const apis = useApis();
+  const { clients } = useApiRegistry();
   return async (target: PlayTarget, opts: PlayOptions = {}) => {
     const { connectionId, libraryId, path } = target;
     const store = usePlayer.getState();
@@ -46,11 +47,18 @@ export function usePlayBook() {
       if (!selectIsTransportLive(store)) await store.toggle();
       return;
     }
-    const api = apis.find((a) => a.connection.id === connectionId)?.client;
+    const api = clients.get(connectionId);
     if (!api) return;
+    // Through the cache, so a book whose page is open starts without asking again.
     const [book, chapters] = await Promise.all([
-      api.item(libraryId, path),
-      api.chapters(libraryId, path),
+      queryClient.fetchQuery({
+        ...itemQuery(connectionId, api, libraryId, path),
+        staleTime: 30_000,
+      }),
+      queryClient.fetchQuery({
+        ...chaptersQuery(connectionId, api, libraryId, path),
+        staleTime: 30_000,
+      }),
     ]);
     await usePlayer.getState().playBook(connectionId, libraryId, book, chapters);
   };

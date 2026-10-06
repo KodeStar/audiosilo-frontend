@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { type MergedBook, useAllProgressAll } from '@/api/hooks';
+import { type MergedBook, useAllProgressAll, useProgressLookup } from '@/api/hooks';
 import { useApis } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
 import { roleLabelKey } from '@/components/library/book-meta';
@@ -11,7 +11,6 @@ import { CoverTile } from '@/components/library/cover-tile';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { SeriesCard } from '@/components/series/series-card';
 import type { ProgressLookup } from '@/components/series/series-model';
-import { useProgressLookup } from '@/components/series/use-series-data';
 import { matchRange } from '@/components/shell/palette-model';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';

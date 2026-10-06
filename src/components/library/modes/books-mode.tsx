@@ -39,7 +39,6 @@ import {
   letterGrid,
   parseBooksView,
   progressByPath,
-  serverSort,
   sortBooks,
   statusCounts,
 } from '../books/books-view';
@@ -92,7 +91,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const [booksLayout, setBooksLayout] = useBooksLayout();
   const libraryName = useSelectedLibrary().library?.name ?? '';
 
-  const whole = useWholeLibrary(connectionId, libraryId, serverSort(view.sort));
+  const whole = useWholeLibrary(connectionId, libraryId);
   const { progress } = useAllProgressAll();
   const progressMap = useMemo(
     () =>

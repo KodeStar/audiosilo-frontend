@@ -1,7 +1,7 @@
 import { skipToken, useQueries } from '@tanstack/react-query';
 
-import { qk } from '@/api/hooks';
-import { useApis } from '@/api/provider';
+import { nextBookQuery, useCapabilitiesAll } from '@/api/hooks';
+import { useApiRegistry } from '@/api/provider';
 import type { NextBook } from '@/api/types';
 
 import type { NextCandidate } from './home-model';
@@ -14,36 +14,16 @@ import type { NextCandidate } from './home-model';
  * no candidate's server has answered `/server`, then whether any of them can answer.
  */
 export function useNextInSeries(candidates: readonly NextCandidate[]) {
-  const apis = useApis();
-  const clientOf = (cid: string) => apis.find((a) => a.connection.id === cid)?.client ?? null;
-  const cids = [...new Set(candidates.map((c) => c.connectionId))];
-  const servers = useQueries({
-    queries: cids.map((cid) => {
-      const client = clientOf(cid);
-      return {
-        queryKey: qk.server(cid),
-        queryFn: client
-          ? ({ signal }: { signal: AbortSignal }) => client.serverInfo(signal)
-          : skipToken,
-        staleTime: 5 * 60_000,
-        gcTime: Infinity,
-      };
-    }),
-  });
-  const flag = (cid: string) => servers[cids.indexOf(cid)]?.data?.capabilities.next_book;
+  const { clients } = useApiRegistry();
+  const caps = useCapabilitiesAll();
+  const flag = (cid: string) => caps[cid]?.next_book;
   const answers = useQueries({
     queries: candidates.map((c) => {
-      const client = clientOf(c.connectionId);
-      return {
-        queryKey: qk.nextBook(c.connectionId, c.libraryId, c.path),
-        queryFn:
-          client && flag(c.connectionId)
-            ? ({ signal }: { signal: AbortSignal }) => client.nextBook(c.libraryId, c.path, signal)
-            : skipToken,
-      };
+      const spec = nextBookQuery(c.connectionId, clients.get(c.connectionId), c.libraryId, c.path);
+      return flag(c.connectionId) ? spec : { ...spec, queryFn: skipToken };
     }),
   });
-  const known = cids.filter((cid) => servers[cids.indexOf(cid)]?.data);
+  const known = [...new Set(candidates.map((c) => c.connectionId))].filter((cid) => caps[cid]);
   return {
     answers: candidates.map((candidate, i) => ({
       candidate,

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { useCapability } from '@/api/hooks';
+import { useAllLibraryBooks, useCapability, useProgressLookup } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { Book } from '@/api/types';
 import { CoverGrid, CoverGridSkeleton } from '@/components/library/cover-grid';
@@ -21,7 +21,6 @@ import { booksBySeries, creditedPeople, personStats } from './people-model';
 import type { PersonKind } from './people-mode';
 import { Portrait } from './portrait';
 import { type ProgressLookup, yearOf } from './series-model';
-import { useAllLibraryBooks, useProgressLookup } from './use-series-data';
 
 /** A tile's caption on these pages: "2004 · 12h 20m". */
 function bookCaption(b: Book): string {
@@ -76,7 +75,7 @@ export function PersonPage({
       <EmptyShelf
         title={t('people.pageError')}
         hint={t('series.error.hint')}
-        action={{ label: t('common.retry'), icon: 'rotate', onPress: () => void q.refetch() }}
+        action={{ label: t('common.retry'), icon: 'rotate', onPress: q.retry }}
       />
     );
   }

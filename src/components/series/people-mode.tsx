@@ -5,7 +5,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import type { UseQueryResult } from '@tanstack/react-query';
 
-import { useLibraryBooks } from '@/api/hooks';
+import { useLibraryBooks, useProgressLookup } from '@/api/hooks';
 import type { PeopleList, PersonCount } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,7 +20,6 @@ import { CardGrid } from './card-grid';
 import { EmptyShelf } from './empty-shelf';
 import type { ProgressLookup } from './series-model';
 import { Portrait } from './portrait';
-import { useProgressLookup } from './use-series-data';
 
 export type PersonKind = 'author' | 'narrator';
 

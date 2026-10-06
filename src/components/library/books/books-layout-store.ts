@@ -24,8 +24,6 @@ const useStore = create<Doc & { setLayout: (layout: BooksLayout) => void }>()((s
   },
 }));
 
-let hydration: Promise<void> | null = null;
-
 /**
  * The grid/list choice for book lists (Library Books, a collection, Favourites),
  * remembered on this device. Hydrated on first use rather than at boot: until then
@@ -33,7 +31,7 @@ let hydration: Promise<void> | null = null;
  */
 export function useBooksLayout(): [BooksLayout, (layout: BooksLayout) => void] {
   useEffect(() => {
-    hydration ??= stored.hydrate({ layout: 'grid' }, (doc) => useStore.setState(doc));
+    void stored.hydrate({ layout: 'grid' }, (doc) => useStore.setState(doc));
   }, []);
   return [useStore((s) => s.layout), useStore((s) => s.setLayout)];
 }

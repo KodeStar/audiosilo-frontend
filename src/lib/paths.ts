@@ -31,6 +31,17 @@ export function parentPath(relPath: string): string {
   return parts.join('/');
 }
 
+/** The browse section's pages (the hrefs below): the Library root and folders, and the
+ * detail pages a browse can push (a book, a series, an author or narrator, a collection). */
+export const BROWSE_PATHS = [
+  '/library',
+  '/book',
+  '/series',
+  '/author',
+  '/narrator',
+  '/collection',
+] as const;
+
 // Content routes are FLAT (`/book/[libraryId]`, `/library/[libraryId]`, `/account`); the
 // connection they belong to and the library-relative path both ride as QUERY params
 // (`?connection=<cid>&path=<rel>`), read back as the route scope by the `(app)` layout.

@@ -1,5 +1,6 @@
 import {
   type QueryClient,
+  queryOptions,
   skipToken,
   useInfiniteQuery,
   useMutation,
@@ -7,6 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
@@ -88,25 +90,103 @@ export const qk = {
   myListening: (cid: string, range: StatsRange) => ['myListening', cid, range] as const,
   listeningGoal: (cid: string) => ['listeningGoal', cid] as const,
   myDevices: (cid: string) => ['myDevices', cid] as const,
+  /** Prefix matching every connection's progress list (refetch on Home). */
+  allProgressAll: () => ['progress', 'all'] as const,
+  /** Prefix matching every connection's recently added list. */
+  recentAll: () => ['books', 'recent'] as const,
 };
+
+/** Whether a query key is a connection's Up next queue (`qk.queue`). */
+export const isQueueKey = (key: readonly unknown[]): boolean => key[0] === 'queue';
+
+/** Whether a query key is a book search for `q` on any connection (`qk.search`). */
+export const isSearchKey = (key: readonly unknown[], q: string): boolean =>
+  key[0] === 'search' && key[2] === q;
+
+// --- Query specs ---------------------------------------------------------------------
+// One spec per read that is also made outside a hook (`queryClient.fetchQuery` in the
+// keep-ahead controller and the play path, `useQueries` fan-outs), so every caller hits
+// the same cache entry with the same freshness. A null client gives no query function.
+
+type MaybeClient = ApiClient | null | undefined;
+
+/** `/server`: the version and flags don't change within a session. Kept while nothing
+ * observes it, so a capability-gated hook mounted later starts from the known flags
+ * (refreshed in the background once stale) instead of waiting on another round trip. */
+export function serverInfoQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.server(cid),
+    queryFn: client ? ({ signal }) => client.serverInfo(signal) : skipToken,
+    staleTime: 5 * 60_000,
+    gcTime: Infinity,
+  });
+}
+
+/** How long a `/next` answer stays fresh where it is only a suggestion (Home's Next in
+ * your series, keep-ahead's plan): the series doesn't move while you listen. */
+export const NEXT_BOOK_STALE_MS = 10 * 60_000;
+
+/** `/next` for a book, as Home and keep-ahead read it (the player's `useNextBook` keeps
+ * the default freshness). Ask only a server with `next_book`. */
+export function nextBookQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
+  return queryOptions({
+    queryKey: qk.nextBook(cid, libraryId, path),
+    queryFn: client ? ({ signal }) => client.nextBook(libraryId, path, signal) : skipToken,
+    staleTime: NEXT_BOOK_STALE_MS,
+  });
+}
+
+/** The Up next queue. Ask only a server with `queue`. */
+export function queueQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.queue(cid),
+    queryFn: client ? ({ signal }) => client.queue(signal) : skipToken,
+  });
+}
+
+/** Every saved progress row of a connection. */
+export function allProgressQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.allProgress(cid),
+    queryFn: client ? () => client.allProgress() : skipToken,
+  });
+}
+
+/** A book search (the server's search covers title, author, narrator and series); an
+ * empty query asks nothing. */
+export function searchQuery(cid: string, client: MaybeClient, q: string) {
+  return queryOptions({
+    queryKey: qk.search(cid, q),
+    queryFn: client && q.length > 0 ? ({ signal }) => client.search(q, 50, signal) : skipToken,
+  });
+}
+
+/** A book's item (with its files). */
+export function itemQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
+  return queryOptions({
+    queryKey: qk.item(cid, libraryId, path),
+    queryFn:
+      client && path.length > 0 ? ({ signal }) => client.item(libraryId, path, signal) : skipToken,
+  });
+}
+
+/** A book's chapters and files. */
+export function chaptersQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
+  return queryOptions({
+    queryKey: qk.chapters(cid, libraryId, path),
+    queryFn:
+      client && path.length > 0
+        ? ({ signal }) => client.chapters(libraryId, path, signal)
+        : skipToken,
+  });
+}
 
 /** The scoped connection's server identity/capabilities (incl. its release version).
  * Resolves via `useCid()` (route scope → active), so the per-connection account screen
  * gets *its* server's version; pass `connectionId` to address a specific connection
  * instead. Tolerates an unconfigured server (returns disabled). */
 export function useServerInfo(connectionId?: string) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.server(cid),
-    queryFn: ({ signal }) => api!.serverInfo(signal),
-    enabled: !!api,
-    staleTime: 5 * 60_000, // the server version doesn't change within a session
-    // Kept while nothing observes it, so a capability-gated hook mounted later starts
-    // from the known flags (refreshed in the background once stale) instead of
-    // waiting on another /server round trip.
-    gcTime: Infinity,
-  });
+  return useQuery(serverInfoQuery(useCid(connectionId), useOptionalApi(connectionId)));
 }
 
 /** Whether the connection's server advertises a capability: `undefined` while that is
@@ -121,6 +201,29 @@ export function useCapability(
 ): boolean | undefined {
   const caps = useServerInfo(connectionId).data?.capabilities;
   return caps ? !!caps[flag] : undefined;
+}
+
+/** Every connection's advertised capabilities, `undefined` while its `/server` is not
+ * known (loading or unreachable): one `/server` read per connection, shared with
+ * `useServerInfo`. */
+export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
+  const apis = useApis();
+  return useQueries({
+    queries: apis.map(({ connection, client }) => serverInfoQuery(connection.id, client)),
+    combine: (results) =>
+      Object.fromEntries(results.map((r, i) => [apis[i].connection.id, r.data?.capabilities])),
+  });
+}
+
+/** Whether any server has a capability: true as soon as one does, false once every one
+ * is known to lack it, undefined while that is still open. */
+export function anyCapability(
+  caps: Record<string, Capabilities | undefined>,
+  flag: keyof Capabilities,
+): boolean | undefined {
+  const values = Object.values(caps);
+  if (values.some((c) => c?.[flag])) return true;
+  return values.length > 0 && values.every((c) => c !== undefined) ? false : undefined;
 }
 
 /** Rejection of a capability-gated mutation on a server that does not advertise its
@@ -281,23 +384,13 @@ export function useBook(libraryId: number, path: string, connectionId?: string) 
   // Optional (not throwing) client: the player modal renders these hooks OUTSIDE the
   // `(app)` ContentScope guard, so a stale/removed connection id (e.g. tapping an
   // orphaned downloaded book) must yield a disabled query, not a fatal render throw.
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.item(cid, libraryId, path),
-    queryFn: ({ signal }) => api!.item(libraryId, path, signal),
-    enabled: !!api && path.length > 0,
-  });
+  return useQuery(itemQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path));
 }
 
 export function useChapters(libraryId: number, path: string, connectionId?: string) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.chapters(cid, libraryId, path),
-    queryFn: ({ signal }) => api!.chapters(libraryId, path, signal),
-    enabled: !!api && path.length > 0,
-  });
+  return useQuery(
+    chaptersQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
+  );
 }
 
 /** Enriched community metadata for a book. `enabled` gates the query on the
@@ -393,6 +486,14 @@ export function useSeriesList(libraryId: number, connectionId?: string) {
 /** Page size of `useLibraryBooks` (the server takes 1-200). */
 const BOOKS_PAGE_SIZE = 100;
 
+export type LibraryBooksOptions = {
+  /** Books per page (1-200); a size other than the default is its own cache entry. */
+  pageSize?: number;
+  /** False: read the cache, fetch nothing. */
+  enabled?: boolean;
+  staleTime?: number;
+};
+
 /** A library's indexed books (GET /libraries/{id}/books), page by page on the
  * server's cursor, optionally narrowed by exact `author`/`series`/`narrator` values
  * and sorted. `author`/`series` work on every server; a `narrator` filter needs
@@ -402,24 +503,61 @@ export function useLibraryBooks(
   libraryId: number,
   query: BookListQuery = {},
   connectionId?: string,
+  { pageSize = BOOKS_PAGE_SIZE, enabled, staleTime }: LibraryBooksOptions = {},
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   const narratorOk = useCapability('browse_people', connectionId) === true;
+  const key = qk.libraryBooks(cid, libraryId, query);
   return useInfiniteQuery({
-    queryKey: qk.libraryBooks(cid, libraryId, query),
+    queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
     queryFn:
       api && (!query.narrator || narratorOk)
         ? ({ pageParam, signal }) =>
-            api.listBooks(
-              libraryId,
-              { ...query, limit: BOOKS_PAGE_SIZE, cursor: pageParam },
-              signal,
-            )
+            api.listBooks(libraryId, { ...query, limit: pageSize, cursor: pageParam }, signal)
         : skipToken,
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor,
+    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
+    ...(enabled !== undefined ? { enabled } : {}),
+    ...(staleTime !== undefined ? { staleTime } : {}),
   });
+}
+
+/**
+ * EVERY book of a library list (`useLibraryBooks`: the whole library, or an exact
+ * `series`, `author` or `narrator`), fetching the remaining pages on its own, for a
+ * screen that orders or filters them on the device. The pages so far are usable at once
+ * (`complete` false while more are coming). A failed page stops the run and keeps what
+ * loaded; `retry` carries on from there (or starts over when the first page failed).
+ */
+export function useAllLibraryBooks(
+  libraryId: number,
+  query: BookListQuery = {},
+  connectionId?: string,
+  opts: LibraryBooksOptions = {},
+) {
+  const q = useLibraryBooks(libraryId, query, connectionId, opts);
+  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage, data, refetch } = q;
+  // Keyed on the page count too: a page can arrive within one render of the request
+  // that asked for it, leaving the flags as they were and the effect asleep.
+  const pages = data?.pages.length ?? 0;
+  useEffect(() => {
+    if (hasNextPage && !isFetching && !isFetchNextPageError) void fetchNextPage();
+  }, [pages, hasNextPage, isFetching, isFetchNextPageError, fetchNextPage]);
+  const books = useMemo<Book[]>(() => data?.pages.flatMap((p) => p.books) ?? [], [data]);
+  return {
+    books,
+    /** Every page is in. */
+    complete: !!data && !hasNextPage,
+    /** Nothing loaded yet (the first page is on its way). */
+    isLoading: q.isPending && q.fetchStatus !== 'idle',
+    /** The query can't run (no client, or a narrator filter on a server without it). */
+    isIdle: q.isPending && q.fetchStatus === 'idle',
+    error: q.error,
+    retry: () => void (data ? fetchNextPage() : refetch()),
+    /** Read the whole list again (an empty library: the server may have scanned since). */
+    refresh: () => void refetch(),
+  };
 }
 
 /** What to play after a book, resolved by the server (capability `next_book`).
@@ -1180,11 +1318,7 @@ export function useSearchAll(query: string) {
     return i === -1 ? apis.length : i;
   };
   return useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.search(connection.id, q),
-      queryFn: ({ signal }: { signal: AbortSignal }) => client.search(q, 50, signal),
-      enabled: q.length > 0,
-    })),
+    queries: apis.map(({ connection, client }) => searchQuery(connection.id, client, q)),
     combine: (results) => ({
       books: dedupBooks(tagBooks(results, apis), rank),
       isFetching: results.some((r) => r.isFetching),
@@ -1245,8 +1379,7 @@ export function useAllProgressAll({
   const apis = useApis();
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.allProgress(connection.id),
-      queryFn: () => client.allProgress(),
+      ...allProgressQuery(connection.id, client),
       enabled,
       refetchOnMount,
     })),
@@ -1265,6 +1398,72 @@ export function useAllProgressAll({
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });
+}
+
+/** Where a book's saved progress is found: by (connection, library, path). */
+export type SavedProgressOf = (
+  connectionId: string,
+  libraryId: number,
+  path: string,
+) => Progress | undefined;
+
+/** A connection's progress rows by `library\npath`, built once per fetched list. */
+const progressIndexes = new WeakMap<readonly Progress[], Map<string, Progress>>();
+function progressIndex(rows: readonly Progress[]): Map<string, Progress> {
+  let index = progressIndexes.get(rows);
+  if (!index) {
+    index = new Map(rows.map((p) => [`${p.library_id}\n${p.path}`, p]));
+    progressIndexes.set(rows, index);
+  }
+  return index;
+}
+
+/**
+ * The listener's saved progress on every connection, as a lookup by (connection,
+ * library, path): what marks a spine finished, the book you're on and a tile's progress
+ * bar. One fetch per connection, shared with Home and the palette; the lookup keeps its
+ * identity until a list changes, and each list is indexed once.
+ */
+export function useProgressLookup(): { progressOf: SavedProgressOf; isLoading: boolean } {
+  const apis = useApis();
+  const ids = apis.map((a) => a.connection.id).join('\n');
+  const combine = useCallback(
+    (results: { data?: Progress[]; isLoading: boolean }[]) => {
+      const byCid = new Map(ids.split('\n').map((cid, i) => [cid, results[i]?.data]));
+      const progressOf: SavedProgressOf = (cid, lib, path) => {
+        const rows = byCid.get(cid);
+        return rows ? progressIndex(rows).get(`${lib}\n${path}`) : undefined;
+      };
+      return { progressOf, isLoading: results.some((r) => r.isLoading) };
+    },
+    [ids],
+  );
+  return useQueries({
+    queries: apis.map(({ connection, client }) => allProgressQuery(connection.id, client)),
+    combine,
+  });
+}
+
+/**
+ * One book's saved progress from its connection's cached progress list, for a tile
+ * that marks itself (a progress bar, a finished flag). It reads the list other screens
+ * already fetched: a mount never refetches it (a grid mounts tiles as it scrolls), and
+ * only a connection whose list was never read fetches it once. The tile re-renders only
+ * when its own row changes.
+ */
+export function useSavedProgress(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  enabled = true,
+): Progress | undefined {
+  const cid = useCid(connectionId);
+  const client = useOptionalApi(connectionId);
+  return useQuery({
+    ...allProgressQuery(cid, enabled ? client : null),
+    select: (rows) => progressIndex(rows).get(`${libraryId}\n${path}`),
+    refetchOnMount: false,
+  }).data;
 }
 
 /**
@@ -1353,8 +1552,9 @@ export function useBookCopies(book: Book | undefined) {
   });
 }
 
-/** Flatten per-connection book lists into source-tagged books for dedup. */
-function tagBooks(
+/** Flatten per-connection book lists (a `useQueries` over `apis`) into source-tagged
+ * books, for dedup or for "on another server". */
+export function tagBooks(
   results: { data?: Book[] }[],
   apis: { connection: { id: string; name: string } }[],
 ): SourcedBook[] {

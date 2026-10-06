@@ -10,9 +10,11 @@ let mockQueue: QueueEntry[] | undefined;
 const mockAdd = jest.fn();
 const mockRemove = jest.fn();
 jest.mock('@/api/hooks', () => {
-  const { CapabilityError } = jest.requireActual('@/api/hooks');
+  const { CapabilityError, itemQuery, chaptersQuery } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
+    itemQuery,
+    chaptersQuery,
     useCapability: () => true,
     useQueue: () => ({ data: mockQueue, isLoading: false, error: null, refetch: jest.fn() }),
     useAddToQueue: () => ({ mutateAsync: mockAdd, isPending: false }),
@@ -23,9 +25,16 @@ jest.mock('@/api/hooks', () => {
 });
 const mockItem = jest.fn();
 const mockChapters = jest.fn();
-jest.mock('@/api/provider', () => ({
-  useApis: () => [{ connection: { id: 'c' }, client: { item: mockItem, chapters: mockChapters } }],
-}));
+jest.mock('@/api/provider', () =>
+  // `require` (not an import) because a jest.mock factory is hoisted above every import.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/api-provider-mock').apiProviderMock({
+    c: {
+      item: (...a: unknown[]) => mockItem(...a),
+      chapters: (...a: unknown[]) => mockChapters(...a),
+    },
+  }),
+);
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
@@ -50,6 +59,7 @@ jest.mock('@/playback/store', () => {
 
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 import { useSession } from '@/stores/session';
 
 import { useUpNext } from './up-next-store';
@@ -64,6 +74,7 @@ const entry = (path: string): QueueEntry => ({
 const lastToast = () => mockToast.mock.calls.at(-1)?.[0];
 
 beforeEach(() => {
+  queryClient.clear();
   mockQueue = [entry('A'), entry('B'), entry('C')];
   mockAdd.mockReset().mockResolvedValue([]);
   mockRemove.mockReset().mockResolvedValue(undefined);
@@ -159,7 +170,7 @@ describe('usePlayNow', () => {
     await act(async () => {
       await result.current(entry('B'), 'Book B');
     });
-    expect(mockItem).toHaveBeenCalledWith(1, 'B');
+    expect(mockItem).toHaveBeenCalledWith(1, 'B', expect.anything());
     expect(mockPlayBook).toHaveBeenCalledWith('c', 1, { rel_path: 'B' }, { files: [] });
     expect(drop).toHaveBeenCalledWith(entry('B'));
   });

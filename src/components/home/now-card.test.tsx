@@ -17,6 +17,7 @@ jest.mock('@/playback/store', () => ({
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
   useApis: () => [],
+  useApiRegistry: () => ({ clients: new Map(), connections: [] }),
   ConnectionScope: ({ children }: { children: unknown }) => children,
 }));
 

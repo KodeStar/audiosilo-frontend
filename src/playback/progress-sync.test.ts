@@ -11,6 +11,7 @@ import {
   flushQueue,
   loadInitialProgress,
   mirroredProgress,
+  pendingSaveCount,
   type ProgressSave,
   saveProgress,
 } from '@/playback/progress-sync';
@@ -535,5 +536,18 @@ describe('progress-sync', () => {
 
     expect(await mirroredProgress('c2', 1, 'A/Book')).toBeNull(); // another server
     expect(await mirroredProgress('c1', 1, 'A/Other')).toBeNull(); // never played
+  });
+});
+
+describe('pendingSaveCount', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('counts the saves waiting in the offline queue, without touching it', async () => {
+    expect(await pendingSaveCount()).toBe(0);
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([{ path: 'a' }, { path: 'b' }]));
+    expect(await pendingSaveCount()).toBe(2);
+    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(2);
   });
 });

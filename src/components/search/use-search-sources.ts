@@ -1,9 +1,16 @@
 import { skipToken, useQueries } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
-import { qk, useAllProgressAll, useLibrariesAll } from '@/api/hooks';
+import {
+  anyCapability,
+  chaptersQuery,
+  qk,
+  useAllProgressAll,
+  useCapabilitiesAll,
+  useLibrariesAll,
+} from '@/api/hooks';
 import { useApis } from '@/api/provider';
-import type { BookMeta, Capabilities, PeopleList, SeriesCount } from '@/api/types';
+import type { BookMeta, PeopleList, SeriesCount } from '@/api/types';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 
 import {
@@ -21,40 +28,12 @@ import {
  * cache of the single-server hooks (`qk.*`), so a list Library already loaded is reused.
  */
 
-/** Same freshness as `useServerInfo` and the browse lists (`hooks.ts`). */
-const SERVER_STALE_MS = 5 * 60_000;
+/** Same freshness as the browse lists (`hooks.ts`). */
 const BROWSE_STALE_MS = 5 * 60_000;
 const META_STALE_MS = 60 * 60_000;
 /** How coarsely the loaded book's live position is sampled (as the book page does): a
  * reveal is only ever late by this much, never early. */
 const LIVE_POSITION_BUCKET_S = 15;
-
-/** Every connection's advertised capabilities, `undefined` while its `/server` is not
- * known (loading or unreachable). */
-export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
-  const apis = useApis();
-  return useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.server(connection.id),
-      queryFn: ({ signal }: { signal: AbortSignal }) => client.serverInfo(signal),
-      staleTime: SERVER_STALE_MS,
-      gcTime: Infinity,
-    })),
-    combine: (results) =>
-      Object.fromEntries(results.map((r, i) => [apis[i].connection.id, r.data?.capabilities])),
-  });
-}
-
-/** Whether any server has a capability: true as soon as one does, false once every one
- * is known to lack it, undefined while that is still open. */
-export function anyCapability(
-  caps: Record<string, Capabilities | undefined>,
-  flag: keyof Capabilities,
-): boolean | undefined {
-  const values = Object.values(caps);
-  if (values.some((c) => c?.[flag])) return true;
-  return values.length > 0 && values.every((c) => c !== undefined) ? false : undefined;
-}
 
 type BrowseKind = 'authors' | 'narrators' | 'series';
 
@@ -199,10 +178,7 @@ export function useCharacterSources(
     queries: picks.map((p, i) => {
       const client = clientOf(p.connectionId);
       return {
-        queryKey: qk.chapters(p.connectionId, p.library_id, p.path),
-        queryFn: client
-          ? ({ signal }: { signal: AbortSignal }) => client.chapters(p.library_id, p.path, signal)
-          : skipToken,
+        ...chaptersQuery(p.connectionId, client, p.library_id, p.path),
         enabled: enabled && !p.finished && withCharacters(metas[i]?.data),
       };
     }),

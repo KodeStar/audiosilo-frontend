@@ -1,4 +1,4 @@
-import type { Book, BookSort, Progress } from '@/api/types';
+import type { Book, Progress } from '@/api/types';
 import { type LetterItem, letterItems } from '@/lib/alpha-sections';
 import { foldAccents } from '@/lib/names';
 import { firstParam, type RawParams } from '@/lib/paths';
@@ -58,12 +58,6 @@ export function booksViewParams(view: BooksView): Record<string, string | undefi
 /** Whether any filter narrows the list (the sort doesn't). */
 export function hasFilters(view: BooksView): boolean {
   return !!view.status || view.dl || !!view.len;
-}
-
-/** The order to ask the server for while pages arrive (what shows first). The server
- * has no length order, so Length loads newest first, sharing Recently added's cache. */
-export function serverSort(sort: BooksSort): BookSort {
-  return sort === 'length' ? 'recent' : sort;
 }
 
 /** The listener's progress rows by book path (one connection and library). */

@@ -2,9 +2,16 @@ import { act, renderHook } from '@testing-library/react-native';
 
 const mockItem = jest.fn();
 const mockChapters = jest.fn();
-jest.mock('@/api/provider', () => ({
-  useApis: () => [{ connection: { id: 'c' }, client: { item: mockItem, chapters: mockChapters } }],
-}));
+jest.mock('@/api/provider', () =>
+  // `require` (not an import) because a jest.mock factory is hoisted above every import.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/api-provider-mock').apiProviderMock({
+    c: {
+      item: (...a: unknown[]) => mockItem(...a),
+      chapters: (...a: unknown[]) => mockChapters(...a),
+    },
+  }),
+);
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
@@ -29,6 +36,7 @@ jest.mock('@/playback/store', () => {
 });
 
 /* eslint-disable import/first */
+import { queryClient } from '@/api/provider';
 import { usePlayer } from '@/playback/store';
 
 import { usePlayBook } from './use-play-book';
@@ -46,6 +54,7 @@ async function play(opts?: { toggle?: boolean; viaBookPage?: boolean }) {
 }
 
 beforeEach(() => {
+  queryClient.clear();
   mockLayout = 'desktop';
   setPlayer({ key: null, live: false });
   mockItem.mockReset().mockResolvedValue({ rel_path: 'Book' });
@@ -58,7 +67,7 @@ beforeEach(() => {
 describe('usePlayBook', () => {
   it('starts a book under the dock on tablet and desktop, through its own connection', async () => {
     await play();
-    expect(mockItem).toHaveBeenCalledWith(1, 'Book');
+    expect(mockItem).toHaveBeenCalledWith(1, 'Book', expect.anything());
     expect(mockPlayBook).toHaveBeenCalledWith('c', 1, { rel_path: 'Book' }, { files: [] });
     expect(mockPush).not.toHaveBeenCalled();
   });

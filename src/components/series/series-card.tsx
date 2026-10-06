@@ -9,10 +9,10 @@ import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
+import { useAllLibraryBooks } from '@/api/hooks';
 
 import { MiniShelf, MiniShelfSkeleton } from './mini-shelf';
 import { localEntries, localGaps, type ProgressLookup } from './series-model';
-import { useAllLibraryBooks } from './use-series-data';
 
 const SHELF = 118;
 

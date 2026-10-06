@@ -27,20 +27,18 @@ jest.mock('@/stores/session', () => ({
 }));
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockSeries: { isPending: boolean; data?: unknown; refetch: jest.Mock };
-jest.mock('@/api/hooks', () => ({
-  useServerInfo: () => ({ data: { capabilities: {} } }),
-  useCapability: (flag: string) => mockCaps[flag],
-  useLibraryBooks: () => ({ data: undefined }),
-  useSeriesList: () => mockSeries,
-}));
 let mockBooks: {
   books: Book[];
   isLoading: boolean;
   isIdle: boolean;
   error: unknown;
-  refetch: jest.Mock;
+  retry: jest.Mock;
 };
-jest.mock('./use-series-data', () => ({
+jest.mock('@/api/hooks', () => ({
+  useServerInfo: () => ({ data: { capabilities: {} } }),
+  useCapability: (flag: string) => mockCaps[flag],
+  useLibraryBooks: () => ({ data: undefined }),
+  useSeriesList: () => mockSeries,
   useAllLibraryBooks: () => mockBooks,
   useProgressLookup: () => ({ progressOf: () => undefined, isLoading: false }),
 }));
@@ -174,7 +172,7 @@ describe('PeopleMode', () => {
 
 describe('SeriesMode', () => {
   it('lists the series, opening one', async () => {
-    mockBooks = { books: [], isLoading: true, isIdle: false, error: null, refetch: jest.fn() };
+    mockBooks = { books: [], isLoading: true, isIdle: false, error: null, retry: jest.fn() };
     mockSeries = {
       isPending: false,
       data: [
@@ -210,7 +208,7 @@ describe('SeriesMode', () => {
 describe('PersonPage', () => {
   it("says a server without the narrator filter can't list a narrator's books", async () => {
     mockCaps = { browse_people: false };
-    mockBooks = { books: [], isLoading: false, isIdle: true, error: null, refetch: jest.fn() };
+    mockBooks = { books: [], isLoading: false, isIdle: true, error: null, retry: jest.fn() };
     await show(<PersonPage kind="narrator" libraryId={1} name="Kate Reading" />);
     expect(screen.getByText("This server can't list books by narrator yet")).toBeTruthy();
   });
@@ -235,7 +233,7 @@ describe('PersonPage', () => {
       isLoading: false,
       isIdle: false,
       error: null,
-      refetch: jest.fn(),
+      retry: jest.fn(),
     };
     await show(<PersonPage kind="author" libraryId={1} name="Jim Butcher" />);
     await fireEvent(screen.getByTestId('cover-grid'), 'layout', layoutEvent);

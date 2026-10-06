@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import {
+  qk,
   type SourcedFavourite,
   type SourcedProgress,
   useAllProgressAll,
@@ -116,7 +117,7 @@ export function HomeScreen() {
   const serverLabel = (cid: string) =>
     multi && cid !== defaultCid ? connections.find((c) => c.id === cid)?.name : undefined;
 
-  const retryProgress = () => void qc.refetchQueries({ queryKey: ['progress', 'all'] });
+  const retryProgress = () => void qc.refetchQueries({ queryKey: qk.allProgressAll() });
 
   // The hero: the Now card, its skeleton while progress first loads, the error when
   // that failed with nothing to show, or the empty state.
@@ -255,7 +256,7 @@ export function HomeScreen() {
                   icon="rotate"
                   variant="outline"
                   size="sm"
-                  onPress={() => void qc.refetchQueries({ queryKey: ['books', 'recent'] })}
+                  onPress={() => void qc.refetchQueries({ queryKey: qk.recentAll() })}
                 />
               </View>
             )}

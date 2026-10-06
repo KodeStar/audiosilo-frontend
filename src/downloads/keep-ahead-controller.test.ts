@@ -11,10 +11,10 @@ jest.mock('@/api/provider', () => {
   return { queryClient: new QC({ defaultOptions: { queries: { retry: false } } }) };
 });
 jest.mock('@/api/connection-clients', () => ({ resolveClient: jest.fn() }));
-jest.mock('expo-network', () => ({
-  addNetworkStateListener: jest.fn(() => ({ remove: jest.fn() })),
+jest.mock('@/lib/network', () => ({
+  canAutoDownload: jest.fn(async () => true),
+  onNetworkChange: jest.fn(() => () => undefined),
 }));
-jest.mock('@/lib/network', () => ({ canAutoDownload: jest.fn(async () => true) }));
 jest.mock('@/playback/next-book', () => ({ resolveNextBook: jest.fn(async () => null) }));
 jest.mock('@/playback/store', () => ({
   usePlayer: {

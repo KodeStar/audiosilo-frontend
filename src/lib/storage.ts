@@ -34,8 +34,9 @@ export type PersistedDocument<T extends object> = {
   /** Read the stored document and hand the store what it should now hold to `apply`:
    * `base`, then the stored values, then every change made before this call. When
    * there were such changes the merged document is written once. `apply` runs before
-   * the document counts as hydrated, so no write can ever land between the two. Call
-   * it once, at boot. */
+   * the document counts as hydrated, so no write can ever land between the two. Only
+   * the first call reads (at boot, or lazily on first use); later calls return the
+   * same promise. */
   hydrate: (base: T, apply: (doc: T) => void) => Promise<void>;
   /** Record a change. After `hydrate`, `doc` (the whole document, change included) is
    * written. Before it, the change is only remembered for `hydrate` to lay over the
@@ -55,16 +56,18 @@ export function persistedDocument<T extends object>(
   parse: (raw: unknown) => Partial<T>,
 ): PersistedDocument<T> {
   let hydrated = false;
+  let hydration: Promise<void> | null = null;
   let early: Partial<T> = {};
+  const read = async (base: T, apply: (doc: T) => void) => {
+    const doc = { ...base, ...parse(await getItem<unknown>(key)), ...early };
+    const pending = Object.keys(early).length > 0;
+    apply(doc);
+    early = {};
+    hydrated = true;
+    if (pending) void setItem(key, doc);
+  };
   return {
-    hydrate: async (base, apply) => {
-      const doc = { ...base, ...parse(await getItem<unknown>(key)), ...early };
-      const pending = Object.keys(early).length > 0;
-      apply(doc);
-      early = {};
-      hydrated = true;
-      if (pending) void setItem(key, doc);
-    },
+    hydrate: (base, apply) => (hydration ??= read(base, apply)),
     write: (change, doc) => {
       if (hydrated) void setItem(key, doc);
       else early = { ...early, ...change };

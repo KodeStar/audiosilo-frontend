@@ -1,52 +1,22 @@
-import { skipToken, useInfiniteQuery } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
-
-import { qk } from '@/api/hooks';
-import { useCid, useOptionalApi } from '@/api/provider';
-import type { Book, BookSort } from '@/api/types';
+import { useAllLibraryBooks } from '@/api/hooks';
 
 /** The largest page GET /libraries/{id}/books gives (1-200). */
 const PAGE_SIZE = 200;
+/** The pages arrive newest first, the default view's order, so it fills in place; any
+ * other order is sorted on the device either way. */
+const SERVER_ORDER = { sort: 'recent' } as const;
+/** A revisit within this long shows the list it has rather than reading every page
+ * again (a scan adds books rarely; an empty library offers a refresh). */
+const STALE_MS = 10 * 60_000;
 
 /**
- * A library's WHOLE book list, for filtering and sorting on the device: page after page
- * of `listBooks` (200 each, in the server's `sort`) until `next_cursor` runs out. The
- * pages so far are usable at once (`complete` false while more are coming). A failed
- * page stops the run and keeps what loaded; `retry` carries on from there (or starts
- * over when the first page failed). Its own key under the `libraryBooks` prefix, so it
- * never mixes its 200-book pages with `useLibraryBooks`' 100-book ones.
+ * A library's WHOLE book list, for filtering and sorting on the device
+ * (`useAllLibraryBooks`, 200 books a page). One cache entry per library, whatever the
+ * screen's sort, since the sorting happens on the device.
  */
-export function useWholeLibrary(connectionId: string, libraryId: number, sort: BookSort) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  const query = useInfiniteQuery({
-    queryKey: [...qk.libraryBooks(cid, libraryId, { sort }), 'whole'],
-    queryFn: api
-      ? ({ pageParam, signal }) =>
-          api.listBooks(libraryId, { sort, limit: PAGE_SIZE, cursor: pageParam }, signal)
-      : skipToken,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.next_cursor || undefined,
+export function useWholeLibrary(connectionId: string, libraryId: number) {
+  return useAllLibraryBooks(libraryId, SERVER_ORDER, connectionId, {
+    pageSize: PAGE_SIZE,
+    staleTime: STALE_MS,
   });
-  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage, data } = query;
-
-  // Keyed on the page count too: a page can arrive within one render of the request
-  // that asked for it, leaving the flags as they were and the effect asleep.
-  const pages = data?.pages.length ?? 0;
-  useEffect(() => {
-    if (hasNextPage && !isFetching && !isFetchNextPageError) void fetchNextPage();
-  }, [pages, hasNextPage, isFetching, isFetchNextPageError, fetchNextPage]);
-
-  const books = useMemo<Book[]>(() => data?.pages.flatMap((p) => p.books) ?? [], [data]);
-  return {
-    books,
-    /** Every page is in. */
-    complete: !!data && !hasNextPage,
-    /** Nothing loaded yet. */
-    isLoading: query.isLoading,
-    error: query.error,
-    retry: () => void (data ? fetchNextPage() : query.refetch()),
-    /** Read the whole list again (an empty library: the server may have scanned since). */
-    refresh: () => void query.refetch(),
-  };
 }

@@ -1,11 +1,10 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { useSeriesList } from '@/api/hooks';
+import { useProgressLookup, useSeriesList } from '@/api/hooks';
 import { CardGrid } from '@/components/series/card-grid';
 import { EmptyShelf } from '@/components/series/empty-shelf';
 import { SeriesCard, SeriesCardSkeleton } from '@/components/series/series-card';
-import { useProgressLookup } from '@/components/series/use-series-data';
 import { useSession } from '@/stores/session';
 
 import type { LibraryModeProps } from '../library-modes';

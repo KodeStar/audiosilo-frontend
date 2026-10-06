@@ -47,12 +47,9 @@ export const useUpNext = create<UpNextState>()((set, get) => ({
   closeSheet: () => set({ sheetOpen: false }),
 }));
 
-let hydrating: Promise<void> | null = null;
-
 /** Reads the remembered drawer once (the drawer calls it when it first mounts). */
 export function hydrateUpNext(): Promise<void> {
-  hydrating ??= stored.hydrate(BASE, (doc) => useUpNext.setState(doc));
-  return hydrating;
+  return stored.hydrate(BASE, (doc) => useUpNext.setState(doc));
 }
 
 const desktop = () => layoutFor(Dimensions.get('window').width) === 'desktop';

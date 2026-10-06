@@ -1,9 +1,4 @@
-import {
-  bookmarkPins,
-  bookScale,
-  chapterPlace,
-  timeLeftAtSpeed,
-} from './now-card-model';
+import { bookmarkPins, bookScale, chapterPlace, timeLeftAtSpeed } from './now-card-model';
 
 describe('bookScale', () => {
   const starts = [0, 100, 300, 600];

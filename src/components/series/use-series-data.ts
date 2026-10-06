@@ -1,59 +1,15 @@
 import { useQueries } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
 
-import type { BookListQuery } from '@/api/client';
-import { qk, useAllProgressAll, useLibraryBooks } from '@/api/hooks';
-import { useApis } from '@/api/provider';
+import { itemQuery, searchQuery, tagBooks } from '@/api/hooks';
+import { useApis, useOptionalApi } from '@/api/provider';
 import type { Book, BookRef } from '@/api/types';
-import { contentKey } from '@/lib/content-key';
 
-import type { ElsewhereBook, ProgressLookup } from './series-model';
-
-/**
- * The data the series, author and narrator pages read, as small feature-local hooks over
- * the shared `src/api` ones (no new wire calls).
- */
+import type { ElsewhereBook } from './series-model';
 
 /**
- * Every book of a filtered library list (`useLibraryBooks`: an exact `series`,
- * `author` or `narrator`), fetching the remaining pages on its own: a series or a
- * person is a handful of books, so the page wants them all before it orders them.
- * `complete` once the last page is in.
+ * The data the series page reads beyond the shared `src/api` hooks (no new wire
+ * calls).
  */
-export function useAllLibraryBooks(libraryId: number, query: BookListQuery, connectionId?: string) {
-  const q = useLibraryBooks(libraryId, query, connectionId);
-  const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = q;
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !isError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
-  const books = useMemo(() => q.data?.pages.flatMap((p) => p.books) ?? [], [q.data]);
-  return {
-    books,
-    /** Nothing loaded yet (the first page). */
-    isLoading: q.isPending && q.fetchStatus !== 'idle',
-    /** The query can't run (no client, or a narrator filter on a server without it). */
-    isIdle: q.isPending && q.fetchStatus === 'idle',
-    complete: !!q.data && !hasNextPage,
-    error: q.error,
-    refetch: q.refetch,
-  };
-}
-
-/**
- * The listener's saved progress on every connection, as a lookup by
- * (connection, library, path): what marks a spine finished, the book you're on and a
- * tile's progress bar. One fetch per connection, shared with Home and the palette.
- */
-export function useProgressLookup(): { progressOf: ProgressLookup; isLoading: boolean } {
-  const { progress, isLoading } = useAllProgressAll();
-  const progressOf = useMemo<ProgressLookup>(() => {
-    const byKey = new Map(
-      progress.map((p) => [contentKey(p.connectionId, p.library_id, p.path), p]),
-    );
-    return (c, l, p) => byKey.get(contentKey(c, l, p));
-  }, [progress]);
-  return { progressOf, isLoading };
-}
 
 /**
  * The books of a series on the listener's OTHER connections, for "On Maya's Shelf":
@@ -67,19 +23,10 @@ export function useElsewhereBooks(connectionId: string, seriesName: string | und
   const q = (seriesName ?? '').trim();
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.search(connection.id, q),
-      queryFn: ({ signal }: { signal: AbortSignal }) => client.search(q, 50, signal),
-      enabled: q.length > 0,
+      ...searchQuery(connection.id, client, q),
       staleTime: 5 * 60_000,
     })),
-    combine: (results) =>
-      results.flatMap((r, i) =>
-        (r.data ?? []).map((b): ElsewhereBook => ({
-          ...b,
-          connectionId: apis[i].connection.id,
-          connectionName: apis[i].connection.name,
-        })),
-      ),
+    combine: (results): ElsewhereBook[] => tagBooks(results, apis),
   });
 }
 
@@ -89,13 +36,10 @@ export function useElsewhereBooks(connectionId: string, seriesName: string | und
  * the answer. Only what isn't already loaded is asked for.
  */
 export function usePlacedBooks(connectionId: string, refs: readonly BookRef[]): Book[] {
-  const apis = useApis();
-  const client = apis.find((a) => a.connection.id === connectionId)?.client;
+  const client = useOptionalApi(connectionId);
   return useQueries({
     queries: refs.map((r) => ({
-      queryKey: qk.item(connectionId, r.library_id, r.path),
-      queryFn: ({ signal }: { signal: AbortSignal }) => client!.item(r.library_id, r.path, signal),
-      enabled: !!client,
+      ...itemQuery(connectionId, client, r.library_id, r.path),
       staleTime: 5 * 60_000,
     })),
     combine: (results) => results.flatMap((r) => (r.data ? [r.data] : [])),

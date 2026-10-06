@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 
-import { type MergedBook, useSearchAll } from '@/api/hooks';
+import { isSearchKey, type MergedBook, useSearchAll } from '@/api/hooks';
 
 import {
   type CharacterMatches,
@@ -67,7 +67,7 @@ export function useSearch(
     isError: !!search.error,
     retry: () =>
       void qc.refetchQueries({
-        predicate: (query) => query.queryKey[0] === 'search' && query.queryKey[2] === q,
+        predicate: (query) => isSearchKey(query.queryKey, q),
       }),
   };
   const peopleState: GroupState = {
