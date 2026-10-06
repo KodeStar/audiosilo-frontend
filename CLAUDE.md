@@ -388,9 +388,9 @@ removed.
 
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
-from **ONE whole-book POSITION** - the player's live position
-(`usePlayer(selectBookPosition)`) when this book is loaded, else `useBookProgress`
-(`qk.progress(cid, lib, path)`) - walked through `chapterNumberAt` against the
+from **ONE whole-book POSITION** (`useListeningPosition`, also Search's and the series
+page's) - the player's live position when this book is loaded (never below the saved one),
+else `useBookProgress` (`qk.progress(cid, lib, path)`) - walked through `chapterNumberAt` against the
 screen's *corrected*, memoized chapter offsets (`chapterStarts`, recomputed from the
 cumulative file durations, not the server's `book_offset`); no position → 0. **Never
 the player's chapter identity**: a chapterless single-file book gets *synthetic*
@@ -744,9 +744,10 @@ server): collections belong to a server, not a library. The sections are a scrol
 sub-nav can't fit all six).
 
 **Library Books mode** (`modes/books-mode.tsx`, rules in `books/books-view.ts`): `useWholeLibrary`
-pages through the selected library 200 books at a time until `next_cursor` runs out, then filters
+(`useAllLibraryBooks`, one cache entry per library) pages through the selected library 200 books
+at a time until `next_cursor` runs out, then filters
 (status from the listener's progress, Downloaded from the registry, length buckets) and sorts on
-the device. The URL is the contract other screens link to: `/library?mode=books&sort=&status=&dl=1&len=`
+the device. The URL is the contract other screens link to (`libraryBooksHref`): `/library?mode=books&sort=&status=&dl=1&len=`
 (`libraryModeHref`). Grid or list is remembered per device (`books-layout-store.ts`,
 `audiosilo.booksLayout`); Title sort adds letter heads and an A-Z rail. **Book actions**
 (`books/book-actions.tsx`): `useBookActions` (Play/Resume, Up next, Add to collection, download,
@@ -851,7 +852,7 @@ tab, browse scroll memory) are `useShellEffects`.
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
   omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:
   never while typing in a field, over another dialog, or over the player modal; those guards are
-  `isEditable` / `isModalOpen` in `src/lib/keyboard.ts`, shared with Up next's Q). `usePalette`
+  `useGlobalShortcut` in `src/lib/keyboard.ts`, shared with Up next's Q). `usePalette`
   (`palette-store.ts`) holds open and the query; the recent searches are the Search screen's
   `useRecentSearches` (`src/stores/search.ts`, persisted per device under `audiosilo.paletteRecent`).
   Which items show, the grouping, the arrow-key clamp and the shortcut test are the pure
