@@ -86,8 +86,8 @@ let mockNext: { answers: unknown[]; supported: boolean | undefined; isLoading: b
   isLoading: false,
 };
 jest.mock('./use-next-in-series', () => ({ useNextInSeries: () => mockNext }));
-// The long-press menu has its own tests.
-jest.mock('./progress-menu-sheet', () => ({ ProgressMenuSheet: () => null }));
+// A tile's actions menu has its own tests.
+jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
 jest.mock('./use-narrator-shelf', () => ({ useNarratorShelf: () => undefined }));
 jest.mock('./use-sync-pill', () => ({ useSyncPill: () => null }));
 

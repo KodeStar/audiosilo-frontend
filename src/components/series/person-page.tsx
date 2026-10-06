@@ -122,6 +122,7 @@ export function PersonPage({
           path={b.rel_path}
           title={b.title}
           caption={kind === 'narrator' ? b.author : bookCaption(b)}
+          book={b}
           author={b.author}
           coverVersion={b.cover_version}
           width={width}
@@ -265,6 +266,7 @@ function SeriesShelf({
             libraryId={b.library_id}
             path={b.rel_path}
             title={b.title}
+            book={b}
             caption={[
               b.series_index > 0 ? t('series.bookN', { position: b.series_index }) : '',
               yearOf(b.published),

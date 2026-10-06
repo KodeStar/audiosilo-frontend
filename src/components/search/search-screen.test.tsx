@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 const mockRouter = { push: jest.fn(), navigate: jest.fn() };
+// A tile's actions menu (book actions, the player) has its own tests.
+jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
 jest.mock('expo-router', () => ({
   get router() {
     return mockRouter;

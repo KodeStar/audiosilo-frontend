@@ -311,8 +311,7 @@
       "bitrate": "Bitrate: {{value}}"
     },
     "progressCard": {
-      "markFinished": "Als abgeschlossen markieren",
-      "moreInSeries": "Mehr aus der Reihe"
+      "markFinished": "Als abgeschlossen markieren"
     },
     "notes": {
       "title": "Notizen",
@@ -471,7 +470,8 @@
       "downloading": "Wird für offline heruntergeladen",
       "downloadRemoved": "Download entfernt",
       "failed": "Das Buch konnte nicht aktualisiert werden. Versuche es noch einmal.",
-      "playFailed": "Das Buch konnte nicht gestartet werden. Versuche es noch einmal."
+      "playFailed": "Das Buch konnte nicht gestartet werden. Versuche es noch einmal.",
+      "loadFailed": "Das Buch konnte nicht geladen werden. Versuche es noch einmal."
     },
     "collections": {
       "itemCount_one": "{{count}} Buch",
@@ -954,7 +954,8 @@
     "ghostLabelNumbered": "Band {{position}}, {{title}}, {{note}}",
     "finished": "Abgeschlossen",
     "listened": "{{percent}} % gehört",
-    "downloaded": "Heruntergeladen"
+    "downloaded": "Heruntergeladen",
+    "moreActions": "Weitere Aktionen"
   },
   "queue": {
     "queueIt": "Einreihen",

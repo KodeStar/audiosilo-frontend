@@ -105,6 +105,7 @@ export function SeeAllScreen() {
           libraryId={b.library_id}
           path={b.rel_path}
           title={titleOf(b)}
+          book={b}
           author={b.author}
           caption={tileCaption(b, 'recent')}
           coverVersion={b.cover_version}
@@ -150,6 +151,7 @@ function FinishedTile({
       libraryId={p.library_id}
       path={p.path}
       title={book ? titleOf(book) : pathLeaf(p.path)}
+      book={book}
       author={book?.author}
       coverVersion={book?.cover_version}
       caption={t('library.books.finishedWhen', {

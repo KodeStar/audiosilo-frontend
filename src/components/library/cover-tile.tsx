@@ -1,18 +1,22 @@
 import type { TFunction } from 'i18next';
-import { type ReactNode, useRef } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
+
+import type { Book } from '@/api/types';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useBookDragSource } from '@/components/upnext/drag-source';
 import { useDownloadEntry } from '@/downloads/store';
+import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 
 import { BookCover } from './book-cover';
+import { TileActions } from './tile-actions';
 
 /** A flag chip on a tile's cover (downloaded, finished, a friend's server). */
 function Flag({ children, className }: { children: ReactNode; className?: string }) {
@@ -69,8 +73,14 @@ export type CoverTileProps = {
   onShelf?: boolean;
   /** Defaults to opening the book page (in the current tab). */
   onPress?: () => void;
-  /** A secondary menu (long-press on touch). */
+  /** Replaces the book's actions menu on long-press (and right-click on the web). */
   onLongPress?: () => void;
+  /** The book's actions menu (`TileActions`) on long-press, right-click and the Menu
+   * key: on by default; false for a tile that shouldn't offer it. */
+  actions?: boolean;
+  /** The book's list row when the screen has it: the actions menu needs it, and
+   * fetches it on first use otherwise. */
+  book?: Book;
   className?: string;
 };
 
@@ -80,7 +90,10 @@ export type CoverTileProps = {
  * progress, flags in its corner (a friend's server, downloaded on this device - read from
  * the downloads registry -, finished), then the title (two lines) and one caption line.
  * The whole tile is one button whose name carries the title, caption and state. On the
- * web desktop the cover can be dragged onto Up next (`useBookDragSource`).
+ * web desktop the cover can be dragged onto Up next (`useBookDragSource`). A long-press
+ * (and on the web a right-click, the Menu key or Shift+F10; for a screen reader the
+ * "More actions" action) opens the book's actions (`TileActions`), so every screen's
+ * tiles offer Up next, collections, downloads and finished without wiring of their own.
  */
 export function CoverTile({
   connectionId,
@@ -97,6 +110,8 @@ export function CoverTile({
   onShelf,
   onPress,
   onLongPress,
+  actions = true,
+  book,
   className,
 }: CoverTileProps) {
   const { t } = useTranslation();
@@ -105,6 +120,12 @@ export function CoverTile({
   // Web desktop: the cover drags onto Up next's drop zone.
   const coverRef = useRef<View>(null);
   useBookDragSource(coverRef, { connectionId, libraryId, path, title });
+  // Each request bumps the count; the menu mounts on the first and reopens on each.
+  const [request, setRequest] = useState(0);
+  const openActions = actions ? () => setRequest((n) => n + 1) : undefined;
+  const onMenu = onLongPress ?? openActions;
+  const tileRef = useRef<View>(null);
+  useContextMenuRequest(tileRef, onMenu);
   const inProgress = !finished && progress !== undefined && progress > 0 && progress < 1;
   const label = [title, caption, ...tileStateLabels({ progress, finished, downloaded, server, t })]
     .filter(Boolean)
@@ -113,9 +134,16 @@ export function CoverTile({
   return (
     <AnimatedPressable
       onPress={onPress ?? (() => openBook(connectionId, libraryId, path))}
-      onLongPress={onLongPress}
+      ref={tileRef}
+      onLongPress={onMenu}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityActions={
+        onMenu ? [{ name: 'longpress', label: t('covers.moreActions') }] : undefined
+      }
+      onAccessibilityAction={(e) => {
+        if (e.nativeEvent.actionName === 'longpress') onMenu?.();
+      }}
       style={{ width }}
       className={cn('gap-2.5 rounded-[5px]', className)}
     >
@@ -129,6 +157,19 @@ export function CoverTile({
           title={title}
           author={author}
         />
+        {request > 0 ? (
+          // Over the cover, so the menu's anchor sits in its corner.
+          <View pointerEvents="box-none" className="absolute inset-0">
+            <TileActions
+              connectionId={connectionId}
+              libraryId={libraryId}
+              path={path}
+              book={book}
+              request={request}
+              tileRef={tileRef}
+            />
+          </View>
+        ) : null}
         {server || downloaded || finished ? (
           <View className="absolute right-[7px] top-[7px] flex-row gap-1">
             {server ? (

@@ -4,6 +4,11 @@ import { Text } from 'react-native';
 import { settleFlashList } from '@/testing/flash-list';
 
 const mockPush = jest.fn();
+// A tile's actions menu (book actions, the player) has its own tests.
+const mockTileActions = jest.fn((_props: { request: number; book?: unknown }) => null);
+jest.mock('@/components/library/tile-actions', () => ({
+  TileActions: (p: { request: number; book?: unknown }) => mockTileActions(p),
+}));
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
@@ -52,6 +57,37 @@ describe('CoverTile', () => {
       params: { libraryId: '1', connection: 'c', path: 'Dune' },
     });
     expect(screen.getByText('Maya')).toBeTruthy();
+  });
+
+  it('opens the book actions on a long-press, again on each, with the row it was given', async () => {
+    mockTileActions.mockClear();
+    const book = { rel_path: 'Dune' };
+    await render(<CoverTile {...tile} book={book as never} />);
+    expect(mockTileActions).not.toHaveBeenCalled();
+    const button = screen.getByRole('button', { name: 'Dune' });
+    await fireEvent(button, 'longPress');
+    expect(mockTileActions).toHaveBeenLastCalledWith(expect.objectContaining({ request: 1, book }));
+    await fireEvent(button, 'longPress');
+    expect(mockTileActions).toHaveBeenLastCalledWith(expect.objectContaining({ request: 2 }));
+    // A screen reader reaches them as the tile's "More actions".
+    expect(button.props.accessibilityActions).toEqual([
+      { name: 'longpress', label: 'More actions' },
+    ]);
+  });
+
+  it("lets a caller's long-press replace the menu, or turn it off", async () => {
+    mockTileActions.mockClear();
+    const onLongPress = jest.fn();
+    await render(<CoverTile {...tile} onLongPress={onLongPress} />);
+    await fireEvent(screen.getByRole('button', { name: 'Dune' }), 'longPress');
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(mockTileActions).not.toHaveBeenCalled();
+
+    await render(<CoverTile {...tile} actions={false} />);
+    const off = screen.getByRole('button', { name: 'Dune' });
+    expect(off.props.accessibilityActions).toBeUndefined();
+    await fireEvent(off, 'longPress');
+    expect(mockTileActions).not.toHaveBeenCalled();
   });
 
   it('says finished instead of a percentage', async () => {

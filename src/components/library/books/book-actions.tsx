@@ -1,9 +1,12 @@
-import { Fragment, useState } from 'react';
+import type { TriggerRef } from '@rn-primitives/dropdown-menu';
+import { Fragment, type ReactElement, type Ref, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable } from 'react-native';
 
 import { CapabilityError, useCapability, useEditProgress, useMarkFinished } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
+import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
+import { usePlayBook } from '@/components/player/use-play-book';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -16,12 +19,12 @@ import {
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { entryBytes } from '@/downloads/downloads-view';
 import { useDownloadEntry, useDownloads } from '@/downloads/store';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { usePlayBook } from '@/components/player/use-play-book';
 
 import { AddToCollectionDialog } from '../collections/collection-dialogs';
 import { useQueueActions } from '../use-queue-actions';
@@ -39,16 +42,20 @@ export type BookAction = {
 
 type Target = { connectionId: string; libraryId: number; book: Book; progress?: Progress };
 
+/** The dialogs an action opens, which the menu's owner renders. */
+export type BookActionDialogs = { openCollect: () => void; confirmRemove: () => void };
+
 /**
  * What can be done to a book from a list, each only where its server and this platform
  * allow it (a capability still unknown hides its item): Play or Resume, Add to / Remove
  * from Up next, Add to collection..., Download for offline / Remove download, Mark as
  * finished / not finished, More in this series. `openCollect` opens the Add to
- * collection dialog the caller renders.
+ * collection dialog and `confirmRemove` the remove-download confirm, both rendered by
+ * the caller (`BookActionsMenu`): removing a download asks first, as everywhere.
  */
 export function useBookActions(
   { connectionId, libraryId, book, progress }: Target,
-  openCollect: () => void,
+  { openCollect, confirmRemove }: BookActionDialogs,
 ): BookAction[] {
   const { t } = useTranslation();
   const path = book.rel_path;
@@ -116,8 +123,7 @@ export function useBookActions(
   const onDownload = () => {
     const store = useDownloads.getState();
     if (download?.status === 'downloaded') {
-      void store.remove(connectionId, libraryId, path);
-      toast({ title: t('library.bookActions.downloadRemoved'), description: book.title });
+      confirmRemove();
     } else if (download?.status === 'downloading' || download?.status === 'queued') {
       store.cancel(connectionId, libraryId, path);
     } else {
@@ -206,52 +212,70 @@ export function useBookActions(
 }
 
 /**
- * A book's "..." button and its actions (`useBookActions`, plus any `extra` the screen
- * adds - a collection's Move up / Remove): a menu on tablet and desktop, the same items
- * in a bottom sheet on a phone. Sits beside (never inside) the row's own press target.
+ * A book's actions (`useBookActions`, plus any `extra` the screen adds - a collection's
+ * Move up / Remove), presented for the form factor: a dropdown menu on `trigger` on
+ * tablet and desktop, the same items in a bottom sheet on a phone (`sheetOpen`). It
+ * also renders the dialogs the actions open (Add to collection, the remove-download
+ * confirm). `BookActionsButton` gives it a visible "..." trigger; a cover tile a hidden
+ * anchor it opens through `triggerRef` (`TileActions`).
  */
-export function BookActionsButton({
+export function BookActionsMenu({
   connectionId,
   libraryId,
   book,
   progress,
   extra = [],
-}: Target & { extra?: BookAction[] }) {
+  trigger,
+  triggerRef,
+  sheetOpen,
+  onSheetOpenChange,
+  onMenuOpenChange,
+  onCloseAutoFocus,
+}: Target & {
+  extra?: BookAction[];
+  trigger: ReactElement;
+  triggerRef?: Ref<TriggerRef>;
+  sheetOpen: boolean;
+  onSheetOpenChange: (open: boolean) => void;
+  /** Tablet/desktop: the menu opened or closed. */
+  onMenuOpenChange?: (open: boolean) => void;
+  /** Web: where focus goes when the menu closes (default: back to the trigger). */
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const phone = useLayout() === 'phone';
-  const [sheet, setSheet] = useState(false);
   const [collect, setCollect] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  // Open a dialog once the menu has closed: Radix's menu and dialog each lock the page
+  // (pointer-events on <body>) and, opened in the same tick, the menu's unlock is lost
+  // and the page stays dead after the dialog closes.
+  const after = (open: () => void) => {
+    onSheetOpenChange(false);
+    setTimeout(open, 0);
+  };
   const actions = [
-    ...useBookActions({ connectionId, libraryId, book, progress }, () => {
-      setSheet(false);
-      // Open the dialog once the menu has closed: Radix's menu and dialog each lock the
-      // page (pointer-events on <body>) and, opened in the same tick, the menu's unlock
-      // is lost and the page stays dead after the dialog closes.
-      setTimeout(() => setCollect(true), 0);
-    }),
+    ...useBookActions(
+      { connectionId, libraryId, book, progress },
+      {
+        openCollect: () => after(() => setCollect(true)),
+        confirmRemove: () => after(() => setRemoving(true)),
+      },
+    ),
     ...extra,
   ];
-  const label = t('library.bookActions.more', { title: book.title });
-
-  const trigger = (
-    <Button
-      variant="ghost"
-      size="icon"
-      icon="ellipsis"
-      accessibilityLabel={label}
-      onPress={phone ? () => setSheet(true) : undefined}
-    />
-  );
+  const download = useDownloadEntry(connectionId, libraryId, book.rel_path);
 
   return (
     <>
       {phone ? (
         trigger
       ) : (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+        <DropdownMenu onOpenChange={onMenuOpenChange}>
+          <DropdownMenuTrigger ref={triggerRef} asChild>
+            {trigger}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onCloseAutoFocus={onCloseAutoFocus}>
             {actions.map((a) => (
               <Fragment key={a.key}>
                 {a.group ? <DropdownMenuSeparator /> : null}
@@ -268,7 +292,7 @@ export function BookActionsButton({
         </DropdownMenu>
       )}
       {phone ? (
-        <Dialog open={sheet} onOpenChange={setSheet}>
+        <Dialog open={sheetOpen} onOpenChange={onSheetOpenChange}>
           <DialogContent className="gap-2 px-3">
             <DialogHeader className="px-3 pb-1 pr-12">
               <DialogTitle numberOfLines={2}>{book.title}</DialogTitle>
@@ -278,7 +302,7 @@ export function BookActionsButton({
                 key={a.key}
                 accessibilityRole="button"
                 onPress={() => {
-                  setSheet(false);
+                  onSheetOpenChange(false);
                   a.onPress();
                 }}
                 className={cn(
@@ -317,6 +341,46 @@ export function BookActionsButton({
           title={book.title}
         />
       ) : null}
+      <RemoveDownloadConfirm
+        book={
+          removing
+            ? { title: book.title, bytes: download ? entryBytes(download) : book.size }
+            : null
+        }
+        onCancel={() => setRemoving(false)}
+        onConfirm={() => {
+          setRemoving(false);
+          void useDownloads.getState().remove(connectionId, libraryId, book.rel_path);
+          toast({ title: t('library.bookActions.downloadRemoved'), description: book.title });
+        }}
+      />
     </>
+  );
+}
+
+/**
+ * A book's "..." button and its actions (`BookActionsMenu`). Sits beside (never inside)
+ * the row's own press target.
+ */
+export function BookActionsButton({ extra, ...target }: Target & { extra?: BookAction[] }) {
+  const { t } = useTranslation();
+  const phone = useLayout() === 'phone';
+  const [sheet, setSheet] = useState(false);
+  return (
+    <BookActionsMenu
+      {...target}
+      extra={extra}
+      sheetOpen={sheet}
+      onSheetOpenChange={setSheet}
+      trigger={
+        <Button
+          variant="ghost"
+          size="icon"
+          icon="ellipsis"
+          accessibilityLabel={t('library.bookActions.more', { title: target.book.title })}
+          onPress={phone ? () => setSheet(true) : undefined}
+        />
+      }
+    />
   );
 }

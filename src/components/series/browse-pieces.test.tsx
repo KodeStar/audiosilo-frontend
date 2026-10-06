@@ -4,6 +4,8 @@ import type { Book, PeopleList } from '@/api/types';
 
 const mockPush = jest.fn();
 const mockSetParams = jest.fn();
+// A tile's actions menu (book actions, the player) has its own tests.
+jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
 jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h), setParams: (p: unknown) => mockSetParams(p) },
 }));

@@ -86,6 +86,7 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
           libraryId={item.libraryId}
           path={item.path}
           title={b.title || item.path}
+          book={b}
           author={b.author}
           caption={b.series ? seriesCaption(b.series, b.series_index) : b.author}
           coverVersion={b.cover_version}

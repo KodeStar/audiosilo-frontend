@@ -30,12 +30,10 @@ export function ProgressTile({
   item,
   width,
   server,
-  onLongPress,
 }: {
   item: SourcedProgress;
   width: number;
   server?: string;
-  onLongPress?: () => void;
 }) {
   const { t } = useTranslation();
   const book = useProgressBook({
@@ -68,7 +66,7 @@ export function ProgressTile({
       progress={item.duration > 0 ? item.position / item.duration : undefined}
       finished={item.finished}
       server={server}
-      onLongPress={onLongPress}
+      book={book}
       onShelf
     />
   );

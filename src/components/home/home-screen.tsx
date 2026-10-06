@@ -42,7 +42,6 @@ import { HomeSection } from './home-section';
 import { NowEmpty, NowError } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
-import { ProgressMenuSheet } from './progress-menu-sheet';
 import { SmartShelves } from './smart-shelves';
 import { ThisWeekCard } from './this-week-card';
 import { useNarratorShelf } from './use-narrator-shelf';
@@ -81,7 +80,6 @@ export function HomeScreen() {
 
   // The progress overflow menu (mark finished, open the folder), opened by a long
   // press on a Continue listening cover; one sheet at the screen root.
-  const [menuItem, setMenuItem] = useState<SourcedProgress | null>(null);
   // "Added this week" is counted from when Home opened.
   const [mountedAt] = useState(Date.now);
 
@@ -133,12 +131,7 @@ export function HomeScreen() {
   );
 
   const progressTile = (p: SourcedProgress, width: number) => (
-    <ProgressTile
-      item={p}
-      width={width}
-      server={serverLabel(p.connectionId)}
-      onLongPress={p.finished ? undefined : () => setMenuItem(p)}
-    />
+    <ProgressTile item={p} width={width} server={serverLabel(p.connectionId)} />
   );
 
   const recentBooks = recent.books.slice(0, SHELF_LIMIT);
@@ -241,6 +234,7 @@ export function HomeScreen() {
                       libraryId={b.library_id}
                       path={b.rel_path}
                       title={b.title || pathLeaf(b.rel_path)}
+                      book={b}
                       author={b.author}
                       caption={added ? t('home.added', { when: added }) : b.author}
                       coverVersion={b.cover_version}
@@ -314,7 +308,6 @@ export function HomeScreen() {
           </HomeSection>
         ) : null}
       </ScrollView>
-      <ProgressMenuSheet item={menuItem} onClose={() => setMenuItem(null)} />
     </View>
   );
 }

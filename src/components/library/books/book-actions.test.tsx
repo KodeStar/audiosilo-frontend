@@ -29,12 +29,14 @@ jest.mock('../use-queue-actions', () => ({
 }));
 let mockDownloadsSupported = true;
 const mockDownload = jest.fn();
+const mockRemove = jest.fn();
+let mockEntry: { status: string } | undefined;
 jest.mock('@/downloads/store', () => ({
-  useDownloadEntry: () => undefined,
+  useDownloadEntry: () => mockEntry,
   useDownloads: Object.assign(
     (select: (s: { supported: boolean }) => unknown) =>
       select({ supported: mockDownloadsSupported }),
-    { getState: () => ({ download: mockDownload, remove: jest.fn(), cancel: jest.fn() }) },
+    { getState: () => ({ download: mockDownload, remove: mockRemove, cancel: jest.fn() }) },
   ),
 }));
 const mockOpenSeries = jest.fn();
@@ -81,12 +83,17 @@ const ALL = { collections: true, progress_edit: true };
 
 async function actions(b: Book, p?: Progress) {
   const openCollect = jest.fn();
+  const confirmRemove = jest.fn();
   const { result } = await renderHook(() =>
-    useBookActions({ connectionId: 'c', libraryId: 1, book: b, progress: p }, openCollect),
+    useBookActions(
+      { connectionId: 'c', libraryId: 1, book: b, progress: p },
+      { openCollect, confirmRemove },
+    ),
   );
   return {
     list: result.current,
     openCollect,
+    confirmRemove,
     find: (key: string) => result.current.find((a) => a.key === key),
   };
 }
@@ -201,5 +208,17 @@ describe('useBookActions', () => {
     expect(mockDownload).toHaveBeenCalledWith('c', 1, b);
     find('series')!.onPress();
     expect(mockOpenSeries).toHaveBeenCalledWith('c', 1, { name: 'Series' });
+  });
+});
+
+describe('useBookActions, a downloaded book', () => {
+  it('asks before removing the download (the confirm does the removing)', async () => {
+    mockEntry = { status: 'downloaded' };
+    const { find, confirmRemove } = await actions(book());
+    expect(find('download')!.label).toBe('Remove download');
+    find('download')!.onPress();
+    expect(confirmRemove).toHaveBeenCalledTimes(1);
+    expect(mockRemove).not.toHaveBeenCalled();
+    mockEntry = undefined;
   });
 });

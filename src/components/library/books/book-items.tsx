@@ -54,6 +54,7 @@ export function BookTile({
       connectionId={connectionId}
       libraryId={libraryId}
       path={book.rel_path}
+      book={book}
       title={titleOf(book)}
       author={book.author}
       caption={tileCaption(book, sort)}

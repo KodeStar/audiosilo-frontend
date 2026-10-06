@@ -311,8 +311,7 @@
       "bitrate": "Bitrate: {{value}}"
     },
     "progressCard": {
-      "markFinished": "Segna come finito",
-      "moreInSeries": "Altro della serie"
+      "markFinished": "Segna come finito"
     },
     "notes": {
       "title": "Note",
@@ -471,7 +470,8 @@
       "downloading": "Download per l’ascolto offline",
       "downloadRemoved": "Download rimosso",
       "failed": "Impossibile aggiornare questo libro. Riprova.",
-      "playFailed": "Impossibile avviare questo libro. Riprova."
+      "playFailed": "Impossibile avviare questo libro. Riprova.",
+      "loadFailed": "Impossibile caricare questo libro. Riprova."
     },
     "collections": {
       "itemCount_one": "{{count}} libro",
@@ -954,7 +954,8 @@
     "ghostLabelNumbered": "Libro {{position}}, {{title}}, {{note}}",
     "finished": "Finito",
     "listened": "{{percent}}% ascoltato",
-    "downloaded": "Scaricato"
+    "downloaded": "Scaricato",
+    "moreActions": "Altre azioni"
   },
   "queue": {
     "queueIt": "Metti in coda",

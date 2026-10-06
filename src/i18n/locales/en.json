@@ -311,8 +311,7 @@
       "bitrate": "Bitrate: {{value}}"
     },
     "progressCard": {
-      "markFinished": "Mark as Finished",
-      "moreInSeries": "More in series"
+      "markFinished": "Mark as Finished"
     },
     "notes": {
       "title": "Notes",
@@ -471,7 +470,8 @@
       "downloading": "Downloading for offline",
       "downloadRemoved": "Download removed",
       "failed": "Couldn't update this book. Try again.",
-      "playFailed": "Couldn't start this book. Try again."
+      "playFailed": "Couldn't start this book. Try again.",
+      "loadFailed": "Couldn't load this book. Try again."
     },
     "collections": {
       "itemCount_one": "{{count}} book",
@@ -954,7 +954,8 @@
     "ghostLabelNumbered": "Book {{position}}, {{title}}, {{note}}",
     "finished": "Finished",
     "listened": "{{percent}}% listened",
-    "downloaded": "Downloaded"
+    "downloaded": "Downloaded",
+    "moreActions": "More actions"
   },
   "queue": {
     "queueIt": "Queue it",

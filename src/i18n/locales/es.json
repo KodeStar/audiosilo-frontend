@@ -311,8 +311,7 @@
       "bitrate": "Tasa de bits: {{value}}"
     },
     "progressCard": {
-      "markFinished": "Marcar como terminado",
-      "moreInSeries": "Más de la serie"
+      "markFinished": "Marcar como terminado"
     },
     "notes": {
       "title": "Notas",
@@ -471,7 +470,8 @@
       "downloading": "Descargando para escuchar sin conexión",
       "downloadRemoved": "Descarga quitada",
       "failed": "No se pudo actualizar este libro. Inténtalo de nuevo.",
-      "playFailed": "No se pudo iniciar este libro. Inténtalo de nuevo."
+      "playFailed": "No se pudo iniciar este libro. Inténtalo de nuevo.",
+      "loadFailed": "No se pudo cargar este libro. Inténtalo de nuevo."
     },
     "collections": {
       "itemCount_one": "{{count}} libro",
@@ -954,7 +954,8 @@
     "ghostLabelNumbered": "Libro {{position}}, {{title}}, {{note}}",
     "finished": "Terminado",
     "listened": "{{percent}} % escuchado",
-    "downloaded": "Descargado"
+    "downloaded": "Descargado",
+    "moreActions": "Más acciones"
   },
   "queue": {
     "queueIt": "Añadir a la cola",

@@ -424,6 +424,7 @@ function BookTile({
       libraryId={book.library_id}
       path={book.rel_path}
       title={title}
+      book={book}
       author={book.author}
       caption={also ?? book.author}
       coverVersion={book.cover_version}
