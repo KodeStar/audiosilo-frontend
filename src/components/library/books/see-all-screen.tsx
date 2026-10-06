@@ -14,12 +14,11 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
-import { useSession } from '@/stores/session';
 import { GhostCovers } from '@/components/ui/ghost-art';
 import { EmptyState } from '@/components/ui/empty-state';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
-import { CoverTile } from '../cover-tile';
+import { CoverTile, useServerFlag } from '../cover-tile';
 import { tileCaption } from './book-items';
 
 // How many recently added books to load per server (the Home shelf shows 15).
@@ -36,9 +35,7 @@ export function SeeAllScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ type?: string }>();
   const type: SeeAllType = params.type === 'finished' ? 'finished' : 'recent';
-  const defaultCid = useSession((s) => s.defaultConnectionId);
-  const multi = useSession((s) => s.connections.length > 1);
-  const serverOf = (cid: string, name: string) => (multi && cid !== defaultCid ? name : undefined);
+  const serverOf = useServerFlag();
 
   const recent = useRecentAll(PAGE_LIMIT);
   const progress = useAllProgressAll();
@@ -107,7 +104,7 @@ export function SeeAllScreen() {
           author={b.author}
           caption={tileCaption(b, 'recent')}
           coverVersion={b.cover_version}
-          server={serverOf(b.connectionId, b.connectionName)}
+          server={serverOf(b.connectionId)}
           width={tile}
         />
       )}
@@ -119,11 +116,7 @@ export function SeeAllScreen() {
       data={finished}
       keyExtractor={(p: SourcedProgress) => contentKey(p.connectionId, p.library_id, p.path)}
       renderItem={(p, tile) => (
-        <FinishedTile
-          progress={p}
-          server={serverOf(p.connectionId, p.connectionName)}
-          width={tile}
-        />
+        <FinishedTile progress={p} server={serverOf(p.connectionId)} width={tile} />
       )}
       {...common}
     />

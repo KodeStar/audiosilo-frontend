@@ -3,7 +3,7 @@ import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useAllProgressAll, useBook } from '@/api/hooks';
+import { useBook, useSavedProgress } from '@/api/hooks';
 import type { Book } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
@@ -17,7 +17,7 @@ import { BookActionsMenu } from './books/book-actions';
  * takes a press itself). Mounted on the tile's first request and kept, so the dialogs an
  * action opens outlive the menu; each new `request` opens it again. The actions need the
  * book's list row: the tile's `book` when the screen has it, else one item fetch on the
- * first request. The progress comes from the shared all-progress cache.
+ * first request. The progress comes from the shared all-progress cache (`useSavedProgress`).
  */
 export function TileActions({
   connectionId,
@@ -41,10 +41,7 @@ export function TileActions({
   // An empty path disables the fetch when the screen handed the row over.
   const item = useBook(libraryId, given ? '' : path, connectionId);
   const book = given ?? item.data;
-  const { progress } = useAllProgressAll({ refetchOnMount: false });
-  const saved = progress.find(
-    (p) => p.connectionId === connectionId && p.library_id === libraryId && p.path === path,
-  );
+  const saved = useSavedProgress(libraryId, path, connectionId);
   const triggerRef = useRef<TriggerRef>(null);
   // Phone: the sheet is open for the latest request until it is closed.
   const [closed, setClosed] = useState(0);

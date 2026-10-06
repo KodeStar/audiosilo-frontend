@@ -64,8 +64,6 @@ export function ProgressTile({
       coverVersion={book?.cover_version}
       caption={caption}
       width={width}
-      progress={item.duration > 0 ? item.position / item.duration : undefined}
-      finished={item.finished}
       server={server}
       book={book}
       onShelf

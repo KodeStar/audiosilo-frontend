@@ -32,23 +32,20 @@ export function tileCaption(b: Book, sort: BooksSort | undefined): string {
   return [b.author, extra].filter(Boolean).join(' · ');
 }
 
-/** A book of the listener's library as a cover tile, with its progress. */
+/** A book of the listener's library as a cover tile (which marks its own progress). */
 export function BookTile({
   connectionId,
   libraryId,
   book,
-  progress,
   sort,
   width,
 }: {
   connectionId: string;
   libraryId: number;
   book: Book;
-  progress?: Progress;
   sort?: BooksSort;
   width: number;
 }) {
-  const status = bookStatus(progress);
   return (
     <CoverTile
       connectionId={connectionId}
@@ -60,12 +57,6 @@ export function BookTile({
       caption={tileCaption(book, sort)}
       coverVersion={book.cover_version}
       width={width}
-      finished={status === 'finished'}
-      progress={
-        status === 'progress'
-          ? progressFractionRemaining(progress!.position, book.duration).fraction
-          : undefined
-      }
     />
   );
 }

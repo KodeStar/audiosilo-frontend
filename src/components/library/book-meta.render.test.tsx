@@ -14,6 +14,7 @@ import type {
 // `enabled` flag so a CLOSED row is proven never to fetch.
 const mockUseMetaWork = jest.fn();
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useMetaWork: (workId: string, enabled: boolean) => mockUseMetaWork(workId, enabled),
 }));
 // CoverFrame's iOS shadow hook reads the theme provider, whose module side-effect-

@@ -30,6 +30,7 @@ const mockChar = (name: string, chapter: number) => ({
   reveal: { chapter },
 });
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useCapability: (flag: string) => mockCaps[flag],
   useBook: () => ({

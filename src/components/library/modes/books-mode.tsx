@@ -285,7 +285,6 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
               connectionId={connectionId}
               libraryId={libraryId}
               book={item.item}
-              progress={progressOf(item.item)}
               sort={view.sort}
               width={tile}
             />

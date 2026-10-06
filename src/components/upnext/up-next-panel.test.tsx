@@ -9,6 +9,7 @@ jest.mock('react-native-gesture-handler', () => ({
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useBook: (_lib: number, path: string) => ({ data: { title: `Title of ${path}` } }),
 }));
 const mockQueue = jest.fn();

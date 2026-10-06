@@ -1,19 +1,19 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import {
   useAddCollectionItem,
-  useAllProgressAll,
   useCapability,
   useCollection,
   useDeleteCollection,
+  useProgressLookup,
   useRemoveCollectionItem,
 } from '@/api/hooks';
 import { useCid } from '@/api/provider';
-import type { Collection, CollectionItem, Progress } from '@/api/types';
+import type { Collection, CollectionItem } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
@@ -149,14 +149,8 @@ function CollectionBody({
   const remove = useRemoveCollectionItem(connectionId);
   const owned = collection.owned;
 
-  const { progress } = useAllProgressAll();
-  const progressOf = useMemo(() => {
-    const map = new Map<string, Progress>();
-    for (const p of progress) {
-      if (p.connectionId === connectionId) map.set(`${p.library_id}:${p.path}`, p);
-    }
-    return (i: CollectionItem) => map.get(itemKey(i));
-  }, [progress, connectionId]);
+  const { progressOf: savedProgress } = useProgressLookup();
+  const progressOf = (i: CollectionItem) => savedProgress(connectionId, i.library_id, i.path);
 
   const moveTo = (item: CollectionItem, to: number) =>
     add
@@ -246,7 +240,6 @@ function CollectionBody({
               connectionId={connectionId}
               libraryId={item.library_id}
               book={item.book}
-              progress={progressOf(item)}
               width={tile}
             />
           ) : (

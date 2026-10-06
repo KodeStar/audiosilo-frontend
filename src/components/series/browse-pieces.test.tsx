@@ -35,6 +35,7 @@ let mockBooks: {
   retry: jest.Mock;
 };
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useCapability: (flag: string) => mockCaps[flag],
   useLibraryBooks: () => ({ data: undefined }),

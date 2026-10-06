@@ -11,6 +11,7 @@ jest.mock('expo-router', () => ({
 const mockMutate = jest.fn();
 let mockFavourites: { library_id: number; path: string }[] = [];
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useFavourites: () => ({ data: mockFavourites }),
   useToggleFavourite: () => ({ mutate: mockMutate }),
 }));

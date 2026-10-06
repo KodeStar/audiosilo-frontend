@@ -12,7 +12,7 @@ import {
   useFavouritesAll,
   useRecentAll,
 } from '@/api/hooks';
-import { CoverTile } from '@/components/library/cover-tile';
+import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { libraryModeHref } from '@/components/library/library-modes';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -113,9 +113,7 @@ export function HomeScreen() {
   });
 
   const sync = useSyncPill(progress[0]?.updated_at);
-  const multi = connections.length > 1;
-  const serverLabel = (cid: string) =>
-    multi && cid !== defaultCid ? connections.find((c) => c.id === cid)?.name : undefined;
+  const serverLabel = useServerFlag();
 
   const retryProgress = () => void qc.refetchQueries({ queryKey: qk.allProgressAll() });
 
@@ -212,7 +210,7 @@ export function HomeScreen() {
         {recent.isLoading || recent.books.length > 0 || recent.error ? (
           <HomeSection
             title={t('home.recentlyAdded')}
-            sub={multi ? t('home.acrossServers') : undefined}
+            sub={connections.length > 1 ? t('home.acrossServers') : undefined}
             action={
               recent.books.length > 0
                 ? {

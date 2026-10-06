@@ -15,6 +15,7 @@ const mockList: { data: ApiKey[]; isLoading: boolean; isError: boolean } = {
 const mockCreate = { mutateAsync: jest.fn(), isPending: false };
 const mockRevoke = { mutate: jest.fn() };
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useApiKeys: () => mockList,
   useCreateApiKey: () => mockCreate,
   useRevokeApiKey: () => mockRevoke,

@@ -5,6 +5,7 @@ import {
   type LayoutChangeEvent,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -19,6 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
@@ -26,6 +28,8 @@ import { OverlayHost } from './overlay-host';
 import { Text } from './text';
 
 const ANIM_MS = 200;
+/** A tablet's sheet floats at this width (STYLEGUIDE section 8, "Sheets"). */
+const TABLET_SHEET_WIDTH = 560;
 
 export type SheetProps = {
   /** Whether the sheet is shown. Toggling this drives the enter/exit animation. */
@@ -46,9 +50,10 @@ export type SheetProps = {
    * mounted at screen level (never inside a card/Pressable) - see `OverlayHost`.
    */
   inline?: boolean;
-  /** Cap the panel's width and centre it (a tablet's floating sheet); full width by
-   * default. */
-  maxWidth?: number;
+  /** The body scrolls inside the panel's height cap (its content padded by
+   * `contentClassName`), so the caller needs no measured max height of its own. */
+  scroll?: boolean;
+  contentClassName?: string;
 };
 
 /**
@@ -76,6 +81,9 @@ export type SheetProps = {
  * - **Inline (`inline`):** renders the overlay directly with its own Android
  *   BackHandler. The player's sheets pass `inline` and mount at the player-view root.
  *
+ * On a tablet a hosted sheet floats at 560 wide; the player's inline sheets keep the full
+ * width (their redesign is a later phase).
+ *
  * Children unmount only after the exit animation finishes (the host stays mounted
  * until then, so the slide-down is seen). Reduced motion collapses to an instant
  * show/hide. Backdrop press and Android hardware back both close it.
@@ -99,13 +107,16 @@ export function Sheet({
   children,
   maxHeightFraction = 0.85,
   inline = false,
-  maxWidth,
+  scroll = false,
+  contentClassName,
 }: SheetProps) {
   const themed = useThemeColors();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const reduced = useReducedMotion();
+  const layout = useLayout();
+  const floating = !inline && layout === 'tablet';
   const neutral = themed.foreground;
 
   // Keep the panel mounted through the exit animation. Opening depends ONLY on the
@@ -197,7 +208,10 @@ export function Sheet({
         />
       </Animated.View>
       <Animated.View
-        style={[panelStyle, maxWidth ? { width: '100%', maxWidth, alignSelf: 'center' } : null]}
+        style={[
+          panelStyle,
+          floating ? { width: '100%', maxWidth: TABLET_SHEET_WIDTH, alignSelf: 'center' } : null,
+        ]}
         onLayout={onLayout}
       >
         <View
@@ -227,7 +241,14 @@ export function Sheet({
               </Pressable>
             </View>
           ) : null}
-          {children}
+          {scroll ? (
+            // Shrinks to the panel's cap and scrolls the rest.
+            <ScrollView style={{ flexShrink: 1 }} contentContainerClassName={contentClassName}>
+              {children}
+            </ScrollView>
+          ) : (
+            children
+          )}
         </View>
       </Animated.View>
     </View>

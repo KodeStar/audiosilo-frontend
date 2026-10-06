@@ -106,6 +106,7 @@ jest.mock('@/components/search/use-search', () => ({
 
 const mockProgressOptions = jest.fn();
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   // One server, libraries unnamed: no source line (useSourceLabeller has its own tests).
   useSourceLabeller: () => () => undefined,
   useAllProgressAll: (options: unknown) => ({

@@ -5,6 +5,11 @@ import { BackHandler, Platform, Text } from 'react-native';
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+let mockLayout: 'phone' | 'tablet' | 'desktop' = 'phone';
+jest.mock('@/lib/layout', () => ({
+  ...jest.requireActual('@/lib/layout'),
+  useLayout: () => mockLayout,
+}));
 
 /* eslint-disable import/first */
 import { Sheet } from './sheet';
@@ -19,6 +24,20 @@ async function mount(ui: React.ReactElement) {
 }
 
 describe('Sheet', () => {
+  it('floats a hosted sheet at 560 on a tablet and scrolls a long body', async () => {
+    mockLayout = 'tablet';
+    await mount(
+      <Sheet visible onClose={jest.fn()} scroll inline={false}>
+        <Text>Sheet body</Text>
+      </Sheet>,
+    );
+    expect(screen.getByText('Sheet body')).toBeTruthy();
+    const json = JSON.stringify(screen.toJSON());
+    expect(json).toContain('"maxWidth":560');
+    expect(json).toContain('RCTScrollView');
+    mockLayout = 'phone';
+  });
+
   it('renders children while visible and closes on backdrop press', async () => {
     const onClose = jest.fn();
     await mount(

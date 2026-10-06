@@ -6,7 +6,7 @@ import { LayoutToggle } from '@/components/library/books/books-controls';
 import { useBooksLayout } from '@/components/library/books/books-layout-store';
 import { CoverGrid, CoverGridSkeleton, CoverListRow } from '@/components/library/cover-grid';
 import { pageGutter } from '@/components/library/cover-layout';
-import { CoverTile } from '@/components/library/cover-tile';
+import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -16,7 +16,6 @@ import { bookSubtitle } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
-import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { GhostCovers } from '@/components/ui/ghost-art';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -33,12 +32,10 @@ export function FavouritesScreen() {
   const paddingBottom = useMiniPlayerInset();
   const [booksLayout, setBooksLayout] = useBooksLayout();
   const { favourites, isLoading, error } = useFavouritesAll();
-  const defaultCid = useSession((s) => s.defaultConnectionId);
-  const multi = useSession((s) => s.connections.length > 1);
   const books = favourites.filter((f) => f.is_book);
   const folders = favourites.filter((f) => !f.is_book);
-  const server = (f: SourcedFavourite) =>
-    multi && f.connectionId !== defaultCid ? f.connectionName : undefined;
+  const serverFlag = useServerFlag();
+  const server = (f: SourcedFavourite) => serverFlag(f.connectionId);
 
   const header = (
     <View className="gap-4 pb-5 pt-2">

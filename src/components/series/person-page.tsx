@@ -27,13 +27,6 @@ function bookCaption(b: Book): string {
   return [yearOf(b.published), formatDuration(b.duration)].filter(Boolean).join(' · ');
 }
 
-function tileProgress(b: Book, connectionId: string, progressOf: ProgressLookup) {
-  const p = progressOf(connectionId, b.library_id, b.rel_path);
-  if (!p) return { progress: undefined, finished: false };
-  const total = p.duration > 0 ? p.duration : b.duration;
-  return { progress: total > 0 ? p.position / total : undefined, finished: p.finished };
-}
-
 /**
  * An author or narrator page (`/author`, `/narrator`): their portrait, name and numbers
  * (books here, total length, finished, listened), their books grouped by series (a shelf
@@ -92,13 +85,7 @@ export function PersonPage({
     <View className="gap-8 pb-2 pt-4">
       <PersonHeader kind={kind} name={name} books={q.books} progressOf={progressOf} />
       {series.map((g) => (
-        <SeriesShelf
-          key={g.series}
-          series={g.series}
-          books={g.books}
-          libraryId={libraryId}
-          progressOf={progressOf}
-        />
+        <SeriesShelf key={g.series} series={g.series} books={g.books} libraryId={libraryId} />
       ))}
       {standalone.length > 0 ? (
         <Text variant="heading" accessibilityRole="header">
@@ -123,7 +110,6 @@ export function PersonPage({
           author={b.author}
           coverVersion={b.cover_version}
           width={width}
-          {...tileProgress(b, cid, progressOf)}
         />
       )}
       ListHeaderComponent={header}
@@ -224,12 +210,10 @@ function SeriesShelf({
   series,
   books,
   libraryId,
-  progressOf,
 }: {
   series: string;
   books: Book[];
   libraryId: number;
-  progressOf: ProgressLookup;
 }) {
   const { t } = useTranslation();
   const cid = useCid();
@@ -273,7 +257,6 @@ function SeriesShelf({
             author={b.author}
             coverVersion={b.cover_version}
             width={width}
-            {...tileProgress(b, cid, progressOf)}
           />
         )}
       />

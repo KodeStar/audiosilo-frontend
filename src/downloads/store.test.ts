@@ -44,6 +44,7 @@ jest.mock('@/api/provider', () => ({
   queryClient: { setQueryData: jest.fn(), invalidateQueries: jest.fn() },
 }));
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],

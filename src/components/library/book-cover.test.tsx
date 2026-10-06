@@ -19,7 +19,10 @@ jest.mock('@/api/provider', () => ({
   useOptionalApi: () => (mockHasApi ? mockApi : null),
 }));
 let mockInfo: { data?: { capabilities: { cover_sizes?: boolean } }; isError?: boolean } = {};
-jest.mock('@/api/hooks', () => ({ useServerInfo: () => mockInfo }));
+jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
+  useServerInfo: () => mockInfo,
+}));
 let mockEntry: { status: string; manifest: { coverUri: string | null } } | undefined;
 jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => mockEntry }));
 

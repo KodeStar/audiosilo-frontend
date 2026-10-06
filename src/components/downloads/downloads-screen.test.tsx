@@ -30,6 +30,7 @@ jest.mock('@/api/provider', () => ({
 }));
 let mockProgress: unknown[] = [];
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useAllProgressAll: () => ({ progress: mockProgress, isLoading: false, error: null }),
 }));

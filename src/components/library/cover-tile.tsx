@@ -14,8 +14,10 @@ import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
-import { percentOf } from '@/lib/progress-view';
+import { percentOf, progressFractionRemaining } from '@/lib/progress-view';
 import { ProgressBar } from '@/components/ui/progress-bar';
+import { useSavedProgress } from '@/api/hooks';
+import { useSession } from '@/stores/session';
 
 import { BookCover } from './book-cover';
 import { TileActions } from './tile-actions';
@@ -53,6 +55,17 @@ export function tileStateLabels(opts: {
   return out;
 }
 
+/** A tile's friend-server flag: the connection's name when several servers are signed
+ * in and it isn't the default one, else nothing (`CoverTile`'s `server`). */
+export function useServerFlag(): (connectionId: string) => string | undefined {
+  const connections = useSession((s) => s.connections);
+  const defaultCid = useSession((s) => s.defaultConnectionId);
+  return (cid) =>
+    connections.length > 1 && cid !== defaultCid
+      ? connections.find((c) => c.id === cid)?.name
+      : undefined;
+}
+
 export type CoverTileProps = {
   connectionId: string;
   libraryId: number;
@@ -66,7 +79,8 @@ export type CoverTileProps = {
   coverVersion?: string;
   /** Tile width in points (the cover is square at this width). */
   width: number;
-  /** 0..1 listened; drawn along the cover's bottom while in progress. */
+  /** 0..1 listened; drawn along the cover's bottom while in progress. With neither this
+   * nor `finished` given, the tile reads the listener's saved progress itself. */
   progress?: number;
   finished?: boolean;
   /** A friend's (non-default) server it lives on: the "Maya" flag. */
@@ -89,7 +103,7 @@ export type CoverTileProps = {
 /**
  * A book as a cover tile (STYLEGUIDE section 8 tiles, used by `ShelfRow` and
  * `CoverGrid`): the cover (`BookCover`), a progress bar along its bottom while in
- * progress, flags in its corner (a friend's server, downloaded on this device - read from
+ * progress (the listener's saved progress, read by the tile), flags in its corner (a friend's server, downloaded on this device - read from
  * the downloads registry -, finished), then the title (two lines) and one caption line.
  * The whole tile is one button whose name carries the title, caption and state. On the
  * web desktop the cover can be dragged onto Up next (`useBookDragSource`). A long-press
@@ -106,8 +120,8 @@ export function CoverTile({
   author,
   coverVersion,
   width,
-  progress,
-  finished,
+  progress: givenProgress,
+  finished: givenFinished,
   server,
   onShelf,
   onPress,
@@ -119,6 +133,14 @@ export function CoverTile({
   const { t } = useTranslation();
   const { openBook } = useOpen();
   const downloaded = useDownloadEntry(connectionId, libraryId, path)?.status === 'downloaded';
+  // The saved progress, unless the caller says (a screen that has it, or a live place).
+  const own = givenProgress === undefined && givenFinished === undefined;
+  const saved = useSavedProgress(libraryId, path, connectionId, own);
+  const finished = own ? saved?.finished : givenFinished;
+  const progress =
+    own && saved
+      ? progressFractionRemaining(saved.position, saved.duration || book?.duration || 0).fraction
+      : givenProgress;
   // Web desktop: the cover drags onto Up next's drop zone.
   const coverRef = useRef<View>(null);
   useBookDragSource(coverRef, { connectionId, libraryId, path, title });

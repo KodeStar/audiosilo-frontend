@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { type MergedBook, useAllProgressAll, useProgressLookup } from '@/api/hooks';
+import { type MergedBook, useProgressLookup } from '@/api/hooks';
 import { useApis } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { gridMetrics } from '@/components/library/cover-layout';
-import { CoverTile } from '@/components/library/cover-tile';
+import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { SeriesCard } from '@/components/series/series-card';
 import type { ProgressLookup } from '@/components/series/series-model';
@@ -22,7 +22,6 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -401,14 +400,7 @@ function BookTile({
 }) {
   const { t } = useTranslation();
   const { openBook } = useOpen();
-  const defaultId = useSession((s) => s.defaultConnectionId);
-  const { progress } = useAllProgressAll({ refetchOnMount: false });
-  const saved = progress.find(
-    (p) =>
-      p.connectionId === book.connectionId &&
-      p.library_id === book.library_id &&
-      p.path === book.rel_path,
-  );
+  const serverFlag = useServerFlag();
   const title = bookTitle(book.title, book.rel_path);
   const also = book.also.length
     ? t('search.alsoOn', { servers: book.also.map((a) => a.connectionName).join(', ') })
@@ -428,9 +420,7 @@ function BookTile({
       caption={also ?? book.author}
       coverVersion={book.cover_version}
       width={width}
-      progress={saved && saved.duration > 0 ? saved.position / saved.duration : undefined}
-      finished={saved?.finished}
-      server={book.connectionId !== defaultId ? book.connectionName : undefined}
+      server={serverFlag(book.connectionId)}
       onPress={() => {
         onOpened();
         openBook(book.connectionId, book.library_id, book.rel_path);

@@ -16,6 +16,7 @@ jest.mock('@/lib/layout', () => ({
 
 let mockCaps: Record<string, boolean | undefined> = {};
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useCapability: (flag: string) => mockCaps[flag],
   useAuthors: () => ({
     data: mockCaps.browse_people ? { people: [{}, {}], unknown: 0 } : undefined,

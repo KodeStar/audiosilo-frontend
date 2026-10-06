@@ -28,6 +28,7 @@ let mockCaps: Record<string, boolean | undefined> = {};
 let mockMeta: BookMeta | undefined;
 const mockMetaCalls: { path: string; enabled: boolean }[] = [];
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => undefined,
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useCapability: (flag: string) => mockCaps[flag],
   useBookMeta: (_lib: number, path: string, enabled: boolean) => {

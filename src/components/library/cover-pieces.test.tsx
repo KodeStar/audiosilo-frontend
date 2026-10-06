@@ -13,7 +13,11 @@ jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } 
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
 }));
-jest.mock('@/api/hooks', () => ({ useServerInfo: () => ({ data: { capabilities: {} } }) }));
+let mockSaved: { position: number; duration: number; finished: boolean } | undefined;
+jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => mockSaved,
+  useServerInfo: () => ({ data: { capabilities: {} } }),
+}));
 let mockDownloaded = false;
 jest.mock('@/downloads/store', () => ({
   useDownloadEntry: () =>
@@ -42,7 +46,21 @@ const tile = { connectionId: 'c', libraryId: 1, path: 'Dune', title: 'Dune', wid
 describe('CoverTile', () => {
   beforeEach(() => {
     mockDownloaded = false;
+    mockSaved = undefined;
     mockPush.mockClear();
+  });
+
+  it("marks the listener's saved progress itself, unless the caller says", async () => {
+    mockSaved = { position: 3000, duration: 10_000, finished: false };
+    await render(<CoverTile {...tile} />);
+    expect(screen.getByRole('button', { name: 'Dune, 30% listened' })).toBeTruthy();
+
+    mockSaved = { position: 10_000, duration: 10_000, finished: true };
+    await render(<CoverTile {...tile} />);
+    expect(screen.getByRole('button', { name: 'Dune, Finished' })).toBeTruthy();
+
+    await render(<CoverTile {...tile} progress={0.5} />);
+    expect(screen.getByRole('button', { name: 'Dune, 50% listened' })).toBeTruthy();
   });
 
   it('opens the book, named by its title, caption and state', async () => {

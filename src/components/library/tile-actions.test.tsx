@@ -8,9 +8,8 @@ jest.mock('@/lib/layout', () => ({
 const mockUseBook = jest.fn();
 jest.mock('@/api/hooks', () => ({
   useBook: (lib: number, path: string, cid: string) => mockUseBook(lib, path, cid),
-  useAllProgressAll: () => ({
-    progress: [{ connectionId: 'c', library_id: 1, path: 'Dune', position: 9 }],
-  }),
+  useSavedProgress: (lib: number, path: string) =>
+    lib === 1 && path === 'Dune' ? { library_id: 1, path: 'Dune', position: 9 } : undefined,
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));

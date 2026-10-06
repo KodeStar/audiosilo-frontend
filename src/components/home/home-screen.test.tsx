@@ -51,6 +51,8 @@ let mockProgress: { progress: Progress[]; isLoading: boolean; error: Error | nul
 };
 const mockToday = new Date().toISOString().slice(0, 10);
 jest.mock('@/api/hooks', () => ({
+  useSavedProgress: (lib: number, path: string) =>
+    mockProgress.progress.find((p) => p.library_id === lib && p.path === path),
   qk: { server: (c: string) => ['server', c] },
   useCapability: (flag: string) => mockCaps[flag],
   useServerInfo: () => ({ data: { capabilities: {} } }),
