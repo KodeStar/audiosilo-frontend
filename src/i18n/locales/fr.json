@@ -320,14 +320,111 @@
     }
   },
   "downloads": {
-    "storageUsed": "{{size}} utilisés",
-    "downloaded": "Téléchargé",
-    "failed": "Échec du téléchargement",
-    "unsupported": "Les téléchargements hors connexion ne sont pas disponibles dans ce navigateur. Utilise l'application installée ou une connexion sécurisée (https).",
-    "unsupportedTitle": "Téléchargements indisponibles",
-    "empty": "Télécharge un livre depuis sa page de détails pour l'écouter hors connexion.",
-    "emptyTitle": "Aucun téléchargement",
-    "remove": "Supprimer {{title}}"
+    "summary": {
+      "device": "Sur cet appareil · {{size}}",
+      "browser": "Dans ce navigateur · {{size}}",
+      "browserQuota": "Dans ce navigateur · {{size}} sur environ {{quota}} autorisés par le navigateur"
+    },
+    "storage": {
+      "titleDevice": "Stockage sur cet appareil",
+      "titleBrowser": "Stockage dans ce navigateur",
+      "used": "{{size}} utilisés",
+      "label": "Stockage par serveur",
+      "legend": "{{name}} {{size}}",
+      "moreServers_one": "{{count}} autre serveur",
+      "moreServers_other": "{{count}} autres serveurs",
+      "otherApps": "Autres apps",
+      "unknownServer": "Serveur inconnu",
+      "freeDevice": "{{size}} libres sur cet appareil.",
+      "browserRoom": "Environ {{size}} disponibles pour ce navigateur. Il peut effacer les téléchargements si votre disque se remplit.",
+      "browserUnknown": "Le navigateur peut effacer les téléchargements si votre disque se remplit."
+    },
+    "rules": {
+      "title": "Téléchargements automatiques",
+      "mode": {
+        "label": "Télécharger automatiquement",
+        "never": "Jamais",
+        "wifi": "En Wi-Fi",
+        "always": "Toujours"
+      },
+      "modeHint": "Télécharge un livre quand vous commencez à l’écouter.",
+      "webWifi": "Un navigateur ne distingue pas le Wi-Fi des données mobiles : ici, En Wi-Fi télécharge sur n’importe quelle connexion.",
+      "keepAhead": {
+        "label": "Garder les prochains livres prêts",
+        "hint": "Télécharge les prochains livres de À suivre, puis de la série, avant que vous en ayez besoin.",
+        "off": "Non"
+      },
+      "keepAheadStatus": {
+        "idle": "Démarre quand vous lancez un livre.",
+        "never": "Activez les téléchargements automatiques pour l’utiliser.",
+        "working": "Préparation des prochains livres.",
+        "ready": "Les prochains livres sont prêts hors ligne.",
+        "waiting": "En attente du Wi-Fi.",
+        "noSpace": "En pause : il n’y a pas assez d’espace libre. Les téléchargements automatiques laissent toujours au moins 1 Go libre.",
+        "failed": "Le téléchargement d’un des prochains livres s’est arrêté. Réessayez dans Téléchargements.",
+        "declined": "Les prochains livres restent tels quels : vous les avez supprimés."
+      },
+      "autoDelete": "Supprimer un téléchargement quand vous terminez le livre"
+    },
+    "browser": {
+      "title": "Comment fonctionnent les téléchargements dans un navigateur",
+      "body": "L’audio est gardé dans le stockage de ce navigateur, uniquement via une connexion sécurisée (https). Le navigateur peut l’effacer quand l’espace manque, et sur iPhone et iPad Safari arrête la lecture en arrière-plan. Pour une écoute hors ligne fiable, utilisez l’app iOS ou Android."
+    },
+    "inProgress": {
+      "title": "En cours"
+    },
+    "row": {
+      "meta": "{{server}} · {{size}}",
+      "progress": "{{percent}} % · encore {{size}}",
+      "percent": "{{percent}} %",
+      "queued": "En attente de démarrage",
+      "waitingWifi": "En attente du Wi-Fi",
+      "noSpace": "Il faut plus d’espace libre",
+      "keptAhead": "Préparé d’avance",
+      "stoppedAt": "Arrêté à {{percent}} %",
+      "cancel": "Annuler",
+      "cancelLabel": "Annuler le téléchargement de {{title}}",
+      "retry": "Réessayer",
+      "retryLabel": "Réessayer le téléchargement de {{title}}",
+      "play": "Lire {{title}}",
+      "remove": "Supprimer {{title}}",
+      "notStarted": "Pas commencé",
+      "finished": "Terminé"
+    },
+    "failure": {
+      "network": "{{server}} ne répond plus.",
+      "server": "{{server}} n’a pas pu envoyer le livre (erreur {{status}}).",
+      "storageDevice": "Cet appareil n’a plus d’espace.",
+      "storageBrowser": "Le navigateur n’a plus d’espace.",
+      "unservable": "Enregistré, mais la lecture hors ligne n’est pas encore prête. Rechargez l’app, puis réessayez.",
+      "removed": "Vous n’êtes plus connecté à ce serveur.",
+      "unknown": "Le téléchargement s’est arrêté.",
+      "kept": "Vos {{percent}} % sont conservés.",
+      "restart": "Réessayer le reprend depuis le début."
+    },
+    "ready": {
+      "title": "Prêt hors ligne",
+      "sub_one": "{{count}} livre · se lit sans connexion",
+      "sub_other": "{{count}} livres · se lisent sans connexion",
+      "serverSize": "{{server}} · {{size}}"
+    },
+    "remove": {
+      "title": "Supprimer ce téléchargement ?",
+      "message": "{{title}} aura de nouveau besoin d’une connexion pour être lu. Votre position dans le livre est conservée.",
+      "confirm": "Supprimer"
+    },
+    "empty": {
+      "title": "Rien de téléchargé pour l’instant",
+      "body": "Téléchargez un livre depuis sa page pour l’écouter sans connexion.",
+      "action": "Parcourir la bibliothèque"
+    },
+    "unsupported": {
+      "title": "Les téléchargements ne sont pas disponibles ici",
+      "insecure": "L’audio hors ligne nécessite une connexion sécurisée (https). Ouvrez le lecteur en https, ou utilisez l’app iOS ou Android.",
+      "noCache": "Ce navigateur ne peut pas garder d’audio hors ligne. Utilisez un navigateur récent, ou l’app iOS ou Android.",
+      "noWorker": "La lecture hors ligne n’est pas encore prête dans ce navigateur. Rechargez la page et, si cela ne suffit pas, utilisez l’app iOS ou Android."
+    },
+    "loading": "Chargement des téléchargements"
   },
   "search": {
     "placeholder": "Rechercher des titres, auteurs, séries…",

@@ -320,14 +320,111 @@
     }
   },
   "downloads": {
-    "storageUsed": "{{size}} used",
-    "downloaded": "Downloaded",
-    "failed": "Download failed",
-    "unsupported": "Offline downloads aren't available in this browser. Use the installed app or a secure (https) connection.",
-    "unsupportedTitle": "Downloads unavailable",
-    "empty": "Download a book from its detail screen to listen offline.",
-    "emptyTitle": "No downloads yet",
-    "remove": "Remove {{title}}"
+    "summary": {
+      "device": "On this device · {{size}}",
+      "browser": "On this browser · {{size}}",
+      "browserQuota": "On this browser · {{size}} of about {{quota}} the browser allows"
+    },
+    "storage": {
+      "titleDevice": "Storage on this device",
+      "titleBrowser": "Storage on this browser",
+      "used": "{{size}} used",
+      "label": "Storage by server",
+      "legend": "{{name}} {{size}}",
+      "moreServers_one": "{{count}} more server",
+      "moreServers_other": "{{count}} more servers",
+      "otherApps": "Other apps",
+      "unknownServer": "Unknown server",
+      "freeDevice": "{{size}} free on this device.",
+      "browserRoom": "About {{size}} available to this browser. It can clear downloads if your disk gets full.",
+      "browserUnknown": "The browser can clear downloads if your disk gets full."
+    },
+    "rules": {
+      "title": "Automatic downloads",
+      "mode": {
+        "label": "Download automatically",
+        "never": "Never",
+        "wifi": "On Wi-Fi",
+        "always": "Always"
+      },
+      "modeHint": "Downloads a book when you start listening to it.",
+      "webWifi": "A browser can't tell Wi-Fi from mobile data, so On Wi-Fi downloads on any connection here.",
+      "keepAhead": {
+        "label": "Keep the next books ready",
+        "hint": "Downloads the next books from Up next, then the series, before you need them.",
+        "off": "Off"
+      },
+      "keepAheadStatus": {
+        "idle": "Starts when you play a book.",
+        "never": "Turn on automatic downloads to use this.",
+        "working": "Getting the next books ready.",
+        "ready": "The next books are ready offline.",
+        "waiting": "Waiting for Wi-Fi.",
+        "noSpace": "Paused: there isn't enough free space. Automatic downloads always leave at least 1 GB free.",
+        "failed": "One of the next books stopped downloading. Retry it in Downloads.",
+        "declined": "Leaving the next books alone: you removed them."
+      },
+      "autoDelete": "Remove a download when you finish the book"
+    },
+    "browser": {
+      "title": "How downloads work in a browser",
+      "body": "Audio is kept in this browser's storage, only on a secure (https) connection. The browser may clear it when space is low, and on iPhone and iPad Safari stops playback in the background. For reliable offline listening, use the iOS or Android app."
+    },
+    "inProgress": {
+      "title": "In progress"
+    },
+    "row": {
+      "meta": "{{server}} · {{size}}",
+      "progress": "{{percent}}% · {{size}} to go",
+      "percent": "{{percent}}%",
+      "queued": "Waiting to start",
+      "waitingWifi": "Waiting for Wi-Fi",
+      "noSpace": "Needs more free space",
+      "keptAhead": "Kept ahead",
+      "stoppedAt": "Stopped at {{percent}}%",
+      "cancel": "Cancel",
+      "cancelLabel": "Cancel downloading {{title}}",
+      "retry": "Retry",
+      "retryLabel": "Retry downloading {{title}}",
+      "play": "Play {{title}}",
+      "remove": "Remove {{title}}",
+      "notStarted": "Not started",
+      "finished": "Finished"
+    },
+    "failure": {
+      "network": "{{server}} stopped responding.",
+      "server": "{{server}} couldn't send the book (error {{status}}).",
+      "storageDevice": "This device ran out of space.",
+      "storageBrowser": "The browser ran out of space.",
+      "unservable": "Saved, but offline playback isn't ready yet. Reload the app, then retry.",
+      "removed": "You're no longer signed in to this server.",
+      "unknown": "The download stopped.",
+      "kept": "Your {{percent}}% is kept.",
+      "restart": "Retry starts it again."
+    },
+    "ready": {
+      "title": "Ready offline",
+      "sub_one": "{{count}} book · plays with no connection",
+      "sub_other": "{{count}} books · play with no connection",
+      "serverSize": "{{server}} · {{size}}"
+    },
+    "remove": {
+      "title": "Remove this download?",
+      "message": "{{title}} will need a connection to play again. Your place in the book is kept.",
+      "confirm": "Remove"
+    },
+    "empty": {
+      "title": "Nothing downloaded yet",
+      "body": "Download a book from its page to listen with no connection.",
+      "action": "Browse the library"
+    },
+    "unsupported": {
+      "title": "Downloads aren't available here",
+      "insecure": "Offline audio needs a secure (https) connection. Open the player over https, or use the iOS or Android app.",
+      "noCache": "This browser can't keep audio offline. Use a current browser, or the iOS or Android app.",
+      "noWorker": "Offline playback isn't ready in this browser yet. Reload the page, and if that doesn't help, use the iOS or Android app."
+    },
+    "loading": "Loading downloads"
   },
   "search": {
     "placeholder": "Search titles, authors, series…",

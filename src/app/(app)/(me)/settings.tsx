@@ -3,6 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import { ConnectionsSection, useConnectionRemoval } from '@/components/account/connections-section';
+import {
+  KeepAheadStatusLine,
+  keepAheadValue,
+  parseKeepAhead,
+  useKeepAheadOptions,
+} from '@/components/downloads/rules-card';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -122,6 +128,9 @@ export default function SettingsScreen() {
   const setAutoPlayNext = useSettings((s) => s.setAutoPlayNext);
   const setAutoDownloadNext = useSettings((s) => s.setAutoDownloadNext);
   const setAutoDeleteFinished = useSettings((s) => s.setAutoDeleteFinished);
+  const keepAhead = useSettings((s) => s.keepAhead);
+  const setKeepAhead = useSettings((s) => s.setKeepAhead);
+  const keepAheadOptions = useKeepAheadOptions();
 
   const autoSleepTimer = useSettings((s) => s.autoSleepTimer);
   const autoSleepFrom = useSettings((s) => s.autoSleepFrom);
@@ -337,6 +346,20 @@ export default function SettingsScreen() {
                 grow
                 accessibilityLabel={t('settings.upNext.autoDownload.label')}
               />
+            </ChoiceRow>
+            {/* The same setting as the Downloads page's "Automatic downloads" card. */}
+            <ChoiceRow
+              label={t('downloads.rules.keepAhead.label')}
+              description={t('downloads.rules.keepAhead.hint')}
+            >
+              <SegmentedControl
+                options={keepAheadOptions}
+                value={keepAheadValue(keepAhead)}
+                onChange={(v) => setKeepAhead(parseKeepAhead(v))}
+                grow
+                accessibilityLabel={t('downloads.rules.keepAhead.label')}
+              />
+              <KeepAheadStatusLine />
             </ChoiceRow>
             <ChoiceRow
               label={t('settings.upNext.autoDelete.label')}

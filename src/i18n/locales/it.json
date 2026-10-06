@@ -320,14 +320,111 @@
     }
   },
   "downloads": {
-    "storageUsed": "{{size}} usati",
-    "downloaded": "Scaricato",
-    "failed": "Download non riuscito",
-    "unsupported": "I download offline non sono disponibili in questo browser. Usa l'app installata o una connessione sicura (https).",
-    "unsupportedTitle": "Download non disponibili",
-    "empty": "Scarica un libro dalla sua schermata dei dettagli per ascoltarlo offline.",
-    "emptyTitle": "Ancora nessun download",
-    "remove": "Rimuovi {{title}}"
+    "summary": {
+      "device": "Su questo dispositivo · {{size}}",
+      "browser": "In questo browser · {{size}}",
+      "browserQuota": "In questo browser · {{size}} su circa {{quota}} consentiti dal browser"
+    },
+    "storage": {
+      "titleDevice": "Spazio su questo dispositivo",
+      "titleBrowser": "Spazio in questo browser",
+      "used": "{{size}} usati",
+      "label": "Spazio per server",
+      "legend": "{{name}} {{size}}",
+      "moreServers_one": "{{count}} altro server",
+      "moreServers_other": "Altri {{count}} server",
+      "otherApps": "Altre app",
+      "unknownServer": "Server sconosciuto",
+      "freeDevice": "{{size}} liberi su questo dispositivo.",
+      "browserRoom": "Circa {{size}} disponibili per questo browser. Può cancellare i download se il disco si riempie.",
+      "browserUnknown": "Il browser può cancellare i download se il disco si riempie."
+    },
+    "rules": {
+      "title": "Download automatici",
+      "mode": {
+        "label": "Scarica automaticamente",
+        "never": "Mai",
+        "wifi": "Con Wi-Fi",
+        "always": "Sempre"
+      },
+      "modeHint": "Scarica un libro quando inizi ad ascoltarlo.",
+      "webWifi": "Un browser non distingue il Wi-Fi dai dati mobili, quindi qui Con Wi-Fi scarica con qualsiasi connessione.",
+      "keepAhead": {
+        "label": "Tieni pronti i prossimi libri",
+        "hint": "Scarica i prossimi libri da Prossimo, poi dalla serie, prima che ti servano.",
+        "off": "No"
+      },
+      "keepAheadStatus": {
+        "idle": "Parte quando riproduci un libro.",
+        "never": "Attiva i download automatici per usarlo.",
+        "working": "Preparazione dei prossimi libri.",
+        "ready": "I prossimi libri sono pronti offline.",
+        "waiting": "In attesa del Wi-Fi.",
+        "noSpace": "In pausa: non c’è abbastanza spazio libero. I download automatici lasciano sempre almeno 1 GB libero.",
+        "failed": "Il download di uno dei prossimi libri si è interrotto. Riprova in Download.",
+        "declined": "I prossimi libri restano come sono: li hai rimossi."
+      },
+      "autoDelete": "Rimuovi un download quando finisci il libro"
+    },
+    "browser": {
+      "title": "Come funzionano i download in un browser",
+      "body": "L’audio è conservato nello spazio di questo browser, solo con una connessione sicura (https). Il browser può cancellarlo quando lo spazio scarseggia, e su iPhone e iPad Safari interrompe la riproduzione in background. Per un ascolto offline affidabile, usa l’app iOS o Android."
+    },
+    "inProgress": {
+      "title": "In corso"
+    },
+    "row": {
+      "meta": "{{server}} · {{size}}",
+      "progress": "{{percent}}% · mancano {{size}}",
+      "percent": "{{percent}}%",
+      "queued": "In attesa di iniziare",
+      "waitingWifi": "In attesa del Wi-Fi",
+      "noSpace": "Serve più spazio libero",
+      "keptAhead": "Preparato in anticipo",
+      "stoppedAt": "Interrotto al {{percent}}%",
+      "cancel": "Annulla",
+      "cancelLabel": "Annulla il download di {{title}}",
+      "retry": "Riprova",
+      "retryLabel": "Riprova il download di {{title}}",
+      "play": "Riproduci {{title}}",
+      "remove": "Rimuovi {{title}}",
+      "notStarted": "Non iniziato",
+      "finished": "Finito"
+    },
+    "failure": {
+      "network": "{{server}} ha smesso di rispondere.",
+      "server": "{{server}} non è riuscito a inviare il libro (errore {{status}}).",
+      "storageDevice": "Questo dispositivo ha esaurito lo spazio.",
+      "storageBrowser": "Il browser ha esaurito lo spazio.",
+      "unservable": "Salvato, ma la riproduzione offline non è ancora pronta. Ricarica l’app, poi riprova.",
+      "removed": "Non hai più accesso a questo server.",
+      "unknown": "Il download si è interrotto.",
+      "kept": "Il tuo {{percent}}% è conservato.",
+      "restart": "Riprovando ricomincia da capo."
+    },
+    "ready": {
+      "title": "Pronti offline",
+      "sub_one": "{{count}} libro · si ascolta senza connessione",
+      "sub_other": "{{count}} libri · si ascoltano senza connessione",
+      "serverSize": "{{server}} · {{size}}"
+    },
+    "remove": {
+      "title": "Rimuovere questo download?",
+      "message": "{{title}} avrà di nuovo bisogno di una connessione per essere riprodotto. Il tuo punto nel libro è conservato.",
+      "confirm": "Rimuovi"
+    },
+    "empty": {
+      "title": "Ancora nessun download",
+      "body": "Scarica un libro dalla sua pagina per ascoltarlo senza connessione.",
+      "action": "Sfoglia la libreria"
+    },
+    "unsupported": {
+      "title": "I download non sono disponibili qui",
+      "insecure": "L’audio offline richiede una connessione sicura (https). Apri il lettore in https oppure usa l’app iOS o Android.",
+      "noCache": "Questo browser non può conservare audio offline. Usa un browser aggiornato oppure l’app iOS o Android.",
+      "noWorker": "La riproduzione offline non è ancora pronta in questo browser. Ricarica la pagina e, se non basta, usa l’app iOS o Android."
+    },
+    "loading": "Caricamento dei download"
   },
   "search": {
     "placeholder": "Cerca titoli, autori, serie…",
