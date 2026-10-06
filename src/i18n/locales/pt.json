@@ -634,6 +634,7 @@
     "remove": {
       "title": "Remover este download?",
       "message": "{{title}} vai precisar de conexão para tocar de novo. Sua posição no livro fica guardada.",
+      "frees": "Liberta {{size}}.",
       "confirm": "Remover"
     },
     "empty": {

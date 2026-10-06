@@ -634,6 +634,7 @@
     "remove": {
       "title": "Remove this download?",
       "message": "{{title}} will need a connection to play again. Your place in the book is kept.",
+      "frees": "It frees {{size}}.",
       "confirm": "Remove"
     },
     "empty": {

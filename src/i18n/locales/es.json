@@ -634,6 +634,7 @@
     "remove": {
       "title": "¿Quitar esta descarga?",
       "message": "{{title}} necesitará conexión para volver a reproducirse. Tu punto en el libro se conserva.",
+      "frees": "Libera {{size}}.",
       "confirm": "Quitar"
     },
     "empty": {

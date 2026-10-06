@@ -634,6 +634,7 @@
     "remove": {
       "title": "Supprimer ce téléchargement ?",
       "message": "{{title}} aura de nouveau besoin d’une connexion pour être lu. Votre position dans le livre est conservée.",
+      "frees": "Cela libère {{size}}.",
       "confirm": "Supprimer"
     },
     "empty": {

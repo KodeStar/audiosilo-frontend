@@ -634,6 +634,7 @@
     "remove": {
       "title": "Diesen Download entfernen?",
       "message": "{{title}} braucht dann wieder eine Verbindung zum Abspielen. Deine Stelle im Buch bleibt erhalten.",
+      "frees": "Das gibt {{size}} frei.",
       "confirm": "Entfernen"
     },
     "empty": {

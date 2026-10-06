@@ -7,9 +7,9 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { useTabPress } from '@/components/shell/destinations';
 import { SubNavActions } from '@/components/shell/tab-root-nav';
 import { Card } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import {
+  entryBytes,
   groupByServer,
   splitDownloads,
   storageBar,
@@ -34,6 +34,7 @@ import {
   DownloadsUnsupported,
   Notice,
 } from './downloads-states';
+import { RemoveDownloadConfirm } from './remove-download-confirm';
 import { RulesCard } from './rules-card';
 import { StorageCard } from './storage-card';
 import { useStorage } from './use-storage';
@@ -263,13 +264,8 @@ export function DownloadsScreen() {
         {nothing ? <DownloadsEmpty onBrowse={() => press('(library)')} /> : null}
       </View>
 
-      <ConfirmDialog
-        visible={!!removing}
-        title={t('downloads.remove.title')}
-        message={t('downloads.remove.message', { title: removing?.title ?? '' })}
-        confirmLabel={t('downloads.remove.confirm')}
-        confirmIcon="trash"
-        destructive
+      <RemoveDownloadConfirm
+        book={removing ? { title: removing.title, bytes: entryBytes(removing) } : null}
         onCancel={() => setRemoving(null)}
         onConfirm={() => {
           if (removing)
