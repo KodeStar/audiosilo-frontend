@@ -1,9 +1,14 @@
 import * as ToggleGroupPrimitive from '@rn-primitives/toggle-group';
-import { Platform, ScrollView } from 'react-native';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type LayoutChangeEvent, Platform, ScrollView, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { formatCount } from '@/lib/format';
+import { useDomId } from '@/lib/use-dom-id';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Text, TextClassContext } from './text';
 
@@ -112,7 +117,8 @@ export function SegmentedControl<T extends string>({
   /** Equal-width segments filling the row. Ignored when `scrollable` (a scroller has
    * no width to divide, and a flex-1 segment in one collapses to nothing). */
   grow?: boolean;
-  /** Scroll horizontally when the options don't fit (long labels, many options). */
+  /** Scroll horizontally when the options don't fit (long labels, many options): the
+   * chosen segment is kept in view and a fade marks the side with more. */
   scrollable?: boolean;
   /** Wrap onto more lines instead (a long list such as the languages). */
   wrap?: boolean;
@@ -120,21 +126,23 @@ export function SegmentedControl<T extends string>({
   accessibilityLabel?: string;
   className?: string;
 }) {
-  const items = options.map((o) => (
-    <ToggleGroupItem
-      key={o.value}
-      value={o.value}
-      accessibilityLabel={o.count === undefined ? o.label : `${o.label}, ${o.count}`}
-      className={grow && !scrollable ? 'flex-1' : undefined}
-    >
-      <Text numberOfLines={1}>{o.label}</Text>
-      {o.count === undefined ? null : (
-        <Text className="font-sans text-[11px] text-subtle-foreground" style={tabularNums}>
-          {formatCount(o.count)}
-        </Text>
-      )}
-    </ToggleGroupItem>
-  ));
+  const items = (onItemLayout?: (value: T, e: LayoutChangeEvent) => void) =>
+    options.map((o) => (
+      <ToggleGroupItem
+        key={o.value}
+        value={o.value}
+        onLayout={onItemLayout ? (e) => onItemLayout(o.value, e) : undefined}
+        accessibilityLabel={o.count === undefined ? o.label : `${o.label}, ${o.count}`}
+        className={grow && !scrollable ? 'flex-1' : undefined}
+      >
+        <Text numberOfLines={1}>{o.label}</Text>
+        {o.count === undefined ? null : (
+          <Text className="font-sans text-[11px] text-subtle-foreground" style={tabularNums}>
+            {formatCount(o.count)}
+          </Text>
+        )}
+      </ToggleGroupItem>
+    ));
   return (
     <ToggleGroup
       type="single"
@@ -146,16 +154,121 @@ export function SegmentedControl<T extends string>({
       className={cn(wrap && 'flex-wrap', scrollable && 'flex-col', className)}
     >
       {scrollable ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerClassName="flex-row gap-0.5"
-        >
-          {items}
-        </ScrollView>
+        <SegmentScroller value={value}>{(onItemLayout) => items(onItemLayout)}</SegmentScroller>
       ) : (
-        items
+        items()
       )}
     </ToggleGroup>
+  );
+}
+
+/** The width of the fade over a cut-off side of a scrolling segmented control. */
+const FADE = 28;
+
+/**
+ * The horizontal scroller of a `scrollable` SegmentedControl. A plain scroller hid the
+ * segments past its edge with nothing to say they were there (the Library's Folders on
+ * an 834 wide tablet), and a chosen segment could sit cut off at the edge. So it:
+ * - scrolls the chosen segment fully into view (clear of the fade) when it changes or
+ *   first lays out;
+ * - fades the side(s) that have more, in the track's own colour;
+ * - on the web, turns a mouse wheel's vertical scroll into a horizontal one while the
+ *   pointer is over it (a mouse can't scroll sideways otherwise).
+ */
+function SegmentScroller<T extends string>({
+  value,
+  children,
+}: {
+  value: T;
+  children: (onItemLayout: (value: T, e: LayoutChangeEvent) => void) => ReactNode;
+}) {
+  const ref = useRef<ScrollView>(null);
+  const reduced = useReducedMotion();
+  const [layouts, setLayouts] = useState<Partial<Record<string, { x: number; width: number }>>>({});
+  const [viewport, setViewport] = useState(0);
+  const [content, setContent] = useState(0);
+  const [x, setX] = useState(0);
+  const xRef = useRef(0);
+  const selected = layouts[value];
+
+  useEffect(() => {
+    if (!selected || viewport <= 0) return;
+    const cur = xRef.current;
+    let next = cur;
+    if (selected.x - FADE < cur) next = Math.max(0, selected.x - FADE);
+    else if (selected.x + selected.width + FADE > cur + viewport)
+      next = Math.min(content - viewport, selected.x + selected.width + FADE - viewport);
+    if (Math.abs(next - cur) > 1) ref.current?.scrollTo({ x: next, animated: !reduced });
+    // Positions, not the object: a re-render must not scroll back over the reader's own.
+  }, [selected?.x, selected?.width, viewport, content, reduced]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node = (
+      ref.current as unknown as { getScrollableNode?: () => HTMLElement } | null
+    )?.getScrollableNode?.();
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (node.scrollWidth <= node.clientWidth) return;
+      e.preventDefault();
+      node.scrollLeft += e.deltaY;
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const overflow = content - viewport > 1;
+  return (
+    <View className="relative min-w-0">
+      <ScrollView
+        ref={ref}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="flex-row gap-0.5"
+        scrollEventThrottle={32}
+        onLayout={(e) => setViewport(e.nativeEvent.layout.width)}
+        onContentSizeChange={(w) => setContent(w)}
+        onScroll={(e) => {
+          xRef.current = e.nativeEvent.contentOffset.x;
+          setX(e.nativeEvent.contentOffset.x);
+        }}
+      >
+        {children((v, e) => {
+          const { x: lx, width } = e.nativeEvent.layout;
+          setLayouts((prev) =>
+            prev[v]?.x === lx && prev[v]?.width === width
+              ? prev
+              : { ...prev, [v]: { x: lx, width } },
+          );
+        })}
+      </ScrollView>
+      {overflow && x > 1 ? <EdgeFade side="left" /> : null}
+      {overflow && x + viewport < content - 1 ? <EdgeFade side="right" /> : null}
+    </View>
+  );
+}
+
+function EdgeFade({ side }: { side: 'left' | 'right' }) {
+  const id = useDomId('fade');
+  const muted = useThemeColors().muted;
+  const left = side === 'left';
+  return (
+    <View
+      testID={`segment-fade-${side}`}
+      pointerEvents="none"
+      aria-hidden
+      style={{ position: 'absolute', top: 0, bottom: 0, width: FADE, [side]: 0 }}
+    >
+      <Svg width="100%" height="100%">
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2="1" y2="0">
+            <Stop offset={0} stopColor={muted} stopOpacity={left ? 1 : 0} />
+            <Stop offset={1} stopColor={muted} stopOpacity={left ? 0 : 1} />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill={`url(#${id})`} />
+      </Svg>
+    </View>
   );
 }
