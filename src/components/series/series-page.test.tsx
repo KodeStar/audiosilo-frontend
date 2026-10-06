@@ -50,6 +50,8 @@ jest.mock('@/components/library/use-queue-actions', () => ({
 const mockPlay = jest.fn(() => Promise.resolve());
 jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
 jest.mock('./use-resume-chapter', () => ({ useResumeChapter: () => 7 }));
+// The keep-ahead shortcut has its own tests (it reads the downloads and settings stores).
+jest.mock('./keep-ahead-card', () => ({ KeepAheadCard: () => null }));
 
 type BooksResult = {
   books: Book[];
