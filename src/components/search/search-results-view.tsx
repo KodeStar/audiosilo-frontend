@@ -9,9 +9,9 @@ import { roleLabelKey } from '@/components/library/book-meta';
 import { gridMetrics } from '@/components/library/cover-layout';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
+import { PersonChip } from '@/components/series/person-chip';
 import { SeriesCard } from '@/components/series/series-card';
 import type { ProgressLookup } from '@/components/series/series-model';
-import { matchRange } from '@/components/shell/palette-model';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { Highlighted } from './highlighted';
 import { NameToken } from './name-token';
 import {
   alsoOnServers,
@@ -73,7 +74,11 @@ export function SearchResultsView({
     );
   }
 
-  const peopleCount = r.authors.length + r.narrators.length;
+  const people = [
+    ...r.authors.map((hit) => ({ hit, kind: 'author' as const })),
+    ...r.narrators.map((hit) => ({ hit, kind: 'narrator' as const })),
+  ];
+  const peopleCount = people.length;
   const nothing =
     settled &&
     r.total === 0 &&
@@ -140,18 +145,14 @@ export function SearchResultsView({
 
       {peopleCount > 0 ? (
         <Group title={t('search.groups.people')} count={peopleCount}>
-          <Preview
-            items={[...r.authors, ...r.narrators]}
-            limit={NAMED_PREVIEW}
-            label={t('search.groups.people')}
-          >
+          <Preview items={people} limit={NAMED_PREVIEW} label={t('search.groups.people')}>
             {(items) => (
               <View className="flex-row flex-wrap gap-2.5">
-                {items.map((p, i) => (
-                  <PersonChip
-                    key={`${i < r.authors.length ? 'a' : 'n'}:${p.name}`}
-                    hit={p}
-                    kind={r.authors.includes(p) ? 'author' : 'narrator'}
+                {items.map(({ hit, kind }) => (
+                  <PersonResult
+                    key={`${kind}:${hit.name}`}
+                    hit={hit}
+                    kind={kind}
                     query={query}
                     onOpened={onOpened}
                   />
@@ -278,43 +279,6 @@ function GroupError({ state, message }: { state: GroupState; message: string }) 
       </Text>
       <Button variant="outline" size="sm" title={t('common.retry')} onPress={state.retry} />
     </View>
-  );
-}
-
-/** The query's first match in `text`, bold in `brand-ink` (as the palette does). */
-function Highlighted({
-  text,
-  query,
-  variant = 'label',
-  numberOfLines = 1,
-  display = false,
-}: {
-  text: string;
-  query: string;
-  variant?: 'label';
-  numberOfLines?: number;
-  /** Set in the display face (a series card's name), which is bold already. */
-  display?: boolean;
-}) {
-  const range = matchRange(text, query);
-  const face = display ? 'font-display text-[17px] tracking-tight' : undefined;
-  return (
-    <Text variant={variant} numberOfLines={numberOfLines} className={face}>
-      {range ? (
-        <>
-          {text.slice(0, range[0])}
-          <Text
-            variant={variant}
-            className={cn(face, display ? 'text-brand-ink' : 'font-sans-bold text-brand-ink')}
-          >
-            {text.slice(range[0], range[1])}
-          </Text>
-          {text.slice(range[1])}
-        </>
-      ) : (
-        text
-      )}
-    </Text>
   );
 }
 
@@ -480,7 +444,7 @@ function SeriesResult({
   );
 }
 
-function PersonChip({
+function PersonResult({
   hit,
   kind,
   query,
@@ -497,7 +461,13 @@ function PersonChip({
   const role = kind === 'author' ? t('search.roleAuthor') : t('search.roleNarrator');
   const books = t('search.bookCount', { count: hit.books });
   return (
-    <Pressable
+    <PersonChip
+      name={hit.name}
+      kind={kind}
+      label={<Highlighted text={hit.name} query={query} />}
+      caption={role}
+      accessibilityRole="button"
+      accessibilityLabel={[hit.name, role, books, where].filter(Boolean).join(', ')}
       onPress={() => {
         onOpened();
         (kind === 'author' ? openAuthor : openNarrator)(
@@ -506,23 +476,7 @@ function PersonChip({
           hit.name,
         );
       }}
-      accessibilityRole="button"
-      accessibilityLabel={[hit.name, role, books, where].filter(Boolean).join(', ')}
-      className={cn(
-        'h-11 max-w-full flex-row items-center gap-2 rounded-full border border-border-strong bg-card pl-[5px] pr-3.5 active:bg-accent',
-        Platform.select({
-          web: `cursor-pointer transition-colors hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
-        }),
-      )}
-    >
-      <NameToken name={hit.name} kind={kind} size={34} />
-      <View className="shrink">
-        <Highlighted text={hit.name} query={query} />
-      </View>
-      <Text variant="caption" numberOfLines={1}>
-        {role}
-      </Text>
-    </Pressable>
+    />
   );
 }
 

@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 
+import { Portrait } from '@/components/series/portrait';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { initials } from '@/lib/names';
@@ -14,9 +15,10 @@ const CHARACTER_TINT = ['bg-chart-2/20', 'bg-chart-3/20', 'bg-chart-4/20', 'bg-c
 
 /**
  * A person's or character's initials (STYLEGUIDE section 8, "Avatar, portrait, character
- * token"): an author is a pale round disc, a narrator a rounded square, a character an
- * initial on its own hue. `hidden` is the dashed eye-off token of characters the
- * listener hasn't met (it never carries a name). Decorative: the row names the person.
+ * token"): an author or narrator is their `Portrait` (as on the Library's pages), a
+ * character an initial on its own hue. `hidden` is the dashed eye-off token of
+ * characters the listener hasn't met (it never carries a name). Decorative: the row
+ * names the person.
  */
 export function NameToken({
   name = '',
@@ -30,20 +32,17 @@ export function NameToken({
   hidden?: boolean;
 }) {
   const themed = useThemeColors();
-  const shape = kind === 'narrator' ? 'rounded-[10px]' : 'rounded-full';
+  if (!hidden && kind !== 'character') return <Portrait name={name} kind={kind} size={size} />;
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={{ width: size, height: size }}
       className={cn(
-        'shrink-0 items-center justify-center overflow-hidden',
-        shape,
+        'shrink-0 items-center justify-center overflow-hidden rounded-full',
         hidden
           ? 'border-[1.5px] border-dashed border-border-strong bg-muted'
-          : kind === 'character'
-            ? CHARACTER_TINT[hueSlot(name)]
-            : 'border border-border bg-secondary',
+          : CHARACTER_TINT[hueSlot(name)],
       )}
     >
       {hidden ? (

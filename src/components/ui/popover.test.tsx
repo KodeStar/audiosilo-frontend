@@ -1,4 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -52,9 +53,6 @@ describe('DropdownMenu', () => {
     expect(screen.getAllByRole('menuitem')).toHaveLength(2);
     expect(String(screen.getByText('Remove').props.className)).toContain('text-destructive');
     await fireEvent.press(screen.getByRole('menuitem', { name: 'Add bookmark' }));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
@@ -76,10 +74,16 @@ describe('DropdownMenu', () => {
       </DropdownMenu>,
     );
     await fireEvent.press(screen.getByRole('button', { name: 'More' }));
-    await fireEvent.press(screen.getByRole('menuitem', { name: 'Add to collection' }));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      await fireEvent.press(screen.getByRole('menuitem', { name: 'Add to collection' }));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    } finally {
+      Platform.OS = os;
+    }
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(menuOpenDuringAction).toBe(false);
   });

@@ -16,6 +16,7 @@ import {
 import { type MergedBook, useAllProgressAll, useSourceLabeller } from '@/api/hooks';
 import { useApi, useApis } from '@/api/provider';
 import { roleLabelKey } from '@/components/library/book-meta';
+import { Highlighted } from '@/components/search/highlighted';
 import { NameToken } from '@/components/search/name-token';
 import { type SearchResults, useSearch } from '@/components/search/use-search';
 import { DialogOverlay } from '@/components/ui/dialog';
@@ -48,7 +49,6 @@ import {
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
-  matchRange,
   MAX_NAMED,
   moveSelection,
   type PaletteCover,
@@ -261,28 +261,6 @@ function useNamedItems(results: SearchResults) {
         ? t('palette.hiddenCharacters', { count: results.characters.hidden })
         : undefined,
   };
-}
-
-/** The title with the first match of the query in `brand-ink` bold. */
-function Highlighted({ text, query }: { text: string; query: string }) {
-  const range = matchRange(text, query);
-  return (
-    <Text variant="label" numberOfLines={1}>
-      {range ? (
-        <>
-          {text.slice(0, range[0])}
-          {/* `label` like the line around it: a bare <Text> would apply the `body`
-              variant's larger size to the match. */}
-          <Text variant="label" className="font-sans-bold text-brand-ink">
-            {text.slice(range[0], range[1])}
-          </Text>
-          {text.slice(range[1])}
-        </>
-      ) : (
-        text
-      )}
-    </Text>
-  );
 }
 
 function CoverThumb({ cover, label }: { cover: PaletteCover; label: string }) {

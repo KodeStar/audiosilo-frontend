@@ -65,13 +65,15 @@ export function DropdownMenuContent({
 }
 
 /**
- * Runs `fn` once a closing menu or sheet has let go of the page, so it can open a dialog:
- * Radix's menu and dialog each lock the page (pointer-events on <body>), and opened in
- * the same tick the menu's unlock is lost and the page stays dead after the dialog
- * closes. Every menu item's press goes through it.
+ * Runs `fn` once a closing menu or sheet has let go of the page, so it can open a dialog.
+ * On the web Radix's menu and dialog each lock the page (pointer-events on <body>), and
+ * opened in the same tick the menu's unlock is lost and the page stays dead after the
+ * dialog closes; native has no such lock and runs it at once. Every menu item's press
+ * goes through it.
  */
 export function afterOverlayCloses(fn: () => void): void {
-  setTimeout(fn, 0);
+  if (Platform.OS === 'web') setTimeout(fn, 0);
+  else fn();
 }
 
 export function DropdownMenuItem({

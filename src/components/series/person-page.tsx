@@ -9,7 +9,7 @@ import { CoverTile } from '@/components/library/cover-tile';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FOCUS_RING_CLASS, FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration, formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -19,6 +19,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { EmptyShelf } from './empty-shelf';
 import { booksBySeries, creditedPeople, personStats } from './people-model';
 import type { PersonKind } from './people-mode';
+import { PersonChip } from './person-chip';
 import { Portrait } from './portrait';
 import { type ProgressLookup, yearOf } from './series-model';
 
@@ -47,6 +48,7 @@ export function PersonPage({
 }) {
   const { t } = useTranslation();
   const cid = useCid();
+  const { openAuthor, openNarrator } = useOpen();
   const browse = useCapability('browse_people');
   const { progressOf } = useProgressLookup();
   const q = useAllLibraryBooks(
@@ -125,7 +127,9 @@ export function PersonPage({
                   key={p.name}
                   name={p.name}
                   kind={kind === 'author' ? 'narrator' : 'author'}
-                  libraryId={libraryId}
+                  onPress={() =>
+                    (kind === 'author' ? openNarrator : openAuthor)(cid, libraryId, p.name)
+                  }
                 />
               ))}
             </View>
@@ -261,39 +265,6 @@ function SeriesShelf({
         )}
       />
     </View>
-  );
-}
-
-/** Another person credited on these books, opening their page. */
-function PersonChip({
-  name,
-  kind,
-  libraryId,
-}: {
-  name: string;
-  kind: PersonKind;
-  libraryId: number;
-}) {
-  const cid = useCid();
-  const { openAuthor, openNarrator } = useOpen();
-  const open = kind === 'author' ? openAuthor : openNarrator;
-  return (
-    <Pressable
-      onPress={() => open(cid, libraryId, name)}
-      accessibilityRole="link"
-      accessibilityLabel={name}
-      className={cn(
-        'h-11 flex-row items-center gap-2 rounded-full border border-border-strong bg-card pl-1.5 pr-4 active:bg-accent',
-        Platform.select({
-          web: `cursor-pointer transition-colors hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
-        }),
-      )}
-    >
-      <Portrait name={name} kind={kind} size={32} />
-      <Text variant="label" numberOfLines={1}>
-        {name}
-      </Text>
-    </Pressable>
   );
 }
 
