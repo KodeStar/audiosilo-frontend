@@ -35,7 +35,7 @@ export type EntryAction =
 
 export function entryAction(entry: SeriesEntry, queueSupported: boolean): EntryAction {
   if (entry.kind === 'ghost') return entry.webUrl ? { kind: 'meta', url: entry.webUrl } : NONE;
-  if (entry.kind === 'elsewhere' && entry.copy) {
+  if (entry.kind === 'elsewhere') {
     return { kind: 'elsewhere', server: entry.copy.connectionName };
   }
   if (entry.finished) return { kind: 'open' };
@@ -66,7 +66,7 @@ export function EntryBadge({ entry, current }: { entry: SeriesEntry; current: bo
       </Badge>
     );
   }
-  if (entry.kind === 'elsewhere' && entry.copy) {
+  if (entry.kind === 'elsewhere') {
     return (
       <Badge variant="info">
         <Icon name="server" size={12} color={themed.info} />
@@ -74,7 +74,7 @@ export function EntryBadge({ entry, current }: { entry: SeriesEntry; current: bo
       </Badge>
     );
   }
-  if (entry.kind === 'owned' && entry.copy) {
+  if (entry.kind === 'owned') {
     return (
       <Badge>
         <Text>{t('covers.onServer', { server: entry.copy.connectionName })}</Text>

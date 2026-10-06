@@ -110,7 +110,7 @@ function entryNote(entry: SeriesEntry, here: string, t: TFunction) {
   if (entry.kind === 'owned') {
     return entry.narrator ? t('series.readBy', { narrator: entry.narrator }) : '';
   }
-  if (entry.kind === 'elsewhere' && entry.copy) {
+  if (entry.kind === 'elsewhere') {
     return t('series.elsewhereNote', { here, server: entry.copy.connectionName });
   }
   return entry.title ? t('series.ghostNote') : t('series.gapNote');
@@ -230,7 +230,7 @@ export function numberSize(position: string, phone: boolean): number {
 function entryLine(entry: SeriesEntry, t: TFunction): string {
   const state = entry.finished
     ? t('covers.finished')
-    : entry.kind === 'elsewhere' && entry.copy
+    : entry.kind === 'elsewhere'
       ? t('covers.onServer', { server: entry.copy.connectionName })
       : entry.kind === 'ghost'
         ? t('covers.notInLibrary')

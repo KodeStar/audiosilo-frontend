@@ -31,15 +31,13 @@ export type SeriesCopy = {
 
 export type SeriesEntryKind = 'owned' | 'elsewhere' | 'ghost';
 
-export type SeriesEntry = {
+type EntryFields = {
   /** Stable across reading orders (the work id when there is one), for keys and moves. */
   key: string;
-  kind: SeriesEntryKind;
   /** Its place in the shown order ("3", "2.5"), '' when it has none. */
   position: string;
   /** Absent only for a local gap, which has no title to show. */
   title?: string;
-  copy?: SeriesCopy;
   workId?: string;
   /** The work's page on the metadata site (community entries only). */
   webUrl?: string;
@@ -56,6 +54,12 @@ export type SeriesEntry = {
   coverColor?: CoverColor;
   coverVersion?: string;
 };
+
+/** One entry of the series: a book with a copy to play or open (`owned` here,
+ * `elsewhere` on another server), or a `ghost` nobody has. */
+export type SeriesEntry =
+  | (EntryFields & { kind: 'owned' | 'elsewhere'; copy: SeriesCopy })
+  | (EntryFields & { kind: 'ghost'; copy?: undefined });
 
 /** The saved progress the model reads (the server rows of `useAllProgressAll`). */
 export type ProgressLike = Pick<Progress, 'position' | 'duration' | 'finished' | 'updated_at'>;
@@ -95,7 +99,7 @@ export function yearOf(published: string | undefined): string | undefined {
 function progressFields(
   copy: SeriesCopy,
   progressOf: ProgressLookup,
-): Pick<SeriesEntry, 'fraction' | 'started' | 'finished' | 'updatedAt'> {
+): Pick<EntryFields, 'fraction' | 'started' | 'finished' | 'updatedAt'> {
   const p = progressOf(copy.connectionId, copy.libraryId, copy.path);
   if (!p) return { fraction: 0, started: false, finished: false };
   const total = p.duration > 0 ? p.duration : (copy.book?.duration ?? 0);
@@ -103,7 +107,7 @@ function progressFields(
   return { fraction, started: p.position > 0, finished: p.finished, updatedAt: p.updated_at };
 }
 
-function copyFields(copy: SeriesCopy): Partial<SeriesEntry> {
+function copyFields(copy: SeriesCopy): Partial<EntryFields> {
   const b = copy.book;
   if (!b) return {};
   return {
@@ -152,24 +156,46 @@ type Source = {
   elsewhere?: readonly ElsewhereBook[];
 };
 
+/** An entry with a copy: its facts and the listener's progress in it. */
+function copyEntry(
+  kind: 'owned' | 'elsewhere',
+  fields: Pick<EntryFields, 'key' | 'position' | 'title' | 'workId' | 'webUrl'>,
+  copy: SeriesCopy,
+  progressOf: ProgressLookup,
+): SeriesEntry {
+  return { ...fields, kind, copy, ...copyFields(copy), ...progressFields(copy, progressOf) };
+}
+
+/** Puts `entry` before the first entry numbered past `n` (an unnumbered one counts as
+ * `unnumbered`), or at the end. */
+function insertByPosition(out: SeriesEntry[], entry: SeriesEntry, n: number, unnumbered: number) {
+  const at = out.findIndex((e) => (positionNumber(e.position) ?? unnumbered) > n);
+  if (at === -1) out.push(entry);
+  else out.splice(at, 0, entry);
+}
+
 function elsewhereEntry(
-  key: string,
-  position: string,
+  fields: Pick<EntryFields, 'key' | 'position' | 'workId' | 'webUrl'>,
   match: ElsewhereBook,
   progressOf: ProgressLookup,
-  extra: Partial<SeriesEntry> = {},
 ): SeriesEntry {
   const copy = bookCopy(match, match.connectionId, match.connectionName);
-  return {
-    key,
-    kind: 'elsewhere',
-    position,
-    title: match.title,
+  return copyEntry('elsewhere', { ...fields, title: match.title }, copy, progressOf);
+}
+
+/** An owned book by its own `series_index`. */
+function ownedBookEntry(b: Book, src: Source): SeriesEntry {
+  const copy = bookCopy(b, src.connectionId, src.connectionName);
+  return copyEntry(
+    'owned',
+    {
+      key: `b:${contentKey(src.connectionId, b.library_id, b.rel_path)}`,
+      position: indexLabel(b.series_index),
+      title: b.title,
+    },
     copy,
-    ...copyFields(copy),
-    ...progressFields(copy, progressOf),
-    ...extra,
-  };
+    src.progressOf,
+  );
 }
 
 /**
@@ -178,28 +204,14 @@ function elsewhereEntry(
  * the same series, its copy there).
  */
 export function localEntries(books: readonly Book[], src: Source): SeriesEntry[] {
-  const owned: SeriesEntry[] = sortSeriesBooks(books).map((b) => {
-    const copy = bookCopy(b, src.connectionId, src.connectionName);
-    return {
-      key: `b:${contentKey(src.connectionId, b.library_id, b.rel_path)}`,
-      kind: 'owned',
-      position: indexLabel(b.series_index),
-      title: b.title,
-      copy,
-      ...copyFields(copy),
-      ...progressFields(copy, src.progressOf),
-    };
-  });
-  const gaps = localGaps(books.map((b) => b.series_index));
-  const out = [...owned];
-  for (const n of gaps) {
+  const out = sortSeriesBooks(books).map((b) => ownedBookEntry(b, src));
+  for (const n of localGaps(books.map((b) => b.series_index))) {
     const match = src.elsewhere?.find((b) => b.series_index === n);
+    const fields = { key: `g:${n}`, position: String(n) };
     const entry: SeriesEntry = match
-      ? elsewhereEntry(`g:${n}`, String(n), match, src.progressOf)
-      : { key: `g:${n}`, kind: 'ghost', position: String(n), ...NOTHING };
-    const at = out.findIndex((e) => (positionNumber(e.position) ?? Infinity) > n);
-    if (at === -1) out.push(entry);
-    else out.splice(at, 0, entry);
+      ? elsewhereEntry(fields, match, src.progressOf)
+      : { ...fields, kind: 'ghost', ...NOTHING };
+    insertByPosition(out, entry, n, Infinity);
   }
   return out;
 }
@@ -260,48 +272,24 @@ export function railEntries(
     }
     const base = { key: `w:${w.id}`, position: w.position ?? '', workId: w.id, webUrl: w.web_url };
     if (copy) {
-      out.push({
-        ...base,
-        kind: 'owned',
-        title: copy.book?.title || w.title,
-        copy,
-        ...copyFields(copy),
-        ...progressFields(copy, src.progressOf),
-      });
+      out.push(
+        copyEntry('owned', { ...base, title: copy.book?.title || w.title }, copy, src.progressOf),
+      );
       continue;
     }
     const title = looseKey(w.title);
     const match = src.elsewhere?.find((b) => looseKey(b.title) === title && sameAuthor(w, b));
     if (match) {
-      out.push(
-        elsewhereEntry(base.key, base.position, match, src.progressOf, {
-          workId: w.id,
-          webUrl: w.web_url,
-        }),
-      );
+      out.push(elsewhereEntry(base, match, src.progressOf));
     } else {
       out.push({ ...base, kind: 'ghost', title: w.title, ...NOTHING });
     }
   }
   for (const b of sortSeriesBooks(books)) {
-    const k = contentKey(src.connectionId, b.library_id, b.rel_path);
-    if (used.has(k)) continue;
-    const copy = bookCopy(b, src.connectionId, src.connectionName);
-    const entry: SeriesEntry = {
-      key: `b:${k}`,
-      kind: 'owned',
-      position: indexLabel(b.series_index),
-      title: b.title,
-      copy,
-      ...copyFields(copy),
-      ...progressFields(copy, src.progressOf),
-    };
-    const at =
-      b.series_index > 0
-        ? out.findIndex((e) => (positionNumber(e.position) ?? -Infinity) > b.series_index)
-        : -1;
-    if (at === -1) out.push(entry);
-    else out.splice(at, 0, entry);
+    if (used.has(contentKey(src.connectionId, b.library_id, b.rel_path))) continue;
+    const entry = ownedBookEntry(b, src);
+    if (b.series_index > 0) insertByPosition(out, entry, b.series_index, -Infinity);
+    else out.push(entry);
   }
   return out;
 }

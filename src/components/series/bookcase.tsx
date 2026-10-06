@@ -48,7 +48,7 @@ export function entryLabel(entry: SeriesEntry, t: TFunction, current: boolean): 
     ? t('series.listeningNow')
     : entry.finished
       ? t('covers.finished')
-      : entry.kind === 'elsewhere' && entry.copy
+      : entry.kind === 'elsewhere'
         ? t('covers.onServer', { server: entry.copy.connectionName })
         : entry.kind === 'ghost'
           ? t('covers.notInLibrary')
