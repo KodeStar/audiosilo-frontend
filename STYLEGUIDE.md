@@ -636,8 +636,11 @@ The CSS in section 3 is the design reference. In the app:
   radii are `rounded-control` (10: buttons, inputs, selects), `rounded-menu` (14: menus, popovers, toasts),
   `rounded-card` (16), `rounded-dialog` (20) and `rounded-sheet` (24); `--shadow-overlay` is the
   `shadow-overlay` utility (web two-layer, iOS one box-shadow, Android elevation). `cn()` knows these names.
-- **Not adopted yet:** `--wash`, `--shadow-cover*`, `--shadow-dock` and the motion tokens. They land with the
-  components that need them.
+- **`--wash`** is `WASH_STRENGTH` in `src/lib/cover-tint.ts` (with `coverTint`, the pure wash colours from a
+  book's `cover_color`), drawn by `CoverWash` (`src/components/library/cover-wash{,.web}.tsx`: SVG radial
+  gradients on native, CSS on web).
+- **Not adopted yet:** `--shadow-cover*`, `--shadow-dock` and the motion tokens (covers still use
+  `CoverFrame`'s `shadow-xs` / `shadow-lg`). They land with the components that need them.
 
 ### Components in this codebase
 
@@ -659,6 +662,12 @@ through `TextClassContext`; a primitive that renders its own text node reuses `E
 (`useRootInsets` / `useOverlayInsets`), wherever they are opened from, and every Content part goes through
 `withFlatStyle`. On web, Space presses any role-bearing pressable (tab, radio, switch, checkbox, option)
 through one react-native-web patch (`src/lib/rnw-button-fix.web.ts`). The bottom `sheet.tsx` is still hand-rolled (its comment says why).
+
+The covers and shelves of section 8 live in `src/components/library/`: `BookCover` (art via
+`coverUrl(..., { size, version })`: the downloaded copy, else the smallest thumbnail covering the drawn
+pixels when the server has `cover_sizes`, falling back to the full art), `CoverTile`, `GhostCover`,
+`ShelfRow` (FlashList, the ledge), `CoverGrid` / `CoverGridSkeleton` / `CoverListRow` (sizes in
+`cover-layout.ts`), `QueueButton` + `useQueueActions`; `FilterChip` / `ChipRow` are in `ui/filter-chip.tsx`.
 
 The shell's section 8 pieces live in `src/components/shell/`: the **command palette** (`command-palette.tsx`,
 web only, on the Dialog primitive: a combobox with `aria-activedescendant` over a grouped listbox, 48 px

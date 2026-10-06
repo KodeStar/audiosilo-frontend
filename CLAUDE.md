@@ -695,6 +695,7 @@ src/app/(app)/(offline)/downloads.tsx           /downloads
 src/app/(app)/(me)/settings.tsx                 /settings   (the "Me" tab; the Me hub is Phase 5)
 src/app/(app)/(home,library,search,offline,me)/_layout.tsx    one Stack per tab (array group)
 src/app/(app)/(home,library,search,offline,me)/{book/[libraryId],library/[libraryId],library/favourites,account,browse}.tsx
+src/app/(app)/(home,library,search,offline,me)/{series,author,narrator,collection}.tsx   Phase 2 detail pages
 ```
 Groups are invisible in URLs, so every URL is unchanged. The destinations (labels, icons,
 SF Symbols / Material names, tab roots) are one table, `src/components/shell/destinations.ts`.
@@ -721,6 +722,21 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   connect layout, whose `useGlobalSearchParams` misses a warm link's params on first render.
 - Regression net: `src/components/shell/route-tree*.test.tsx` drive expo-router's
   `renderRouter` over the REAL `src/app` file list (`src/testing/route-tree.tsx`).
+
+**The Library tab root is the browse modes** (`src/components/library/library-screen.tsx`):
+`/library?mode=books|authors|series|narrators|collections|folders` (absent = books; pure rules in
+`library-modes.ts`: a mode whose capability - `browse_people`, `collections` - is known to be off is
+not offered and a link to it falls back to Books). The mode is the root's own search param, which
+`tabStackListeners` keeps (`Destination.rootParams`) while it still strips a cold link's leftovers.
+Every mode but Folders (today's libraries-then-folders flow, `modes/folders-mode.tsx`) shows ONE
+library: `useSelectedLibrary()` (the device-local `useLibrarySelection` store, persisted with
+`persistedDocument`, purged through `onConnectionRemoved`, reconciled by the pure
+`resolveLibrarySelection`: a pick that is gone falls back to the first library, an offline server
+keeps its pick), chosen with `LibraryPicker` (hidden with one library). Each mode body is its own
+file under `src/components/library/modes/`. The detail pages take query params too:
+`seriesHref(cid, lib, { name } | { work })` (`name` = a local `Book.series`, `work` = a community
+work id whose rails to show), `authorHref` / `narratorHref(cid, lib, name)` (exact field values),
+`collectionHref(cid, id)`, with `parse*Params` and `useOpen().open{Series,Author,Narrator,Collection}`.
 
 Content routes are **flat** - `library/[libraryId].tsx` (re-exports
 `src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -
@@ -750,7 +766,10 @@ every tab and over pushed pages and a tab switch never remounts it; web puts its
 bar. Tablet/desktop (web and native):
 `TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch, settings, `ProfileMenu`),
 `SubNav` (50; title on a tab root, Back on a pushed page; tab roots leave their title to the
-chrome), banners, the page capped at 1480 (`CONTENT_WIDTH`), a closed `DrawerSlot` on desktop (Up next fills it in
+chrome; a tab root fills the rest with `SubNavSections` (its segmented sections) and `SubNavActions`
+(contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
+`useSubNav` store on tablet/desktop and render in place on a phone; published nodes render in the
+sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), a closed `DrawerSlot` on desktop (Up next fills it in
 Phase 2), and `DockedPlayer` (84) whenever a book is loaded (it mounts its speed/sleep sheets as
 siblings so they cover the app). Route-driven side effects (search reset on leaving the Search
 tab, browse scroll memory) are `useShellEffects`.
