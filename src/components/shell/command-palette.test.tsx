@@ -323,7 +323,7 @@ describe('CommandPalette', () => {
     expect(screen.getByLabelText('Series')).toHaveProp('role', 'group');
     expect(screen.getByLabelText('The Dresden Files, 4 books · Jim Butcher')).toBeTruthy();
     expect(screen.getByLabelText('Harry Dresden, Protagonist · Storm Front')).toBeTruthy();
-    expect(screen.getByText('2 more match after your place in the book')).toBeTruthy();
+    expect(screen.getByText('2 more matches after your place in the book')).toBeTruthy();
     expect(screen.getByText('Hidden to avoid spoilers')).toBeTruthy();
     // The series and the character are the options; the count is not one.
     expect(screen.getAllByRole('option')).toHaveLength(2);

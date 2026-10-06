@@ -249,7 +249,8 @@
       "streak_one": "{{count}}-day streak",
       "streak_other": "{{count}}-day streak",
       "noStreak": "No streak yet",
-      "goalLabel": "{{finished}} of {{goal}} books finished this year",
+      "goalLabel_one": "{{count}} of {{goal}} books finished this year",
+      "goalLabel_other": "{{count}} of {{goal}} books finished this year",
       "ofGoal": "of {{goal}}",
       "goalBehind_one": "You're {{count}} book from your goal of {{goal}} this year, {{every}}.",
       "goalBehind_other": "You're {{count}} books from your goal of {{goal}} this year, {{every}}.",
@@ -482,7 +483,8 @@
       "new": "New collection",
       "newHint": "Group books, then share one with someone on this server.",
       "sharedWith": "Shared with {{names}}",
-      "sharedWithMore": "Shared with {{names}} and {{count}} more",
+      "sharedWithMore_one": "Shared with {{names}} and {{count}} more",
+      "sharedWithMore_other": "Shared with {{names}} and {{count}} more",
       "sharedBy": "Shared by {{name}}",
       "error": "Couldn't load your collections"
     },
@@ -682,8 +684,8 @@
       "characters": "Characters"
     },
     "charactersSub": "Only people you've already met",
-    "hiddenCharacters_one": "{{count}} more matches after your place in the book, hidden to avoid spoilers.",
-    "hiddenCharacters_other": "{{count}} more match after your place in the book, hidden to avoid spoilers.",
+    "hiddenCharacters_one": "{{count}} more match after your place in the book, hidden to avoid spoilers.",
+    "hiddenCharacters_other": "{{count}} more matches after your place in the book, hidden to avoid spoilers.",
     "roleAuthor": "Author",
     "roleNarrator": "Narrator",
     "seriesRole": "Series",
@@ -880,7 +882,8 @@
   "shell": {
     "home": "AudioSilo home",
     "offline": "Offline · downloads play",
-    "serverMore": "{{name}} + {{count}} more",
+    "serverMore_one": "{{name}} + {{count}} more",
+    "serverMore_other": "{{name}} + {{count}} more",
     "openPlayer": "Open the full player for {{title}}",
     "titleTimeLeft": "{{title}} · {{time}} left",
     "dock": {
@@ -938,8 +941,8 @@
     "results_other": "{{count}} results",
     "resultsOn_one": "{{count}} result · {{servers}}",
     "resultsOn_other": "{{count}} results · {{servers}}",
-    "hiddenCharacters_one": "{{count}} more matches after your place in the book",
-    "hiddenCharacters_other": "{{count}} more match after your place in the book",
+    "hiddenCharacters_one": "{{count}} more match after your place in the book",
+    "hiddenCharacters_other": "{{count}} more matches after your place in the book",
     "hiddenHint": "Hidden to avoid spoilers"
   },
   "covers": {
@@ -1016,7 +1019,8 @@
       "entries_one": "{{count}} entry",
       "entries_other": "{{count}} entries",
       "onServers": "{{count}} on your servers",
-      "missing": "{{count}} not in your library",
+      "missing_one": "{{count}} not in your library",
+      "missing_other": "{{count}} not in your library",
       "length": "{{duration}} to listen to"
     },
     "progress": {
@@ -1080,7 +1084,8 @@
       "books_other": "{{count}} books",
       "ofTotal": "{{owned}} of {{total}}",
       "inProgress": "{{count}} in progress",
-      "finished": "{{count}} finished",
+      "finished_one": "{{count}} finished",
+      "finished_other": "{{count}} finished",
       "emptyTitle": "No series here yet",
       "emptyHint": "Books tagged with a series show up here as a shelf of spines.",
       "emptyAction": "Browse books",
@@ -1092,7 +1097,8 @@
     "narrator": "Narrator",
     "books_one": "{{count}} book",
     "books_other": "{{count}} books",
-    "finished": "{{count}} finished",
+    "finished_one": "{{count}} finished",
+    "finished_other": "{{count}} finished",
     "unknownAuthor_one": "{{count}} book has no author listed.",
     "unknownAuthor_other": "{{count}} books have no author listed.",
     "unknownNarrator_one": "{{count}} book has no narrator listed.",

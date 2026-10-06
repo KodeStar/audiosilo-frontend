@@ -129,14 +129,14 @@ describe('buildPaletteGroups: series, people and characters', () => {
       books: [],
       continueListening,
       characters: [],
-      charactersNote: '1 more matches after your place in the book',
+      charactersNote: '1 more match after your place in the book',
       goTo,
     });
     expect(groups).toEqual([
       {
         key: 'characters',
         items: [],
-        note: '1 more matches after your place in the book',
+        note: '1 more match after your place in the book',
         start: 0,
       },
     ]);

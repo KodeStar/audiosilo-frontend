@@ -128,7 +128,7 @@ function GoalRing({
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={t('home.week.goalLabel', { finished, goal })}
+      accessibilityLabel={t('home.week.goalLabel', { count: finished, goal })}
       style={{ width: size, height: size }}
       className="items-center justify-center"
     >

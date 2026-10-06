@@ -86,7 +86,7 @@ export function buildPaletteGroups({
   narrators?: PaletteItem[];
   /** Characters the listener has met (the model never hands over the others). */
   characters?: PaletteItem[];
-  /** "2 more match after your place in the book": a count, never a name. */
+  /** "2 more matches after your place in the book": a count, never a name. */
   charactersNote?: string;
   goTo: PaletteItem[];
 }): PaletteGroup[] {

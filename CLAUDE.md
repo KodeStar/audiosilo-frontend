@@ -809,7 +809,7 @@ tab, browse scroll memory) are `useShellEffects`.
   listener's place in THAT book with `meta-gating`'s rules, chapters fetched only for unfinished
   books with characters, "from the start" until they arrive). The pure `search-model.ts`
   (`matchNamed`, `matchCharacters`, `listeningIn`) is where spoiler safety lives: an unmet character
-  is only ever counted ("2 more match after your place in the book"), never named, also not via an
+  is only ever counted ("2 more matches after your place in the book"), never named, also not via an
   alias, and a name met in any book is not counted again.
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's

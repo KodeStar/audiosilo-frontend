@@ -77,3 +77,44 @@ describe('catalog switching', () => {
     }
   });
 });
+
+describe('plural forms', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('picks the one form for a count of 1 and the other form otherwise', async () => {
+    expect(i18n.t('search.hiddenCharacters', { count: 1 })).toBe(
+      '1 more match after your place in the book, hidden to avoid spoilers.',
+    );
+    expect(i18n.t('search.hiddenCharacters', { count: 3 })).toBe(
+      '3 more matches after your place in the book, hidden to avoid spoilers.',
+    );
+    await i18n.changeLanguage('es');
+    expect(i18n.t('series.stats.missing', { count: 1 })).toBe('1 no está en tu biblioteca');
+    expect(i18n.t('series.stats.missing', { count: 2 })).toBe('2 no están en tu biblioteca');
+  });
+
+  it('gives every plural key both forms, in every catalog', () => {
+    const catalogs = i18n.options.resources ?? {};
+    expect(Object.keys(catalogs)).toEqual(
+      expect.arrayContaining(['en', 'de', 'es', 'fr', 'it', 'pt']),
+    );
+    for (const [lang, res] of Object.entries(catalogs)) {
+      const keys: string[] = [];
+      const walk = (o: unknown, path: string) => {
+        if (o && typeof o === 'object') {
+          for (const [k, v] of Object.entries(o)) walk(v, path ? `${path}.${k}` : k);
+        } else keys.push(path);
+      };
+      walk(res.translation, '');
+      const set = new Set(keys);
+      for (const k of keys) {
+        if (k.endsWith('_one'))
+          expect([lang, set.has(`${k.slice(0, -4)}_other`)]).toEqual([lang, true]);
+        if (k.endsWith('_other'))
+          expect([lang, set.has(`${k.slice(0, -6)}_one`)]).toEqual([lang, true]);
+      }
+    }
+  });
+});

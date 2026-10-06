@@ -204,7 +204,7 @@ describe('SearchScreen, results', () => {
     ).toBeTruthy();
     expect(screen.getByText("Only people you've already met")).toBeTruthy();
     expect(
-      screen.getByText('2 more match after your place in the book, hidden to avoid spoilers.'),
+      screen.getByText('2 more matches after your place in the book, hidden to avoid spoilers.'),
     ).toBeTruthy();
     expect(screen.getByText('AudioSilo Meta contributors · CC BY-SA 4.0')).toBeTruthy();
 
