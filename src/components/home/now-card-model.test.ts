@@ -1,0 +1,81 @@
+import {
+  bookmarkPins,
+  bookScale,
+  chapterPlace,
+  percentHeard,
+  timeLeftAtSpeed,
+} from './now-card-model';
+
+describe('bookScale', () => {
+  const starts = [0, 100, 300, 600];
+  it('weighs each chapter by its length and marks where the listener is', () => {
+    expect(bookScale(starts, 1000, 350)).toEqual([
+      { weight: 100, state: 'past' },
+      { weight: 200, state: 'past' },
+      { weight: 300, state: 'current' },
+      { weight: 400, state: 'ahead' },
+    ]);
+  });
+  it('starts on the first chapter before anything is heard', () => {
+    expect(bookScale(starts, 1000, 0).map((s) => s.state)).toEqual([
+      'current',
+      'ahead',
+      'ahead',
+      'ahead',
+    ]);
+  });
+  it('merges neighbours past the tick limit, keeping the current one', () => {
+    const many = Array.from({ length: 10 }, (_, i) => i * 10);
+    const merged = bookScale(many, 100, 55, 4);
+    expect(merged).toHaveLength(4); // runs of three
+    expect(merged.map((s) => s.state)).toEqual(['past', 'current', 'ahead', 'ahead']);
+    expect(merged.map((s) => s.weight)).toEqual([30, 30, 30, 10]);
+  });
+  it('is a plain progress bar without chapters', () => {
+    expect(bookScale([], 1000, 250)).toEqual([
+      { weight: 250, state: 'past' },
+      { weight: 750, state: 'ahead' },
+    ]);
+    expect(bookScale([], 0, 0)).toEqual([]);
+  });
+});
+
+describe('bookmarkPins', () => {
+  it('places bookmarks along the book and drops strays', () => {
+    expect(bookmarkPins([0, 250, 1000, 1200, -5], 1000)).toEqual([0, 0.25, 1]);
+    expect(bookmarkPins([10], 0)).toEqual([]);
+  });
+});
+
+describe('chapterPlace', () => {
+  const titles = ['Prologue', 'One', 'Two'];
+  it('names the chapter the listener is in', () => {
+    expect(chapterPlace(titles, [0, 100, 200], 150)).toEqual({
+      number: 2,
+      count: 3,
+      title: 'One',
+    });
+  });
+  it('is chapter 1 before the first start, and nothing without chapters', () => {
+    expect(chapterPlace(titles, [0, 100, 200], 0)?.number).toBe(1);
+    expect(chapterPlace([], [], 50)).toBeNull();
+  });
+});
+
+describe('percentHeard', () => {
+  it('reads 99% until the book is finished', () => {
+    expect(percentHeard(999, 1000, false)).toBe(99);
+    expect(percentHeard(1000, 1000, false)).toBe(99);
+    expect(percentHeard(400, 1000, true)).toBe(100);
+    expect(percentHeard(380, 1000, false)).toBe(38);
+    expect(percentHeard(10, 0, false)).toBe(0);
+  });
+});
+
+describe('timeLeftAtSpeed', () => {
+  it('divides what is left by the speed', () => {
+    expect(timeLeftAtSpeed(400, 1000, 1.5)).toBe(400);
+    expect(timeLeftAtSpeed(400, 1000, 0)).toBe(600);
+    expect(timeLeftAtSpeed(1200, 1000, 1)).toBe(0);
+  });
+});

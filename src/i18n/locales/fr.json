@@ -200,14 +200,102 @@
     "favourites": "Favoris",
     "recentlyAdded": "Ajoutés récemment",
     "recentlyFinished": "Terminés récemment",
-    "viewMore": "Voir plus",
     "seeAll": "Tout voir",
-    "collapse": "Réduire",
     "added": "Ajouté {{when}}",
-    "progressError": "Impossible de charger ta progression.",
-    "continueEmptyTitle": "Rien en cours",
-    "continueEmpty": "Commence un livre et il apparaîtra ici.",
-    "recentError": "Impossible de charger les nouveaux livres."
+    "recentError": "Impossible de charger les nouveaux livres.",
+    "continueMore_one": "{{count}} autre en cours",
+    "continueMore_other": "{{count}} autres en cours",
+    "allInProgress": "Tous les livres en cours",
+    "acrossServers": "Sur tous tes serveurs",
+    "progressCaption": "{{percent}} % · encore {{left}}",
+    "finishedWhen": "Terminé {{when}}",
+    "servers_one": "{{count}} serveur",
+    "servers_other": "{{count}} serveurs",
+    "greeting": {
+      "morning": "Bonjour.",
+      "afternoon": "Bon après-midi.",
+      "evening": "Bonsoir.",
+      "morningNamed": "Bonjour, {{name}}.",
+      "afternoonNamed": "Bon après-midi, {{name}}.",
+      "eveningNamed": "Bonsoir, {{name}}."
+    },
+    "sync": {
+      "local": "Enregistré sur cet appareil, sera synchronisé",
+      "synced": "Progression synchronisée {{when}}",
+      "syncedShort": "Synchronisé {{when}}"
+    },
+    "now": {
+      "seriesBook": "{{series}}, tome {{position}}",
+      "chapterOf": "Chapitre {{chapter}} sur {{total}}",
+      "chapterShort": "Ch. {{chapter}} sur {{total}}",
+      "scaleLabel": "{{percent}} % du livre écouté",
+      "through": "du livre écouté",
+      "leftAt": "restant à {{speed}}",
+      "finishPace": "fin à ton rythme",
+      "resume": "Reprendre",
+      "resumeChapter": "Reprendre le chapitre {{chapter}}",
+      "pause": "Pause",
+      "resumeFailed": "Impossible de lancer ce livre. Ta position est conservée, réessaie.",
+      "openBook": "Ouvrir {{title}}",
+      "whosWho": "Qui est qui",
+      "whosWhoLabel_one": "Qui est qui, {{count}} personnage rencontré jusqu’ici",
+      "whosWhoLabel_other": "Qui est qui, {{count}} personnages rencontrés jusqu’ici",
+      "storySoFar": "L’histoire jusqu’ici"
+    },
+    "week": {
+      "title": "Cette semaine",
+      "weekdayLetters": "L,M,M,J,V,S,D",
+      "hoursLabel": "{{duration}} d’écoute ces sept derniers jours",
+      "streak_one": "{{count}} jour d’affilée",
+      "streak_other": "{{count}} jours d’affilée",
+      "noStreak": "Pas encore de série",
+      "goalLabel": "{{finished}} livres terminés sur {{goal}} cette année",
+      "ofGoal": "sur {{goal}}",
+      "goalBehind_one": "Il te reste {{count}} livre pour atteindre ton objectif de {{goal}} cette année, {{every}}.",
+      "goalBehind_other": "Il te reste {{count}} livres pour atteindre ton objectif de {{goal}} cette année, {{every}}.",
+      "every_one": "environ un par jour",
+      "every_other": "environ un tous les {{count}} jours",
+      "goalReached": "Tu as atteint ton objectif de {{goal}} livres cette année.",
+      "finishedThisYear_one": "{{count}} livre terminé cette année",
+      "finishedThisYear_other": "{{count}} livres terminés cette année",
+      "barsLabel": "Écoute par jour : {{days}}"
+    },
+    "next": {
+      "title": "La suite de tes séries",
+      "sub": "Ce qui vient après les livres en cours, y compris ceux que tu n’as pas encore",
+      "allSeries": "Toutes les séries",
+      "afterCurrent": "Après le livre en cours",
+      "afterProgress": "Après {{title}}, écouté à {{percent}} %",
+      "afterFinished": "Tu as terminé {{title}} le {{date}}",
+      "afterFinishedUndated": "Tu as terminé {{title}}"
+    },
+    "smart": {
+      "title": "Étagères intelligentes",
+      "sub": "Des filtres enregistrés qui se tiennent à jour tout seuls",
+      "eyebrow": "Étagère intelligente",
+      "progress": "Finis ce que tu as commencé",
+      "books_one": "{{count}} livre",
+      "books_other": "{{count}} livres",
+      "short": "Écoutes courtes",
+      "shortSub": "Moins de 5 heures",
+      "narrator": "Lu par {{name}}",
+      "narratorSub_one": "{{count}} livre · {{duration}} en 30 jours",
+      "narratorSub_other": "{{count}} livres · {{duration}} en 30 jours",
+      "added": "Ajoutés cette semaine",
+      "addedSub_one": "{{count}} nouveau livre",
+      "addedSub_other": "{{count}} nouveaux livres",
+      "addedServers_one": "{{count}} nouveau sur {{servers}} serveurs",
+      "addedServers_other": "{{count}} nouveaux sur {{servers}} serveurs"
+    },
+    "empty": {
+      "title": "Choisis quelque chose à écouter",
+      "body": "Commence n’importe quel livre, il t’attendra ici avec ta position.",
+      "action": "Parcourir la bibliothèque"
+    },
+    "error": {
+      "title": "Impossible de charger ta progression",
+      "body": "Rien n’est perdu : ta position est conservée sur chaque serveur. Vérifie la connexion et réessaie."
+    }
   },
   "library": {
     "browse": {

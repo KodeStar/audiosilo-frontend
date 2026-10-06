@@ -200,14 +200,102 @@
     "favourites": "Favourites",
     "recentlyAdded": "Recently added",
     "recentlyFinished": "Recently finished",
-    "viewMore": "View more",
     "seeAll": "See all",
-    "collapse": "Collapse",
     "added": "Added {{when}}",
-    "progressError": "Could not load your progress.",
-    "continueEmptyTitle": "Nothing in progress",
-    "continueEmpty": "Start a book and it will show up here.",
-    "recentError": "Could not load new books."
+    "recentError": "Could not load new books.",
+    "continueMore_one": "{{count}} more in progress",
+    "continueMore_other": "{{count}} more in progress",
+    "allInProgress": "All in progress",
+    "acrossServers": "Across all your servers",
+    "progressCaption": "{{percent}}% · {{left}} left",
+    "finishedWhen": "Finished {{when}}",
+    "servers_one": "{{count}} server",
+    "servers_other": "{{count}} servers",
+    "greeting": {
+      "morning": "Good morning.",
+      "afternoon": "Good afternoon.",
+      "evening": "Good evening.",
+      "morningNamed": "Good morning, {{name}}.",
+      "afternoonNamed": "Good afternoon, {{name}}.",
+      "eveningNamed": "Good evening, {{name}}."
+    },
+    "sync": {
+      "local": "Saved on this device, will sync",
+      "synced": "Progress synced {{when}}",
+      "syncedShort": "Synced {{when}}"
+    },
+    "now": {
+      "seriesBook": "{{series}}, book {{position}}",
+      "chapterOf": "Chapter {{chapter}} of {{total}}",
+      "chapterShort": "Ch. {{chapter}} of {{total}}",
+      "scaleLabel": "{{percent}}% through the book",
+      "through": "through the book",
+      "leftAt": "left at {{speed}}",
+      "finishPace": "finish at your pace",
+      "resume": "Resume",
+      "resumeChapter": "Resume chapter {{chapter}}",
+      "pause": "Pause",
+      "resumeFailed": "Couldn't start this book. Your place is kept, try again.",
+      "openBook": "Open {{title}}",
+      "whosWho": "Who's who",
+      "whosWhoLabel_one": "Who's who, {{count}} character met so far",
+      "whosWhoLabel_other": "Who's who, {{count}} characters met so far",
+      "storySoFar": "Story so far"
+    },
+    "week": {
+      "title": "This week",
+      "weekdayLetters": "M,T,W,T,F,S,S",
+      "hoursLabel": "{{duration}} listened in the last seven days",
+      "streak_one": "{{count}}-day streak",
+      "streak_other": "{{count}}-day streak",
+      "noStreak": "No streak yet",
+      "goalLabel": "{{finished}} of {{goal}} books finished this year",
+      "ofGoal": "of {{goal}}",
+      "goalBehind_one": "You're {{count}} book from your goal of {{goal}} this year, {{every}}.",
+      "goalBehind_other": "You're {{count}} books from your goal of {{goal}} this year, {{every}}.",
+      "every_one": "about one a day",
+      "every_other": "about one every {{count}} days",
+      "goalReached": "You reached your goal of {{goal}} books this year.",
+      "finishedThisYear_one": "{{count}} book finished this year",
+      "finishedThisYear_other": "{{count}} books finished this year",
+      "barsLabel": "Listening each day: {{days}}"
+    },
+    "next": {
+      "title": "Next in your series",
+      "sub": "What comes after the books you're on, including ones you don't have yet",
+      "allSeries": "All series",
+      "afterCurrent": "After the book you're on",
+      "afterProgress": "After {{title}}, which you're {{percent}}% into",
+      "afterFinished": "You finished {{title}} on {{date}}",
+      "afterFinishedUndated": "You finished {{title}}"
+    },
+    "smart": {
+      "title": "Smart shelves",
+      "sub": "Saved filters that keep themselves up to date",
+      "eyebrow": "Smart shelf",
+      "progress": "Finish what you started",
+      "books_one": "{{count}} book",
+      "books_other": "{{count}} books",
+      "short": "Short listens",
+      "shortSub": "Under 5 hours",
+      "narrator": "{{name}} reads",
+      "narratorSub_one": "{{count}} book · {{duration}} in 30 days",
+      "narratorSub_other": "{{count}} books · {{duration}} in 30 days",
+      "added": "Added this week",
+      "addedSub_one": "{{count}} new book",
+      "addedSub_other": "{{count}} new books",
+      "addedServers_one": "{{count}} new across {{servers}} servers",
+      "addedServers_other": "{{count}} new across {{servers}} servers"
+    },
+    "empty": {
+      "title": "Pick something to listen to",
+      "body": "Start any book and it waits for you here, with your place kept.",
+      "action": "Browse the library"
+    },
+    "error": {
+      "title": "Couldn't load your progress",
+      "body": "Nothing is lost: your place is kept on each server. Check the connection and try again."
+    }
   },
   "library": {
     "browse": {

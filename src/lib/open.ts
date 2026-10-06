@@ -1,5 +1,6 @@
 import { type Href, router } from 'expo-router';
 
+import type { BookTab } from '@/components/library/book-tabs';
 import {
   authorHref,
   bookHref,
@@ -24,8 +25,9 @@ export function useOpen() {
   return {
     openLibrary: (connectionId: string, libraryId: number, path = '') =>
       go(libraryHref(connectionId, libraryId, path)),
-    openBook: (connectionId: string, libraryId: number, path: string) =>
-      go(bookHref(connectionId, libraryId, path)),
+    /** A book page, on `tab` when given (see `parseBookTab`). */
+    openBook: (connectionId: string, libraryId: number, path: string, tab?: BookTab) =>
+      go(bookHref(connectionId, libraryId, path, tab)),
     openPlayer: (connectionId: string, libraryId: number, path: string) =>
       go(playerHref(connectionId, libraryId, path)),
     /** A series page: a local series by `name`, a community one by `work` (see `SeriesRef`). */

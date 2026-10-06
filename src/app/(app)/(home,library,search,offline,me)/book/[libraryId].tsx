@@ -24,7 +24,12 @@ import {
   seriesRails,
   summaryIsVisible,
 } from '@/components/library/book-meta';
-import { type BookTab, bookTabs, TAB_LABEL_KEY } from '@/components/library/book-tabs';
+import {
+  type BookTab,
+  bookTabs,
+  parseBookTab,
+  TAB_LABEL_KEY,
+} from '@/components/library/book-tabs';
 import { listeningProgressFor } from '@/components/library/meta-gating';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
@@ -105,9 +110,14 @@ export default function BookDetailScreen() {
 function BookDetailContent() {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
+  const {
+    libraryId: libraryIdParam,
+    path: pathParam,
+    tab: tabParam,
+  } = useLocalSearchParams<{
     libraryId: string;
     path?: string | string[];
+    tab?: string | string[];
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
@@ -151,7 +161,7 @@ function BookDetailContent() {
   // The selected tab. Held as an intent: which tabs EXIST depends on data that
   // can arrive late (or vanish), so the render below falls back to the first
   // available tab rather than showing a blank panel.
-  const [tab, setTab] = useState<BookTab>('chapters');
+  const [tab, setTab] = useState<BookTab>(() => parseBookTab(tabParam) ?? 'chapters');
   // The spoiler reveal is held HERE, not per tab: revealing in Characters and
   // switching to Recaps must not re-hide everything the reader just chose to see.
   const [showSpoilers, setShowSpoilers] = useState(false);
