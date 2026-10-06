@@ -11,25 +11,21 @@ import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { GlyphTile } from '../glyph-tile';
 // The quiet row's layout (the surface itself is PressableRow's).
 const ROW = 'my-1 w-full flex-row items-center gap-3 px-3 py-2.5';
-const GLYPH = 'h-10 w-10 items-center justify-center rounded-lg';
 
 /** Favourites sits alongside the libraries as a special "shelf": a row that opens
  * the dedicated Favourites screen. Always shown so it stays discoverable. */
 function FavouritesShelfRow() {
-  const themed = useThemeColors();
   const { t } = useTranslation();
   const { favourites } = useFavouritesAll();
   const count = favourites.length;
   return (
     <Link href="/library/favourites" asChild>
       <PressableRow accessibilityRole="link" className={ROW}>
-        <View className={`${GLYPH} bg-brand/10`}>
-          <Icon name="heart-solid" size={18} color={themed.brand} />
-        </View>
+        <GlyphTile icon="heart-solid" />
         <View className="flex-1">
           <Text variant="label">{t('library.favourites.title')}</Text>
           <Text variant="muted">
@@ -51,7 +47,6 @@ function FavouritesShelfRow() {
  * memory). Unlike the other modes it spans every library, not the selected one.
  */
 export function FoldersMode() {
-  const themed = useThemeColors();
   const { t } = useTranslation();
   const { libraries, isLoading, error } = useLibrariesAll();
   const { openLibrary } = useOpen();
@@ -94,9 +89,7 @@ export function FoldersMode() {
               accessibilityRole="button"
               className={ROW}
             >
-              <View className={`${GLYPH} bg-brand/10`}>
-                <Icon name="folder" size={18} color={themed.brand} />
-              </View>
+              <GlyphTile icon="folder" />
               <View className="flex-1">
                 <Text variant="label">{lib.name}</Text>
                 <Text variant="muted">{lib.default_view}</Text>

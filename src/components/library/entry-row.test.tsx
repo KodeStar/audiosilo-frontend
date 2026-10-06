@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { FsEntry } from '@/api/types';
+import { colors } from '@/theme/tokens';
 
 // Link (asChild) just renders its child so the pressable mounts; navigation isn't
 // under test here.
@@ -68,5 +69,15 @@ describe('EntryRow', () => {
     mockFavourites = [{ library_id: 1, path: 'Brandon Sanderson' }];
     await mount(<EntryRow entry={dir} connectionId="c1" libraryId={1} />);
     expect(screen.getByLabelText('Remove from favourites')).toBeTruthy();
+  });
+
+  // One pink thing per view: a list of folders must not spend it on every row's glyph.
+  it("draws a folder's glyph tile in muted ink, not pink", async () => {
+    await mount(<EntryRow entry={dir} connectionId="c1" libraryId={1} />);
+    const tile = screen.getByTestId('glyph-tile');
+    expect(String(tile.props.className)).toContain('bg-muted');
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree).not.toContain('bg-brand');
+    expect(tree.toLowerCase()).not.toContain(colors.light.brand.toLowerCase());
   });
 });

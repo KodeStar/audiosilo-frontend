@@ -5,6 +5,7 @@ import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/a
 import { LayoutToggle } from '@/components/library/books/books-controls';
 import { useBooksLayout } from '@/components/library/books/books-layout-store';
 import { CoverGrid, CoverGridSkeleton, CoverListRow } from '@/components/library/cover-grid';
+import { GlyphTile } from '@/components/library/glyph-tile';
 import { pageGutter } from '@/components/library/cover-layout';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { GhostCovers } from '@/components/ui/ghost-art';
 import { Icon } from '@/components/ui/icon';
-import { PressableRow } from '@/components/ui/row-surface';
+import { PressableRow, RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -164,18 +165,16 @@ function BookRow({ fav, server }: { fav: SourcedFavourite; server?: string }) {
 
 /** A hearted folder: opens it in the folder browser. */
 function FolderRow({ fav }: { fav: SourcedFavourite }) {
-  const themed = useThemeColors();
   const { openLibrary } = useOpen();
   return (
-    <View className="flex-row items-center gap-2">
+    // Like CoverListRow: the card holds the press and the heart, side by side.
+    <RowSurface className="flex-row items-center pr-1">
       <PressableRow
         onPress={() => openLibrary(fav.connectionId, fav.library_id, fav.path)}
         accessibilityRole="button"
-        className="min-h-[56px] flex-1 flex-row items-center gap-3 px-3 py-2"
+        className="min-h-[56px] flex-1 flex-row items-center gap-3 border-0 bg-transparent px-3 py-2"
       >
-        <View className="h-10 w-10 items-center justify-center rounded-lg bg-muted">
-          <Icon name="folder" size={18} color={themed.mutedForeground} />
-        </View>
+        <GlyphTile icon="folder" />
         <View className="flex-1">
           <Text variant="label" numberOfLines={1}>
             {pathLeaf(fav.path)}
@@ -188,6 +187,6 @@ function FolderRow({ fav }: { fav: SourcedFavourite }) {
         </View>
       </PressableRow>
       <UnfavouriteButton fav={fav} />
-    </View>
+    </RowSurface>
   );
 }
