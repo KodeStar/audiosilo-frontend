@@ -5,6 +5,7 @@ import { mountWithPortal } from '@/testing/render-overlay';
 const mockRemove = jest.fn();
 jest.mock('@/downloads/use-download-controls', () => ({
   useDownloadControls: () => ({
+    connectionId: 'c',
     supported: true,
     status: 'downloaded',
     error: null,
@@ -13,8 +14,12 @@ jest.mock('@/downloads/use-download-controls', () => ({
     totalBytes: 52_428_800,
     start: jest.fn(),
     cancel: jest.fn(),
-    remove: mockRemove,
   }),
+}));
+// The confirm reads the room it frees from the registry and removes through the store.
+jest.mock('@/downloads/store', () => ({
+  useDownloadEntry: () => ({ status: 'downloaded', bytes: 52_428_800, totalBytes: 52_428_800 }),
+  useDownloads: { getState: () => ({ remove: mockRemove }) },
 }));
 
 /* eslint-disable import/first */
@@ -45,6 +50,7 @@ describe('DownloadControl', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Remove download' }));
       await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
       expect(mockRemove).toHaveBeenCalledTimes(1);
+      expect(mockRemove).toHaveBeenCalledWith('c', 1, 'b');
     },
   );
 });

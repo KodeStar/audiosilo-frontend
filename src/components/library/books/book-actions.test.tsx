@@ -205,7 +205,7 @@ describe('useBookActions', () => {
     find('collect')!.onPress();
     expect(openCollect).toHaveBeenCalled();
     find('download')!.onPress();
-    expect(mockDownload).toHaveBeenCalledWith('c', 1, b);
+    expect(mockDownload).toHaveBeenCalledWith('c', 1, b, undefined);
     find('series')!.onPress();
     expect(mockOpenSeries).toHaveBeenCalledWith('c', 1, { name: 'Series' });
   });

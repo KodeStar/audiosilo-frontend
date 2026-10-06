@@ -6,12 +6,10 @@ import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/toggle-group';
-import { cn } from '@/lib/utils';
 import { useKeepAhead } from '@/downloads/keep-ahead-controller';
 import type { KeepAheadStatus } from '@/downloads/keep-ahead';
 import {
   KEEP_AHEAD_CHOICES,
-  toKeepAhead,
   useSettings,
   type AutoDownloadMode,
   type KeepAhead,
@@ -19,14 +17,29 @@ import {
 
 type KeepAheadValue = `${KeepAhead}`;
 
-/** The Off / 1 / 2 / 3 choices, shared with the Settings screen (one setting, two
- * places that show it). */
-export function useKeepAheadOptions(): SegmentedOption<KeepAheadValue>[] {
+/**
+ * "Keep the next books ready": Off / 1 / 2 / 3, bound to the one `keepAhead` setting.
+ * The Downloads page's rules card, Settings and the series page all show this control.
+ */
+export function KeepAheadControl({ grow, className }: { grow?: boolean; className?: string }) {
   const { t } = useTranslation();
-  return KEEP_AHEAD_CHOICES.map((n) => ({
-    value: `${n}`,
+  const keepAhead = useSettings((s) => s.keepAhead);
+  const setKeepAhead = useSettings((s) => s.setKeepAhead);
+  const options = KEEP_AHEAD_CHOICES.map((n) => ({
+    value: `${n}` as KeepAheadValue,
     label: n === 0 ? t('downloads.rules.keepAhead.off') : String(n),
   }));
+  return (
+    <SegmentedControl
+      options={options}
+      value={`${keepAhead}`}
+      // The options are the choices, so the value is one of them.
+      onChange={(v) => setKeepAhead(Number(v) as KeepAhead)}
+      grow={grow}
+      accessibilityLabel={t('downloads.rules.keepAhead.label')}
+      className={className}
+    />
+  );
 }
 
 /** Never / On Wi-Fi / Always, shared with the Settings screen (one wording for one
@@ -39,9 +52,6 @@ export function useAutoDownloadModes(): SegmentedOption<AutoDownloadMode>[] {
     { value: 'always', label: t('downloads.rules.mode.always') },
   ];
 }
-
-export const keepAheadValue = (n: KeepAhead): KeepAheadValue => `${n}`;
-export const parseKeepAhead = (v: KeepAheadValue): KeepAhead => toKeepAhead(Number(v));
 
 const STATUS_KEY = {
   off: null,
@@ -57,7 +67,7 @@ const STATUS_KEY = {
 
 /** One line on what "Keep the next books ready" is doing right now, from the controller
  * (`useKeepAhead`). `never` wins over a stale plan: automatic downloads are off. */
-export function KeepAheadStatusLine({ className }: { className?: string }) {
+export function KeepAheadStatusLine() {
   const { t } = useTranslation();
   const status = useKeepAhead((s) => s.status);
   const count = useSettings((s) => s.keepAhead);
@@ -69,7 +79,7 @@ export function KeepAheadStatusLine({ className }: { className?: string }) {
   return (
     <Text
       variant="caption"
-      className={cn(shown === 'no-space' && 'text-warning', className)}
+      className={shown === 'no-space' ? 'text-warning' : undefined}
       accessibilityLiveRegion="polite"
     >
       {t(key)}
@@ -99,11 +109,8 @@ export function RulesCard({ className }: { className?: string }) {
   const { t } = useTranslation();
   const mode = useSettings((s) => s.autoDownloadNext);
   const setMode = useSettings((s) => s.setAutoDownloadNext);
-  const keepAhead = useSettings((s) => s.keepAhead);
-  const setKeepAhead = useSettings((s) => s.setKeepAhead);
   const autoDelete = useSettings((s) => s.autoDeleteFinished);
   const setAutoDelete = useSettings((s) => s.setAutoDeleteFinished);
-  const keepAheadOptions = useKeepAheadOptions();
 
   const modes = useAutoDownloadModes();
 
@@ -136,12 +143,7 @@ export function RulesCard({ className }: { className?: string }) {
           </>
         }
       >
-        <SegmentedControl
-          options={keepAheadOptions}
-          value={keepAheadValue(keepAhead)}
-          onChange={(v) => setKeepAhead(parseKeepAhead(v))}
-          accessibilityLabel={t('downloads.rules.keepAhead.label')}
-        />
+        <KeepAheadControl />
       </Row>
       <Row label={t('downloads.rules.autoDelete')}>
         <Switch

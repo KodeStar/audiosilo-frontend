@@ -9,7 +9,6 @@ import { SubNavActions } from '@/components/shell/tab-root-nav';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import {
-  entryBytes,
   groupByServer,
   splitDownloads,
   storageBar,
@@ -263,15 +262,7 @@ export function DownloadsScreen() {
         {nothing ? <DownloadsEmpty onBrowse={() => press('(library)')} /> : null}
       </View>
 
-      <RemoveDownloadConfirm
-        book={removing ? { title: removing.title, bytes: entryBytes(removing) } : null}
-        onCancel={() => setRemoving(null)}
-        onConfirm={() => {
-          if (removing)
-            void store().remove(removing.connectionId, removing.libraryId, removing.path);
-          setRemoving(null);
-        }}
-      />
+      <RemoveDownloadConfirm target={removing} onClose={() => setRemoving(null)} />
     </ScrollView>
   );
 }

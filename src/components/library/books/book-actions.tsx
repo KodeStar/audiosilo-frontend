@@ -20,8 +20,7 @@ import {
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { entryBytes } from '@/downloads/downloads-view';
-import { useDownloadEntry, useDownloads } from '@/downloads/store';
+import { useDownloadControls } from '@/downloads/use-download-controls';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -40,6 +39,13 @@ export type BookAction = {
   destructive?: boolean;
   group?: boolean;
 };
+
+/** The download item by the book's download state. */
+const DOWNLOAD_ACTION = {
+  remove: { icon: 'trash', label: 'library.bookActions.removeDownload' },
+  cancel: { icon: 'circle-stop', label: 'library.bookActions.cancelDownload' },
+  start: { icon: 'download', label: 'library.bookActions.download' },
+} as const satisfies Record<string, { icon: IconName; label: string }>;
 
 type Target = { connectionId: string; libraryId: number; book: Book; progress?: Progress };
 
@@ -67,8 +73,7 @@ export function useBookActions(
   const progressEdit = useCapability('progress_edit', connectionId);
   const edit = useEditProgress(connectionId);
   const markFinished = useMarkFinished(connectionId);
-  const download = useDownloadEntry(connectionId, libraryId, path);
-  const canDownload = useDownloads((s) => s.supported);
+  const download = useDownloadControls(libraryId, path, book, undefined, connectionId);
   const status = bookStatus(progress);
 
   const failed = (e: unknown) => {
@@ -121,18 +126,6 @@ export function useBookActions(
     });
   };
 
-  const onDownload = () => {
-    const store = useDownloads.getState();
-    if (download?.status === 'downloaded') {
-      confirmRemove();
-    } else if (download?.status === 'downloading' || download?.status === 'queued') {
-      store.cancel(connectionId, libraryId, path);
-    } else {
-      store.download(connectionId, libraryId, book);
-      toast({ title: t('library.bookActions.downloading'), description: book.title });
-    }
-  };
-
   const out: BookAction[] = [
     {
       key: 'play',
@@ -161,24 +154,23 @@ export function useBookActions(
       onPress: openCollect,
     });
   }
-  if (canDownload) {
-    const s = download?.status;
+  if (download.supported) {
+    const s = download.status;
+    const state =
+      s === 'downloaded' ? 'remove' : s === 'downloading' || s === 'queued' ? 'cancel' : 'start';
+    const run = {
+      remove: confirmRemove,
+      cancel: download.cancel,
+      start: () => {
+        download.start();
+        toast({ title: t('library.bookActions.downloading'), description: book.title });
+      },
+    }[state];
     out.push({
       key: 'download',
-      icon:
-        s === 'downloaded'
-          ? 'trash'
-          : s === 'downloading' || s === 'queued'
-            ? 'circle-stop'
-            : 'download',
-      label: t(
-        s === 'downloaded'
-          ? 'library.bookActions.removeDownload'
-          : s === 'downloading' || s === 'queued'
-            ? 'library.bookActions.cancelDownload'
-            : 'library.bookActions.download',
-      ),
-      onPress: onDownload,
+      ...DOWNLOAD_ACTION[state],
+      label: t(DOWNLOAD_ACTION[state].label),
+      onPress: run,
     });
   }
   if (status === 'finished') {
@@ -255,8 +247,6 @@ export function BookActionsMenu({
     ),
     ...extra,
   ];
-  const download = useDownloadEntry(connectionId, libraryId, book.rel_path);
-
   return (
     <>
       {phone ? (
@@ -334,17 +324,13 @@ export function BookActionsMenu({
         />
       ) : null}
       <RemoveDownloadConfirm
-        book={
-          removing
-            ? { title: book.title, bytes: download ? entryBytes(download) : book.size }
-            : null
+        target={
+          removing ? { connectionId, libraryId, path: book.rel_path, title: book.title } : null
         }
-        onCancel={() => setRemoving(false)}
-        onConfirm={() => {
-          setRemoving(false);
-          void useDownloads.getState().remove(connectionId, libraryId, book.rel_path);
-          toast({ title: t('library.bookActions.downloadRemoved'), description: book.title });
-        }}
+        onClose={() => setRemoving(false)}
+        onRemoved={() =>
+          toast({ title: t('library.bookActions.downloadRemoved'), description: book.title })
+        }
       />
     </>
   );

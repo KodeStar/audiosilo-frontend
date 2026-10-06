@@ -7,6 +7,8 @@ import { useDownloadEntry, useDownloads } from './store';
 import type { DownloadStatus } from './types';
 
 export type DownloadControls = {
+  /** The connection the download belongs to. */
+  connectionId: string;
   supported: boolean;
   status: DownloadStatus | undefined;
   error: string | undefined;
@@ -15,18 +17,20 @@ export type DownloadControls = {
   totalBytes: number;
   start: () => void;
   cancel: () => void;
-  remove: () => void;
 };
 
-/** Drives the download UI for a single book (book detail, badges). */
+/** Drives the download UI for a single book (book detail, badges, a book's actions). */
 export function useDownloadControls(
   libraryId: number,
   path: string,
   book?: Book,
   chapterData?: ChaptersResponse,
+  connectionId?: string,
 ): DownloadControls {
-  // The book screen's connection scope (from its `?connection=` query param) keys downloads.
-  const cid = useScopedCid();
+  // The book screen's connection scope (from its `?connection=` query param) keys
+  // downloads, unless the caller names the connection (a list of several servers).
+  const scoped = useScopedCid();
+  const cid = connectionId ?? scoped;
   const entry = useDownloadEntry(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
   // serve offline media), not just the static Cache-API capability.
@@ -39,12 +43,9 @@ export function useDownloadControls(
     () => useDownloads.getState().cancel(cid, libraryId, path),
     [cid, libraryId, path],
   );
-  const remove = useCallback(
-    () => void useDownloads.getState().remove(cid, libraryId, path),
-    [cid, libraryId, path],
-  );
 
   return {
+    connectionId: cid,
     supported,
     status: entry?.status,
     error: entry?.error,
@@ -53,6 +54,5 @@ export function useDownloadControls(
     totalBytes: entry?.totalBytes ?? 0,
     start,
     cancel,
-    remove,
   };
 }

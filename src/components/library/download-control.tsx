@@ -34,17 +34,13 @@ export function DownloadControl({
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const { supported, status, error, progress, bytes, totalBytes, start, cancel, remove } =
+  const { connectionId, supported, status, error, progress, bytes, totalBytes, start, cancel } =
     useDownloadControls(libraryId, path, book, chapterData);
   const [confirming, setConfirming] = useState(false);
   const confirm = (
     <RemoveDownloadConfirm
-      book={confirming ? { title: book?.title ?? '', bytes: Math.max(bytes, totalBytes) } : null}
-      onCancel={() => setConfirming(false)}
-      onConfirm={() => {
-        setConfirming(false);
-        remove();
-      }}
+      target={confirming ? { connectionId, libraryId, path, title: book?.title ?? '' } : null}
+      onClose={() => setConfirming(false)}
     />
   );
 

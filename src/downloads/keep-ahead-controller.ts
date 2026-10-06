@@ -17,7 +17,7 @@ import { canAutoDownload, onNetworkChange } from '@/lib/network';
 import { bookTitle } from '@/lib/paths';
 import { resolveNextBook } from '@/playback/next-book';
 import { usePlayer } from '@/playback/store';
-import { toKeepAhead, useSettings } from '@/stores/settings';
+import { useSettings } from '@/stores/settings';
 
 import {
   aheadKey,
@@ -172,7 +172,7 @@ async function startOne(client: ApiClient, book: AheadBook): Promise<void> {
 /** Plan once and act on it. Never throws: a server that can't be reached simply plans
  * nothing this time (no reachability report: this is a background nicety). */
 export async function runKeepAhead(): Promise<void> {
-  const count = toKeepAhead(useSettings.getState().keepAhead);
+  const count = useSettings.getState().keepAhead;
   const downloads = useDownloads.getState();
   const np = usePlayer.getState().nowPlaying;
   const publish = (status: KeepAheadStatus, slots: KeepAheadSlot[] = []) =>

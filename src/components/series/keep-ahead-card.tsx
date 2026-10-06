@@ -1,16 +1,9 @@
 import { useTranslation } from 'react-i18next';
 
-import {
-  KeepAheadStatusLine,
-  keepAheadValue,
-  parseKeepAhead,
-  useKeepAheadOptions,
-} from '@/components/downloads/rules-card';
+import { KeepAheadControl, KeepAheadStatusLine } from '@/components/downloads/rules-card';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
-import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useDownloads } from '@/downloads/store';
-import { useSettings } from '@/stores/settings';
 
 /**
  * The series page's "Keep ahead offline" shortcut: the SAME `keepAhead` setting the
@@ -22,21 +15,12 @@ import { useSettings } from '@/stores/settings';
 export function KeepAheadCard() {
   const { t } = useTranslation();
   const available = useDownloads((s) => s.hydrated && s.supported);
-  const keepAhead = useSettings((s) => s.keepAhead);
-  const setKeepAhead = useSettings((s) => s.setKeepAhead);
-  const options = useKeepAheadOptions();
   if (!available) return null;
   return (
     <Card testID="series-keep-ahead" className="mt-4 gap-2.5 p-4">
       <Text variant="eyebrow">{t('series.keepAhead')}</Text>
       <Text variant="muted">{t('downloads.rules.keepAhead.hint')}</Text>
-      <SegmentedControl
-        options={options}
-        value={keepAheadValue(keepAhead)}
-        onChange={(v) => setKeepAhead(parseKeepAhead(v))}
-        accessibilityLabel={t('downloads.rules.keepAhead.label')}
-        className="self-start"
-      />
+      <KeepAheadControl className="self-start" />
       <KeepAheadStatusLine />
     </Card>
   );

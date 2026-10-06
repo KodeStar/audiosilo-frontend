@@ -121,7 +121,7 @@ export const useSettings = create<SettingsState>()((set, get) => {
     setVirtualChapterInterval: (virtualChapterInterval) => update({ virtualChapterInterval }),
     setAutoPlayNext: (autoPlayNext) => update({ autoPlayNext }),
     setAutoDownloadNext: (autoDownloadNext) => update({ autoDownloadNext }),
-    setKeepAhead: (keepAhead) => update({ keepAhead: toKeepAhead(keepAhead) }),
+    setKeepAhead: (keepAhead) => update({ keepAhead }),
     setAutoDeleteFinished: (autoDeleteFinished) => update({ autoDeleteFinished }),
     setAutoSleepTimer: (autoSleepTimer) => update({ autoSleepTimer }),
     setAutoSleepFrom: (autoSleepFrom) => update({ autoSleepFrom }),
