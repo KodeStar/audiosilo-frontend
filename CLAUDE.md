@@ -769,8 +769,8 @@ bar. Tablet/desktop (web and native):
 chrome; a tab root fills the rest with `SubNavSections` (its segmented sections) and `SubNavActions`
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
 `useSubNav` store on tablet/desktop and render in place on a phone; published nodes render in the
-sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), a closed `DrawerSlot` on desktop (Up next fills it in
-Phase 2), and `DockedPlayer` (84) whenever a book is loaded (it mounts its speed/sleep sheets as
+sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), the `DrawerSlot` on desktop (Up next's drawer, below),
+and `DockedPlayer` (84) whenever a book is loaded (it mounts its speed/sleep sheets as
 siblings so they cover the app). Route-driven side effects (search reset on leaving the Search
 tab, browse scroll memory) are `useShellEffects`.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
@@ -787,6 +787,17 @@ tab, browse scroll memory) are `useShellEffects`.
   top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do). A book opens
   with a plain push, so it lands in the current tab. Authors, series, narrators and characters wait
   for Phase 2.
+- **Up next** (`src/components/upnext/`, capability `queue`; nothing renders while `/server` is unknown):
+  the desktop drawer in `DrawerSlot` (open by default, 300-480 wide by its left edge, both remembered
+  per device in `up-next-store.ts`) and the same `UpNextPanel` in a bottom `Sheet` on tablet/phone (mounted
+  once by each `(app)` layout). Entry points: `UpNextButton` in the top bar, the dock and the phone header
+  on tab roots; Q on the web (`useUpNextShortcut`); `openUpNext()` / `toggleUpNext()` for anyone else. It
+  shows ONE connection's queue: the loaded book's, else the default (`queueConnectionId`). Every write keeps
+  hidden rows: a reorder (grip drag via gesture-handler, arrow keys on the grip or Alt+arrows, screen-reader
+  Move up/down) is a positioned add with the visible index, Clear is exact-path deletes with one Undo. Web
+  desktop covers (`CoverTile`) are HTML5 drag sources (`drag-source.web.ts`) for the drawer's drop zone,
+  which takes only a book from the queue's own server. The queue does NOT drive what plays next yet
+  (Phase 3); the footer switch is the existing `autoPlayNext`. Pure rules: `up-next-model.ts`.
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
   saved-locally line: needs signing in again > offline > signed in as), opening its account screen;
