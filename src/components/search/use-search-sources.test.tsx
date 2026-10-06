@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { BookMeta, Capabilities, Progress } from '@/api/types';
+import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // Two servers: `a` advertises the Phase 1 flags, `b` is an older server with none. The
 // stub clients record what each was asked, so the gates are checked by what was sent.
@@ -96,6 +97,8 @@ function mount<T>(useHook: () => T) {
 }
 
 beforeEach(() => jest.clearAllMocks());
+
+notifyQueriesSynchronously();
 
 describe('usePeopleSources', () => {
   it('lists every library of the servers with browse_people, and never asks one without', async () => {
