@@ -335,7 +335,7 @@ a 502 from a down meta service doesn't spin). Strings under `book.meta.*` (plus 
 two `book.tabs.*` keys) in all 6 locales. The wire envelope (`BookMeta` discriminated
 union in `types.ts`) is hand-mirrored from the server.
 
-**Player-redesign data API (Phase 1a: wire only, no UI yet).** `src/api` mirrors the
+**Player-redesign data API (Phase 1a, the wire).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on
 older servers = false). `useCapability(flag, connectionId?)` reads a flag as `undefined`
 (not known yet) / `true` / `false`, and the gated hooks give a server without the flag
@@ -354,11 +354,12 @@ places its next work, else series -> folder -> none, `source` naming who produce
 `includePrevious` request get the server's 30 s budget, not 15 s). `Book` gains
 `published`, `description` (item only), `cover_color`, `cover_version`; `BookMetaWork`
 gains `community_description` + `attribution` (render the server's text beside CC BY-SA
-content), rail entries `local`, the recording `chapter_count`. Nothing consumes them yet:
-Phase 2+ of PLAYER-REDESIGN-PLAN.md does, so the screens above still gate spoilers and
-pick the next book on the device.
+content), rail entries `local`, the recording `chapter_count`. Phase 2's browse screens
+(below) consume the browse lists, `next_book`, the thumbnails and the cover colours; the book
+screen and the player still gate spoilers and pick the next book on the device.
 
-**Player-redesign user state (Phase 1b: wire only, no UI yet).** Same pattern, six more
+**Player-redesign user state (Phase 1b, the wire; Phase 2 uses `queue`, `collections`,
+`progress_edit` and `user_stats`).** Same pattern, six more
 flags: `queue` (`useQueue` + set/add/remove), `collections` (`useCollections`,
 `useCollection(id)`, `useShareTargets(enabled)` - pass false for demo accounts, which
 get a 403 - and the collection/items/shares mutations; read-only sharing, a viewer's
@@ -737,6 +738,79 @@ file under `src/components/library/modes/`. The detail pages take query params t
 `seriesHref(cid, lib, { name } | { work })` (`name` = a local `Book.series`, `work` = a community
 work id whose rails to show), `authorHref` / `narratorHref(cid, lib, name)` (exact field values),
 `collectionHref(cid, id)`, with `parse*Params` and `useOpen().open{Series,Author,Narrator,Collection}`.
+In Collections mode the picker names servers only (`LibraryPicker by="server"`, hidden with one
+server): collections belong to a server, not a library. The sections are a scrolling
+`SegmentedControl` that keeps the chosen segment in view and fades the side with more (a tablet's
+sub-nav can't fit all six).
+
+**Library Books mode** (`modes/books-mode.tsx`, rules in `books/books-view.ts`): `useWholeLibrary`
+pages through the selected library 200 books at a time until `next_cursor` runs out, then filters
+(status from the listener's progress, Downloaded from the registry, length buckets) and sorts on
+the device. The URL is the contract other screens link to: `/library?mode=books&sort=&status=&dl=1&len=`
+(`libraryModeHref`). Grid or list is remembered per device (`books-layout-store.ts`,
+`audiosilo.booksLayout`); Title sort adds letter heads and an A-Z rail. **Book actions**
+(`books/book-actions.tsx`): `useBookActions` (Play/Resume, Up next, Add to collection, download,
+Mark as finished / not finished with Undo where `progress_edit` allows, More in this series) is
+presented by `BookActionsMenu`: a dropdown on tablet/desktop, a sheet on a phone, plus the dialogs
+its actions open (Add to collection, the shared `RemoveDownloadConfirm`). A list row has
+`BookActionsButton` ("..."); every `CoverTile` opens the same menu itself (`tile-actions.tsx`) on
+long-press, right-click, the Menu key or Shift+F10 (`useContextMenuRequest`, `src/lib/context-menu`)
+and a screen reader's "More actions", anchored to the tile's corner, with the screen's `book` row
+when it has one (else one item fetch). **Collections** (`modes/collections-mode.tsx`,
+`collection-screen.tsx`, `collections/`): Favourites first, own and shared collections, New
+collection; the owner edits, shares read-only (not for demo accounts), reorders with positioned adds
+(Move up / Move down), removes by the item's own path; a viewer can Leave.
+
+**Series, author and narrator pages** (`src/components/series/`): `series-model.ts` builds ONE
+ordered entry list from the owned books plus, when `useBookMeta` matched one of them, the rail in the
+chosen reading order: `owned`, `elsewhere` (a copy on another signed-in server, found by title and
+author) or `ghost` (a community entry nobody has; a local gap without community data is only
+"Book 3"). The page draws it as a bookcase (`bookcase.tsx`, `spine.tsx`): spine sizes and title fit
+are the pure `spine-fit.ts` (text is estimated from a per-font advance table, never measured),
+colours `spine-colors.ts` (the cover's colour, else a cloth colour from the title,
+`src/lib/monogram.ts`). Then the entry list with each entry's one action (`entry-actions.tsx`:
+Resume chapter N, Play, `QueueButton`, Open on <server>, View on AudioSilo Meta), the "Keep ahead
+offline" card (the one `keepAhead` setting, only where the device can download) and the CC0 credit.
+Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books
+only once on screen; Search reuses the card. Authors / Narrators modes and the person pages are
+`people-mode.tsx` / `person-page.tsx` over `people-model.ts` (letter heads, portraits, books grouped
+by series).
+
+**Home** (`src/components/home/`, rules in `home-model.ts`, `listening.ts`, `now-card-model.ts`):
+aggregated over every signed-in server, each book keeping its own connection. The Now card is the
+loaded book, else the latest in progress (chapter scale, time left at the book's speed, a finish
+date from `user_stats` when there is enough listening, Who's who / Story so far opening the book
+page on that tab via `?tab=`); This week (`user_stats`) counts the streak in SERVER time; Next in
+your series uses `next_book` (a work without `local` is a ghost opening the series page); smart
+shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
+offline queue length without changing progress-sync (decision 7).
+
+**One play path** (`src/components/player/use-play-book.ts`): `usePlayBook()` is how Home, the
+Library, the series page and Up next start a book: a phone opens the full player (over the book page
+with `viaBookPage`), a tablet or desktop plays it under the docked bar through the book's own
+connection once its chapters are in, a loaded book plays on (or toggles, with `toggle`). It rejects
+when the book can't be fetched, so the caller can say so.
+
+**Downloads page and automatic downloads** (`src/components/downloads/`, `src/downloads/`):
+- **Keep the next books ready** (`keepAhead`: Off / 1 / 2 / 3, default Off; Downloads page, Settings
+  and the series page bind the one setting through `rules-card.tsx`'s exports). The pure planner
+  (`keep-ahead.ts`) takes the next N books after the loaded one (Up next first, then the series),
+  obeys the network rule (`autoDownloadNext`), starts them in order and stops before free space would
+  drop under max(1 GB, 10%) (`reserveBytes`; one at a time when the room is unknowable). The
+  controller (`keep-ahead-controller.ts`, started once from the root layout) gathers the inputs and
+  waits a moment after the book changes, so the store's own download of the book you start always
+  goes first; it never changes the playback store.
+- **The session decline mark**: cancelling or removing a download marks it declined until the app
+  restarts (`isDeclined`, memory only); automatic downloads skip it, a listener's download lifts it.
+- **Kept files**: a failed download keeps the files that finished (classified cause in
+  `failure.ts`, `failure.kept`), and a retry fetches only the rest. `runOne` lists each finished file
+  in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download
+  whose listed files are all still on disk (an interrupted one says the app closed); anything else is
+  dropped with its folder. No storage format change.
+- **Web**: the service worker now registers in the exported player even when the root layout loads
+  after the page's load event (before, offline web playback never worked), and the download-support
+  probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).
+- Removing a download asks first everywhere (`RemoveDownloadConfirm`, with the room it frees).
 
 Content routes are **flat** - `library/[libraryId].tsx` (re-exports
 `src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -
@@ -776,12 +850,16 @@ tab, browse scroll memory) are `useShellEffects`.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
   omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:
-  never while typing in a field, over another dialog, or over the player modal). State (open, query,
-  recent searches persisted per device under `audiosilo.paletteRecent`) is `usePalette`
-  (`palette-store.ts`); which items show, the grouping, the arrow-key clamp and the shortcut test are
-  the pure `palette-model.ts`. Content is only what exists: Actions (pause / "Resume <chapter>",
-  sleep in 30 minutes, sleep at end of chapter - only with real chapters -, open the full player, go
-  to settings, switch light/dark), Books from `useSearchAll` (debounced, `useDebouncedValue`; sources
+  never while typing in a field, over another dialog, or over the player modal; those guards are
+  `isEditable` / `isModalOpen` in `src/lib/keyboard.ts`, shared with Up next's Q). `usePalette`
+  (`palette-store.ts`) holds open and the query; the recent searches are the Search screen's
+  `useRecentSearches` (`src/stores/search.ts`, persisted per device under `audiosilo.paletteRecent`).
+  Which items show, the grouping, the arrow-key clamp and the shortcut test are the pure
+  `palette-model.ts`; the Actions list is its `buildActionItems`. Content is only what exists: Actions
+  (pause / "Resume <chapter>", sleep in 30 minutes, sleep at end of chapter - only with real
+  chapters -, open the full player, Open Up next with the queued count - only where the queue's
+  server has `queue`, through `openUpNext()` -, go to settings, switch light/dark), Books from
+  `useSearchAll` (debounced, `useDebouncedValue`; sources
   from `useSourceLabeller`; empty query: Continue listening from the cached `useAllProgressAll` with
   `refetchOnMount: false`, disabled while a query is typed, `isInProgress` shared with Home), Go to (the
   top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do). A book opens
@@ -795,7 +873,8 @@ tab, browse scroll memory) are `useShellEffects`.
   on tab roots; Q on the web (`useUpNextShortcut`); `openUpNext()` / `toggleUpNext()` for anyone else. It
   shows ONE connection's queue: the loaded book's, else the default (`queueConnectionId`). Every write keeps
   hidden rows: a reorder (grip drag via gesture-handler, arrow keys on the grip or Alt+arrows, screen-reader
-  Move up/down) is a positioned add with the visible index, Clear is exact-path deletes with one Undo. Web
+  Move up/down) is a positioned add with the visible index, Clear is exact-path deletes with one Undo.
+  Play now goes through the shared `usePlayBook` (below). Web
   desktop covers (`CoverTile`) are HTML5 drag sources (`drag-source.web.ts`) for the drawer's drop zone,
   which takes only a book from the queue's own server. The queue does NOT drive what plays next yet
   (Phase 3); the footer switch is the existing `autoPlayNext`. Pure rules: `up-next-model.ts`.
@@ -804,13 +883,14 @@ tab, browse scroll memory) are `useShellEffects`.
   Browse cards (the selected library's counts, opening the Library modes), or the grouped results
   (`useSearch`, shared with the palette): books from every server (`useSearchAll`, deduplicated),
   series/authors/narrators matched on the device against every library's browse lists
-  (`usePeopleSources`, `browse_people`), and characters only once met (`useCharacterSources`: the
+  (`usePeopleSources`, `browse_people`; a series result is the Library's `SeriesCard`, whose mini
+  shelf fetches that series' books only once the card shows), and characters only once met (`useCharacterSources`: the
   community characters of the newest 8 started books on `metadata` servers, each gated by the
   listener's place in THAT book with `meta-gating`'s rules, chapters fetched only for unfinished
   books with characters, "from the start" until they arrive). The pure `search-model.ts`
   (`matchNamed`, `matchCharacters`, `listeningIn`) is where spoiler safety lives: an unmet character
-  is only ever counted ("2 more matches after your place in the book"), never named, also not via an
-  alias, and a name met in any book is not counted again.
+  is only ever counted ("2 more matches after your place in the book", i18next `_one`/`_other`), never
+  named, also not via an alias, and a name met in any book is not counted again.
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
   saved-locally line: needs signing in again > offline > signed in as), opening its account screen;
@@ -837,7 +917,7 @@ src/app/            Expo Router routes ((app) tab groups, connect/, player + fin
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
-src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers), layout/ (banners, ContentScope), player/, library/
+src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider

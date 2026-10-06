@@ -101,7 +101,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
             </Text>
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem icon="settings" onPress={toggleScheme}>
+        <DropdownMenuItem icon={dark ? 'sun' : 'moon'} onPress={toggleScheme}>
           <Text>{dark ? t('shell.profile.light') : t('shell.profile.dark')}</Text>
         </DropdownMenuItem>
       </DropdownMenuContent>

@@ -123,7 +123,7 @@ export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction):
     id: 'appearance',
     title: s.dark ? t('palette.light') : t('palette.dark'),
     subtitle: t('settings.appearance.label'),
-    icon: 'settings',
+    icon: s.dark ? 'sun' : 'moon',
     run: run.appearance,
   });
   return items;

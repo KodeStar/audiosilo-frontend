@@ -665,9 +665,22 @@ through one react-native-web patch (`src/lib/rnw-button-fix.web.ts`). The bottom
 
 The covers and shelves of section 8 live in `src/components/library/`: `BookCover` (art via
 `coverUrl(..., { size, version })`: the downloaded copy, else the smallest thumbnail covering the drawn
-pixels when the server has `cover_sizes`, falling back to the full art), `CoverTile`, `GhostCover`,
-`ShelfRow` (FlashList, the ledge), `CoverGrid` / `CoverGridSkeleton` / `CoverListRow` (sizes in
-`cover-layout.ts`), `QueueButton` + `useQueueActions`; `FilterChip` / `ChipRow` are in `ui/filter-chip.tsx`.
+pixels when the server has `cover_sizes`, falling back to the full art; `ui/cover.tsx` draws the no-art
+fallback, the title and author, or under 72 points a two-letter monogram on the title's cloth colour,
+`src/lib/monogram.ts`), `CoverTile` (long-press / right-click opens the book actions, `TileActions`),
+`GhostCover`, `ShelfRow` (FlashList, the ledge), `CoverGrid` / `CoverGridSkeleton` / `CoverListRow`
+(sizes in `cover-layout.ts`), `QueueButton` + `useQueueActions`, `CoverWash`, the book actions
+(`books/book-actions.tsx`: `BookActionsMenu`, `BookActionsButton`), the A-Z rail (`books/az-rail.tsx`),
+`LibraryPicker` and the collection cards and dialogs (`collections/`); `FilterChip` / `ChipRow` are in
+`ui/filter-chip.tsx`. A `scrollable` `SegmentedControl` keeps the chosen segment in view and fades the
+side that has more.
+
+Phase 2's signature pieces: the spine, bookcase and mini shelf (`src/components/series/`: `Spine`,
+`Bookcase`, `MiniShelf`, `SeriesCard`, `Portrait` for authors and narrators), Home's Now card, chapter
+scale, This week card and smart shelves (`src/components/home/`), the Up next drawer, sheet, queue list
+and drop zone (`src/components/upnext/`), the Downloads page's storage bar, rules card and rows
+(`src/components/downloads/`, with `RemoveDownloadConfirm`) and the Search screen's grouped results
+(`src/components/search/`).
 
 The shell's section 8 pieces live in `src/components/shell/`: the **command palette** (`command-palette.tsx`,
 web only, on the Dialog primitive: a combobox with `aria-activedescendant` over a grouped listbox, 48 px
@@ -675,9 +688,8 @@ options, the match in `brand-ink` bold, key hints and the result count in the fo
 Narrators, Characters (met only, the rest counted in a note row) and Go to, from the Search screen's
 model in `src/components/search/`) and the
 top bar's **profile menu** (`profile-menu.tsx`, a DropdownMenu: servers with their state, Add a server,
-the account, appearance; the household waits for Phase 8). The appearance items use the settings glyph:
-the vendored set has no sun or moon (adding one needs the FontAwesome generator's token), and the sleep
-glyph already means the sleep timer.
+the account, appearance; the household waits for Phase 8). The appearance items show the sun or the moon
+of the appearance they switch to.
 
 ### Fonts
 
