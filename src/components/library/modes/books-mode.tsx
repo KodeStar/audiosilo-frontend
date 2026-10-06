@@ -1,7 +1,7 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { FlashList } from '@shopify/flash-list';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -25,6 +25,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 
 import { AzRail } from '../books/az-rail';
 import { BookListHeader, BookListRow, BookTile } from '../books/book-items';
+import { listColumns } from '../books/list-columns';
 import { LoadError } from '../books/book-states';
 import { BooksControls } from '../books/books-controls';
 import { useBooksLayout } from '../books/books-layout-store';
@@ -162,6 +163,10 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
     />
   );
   const gutter = pageGutter(layout);
+  // The list's columns follow the body's measured width (less the gutters), not the
+  // window's: the Up next drawer can leave a desktop list tablet-narrow.
+  const [bodyWidth, setBodyWidth] = useState(0);
+  const columns = listColumns(layout, bodyWidth > 0 ? bodyWidth - gutter * 2 : 0);
   const header = (
     <View className="gap-3 pb-4">
       <ChipRow accessibilityLabel={t('library.books.filters.label')} gutter={gutter}>
@@ -222,7 +227,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
           onRetry={whole.retry}
         />
       ) : null}
-      {booksLayout === 'list' && !phone && shown.length > 0 ? <BookListHeader /> : null}
+      {booksLayout === 'list' && shown.length > 0 ? <BookListHeader columns={columns} /> : null}
     </View>
   );
 
@@ -321,6 +326,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
             libraryId={libraryId}
             book={book}
             progress={progressOf(book)}
+            columns={columns}
           />
         )}
         header={header}
@@ -337,7 +343,9 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
         </SubNavActions>
       )}
       <View className="flex-1 flex-row">
-        <View className="flex-1">{body}</View>
+        <View className="flex-1" onLayout={(e) => setBodyWidth(e.nativeEvent.layout.width)}>
+          {body}
+        </View>
         {az && present.size > 1 ? (
           <View className={phone ? 'pr-1 pt-24' : 'pr-2 pt-28'}>
             <AzRail present={present} onJump={jump} compact={phone} />

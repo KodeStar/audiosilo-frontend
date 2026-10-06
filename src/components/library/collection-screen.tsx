@@ -32,6 +32,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 
 import type { BookAction } from './books/book-actions';
 import { BookListHeader, BookListRow, BookTile } from './books/book-items';
+import { listColumns } from './books/list-columns';
 import { LoadError } from './books/book-states';
 import { LayoutToggle } from './books/books-controls';
 import { useBooksLayout } from './books/books-layout-store';
@@ -158,6 +159,9 @@ function CollectionBody({
   const { t } = useTranslation();
   const layout = useLayout();
   const gutter = pageGutter(layout);
+  // The list's columns follow its measured width (less the gutters): see listColumns.
+  const [listWidth, setListWidth] = useState(0);
+  const columns = listColumns(layout, listWidth > 0 ? listWidth - gutter * 2 : 0);
   const paddingBottom = useMiniPlayerInset();
   const [booksLayout, setBooksLayout] = useBooksLayout();
   const { openBook } = useOpen();
@@ -272,6 +276,7 @@ function CollectionBody({
   return (
     <FlatList
       data={items}
+      onLayout={(e) => setListWidth(e.nativeEvent.layout.width)}
       keyExtractor={itemKey}
       renderItem={({ item, index }) =>
         item.book ? (
@@ -281,6 +286,7 @@ function CollectionBody({
             book={item.book}
             progress={progressOf(item)}
             extra={itemActions(item, index)}
+            columns={columns}
           />
         ) : (
           <CoverListRow
@@ -307,7 +313,7 @@ function CollectionBody({
       ListHeaderComponent={
         <View>
           {header}
-          {layout !== 'phone' && items.length > 0 ? <BookListHeader /> : null}
+          {items.length > 0 ? <BookListHeader columns={columns} /> : null}
         </View>
       }
       ListEmptyComponent={empty}

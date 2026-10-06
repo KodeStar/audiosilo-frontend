@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 
 import {
   useBook,
@@ -23,6 +23,7 @@ import {
   seriesRails,
   summaryIsVisible,
 } from '@/components/library/book-meta';
+import { bookPanes } from '@/components/library/book-panes';
 import { BookStats } from '@/components/library/book-stats';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { BookVersions } from '@/components/library/book-versions';
@@ -120,10 +121,14 @@ function BookDetailContent() {
   // The connection rides in the `?connection=` query param; the `(app)` layout publishes
   // it as the scope, so this screen's content resolves to that server (not the default).
   const cid = useScopedCid();
-  // Tablet and desktop get the two-pane layout (the cover panel is narrower on a
-  // tablet); a phone gets the single column.
+  // Tablet and desktop play inline (the docked player bar is the transport) and get the
+  // two-pane layout where the PAGE is wide enough (`bookPanes`: the Up next drawer can
+  // leave a desktop page phone-narrow); a phone gets the single column and the modal.
   const layout = useLayout();
   const wide = layout !== 'phone';
+  const [pageWidth, setPageWidth] = useState(0);
+  const panes = bookPanes(layout, pageWidth);
+  const measurePage = (e: LayoutChangeEvent) => setPageWidth(e.nativeEvent.layout.width);
 
   const { data: book, isLoading, refetch } = useBook(libraryId, path);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
@@ -456,11 +461,11 @@ function BookDetailContent() {
     </Tabs>
   );
 
-  if (wide) {
+  if (panes) {
     // The cover panel never carries a transport: the docked player bar does, so while
     // this book plays its button opens the full player instead of restarting it.
     return (
-      <View className="flex-1 flex-row">
+      <View testID="book-two-pane" className="flex-1 flex-row" onLayout={measurePage}>
         <ScrollView className="flex-1" contentContainerClassName="gap-4 p-6 lg:p-8">
           <BreadCrumbs crumbs={crumbs} />
           <BookVersions book={book} connectionId={cid} />
@@ -477,7 +482,7 @@ function BookDetailContent() {
 
         <View
           className={`overflow-hidden border-l border-border ${
-            layout === 'desktop' ? 'w-[380px]' : 'w-[300px]'
+            panes.panel === 380 ? 'w-[380px]' : 'w-[300px]'
           }`}
         >
           <View className="flex-1 items-center justify-center">
@@ -532,7 +537,9 @@ function BookDetailContent() {
 
   return (
     <ScrollView
+      testID="book-single-column"
       className="flex-1"
+      onLayout={measurePage}
       contentContainerClassName="gap-6 p-4"
       contentContainerStyle={{ paddingBottom }}
     >

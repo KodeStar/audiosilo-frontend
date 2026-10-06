@@ -6,7 +6,6 @@ import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
-import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
@@ -17,6 +16,7 @@ import { CoverListRow } from '../cover-grid';
 import { CoverTile } from '../cover-tile';
 import { type BookAction, BookActionsButton } from './book-actions';
 import { bookStatus, type BooksSort } from './books-view';
+import type { ListColumns } from './list-columns';
 
 /** A book's shown title (its folder's name when it has none). */
 
@@ -97,46 +97,50 @@ function ProgressCell({ book, progress }: { book: Book; progress?: Progress }) {
   );
 }
 
-/** Column widths of the list view (tablet drops Length). */
+/** Column widths of the list view (`some` drops Length). */
 const COL = { narrator: 'w-[24%]', length: 'w-[76px]', progress: 'w-[140px]' };
 
-/** The list view's column labels (tablet and desktop). */
-export function BookListHeader() {
+/** The list view's column labels (none when the rows have no columns). */
+export function BookListHeader({ columns }: { columns: ListColumns }) {
   const { t } = useTranslation();
-  const desktop = useLayout() === 'desktop';
-  // Mirrors a row: the pressable card (bordered, px-2, cover then text) and the
-  // actions button beside it, so the labels sit over their columns.
+  if (columns === 'none') return null;
+  // Mirrors a row (CoverListRow): the card (a 1px border, the press's px-2 with the cover
+  // then the text, and the actions button inside its pr-1), so the labels sit over their
+  // columns.
   return (
     <View
-      className="flex-row items-center gap-2 border-b border-border pb-2 pt-1"
+      className="border-b border-border pb-2 pt-1"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      <View className="flex-1 flex-row items-center gap-3 border border-transparent px-2">
-        <View className="w-12" />
-        <Text variant="caption" className="flex-1 font-sans-semibold">
-          {t('library.books.columns.title')}
-        </Text>
-        <Text variant="caption" className={`${COL.narrator} font-sans-semibold`}>
-          {t('library.books.columns.narrator')}
-        </Text>
-        {desktop ? (
-          <Text variant="caption" className={`${COL.length} font-sans-semibold`}>
-            {t('library.books.columns.length')}
+      <View className="flex-row items-center border border-transparent pr-1">
+        <View className="flex-1 flex-row items-center gap-3 px-2">
+          <View className="w-12" />
+          <Text variant="caption" className="flex-1 font-sans-semibold">
+            {t('library.books.columns.title')}
           </Text>
-        ) : null}
-        <Text variant="caption" className={`${COL.progress} font-sans-semibold`}>
-          {t('library.books.columns.progress')}
-        </Text>
+          <Text variant="caption" className={`${COL.narrator} font-sans-semibold`}>
+            {t('library.books.columns.narrator')}
+          </Text>
+          {columns === 'all' ? (
+            <Text variant="caption" className={`${COL.length} font-sans-semibold`}>
+              {t('library.books.columns.length')}
+            </Text>
+          ) : null}
+          <Text variant="caption" className={`${COL.progress} font-sans-semibold`}>
+            {t('library.books.columns.progress')}
+          </Text>
+        </View>
+        <View className="w-[38px]" />
       </View>
-      <View className="w-[38px]" />
     </View>
   );
 }
 
 /**
- * A book as a list row: cover, title, author · series; on tablet and desktop the
- * narrator, length (desktop) and progress columns; then its actions button.
+ * A book as a list row: cover, title, author · series; the `columns` the list has room
+ * for (narrator, length, progress; without them the subtitle carries the length and the
+ * state); then its actions button.
  */
 export function BookListRow({
   connectionId,
@@ -144,15 +148,16 @@ export function BookListRow({
   book,
   progress,
   extra,
+  columns,
 }: {
   connectionId: string;
   libraryId: number;
   book: Book;
   progress?: Progress;
   extra?: BookAction[];
+  columns: ListColumns;
 }) {
   const { t } = useTranslation();
-  const layout = useLayout();
   const { openBook } = useOpen();
   const title = bookTitle(book.title, book.rel_path);
   const byline = bookSubtitle({
@@ -161,7 +166,7 @@ export function BookListRow({
     seriesIndex: book.series_index,
   });
   const status = bookStatus(progress);
-  // A phone has no columns: its subtitle carries the length and the state.
+  // Without columns the subtitle carries the length and the state.
   const phoneLine = [
     byline,
     formatDuration(book.duration),
@@ -183,15 +188,15 @@ export function BookListRow({
       title={title}
       author={book.author}
       coverVersion={book.cover_version}
-      subtitle={layout === 'phone' ? phoneLine : byline}
+      subtitle={columns === 'none' ? phoneLine : byline}
       onPress={() => openBook(connectionId, libraryId, book.rel_path)}
       aside={
-        layout === 'phone' ? null : (
+        columns === 'none' ? null : (
           <>
             <Text variant="caption" numberOfLines={1} className={COL.narrator}>
               {book.narrator}
             </Text>
-            {layout === 'desktop' ? (
+            {columns === 'all' ? (
               <Text variant="caption" className={COL.length} style={tabularNums}>
                 {formatDuration(book.duration)}
               </Text>
