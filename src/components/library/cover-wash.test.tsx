@@ -42,14 +42,11 @@ describe('CoverWash', () => {
     expect(argb(gradients[0].gradient[3])[0]).toBe(0);
   });
 
-  it('paints CSS radial gradients on the web, under an optional scrim', async () => {
-    const { toJSON, rerender } = await render(<WebCoverWash color={COLOR} variant="hero" />);
+  it('paints CSS radial gradients on the web', async () => {
+    const { toJSON } = await render(<WebCoverWash color={COLOR} variant="hero" />);
     const style = (toJSON() as unknown as Styled).props.style;
     expect(style.backgroundImage).toMatch(
       /^radial-gradient\(60% 100% at 15% 0%, rgba\(16, 32, 48, 0\.3\)/,
     );
-    await rerender(<WebCoverWash color={COLOR} scrim />);
-    const scrimmed = (toJSON() as unknown as Styled).props.style;
-    expect(scrimmed.backgroundImage).toMatch(/^linear-gradient\(rgba\(245, 247, 250, 0\.35\)/);
   });
 });

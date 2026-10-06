@@ -104,14 +104,14 @@ export function BooksControls({
   layout,
   onLayout,
 }: {
-  sort?: BooksSort;
-  onSort?: (sort: BooksSort) => void;
+  sort: BooksSort;
+  onSort: (sort: BooksSort) => void;
   layout: BooksLayout;
   onLayout: (layout: BooksLayout) => void;
 }) {
   return (
     <View className="flex-row items-center gap-2">
-      {sort && onSort ? <SortMenu value={sort} onChange={onSort} /> : null}
+      <SortMenu value={sort} onChange={onSort} />
       <LayoutToggle value={layout} onChange={onLayout} />
     </View>
   );

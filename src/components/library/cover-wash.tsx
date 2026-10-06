@@ -1,7 +1,6 @@
 import { View } from 'react-native';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
-import { cn } from '@/lib/utils';
 import { useDomId } from '@/lib/use-dom-id';
 
 import { type CoverWashProps, useWashLayers } from './cover-wash-model';
@@ -15,20 +14,20 @@ import { type CoverWashProps, useWashLayers } from './cover-wash-model';
  * radial gradients; web uses CSS gradients (`cover-wash.web.tsx`). Decorative, so it is
  * hidden from accessibility and takes no touches.
  */
-export function CoverWash({ color, variant, scrim, className }: CoverWashProps) {
-  const wash = useWashLayers(color, variant);
+export function CoverWash({ color, variant }: CoverWashProps) {
+  const layers = useWashLayers(color, variant);
   const id = useDomId('wash');
-  if (!wash) return null;
+  if (!layers) return null;
   return (
     <View
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      className={cn('absolute inset-0 overflow-hidden', className)}
+      className="absolute inset-0 overflow-hidden"
     >
       <Svg width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
-          {wash.layers.map((l, i) => (
+          {layers.map((l, i) => (
             <RadialGradient
               key={i}
               id={`${id}-w${i}`}
@@ -45,12 +44,9 @@ export function CoverWash({ color, variant, scrim, className }: CoverWashProps) 
             </RadialGradient>
           ))}
         </Defs>
-        {wash.layers.map((_, i) => (
+        {layers.map((_, i) => (
           <Rect key={i} width="100%" height="100%" fill={`url(#${id}-w${i})`} />
         ))}
-        {scrim ? (
-          <Rect width="100%" height="100%" fill={wash.background} fillOpacity={0.35} />
-        ) : null}
       </Svg>
     </View>
   );

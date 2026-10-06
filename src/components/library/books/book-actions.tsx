@@ -222,7 +222,6 @@ export function BookActionsMenu({
   triggerRef,
   sheetOpen,
   onSheetOpenChange,
-  onMenuOpenChange,
   onCloseAutoFocus,
 }: Target & {
   extra?: BookAction[];
@@ -230,8 +229,6 @@ export function BookActionsMenu({
   triggerRef?: Ref<TriggerRef>;
   sheetOpen: boolean;
   onSheetOpenChange: (open: boolean) => void;
-  /** Tablet/desktop: the menu opened or closed. */
-  onMenuOpenChange?: (open: boolean) => void;
   /** Web: where focus goes when the menu closes (default: back to the trigger). */
   onCloseAutoFocus?: (event: Event) => void;
 }) {
@@ -252,7 +249,7 @@ export function BookActionsMenu({
       {phone ? (
         trigger
       ) : (
-        <DropdownMenu onOpenChange={onMenuOpenChange}>
+        <DropdownMenu>
           <DropdownMenuTrigger ref={triggerRef} asChild>
             {trigger}
           </DropdownMenuTrigger>

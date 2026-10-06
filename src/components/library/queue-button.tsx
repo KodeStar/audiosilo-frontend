@@ -17,7 +17,6 @@ export function QueueButton({
   title,
   variant = 'outline',
   size = 'default',
-  className,
 }: {
   connectionId: string;
   libraryId: number;
@@ -25,7 +24,6 @@ export function QueueButton({
   title?: string;
   variant?: Extract<ButtonProps['variant'], 'default' | 'outline' | 'ghost' | 'secondary'>;
   size?: Extract<ButtonProps['size'], 'sm' | 'default' | 'lg'>;
-  className?: string;
 }) {
   const { t } = useTranslation();
   const q = useQueueActions(connectionId);
@@ -44,7 +42,6 @@ export function QueueButton({
       accessibilityLabel={[label, title].filter(Boolean).join(', ')}
       accessibilityHint={queued ? t('queue.removeLabel') : t('queue.addLabel')}
       onPress={() => void (queued ? q.unqueue(libraryId, path) : q.queue(libraryId, path))}
-      className={className}
     />
   );
 }

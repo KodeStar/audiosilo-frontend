@@ -93,21 +93,6 @@ describe('CoverTile', () => {
     ]);
   });
 
-  it("lets a caller's long-press replace the menu, or turn it off", async () => {
-    mockTileActions.mockClear();
-    const onLongPress = jest.fn();
-    await render(<CoverTile {...tile} onLongPress={onLongPress} />);
-    await fireEvent(screen.getByRole('button', { name: 'Dune' }), 'longPress');
-    expect(onLongPress).toHaveBeenCalledTimes(1);
-    expect(mockTileActions).not.toHaveBeenCalled();
-
-    await render(<CoverTile {...tile} actions={false} />);
-    const off = screen.getByRole('button', { name: 'Dune' });
-    expect(off.props.accessibilityActions).toBeUndefined();
-    await fireEvent(off, 'longPress');
-    expect(mockTileActions).not.toHaveBeenCalled();
-  });
-
   it('says finished instead of a percentage', async () => {
     await render(<CoverTile {...tile} progress={1} finished />);
     expect(screen.getByRole('button', { name: 'Dune, Finished' })).toBeTruthy();

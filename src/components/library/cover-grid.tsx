@@ -165,10 +165,8 @@ export function CoverListRow({
   author,
   coverVersion,
   onPress,
-  onLongPress,
   aside,
   trailing,
-  accessibilityLabel,
 }: {
   connectionId: string;
   libraryId: number;
@@ -178,18 +176,15 @@ export function CoverListRow({
   author?: string;
   coverVersion?: string;
   onPress: () => void;
-  onLongPress?: () => void;
   aside?: ReactElement | null;
   trailing?: ReactElement | null;
-  accessibilityLabel?: string;
 }) {
   return (
     <View className="my-1 flex-row items-center gap-2">
       <PressableRow
         onPress={onPress}
-        onLongPress={onLongPress}
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? [title, subtitle].filter(Boolean).join(', ')}
+        accessibilityLabel={[title, subtitle].filter(Boolean).join(', ')}
         className="min-h-[64px] flex-1 flex-row items-center gap-3 px-2 py-2"
       >
         <BookCover

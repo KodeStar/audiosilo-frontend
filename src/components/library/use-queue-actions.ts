@@ -31,8 +31,7 @@ export function findQueued(
  * as `QueueButton` does). Capability-gated: `supported` is false (hide the affordance)
  * until the server is known to advertise `queue`.
  * - `isQueued(libraryId, path)`: from the cached queue.
- * - `queue(libraryId, path, position?)`: at the end by default (`position` is an index in
- *   the queue as the listener sees it), then a toast with Undo.
+ * - `queue(libraryId, path)`: at the end, then a toast with Undo.
  * - `unqueue(libraryId, path)`: removes the entry by its OWN path (removes are exact),
  *   then a toast whose Undo puts it back where it was.
  * Both resolve to whether the change was made. A `CapabilityError` (no request was sent)
@@ -63,10 +62,10 @@ export function useQueueActions(connectionId?: string) {
       },
     );
 
-  const queue = async (libraryId: number, path: string, position?: number) => {
-    if (position === undefined && findQueued(entries, libraryId, path)) return true;
+  const queue = async (libraryId: number, path: string) => {
+    if (findQueued(entries, libraryId, path)) return true;
     try {
-      const next = await add.mutateAsync({ libraryId, path, position });
+      const next = await add.mutateAsync({ libraryId, path });
       const added = findQueued(next, libraryId, path);
       toast({
         title: t('queue.added'),
@@ -101,7 +100,6 @@ export function useQueueActions(connectionId?: string) {
 
   return {
     supported,
-    entries,
     isQueued: (libraryId: number, path: string) => !!findQueued(entries, libraryId, path),
     queue,
     unqueue,

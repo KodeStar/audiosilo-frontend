@@ -89,11 +89,6 @@ export type CoverTileProps = {
   onShelf?: boolean;
   /** Defaults to opening the book page (in the current tab). */
   onPress?: () => void;
-  /** Replaces the book's actions menu on long-press (and right-click on the web). */
-  onLongPress?: () => void;
-  /** The book's actions menu (`TileActions`) on long-press, right-click and the Menu
-   * key: on by default; false for a tile that shouldn't offer it. */
-  actions?: boolean;
   /** The book's list row when the screen has it: the actions menu needs it, and
    * fetches it on first use otherwise. */
   book?: Book;
@@ -125,8 +120,6 @@ export function CoverTile({
   server,
   onShelf,
   onPress,
-  onLongPress,
-  actions = true,
   book,
   className,
 }: CoverTileProps) {
@@ -146,8 +139,7 @@ export function CoverTile({
   useBookDragSource(coverRef, { connectionId, libraryId, path, title });
   // Each request bumps the count; the menu mounts on the first and reopens on each.
   const [request, setRequest] = useState(0);
-  const openActions = actions ? () => setRequest((n) => n + 1) : undefined;
-  const onMenu = onLongPress ?? openActions;
+  const onMenu = () => setRequest((n) => n + 1);
   const tileRef = useRef<View>(null);
   useContextMenuRequest(tileRef, onMenu);
   const inProgress = !finished && progress !== undefined && progress > 0 && progress < 1;
@@ -162,11 +154,9 @@ export function CoverTile({
       onLongPress={onMenu}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityActions={
-        onMenu ? [{ name: 'longpress', label: t('covers.moreActions') }] : undefined
-      }
+      accessibilityActions={[{ name: 'longpress', label: t('covers.moreActions') }]}
       onAccessibilityAction={(e) => {
-        if (e.nativeEvent.actionName === 'longpress') onMenu?.();
+        if (e.nativeEvent.actionName === 'longpress') onMenu();
       }}
       style={{ width }}
       className={cn('gap-2.5 rounded-cover', className)}
