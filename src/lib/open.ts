@@ -1,9 +1,9 @@
 import { type Href, router } from 'expo-router';
 
-import type { BookTab } from '@/components/library/book-tabs';
 import {
   authorHref,
   bookHref,
+  type BookTab,
   collectionHref,
   libraryHref,
   narratorHref,

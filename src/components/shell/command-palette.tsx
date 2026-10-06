@@ -28,11 +28,11 @@ import { toast } from '@/components/ui/toast';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { chapterLabel } from '@/lib/chapter-label';
-import { isEditable, isModalOpen } from '@/lib/keyboard';
+import { useGlobalShortcut } from '@/lib/keyboard';
 import { useLayout } from '@/lib/layout';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { useSleepTimer } from '@/playback/sleep-timer';
@@ -172,7 +172,7 @@ function useBookItems(
   const books = useMemo(
     () =>
       found.map((b): PaletteItem => {
-        const title = b.title || pathLeaf(b.rel_path);
+        const title = bookTitle(b.title, b.rel_path);
         return {
           id: `book:${b.connectionId}:${b.library_id}:${b.rel_path}`,
           title,
@@ -291,7 +291,7 @@ function CoverThumb({ cover, label }: { cover: PaletteCover; label: string }) {
     <Cover
       source={{ uri: api.coverUrl(cover.libraryId, cover.path), headers: api.authHeaders() }}
       label={label}
-      rounded="rounded-[5px]"
+      rounded="rounded-cover"
       size={36}
     />
   );
@@ -600,15 +600,5 @@ export function CommandPalette() {
  */
 export function usePaletteShortcut(enabled: boolean) {
   const openPalette = usePalette((s) => s.openPalette);
-  useEffect(() => {
-    if (!enabled || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!isPaletteShortcut(e, isEditable(document.activeElement))) return;
-      if (isModalOpen(document)) return;
-      e.preventDefault();
-      openPalette();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [enabled, openPalette]);
+  useGlobalShortcut(enabled, isPaletteShortcut, openPalette);
 }

@@ -42,7 +42,7 @@ export function GhostCovers() {
         <View
           key={i}
           style={{ transform: [{ rotate: `${i * 8}deg` }], marginLeft: i === -1 ? 0 : -12 }}
-          className="h-[54px] w-[54px] rounded-[5px] border-[1.5px] border-dashed border-subtle-foreground bg-muted"
+          className="h-[54px] w-[54px] rounded-cover border-[1.5px] border-dashed border-subtle-foreground bg-muted"
         />
       ))}
     </View>

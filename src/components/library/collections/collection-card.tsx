@@ -6,7 +6,7 @@ import type { Collection } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -116,10 +116,7 @@ export function CollectionCardFrame({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? [title, ...lines].filter(Boolean).join(', ')}
       style={{ width }}
-      className={cn(
-        'gap-3.5 rounded-[18px]',
-        Platform.select({ web: 'outline-none focus-visible:ring-2 focus-visible:ring-ring' }),
-      )}
+      className={cn('gap-3.5 rounded-[18px]', Platform.select({ web: FOCUS_RING_CLASS }))}
     >
       {art}
       <View className="gap-0.5 px-0.5">

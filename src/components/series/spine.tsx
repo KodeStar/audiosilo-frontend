@@ -1,13 +1,14 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { Platform, Pressable, View, type ViewStyle } from 'react-native';
 import Svg, { Defs, Line, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import type { CoverColor } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { useDomId } from '@/lib/use-dom-id';
 
 import { spinePalette } from './spine-colors';
 import {
@@ -71,7 +72,7 @@ export function Spine({
   accessibilityLabel,
 }: SpineProps) {
   const themed = useThemeColors();
-  const id = `sp${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const id = useDomId('sp');
   const [hovered, setHovered] = useState(false);
   const ghost = variant !== 'book';
   const surname = author?.trim().split(/\s+/).pop() ?? '';
@@ -248,7 +249,7 @@ export function Spine({
       style={style}
       hitSlop={{ top: 8, bottom: 8 }}
       className={Platform.select({
-        web: 'cursor-pointer rounded-sm outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        web: `cursor-pointer rounded-sm transition-transform ${FOCUS_RING_OFFSET_CLASS}`,
       })}
     >
       {body}

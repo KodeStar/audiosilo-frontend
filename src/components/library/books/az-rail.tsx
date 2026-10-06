@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { RAIL_LETTERS } from '@/lib/alpha-sections';
 import { cn } from '@/lib/utils';
 
@@ -42,7 +42,7 @@ export function AzRail({
               'items-center justify-center rounded-[5px] active:bg-primary',
               compact ? 'h-[15px] w-[18px]' : 'h-[17px] w-[22px]',
               Platform.select({
-                web: 'cursor-pointer outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default',
+                web: `cursor-pointer hover:bg-accent disabled:cursor-default ${FOCUS_RING_CLASS}`,
               }),
             )}
           >

@@ -5,8 +5,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Sheet } from '@/components/ui/sheet';
 import { Stepper } from '@/components/ui/stepper';
 import { usePlayer } from '@/playback/store';
-
-const fmt = (v: number) => `${Number(v.toFixed(2))}×`;
+import { formatSpeed } from '@/lib/format';
 
 /**
  * Speed readout button. The sheet is mounted separately (`SpeedSheet`) at the
@@ -25,7 +24,7 @@ export function SpeedButton({ onPress }: { onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={t('player.speed.title')}
     >
-      <RNText className="font-sans-medium text-base text-foreground">{fmt(rate)}</RNText>
+      <RNText className="font-sans-medium text-base text-foreground">{formatSpeed(rate)}</RNText>
     </AnimatedPressable>
   );
 }
@@ -45,7 +44,7 @@ export function SpeedSheet({ visible, onClose }: { visible: boolean; onClose: ()
           step={0.05}
           min={0.5}
           max={2}
-          format={fmt}
+          format={formatSpeed}
         />
       </View>
     </Sheet>

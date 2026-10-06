@@ -16,12 +16,11 @@ import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle, pathLeaf } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.path}`;
-const titleOf = (f: SourcedFavourite) => f.title || pathLeaf(f.path);
 
 /** The hearted books and folders of every connected server: folders as rows, books as a
  * cover grid or list (the device's grid/list choice). A book on another server than the
@@ -100,7 +99,7 @@ export function FavouritesScreen() {
             connectionId={f.connectionId}
             libraryId={f.library_id}
             path={f.path}
-            title={titleOf(f)}
+            title={bookTitle(f.title, f.path)}
             author={f.author}
             caption={f.author}
             server={server(f)}
@@ -154,7 +153,7 @@ function BookRow({ fav, server }: { fav: SourcedFavourite; server?: string }) {
       connectionId={fav.connectionId}
       libraryId={fav.library_id}
       path={fav.path}
-      title={titleOf(fav)}
+      title={bookTitle(fav.title, fav.path)}
       author={fav.author}
       subtitle={subtitle}
       onPress={() => openBook(fav.connectionId, fav.library_id, fav.path)}

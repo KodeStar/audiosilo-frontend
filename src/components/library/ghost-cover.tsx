@@ -61,7 +61,7 @@ export function GhostCover({
       }
       style={{ width, height: width }}
       className={cn(
-        'items-center justify-center overflow-hidden rounded-[5px] border-[1.5px] border-dashed',
+        'items-center justify-center overflow-hidden rounded-cover border-[1.5px] border-dashed',
         elsewhere ? 'border-info/70 bg-info-soft' : 'border-subtle-foreground bg-muted',
         className,
       )}

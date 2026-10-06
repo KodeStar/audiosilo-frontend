@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import type { IconName } from '@/components/ui/icon';
+import type { ShortcutKey } from '@/lib/keyboard';
 
 /**
  * The web command palette's model (STYLEGUIDE section 8, "Command palette"): which items
@@ -220,14 +221,6 @@ export function moveSelection(index: number, delta: number, count: number): numb
   if (count <= 0) return 0;
   return Math.max(0, Math.min(count - 1, index + delta));
 }
-
-/** The slice of a DOM KeyboardEvent the global shortcut reads. */
-export type ShortcutKey = {
-  key: string;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-};
 
 /**
  * Whether a keydown opens the palette: ⌘K / Ctrl+K, or a bare `/` (STYLEGUIDE section

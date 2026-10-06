@@ -18,7 +18,7 @@ function GhostFan() {
       {[-9, 0, 9].map((deg, i) => (
         <View
           key={deg}
-          className="h-[70px] w-[70px] rounded-[5px] border-[1.5px] border-dashed border-subtle-foreground bg-muted"
+          className="h-[70px] w-[70px] rounded-cover border-[1.5px] border-dashed border-subtle-foreground bg-muted"
           style={{
             marginLeft: i === 0 ? 0 : -26,
             transform: [{ translateY: i === 1 ? -8 : 0 }, { rotate: `${deg}deg` }],

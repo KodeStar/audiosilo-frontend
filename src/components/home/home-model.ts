@@ -4,7 +4,7 @@ import type { SourcedProgress } from '@/api/hooks';
 import type { Book, BookMetaSeriesWork, NextBook } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import type { MergedBook } from '@/lib/dedup';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 
 /**
@@ -190,7 +190,7 @@ const bookCover = (b: Book & { connectionId: string }): ShelfCover => ({
   connectionId: b.connectionId,
   libraryId: b.library_id,
   path: b.rel_path,
-  title: b.title || pathLeaf(b.rel_path),
+  title: bookTitle(b.title, b.rel_path),
   author: b.author,
   coverVersion: b.cover_version,
 });

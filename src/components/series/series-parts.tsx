@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { percentOf } from '@/lib/progress-view';
+import { ProgressBar } from '@/components/ui/progress-bar';
 
 import { EntryActionButton, EntryBadge } from './entry-actions';
 import type { SeriesEntry, SeriesStats, TrackSegment } from './series-model';
@@ -300,12 +301,7 @@ export function EntryList({
                 </Text>
               ) : null}
               {current ? (
-                <View className="mt-1.5 h-1 max-w-[280px] overflow-hidden rounded-full bg-muted">
-                  <View
-                    className="h-full rounded-full bg-brand"
-                    style={{ width: `${e.fraction * 100}%` }}
-                  />
-                </View>
+                <ProgressBar fraction={e.fraction} className="mt-1.5 max-w-[280px]" />
               ) : null}
             </View>
           </>

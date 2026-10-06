@@ -7,7 +7,7 @@ import { BookCover } from '@/components/library/book-cover';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { bytesToGo, entryBytes } from '@/downloads/downloads-view';
 import type { AheadBook, SlotState } from '@/downloads/keep-ahead';
 import type { DownloadEntry } from '@/downloads/types';
@@ -16,6 +16,7 @@ import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { ProgressBar } from '@/components/ui/progress-bar';
 
 import type { StorageScope } from './storage-card';
 
@@ -98,19 +99,6 @@ function RowFrame({
   );
 }
 
-/** A thin brand progress bar (the page's one pink thing; the storage bar starts at blue
- * so the two don't compete). */
-function ProgressBar({ fraction }: { fraction: number }) {
-  return (
-    <View className="h-1 overflow-hidden rounded-full bg-muted">
-      <View
-        className="h-full rounded-full bg-brand"
-        style={{ width: `${Math.max(2, percent(fraction))}%` }}
-      />
-    </View>
-  );
-}
-
 function sizeMeta(t: TFunction, server: string, bytes: number, keptAhead: boolean): string {
   const parts = [
     keptAhead ? t('downloads.row.keptAhead') : null,
@@ -156,7 +144,7 @@ export function ActiveRow({
     <Text variant="caption">{t('downloads.row.queued')}</Text>
   ) : (
     <>
-      <ProgressBar fraction={entry.progress} />
+      <ProgressBar fraction={entry.progress} minPercent={2} />
       <Text variant="caption" style={tabularNums}>
         {toGo !== null
           ? t('downloads.row.progress', {
@@ -308,7 +296,7 @@ export function ReadyRow({
         className={cn(
           'min-w-0 flex-1 flex-row items-center gap-3 py-3 pl-4 active:bg-accent hover:bg-accent',
           Platform.select({
-            web: 'cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            web: `cursor-pointer ${FOCUS_RING_CLASS}`,
           }),
         )}
       >

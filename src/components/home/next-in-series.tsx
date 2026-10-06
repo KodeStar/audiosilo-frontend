@@ -11,9 +11,10 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { bookTitle } from '@/lib/paths';
+import { formatDayMonth } from '@/lib/format';
 
 import { useBookTitle } from './book-title';
-import { formatDayMonth } from './dates';
 import type { NextItem, NextReason } from './home-model';
 
 /** Why a next book is suggested, in words; `title` names the book it follows. */
@@ -85,7 +86,7 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
           connectionId={item.connectionId}
           libraryId={item.libraryId}
           path={item.path}
-          title={b.title || item.path}
+          title={bookTitle(b.title, item.path)}
           book={b}
           author={b.author}
           caption={b.series ? seriesCaption(b.series, b.series_index) : b.author}
@@ -106,7 +107,7 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
         onPress={() => openSeries(item.connectionId, item.libraryId, { work: w.id })}
         accessibilityRole="button"
         accessibilityLabel={[w.title, t('covers.notInLibrary'), reason].join(', ')}
-        className="gap-2.5 rounded-[5px]"
+        className="gap-2.5 rounded-cover"
       >
         <GhostCover title={w.title} position={w.position} width={width} />
         <View className="gap-0.5 pt-3">

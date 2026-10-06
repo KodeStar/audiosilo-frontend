@@ -8,7 +8,7 @@ import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Capabilities, Progress, QueueEntry } from '@/api/types';
 import { canAutoDownload } from '@/lib/network';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { resolveNextBook } from '@/playback/next-book';
 import { usePlayer } from '@/playback/store';
 import { toKeepAhead, useSettings } from '@/stores/settings';
@@ -121,7 +121,7 @@ async function seriesAhead(
           connectionId: cid,
           libraryId: r.next.library_id,
           path: r.next.path,
-          title: r.book?.title ?? pathLeaf(r.next.path),
+          title: bookTitle(r.book?.title, r.next.path),
           size: r.book?.size ?? 0,
           duration: r.book?.duration ?? 0,
           source: 'series',

@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { Text, TextClassContext } from './text';
+import { FOCUS_RING_CLASS, Text, TextClassContext } from './text';
 
 /**
  * The Stacks segmented control (STYLEGUIDE.md section 8: "muted track + raised card for
@@ -27,7 +27,7 @@ const track = 'rounded-[11px] border border-border bg-muted p-[3px]';
 const itemBase = cn(
   'h-[30px] flex-row items-center justify-center gap-1.5 rounded-lg border border-transparent px-3',
   Platform.select({
-    web: 'cursor-pointer select-none whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+    web: `cursor-pointer select-none whitespace-nowrap transition-colors ${FOCUS_RING_CLASS}`,
   }),
 );
 

@@ -5,13 +5,12 @@ import Svg, { Circle } from 'react-native-svg';
 import { useCapability, useListeningGoal, useMyListening } from '@/api/hooks';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { formatDuration } from '@/lib/format';
+import { formatDurationOrZero, formatServerDay } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { formatServerDay } from './dates';
 import { goalProgress, lastSevenDays, listeningStreak, serverToday } from './listening';
 
 /** Tallest weekday bar, in points. */
@@ -55,10 +54,10 @@ export function ThisWeekCard({ className }: { className?: string }) {
           className="font-display text-[26px] leading-[28px] tracking-tight text-foreground"
           style={tabularNums}
           accessibilityLabel={t('home.week.hoursLabel', {
-            duration: formatDuration(hours) || '0m',
+            duration: formatDurationOrZero(hours),
           })}
         >
-          {formatDuration(hours) || '0m'}
+          {formatDurationOrZero(hours)}
         </Text>
         <Text variant="muted" style={tabularNums}>
           {streak > 0 ? t('home.week.streak', { count: streak }) : t('home.week.noStreak')}
@@ -183,7 +182,7 @@ function WeekBars({
   const { t } = useTranslation();
   const max = Math.max(1, ...week.map((d) => d.listened));
   const label = week
-    .map((d) => `${formatServerDay(d.date)}: ${formatDuration(d.listened) || '0m'}`)
+    .map((d) => `${formatServerDay(d.date)}: ${formatDurationOrZero(d.listened)}`)
     .join(', ');
   return (
     <View

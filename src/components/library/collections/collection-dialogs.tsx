@@ -29,7 +29,7 @@ import { Icon } from '@/components/ui/icon';
 import { Input, Textarea } from '@/components/ui/input';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -61,7 +61,7 @@ export function collectionFailed(e: unknown, t: TFunction, conflict?: 'full' | '
 const checkRowClass = cn(
   'min-h-[48px] flex-row items-center gap-3 rounded-xl px-3 active:bg-accent hover:bg-accent',
   Platform.select({
-    web: 'cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    web: `cursor-pointer ${FOCUS_RING_CLASS}`,
   }),
 );
 

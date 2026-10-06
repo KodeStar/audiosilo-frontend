@@ -1,10 +1,11 @@
 import { FlashList } from '@shopify/flash-list';
-import { type ReactElement, useId } from 'react';
+import { type ReactElement } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { useDomId } from '@/lib/use-dom-id';
 
 import { pageGutter, shelfMetrics } from './cover-layout';
 
@@ -20,7 +21,7 @@ const LEDGE_SHADOW = 12;
  */
 export function Ledge({ top }: { top: number }) {
   const themed = useThemeColors();
-  const id = `ledge${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const id = useDomId('ledge');
   return (
     <View
       pointerEvents="none"

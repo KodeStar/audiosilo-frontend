@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { type SourcedProgress, useBook } from '@/api/hooks';
 import { CoverTile } from '@/components/library/cover-tile';
 import { formatDuration, formatRelative } from '@/lib/format';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 
 import type { BookAt } from './home-model';
@@ -22,7 +22,7 @@ function useProgressBook(at: BookAt | null) {
 /** The title of a book Home knows only by path ('' for none). */
 export function useBookTitle(at: BookAt | null): string {
   const book = useProgressBook(at);
-  return book?.title || (at ? pathLeaf(at.path) : '');
+  return at ? bookTitle(book?.title, at.path) : '';
 }
 
 /** A Continue listening / Recently finished cover: progress along its foot and "40% ·
@@ -59,7 +59,7 @@ export function ProgressTile({
       connectionId={item.connectionId}
       libraryId={item.library_id}
       path={item.path}
-      title={book?.title || pathLeaf(item.path)}
+      title={bookTitle(book?.title, item.path)}
       author={book?.author}
       coverVersion={book?.cover_version}
       caption={caption}

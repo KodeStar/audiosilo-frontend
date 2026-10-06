@@ -24,12 +24,7 @@ import {
   seriesRails,
   summaryIsVisible,
 } from '@/components/library/book-meta';
-import {
-  type BookTab,
-  bookTabs,
-  parseBookTab,
-  TAB_LABEL_KEY,
-} from '@/components/library/book-tabs';
+import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
@@ -51,7 +46,7 @@ import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
-import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
+import { type BookTab, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';

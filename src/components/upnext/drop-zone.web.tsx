@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
+import { useLatestRef } from '@/lib/use-latest';
 
 import { activeBookDrag } from './drag-source';
 import type { DropZoneProps } from './drop-zone-types';
@@ -21,10 +22,7 @@ export function DropZone({ connectionId, serverName, empty, onDrop }: DropZonePr
   const { t } = useTranslation();
   const ref = useRef<View>(null);
   const [over, setOver] = useState<Over>('idle');
-  const latest = useRef({ connectionId, onDrop });
-  useEffect(() => {
-    latest.current = { connectionId, onDrop };
-  });
+  const latest = useLatestRef({ connectionId, onDrop });
 
   useEffect(() => {
     const node = ref.current as unknown as HTMLElement | null;
@@ -62,7 +60,7 @@ export function DropZone({ connectionId, serverName, empty, onDrop }: DropZonePr
       node.removeEventListener('dragleave', onLeave);
       node.removeEventListener('drop', onDropEvent);
     };
-  }, []);
+  }, [latest]);
 
   const line =
     over === 'ok'

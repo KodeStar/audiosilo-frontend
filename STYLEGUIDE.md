@@ -633,7 +633,8 @@ The CSS in section 3 is the design reference. In the app:
   `brand-ink` (AA on both themes).
 - **Radii and the overlay shadow have their own names** (`src/global.css` `@theme`): shadcn's `--radius`
   scale is not adopted (it would move every existing `rounded-*` class; Phase 0a decision), so the section 5
-  radii are `rounded-control` (10: buttons, inputs, selects), `rounded-menu` (14: menus, popovers, toasts),
+  radii are `rounded-cover` (5: covers, cover tiles and their placeholders), `rounded-control` (10:
+  buttons, inputs, selects), `rounded-menu` (14: menus, popovers, toasts),
   `rounded-card` (16), `rounded-dialog` (20) and `rounded-sheet` (24); `--shadow-overlay` is the
   `shadow-overlay` utility (web two-layer, iOS one box-shadow, Android elevation). `cn()` knows these names.
 - **`--wash`** is `WASH_STRENGTH` in `src/lib/cover-tint.ts` (with `coverTint`, the pure wash colours from a

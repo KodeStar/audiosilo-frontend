@@ -1,6 +1,4 @@
-/** The book screen's tabs, in display order. */
-export type BookTab =
-  'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series';
+import { type BookTab, firstParam } from '@/lib/paths';
 
 /** The i18n key labelling each tab. Deliberately REUSES the existing section /
  * heading strings rather than minting tab-only duplicates (the bookmarks/history/
@@ -77,6 +75,6 @@ const BOOK_TABS: readonly BookTab[] = [
  * or null for none or an unknown one. Only an intent: the screen still falls back to the
  * first tab that exists. */
 export function parseBookTab(param?: string | string[]): BookTab | null {
-  const v = Array.isArray(param) ? param[0] : param;
-  return (BOOK_TABS as readonly string[]).includes(v ?? '') ? (v as BookTab) : null;
+  const v = firstParam(param);
+  return (BOOK_TABS as readonly string[]).includes(v) ? (v as BookTab) : null;
 }

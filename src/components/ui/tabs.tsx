@@ -3,7 +3,7 @@ import { Platform, ScrollView } from 'react-native';
 
 import { cn } from '@/lib/utils';
 
-import { TextClassContext } from './text';
+import { FOCUS_RING_CLASS, TextClassContext } from './text';
 
 /**
  * Stacks tabs (STYLEGUIDE.md section 8), on react-native-reusables' Tabs: a `tablist` of
@@ -64,7 +64,7 @@ export function TabsTrigger({
           '-mb-px h-[42px] flex-row items-center justify-center gap-1.5 border-b-2',
           active ? 'border-foreground' : 'border-transparent',
           Platform.select({
-            web: 'cursor-pointer select-none whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            web: `cursor-pointer select-none whitespace-nowrap ${FOCUS_RING_CLASS}`,
           }),
           props.disabled && 'opacity-50',
           className,

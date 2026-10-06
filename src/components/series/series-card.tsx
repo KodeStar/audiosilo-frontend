@@ -4,7 +4,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import type { SeriesCount } from '@/api/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,7 @@ const SHELF = 118;
 const CARD = cn(
   'gap-3.5 rounded-[20px] border border-border bg-card px-[18px] pb-4 pt-[18px]',
   Platform.select({
-    web: 'cursor-pointer outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+    web: `cursor-pointer transition-colors hover:border-border-strong ${FOCUS_RING_OFFSET_CLASS}`,
   }),
 );
 

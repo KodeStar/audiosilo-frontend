@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type AccessibilityActionEvent, Platform, Pressable, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -17,12 +17,13 @@ import { BookCover } from '@/components/library/book-cover';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { useLatest } from '@/lib/use-latest';
 
 import {
   dragShift,
@@ -39,7 +40,7 @@ const SHIFT_MS = 150;
 
 /** A queued book's name, from its indexed metadata, else its folder. */
 export function entryTitle(e: QueueEntry): string {
-  return e.book?.title || pathLeaf(e.path);
+  return bookTitle(e.book?.title, e.path);
 }
 
 /** The row's second line: "Series · 2" or the author, then where the listener is
@@ -145,15 +146,6 @@ export function QueueList({
       ))}
     </View>
   );
-}
-
-/** A stable function that calls the latest `fn`. */
-function useLatest<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
-  const latest = useRef(fn);
-  useLayoutEffect(() => {
-    latest.current = fn;
-  });
-  return useCallback((...args: A) => latest.current(...args), []);
 }
 
 function QueueRow({
@@ -304,7 +296,7 @@ function QueueRow({
             className={cn(
               'h-11 w-6 items-center justify-center rounded-md',
               Platform.select({
-                web: 'cursor-grab touch-none outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+                web: `cursor-grab touch-none hover:bg-accent ${FOCUS_RING_CLASS}`,
               }),
             )}
           >
@@ -318,7 +310,7 @@ function QueueRow({
           className={cn(
             'flex-1 flex-row items-center gap-2.5 rounded-lg',
             Platform.select({
-              web: 'outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              web: FOCUS_RING_CLASS,
             }),
           )}
         >
@@ -380,7 +372,7 @@ function RowButton({
       className={cn(
         'h-9 w-9 items-center justify-center rounded-lg active:bg-accent',
         Platform.select({
-          web: 'outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+          web: `hover:bg-accent ${FOCUS_RING_CLASS}`,
         }),
       )}
     >
@@ -396,7 +388,7 @@ export function QueueSkeleton({ rows = 3 }: { rows?: number }) {
       {Array.from({ length: rows }, (_, i) => (
         <View key={i} className="flex-row items-center gap-2.5 py-2 pl-1">
           <View className="w-6" />
-          <Skeleton className="h-[44px] w-[44px] rounded-[5px]" />
+          <Skeleton className="h-[44px] w-[44px] rounded-cover" />
           <View className="flex-1 gap-1.5">
             <Skeleton className="h-3.5 w-3/4 rounded" />
             <Skeleton className="h-3 w-1/2 rounded" />

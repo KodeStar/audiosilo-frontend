@@ -1,5 +1,6 @@
-import { type RefObject, useEffect, useRef } from 'react';
+import { type RefObject, useEffect } from 'react';
 import type { View } from 'react-native';
+import { useLatestRef } from '@/lib/use-latest';
 
 /**
  * A right-click, the Menu key or Shift+F10 on the view behind `ref` (a cover tile)
@@ -11,10 +12,7 @@ export function useContextMenuRequest(
   ref: RefObject<View | null>,
   onRequest: (() => void) | undefined,
 ): void {
-  const latest = useRef(onRequest);
-  useEffect(() => {
-    latest.current = onRequest;
-  });
+  const latest = useLatestRef(onRequest);
   const enabled = !!onRequest;
   useEffect(() => {
     const node = ref.current as unknown as HTMLElement | null;
@@ -42,5 +40,5 @@ export function useContextMenuRequest(
       node.removeEventListener('contextmenu', onContextMenu);
       node.removeEventListener('keydown', onKeyDown);
     };
-  }, [ref, enabled]);
+  }, [ref, enabled, latest]);
 }

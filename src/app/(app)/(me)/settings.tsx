@@ -31,11 +31,11 @@ import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
 import { useSettings, type AutoSleepType } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
+import { formatSpeed } from '@/lib/format';
 
 const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
 
 const sec = (v: number) => `${v}s`;
-const speed = (v: number) => `${Number(v.toFixed(2))}×`;
 const mins = (v: number) => `${Math.round(v / 60)}m`;
 
 /** A titled settings group: an eyebrow label above its content, with consistent rhythm. */
@@ -226,7 +226,7 @@ export default function SettingsScreen() {
                 step={0.05}
                 min={0.5}
                 max={2}
-                format={speed}
+                format={formatSpeed}
               />
             </StepperRow>
             <StepperRow label={t('settings.playback.autoRewind')}>

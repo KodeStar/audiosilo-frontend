@@ -1,6 +1,7 @@
 import type { Book, BookSort, Progress } from '@/api/types';
 import { type LetterItem, letterItems } from '@/lib/alpha-sections';
 import { foldAccents } from '@/lib/names';
+import { firstParam, type RawParams } from '@/lib/paths';
 import { isInProgress } from '@/lib/progress-view';
 
 /**
@@ -30,19 +31,16 @@ export type BooksView = {
   len?: LengthBucket;
 };
 
-type RawParams = Record<string, string | string[] | undefined>;
-
-const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-const oneOf = <T extends string>(all: readonly T[], v: string | undefined): T | undefined =>
-  (all as readonly string[]).includes(v ?? '') ? (v as T) : undefined;
+const oneOf = <T extends string>(all: readonly T[], v: string): T | undefined =>
+  (all as readonly string[]).includes(v) ? (v as T) : undefined;
 
 /** The view a link asks for. Unknown values are ignored (the default stands). */
 export function parseBooksView(params: RawParams): BooksView {
   return {
-    sort: oneOf(BOOKS_SORTS, first(params.sort)) ?? DEFAULT_BOOKS_SORT,
-    status: oneOf(BOOK_STATUSES, first(params.status)),
-    dl: first(params.dl) === '1',
-    len: oneOf(LENGTH_BUCKETS, first(params.len)),
+    sort: oneOf(BOOKS_SORTS, firstParam(params.sort)) ?? DEFAULT_BOOKS_SORT,
+    status: oneOf(BOOK_STATUSES, firstParam(params.status)),
+    dl: firstParam(params.dl) === '1',
+    len: oneOf(LENGTH_BUCKETS, firstParam(params.len)),
   };
 }
 

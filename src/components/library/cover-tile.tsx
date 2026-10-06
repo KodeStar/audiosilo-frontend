@@ -15,6 +15,7 @@ import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 import { percentOf } from '@/lib/progress-view';
+import { ProgressBar } from '@/components/ui/progress-bar';
 
 import { BookCover } from './book-cover';
 import { TileActions } from './tile-actions';
@@ -146,7 +147,7 @@ export function CoverTile({
         if (e.nativeEvent.actionName === 'longpress') onMenu?.();
       }}
       style={{ width }}
-      className={cn('gap-2.5 rounded-[5px]', className)}
+      className={cn('gap-2.5 rounded-cover', className)}
     >
       <View ref={coverRef}>
         <BookCover
@@ -194,12 +195,10 @@ export function CoverTile({
           </View>
         ) : null}
         {inProgress ? (
-          <View className="absolute bottom-1.5 left-1.5 right-1.5 h-1 overflow-hidden rounded-full bg-white/35">
-            <View
-              className="h-full rounded-full bg-brand"
-              style={{ width: `${progress * 100}%` }}
-            />
-          </View>
+          <ProgressBar
+            fraction={progress}
+            className="absolute bottom-1.5 left-1.5 right-1.5 bg-white/35"
+          />
         ) : null}
       </View>
       <View className={cn('gap-0.5', onShelf && 'pt-3')}>

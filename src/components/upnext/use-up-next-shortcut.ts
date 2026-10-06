@@ -1,8 +1,5 @@
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
-
 import { useCapability } from '@/api/hooks';
-import { isEditable, isModalOpen } from '@/lib/keyboard';
+import { useGlobalShortcut } from '@/lib/keyboard';
 
 import { isUpNextShortcut } from './up-next-model';
 import { toggleUpNext } from './up-next-store';
@@ -12,21 +9,9 @@ import { useUpNextConnection } from './use-up-next';
  * Q shows or hides Up next (web; STYLEGUIDE section 11): never while typing in a field,
  * never over a dialog (the palette, a sheet) or the full player (`enabled` false), and
  * only once the server is known to have `queue`. The same guards as the palette's
- * shortcut (`usePaletteShortcut`).
+ * shortcut (`useGlobalShortcut`).
  */
 export function useUpNextShortcut(enabled: boolean) {
   const supported = useCapability('queue', useUpNextConnection()) === true;
-  useEffect(() => {
-    if (!enabled || !supported || Platform.OS !== 'web' || typeof document === 'undefined') {
-      return;
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.repeat || !isUpNextShortcut(e, isEditable(document.activeElement))) return;
-      if (isModalOpen(document)) return;
-      e.preventDefault();
-      toggleUpNext();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [enabled, supported]);
+  useGlobalShortcut(enabled && supported, isUpNextShortcut, toggleUpNext);
 }

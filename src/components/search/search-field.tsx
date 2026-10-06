@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/icon';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { FOCUS_RING_CLASS } from '@/components/ui/text';
 
 /**
  * The Search screen's field (the prototype's 52-tall search input): a search glyph, the
@@ -68,7 +69,7 @@ export function SearchField({
           className={cn(
             'h-10 w-10 items-center justify-center rounded-control active:bg-accent',
             Platform.select({
-              web: 'cursor-pointer outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+              web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}`,
             }),
           )}
         >

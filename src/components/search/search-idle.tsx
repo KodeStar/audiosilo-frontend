@@ -14,7 +14,7 @@ import { useSelectedLibrary } from '@/components/library/use-selected-library';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
@@ -67,7 +67,7 @@ export function SearchIdle({ onPick }: { onPick: (query: string) => void }) {
               className={cn(
                 'rounded-control px-2 py-1 active:bg-accent',
                 Platform.select({
-                  web: 'cursor-pointer outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+                  web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}`,
                 }),
               )}
             >
@@ -111,7 +111,7 @@ function RecentChip({ label, onPress }: { label: string; onPress: () => void }) 
       className={cn(
         'h-8 max-w-full flex-row items-center gap-1.5 rounded-full border border-border-strong bg-card px-3 active:bg-accent',
         Platform.select({
-          web: 'cursor-pointer outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          web: `cursor-pointer hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
         }),
       )}
     >
@@ -144,7 +144,7 @@ function BrowseGrid({ cards }: { cards: BrowseCard[] }) {
             className={cn(
               'min-h-[72px] grow flex-row items-center gap-3 rounded-card border border-border bg-card p-4 active:bg-accent',
               Platform.select({
-                web: 'cursor-pointer outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                web: `cursor-pointer transition-colors hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
               }),
             )}
           >

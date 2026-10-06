@@ -109,7 +109,7 @@ export function BookCover({
   const source = uri ? (uri === local ? uri : { uri, headers: api?.authHeaders() }) : null;
 
   return (
-    <CoverFrame size={shadow} className={cn('rounded-[5px]', className)}>
+    <CoverFrame size={shadow} className={cn('rounded-cover', className)}>
       <View style={{ width, height: width }}>
         <Cover
           source={source}

@@ -19,6 +19,11 @@ export function pathLeaf(relPath: string): string {
   return parts[parts.length - 1] ?? '';
 }
 
+/** A book's title as shown: its own, else its file or folder name. */
+export function bookTitle(title: string | undefined, relPath: string): string {
+  return title || pathLeaf(relPath);
+}
+
 /** Path one level up (the containing folder), or '' at the library root. */
 export function parentPath(relPath: string): string {
   const parts = relPath.split('/').filter(Boolean);
@@ -48,12 +53,16 @@ export function libraryHref(connectionId: string, libraryId: number, relPath = '
   };
 }
 
+/** The book screen's tabs, in display order (the rules are `book-tabs.ts`). */
+export type BookTab =
+  'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series';
+
 /** A book page; `tab` opens it on that tab (`parseBookTab`) instead of the first. */
 export function bookHref(
   connectionId: string,
   libraryId: number,
   relPath: string,
-  tab?: string,
+  tab?: BookTab,
 ): Href {
   return {
     pathname: '/book/[libraryId]',
@@ -161,18 +170,18 @@ export function collectionHref(connectionId: string, id: number): Href {
 }
 
 /** A route's raw search params (Expo Router may hand back `string[]`). */
-type RawParams = Record<string, string | string[] | undefined>;
+export type RawParams = Record<string, string | string[] | undefined>;
 
-// Names are kept exactly as given (they are exact filter values); only a blank one is
-// treated as absent.
-const one = (v: string | string[] | undefined): string => {
+/** A search param's first value ('' when absent). Kept exactly as given (names are exact
+ * filter values); only a blank one is treated as absent. */
+export function firstParam(v: string | string[] | undefined): string {
   const s = (Array.isArray(v) ? v[0] : v) ?? '';
   return s.trim() ? s : '';
-};
+}
 
 /** A positive integer id param, or null. */
 function idParam(v: string | string[] | undefined): number | null {
-  const s = one(v).trim();
+  const s = firstParam(v).trim();
   if (!/^\d+$/.test(s)) return null;
   const n = Number(s);
   return n > 0 && Number.isSafeInteger(n) ? n : null;
@@ -184,8 +193,8 @@ export function parseSeriesParams(
   p: RawParams,
 ): { connectionId: string; libraryId: number; name?: string; work?: string } | null {
   const libraryId = idParam(p.library);
-  const name = one(p.name);
-  const work = one(p.work);
+  const name = firstParam(p.name);
+  const work = firstParam(p.work);
   if (libraryId === null || (!name && !work)) return null;
   return {
     connectionId: connectionParam(p.connection),
@@ -200,7 +209,7 @@ export function parsePersonParams(
   p: RawParams,
 ): { connectionId: string; libraryId: number; name: string } | null {
   const libraryId = idParam(p.library);
-  const name = one(p.name);
+  const name = firstParam(p.name);
   if (libraryId === null || !name) return null;
   return { connectionId: connectionParam(p.connection), libraryId, name };
 }

@@ -10,6 +10,7 @@ import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { ProgressBar } from '@/components/ui/progress-bar';
 
 /** Download affordance on the book detail screen: download / progress+cancel /
  * downloaded+delete / retry, with a fallback when offline storage is unavailable
@@ -157,12 +158,7 @@ export function DownloadControl({
             <Icon name="close" size={16} color={themed.mutedForeground} />
           </Pressable>
         </View>
-        <View className="h-1.5 overflow-hidden rounded-full bg-muted">
-          <View
-            className="h-full rounded-full bg-brand"
-            style={{ width: `${Math.max(4, progress * 100)}%` }}
-          />
-        </View>
+        <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
       </View>
     );
   }
@@ -200,12 +196,7 @@ export function DownloadProgress({ libraryId, path }: { libraryId: number; path:
           : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
-      <View className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <View
-          className="h-full rounded-full bg-brand"
-          style={{ width: `${Math.max(4, progress * 100)}%` }}
-        />
-      </View>
+      <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
     </View>
   );
 }

@@ -11,7 +11,7 @@ import { Icon } from '@/components/ui/icon';
 import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock, formatDuration } from '@/lib/format';
+import { formatClock, formatDuration, formatSpeed } from '@/lib/format';
 import { chapterAt } from '@/playback/book-queue';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -107,7 +107,7 @@ export function HistorySection({
             {wall > 0 ? (
               <Text variant="caption" style={tabularNums}>
                 {t('book.duration', { value: formatDuration(wall) })}
-                {speed > 0 ? ` · ${Number(speed.toFixed(2))}×` : ''}
+                {speed > 0 ? ` · ${formatSpeed(speed)}` : ''}
               </Text>
             ) : null}
           </RowSurface>

@@ -21,10 +21,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { formatDuration } from '@/lib/format';
+import { formatDayMonth, formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -32,15 +32,9 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { usePlayBook } from '@/components/player/use-play-book';
 
 import { BookScale } from './book-scale';
-import { formatDayMonth } from './dates';
 import type { BookAt } from './home-model';
 import { dailyPace, estimatedFinish } from './listening';
-import {
-  bookmarkPins,
-  bookScale,
-  chapterPlace,
-  timeLeftAtSpeed,
-} from './now-card-model';
+import { bookmarkPins, bookScale, chapterPlace, timeLeftAtSpeed } from './now-card-model';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -128,7 +122,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   ).visible.length;
   const hasStory = (work?.recaps?.length ?? 0) > 0;
 
-  const title = book?.title || pathLeaf(path);
+  const title = bookTitle(book?.title, path);
   const series = book?.series
     ? book.series_index
       ? t('home.now.seriesBook', { series: book.series, position: book.series_index })
@@ -310,9 +304,6 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 /** "1.25×", as the player writes speeds. */
-function formatSpeed(speed: number): string {
-  return `${Number(speed.toFixed(2))}×`;
-}
 
 /** The Now card's shape while Home's progress loads, so nothing shifts when it lands. */
 export function NowCardSkeleton() {

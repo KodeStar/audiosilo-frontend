@@ -1,5 +1,7 @@
 import type { Href } from 'expo-router';
 
+import { firstParam } from '@/lib/paths';
+
 /**
  * The Library tab's browse modes (STYLEGUIDE section 2): its sub-nav sections, in order.
  * The mode is the Library root's own search param, `/library?mode=<mode>` (absent =
@@ -34,8 +36,8 @@ export const LIBRARY_MODE_LABEL_KEY = {
 /** The mode a `?mode=` param asks for (Expo Router may hand back `string[]`); an
  * unknown or absent one is the default. */
 export function parseLibraryMode(param?: string | string[]): LibraryMode {
-  const v = Array.isArray(param) ? param[0] : param;
-  return (LIBRARY_MODES as readonly string[]).includes(v ?? '')
+  const v = firstParam(param);
+  return (LIBRARY_MODES as readonly string[]).includes(v)
     ? (v as LibraryMode)
     : DEFAULT_LIBRARY_MODE;
 }

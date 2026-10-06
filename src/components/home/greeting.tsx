@@ -4,11 +4,10 @@ import { View } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { formatRelative } from '@/lib/format';
+import { formatLongDate, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { formatLongDate } from './dates';
 import { greetingPart, type SyncPill } from './home-model';
 
 const GREETING = {

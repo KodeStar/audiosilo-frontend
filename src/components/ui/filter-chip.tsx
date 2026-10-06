@@ -7,7 +7,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
-import { Text } from './text';
+import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
 
 /**
  * A Stacks filter chip (STYLEGUIDE section 8, "Chip"): 32 tall, a pill with a strong
@@ -50,7 +50,7 @@ export function FilterChip({
           ? 'border-primary bg-primary'
           : 'border-border-strong bg-card active:bg-accent hover:bg-accent',
         Platform.select({
-          web: 'cursor-pointer select-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          web: `cursor-pointer select-none transition-colors ${FOCUS_RING_OFFSET_CLASS}`,
         }),
         className,
       )}

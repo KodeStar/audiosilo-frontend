@@ -3,7 +3,7 @@ import { Platform, View } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
@@ -52,10 +52,7 @@ export function UpNextButton({ variant }: { variant: 'bar' | 'header' | 'dock' }
             : 'border-border bg-card'
           : 'border-transparent active:bg-accent',
         Platform.select({
-          web: cn(
-            !pressed && 'hover:bg-accent',
-            'outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          ),
+          web: cn(!pressed && 'hover:bg-accent', FOCUS_RING_CLASS),
         }),
       )}
     >

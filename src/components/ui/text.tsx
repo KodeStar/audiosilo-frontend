@@ -14,6 +14,13 @@ import { tabularNums } from '@/theme/tabular-nums';
 export const EYEBROW_CLASS =
   'font-sans-semibold text-xs uppercase tracking-wider text-muted-foreground';
 
+/** The web's keyboard focus ring on a pressable (put it in its `web` classes): the
+ * browser outline off, the ring token on `:focus-visible`. */
+export const FOCUS_RING_CLASS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring';
+/** The focus ring set off from the control by a page-coloured gap: for a filled or
+ * bordered control (a button, a chip, a card) whose own edge would hide a flush ring. */
+export const FOCUS_RING_OFFSET_CLASS = `${FOCUS_RING_CLASS} focus-visible:ring-offset-2 focus-visible:ring-offset-background`;
+
 const variants = {
   /** Bricolage 750, set bold (static weights): book and series heroes. */
   'display-xl': 'font-display text-4xl tracking-tighter text-foreground',

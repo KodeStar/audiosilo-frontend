@@ -1,5 +1,6 @@
 import type { BookRef, NextBook, Progress, QueueEntry } from '@/api/types';
 import { percentHeard } from '@/lib/progress-view';
+import type { ShortcutKey } from '@/lib/keyboard';
 
 /**
  * The pure rules behind Up next (the desktop drawer and the tablet/phone sheet): which
@@ -96,13 +97,6 @@ export function keyMove(
   const to = key.key === 'ArrowUp' ? index - 1 : index + 1;
   return to < 0 || to >= count ? null : to;
 }
-
-export type ShortcutKey = {
-  key: string;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-};
 
 /** Q toggles Up next (STYLEGUIDE section 11): a bare Q, never while typing in a field
  * (`editable`) and never with a modifier (Cmd+Q quits the browser). */

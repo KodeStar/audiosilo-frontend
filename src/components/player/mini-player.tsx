@@ -25,6 +25,7 @@ import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/sto
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { formatSpeed } from '@/lib/format';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
 const COVER_SIZE = 64;
@@ -66,7 +67,7 @@ function TimeLeft({ total }: { total: number }) {
   const time = useBookTimeLeft(total);
   const rate = usePlayer((s) => s.rate);
   if (!time) return null;
-  const rateLabel = `${Number(rate.toFixed(2))}×`;
+  const rateLabel = formatSpeed(rate);
   return (
     <Text variant="caption" numberOfLines={1} style={tabularNums}>
       {t('player.controls.timeLeft', { time, rate: rateLabel })}

@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { entryBytes } from '@/downloads/downloads-view';
 import { useDownloadEntry, useDownloads } from '@/downloads/store';
@@ -309,7 +309,7 @@ export function BookActionsMenu({
                   'min-h-[48px] flex-row items-center gap-3 rounded-xl px-3 active:bg-accent',
                   a.group && 'mt-2',
                   Platform.select({
-                    web: 'outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    web: FOCUS_RING_CLASS,
                   }),
                 )}
               >

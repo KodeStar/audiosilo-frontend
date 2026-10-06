@@ -1,7 +1,8 @@
-import { type RefObject, useEffect, useRef } from 'react';
+import { type RefObject, useEffect } from 'react';
 import type { View } from 'react-native';
 
 import { useLayout } from '@/lib/layout';
+import { useLatestRef } from '@/lib/use-latest';
 
 import { BOOK_DRAG_TYPE, type BookDragPayload, serializeDragPayload } from './up-next-model';
 
@@ -24,10 +25,7 @@ export function useBookDragSource(
   payload: BookDragPayload & { title: string },
 ) {
   const desktop = useLayout() === 'desktop';
-  const latest = useRef(payload);
-  useEffect(() => {
-    latest.current = payload;
-  });
+  const latest = useLatestRef(payload);
   useEffect(() => {
     const node = ref.current as unknown as HTMLElement | null;
     if (!desktop || !node || typeof node.addEventListener !== 'function') return;
@@ -49,5 +47,5 @@ export function useBookDragSource(
       node.removeEventListener('dragstart', onStart);
       node.removeEventListener('dragend', onEnd);
     };
-  }, [ref, desktop]);
+  }, [ref, desktop, latest]);
 }

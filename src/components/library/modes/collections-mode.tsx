@@ -7,7 +7,7 @@ import { useCollections, useFavouritesAll } from '@/api/hooks';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 
 import { LoadError } from '../books/book-states';
 import {
@@ -77,7 +77,7 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
                   connectionId: f.connectionId,
                   libraryId: f.library_id,
                   path: f.path,
-                  title: f.title || pathLeaf(f.path),
+                  title: bookTitle(f.title, f.path),
                   author: f.author,
                 }))}
               />

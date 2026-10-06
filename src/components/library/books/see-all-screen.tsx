@@ -13,12 +13,12 @@ import {
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { CoverTile } from '../cover-tile';
-import { titleOf, tileCaption } from './book-items';
+import { tileCaption } from './book-items';
 import { GhostCovers, StateNotice } from './book-states';
 
 // How many recently added books to load per server (the Home shelf shows 15).
@@ -100,7 +100,7 @@ export function SeeAllScreen() {
           connectionId={b.connectionId}
           libraryId={b.library_id}
           path={b.rel_path}
-          title={titleOf(b)}
+          title={bookTitle(b.title, b.rel_path)}
           book={b}
           author={b.author}
           caption={tileCaption(b, 'recent')}
@@ -146,7 +146,7 @@ function FinishedTile({
       connectionId={p.connectionId}
       libraryId={p.library_id}
       path={p.path}
-      title={book ? titleOf(book) : pathLeaf(p.path)}
+      title={bookTitle(book?.title, p.path)}
       book={book}
       author={book?.author}
       coverVersion={book?.cover_version}

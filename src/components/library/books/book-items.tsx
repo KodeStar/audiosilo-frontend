@@ -7,10 +7,11 @@ import { Text } from '@/components/ui/text';
 import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { ProgressBar } from '@/components/ui/progress-bar';
 
 import { CoverListRow } from '../cover-grid';
 import { CoverTile } from '../cover-tile';
@@ -18,7 +19,6 @@ import { type BookAction, BookActionsButton } from './book-actions';
 import { bookStatus, type BooksSort } from './books-view';
 
 /** A book's shown title (its folder's name when it has none). */
-export const titleOf = (b: Book) => b.title || pathLeaf(b.rel_path);
 
 /** The line under a tile's title, by the list's order: when it was added (Recently
  * added), its length (Length), else its author. */
@@ -55,7 +55,7 @@ export function BookTile({
       libraryId={libraryId}
       path={book.rel_path}
       book={book}
-      title={titleOf(book)}
+      title={bookTitle(book.title, book.rel_path)}
       author={book.author}
       caption={tileCaption(book, sort)}
       coverVersion={book.cover_version}
@@ -95,9 +95,7 @@ function ProgressCell({ book, progress }: { book: Book; progress?: Progress }) {
   const { fraction, remaining } = progressFractionRemaining(progress!.position, book.duration);
   return (
     <View className="gap-1">
-      <View className="h-1 overflow-hidden rounded-full bg-muted">
-        <View className="h-full rounded-full bg-brand" style={{ width: `${fraction * 100}%` }} />
-      </View>
+      <ProgressBar fraction={fraction} />
       <Text variant="caption" numberOfLines={1} style={tabularNums}>
         {t('library.books.progress', {
           percent: percentOf(fraction),
@@ -165,7 +163,7 @@ export function BookListRow({
   const { t } = useTranslation();
   const layout = useLayout();
   const { openBook } = useOpen();
-  const title = titleOf(book);
+  const title = bookTitle(book.title, book.rel_path);
   const byline = bookSubtitle({
     author: book.author,
     series: book.series,

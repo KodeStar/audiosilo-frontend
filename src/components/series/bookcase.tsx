@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 import Animated, {
@@ -22,6 +22,8 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import type { SeriesEntry } from './series-model';
 import { READING_LIFT, Ribbon, RIBBON_WIDTH, Spine } from './spine';
 import { spineDims } from './spine-fit';
+import { FOCUS_RING_OFFSET_CLASS } from '@/components/ui/text';
+import { useDomId } from '@/lib/use-dom-id';
 
 /** The bookcase's scale per form factor (the prototype's 0.92 / 1.2 / 1.42). */
 export function bookcaseScale(layout: LayoutClass): number {
@@ -238,7 +240,7 @@ function FaceOut({
           accessibilityRole="button"
           accessibilityLabel={t('series.openBookLabel', { label })}
           className={Platform.select({
-            web: 'cursor-pointer rounded-[5px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            web: `cursor-pointer rounded-cover ${FOCUS_RING_OFFSET_CLASS}`,
           })}
         >
           {cover}
@@ -254,7 +256,7 @@ function FaceOut({
  * soft shadow under it. Decorative. */
 export function Plank({ className }: { className?: string }) {
   const themed = useThemeColors();
-  const id = `plank${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const id = useDomId('plank');
   return (
     <View
       className={cn('mx-2', className)}

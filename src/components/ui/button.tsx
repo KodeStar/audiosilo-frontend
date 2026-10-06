@@ -8,7 +8,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
 import { Spinner } from './spinner';
-import { Text, TextClassContext } from './text';
+import { FOCUS_RING_OFFSET_CLASS, Text, TextClassContext } from './text';
 
 /**
  * The Stacks button (STYLEGUIDE.md section 8): react-native-reusables' Button, restyled.
@@ -19,7 +19,7 @@ const buttonVariants = cva(
   cn(
     'shrink-0 flex-row items-center justify-center gap-2 rounded-control border border-transparent',
     Platform.select({
-      web: 'cursor-pointer select-none whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+      web: `cursor-pointer select-none whitespace-nowrap transition-colors ${FOCUS_RING_OFFSET_CLASS}`,
     }),
   ),
   {

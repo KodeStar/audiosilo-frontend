@@ -20,7 +20,7 @@ import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import type { MergedBook } from '@/lib/dedup';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { flushQueue } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
@@ -233,7 +233,7 @@ export function HomeScreen() {
                       connectionId={b.connectionId}
                       libraryId={b.library_id}
                       path={b.rel_path}
-                      title={b.title || pathLeaf(b.rel_path)}
+                      title={bookTitle(b.title, b.rel_path)}
                       book={b}
                       author={b.author}
                       caption={added ? t('home.added', { when: added }) : b.author}
@@ -279,7 +279,7 @@ export function HomeScreen() {
                   connectionId={f.connectionId}
                   libraryId={f.library_id}
                   path={f.path}
-                  title={f.title || pathLeaf(f.path)}
+                  title={bookTitle(f.title, f.path)}
                   author={f.author}
                   caption={f.author}
                   server={serverLabel(f.connectionId)}

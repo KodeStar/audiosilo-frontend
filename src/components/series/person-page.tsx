@@ -9,8 +9,8 @@ import { CoverTile } from '@/components/library/cover-tile';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
-import { formatDuration } from '@/lib/format';
+import { FOCUS_RING_CLASS, FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { formatDuration, formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -168,12 +168,12 @@ function PersonHeader({
   const s = personStats(books, cid, progressOf);
   const tiles: { icon: IconName; label: string; value: string }[] = [
     { icon: 'book', label: t('people.stats.books'), value: String(s.books) },
-    { icon: 'clock', label: t('people.stats.length'), value: formatDuration(s.seconds) || '0m' },
+    { icon: 'clock', label: t('people.stats.length'), value: formatDurationOrZero(s.seconds) },
     { icon: 'circle-check', label: t('people.stats.finished'), value: String(s.finished) },
     {
       icon: 'history',
       label: t('people.stats.listened'),
-      value: formatDuration(s.listened) || '0m',
+      value: formatDurationOrZero(s.listened),
     },
   ];
   return (
@@ -246,7 +246,7 @@ function SeriesShelf({
         className={cn(
           'flex-row items-center gap-1.5 self-start rounded-md active:opacity-70',
           Platform.select({
-            web: 'cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            web: `cursor-pointer ${FOCUS_RING_CLASS}`,
           }),
         )}
       >
@@ -303,7 +303,7 @@ function PersonChip({
       className={cn(
         'h-11 flex-row items-center gap-2 rounded-full border border-border-strong bg-card pl-1.5 pr-4 active:bg-accent',
         Platform.select({
-          web: 'cursor-pointer outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          web: `cursor-pointer transition-colors hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
         }),
       )}
     >

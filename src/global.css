@@ -274,6 +274,7 @@
    * `--radius` scale (rounded-sm/md/lg/xl...) is NOT adopted: it would move every
    * existing `rounded-*` class. The react-native-reusables primitives use these.
    */
+  --radius-cover: 5px; /* covers, cover tiles and their placeholders */
   --radius-control: 10px; /* buttons, inputs, selects */
   --radius-menu: 14px; /* menus, popovers, toasts, large buttons */
   --radius-card: 16px; /* cards */

@@ -1,8 +1,8 @@
-import { useId } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { cn } from '@/lib/utils';
+import { useDomId } from '@/lib/use-dom-id';
 
 import { type CoverWashProps, useWashLayers } from './cover-wash-model';
 
@@ -17,7 +17,7 @@ import { type CoverWashProps, useWashLayers } from './cover-wash-model';
  */
 export function CoverWash({ color, variant, scrim, className }: CoverWashProps) {
   const wash = useWashLayers(color, variant);
-  const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const id = useDomId('wash');
   if (!wash) return null;
   return (
     <View

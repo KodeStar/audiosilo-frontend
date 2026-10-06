@@ -139,7 +139,7 @@ export function CoverTileSkeleton({ width }: { width: number }) {
   return (
     <View style={{ width }} className="gap-2.5">
       <View style={{ width, height: width }}>
-        <Skeleton className="h-full w-full rounded-[5px]" testID="cover-skeleton" />
+        <Skeleton className="h-full w-full rounded-cover" testID="cover-skeleton" />
       </View>
       <View className="gap-1.5 py-0.5">
         <Skeleton className="h-3.5 w-11/12 rounded-sm" />

@@ -17,6 +17,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
 import { FullWindowOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
+import { FOCUS_RING_CLASS } from '@/components/ui/text';
 
 /**
  * Stacks dialogs (STYLEGUIDE.md section 8): react-native-reusables' Dialog, restyled.
@@ -159,7 +160,7 @@ export function DialogContent({ children, showClose = true, ...props }: DialogCo
                   className={cn(
                     'absolute right-3 top-3 h-10 w-10 items-center justify-center rounded-full active:bg-accent',
                     Platform.select({
-                      web: 'cursor-pointer outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+                      web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}`,
                     }),
                   )}
                 >

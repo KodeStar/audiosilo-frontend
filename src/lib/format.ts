@@ -12,6 +12,17 @@ export function formatDuration(seconds?: number): string {
   return `${total}s`;
 }
 
+/** {@link formatDuration} that reads "0m" for nothing, for a figure that is always
+ * shown (time listened, a total). */
+export function formatDurationOrZero(seconds?: number): string {
+  return formatDuration(seconds) || '0m';
+}
+
+/** "1.25×" - a playback speed, without trailing zeros. */
+export function formatSpeed(rate: number): string {
+  return `${Number(rate.toFixed(2))}×`;
+}
+
 /** "1:02:03" / "2:05" - transport clock. */
 export function formatClock(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
@@ -106,13 +117,55 @@ export function formatRelative(iso?: string, locale: string = getLocale()): stri
 }
 
 /**
- * Cached `Intl.DateTimeFormat`s for `formatTimeOfDay`, keyed by locale. Under
- * Hermes every construction bridges to the platform formatter, and a single
- * stepper tap re-renders every clock readout on the settings screen - walking a
- * window bound across the evening is dozens of taps, so building one formatter
- * per call is measurably wasteful for a value that never changes.
+ * Cached `Intl.DateTimeFormat`s, by locale and use. Under Hermes every construction
+ * bridges to the platform formatter, and a single stepper tap re-renders every clock
+ * readout on the settings screen - walking a window bound across the evening is dozens
+ * of taps, so building one formatter per call is measurably wasteful for a value that
+ * never changes. Throws where the runtime has no usable `Intl.DateTimeFormat` (Hermes
+ * ships a reduced Intl): each caller falls back.
  */
-const timeOfDayFormatters = new Map<string, Intl.DateTimeFormat>();
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function dateFormatter(locale: string, use: string, opts: Intl.DateTimeFormatOptions) {
+  const id = `${locale}|${use}`;
+  let fmt = dateFormatters.get(id);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, opts);
+    dateFormatters.set(id, fmt);
+  }
+  return fmt;
+}
+
+/** A date with `opts`, or its ISO date where the runtime can't format it. */
+function formatDate(date: Date, use: string, opts: Intl.DateTimeFormatOptions, locale: string) {
+  try {
+    return dateFormatter(locale, use, opts).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+/** "Monday 5 October" (the device's own date: Home's greeting is about the listener's
+ * day). */
+export function formatLongDate(date: Date, locale: string = getLocale()): string {
+  return formatDate(date, 'long', { weekday: 'long', day: 'numeric', month: 'long' }, locale);
+}
+
+/** "20 Oct". */
+export function formatDayMonth(date: Date, locale: string = getLocale()): string {
+  return formatDate(date, 'dm', { day: 'numeric', month: 'short' }, locale);
+}
+
+/** "20 Oct" for a server `YYYY-MM-DD` day, read as that calendar day (not shifted into
+ * the device's zone). */
+export function formatServerDay(day: string, locale: string = getLocale()): string {
+  return formatDate(
+    new Date(`${day}T12:00:00Z`),
+    'sdm',
+    { day: 'numeric', month: 'short', timeZone: 'UTC' },
+    locale,
+  );
+}
 
 /**
  * A canonical "HH:MM" rendered in the reader's own clock convention (so an en-US
@@ -131,15 +184,11 @@ export function formatTimeOfDay(hhmm: string, locale: string = getLocale()): str
   const minutes = parseHhMm(hhmm);
   if (minutes === null) return hhmm;
   try {
-    let fmt = timeOfDayFormatters.get(locale);
-    if (!fmt) {
-      fmt = new Intl.DateTimeFormat(locale, {
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZone: 'UTC',
-      });
-      timeOfDayFormatters.set(locale, fmt);
-    }
+    const fmt = dateFormatter(locale, 'hhmm', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'UTC',
+    });
     return fmt.format(new Date(Date.UTC(2000, 0, 1, Math.floor(minutes / 60), minutes % 60)));
   } catch {
     return hhmm;

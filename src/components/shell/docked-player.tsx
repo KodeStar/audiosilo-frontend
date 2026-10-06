@@ -176,7 +176,7 @@ export function DockedPlayer() {
             <Cover
               source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
               label={title}
-              rounded="rounded-[5px]"
+              rounded="rounded-cover"
               size={desktop ? 56 : 48}
             />
             <View className="flex-1">

@@ -6,7 +6,7 @@ import { extendTailwindMerge } from 'tailwind-merge';
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      radius: ['control', 'menu', 'card', 'dialog', 'sheet'],
+      radius: ['cover', 'control', 'menu', 'card', 'dialog', 'sheet'],
       shadow: ['overlay'],
     },
   },

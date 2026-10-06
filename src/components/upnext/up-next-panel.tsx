@@ -11,12 +11,12 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import {
   type NowPlaying,
@@ -221,7 +221,7 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
         className={cn(
           'h-11 w-11 items-center justify-center rounded-full active:bg-accent',
           Platform.select({
-            web: 'outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+            web: `hover:bg-accent ${FOCUS_RING_CLASS}`,
           }),
         )}
       >
@@ -314,7 +314,7 @@ function SuggestedBook({
 }) {
   const { t } = useTranslation();
   const { data: book } = useBook(libraryId, path, cid);
-  const title = book?.title || pathLeaf(path);
+  const title = bookTitle(book?.title, path);
   return (
     <View
       className={cn(

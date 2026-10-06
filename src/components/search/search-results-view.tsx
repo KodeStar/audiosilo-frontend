@@ -17,11 +17,11 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -410,7 +410,7 @@ function BookTile({
       p.library_id === book.library_id &&
       p.path === book.rel_path,
   );
-  const title = book.title || pathLeaf(book.rel_path);
+  const title = bookTitle(book.title, book.rel_path);
   const also = book.also.length
     ? t('search.alsoOn', { servers: book.also.map((a) => a.connectionName).join(', ') })
     : book.other_locations?.length
@@ -522,7 +522,7 @@ function PersonChip({
       className={cn(
         'h-11 max-w-full flex-row items-center gap-2 rounded-full border border-border-strong bg-card pl-[5px] pr-3.5 active:bg-accent',
         Platform.select({
-          web: 'cursor-pointer outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          web: `cursor-pointer transition-colors hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
         }),
       )}
     >
@@ -562,7 +562,7 @@ function CharacterRow({
       className={cn(
         'min-h-[64px] flex-row items-center gap-3 rounded-menu border border-border bg-card p-3 active:bg-accent',
         Platform.select({
-          web: 'cursor-pointer outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          web: `cursor-pointer transition-colors hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
         }),
       )}
     >
