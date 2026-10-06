@@ -44,7 +44,13 @@ function FavouritesShelfRow() {
   );
 }
 
-export default function LibrariesScreen() {
+/**
+ * The Library tab's Folders mode: today's libraries-then-folders flow - Favourites, then
+ * every server's libraries (grouped by server when there are several), each opening its
+ * folder browser (`/library/[libraryId]`, breadcrumbs, filter, jump rail and scroll
+ * memory). Unlike the other modes it spans every library, not the selected one.
+ */
+export function FoldersMode() {
   const themed = useThemeColors();
   const { t } = useTranslation();
   const { libraries, isLoading, error } = useLibrariesAll();

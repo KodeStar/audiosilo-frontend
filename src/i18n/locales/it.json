@@ -297,6 +297,26 @@
       "itemCount_one": "{{count}} elemento",
       "itemCount_other": "{{count}} elementi",
       "empty": "Tocca il cuore su una cartella o un libro per aggiungerlo qui."
+    },
+    "modes": {
+      "label": "Sfoglia per",
+      "books": "Libri",
+      "authors": "Autori",
+      "series": "Serie",
+      "narrators": "Narratori",
+      "collections": "Raccolte",
+      "folders": "Cartelle"
+    },
+    "picker": {
+      "label": "Libreria",
+      "placeholder": "Scegli una libreria"
+    },
+    "detail": {
+      "soon": "Questa pagina sta arrivando.",
+      "badLink": "Questo link non porta a niente qui.",
+      "author": "Autore",
+      "narrator": "Narratore",
+      "collection": "Raccolta"
     }
   },
   "downloads": {
@@ -556,5 +576,26 @@
     "results_other": "{{count}} risultati",
     "resultsOn_one": "{{count}} risultato · {{servers}}",
     "resultsOn_other": "{{count}} risultati · {{servers}}"
+  },
+  "covers": {
+    "notInLibrary": "Non è nella tua libreria",
+    "onServer": "Su {{server}}",
+    "bookNumber": "Libro {{position}}",
+    "ghostLabel": "{{title}}, {{note}}",
+    "ghostLabelNumbered": "Libro {{position}}, {{title}}, {{note}}",
+    "finished": "Finito",
+    "listened": "{{percent}}% ascoltato",
+    "downloaded": "Scaricato"
+  },
+  "queue": {
+    "queueIt": "Metti in coda",
+    "queued": "In coda",
+    "addLabel": "Aggiungi a Prossimo",
+    "removeLabel": "Rimuovi da Prossimo",
+    "added": "Aggiunto a Prossimo",
+    "removed": "Rimosso da Prossimo",
+    "undo": "Annulla",
+    "full": "Prossimo è pieno. Rimuovi un libro per aggiungerne un altro.",
+    "failed": "Impossibile aggiornare Prossimo. Riprova."
   }
 }

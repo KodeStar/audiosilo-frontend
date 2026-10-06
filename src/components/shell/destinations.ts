@@ -43,6 +43,10 @@ export type Destination = {
   sf: SFSymbolIcon['sf'];
   /** Material Symbol for the Android native tab bar. */
   md: MaterialIcon['md'];
+  /** Search params the tab root owns (Library's `mode`), kept when the root comes back
+   * into focus; any other param on a root is a cold link's leftover and is cleared
+   * (`tabStackListeners`). */
+  rootParams?: readonly string[];
 };
 
 export const TABS: readonly Destination[] = [
@@ -65,6 +69,8 @@ export const TABS: readonly Destination[] = [
     icon: 'library',
     sf: 'books.vertical',
     md: 'library_books',
+    // The browse mode (`/library?mode=authors`, see library-modes.ts).
+    rootParams: ['mode'],
   },
   {
     name: '(search)',
@@ -180,8 +186,9 @@ type ParamsNavigation = {
  * tab's stack with the root inserted underneath, and React Navigation copies the link's
  * params onto that root AND every route above it (the tab, `(app)`, the root), which
  * expo-router merges into the URL - so backing out landed on `/?libraryId=1`. Tab roots
- * and their ancestors take no route params, so a tab root that comes into focus carrying
- * any has them replaced with none, up the chain.
+ * take no route params besides their own `rootParams` (Library's `mode`), and their
+ * ancestors none, so a tab root that comes into focus carrying any other has them
+ * replaced: the root keeps only its own, every ancestor gets none.
  */
 export function tabStackListeners({
   route,
@@ -192,12 +199,14 @@ export function tabStackListeners({
 }) {
   return {
     focus: () => {
-      if (!rootOfRoute(route.name) || !route.params || Object.keys(route.params).length === 0) {
-        return;
-      }
-      for (let n: ParamsNavigation | undefined = navigation; n; n = n.getParent()) {
-        n.replaceParams({});
-      }
+      const root = rootOfRoute(route.name);
+      if (!root || !route.params) return;
+      const own = root.rootParams ?? [];
+      const params = route.params as Record<string, unknown>;
+      if (Object.keys(params).every((k) => own.includes(k))) return;
+      const kept = Object.fromEntries(Object.entries(params).filter(([k]) => own.includes(k)));
+      navigation.replaceParams(kept);
+      for (let n = navigation.getParent(); n; n = n.getParent()) n.replaceParams({});
     },
   };
 }

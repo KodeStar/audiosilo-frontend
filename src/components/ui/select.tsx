@@ -12,6 +12,7 @@ import {
   useOverlayInsets,
   withFlatStyle,
 } from './overlay';
+import { EYEBROW_CLASS } from './text';
 
 /**
  * A Stacks select (STYLEGUIDE.md section 8): react-native-reusables' Select, restyled -
@@ -155,5 +156,21 @@ export function SelectItem({
       </View>
       <SelectPrimitive.ItemText className="select-none font-sans text-sm text-popover-foreground" />
     </SelectPrimitive.Item>
+  );
+}
+
+/** A group of items under a `SelectLabel` (e.g. the libraries of one server). */
+export const SelectGroup = SelectPrimitive.Group;
+
+/** A group's heading: an eyebrow-styled, non-selectable label. */
+export function SelectLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Label> & { className?: string }) {
+  return (
+    <SelectPrimitive.Label
+      className={cn('px-2.5 pb-1 pt-2', EYEBROW_CLASS, className)}
+      {...props}
+    />
   );
 }

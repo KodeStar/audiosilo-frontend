@@ -297,6 +297,26 @@
       "itemCount_one": "{{count}} item",
       "itemCount_other": "{{count}} items",
       "empty": "Tap the heart on a folder or book to add it here."
+    },
+    "modes": {
+      "label": "Browse by",
+      "books": "Books",
+      "authors": "Authors",
+      "series": "Series",
+      "narrators": "Narrators",
+      "collections": "Collections",
+      "folders": "Folders"
+    },
+    "picker": {
+      "label": "Library",
+      "placeholder": "Choose a library"
+    },
+    "detail": {
+      "soon": "This page is on its way.",
+      "badLink": "This link doesn't point to anything here.",
+      "author": "Author",
+      "narrator": "Narrator",
+      "collection": "Collection"
     }
   },
   "downloads": {
@@ -556,5 +576,26 @@
     "results_other": "{{count}} results",
     "resultsOn_one": "{{count}} result · {{servers}}",
     "resultsOn_other": "{{count}} results · {{servers}}"
+  },
+  "covers": {
+    "notInLibrary": "Not in your library",
+    "onServer": "On {{server}}",
+    "bookNumber": "Book {{position}}",
+    "ghostLabel": "{{title}}, {{note}}",
+    "ghostLabelNumbered": "Book {{position}}, {{title}}, {{note}}",
+    "finished": "Finished",
+    "listened": "{{percent}}% listened",
+    "downloaded": "Downloaded"
+  },
+  "queue": {
+    "queueIt": "Queue it",
+    "queued": "Queued",
+    "addLabel": "Add to Up next",
+    "removeLabel": "Remove from Up next",
+    "added": "Added to Up next",
+    "removed": "Removed from Up next",
+    "undo": "Undo",
+    "full": "Up next is full. Remove a book to add another.",
+    "failed": "Couldn't update Up next. Try again."
   }
 }

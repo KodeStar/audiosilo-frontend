@@ -82,6 +82,53 @@ describe('the real route tree', () => {
     expect(routeInfo().segments).toEqual(['(app)', '(me)', 'account']);
   });
 
+  it('keeps the browse detail pages in the tab that pushed them, and back returns', async () => {
+    await mount('/');
+    for (const [root, tab] of [
+      ['/library', '(library)'],
+      ['/search', '(search)'],
+      ['/', '(home)'],
+    ] as const) {
+      await nav(() => router.navigate(root));
+      for (const [url, pathname, params] of [
+        [
+          '/series?connection=c&library=1&name=Dune',
+          '/series',
+          { connection: 'c', library: '1', name: 'Dune' },
+        ],
+        ['/series?connection=c&library=1&work=w-9', '/series', { work: 'w-9' }],
+        [
+          '/author?connection=c&library=1&name=Kramer%20%26%20Reading',
+          '/author',
+          { name: 'Kramer & Reading' },
+        ],
+        ['/narrator?connection=c&library=2&name=Kate', '/narrator', { library: '2' }],
+        ['/collection?connection=c&id=7', '/collection', { id: '7' }],
+      ] as const) {
+        await nav(() => router.push(url));
+        expect(tabOf()).toEqual(['(app)', tab]);
+        expect(routeInfo().pathname).toBe(pathname);
+        expect(routeInfo().params).toMatchObject(params);
+        await nav(() => router.back());
+        expect(routeInfo().pathnameWithParams).toBe(root);
+      }
+    }
+  });
+
+  it("keeps the Library root's browse mode across a push and back", async () => {
+    await mount('/library?mode=authors');
+    expect(routeInfo().params).toMatchObject({ mode: 'authors' });
+    await nav(() => router.push('/author?connection=c&library=1&name=Kate'));
+    await nav(() => router.back());
+    expect(routeInfo().pathname).toBe('/library');
+    expect(routeInfo().params).toMatchObject({ mode: 'authors' });
+
+    await nav(() => router.setParams({ mode: 'folders' }));
+    await nav(() => router.push('/library/1?connection=c'));
+    await nav(() => router.back());
+    expect(routeInfo().params).toMatchObject({ mode: 'folders' });
+  });
+
   it('keeps the player as a root modal over the tabs', async () => {
     await mount('/library');
     await nav(() => router.push('/player'));

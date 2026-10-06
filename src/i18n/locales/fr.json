@@ -297,6 +297,26 @@
       "itemCount_one": "{{count}} élément",
       "itemCount_other": "{{count}} éléments",
       "empty": "Touche le cœur sur un dossier ou un livre pour l’ajouter ici."
+    },
+    "modes": {
+      "label": "Parcourir par",
+      "books": "Livres",
+      "authors": "Auteurs",
+      "series": "Séries",
+      "narrators": "Narrateurs",
+      "collections": "Collections",
+      "folders": "Dossiers"
+    },
+    "picker": {
+      "label": "Bibliothèque",
+      "placeholder": "Choisir une bibliothèque"
+    },
+    "detail": {
+      "soon": "Cette page arrive bientôt.",
+      "badLink": "Ce lien ne mène à rien ici.",
+      "author": "Auteur",
+      "narrator": "Narrateur",
+      "collection": "Collection"
     }
   },
   "downloads": {
@@ -556,5 +576,26 @@
     "results_other": "{{count}} résultats",
     "resultsOn_one": "{{count}} résultat · {{servers}}",
     "resultsOn_other": "{{count}} résultats · {{servers}}"
+  },
+  "covers": {
+    "notInLibrary": "Pas dans votre bibliothèque",
+    "onServer": "Sur {{server}}",
+    "bookNumber": "Tome {{position}}",
+    "ghostLabel": "{{title}}, {{note}}",
+    "ghostLabelNumbered": "Tome {{position}}, {{title}}, {{note}}",
+    "finished": "Terminé",
+    "listened": "{{percent}} % écouté",
+    "downloaded": "Téléchargé"
+  },
+  "queue": {
+    "queueIt": "Mettre en file",
+    "queued": "En file",
+    "addLabel": "Ajouter à À suivre",
+    "removeLabel": "Retirer de À suivre",
+    "added": "Ajouté à À suivre",
+    "removed": "Retiré de À suivre",
+    "undo": "Annuler",
+    "full": "À suivre est plein. Retirez un livre pour en ajouter un autre.",
+    "failed": "Impossible de mettre à jour À suivre. Réessayez."
   }
 }

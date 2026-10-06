@@ -35,6 +35,11 @@ export function formatBytes(bytes?: number, locale: string = getLocale()): strin
   return `${n} ${units[i]}`;
 }
 
+/** "3,249" - a whole count in the reader's locale ("3.249" in de). */
+export function formatCount(n: number, locale: string = getLocale()): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n);
+}
+
 /** "128kbps" from a file's bytes + seconds; empty when not derivable. */
 export function formatBitrate(sizeBytes?: number, durationSec?: number): string {
   if (!sizeBytes || !durationSec || durationSec <= 0) return '';

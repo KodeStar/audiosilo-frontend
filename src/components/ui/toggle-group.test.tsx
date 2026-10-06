@@ -45,6 +45,22 @@ describe('SegmentedControl', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('shows an optional count after the label, inside its accessible name', async () => {
+    await mount(
+      <SegmentedControl
+        options={[
+          { value: 'all', label: 'All' },
+          { value: 'books', label: 'Books', count: 3249 },
+        ]}
+        value="all"
+        onChange={jest.fn()}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Books, 3249' })).toBeTruthy();
+    expect(screen.getByText('3,249')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'All' })).toBeTruthy();
+  });
+
   it('raises the chosen segment on a card (Stacks), not a pink fill', async () => {
     await mount(<SegmentedControl options={[...options]} value="books" onChange={jest.fn()} />);
     const chosen = String(screen.getByRole('radio', { name: 'Books' }).props.className);

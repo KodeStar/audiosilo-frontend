@@ -297,6 +297,26 @@
       "itemCount_one": "{{count}} elemento",
       "itemCount_other": "{{count}} elementos",
       "empty": "Toca el corazón en una carpeta o libro para añadirlo aquí."
+    },
+    "modes": {
+      "label": "Explorar por",
+      "books": "Libros",
+      "authors": "Autores",
+      "series": "Series",
+      "narrators": "Narradores",
+      "collections": "Colecciones",
+      "folders": "Carpetas"
+    },
+    "picker": {
+      "label": "Biblioteca",
+      "placeholder": "Elige una biblioteca"
+    },
+    "detail": {
+      "soon": "Esta página está en camino.",
+      "badLink": "Este enlace no lleva a nada de aquí.",
+      "author": "Autor",
+      "narrator": "Narrador",
+      "collection": "Colección"
     }
   },
   "downloads": {
@@ -556,5 +576,26 @@
     "results_other": "{{count}} resultados",
     "resultsOn_one": "{{count}} resultado · {{servers}}",
     "resultsOn_other": "{{count}} resultados · {{servers}}"
+  },
+  "covers": {
+    "notInLibrary": "No está en tu biblioteca",
+    "onServer": "En {{server}}",
+    "bookNumber": "Libro {{position}}",
+    "ghostLabel": "{{title}}, {{note}}",
+    "ghostLabelNumbered": "Libro {{position}}, {{title}}, {{note}}",
+    "finished": "Terminado",
+    "listened": "{{percent}} % escuchado",
+    "downloaded": "Descargado"
+  },
+  "queue": {
+    "queueIt": "Añadir a la cola",
+    "queued": "En la cola",
+    "addLabel": "Añadir a A continuación",
+    "removeLabel": "Quitar de A continuación",
+    "added": "Añadido a A continuación",
+    "removed": "Quitado de A continuación",
+    "undo": "Deshacer",
+    "full": "A continuación está lleno. Quita un libro para añadir otro.",
+    "failed": "No se pudo actualizar A continuación. Inténtalo de nuevo."
   }
 }

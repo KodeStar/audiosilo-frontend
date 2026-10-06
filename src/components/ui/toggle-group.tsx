@@ -1,7 +1,9 @@
 import * as ToggleGroupPrimitive from '@rn-primitives/toggle-group';
 import { Platform, ScrollView } from 'react-native';
 
+import { formatCount } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { tabularNums } from '@/theme/tabular-nums';
 
 import { Text, TextClassContext } from './text';
 
@@ -81,7 +83,13 @@ export function ToggleGroupItem({
   );
 }
 
-export type SegmentedOption<T extends string> = { value: T; label: string };
+export type SegmentedOption<T extends string> = {
+  value: T;
+  label: string;
+  /** An optional count after the label, in subtle tabular figures (STYLEGUIDE section 8:
+   * the sub-nav's "Authors 612"). It is part of the segment's accessible name. */
+  count?: number;
+};
 
 /**
  * A typed one-of-N segmented control over a string union: the common case of
@@ -116,10 +124,15 @@ export function SegmentedControl<T extends string>({
     <ToggleGroupItem
       key={o.value}
       value={o.value}
-      accessibilityLabel={o.label}
+      accessibilityLabel={o.count === undefined ? o.label : `${o.label}, ${o.count}`}
       className={grow && !scrollable ? 'flex-1' : undefined}
     >
       <Text numberOfLines={1}>{o.label}</Text>
+      {o.count === undefined ? null : (
+        <Text className="font-sans text-[11px] text-subtle-foreground" style={tabularNums}>
+          {formatCount(o.count)}
+        </Text>
+      )}
     </ToggleGroupItem>
   ));
   return (

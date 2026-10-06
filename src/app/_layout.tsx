@@ -23,6 +23,7 @@ import '@/lib/register-sw';
 // role-bearing pressables (tab, radio, switch...). All top-level imports evaluate before
 // the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
+import { useLibrarySelection } from '@/stores/library-selection';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -62,6 +63,7 @@ export default function RootLayout() {
   const hydrateSettings = useSettings((s) => s.hydrate);
   const hydrateDownloads = useDownloads((s) => s.hydrate);
   const hydrateSeriesOrderings = useSeriesOrderings((s) => s.hydrate);
+  const hydrateLibrarySelection = useLibrarySelection((s) => s.hydrate);
   useEffect(() => {
     void (async () => {
       // Reconcile storage left incompatible by a version bump BEFORE the stores read it,
@@ -93,8 +95,9 @@ export default function RootLayout() {
       void hydrateSettings();
       void hydrateDownloads();
       void hydrateSeriesOrderings();
+      void hydrateLibrarySelection();
     })();
-  }, [hydrate, hydrateSettings, hydrateDownloads, hydrateSeriesOrderings]);
+  }, [hydrate, hydrateSettings, hydrateDownloads, hydrateSeriesOrderings, hydrateLibrarySelection]);
 
   // The nightly auto sleep timer. Framework-free (subscriptions, no rendering), so it is
   // started here rather than mounted as a component that renders null - this is simply

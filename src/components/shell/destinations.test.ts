@@ -47,14 +47,18 @@ describe('destinations', () => {
 });
 
 describe('tabStackListeners', () => {
-  const chain = () => {
+  const chain = (rootName = 'index', tab = '(home)') => {
     const calls: string[] = [];
-    type Nav = { replaceParams: () => void; getParent: () => Nav | undefined };
+    const replaced: Record<string, object> = {};
+    type Nav = { replaceParams: (p: object) => void; getParent: () => Nav | undefined };
     const nav = (name: string, parent?: Nav): Nav => ({
-      replaceParams: () => calls.push(name),
+      replaceParams: (p) => {
+        calls.push(name);
+        replaced[name] = p;
+      },
       getParent: () => parent,
     });
-    return { calls, navigation: nav('index', nav('(home)', nav('(app)'))) };
+    return { calls, replaced, navigation: nav(rootName, nav(tab, nav('(app)'))) };
   };
 
   it('clears params a cold link left on a tab root, and on every ancestor', () => {
@@ -71,6 +75,33 @@ describe('tabStackListeners', () => {
       navigation,
     }).focus();
     expect(calls).toEqual([]);
+  });
+
+  it("keeps a root's own params (Library's mode) and clears only the rest", () => {
+    const own = chain('library/index', '(library)');
+    tabStackListeners({
+      route: { name: 'library/index', params: { mode: 'authors' } },
+      navigation: own.navigation,
+    }).focus();
+    expect(own.calls).toEqual([]);
+
+    const mixed = chain('library/index', '(library)');
+    tabStackListeners({
+      route: { name: 'library/index', params: { mode: 'series', libraryId: '1' } },
+      navigation: mixed.navigation,
+    }).focus();
+    expect(mixed.calls).toEqual(['library/index', '(library)', '(app)']);
+    expect(mixed.replaced['library/index']).toEqual({ mode: 'series' });
+    expect(mixed.replaced['(app)']).toEqual({});
+  });
+
+  it("does not let another root keep Library's params", () => {
+    const { replaced, navigation } = chain();
+    tabStackListeners({
+      route: { name: 'index', params: { mode: 'authors' } },
+      navigation,
+    }).focus();
+    expect(replaced.index).toEqual({});
   });
 });
 

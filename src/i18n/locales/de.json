@@ -297,6 +297,26 @@
       "itemCount_one": "{{count}} Eintrag",
       "itemCount_other": "{{count}} Einträge",
       "empty": "Tippe bei einem Ordner oder Buch auf das Herz, um es hier hinzuzufügen."
+    },
+    "modes": {
+      "label": "Stöbern nach",
+      "books": "Bücher",
+      "authors": "Autoren",
+      "series": "Reihen",
+      "narrators": "Sprecher",
+      "collections": "Sammlungen",
+      "folders": "Ordner"
+    },
+    "picker": {
+      "label": "Bibliothek",
+      "placeholder": "Bibliothek wählen"
+    },
+    "detail": {
+      "soon": "Diese Seite ist unterwegs.",
+      "badLink": "Dieser Link führt hier zu nichts.",
+      "author": "Autor",
+      "narrator": "Sprecher",
+      "collection": "Sammlung"
     }
   },
   "downloads": {
@@ -556,5 +576,26 @@
     "results_other": "{{count}} Ergebnisse",
     "resultsOn_one": "{{count}} Ergebnis · {{servers}}",
     "resultsOn_other": "{{count}} Ergebnisse · {{servers}}"
+  },
+  "covers": {
+    "notInLibrary": "Nicht in deiner Bibliothek",
+    "onServer": "Auf {{server}}",
+    "bookNumber": "Band {{position}}",
+    "ghostLabel": "{{title}}, {{note}}",
+    "ghostLabelNumbered": "Band {{position}}, {{title}}, {{note}}",
+    "finished": "Abgeschlossen",
+    "listened": "{{percent}} % gehört",
+    "downloaded": "Heruntergeladen"
+  },
+  "queue": {
+    "queueIt": "Einreihen",
+    "queued": "Eingereiht",
+    "addLabel": "Zu „Als Nächstes“ hinzufügen",
+    "removeLabel": "Aus „Als Nächstes“ entfernen",
+    "added": "Zu „Als Nächstes“ hinzugefügt",
+    "removed": "Aus „Als Nächstes“ entfernt",
+    "undo": "Rückgängig",
+    "full": "„Als Nächstes“ ist voll. Entferne ein Buch, um ein weiteres hinzuzufügen.",
+    "failed": "„Als Nächstes“ konnte nicht aktualisiert werden. Versuche es noch einmal."
   }
 }

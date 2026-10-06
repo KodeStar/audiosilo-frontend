@@ -1,11 +1,18 @@
 import {
   accountHref,
+  authorHref,
   bookHref,
+  collectionHref,
   finishedHref,
   libraryHref,
+  narratorHref,
   parentPath,
+  parseCollectionParams,
+  parsePersonParams,
+  parseSeriesParams,
   pathLeaf,
   segmentsToPath,
+  seriesHref,
 } from '@/lib/paths';
 
 describe('segmentsToPath', () => {
@@ -109,5 +116,78 @@ describe('finishedHref', () => {
       pathname: '/finished',
       params: { connection: 'c1', libraryId: '3', path: 'Author/Book Title', auto: '1' },
     });
+  });
+});
+
+describe('browse detail hrefs', () => {
+  it('builds a local series link', () => {
+    expect(seriesHref('c1', 3, { name: 'The Stormlight Archive' })).toEqual({
+      pathname: '/series',
+      params: { connection: 'c1', library: '3', name: 'The Stormlight Archive' },
+    });
+  });
+
+  it('builds a community series link, with or without a local name', () => {
+    expect(seriesHref('c1', 3, { work: 'w-42' })).toEqual({
+      pathname: '/series',
+      params: { connection: 'c1', library: '3', work: 'w-42' },
+    });
+    expect(seriesHref('c1', 3, { name: 'Dune', work: 'w-1' })).toMatchObject({
+      params: { name: 'Dune', work: 'w-1' },
+    });
+  });
+
+  it('builds author, narrator and collection links', () => {
+    expect(authorHref('c', 1, 'Kramer & Reading')).toEqual({
+      pathname: '/author',
+      params: { connection: 'c', library: '1', name: 'Kramer & Reading' },
+    });
+    expect(narratorHref('c', 2, 'Kate Reading')).toEqual({
+      pathname: '/narrator',
+      params: { connection: 'c', library: '2', name: 'Kate Reading' },
+    });
+    expect(collectionHref('c', 7)).toEqual({
+      pathname: '/collection',
+      params: { connection: 'c', id: '7' },
+    });
+  });
+});
+
+describe('browse detail params', () => {
+  it('round-trips a series link, keeping the name exactly', () => {
+    expect(
+      parseSeriesParams({ connection: 'c', library: '3', name: ' Dune ', work: ['w', 'x'] }),
+    ).toEqual({ connectionId: 'c', libraryId: 3, name: ' Dune ', work: 'w' });
+    expect(parseSeriesParams({ connection: 'c', library: '3', work: 'w' })).toEqual({
+      connectionId: 'c',
+      libraryId: 3,
+      work: 'w',
+    });
+  });
+
+  it('rejects a series link without a library or without a series', () => {
+    expect(parseSeriesParams({ connection: 'c', name: 'Dune' })).toBeNull();
+    expect(parseSeriesParams({ connection: 'c', library: 'x', name: 'Dune' })).toBeNull();
+    expect(parseSeriesParams({ connection: 'c', library: '0', name: 'Dune' })).toBeNull();
+    expect(parseSeriesParams({ connection: 'c', library: '3', name: '  ' })).toBeNull();
+  });
+
+  it('parses a person link', () => {
+    expect(parsePersonParams({ connection: 'c', library: '2', name: 'Kate Reading' })).toEqual({
+      connectionId: 'c',
+      libraryId: 2,
+      name: 'Kate Reading',
+    });
+    expect(parsePersonParams({ connection: 'c', library: '2' })).toBeNull();
+    expect(parsePersonParams({ library: '-1', name: 'x' })).toBeNull();
+  });
+
+  it('parses a collection link', () => {
+    expect(parseCollectionParams({ connection: 'c', id: '7' })).toEqual({
+      connectionId: 'c',
+      id: 7,
+    });
+    expect(parseCollectionParams({ connection: 'c', id: '7a' })).toBeNull();
+    expect(parseCollectionParams({ connection: 'c' })).toBeNull();
   });
 });

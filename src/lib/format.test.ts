@@ -2,6 +2,7 @@ import {
   bookSubtitle,
   formatBitrate,
   formatBytes,
+  formatCount,
   formatClock,
   formatCountdown,
   formatDuration,
@@ -235,5 +236,13 @@ describe('bookSubtitle', () => {
   it('is empty when nothing is provided', () => {
     expect(bookSubtitle({})).toBe('');
     expect(bookSubtitle({ author: '', series: '' })).toBe('');
+  });
+});
+
+describe('formatCount', () => {
+  it('groups thousands in the locale', () => {
+    expect(formatCount(3249, 'en')).toBe('3,249');
+    expect(formatCount(3249, 'de')).toBe('3.249');
+    expect(formatCount(7, 'en')).toBe('7');
   });
 });
