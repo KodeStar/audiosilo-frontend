@@ -597,5 +597,51 @@
     "undo": "Undo",
     "full": "Up next is full. Remove a book to add another.",
     "failed": "Couldn't update Up next. Try again."
+  },
+  "upnext": {
+    "title": "Up next",
+    "heading": "Up next · {{count}}",
+    "hide": "Hide Up next",
+    "resize": "Resize Up next",
+    "queued": "{{time}} queued",
+    "nothingQueued": "Nothing queued",
+    "nowPlaying": "Now playing",
+    "leftAtSpeed": "{{time}} left at {{speed}}x",
+    "clear": "Clear",
+    "clearLabel": "Clear Up next",
+    "cleared": "Up next cleared",
+    "loadFailed": "Couldn't load Up next.",
+    "refreshFailed": "Couldn't refresh Up next. This is the last list we had.",
+    "empty": {
+      "title": "Nothing queued yet",
+      "hint": "Use Queue it on any book to line it up here.",
+      "dropHint": "Drag a cover here, or use Queue it on any book."
+    },
+    "drop": {
+      "hint": "Drag any cover here to queue it",
+      "over": "Drop to add to Up next",
+      "otherServer": "Only books from {{server}} can go here"
+    },
+    "finished": "Finished",
+    "percent": "{{percent}}%",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "reorder": "Reorder {{title}}",
+    "reorderHint": "Use the arrow keys to move it.",
+    "playNow": "Play {{title}} now",
+    "remove": "Remove {{title}} from Up next",
+    "playFailed": "Couldn't start {{title}}. Try again.",
+    "suggestions": "Continue the series and more",
+    "nextInSeries": "Next in {{series}}",
+    "nextAfter": "Next after this book",
+    "continueAt": "{{percent}}% · continue",
+    "ghost": "{{title}} isn't on {{server}}",
+    "ghostNoServer": "{{title}} isn't on this server",
+    "seeSeries": "See the series",
+    "add": "Add {{title}} to Up next",
+    "autoPlay": "Play the next book in the series automatically",
+    "buttonLabel_one": "Up next, {{count}} book",
+    "buttonLabel_other": "Up next, {{count}} books",
+    "buttonLabelEmpty": "Up next"
   }
 }

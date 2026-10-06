@@ -597,5 +597,51 @@
     "undo": "Deshacer",
     "full": "A continuación está lleno. Quita un libro para añadir otro.",
     "failed": "No se pudo actualizar A continuación. Inténtalo de nuevo."
+  },
+  "upnext": {
+    "title": "A continuación",
+    "heading": "A continuación · {{count}}",
+    "hide": "Ocultar A continuación",
+    "resize": "Cambiar el ancho de A continuación",
+    "queued": "{{time}} en cola",
+    "nothingQueued": "Nada en cola",
+    "nowPlaying": "Sonando ahora",
+    "leftAtSpeed": "quedan {{time}} a {{speed}}x",
+    "clear": "Vaciar",
+    "clearLabel": "Vaciar A continuación",
+    "cleared": "A continuación vaciado",
+    "loadFailed": "No se pudo cargar A continuación.",
+    "refreshFailed": "No se pudo actualizar A continuación. Esta es la última lista que teníamos.",
+    "empty": {
+      "title": "Aún no hay nada en cola",
+      "hint": "Usa Añadir a la cola en cualquier libro para ponerlo aquí.",
+      "dropHint": "Arrastra una portada aquí o usa Añadir a la cola en cualquier libro."
+    },
+    "drop": {
+      "hint": "Arrastra cualquier portada aquí para ponerla en cola",
+      "over": "Suelta para añadir a A continuación",
+      "otherServer": "Aquí solo caben libros de {{server}}"
+    },
+    "finished": "Terminado",
+    "percent": "{{percent}} %",
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "reorder": "Reordenar {{title}}",
+    "reorderHint": "Usa las flechas para moverlo.",
+    "playNow": "Reproducir {{title}} ahora",
+    "remove": "Quitar {{title}} de A continuación",
+    "playFailed": "No se pudo iniciar {{title}}. Inténtalo de nuevo.",
+    "suggestions": "Sigue la serie y más",
+    "nextInSeries": "Siguiente en {{series}}",
+    "nextAfter": "Siguiente después de este libro",
+    "continueAt": "{{percent}} % · continuar",
+    "ghost": "{{title}} no está en {{server}}",
+    "ghostNoServer": "{{title}} no está en este servidor",
+    "seeSeries": "Ver la serie",
+    "add": "Añadir {{title}} a A continuación",
+    "autoPlay": "Reproducir automáticamente el siguiente libro de la serie",
+    "buttonLabel_one": "A continuación, {{count}} libro",
+    "buttonLabel_other": "A continuación, {{count}} libros",
+    "buttonLabelEmpty": "A continuación"
   }
 }

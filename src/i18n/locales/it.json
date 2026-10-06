@@ -597,5 +597,51 @@
     "undo": "Annulla",
     "full": "Prossimo è pieno. Rimuovi un libro per aggiungerne un altro.",
     "failed": "Impossibile aggiornare Prossimo. Riprova."
+  },
+  "upnext": {
+    "title": "Prossimo",
+    "heading": "Prossimo · {{count}}",
+    "hide": "Nascondi Prossimo",
+    "resize": "Ridimensiona Prossimo",
+    "queued": "{{time}} in coda",
+    "nothingQueued": "Niente in coda",
+    "nowPlaying": "In riproduzione",
+    "leftAtSpeed": "{{time}} rimanenti a {{speed}}x",
+    "clear": "Svuota",
+    "clearLabel": "Svuota Prossimo",
+    "cleared": "Prossimo svuotato",
+    "loadFailed": "Impossibile caricare Prossimo.",
+    "refreshFailed": "Impossibile aggiornare Prossimo. Questo è l'ultimo elenco disponibile.",
+    "empty": {
+      "title": "Ancora niente in coda",
+      "hint": "Usa Metti in coda su un libro per aggiungerlo qui.",
+      "dropHint": "Trascina qui una copertina, oppure usa Metti in coda su un libro."
+    },
+    "drop": {
+      "hint": "Trascina qui una copertina per metterla in coda",
+      "over": "Rilascia per aggiungere a Prossimo",
+      "otherServer": "Qui vanno solo i libri di {{server}}"
+    },
+    "finished": "Finito",
+    "percent": "{{percent}}%",
+    "moveUp": "Sposta su",
+    "moveDown": "Sposta giù",
+    "reorder": "Riordina {{title}}",
+    "reorderHint": "Usa i tasti freccia per spostarlo.",
+    "playNow": "Riproduci ora {{title}}",
+    "remove": "Rimuovi {{title}} da Prossimo",
+    "playFailed": "Impossibile avviare {{title}}. Riprova.",
+    "suggestions": "Continua la serie e altro",
+    "nextInSeries": "Il prossimo di {{series}}",
+    "nextAfter": "Il prossimo dopo questo libro",
+    "continueAt": "{{percent}}% · continua",
+    "ghost": "{{title}} non è su {{server}}",
+    "ghostNoServer": "{{title}} non è su questo server",
+    "seeSeries": "Vedi la serie",
+    "add": "Aggiungi {{title}} a Prossimo",
+    "autoPlay": "Riproduci automaticamente il libro successivo della serie",
+    "buttonLabel_one": "Prossimo, {{count}} libro",
+    "buttonLabel_other": "Prossimo, {{count}} libri",
+    "buttonLabelEmpty": "Prossimo"
   }
 }

@@ -597,5 +597,51 @@
     "undo": "Anular",
     "full": "A seguir está cheio. Remova um livro para adicionar outro.",
     "failed": "Não foi possível atualizar A seguir. Tente novamente."
+  },
+  "upnext": {
+    "title": "A seguir",
+    "heading": "A seguir · {{count}}",
+    "hide": "Ocultar A seguir",
+    "resize": "Redimensionar A seguir",
+    "queued": "{{time}} na fila",
+    "nothingQueued": "Nada na fila",
+    "nowPlaying": "A tocar agora",
+    "leftAtSpeed": "faltam {{time}} a {{speed}}x",
+    "clear": "Limpar",
+    "clearLabel": "Limpar A seguir",
+    "cleared": "A seguir limpo",
+    "loadFailed": "Não foi possível carregar A seguir.",
+    "refreshFailed": "Não foi possível atualizar A seguir. Esta é a última lista que tínhamos.",
+    "empty": {
+      "title": "Ainda nada na fila",
+      "hint": "Use Pôr na fila em qualquer livro para o colocar aqui.",
+      "dropHint": "Arraste uma capa para aqui, ou use Pôr na fila em qualquer livro."
+    },
+    "drop": {
+      "hint": "Arraste qualquer capa para aqui para a pôr na fila",
+      "over": "Largue para adicionar a A seguir",
+      "otherServer": "Aqui só cabem livros de {{server}}"
+    },
+    "finished": "Terminado",
+    "percent": "{{percent}}%",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "reorder": "Reordenar {{title}}",
+    "reorderHint": "Use as setas para o mover.",
+    "playNow": "Reproduzir {{title}} agora",
+    "remove": "Remover {{title}} de A seguir",
+    "playFailed": "Não foi possível iniciar {{title}}. Tente de novo.",
+    "suggestions": "Continuar a série e mais",
+    "nextInSeries": "Seguinte em {{series}}",
+    "nextAfter": "Seguinte depois deste livro",
+    "continueAt": "{{percent}}% · continuar",
+    "ghost": "{{title}} não está em {{server}}",
+    "ghostNoServer": "{{title}} não está neste servidor",
+    "seeSeries": "Ver a série",
+    "add": "Adicionar {{title}} a A seguir",
+    "autoPlay": "Reproduzir automaticamente o livro seguinte da série",
+    "buttonLabel_one": "A seguir, {{count}} livro",
+    "buttonLabel_other": "A seguir, {{count}} livros",
+    "buttonLabelEmpty": "A seguir"
   }
 }

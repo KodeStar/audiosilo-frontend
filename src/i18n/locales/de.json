@@ -597,5 +597,51 @@
     "undo": "Rückgängig",
     "full": "„Als Nächstes“ ist voll. Entferne ein Buch, um ein weiteres hinzuzufügen.",
     "failed": "„Als Nächstes“ konnte nicht aktualisiert werden. Versuche es noch einmal."
+  },
+  "upnext": {
+    "title": "Als Nächstes",
+    "heading": "Als Nächstes · {{count}}",
+    "hide": "„Als Nächstes“ ausblenden",
+    "resize": "Breite von „Als Nächstes“ ändern",
+    "queued": "{{time}} eingereiht",
+    "nothingQueued": "Nichts eingereiht",
+    "nowPlaying": "Läuft gerade",
+    "leftAtSpeed": "noch {{time}} bei {{speed}}x",
+    "clear": "Leeren",
+    "clearLabel": "„Als Nächstes“ leeren",
+    "cleared": "„Als Nächstes“ geleert",
+    "loadFailed": "„Als Nächstes“ konnte nicht geladen werden.",
+    "refreshFailed": "„Als Nächstes“ konnte nicht aktualisiert werden. Das ist der zuletzt geladene Stand.",
+    "empty": {
+      "title": "Noch nichts eingereiht",
+      "hint": "Tippe bei einem Buch auf „Einreihen“, um es hier anzustellen.",
+      "dropHint": "Zieh ein Cover hierher oder nutze bei einem Buch „Einreihen“."
+    },
+    "drop": {
+      "hint": "Zieh ein Cover hierher, um es einzureihen",
+      "over": "Loslassen, um es zu „Als Nächstes“ hinzuzufügen",
+      "otherServer": "Hier können nur Bücher von {{server}} hin"
+    },
+    "finished": "Beendet",
+    "percent": "{{percent}} %",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "reorder": "{{title}} verschieben",
+    "reorderHint": "Mit den Pfeiltasten verschieben.",
+    "playNow": "{{title}} jetzt abspielen",
+    "remove": "{{title}} aus „Als Nächstes“ entfernen",
+    "playFailed": "{{title}} konnte nicht gestartet werden. Versuche es noch einmal.",
+    "suggestions": "Reihe fortsetzen und mehr",
+    "nextInSeries": "Weiter in {{series}}",
+    "nextAfter": "Weiter nach diesem Buch",
+    "continueAt": "{{percent}} % · weiterhören",
+    "ghost": "{{title}} ist nicht auf {{server}}",
+    "ghostNoServer": "{{title}} ist nicht auf diesem Server",
+    "seeSeries": "Zur Reihe",
+    "add": "{{title}} zu „Als Nächstes“ hinzufügen",
+    "autoPlay": "Das nächste Buch der Reihe automatisch abspielen",
+    "buttonLabel_one": "Als Nächstes, {{count}} Buch",
+    "buttonLabel_other": "Als Nächstes, {{count}} Bücher",
+    "buttonLabelEmpty": "Als Nächstes"
   }
 }
