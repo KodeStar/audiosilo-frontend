@@ -34,6 +34,7 @@ import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { useListeningPosition } from '@/components/player/use-listening-position';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
@@ -49,7 +50,7 @@ import { useLayout } from '@/lib/layout';
 import { type BookTab, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { selectCurrentChapter, usePlayer } from '@/playback/store';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
@@ -141,14 +142,13 @@ function BookDetailContent() {
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
-  // The player's live whole-book POSITION, bucketed (see LIVE_POSITION_BUCKET_S) and
-  // zeroed unless this library on this connection is the one playing - so an unrelated
-  // book playing elsewhere never re-renders this screen. The caller still checks
-  // `isThisPlaying` (which also matches the path) before trusting it.
-  const livePosition = usePlayer((s) =>
-    s.nowPlaying?.connectionId === cid && s.nowPlaying.libraryId === libraryId
-      ? Math.floor(selectBookPosition(s) / LIVE_POSITION_BUCKET_S) * LIVE_POSITION_BUCKET_S
-      : 0,
+  // Where the listener is: the player's live whole-book POSITION while this book plays
+  // (bucketed, see LIVE_POSITION_BUCKET_S, so an unrelated book playing elsewhere never
+  // re-renders this screen), never below the saved one; else the saved one.
+  const listeningPosition = useListeningPosition(
+    { connectionId: cid, libraryId, path },
+    progress?.position,
+    LIVE_POSITION_BUCKET_S,
   );
   const downloadEntry = useDownloadEntry(cid, libraryId, path);
   const paddingBottom = useMiniPlayerInset();
@@ -365,7 +365,7 @@ function BookDetailContent() {
   // that has not ticked yet can't briefly un-reveal what the saved one already showed.
   const listening = listeningProgressFor({
     chapterStarts,
-    position: isThisPlaying ? Math.max(livePosition, progress?.position ?? 0) : progress?.position,
+    position: listeningPosition,
     finished: !!progress?.finished,
   });
   // Whether the whole-book summary will actually render - the same predicate the

@@ -68,6 +68,12 @@ jest.mock('@/api/provider', () => ({
     { connection: { id: 'a', name: 'Home Library' }, client: mockA },
     { connection: { id: 'b', name: "Maya's Shelf" }, client: mockB },
   ],
+  useApiRegistry: () => ({
+    clients: new Map([
+      ['a', mockA],
+      ['b', mockB],
+    ]),
+  }),
 }));
 jest.mock('@/api/reachability', () => ({ noteError: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({
@@ -79,6 +85,7 @@ jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
     usePlayer: create(() => ({ nowPlaying: null })),
+    selectBookKey: () => null,
     selectBookPosition: () => 0,
   };
 });

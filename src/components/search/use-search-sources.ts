@@ -9,9 +9,10 @@ import {
   useCapabilitiesAll,
   useLibrariesAll,
 } from '@/api/hooks';
-import { useApis } from '@/api/provider';
+import { useApiRegistry } from '@/api/provider';
 import type { BookMeta, PeopleList, SeriesCount } from '@/api/types';
-import { selectBookPosition, usePlayer } from '@/playback/store';
+import { useLivePosition } from '@/components/player/use-listening-position';
+import { contentKey } from '@/lib/content-key';
 
 import {
   type CharacterBook,
@@ -54,7 +55,7 @@ export type PeopleSources = {
  * and fetches nothing (the palette before anything is typed).
  */
 export function usePeopleSources(enabled: boolean): PeopleSources {
-  const apis = useApis();
+  const { clients } = useApiRegistry();
   const caps = useCapabilitiesAll();
   const { libraries, isLoading: librariesLoading } = useLibrariesAll();
   const slots = useMemo(() => {
@@ -72,7 +73,7 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
 
   return useQueries({
     queries: slots.map(({ kind, source }) => {
-      const client = apis.find((a) => a.connection.id === source.connectionId)?.client;
+      const client = clients.get(source.connectionId);
       const on = caps[source.connectionId]?.browse_people === true && !!client;
       const { connectionId: cid, libraryId: lib } = source;
       return {
@@ -144,7 +145,7 @@ export function useCharacterSources(
   enabled: boolean,
   { refetchProgress = true }: { refetchProgress?: boolean } = {},
 ): CharacterSources {
-  const apis = useApis();
+  const { clients } = useApiRegistry();
   const caps = useCapabilitiesAll();
   const { progress, isLoading: progressLoading } = useAllProgressAll({
     enabled,
@@ -154,11 +155,10 @@ export function useCharacterSources(
     () => characterBooksToLoad(progress, (cid) => caps[cid]?.metadata === true),
     [progress, caps],
   );
-  const clientOf = (cid: string) => apis.find((a) => a.connection.id === cid)?.client;
 
   const metas = useQueries({
     queries: picks.map((p) => {
-      const client = clientOf(p.connectionId);
+      const client = clients.get(p.connectionId);
       return {
         queryKey: qk.bookMeta(p.connectionId, p.library_id, p.path),
         queryFn: client
@@ -176,7 +176,7 @@ export function useCharacterSources(
 
   const chapters = useQueries({
     queries: picks.map((p, i) => {
-      const client = clientOf(p.connectionId);
+      const client = clients.get(p.connectionId);
       return {
         ...chaptersQuery(p.connectionId, client, p.library_id, p.path),
         enabled: enabled && !p.finished && withCharacters(metas[i]?.data),
@@ -184,18 +184,11 @@ export function useCharacterSources(
     }),
   });
 
-  // The loaded book's live place, bucketed; '' when nothing is loaded.
-  const live = usePlayer((s) =>
-    s.nowPlaying
-      ? `${s.nowPlaying.connectionId}\n${s.nowPlaying.libraryId}\n${s.nowPlaying.path}\n${
-          Math.floor(selectBookPosition(s) / LIVE_POSITION_BUCKET_S) * LIVE_POSITION_BUCKET_S
-        }`
-      : '',
-  );
+  // The loaded book's live place, bucketed (nothing while disabled).
+  const live = useLivePosition(LIVE_POSITION_BUCKET_S, enabled);
 
   // Rebuilt each render: at most `MAX_CHARACTER_BOOKS` books, and `useQueries` hands
   // back new result arrays every render anyway.
-  const [liveCid, liveLib, livePath, livePos] = live.split('\n');
   const books: CharacterBook[] = [];
   // Still settling: a book's metadata, or the chapters of an unfinished book with
   // characters (its gate is "from the start" until they arrive).
@@ -209,11 +202,7 @@ export function useCharacterSources(
     if (!meta.data.matched || !withCharacters(meta.data)) return;
     const ch = chapters[i];
     if (!p.finished && !ch.data && !ch.isError) pending = true;
-    const loaded =
-      live !== '' &&
-      liveCid === p.connectionId &&
-      Number(liveLib) === p.library_id &&
-      livePath === p.path;
+    const loaded = live?.key === contentKey(p.connectionId, p.library_id, p.path);
     books.push({
       connectionId: p.connectionId,
       libraryId: p.library_id,
@@ -222,7 +211,7 @@ export function useCharacterSources(
       listening: listeningIn({
         progress: p,
         chapters: ch.data,
-        livePosition: loaded ? Number(livePos) : undefined,
+        livePosition: loaded ? live?.position : undefined,
       }),
       characters: meta.data.work.characters ?? [],
       attribution: meta.data.work.attribution,

@@ -15,7 +15,11 @@ import { ConnectionScope } from '@/api/provider';
 import { matchedMeta } from '@/components/library/book-meta';
 import { BookCover } from '@/components/library/book-cover';
 import { CoverWash } from '@/components/library/cover-wash';
-import { listeningProgressFor, splitCharacters } from '@/components/library/meta-gating';
+import {
+  chapterStartsOf,
+  listeningProgressFor,
+  splitCharacters,
+} from '@/components/library/meta-gating';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,7 +30,6 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
-import { chapterBookOffset } from '@/playback/book-queue';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { usePlayBook } from '@/components/player/use-play-book';
@@ -85,13 +88,9 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   // server's `book_offset` is unreliable on some books).
   const { titles, starts } = useMemo(() => {
     const chapters = chapterData?.chapters ?? [];
-    const files = (chapterData?.files ?? []).map((f) => ({
-      path: f.rel_path,
-      duration: f.duration,
-    }));
     return {
       titles: chapters.map((c) => c.title),
-      starts: chapters.map((c) => (files.length ? chapterBookOffset(files, c) : c.book_offset)),
+      starts: chapterStartsOf(chapters, chapterData?.files ?? []),
     };
   }, [chapterData]);
 
