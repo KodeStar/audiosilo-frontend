@@ -54,7 +54,7 @@ export function bookmarkPins(positions: readonly number[], total: number): numbe
 
 /** The narrowest Now card that keeps the wide layout (the 220 cover beside its text);
  * a narrower one stacks like the phone's. */
-export const NOW_CARD_WIDE_MIN = 600;
+export const NOW_CARD_WIDE_MIN = 620;
 
 /** Whether a Now card `width` wide (0: not measured yet) takes the stacked layout. */
 export function nowCardCompact(phone: boolean, width: number): boolean {

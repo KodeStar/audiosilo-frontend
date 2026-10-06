@@ -218,7 +218,8 @@ describe('heroBeside', () => {
     expect(heroBeside(1376)).toBe(true);
     // 1024 less the drawer and the page padding.
     expect(heroBeside(600)).toBe(false);
-    expect(heroBeside(919)).toBe(false);
-    expect(heroBeside(920)).toBe(true);
+    expect(heroBeside(939)).toBe(false);
+    // 1024 with the drawer closed.
+    expect(heroBeside(960)).toBe(true);
   });
 });

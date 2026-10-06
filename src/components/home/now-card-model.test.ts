@@ -75,6 +75,7 @@ describe('nowCardCompact', () => {
     expect(nowCardCompact(true, 0)).toBe(true);
     expect(nowCardCompact(false, 0)).toBe(false);
     expect(nowCardCompact(false, 420)).toBe(true);
-    expect(nowCardCompact(false, 600)).toBe(false);
+    expect(nowCardCompact(false, 600)).toBe(true);
+    expect(nowCardCompact(false, 620)).toBe(false);
   });
 });
