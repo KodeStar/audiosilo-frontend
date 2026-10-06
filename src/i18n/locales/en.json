@@ -52,10 +52,6 @@
         "label": "Automatically play next book",
         "description": "Start the next book in the folder when one finishes."
       },
-      "autoDownload": {
-        "label": "Automatically download books",
-        "description": "Download the book you start listening to so it is ready to hear offline."
-      },
       "autoDelete": {
         "description": "Frees the space once you finish a book. Your place in it is kept."
       }

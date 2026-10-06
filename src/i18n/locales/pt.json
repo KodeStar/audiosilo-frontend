@@ -52,10 +52,6 @@
         "label": "Reproduzir automaticamente o livro seguinte",
         "description": "Inicia o livro seguinte da pasta quando um termina."
       },
-      "autoDownload": {
-        "label": "Transferir livros automaticamente",
-        "description": "Transfere o livro que começa a ouvir para o ouvir sem ligação."
-      },
       "autoDelete": {
         "description": "Liberta o espaço quando terminas um livro. A tua posição no livro fica guardada."
       }

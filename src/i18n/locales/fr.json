@@ -52,10 +52,6 @@
         "label": "Lire automatiquement le livre suivant",
         "description": "Démarre le livre suivant du dossier lorsqu'un livre se termine."
       },
-      "autoDownload": {
-        "label": "Télécharger les livres automatiquement",
-        "description": "Télécharge le livre que vous commencez à écouter pour l'entendre hors ligne."
-      },
       "autoDelete": {
         "description": "Libère l’espace une fois le livre terminé. Votre position dans le livre est conservée."
       }

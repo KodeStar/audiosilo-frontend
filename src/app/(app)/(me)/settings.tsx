@@ -327,16 +327,17 @@ export default function SettingsScreen() {
                 accessibilityLabel={t('settings.upNext.autoPlay.label')}
               />
             </ChoiceRow>
+            {/* The same setting, and words, as the Downloads page's rules card. */}
             <ChoiceRow
-              label={t('settings.upNext.autoDownload.label')}
-              description={t('settings.upNext.autoDownload.description')}
+              label={t('downloads.rules.mode.label')}
+              description={t('downloads.rules.modeHint')}
             >
               <SegmentedControl
                 options={downloadOptions}
                 value={autoDownloadNext}
                 onChange={setAutoDownloadNext}
                 grow
-                accessibilityLabel={t('settings.upNext.autoDownload.label')}
+                accessibilityLabel={t('downloads.rules.mode.label')}
               />
             </ChoiceRow>
             {/* The same setting as the Downloads page's "Automatic downloads" card. */}

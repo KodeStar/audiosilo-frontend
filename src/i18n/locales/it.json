@@ -52,10 +52,6 @@
         "label": "Riproduci automaticamente il libro successivo",
         "description": "Avvia il libro successivo nella cartella quando uno finisce."
       },
-      "autoDownload": {
-        "label": "Scarica libri automaticamente",
-        "description": "Scarica il libro che inizi ad ascoltare così è pronto da ascoltare offline."
-      },
       "autoDelete": {
         "description": "Libera lo spazio quando finisci un libro. Il tuo punto nel libro è conservato."
       }

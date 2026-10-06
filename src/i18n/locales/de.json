@@ -52,10 +52,6 @@
         "label": "Nächstes Buch automatisch abspielen",
         "description": "Startet das nächste Buch im Ordner, sobald eines endet."
       },
-      "autoDownload": {
-        "label": "Bücher automatisch herunterladen",
-        "description": "Lädt das Buch herunter, das du zu hören beginnst, damit es offline bereitsteht."
-      },
       "autoDelete": {
         "description": "Gibt den Platz frei, sobald du ein Buch beendet hast. Deine Stelle im Buch bleibt erhalten."
       }
