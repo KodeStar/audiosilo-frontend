@@ -10,6 +10,7 @@ import { usePlayBook } from '@/components/player/use-play-book';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
+  afterOverlayCloses,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -247,20 +248,10 @@ export function BookActionsMenu({
   const phone = useLayout() === 'phone';
   const [collect, setCollect] = useState(false);
   const [removing, setRemoving] = useState(false);
-  // Open a dialog once the menu has closed: Radix's menu and dialog each lock the page
-  // (pointer-events on <body>) and, opened in the same tick, the menu's unlock is lost
-  // and the page stays dead after the dialog closes.
-  const after = (open: () => void) => {
-    onSheetOpenChange(false);
-    setTimeout(open, 0);
-  };
   const actions = [
     ...useBookActions(
       { connectionId, libraryId, book, progress },
-      {
-        openCollect: () => after(() => setCollect(true)),
-        confirmRemove: () => after(() => setRemoving(true)),
-      },
+      { openCollect: () => setCollect(true), confirmRemove: () => setRemoving(true) },
     ),
     ...extra,
   ];
@@ -303,7 +294,8 @@ export function BookActionsMenu({
                 accessibilityRole="button"
                 onPress={() => {
                   onSheetOpenChange(false);
-                  a.onPress();
+                  // The sheet is a dialog too: an action's own dialog opens once it closed.
+                  afterOverlayCloses(a.onPress);
                 }}
                 className={cn(
                   'min-h-[48px] flex-row items-center gap-3 rounded-xl px-3 active:bg-accent',

@@ -64,11 +64,22 @@ export function DropdownMenuContent({
   );
 }
 
+/**
+ * Runs `fn` once a closing menu or sheet has let go of the page, so it can open a dialog:
+ * Radix's menu and dialog each lock the page (pointer-events on <body>), and opened in
+ * the same tick the menu's unlock is lost and the page stays dead after the dialog
+ * closes. Every menu item's press goes through it.
+ */
+export function afterOverlayCloses(fn: () => void): void {
+  setTimeout(fn, 0);
+}
+
 export function DropdownMenuItem({
   className,
   icon,
   variant = 'default',
   children,
+  onPress,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Item> & {
   className?: string;
@@ -92,6 +103,7 @@ export function DropdownMenuItem({
           props.disabled && 'opacity-50',
           className,
         )}
+        onPress={onPress ? (e) => afterOverlayCloses(() => onPress(e)) : undefined}
         {...props}
       >
         {icon ? (

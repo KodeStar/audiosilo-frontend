@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -52,7 +52,36 @@ describe('DropdownMenu', () => {
     expect(screen.getAllByRole('menuitem')).toHaveLength(2);
     expect(String(screen.getByText('Remove').props.className)).toContain('text-destructive');
     await fireEvent.press(screen.getByRole('menuitem', { name: 'Add bookmark' }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs an item's action only once the menu has closed (so it can open a dialog)", async () => {
+    let menuOpenDuringAction: boolean | undefined;
+    const onPress = jest.fn(() => {
+      menuOpenDuringAction = screen.queryAllByRole('menuitem').length > 0;
+    });
+    await mountWithPortal(
+      <DropdownMenu>
+        <DropdownMenuTrigger accessibilityLabel="More">
+          <Text>More</Text>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onPress={onPress}>
+            <Text>Add to collection</Text>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    await fireEvent.press(screen.getByRole('button', { name: 'More' }));
+    await fireEvent.press(screen.getByRole('menuitem', { name: 'Add to collection' }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(menuOpenDuringAction).toBe(false);
   });
 });
 
