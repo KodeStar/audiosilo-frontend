@@ -639,3 +639,500 @@ describe('ApiClient', () => {
     });
   });
 });
+
+// --- User state & personal stats (Phase 1b) ----------------------------------
+
+/** The URL, method and parsed JSON body of the `i`th request a fetch mock saw. */
+function sent(fetchMock: jest.Mock, i = 0) {
+  const [url, init] = fetchMock.mock.calls[i] as [string, RequestInit];
+  return {
+    url: String(url),
+    method: init.method,
+    body: init.body === undefined ? undefined : JSON.parse(init.body as string),
+    contentType: headerValue(init, 'Content-Type'),
+  };
+}
+
+const book = { id: 9, library_id: 2, rel_path: 'Saga/Book 1', title: 'Book 1' };
+const entry = { library_id: 2, path: 'Saga/Book 1', added_at: '2026-10-01T10:00:00Z', book };
+const collectionWire = {
+  id: 5,
+  name: 'Road trip',
+  description: '',
+  owner: { id: 1, username: 'ann' },
+  owned: true,
+  shared_with: [{ id: 2, username: 'bob' }],
+  item_count: 1,
+  preview: [book],
+  created_at: '2026-10-01T10:00:00Z',
+  updated_at: '2026-10-02T10:00:00Z',
+};
+const ratingWire = {
+  library_id: 2,
+  path: 'Saga/Book 1',
+  rating: 4,
+  note: 'Great',
+  created_at: '2026-10-01T10:00:00Z',
+  updated_at: '2026-10-02T10:00:00Z',
+};
+
+describe('ApiClient user state (Phase 1b)', () => {
+  const c = () => new ApiClient('https://h', 'tok');
+
+  describe('Up next', () => {
+    it('reads GET /me/queue, unwrapping { queue }', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { queue: [entry] } }));
+      await expect(c().queue()).resolves.toEqual([entry]);
+      expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/queue', method: 'GET' });
+    });
+
+    it('replaces the queue with PUT /me/queue { items } and returns the stored queue', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { queue: [entry] } }));
+      const items = [
+        { library_id: 2, path: 'Saga/Book 1' },
+        { library_id: 3, path: 'Other' },
+      ];
+      await expect(c().setQueue(items)).resolves.toEqual([entry]);
+      expect(sent(fetchMock)).toEqual({
+        url: 'https://h/api/v1/me/queue',
+        method: 'PUT',
+        body: { items },
+        contentType: 'application/json',
+      });
+    });
+
+    it('sends only {library_id, path} when replaying cached entries as the new order', async () => {
+      // The server decodes list bodies strictly: an entry's added_at/book would be a 400.
+      const fetchMock = installFetch(() => ({ status: 200, body: { queue: [entry] } }));
+      await c().setQueue([entry]);
+      await c().setCollectionItems(5, [entry]);
+      const bare = { items: [{ library_id: entry.library_id, path: entry.path }] };
+      expect(sent(fetchMock, 0).body).toEqual(bare);
+      expect(sent(fetchMock, 1).body).toEqual(bare);
+    });
+
+    it('adds one book with POST /me/queue, sending position only when given', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { queue: [entry] } }));
+      await expect(c().addToQueue(2, 'Saga/Book 1')).resolves.toEqual([entry]);
+      await c().addToQueue(2, 'Saga/Book 1', 0);
+      expect(sent(fetchMock, 0)).toMatchObject({
+        url: 'https://h/api/v1/me/queue',
+        method: 'POST',
+        body: { library_id: 2, path: 'Saga/Book 1' },
+      });
+      expect(sent(fetchMock, 1).body).toEqual({ library_id: 2, path: 'Saga/Book 1', position: 0 });
+    });
+
+    it('surfaces a full queue as a 409 ApiError', async () => {
+      installFetch(() => ({ status: 409, body: { error: 'queue is full', code: 'queue_full' } }));
+      await expect(c().addToQueue(2, 'Saga/Book 1')).rejects.toMatchObject({
+        name: 'ApiError',
+        status: 409,
+        message: 'queue is full',
+      });
+    });
+
+    it('removes one book with DELETE /me/queue?library_id=&path=', async () => {
+      const fetchMock = installFetch(() => ({ status: 204 }));
+      await expect(c().removeFromQueue(2, 'Saga/Book 1')).resolves.toBeUndefined();
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/queue?library_id=2&path=Saga%2FBook+1',
+        method: 'DELETE',
+        body: undefined,
+      });
+    });
+  });
+
+  describe('Collections', () => {
+    it('lists GET /me/collections, unwrapping { collections }', async () => {
+      // A viewer's entry has no shared_with at all (the server omits it).
+      const { shared_with: _omitted, ...viewer } = { ...collectionWire, id: 6, owned: false };
+      const fetchMock = installFetch(() => ({
+        status: 200,
+        body: { collections: [collectionWire, viewer] },
+      }));
+      const list = await c().collections();
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections',
+        method: 'GET',
+      });
+      expect(list).toEqual([collectionWire, viewer]);
+      expect(list[1]).not.toHaveProperty('shared_with');
+    });
+
+    it('creates with POST /me/collections and unwraps { collection }', async () => {
+      const fetchMock = installFetch(() => ({ status: 201, body: { collection: collectionWire } }));
+      await expect(c().createCollection({ name: 'Road trip' })).resolves.toEqual(collectionWire);
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections',
+        method: 'POST',
+        body: { name: 'Road trip' },
+      });
+    });
+
+    it('sends only name and description, even given a whole cached collection', async () => {
+      // The server decodes these bodies strictly: a spread Collection's other fields would
+      // make the create or the rename a 400.
+      const fetchMock = installFetch(() => ({ status: 200, body: { collection: collectionWire } }));
+      await c().createCollection({ ...collectionWire, name: 'Road trip 2' });
+      await c().updateCollection(5, { ...collectionWire, name: 'Renamed' });
+      expect(sent(fetchMock, 0).body).toEqual({ name: 'Road trip 2', description: '' });
+      expect(sent(fetchMock, 1).body).toEqual({ name: 'Renamed', description: '' });
+    });
+
+    it('surfaces the collections cap as a 409 ApiError', async () => {
+      installFetch(() => ({ status: 409, body: { error: 'too many', code: 'collections_full' } }));
+      await expect(c().createCollection({ name: 'x' })).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('reads one with GET /me/collections/{id}, returning collection + items', async () => {
+      const fetchMock = installFetch(() => ({
+        status: 200,
+        body: { collection: collectionWire, items: [entry] },
+      }));
+      await expect(c().collection(5)).resolves.toEqual({
+        collection: collectionWire,
+        items: [entry],
+      });
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections/5',
+        method: 'GET',
+      });
+    });
+
+    it("surfaces a stranger's collection as a 404 ApiError", async () => {
+      installFetch(() => ({ status: 404, body: { error: 'collection not found' } }));
+      await expect(c().collection(99)).rejects.toMatchObject({ name: 'ApiError', status: 404 });
+    });
+
+    it('patches with PATCH /me/collections/{id}, sending only the given fields', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { collection: collectionWire } }));
+      await expect(c().updateCollection(5, { description: 'Long drives' })).resolves.toEqual(
+        collectionWire,
+      );
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections/5',
+        method: 'PATCH',
+        body: { description: 'Long drives' },
+      });
+    });
+
+    it("surfaces a viewer's write as a 403 ApiError", async () => {
+      installFetch(() => ({ status: 403, body: { error: 'not the owner', code: 'not_owner' } }));
+      await expect(c().updateCollection(5, { name: 'x' })).rejects.toMatchObject({ status: 403 });
+    });
+
+    it('deletes (or leaves) with DELETE /me/collections/{id}', async () => {
+      const fetchMock = installFetch(() => ({ status: 204 }));
+      await expect(c().deleteCollection(5)).resolves.toBeUndefined();
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections/5',
+        method: 'DELETE',
+      });
+    });
+
+    it('replaces items with PUT /me/collections/{id}/items { items } and returns the detail', async () => {
+      const fetchMock = installFetch(() => ({
+        status: 200,
+        body: { collection: collectionWire, items: [entry] },
+      }));
+      const items = [{ library_id: 2, path: 'Saga/Book 1' }];
+      await expect(c().setCollectionItems(5, items)).resolves.toEqual({
+        collection: collectionWire,
+        items: [entry],
+      });
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections/5/items',
+        method: 'PUT',
+        body: { items },
+      });
+    });
+
+    it('adds one item with POST /me/collections/{id}/items and returns the detail', async () => {
+      const fetchMock = installFetch(() => ({
+        status: 200,
+        body: { collection: collectionWire, items: [entry] },
+      }));
+      await expect(c().addCollectionItem(5, 2, 'Saga/Book 1', 3)).resolves.toMatchObject({
+        items: [entry],
+      });
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections/5/items',
+        method: 'POST',
+        body: { library_id: 2, path: 'Saga/Book 1', position: 3 },
+      });
+    });
+
+    it('removes one item with DELETE /me/collections/{id}/items?library_id=&path=', async () => {
+      const fetchMock = installFetch(() => ({ status: 204 }));
+      await expect(c().removeCollectionItem(5, 2, 'Saga/Book 1')).resolves.toBeUndefined();
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections/5/items?library_id=2&path=Saga%2FBook+1',
+        method: 'DELETE',
+      });
+    });
+
+    it('replaces shares with PUT /me/collections/{id}/shares { user_ids }', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { collection: collectionWire } }));
+      await expect(c().setCollectionShares(5, [2, 3])).resolves.toEqual(collectionWire);
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/collections/5/shares',
+        method: 'PUT',
+        body: { user_ids: [2, 3] },
+      });
+    });
+
+    it('lists share targets with GET /me/share-targets, unwrapping { users }', async () => {
+      const users = [{ id: 2, username: 'bob' }];
+      const fetchMock = installFetch(() => ({ status: 200, body: { users } }));
+      await expect(c().shareTargets()).resolves.toEqual(users);
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/share-targets',
+        method: 'GET',
+      });
+    });
+  });
+
+  describe('Ratings', () => {
+    it('reads GET /libraries/{id}/rating?path=, unwrapping a rating or null', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { rating: ratingWire } }));
+      await expect(c().rating(2, 'Saga/Book 1')).resolves.toEqual(ratingWire);
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/libraries/2/rating?path=Saga%2FBook+1',
+        method: 'GET',
+      });
+      installFetch(() => ({ status: 200, body: { rating: null } }));
+      await expect(c().rating(2, 'Saga/Book 1')).resolves.toBeNull();
+    });
+
+    it('rates with PUT /libraries/{id}/rating?path=, sending the note only when given', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { rating: ratingWire } }));
+      await expect(c().setRating(2, 'Saga/Book 1', 4, 'Great')).resolves.toEqual(ratingWire);
+      await c().setRating(2, 'Saga/Book 1', 5);
+      expect(sent(fetchMock, 0)).toMatchObject({
+        url: 'https://h/api/v1/libraries/2/rating?path=Saga%2FBook+1',
+        method: 'PUT',
+        body: { rating: 4, note: 'Great' },
+      });
+      expect(sent(fetchMock, 1).body).toEqual({ rating: 5 });
+    });
+
+    it('surfaces an out-of-scope path as a 403 ApiError', async () => {
+      installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
+      await expect(c().setRating(2, 'Hidden', 3)).rejects.toMatchObject({
+        status: 403,
+        message: 'no access to this path',
+      });
+    });
+
+    it('removes with DELETE /libraries/{id}/rating?path=', async () => {
+      const fetchMock = installFetch(() => ({ status: 204 }));
+      await expect(c().deleteRating(2, 'Saga/Book 1')).resolves.toBeUndefined();
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/libraries/2/rating?path=Saga%2FBook+1',
+        method: 'DELETE',
+      });
+    });
+
+    it('lists GET /me/ratings, unwrapping { ratings } with their books', async () => {
+      const ratings = [{ ...ratingWire, book }];
+      const fetchMock = installFetch(() => ({ status: 200, body: { ratings } }));
+      await expect(c().myRatings()).resolves.toEqual(ratings);
+      expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/ratings', method: 'GET' });
+    });
+  });
+
+  describe('Progress edit', () => {
+    const progress = {
+      library_id: 2,
+      path: 'Saga/Book 1',
+      position: 0,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      version: 7,
+      device_id: '',
+      updated_at: '2026-10-06T10:00:00Z',
+      started_at: '2026-09-01T08:00:00Z',
+    };
+
+    it('edits with PATCH /libraries/{id}/progress?path= and unwraps { progress } with its dates', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { progress } }));
+      const edit = { finished: false, started_at: '2026-09-01', finished_at: null };
+      await expect(c().editProgress(2, 'Saga/Book 1', edit)).resolves.toEqual(progress);
+      // null is sent as null (it clears the date); absent fields stay absent.
+      expect(sent(fetchMock)).toEqual({
+        url: 'https://h/api/v1/libraries/2/progress?path=Saga%2FBook+1',
+        method: 'PATCH',
+        body: { finished: false, started_at: '2026-09-01', finished_at: null },
+        contentType: 'application/json',
+      });
+    });
+
+    it('sends only the edit fields, even given a whole progress row', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { progress } }));
+      await c().editProgress(2, 'Saga/Book 1', { ...progress, finished: false });
+      expect(sent(fetchMock).body).toEqual({
+        finished: false,
+        position: 0,
+        started_at: '2026-09-01T08:00:00Z',
+      });
+    });
+
+    it('surfaces a rejected edit (a future date) as a 400 ApiError', async () => {
+      installFetch(() => ({ status: 400, body: { error: 'date is in the future' } }));
+      await expect(
+        c().editProgress(2, 'Saga/Book 1', { finished_at: '2099-01-01' }),
+      ).rejects.toMatchObject({ status: 400, message: 'date is in the future' });
+    });
+
+    it('passes started_at / finished_at through on the progress reads', async () => {
+      const finished = { ...progress, finished: true, finished_at: '2026-10-05T21:00:00Z' };
+      installFetch(() => ({ status: 200, body: { progress: [finished] } }));
+      await expect(c().allProgress()).resolves.toEqual([finished]);
+      installFetch(() => ({ status: 200, body: { progress: finished } }));
+      await expect(c().getProgress(2, 'Saga/Book 1')).resolves.toEqual(finished);
+    });
+  });
+
+  describe('Your listening', () => {
+    const period = {
+      range: '2026',
+      from: '2026-01-01T00:00:00Z',
+      to: '2026-10-06T10:00:00Z',
+      timezone: 'BST',
+      utc_offset: 60,
+    };
+    const totals = { listened: 3600, sessions: 3, books: 2, finished: 1 };
+    const stats = {
+      ...period,
+      totals,
+      previous: { listened: 0, sessions: 0, books: 0, finished: 0 },
+      estimated: 120,
+      days: [{ date: '2026-10-05', listened: 3600 }],
+      hour_weekday: Array.from({ length: 7 }, () => Array<number>(24).fill(0)),
+      top_books: [
+        { library_id: 2, path: 'Saga/Book 1', title: 'Book 1', author: 'A', listened: 3600 },
+      ],
+      top_authors: [{ name: 'A', listened: 3600, books: 1 }],
+      top_narrators: [{ name: 'N', listened: 3600, books: 1 }],
+      top_series: [{ name: 'Saga', listened: 3600, books: 1 }],
+      finished_books: [
+        {
+          library_id: 2,
+          path: 'Saga/Book 1',
+          title: 'Book 1',
+          author: 'A',
+          finished_at: '2026-10-05T21:00:00Z',
+        },
+      ],
+      playback: [{ transcoded: false, codec: 'aac', listened: 3600, sessions: 3 }],
+      clients: [{ app: 'AudioSilo', version: '1.2.0', platform: 'ios', devices: 1 }],
+    };
+
+    it('reads GET /me/stats?range= and unwraps { stats } unchanged', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { stats } }));
+      await expect(c().myStats('year')).resolves.toEqual(stats);
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/stats?range=year',
+        method: 'GET',
+      });
+    });
+
+    it('omits range when not given (the server reads 30d)', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { stats } }));
+      await expect(c().myStats()).resolves.toEqual(stats);
+      expect(sent(fetchMock).url).toBe('https://h/api/v1/me/stats');
+    });
+
+    it('surfaces an unknown range as a 400 ApiError', async () => {
+      installFetch(() => ({ status: 400, body: { error: 'invalid range' } }));
+      await expect(c().myStats('1999')).rejects.toMatchObject({
+        status: 400,
+        message: 'invalid range',
+      });
+    });
+
+    it('reads GET /me/listening?range= as is', async () => {
+      const body = { ...period, days: [{ date: '2026-10-05', listened: 60 }] };
+      const fetchMock = installFetch(() => ({ status: 200, body }));
+      await expect(c().myListening('7d')).resolves.toEqual(body);
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/listening?range=7d',
+        method: 'GET',
+      });
+    });
+
+    it('reads GET /me/goal as is (a goal or null)', async () => {
+      const body = {
+        goal: { books_per_year: 24, updated_at: '2026-01-01T00:00:00Z' },
+        year: '2026',
+        finished: 9,
+      };
+      const fetchMock = installFetch(() => ({ status: 200, body }));
+      await expect(c().listeningGoal()).resolves.toEqual(body);
+      expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/goal', method: 'GET' });
+      installFetch(() => ({ status: 200, body: { goal: null, year: '2026', finished: 0 } }));
+      await expect(c().listeningGoal()).resolves.toEqual({ goal: null, year: '2026', finished: 0 });
+    });
+
+    it('sets the goal with PUT /me/goal { books_per_year }', async () => {
+      const body = {
+        goal: { books_per_year: 30, updated_at: '2026-10-06T10:00:00Z' },
+        year: '2026',
+        finished: 9,
+      };
+      const fetchMock = installFetch(() => ({ status: 200, body }));
+      await expect(c().setListeningGoal(30)).resolves.toEqual(body);
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/goal',
+        method: 'PUT',
+        body: { books_per_year: 30 },
+      });
+    });
+
+    it('clears the goal with DELETE /me/goal', async () => {
+      const fetchMock = installFetch(() => ({ status: 204 }));
+      await expect(c().clearListeningGoal()).resolves.toBeUndefined();
+      expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/goal', method: 'DELETE' });
+    });
+  });
+
+  describe('My devices', () => {
+    const device = {
+      id: 11,
+      kind: 'session',
+      name: 'iPhone',
+      client: { app: 'AudioSilo', version: '1.2.0', platform: 'ios' },
+      created_at: '2026-09-01T08:00:00Z',
+      last_seen: null,
+      last_ip: '',
+      current: true,
+    };
+
+    it('lists GET /me/devices, unwrapping { devices }', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { devices: [device] } }));
+      await expect(c().myDevices()).resolves.toEqual([device]);
+      expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/devices', method: 'GET' });
+    });
+
+    it('revokes with DELETE /me/devices/{id} and returns { current }', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { current: true } }));
+      await expect(c().revokeMyDevice(11)).resolves.toEqual({ current: true });
+      expect(sent(fetchMock)).toMatchObject({
+        url: 'https://h/api/v1/me/devices/11',
+        method: 'DELETE',
+        body: undefined,
+      });
+    });
+
+    it("surfaces someone else's or a revoked device as a 404 ApiError", async () => {
+      installFetch(() => ({ status: 404, body: { error: 'device not found' } }));
+      await expect(c().revokeMyDevice(12)).rejects.toMatchObject({
+        name: 'ApiError',
+        status: 404,
+        message: 'device not found',
+      });
+    });
+  });
+});

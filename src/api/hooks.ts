@@ -1,4 +1,5 @@
 import {
+  type QueryClient,
   skipToken,
   useInfiniteQuery,
   useMutation,
@@ -14,7 +15,23 @@ import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress
 import { ApiError, type ApiClient, type BookListQuery, type BookMetaOptions } from './client';
 import { useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteError } from './reachability';
-import type { Book, Capabilities, Favourite, Library, Progress } from './types';
+import type {
+  Book,
+  BookRef,
+  Capabilities,
+  Collection,
+  CollectionDetail,
+  CollectionInput,
+  CollectionPatch,
+  Favourite,
+  Library,
+  ListeningGoalStatus,
+  Progress,
+  ProgressEdit,
+  Rating,
+  RatingValue,
+  StatsRange,
+} from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. Every key leads with
  * the connection id (`cid`) so two servers with the same (libraryId, path) never share
@@ -58,6 +75,19 @@ export const qk = {
   search: (cid: string, q: string) => ['search', cid, q] as const,
   recent: (cid: string, limit: number) => ['books', 'recent', cid, limit] as const,
   copies: (cid: string, key: string) => ['copies', cid, key] as const,
+  // User state (Phase 1b), one capability flag each (see the hooks below).
+  queue: (cid: string) => ['queue', cid] as const,
+  collections: (cid: string) => ['collections', cid] as const,
+  collection: (cid: string, id: number) => ['collection', cid, id] as const,
+  shareTargets: (cid: string) => ['shareTargets', cid] as const,
+  rating: (cid: string, lib: number, path: string) => ['rating', cid, lib, path] as const,
+  myRatings: (cid: string) => ['myRatings', cid] as const,
+  myStats: (cid: string, range: StatsRange) => ['myStats', cid, range] as const,
+  /** Prefix matching every `myStats` range of a connection (invalidation). */
+  myStatsAll: (cid: string) => ['myStats', cid] as const,
+  myListening: (cid: string, range: StatsRange) => ['myListening', cid, range] as const,
+  listeningGoal: (cid: string) => ['listeningGoal', cid] as const,
+  myDevices: (cid: string) => ['myDevices', cid] as const,
 };
 
 /** The scoped connection's server identity/capabilities (incl. its release version).
@@ -91,6 +121,132 @@ export function useCapability(
 ): boolean | undefined {
   const caps = useServerInfo(connectionId).data?.capabilities;
   return caps ? !!caps[flag] : undefined;
+}
+
+/** Rejection of a capability-gated mutation on a server that does not advertise its
+ * flag, or whose `/server` info is not known yet (`unknown`): the request is never sent,
+ * so an older server can't answer it with a bare 404, and no reconnect is flagged (only
+ * a 401 does that). Don't hand it to `noteError` or treat it as a network failure:
+ * reachability reads any error that is not an `ApiError` as an unreachable server. */
+export class CapabilityError extends Error {
+  constructor(
+    public capability: keyof Capabilities,
+    public unknown = false,
+  ) {
+    super(
+      unknown
+        ? `Not known yet whether this server supports ${capability}`
+        : `This server does not support ${capability}`,
+    );
+    this.name = 'CapabilityError';
+  }
+}
+
+/** A query that only runs once the connection's server advertises `flag`: until then it
+ * has no function at all (`skipToken`), so not even a manual `refetch` reaches the
+ * server (React Query rejects it instead). `ready` is the caller's own condition of the
+ * same strength (an `enabled` flag, a valid id); `enabled` is React Query's own, which
+ * only stops automatic fetching (a manual `refetch` still runs). */
+function useCapabilityQuery<T>(
+  flag: keyof Capabilities,
+  queryKey: (cid: string) => readonly unknown[],
+  load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
+  connectionId?: string,
+  opts: { ready?: boolean; enabled?: boolean; staleTime?: number } = {},
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability(flag, connectionId) === true;
+  return useQuery({
+    queryKey: queryKey(cid),
+    queryFn:
+      supported && api && opts.ready !== false ? ({ signal }) => load(api, signal) : skipToken,
+    ...(opts.enabled !== undefined ? { enabled: opts.enabled } : {}),
+    ...(opts.staleTime !== undefined ? { staleTime: opts.staleTime } : {}),
+  });
+}
+
+/** A capability-gated mutation: `request` runs against the connection's client only
+ * when its server advertises `flag`; otherwise the mutation rejects with a
+ * `CapabilityError` and sends nothing. `store` then brings the cache up to date before
+ * the mutation resolves, inside the mutation function, so with the `cid` of the client
+ * the request went to (an onSuccess would read the latest render's).
+ * - `scope` runs one connection's writes of a capability one at a time, so the server
+ *   applies them, and the cache takes their answers, in the order they were made.
+ * - `mutationKey` names the connection: a pending (or queued) mutation takes each
+ *   re-render's options, so a hook switched to another connection would send a queued
+ *   write there. A changed key detaches the pending mutations instead, and they keep
+ *   their own client and cache. */
+function useCapabilityMutation<V, T>(
+  flag: keyof Capabilities,
+  connectionId: string | undefined,
+  request: (api: ApiClient, vars: V) => Promise<T>,
+  store?: (cache: { qc: QueryClient; cid: string }, answer: T, vars: V) => unknown,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability(flag, connectionId);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: [flag, cid],
+    scope: { id: `${flag}:${cid}` },
+    mutationFn: async (vars: V) => {
+      if (!api) throw new Error('no connection');
+      if (supported !== true) throw new CapabilityError(flag, supported === undefined);
+      const answer = await request(api, vars);
+      await store?.({ qc, cid }, answer, vars);
+      return answer;
+    },
+  });
+}
+
+/** Put a write's answer into the cache entry at `queryKey`. `update` gets the entry's
+ * data (undefined when it has none) and returns its new data, or undefined when it
+ * can't place the answer, and then the entry is read again instead (a no-op for an
+ * entry nothing ever read). A read of the entry already in flight may have been
+ * answered before the write and would land over the answer as fresh data, so it is
+ * cancelled first and the entry read again after the answer is in; so is an entry an
+ * earlier invalidation left waiting for a read (setting data would mark it fresh). */
+async function storeAnswer<T>(
+  qc: QueryClient,
+  queryKey: readonly unknown[],
+  update: (cached: T | undefined) => T | undefined,
+) {
+  const state = qc.getQueryState(queryKey);
+  const fetching = state?.fetchStatus === 'fetching';
+  const reread = fetching || state?.isInvalidated === true;
+  if (fetching) await qc.cancelQueries({ queryKey, exact: true });
+  const next = update(qc.getQueryData<T>(queryKey));
+  if (next !== undefined) qc.setQueryData<T>(queryKey, next);
+  if (next === undefined || reread) void qc.invalidateQueries({ queryKey, exact: true });
+}
+
+/** A `bookMeta` key of the `spoilers=hide` variant (see `qk.bookMeta`). */
+function hidesSpoilers(queryKey: readonly unknown[]): boolean {
+  return (queryKey[4] as { hide?: boolean } | undefined)?.hide === true;
+}
+
+/** Refresh what else a change to a book's progress makes stale: the listening stats
+ * and the goal when it can move a finish (they count finish dates), and the book's
+ * `spoilers=hide` metadata when it can move the saved place the server cuts that at
+ * (the position, or the finished flag). */
+function invalidateProgressDependents(
+  qc: QueryClient,
+  cid: string,
+  libraryId: number,
+  path: string,
+  changed: { finish: boolean; place: boolean },
+) {
+  if (changed.finish) {
+    void qc.invalidateQueries({ queryKey: qk.myStatsAll(cid) });
+    void qc.invalidateQueries({ queryKey: qk.listeningGoal(cid) });
+  }
+  if (changed.place) {
+    void qc.invalidateQueries({
+      queryKey: qk.bookMeta(cid, libraryId, path),
+      predicate: (q) => hidesSpoilers(q.queryKey),
+    });
+  }
 }
 
 export function useLibraries() {
@@ -202,12 +358,7 @@ function useBrowseList<T>(
   load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
   connectionId?: string,
 ) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  const supported = useCapability('browse_people', connectionId) === true;
-  return useQuery({
-    queryKey: queryKey(cid),
-    queryFn: supported && api ? ({ signal }) => load(api, signal) : skipToken,
+  return useCapabilityQuery('browse_people', queryKey, load, connectionId, {
     staleTime: BROWSE_STALE_MS,
   });
 }
@@ -284,17 +435,13 @@ export function useNextBook(
   enabled = true,
   connectionId?: string,
 ) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  const supported = useCapability('next_book', connectionId) === true;
-  return useQuery({
-    queryKey: qk.nextBook(cid, libraryId, path),
-    queryFn:
-      supported && api && path.length > 0
-        ? ({ signal }) => api.nextBook(libraryId, path, signal)
-        : skipToken,
-    enabled,
-  });
+  return useCapabilityQuery(
+    'next_book',
+    (cid) => qk.nextBook(cid, libraryId, path),
+    (api, signal) => api.nextBook(libraryId, path, signal),
+    connectionId,
+    { ready: path.length > 0, enabled },
+  );
 }
 
 /** A book's saved listening position (or null when it has never been played).
@@ -361,7 +508,8 @@ export async function fetchBookProgress(
 }
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so
- * it reconciles with playback progress, then refreshes the home lists. */
+ * it reconciles with playback progress, then refreshes the home lists and what else a
+ * finish moves (the listening stats, the goal, the book's spoilers=hide metadata). */
 export function useMarkFinished(connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
@@ -389,6 +537,7 @@ export function useMarkFinished(connectionId?: string) {
     onSuccess: (_data, p) => {
       qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
       qc.invalidateQueries({ queryKey: qk.progress(cid, p.libraryId, p.path) });
+      invalidateProgressDependents(qc, cid, p.libraryId, p.path, { finish: true, place: true });
     },
   });
 }
@@ -550,7 +699,8 @@ export function useApiKeys(enabled: boolean, connectionId?: string) {
 }
 
 /** Mint a named API key; the plaintext secret is in the resolved value (shown once).
- * Refreshes this connection's key list on success. */
+ * Refreshes this connection's key list on success, and its device list (`/me/devices`
+ * lists API keys too). */
 export function useCreateApiKey(connectionId?: string) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
@@ -560,11 +710,15 @@ export function useCreateApiKey(connectionId?: string) {
     // present in practice; reject defensively if it somehow isn't (the caller surfaces it).
     mutationFn: (label: string) =>
       api ? api.createApiKey(label) : Promise.reject(new Error('no connection')),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.apiKeys(cid) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+      return qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
+    },
   });
 }
 
-/** Revoke an API key by id; refreshes this connection's key list on success. */
+/** Revoke an API key by id; refreshes this connection's key and device lists on
+ * success. */
 export function useRevokeApiKey(connectionId?: string) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
@@ -572,8 +726,417 @@ export function useRevokeApiKey(connectionId?: string) {
   return useMutation({
     mutationFn: (id: number) =>
       api ? api.revokeApiKey(id) : Promise.reject(new Error('no connection')),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.apiKeys(cid) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+      return qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
+    },
   });
+}
+
+// --- User state & personal stats (Phase 1b) ----------------------------------
+// Each query is gated on its own capability flag like the browse lists above (no query
+// function until the flag is known to be on, so not even a `refetch` asks an older
+// server). Each mutation checks the same flag when it is called and, on a server without
+// it (or before its `/server` info is known), rejects with a `CapabilityError` without
+// sending a request. All take the optional `connectionId`, like `useBook`.
+
+/** The caller's Up next queue, in order (capability `queue`). */
+export function useQueue(connectionId?: string) {
+  return useCapabilityQuery('queue', qk.queue, (api, signal) => api.queue(signal), connectionId);
+}
+
+/** Replace the whole queue (capability `queue`). The cache takes the stored queue the
+ * server answers with (entries it skipped are gone from it). The replace deletes every
+ * stored entry it doesn't list, hidden ones included (see `ApiClient.setQueue`): move
+ * one book with {@link useAddToQueue} and a `position` instead. */
+export function useSetQueue(connectionId?: string) {
+  return useCapabilityMutation(
+    'queue',
+    connectionId,
+    (api, items: BookRef[]) => api.setQueue(items),
+    ({ qc, cid }, queue) => storeAnswer(qc, qk.queue(cid), () => queue),
+  );
+}
+
+/** Queue one book, at `position` (0-based, in the queue as the caller sees it) or the
+ * end (capability `queue`). */
+export function useAddToQueue(connectionId?: string) {
+  return useCapabilityMutation(
+    'queue',
+    connectionId,
+    (api, v: { libraryId: number; path: string; position?: number }) =>
+      api.addToQueue(v.libraryId, v.path, v.position),
+    ({ qc, cid }, queue) => storeAnswer(qc, qk.queue(cid), () => queue),
+  );
+}
+
+/** Take one book off the queue (capability `queue`): the entry's own path (a remove is
+ * exact, unlike an add). */
+export function useRemoveFromQueue(connectionId?: string) {
+  return useCapabilityMutation(
+    'queue',
+    connectionId,
+    (api, v: { libraryId: number; path: string }) => api.removeFromQueue(v.libraryId, v.path),
+    // Not awaited: the queue's next write (same scope) needn't wait for this read.
+    ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.queue(cid) }),
+  );
+}
+
+/** The caller's collections: owned first, then shared with them (capability
+ * `collections`). */
+export function useCollections(connectionId?: string) {
+  return useCapabilityQuery(
+    'collections',
+    qk.collections,
+    (api, signal) => api.collections(signal),
+    connectionId,
+  );
+}
+
+/** One collection with its items (capability `collections`). Waits for a real id. */
+export function useCollection(id: number, connectionId?: string) {
+  return useCapabilityQuery(
+    'collections',
+    (cid) => qk.collection(cid, id),
+    (api, signal) => api.collection(id, signal),
+    connectionId,
+    { ready: id > 0 },
+  );
+}
+
+/** The users the caller can share a collection with (capability `collections`). A demo
+ * account is refused (403), so pass `enabled` false for one, and while the share sheet
+ * is closed. */
+export function useShareTargets(enabled = true, connectionId?: string) {
+  return useCapabilityQuery(
+    'collections',
+    qk.shareTargets,
+    (api, signal) => api.shareTargets(signal),
+    connectionId,
+    { ready: enabled },
+  );
+}
+
+/** The server's order of the collections list: owned first, then each group newest
+ * `updated_at` first (fixed-width UTC stamps, so they compare as strings), then newest
+ * id. */
+function collectionOrder(a: Collection, b: Collection) {
+  if (a.owned !== b.owned) return a.owned ? -1 : 1;
+  if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1;
+  return b.id - a.id;
+}
+
+/** Put a collection a write answered with into the cached list (its count, preview
+ * and `updated_at` move with the items), in the server's order. A list that doesn't
+ * hold it is read again instead. */
+function patchCollectionsList(qc: QueryClient, cid: string, collection: Collection) {
+  return storeAnswer<Collection[]>(qc, qk.collections(cid), (list) =>
+    list?.some((c) => c.id === collection.id)
+      ? list.map((c) => (c.id === collection.id ? collection : c)).sort(collectionOrder)
+      : undefined,
+  );
+}
+
+/** Cache a collection a write answered with (a rename, new shares): into its cached
+ * detail, if any, and the list. */
+function storeCollection(qc: QueryClient, cid: string, collection: Collection) {
+  return Promise.all([
+    storeAnswer<CollectionDetail>(
+      qc,
+      qk.collection(cid, collection.id),
+      (d) => d && { ...d, collection },
+    ),
+    patchCollectionsList(qc, cid, collection),
+  ]);
+}
+
+/** Cache a collection detail a write answered with, and its collection in the list. */
+function storeCollectionDetail(qc: QueryClient, cid: string, detail: CollectionDetail) {
+  return Promise.all([
+    storeAnswer(qc, qk.collection(cid, detail.collection.id), () => detail),
+    patchCollectionsList(qc, cid, detail.collection),
+  ]);
+}
+
+/** Forget a deleted (or left) collection's cached detail. A screen still showing it
+ * keeps its data until it leaves, since removing an entry something observes makes the
+ * observer read it again at once (a 404 now); it is only marked stale, so the next
+ * reader asks the server. */
+function dropCollectionDetail(qc: QueryClient, cid: string, id: number) {
+  const queryKey = qk.collection(cid, id);
+  if (qc.getQueryCache().find({ queryKey, exact: true })?.getObserversCount()) {
+    void qc.invalidateQueries({ queryKey, exact: true, refetchType: 'none' });
+  } else {
+    qc.removeQueries({ queryKey, exact: true });
+  }
+}
+
+/** Create a collection (capability `collections`); resolves to it. */
+export function useCreateCollection(connectionId?: string) {
+  return useCapabilityMutation(
+    'collections',
+    connectionId,
+    (api, input: CollectionInput) => api.createCollection(input),
+    ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.collections(cid) }),
+  );
+}
+
+/** Rename a collection or change its description (owner only; capability
+ * `collections`). */
+export function useUpdateCollection(connectionId?: string) {
+  return useCapabilityMutation(
+    'collections',
+    connectionId,
+    (api, { id, ...patch }: CollectionPatch & { id: number }) => api.updateCollection(id, patch),
+    ({ qc, cid }, collection) => storeCollection(qc, cid, collection),
+  );
+}
+
+/** Delete a collection (owner) or leave one shared with the caller (viewer); capability
+ * `collections`. A screen showing the collection keeps its data (see
+ * `dropCollectionDetail`): leave it once the mutation resolves. */
+export function useDeleteCollection(connectionId?: string) {
+  return useCapabilityMutation(
+    'collections',
+    connectionId,
+    (api, id: number) => api.deleteCollection(id),
+    ({ qc, cid }, _none, id) => {
+      dropCollectionDetail(qc, cid, id);
+      void qc.invalidateQueries({ queryKey: qk.collections(cid) });
+    },
+  );
+}
+
+/** Replace a collection's items (owner only; capability `collections`). The cache takes
+ * the stored detail the server answers with. Like {@link useSetQueue}, the replace
+ * deletes the caller's hidden items too: move one book with
+ * {@link useAddCollectionItem} and a `position` instead. */
+export function useSetCollectionItems(connectionId?: string) {
+  return useCapabilityMutation(
+    'collections',
+    connectionId,
+    (api, v: { id: number; items: BookRef[] }) => api.setCollectionItems(v.id, v.items),
+    ({ qc, cid }, detail) => storeCollectionDetail(qc, cid, detail),
+  );
+}
+
+/** Add one book to a collection (owner only; capability `collections`). */
+export function useAddCollectionItem(connectionId?: string) {
+  return useCapabilityMutation(
+    'collections',
+    connectionId,
+    (api, v: { id: number; libraryId: number; path: string; position?: number }) =>
+      api.addCollectionItem(v.id, v.libraryId, v.path, v.position),
+    ({ qc, cid }, detail) => storeCollectionDetail(qc, cid, detail),
+  );
+}
+
+/** Take one book out of a collection (owner only; capability `collections`): the
+ * item's own path (a remove is exact, unlike an add). */
+export function useRemoveCollectionItem(connectionId?: string) {
+  return useCapabilityMutation(
+    'collections',
+    connectionId,
+    (api, v: { id: number; libraryId: number; path: string }) =>
+      api.removeCollectionItem(v.id, v.libraryId, v.path),
+    ({ qc, cid }, _none, v) => {
+      void qc.invalidateQueries({ queryKey: qk.collection(cid, v.id) });
+      void qc.invalidateQueries({ queryKey: qk.collections(cid) });
+    },
+  );
+}
+
+/** Replace who a collection is shared with (owner only; capability `collections`). */
+export function useSetCollectionShares(connectionId?: string) {
+  return useCapabilityMutation(
+    'collections',
+    connectionId,
+    (api, v: { id: number; userIds: number[] }) => api.setCollectionShares(v.id, v.userIds),
+    ({ qc, cid }, collection) => storeCollection(qc, cid, collection),
+  );
+}
+
+/** The caller's rating of exactly this path, or null (capability `ratings`). A rating
+ * made through a part/disc path is stored on its book's path, so key rating UI on the
+ * book's path. */
+export function useRating(libraryId: number, path: string, connectionId?: string) {
+  return useCapabilityQuery(
+    'ratings',
+    (cid) => qk.rating(cid, libraryId, path),
+    (api, signal) => api.rating(libraryId, path, signal),
+    connectionId,
+    { ready: path.length > 0 },
+  );
+}
+
+/** Every rating the caller can still see, newest change first (capability `ratings`). */
+export function useMyRatings(connectionId?: string) {
+  return useCapabilityQuery(
+    'ratings',
+    qk.myRatings,
+    (api, signal) => api.myRatings(signal),
+    connectionId,
+  );
+}
+
+/** Rate a book (capability `ratings`). The server stores it on the BOOK's path (a
+ * part/disc path rates its book), so the cache takes it under the path it came back
+ * with. */
+export function useSetRating(connectionId?: string) {
+  return useCapabilityMutation(
+    'ratings',
+    connectionId,
+    (api, v: { libraryId: number; path: string; rating: RatingValue; note?: string }) =>
+      api.setRating(v.libraryId, v.path, v.rating, v.note),
+    ({ qc, cid }, rating) => {
+      void qc.invalidateQueries({ queryKey: qk.myRatings(cid) });
+      return storeAnswer(qc, qk.rating(cid, rating.library_id, rating.path), () => rating);
+    },
+  );
+}
+
+/** Remove the caller's rating of exactly this path (capability `ratings`): pass the
+ * book's path a rating came back with (a part/disc path removes nothing). */
+export function useDeleteRating(connectionId?: string) {
+  return useCapabilityMutation(
+    'ratings',
+    connectionId,
+    (api, v: { libraryId: number; path: string }) => api.deleteRating(v.libraryId, v.path),
+    ({ qc, cid }, _none, v) => {
+      void qc.invalidateQueries({ queryKey: qk.myRatings(cid) });
+      return storeAnswer<Rating | null>(qc, qk.rating(cid, v.libraryId, v.path), () => null);
+    },
+  );
+}
+
+/** The caller's own progress edit (capability `progress_edit`; see {@link ProgressEdit}):
+ * mark finished or unfinished, move the position, set or clear the dates. The cache
+ * takes the stored progress under `qk.progress` and as its row of the all-progress
+ * list. The stats and the goal's finished count are read again when the edit could
+ * move a finish (it names `finished` or `finished_at`), and the book's spoilers=hide
+ * metadata when it could move the saved progress it is cut at (`finished` or
+ * `position`). To mark unfinished a book finished at its end, send a `position` too
+ * (see {@link ProgressEdit}).
+ *
+ * Server-side only: it does NOT touch the player's local progress mirror or offline
+ * queue (playback internals are frozen in this phase), so a device that has the book
+ * loaded overrides the edit with its next save, as the server's last-write-wins rule
+ * intends. */
+export function useEditProgress(connectionId?: string) {
+  return useCapabilityMutation(
+    'progress_edit',
+    connectionId,
+    (api, v: { libraryId: number; path: string; edit: ProgressEdit }) =>
+      api.editProgress(v.libraryId, v.path, v.edit),
+    ({ qc, cid }, progress, { edit }) => {
+      invalidateProgressDependents(qc, cid, progress.library_id, progress.path, {
+        finish: edit.finished !== undefined || edit.finished_at !== undefined,
+        place: edit.finished !== undefined || edit.position !== undefined,
+      });
+      const same = (p: Progress) =>
+        p.library_id === progress.library_id && p.path === progress.path;
+      return Promise.all([
+        storeAnswer(qc, qk.progress(cid, progress.library_id, progress.path), () => progress),
+        storeAnswer<Progress[]>(
+          qc,
+          qk.allProgress(cid),
+          (list) =>
+            list &&
+            (list.some(same) ? list.map((p) => (same(p) ? progress : p)) : [progress, ...list]),
+        ),
+      ]);
+    },
+  );
+}
+
+/** The caller's own listening stats for a period (capability `user_stats`). */
+export function useMyStats(range: StatsRange = '30d', connectionId?: string) {
+  return useCapabilityQuery(
+    'user_stats',
+    (cid) => qk.myStats(cid, range),
+    (api, signal) => api.myStats(range, signal),
+    connectionId,
+  );
+}
+
+/** The caller's listening day by day for a period, for streaks and calendars
+ * (capability `user_stats`). */
+export function useMyListening(range: StatsRange = '30d', connectionId?: string) {
+  return useCapabilityQuery(
+    'user_stats',
+    (cid) => qk.myListening(cid, range),
+    (api, signal) => api.myListening(range, signal),
+    connectionId,
+  );
+}
+
+/** The caller's yearly goal and this year's finished books (capability `user_stats`). */
+export function useListeningGoal(connectionId?: string) {
+  return useCapabilityQuery(
+    'user_stats',
+    qk.listeningGoal,
+    (api, signal) => api.listeningGoal(signal),
+    connectionId,
+  );
+}
+
+/** Set the yearly goal, books finished per year 1-1000 (capability `user_stats`). */
+export function useSetListeningGoal(connectionId?: string) {
+  return useCapabilityMutation(
+    'user_stats',
+    connectionId,
+    (api, booksPerYear: number) => api.setListeningGoal(booksPerYear),
+    ({ qc, cid }, status) => storeAnswer(qc, qk.listeningGoal(cid), () => status),
+  );
+}
+
+/** Clear the yearly goal (capability `user_stats`). */
+export function useClearListeningGoal(connectionId?: string) {
+  return useCapabilityMutation<void, void>(
+    'user_stats',
+    connectionId,
+    (api) => api.clearListeningGoal(),
+    ({ qc, cid }) =>
+      storeAnswer<ListeningGoalStatus>(qc, qk.listeningGoal(cid), (s) => s && { ...s, goal: null }),
+  );
+}
+
+/** The caller's own signed-in devices, most recently seen first (capability
+ * `my_devices`). */
+export function useMyDevices(connectionId?: string) {
+  return useCapabilityQuery(
+    'my_devices',
+    qk.myDevices,
+    (api, signal) => api.myDevices(signal),
+    connectionId,
+  );
+}
+
+/** Sign out one of the caller's devices (capability `my_devices`); resolves to
+ * `{ current }`.
+ *
+ * Not for the device the caller is on (its row has `current: true`): revoking it kills
+ * this connection's token before the app's sign-out teardown
+ * (`teardownBeforeTokenRevoke`: stop playback, save the final position, flush the
+ * queued progress) can run, so those saves are refused and lost. Sign out of the
+ * connection the usual way for that row (`useSignOut`), which tears down first.
+ *
+ * Should it still be used on it, `current: true` means the token is dead: every later
+ * request on this connection is refused, and the caller must sign out of the
+ * connection locally. The hook refetches nothing in that case, since a refetch would
+ * only 401 and raise the reconnect banner instead. Otherwise it refreshes the device
+ * list and the API keys (a device can be an API key). */
+export function useRevokeMyDevice(connectionId?: string) {
+  return useCapabilityMutation(
+    'my_devices',
+    connectionId,
+    (api, id: number) => api.revokeMyDevice(id),
+    ({ qc, cid }, res) => {
+      if (res.current) return;
+      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+      void qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
+    },
+  );
 }
 
 // --- Cross-connection aggregation ------------------------------------------

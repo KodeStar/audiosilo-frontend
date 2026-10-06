@@ -38,6 +38,28 @@ export type Capabilities = {
    * Tracks `metadata` (off when enrichment is off). Absent on older servers - treat
    * missing as false: such a server ignores both params and sends the full envelope. */
   meta_bundle?: boolean;
+  // The user-state flags below (player redesign Phase 1b) are all absent on older
+  // servers: treat missing as false and never call the routes they gate.
+  /** Whether the server keeps an Up next queue per user (`/me/queue`, every method;
+   * {@link QueueEntry}). */
+  queue?: boolean;
+  /** Whether the server keeps personal collections, shareable read-only with named
+   * users (`/me/collections/**` and `/me/share-targets`; {@link Collection}). */
+  collections?: boolean;
+  /** Whether the server keeps a 1-5 rating with a note per book
+   * (`/libraries/{id}/rating` and `/me/ratings`; {@link Rating}). */
+  ratings?: boolean;
+  /** Whether the caller can edit their own progress (`PATCH /libraries/{id}/progress`,
+   * {@link ProgressEdit}: mark unfinished, set the started/finished dates) and progress
+   * responses carry `started_at`/`finished_at`. */
+  progress_edit?: boolean;
+  /** Whether the server reports the caller's own listening: `/me/stats`
+   * ({@link UserStats}), `/me/listening` ({@link MyListening}) and `/me/goal`
+   * ({@link ListeningGoalStatus}). */
+  user_stats?: boolean;
+  /** Whether the caller can list and sign out their own devices (`/me/devices`,
+   * {@link MyDevice}). */
+  my_devices?: boolean;
 };
 
 export type ServerInfo = {
@@ -533,9 +555,41 @@ export type Progress = {
   version: number;
   device_id: string;
   updated_at: string;
+  /** RFC3339 UTC: when the caller started the book. Sent by a server with
+   * `progress_edit`; absent when unknown and on older servers. */
+  started_at?: string;
+  /** RFC3339 UTC: when the caller finished the book. Sent by a server with
+   * `progress_edit`; absent when not finished (or unknown) and on older servers. */
+  finished_at?: string;
 };
 
-/** Fields a client sends on PUT progress (server fills library_id/path/version). */
+/** Body of PATCH /libraries/{id}/progress (capability `progress_edit`): the caller's
+ * own edit, stamped with server time and a newer version (it beats older device saves;
+ * a device with the book loaded overrides it on its next save). Every field is
+ * optional: absent leaves it as it is.
+ * - `finished: true` on a book not yet finished moves the position to the end and
+ *   sets `finished_at` to now unless one is given; on a book already finished it
+ *   changes neither.
+ * - `finished: false` (mark unfinished) keeps the position unless one is given and
+ *   clears `finished_at`. A book finished at its end is stored at (or within a few
+ *   seconds of) its duration, and the player resumes an unfinished book at its saved
+ *   position, so it would finish again at once: send a `position` (say 0) with
+ *   `finished: false` for such a book.
+ * - Dates are RFC3339 or `YYYY-MM-DD` (server time; a day-only finish is the end of
+ *   that day, or now if sooner); `null` clears one. A date in the future, a finish
+ *   before the start, or a finish on a book that isn't (becoming) finished is a 400.
+ *   An edit that creates the progress (none yet) starts the book now, so a past
+ *   `finished_at` there needs a `started_at` at or before it (or `null`).
+ * It is not playback, so it records no listening session. */
+export type ProgressEdit = {
+  finished?: boolean;
+  position?: number;
+  started_at?: string | null;
+  finished_at?: string | null;
+};
+
+/** Fields a client sends on PUT progress (server fills library_id/path/version). The
+ * server ignores any dates here: a save stamps `started_at`/`finished_at` itself. */
 export type ProgressInput = {
   position: number;
   duration: number;
@@ -592,3 +646,202 @@ export type History = {
   started_at: string;
   ended_at: string;
 };
+
+// --- User state & personal stats (player redesign Phase 1b) --------------------
+// Each route is gated on its own capability flag (see Capabilities). Stored rows are
+// path-keyed and survive re-indexing; a list read leaves out a row whose path is
+// outside the caller's CURRENT access (kept on the server, not returned, not counted),
+// but a whole-list replace (PUT) deletes such rows like any other row it doesn't list.
+
+/** A user on the same server, as the collection share list names them. */
+export type UserRef = { id: number; username: string };
+
+/** One book on a stored list (Up next, a collection): its address, when it was
+ * added (RFC3339), and the book in the list shape (no description) when the path is
+ * indexed. */
+export type BookListEntry = BookRef & {
+  added_at: string;
+  book?: Book;
+};
+
+/** One entry of the caller's Up next queue (capability `queue`), in queue order. */
+export type QueueEntry = BookListEntry;
+
+/** One item of a collection (capability `collections`), in collection order. */
+export type CollectionItem = BookListEntry;
+
+/** A personal collection (capability `collections`): owned by the caller or shared
+ * with them read-only. */
+export type Collection = {
+  id: number;
+  name: string;
+  description: string;
+  owner: UserRef;
+  /** Whether the caller owns it. Only the owner can change it; a viewer can only
+   * leave (DELETE). */
+  owned: boolean;
+  /** Who it is shared with: sent to the owner only (`[]` when unshared), absent for a
+   * viewer. */
+  shared_with?: UserRef[];
+  /** Items the CALLER can see (their own current access), not the owner's total. */
+  item_count: number;
+  /** The first (up to 4) visible indexed items, for a cover mosaic. */
+  preview: Book[];
+  created_at: string;
+  /** Moves on a rename, a description change and any items change. */
+  updated_at: string;
+};
+
+/** Response of GET /me/collections/{id} (and of the items writes): the collection and
+ * its items in order, filtered by the caller's current access. */
+export type CollectionDetail = { collection: Collection; items: CollectionItem[] };
+
+/** Body of POST /me/collections. `name` is 1-100 characters after trimming;
+ * `description` at most 1000. */
+export type CollectionInput = { name: string; description?: string };
+
+/** Body of PATCH /me/collections/{id}: absent fields are left as they are. */
+export type CollectionPatch = { name?: string; description?: string };
+
+/** A user the caller can share a collection with (GET /me/share-targets): enabled,
+ * non-demo, not the caller. */
+export type ShareTarget = UserRef;
+
+/** A rating value: a whole number of stars. */
+export type RatingValue = 1 | 2 | 3 | 4 | 5;
+
+/** The caller's rating of a book (capability `ratings`), stored on the book's own
+ * path (rating a part/disc path rates its book). `note` is trimmed, at most 500
+ * characters, `''` when none. */
+export type Rating = BookRef & {
+  rating: RatingValue;
+  note: string;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One row of GET /me/ratings: the rating plus the book in the list shape when the
+ * path is indexed. */
+export type RatedBook = Rating & { book?: Book };
+
+/** The `range` of the personal stats routes: the last 7/30/90 days, the last year
+ * (`1y`), this calendar year (`year`, answered as its `YYYY`), or a calendar year
+ * (`YYYY`, 2000 or later). The server reads an absent range as `30d`; anything else
+ * is a 400. Days, hours and weekdays are in server time. */
+export type StatsRange = '7d' | '30d' | '90d' | '1y' | 'year' | `${number}`;
+
+/** The period a stats response covers. `range` is the label asked for (`year` comes
+ * back as its `YYYY`); `from`/`to` are RFC3339 UTC; `timezone` is the server's zone
+ * abbreviation at `to` and `utc_offset` its offset from UTC in minutes. */
+export type StatsPeriod = {
+  range: string;
+  from: string;
+  to: string;
+  timezone: string;
+  utc_offset: number;
+};
+
+/** The caller's totals for a period: `listened` in seconds (wall clock), `sessions`
+ * that started in it, distinct `books` listened to, and books `finished` in it. */
+export type StatsTotals = {
+  listened: number;
+  sessions: number;
+  books: number;
+  finished: number;
+};
+
+/** One day's listening in seconds; `date` is `YYYY-MM-DD` in server time. */
+export type ListeningDay = { date: string; listened: number };
+
+/** A book by the caller's listening time in the period. */
+export type StatsTopBook = BookRef & {
+  title: string;
+  author: string;
+  listened: number;
+};
+
+/** An author, narrator or series (the whole field value) by the caller's listening
+ * time, with how many of its books they listened to. */
+export type StatsTopName = { name: string; listened: number; books: number };
+
+/** A book the caller finished in the period; `finished_at` is RFC3339. */
+export type StatsFinishedBook = BookRef & {
+  title: string;
+  author: string;
+  finished_at: string;
+};
+
+/** Listening by how it played: direct or through the transcoder, per codec (`''` =
+ * unknown). */
+export type StatsPlayback = {
+  transcoded: boolean;
+  codec: string;
+  listened: number;
+  sessions: number;
+};
+
+/** The app a token last identified as (the `X-AudioSilo-Client` header). */
+export type ClientInfo = { app: string; version: string; platform: string };
+
+/** An app version the caller listened with, and on how many of their devices. */
+export type StatsClient = ClientInfo & { devices: number };
+
+/** Response of GET /me/stats (capability `user_stats`): the caller's own listening,
+ * never anyone else's. Totals, `days` and `hour_weekday` count all of the caller's
+ * time; the top lists and `finished_books` only cover books inside the caller's
+ * current access (a revoked share's books never echo back). */
+export type UserStats = StatsPeriod & {
+  totals: StatsTotals;
+  /** The same length of time just before `from`, for deltas. */
+  previous: StatsTotals;
+  /** Seconds of `totals.listened` that are estimates (listening from before the server
+   * recorded sessions); in the totals and top lists, never in `days`/`hour_weekday`. */
+  estimated: number;
+  /** Every day of the period, oldest first, zeros included. */
+  days: ListeningDay[];
+  /** Listened seconds as [weekday][hour]: 7 rows (0 = Monday) of 24 hours, server
+   * time, from raw sessions only. */
+  hour_weekday: number[][];
+  /** At most 10 each. */
+  top_books: StatsTopBook[];
+  top_authors: StatsTopName[];
+  top_narrators: StatsTopName[];
+  top_series: StatsTopName[];
+  /** Newest first, at most 100. */
+  finished_books: StatsFinishedBook[];
+  playback: StatsPlayback[];
+  clients: StatsClient[];
+};
+
+/** Response of GET /me/listening (capability `user_stats`): the caller's listening
+ * day by day and nothing else. Streaks are the client's to compute from `days`. */
+export type MyListening = StatsPeriod & { days: ListeningDay[] };
+
+/** The caller's yearly goal: books finished per calendar year (1-1000). */
+export type ListeningGoal = { books_per_year: number; updated_at: string };
+
+/** Response of GET and PUT /me/goal (capability `user_stats`): the goal (`null` when
+ * unset), the current calendar `year` (`YYYY`, server time) and the books the caller
+ * has `finished` in it. */
+export type ListeningGoalStatus = { goal: ListeningGoal | null; year: string; finished: number };
+
+/** One of the caller's own signed-in devices (capability `my_devices`): a session (a
+ * paired phone, a browser) or an API key. */
+export type MyDevice = {
+  id: number;
+  kind: 'session' | 'api';
+  /** The device name sent at sign-in (an API key's label). */
+  name: string;
+  /** Null until the token makes a request naming its app. */
+  client: ClientInfo | null;
+  created_at: string;
+  last_seen: string | null;
+  /** The address of the token's newest request (`''` before any). */
+  last_ip: string;
+  /** Whether this is the token making the request (this device). */
+  current: boolean;
+};
+
+/** Response of DELETE /me/devices/{id}: `current` is true when the caller signed out
+ * the very token it used, which is dead from then on (sign out locally). */
+export type MyDeviceRevoked = { current: boolean };
