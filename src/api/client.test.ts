@@ -701,6 +701,16 @@ describe('ApiClient user state (Phase 1b)', () => {
       });
     });
 
+    it('sends only {library_id, path} when replaying cached entries as the new order', async () => {
+      // The server decodes list bodies strictly: an entry's added_at/book would be a 400.
+      const fetchMock = installFetch(() => ({ status: 200, body: { queue: [entry] } }));
+      await c().setQueue([entry]);
+      await c().setCollectionItems(5, [entry]);
+      const bare = { items: [{ library_id: entry.library_id, path: entry.path }] };
+      expect(sent(fetchMock, 0).body).toEqual(bare);
+      expect(sent(fetchMock, 1).body).toEqual(bare);
+    });
+
     it('adds one book with POST /me/queue, sending position only when given', async () => {
       const fetchMock = installFetch(() => ({ status: 200, body: { queue: [entry] } }));
       await expect(c().addToQueue(2, 'Saga/Book 1')).resolves.toEqual([entry]);

@@ -94,6 +94,13 @@ export type BookListQuery = {
  * worst). */
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
+/** Just the `{library_id, path}` of each entry: the server decodes list bodies
+ * strictly, so a cached `QueueEntry`/`CollectionItem` (with `added_at`, `book`)
+ * passed as a ref would otherwise be a 400. */
+function bareRefs(items: readonly BookRef[]): BookRef[] {
+  return items.map(({ library_id, path }) => ({ library_id, path }));
+}
+
 function toQueryString(query?: Query): string {
   if (!query) return '';
   const params = new URLSearchParams();
@@ -605,12 +612,12 @@ export class ApiClient {
    * is skipped, not an error. More than 500 items is a 400. */
   async setQueue(items: BookRef[]) {
     const r = await this.request<{ queue: QueueEntry[] }>('PUT', '/me/queue', {
-      body: { items },
+      body: { items: bareRefs(items) },
     });
     return r.queue;
   }
   /** Queue one book (a part/disc path queues its book). `position` is a 0-based index
-   * in the stored order (absent or past the end: the end). A book already queued moves
+   * in the queue as this caller sees it (absent or past the end: the end). A book already queued moves
    * to `position` when one is given, else stays. A full queue is a 409 (`queue_full`). */
   async addToQueue(libraryId: number, path: string, position?: number) {
     const r = await this.request<{ queue: QueueEntry[] }>('POST', '/me/queue', {
@@ -661,7 +668,7 @@ export class ApiClient {
    * 1000 is a 400. Returns the stored detail. */
   setCollectionItems(id: number, items: BookRef[]) {
     return this.request<CollectionDetail>('PUT', `/me/collections/${id}/items`, {
-      body: { items },
+      body: { items: bareRefs(items) },
     });
   }
   /** Add one book (owner only), placed like {@link addToQueue}. A full collection is
