@@ -137,6 +137,16 @@ describe('NowCard', () => {
     expect(screen.getByText('Chapter 2')).toBeTruthy();
   });
 
+  it('stacks like the phone card when it is narrow on a desktop (the Up next drawer open)', async () => {
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
+    await fireEvent(screen.getByTestId('now-card'), 'layout', {
+      nativeEvent: { layout: { width: 420, height: 400 } },
+    });
+    expect(screen.getByText('Ch. 2 of 3')).toBeTruthy();
+    expect(screen.queryByText('Chapter 2 of 3')).toBeNull();
+  });
+
   it('estimates a finish date only from enough listening', async () => {
     await render(<NowCard at={at} saved={saved} />);
     expect(screen.queryByText('finish at your pace')).toBeNull();

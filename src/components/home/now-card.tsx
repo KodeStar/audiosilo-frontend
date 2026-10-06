@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -38,7 +38,13 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { BookScale } from './book-scale';
 import type { BookAt } from './home-model';
 import { dailyPace, estimatedFinish } from './listening';
-import { bookmarkPins, bookScale, chapterPlace, timeLeftAtSpeed } from './now-card-model';
+import {
+  bookmarkPins,
+  bookScale,
+  chapterPlace,
+  nowCardCompact,
+  timeLeftAtSpeed,
+} from './now-card-model';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -58,8 +64,10 @@ export function NowCard({ at, saved }: { at: BookAt; saved?: SourcedProgress }) 
 
 function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const { t } = useTranslation();
-  const layout = useLayout();
-  const phone = layout === 'phone';
+  // The card's own width decides its shape, not the window's: beside This week, or on a
+  // desktop with the Up next drawer open, a "desktop" card can be phone-narrow.
+  const [width, setWidth] = useState(0);
+  const compact = nowCardCompact(useLayout() === 'phone', width);
   const { openBook } = useOpen();
   const play = usePlayBook();
   const { libraryId, path } = at;
@@ -104,7 +112,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const percent = percentHeard(position, total, finished);
   const left = timeLeftAtSpeed(position, total, speed);
   const place = chapterPlace(titles, starts, position);
-  const segments = bookScale(starts, total, position, phone ? 60 : undefined);
+  const segments = bookScale(starts, total, position, compact ? 60 : undefined);
   const pins = bookmarkPins(
     (bookmarks ?? []).map((b) => b.position),
     total,
@@ -128,7 +136,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
       ? t('home.now.seriesBook', { series: book.series, position: book.series_index })
       : book.series
     : '';
-  const eyebrow = phone
+  const eyebrow = compact
     ? series || book?.author || ''
     : [t('home.continueListening'), series].filter(Boolean).join(' · ');
 
@@ -154,7 +162,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
         libraryId={libraryId}
         path={path}
         coverVersion={book?.cover_version}
-        width={phone ? 108 : 220}
+        width={compact ? 108 : 220}
         title={title}
         author={book?.author}
         shadow="lg"
@@ -166,7 +174,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     <View className="flex-row items-center gap-2.5">
       <View className="rounded-md bg-muted px-[7px] py-0.5">
         <Text variant="mono" className="text-muted-foreground">
-          {phone
+          {compact
             ? t('home.now.chapterShort', { chapter: place.number, total: place.count })
             : t('home.now.chapterOf', { chapter: place.number, total: place.count })}
         </Text>
@@ -196,7 +204,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
       icon={playing ? 'pause' : 'play'}
       title={resumeLabel}
       onPress={onResume}
-      className={phone ? 'w-full' : undefined}
+      className={compact ? 'w-full' : undefined}
     />
   );
   const companion = [
@@ -208,7 +216,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
         icon="users"
         onPress={() => openBook(at.connectionId, libraryId, path, 'characters')}
         accessibilityLabel={t('home.now.whosWhoLabel', { count: met })}
-        className={phone ? 'flex-1 px-3' : undefined}
+        className={compact ? 'flex-1 px-3' : undefined}
       >
         <Text numberOfLines={1}>{t('home.now.whosWho')}</Text>
         <Text className="text-muted-foreground" style={tabularNums}>
@@ -220,26 +228,28 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
       <Button
         key="story"
         size="lg"
-        variant={phone ? 'outline' : 'ghost'}
+        variant={compact ? 'outline' : 'ghost'}
         icon="book-open"
         title={t('home.now.storySoFar')}
         onPress={() => openBook(at.connectionId, libraryId, path, 'recaps')}
-        className={phone ? 'flex-1 px-3' : undefined}
+        className={compact ? 'flex-1 px-3' : undefined}
       />
     ) : null,
   ].filter(Boolean);
 
   return (
     <View
+      testID="now-card"
       accessibilityLabel={t('home.continueListening')}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       className={
-        phone
+        compact
           ? 'relative gap-4 overflow-hidden rounded-[22px] border border-border bg-card p-[18px]'
           : 'relative flex-row gap-8 overflow-hidden rounded-sheet border border-border bg-card p-7'
       }
     >
       <CoverWash color={book?.cover_color} variant="card" />
-      {phone ? (
+      {compact ? (
         <>
           <View className="flex-row items-center gap-3.5">
             {cover}

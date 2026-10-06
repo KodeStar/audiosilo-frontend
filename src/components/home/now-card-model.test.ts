@@ -1,4 +1,10 @@
-import { bookmarkPins, bookScale, chapterPlace, timeLeftAtSpeed } from './now-card-model';
+import {
+  bookmarkPins,
+  bookScale,
+  chapterPlace,
+  nowCardCompact,
+  timeLeftAtSpeed,
+} from './now-card-model';
 
 describe('bookScale', () => {
   const starts = [0, 100, 300, 600];
@@ -61,5 +67,14 @@ describe('timeLeftAtSpeed', () => {
     expect(timeLeftAtSpeed(400, 1000, 1.5)).toBe(400);
     expect(timeLeftAtSpeed(400, 1000, 0)).toBe(600);
     expect(timeLeftAtSpeed(1200, 1000, 1)).toBe(0);
+  });
+});
+
+describe('nowCardCompact', () => {
+  it('stacks on a phone, and on a card too narrow for the cover beside the text', () => {
+    expect(nowCardCompact(true, 0)).toBe(true);
+    expect(nowCardCompact(false, 0)).toBe(false);
+    expect(nowCardCompact(false, 420)).toBe(true);
+    expect(nowCardCompact(false, 600)).toBe(false);
   });
 });

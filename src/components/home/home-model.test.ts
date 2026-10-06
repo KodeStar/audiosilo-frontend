@@ -4,6 +4,7 @@ import { libraryBooksHref } from '@/components/library/books/books-view';
 import type { MergedBook } from '@/lib/dedup';
 
 import {
+  heroBeside,
   greetingPart,
   nextCandidates,
   nextInSeriesItems,
@@ -208,5 +209,16 @@ describe('links', () => {
       pathname: '/library',
       params: { mode: 'books', sort: 'recent' },
     });
+  });
+});
+
+describe('heroBeside', () => {
+  it('puts This week beside the Now card only when both fit the column', () => {
+    expect(heroBeside(0)).toBe(true);
+    expect(heroBeside(1376)).toBe(true);
+    // 1024 less the drawer and the page padding.
+    expect(heroBeside(600)).toBe(false);
+    expect(heroBeside(919)).toBe(false);
+    expect(heroBeside(920)).toBe(true);
   });
 });

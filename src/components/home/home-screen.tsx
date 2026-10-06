@@ -32,6 +32,7 @@ import { ProgressTile } from './book-title';
 import { Greeting } from './greeting';
 import {
   type BookAt,
+  heroBeside,
   nextCandidates,
   nextInSeriesItems,
   pickNowBook,
@@ -113,6 +114,12 @@ export function HomeScreen() {
 
   const retryProgress = () => void qc.refetchQueries({ queryKey: qk.allProgressAll() });
 
+  // This week stands beside the Now card only where the page column is wide enough for
+  // both: a desktop window with the Up next drawer open is narrower than its class says.
+  // Until the column is measured, a desktop assumes the room (the common case).
+  const [columnWidth, setColumnWidth] = useState(0);
+  const beside = desktop && heroBeside(columnWidth);
+
   // The hero: the Now card, its skeleton while progress first loads, the error when
   // that failed with nothing to show, or the empty state.
   const hero = nowAt ? (
@@ -120,9 +127,9 @@ export function HomeScreen() {
   ) : isLoading ? (
     <NowCardSkeleton />
   ) : error ? (
-    <NowError onRetry={retryProgress} />
+    <NowError onRetry={retryProgress} fill={beside} />
   ) : (
-    <NowEmpty />
+    <NowEmpty fill={beside} />
   );
 
   const progressTile = (p: SourcedProgress, width: number) => (
@@ -140,16 +147,22 @@ export function HomeScreen() {
         contentContainerClassName="gap-10 px-4 pt-4 md:pt-6 lg:px-8 lg:pt-9"
         contentContainerStyle={{ paddingBottom }}
       >
-        <View className="gap-[22px]">
+        <View
+          testID="home-column"
+          className="gap-[22px]"
+          onLayout={(e) => setColumnWidth(e.nativeEvent.layout.width)}
+        >
           <Greeting name={user?.username} sync={sync} servers={connections.length} />
-          {desktop ? (
-            <View className="flex-row items-stretch gap-5">
+          {beside ? (
+            <View testID="home-hero-beside" className="flex-row items-stretch gap-5">
               <View className="min-w-0 flex-1">{hero}</View>
               <ThisWeekCard className="w-[300px]" />
             </View>
           ) : (
             hero
           )}
+          {/* A desktop too narrow for both stacks This week under the Now card. */}
+          {desktop && !beside ? <ThisWeekCard /> : null}
         </View>
 
         {continuing.length > 0 || (isLoading && progress.length === 0) ? (

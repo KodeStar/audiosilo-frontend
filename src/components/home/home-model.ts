@@ -8,11 +8,23 @@ import type { MergedBook } from '@/lib/dedup';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 
+import { NOW_CARD_WIDE_MIN } from './now-card-model';
+
 /**
  * Home's rules (STYLEGUIDE section 2, Home): which book leads, what each shelf holds,
  * why a next book is suggested and where the links go. Pure and framework-free, so
  * the screen only lays them out.
  */
+
+/** This week's width beside the Now card, and the gap between them. */
+const THIS_WEEK_BESIDE = 300 + 20;
+
+/** Whether This week fits beside the Now card in a page column `width` wide (0: not
+ * measured yet, assume it does): the card must keep room for its cover beside its text.
+ * The column, not the window: the Up next drawer takes up to 480 of a desktop. */
+export function heroBeside(width: number): boolean {
+  return width === 0 || width >= NOW_CARD_WIDE_MIN + THIS_WEEK_BESIDE;
+}
 
 /** A book by where it lives. */
 export type BookAt = { connectionId: string; libraryId: number; path: string };

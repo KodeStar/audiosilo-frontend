@@ -52,6 +52,15 @@ export function bookmarkPins(positions: readonly number[], total: number): numbe
   return positions.filter((p) => p >= 0 && p <= total).map((p) => p / total);
 }
 
+/** The narrowest Now card that keeps the wide layout (the 220 cover beside its text);
+ * a narrower one stacks like the phone's. */
+export const NOW_CARD_WIDE_MIN = 600;
+
+/** Whether a Now card `width` wide (0: not measured yet) takes the stacked layout. */
+export function nowCardCompact(phone: boolean, width: number): boolean {
+  return phone || (width > 0 && width < NOW_CARD_WIDE_MIN);
+}
+
 export type ChapterPlace = { number: number; count: number; title: string };
 
 /** The chapter the listener is in (1-based, of how many), or null for a book without

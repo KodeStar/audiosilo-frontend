@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { settleFlashList } from '@/testing/flash-list';
 
@@ -172,6 +172,23 @@ describe('HomeScreen', () => {
     expect(screen.getByText('1h 30m')).toBeTruthy();
     expect(screen.getByText('1-day streak')).toBeTruthy();
     expect(screen.getByRole('image', { name: '3 of 24 books finished this year' })).toBeTruthy();
+  });
+
+  it('stacks This week under the Now card when the page column is too narrow for both', async () => {
+    mockCaps = { user_stats: true };
+    mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
+    await mountHome();
+    expect(screen.getByTestId('home-hero-beside')).toBeTruthy();
+    // A 1024 desktop with the Up next drawer open leaves the column about 600 wide.
+    await fireEvent(screen.getByTestId('home-column'), 'layout', {
+      nativeEvent: { layout: { width: 600, height: 900 } },
+    });
+    expect(screen.queryByTestId('home-hero-beside')).toBeNull();
+    expect(screen.getAllByText('This week')).toHaveLength(1);
+    await fireEvent(screen.getByTestId('home-column'), 'layout', {
+      nativeEvent: { layout: { width: 1200, height: 900 } },
+    });
+    expect(screen.getByTestId('home-hero-beside')).toBeTruthy();
   });
 
   it('suggests the next book in a series, saying why', async () => {

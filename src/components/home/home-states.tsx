@@ -9,11 +9,10 @@ import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 
 /** The Now card's place when nothing is in progress: ghost covers, one headline, one
- * sentence, one way into the Library. */
-export function NowEmpty() {
+ * sentence, one way into the Library. `fill`: beside This week, as tall as it. */
+export function NowEmpty({ fill = false }: { fill?: boolean }) {
   const { t } = useTranslation();
-  const layout = useLayout();
-  const phone = layout === 'phone';
+  const phone = useLayout() === 'phone';
   return (
     <View
       className={
@@ -21,8 +20,7 @@ export function NowEmpty() {
           ? 'items-center gap-4 rounded-[22px] border border-border bg-card px-6 py-8'
           : cn(
               'flex-row items-center gap-8 rounded-sheet border border-border bg-card p-7',
-              // Beside This week on a desktop: as tall as it.
-              layout === 'desktop' && 'flex-1',
+              fill && 'flex-1',
             )
       }
     >
@@ -46,14 +44,11 @@ export function NowEmpty() {
 }
 
 /** What went wrong with the listener's progress, and a way to try again. Shown in the
- * Now card's place only when nothing is on screen to keep. */
-export function NowError({ onRetry }: { onRetry: () => void }) {
+ * Now card's place only when nothing is on screen to keep. `fill` as for `NowEmpty`. */
+export function NowError({ onRetry, fill = false }: { onRetry: () => void; fill?: boolean }) {
   const { t } = useTranslation();
-  const desktop = useLayout() === 'desktop';
   return (
-    <View
-      className={cn('gap-3 rounded-sheet border border-border bg-card p-6', desktop && 'flex-1')}
-    >
+    <View className={cn('gap-3 rounded-sheet border border-border bg-card p-6', fill && 'flex-1')}>
       <Text variant="title">{t('home.error.title')}</Text>
       <Text variant="muted">{t('home.error.body')}</Text>
       <Button
