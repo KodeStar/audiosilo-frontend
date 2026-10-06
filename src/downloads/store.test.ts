@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book } from '@/api/types';
@@ -618,6 +619,7 @@ describe('failures, retry and the session decline mark', () => {
   });
 
   it('lists each finished file as it lands, so an app closed mid-way keeps them', async () => {
+    const watch = jest.spyOn(AppState, 'addEventListener');
     let release: (uri: string) => void = () => {};
     mockEngine.downloadFile.mockImplementation(
       async (_c: string, _l: number, _p: string, name: string) =>
@@ -626,7 +628,11 @@ describe('failures, retry and the session decline mark', () => {
     useDownloads.getState().download('c1', 2, book);
     await settle();
 
-    // File 0 is in; file 1 is still on its way.
+    // File 0 is in; file 1 is still on its way. The listing is saved within a couple of
+    // seconds, and at once when the app leaves the foreground.
+    const onChange = watch.mock.calls.find(([type]) => type === 'change')?.[1];
+    onChange?.('background');
+    await settle();
     const persisted = (await readPersisted())[key];
     expect(persisted?.status).toBe('downloading');
     expect(persisted?.manifest.files.map((f) => f.localUri)).toEqual(['local:0.mp3']);

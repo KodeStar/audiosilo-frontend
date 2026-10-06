@@ -1,5 +1,6 @@
 import {
   bytesToGo,
+  downloadedPaths,
   entryBytes,
   groupByServer,
   splitDownloads,
@@ -138,5 +139,20 @@ describe('unsupportedReason', () => {
     expect(unsupportedReason({ secure: false, caches: false })).toBe('insecure');
     expect(unsupportedReason({ secure: true, caches: false })).toBe('no-cache');
     expect(unsupportedReason({ secure: true, caches: true })).toBe('no-worker');
+  });
+});
+
+describe('downloadedPaths', () => {
+  it("lists one library's downloaded books, unmoved by a running download's progress", () => {
+    const entries = {
+      x: entry('B', 'downloaded'),
+      y: entry('A', 'downloaded'),
+      z: entry('C', 'downloading', { progress: 0.4 }),
+      w: entry('D', 'downloaded', { libraryId: 2 }),
+      v: entry('E', 'downloaded', { connectionId: 'b' }),
+    };
+    expect(downloadedPaths(entries, 'a', 1)).toBe('A\nB');
+    const ticked = { ...entries, z: entry('C', 'downloading', { progress: 0.5 }) };
+    expect(downloadedPaths(ticked, 'a', 1)).toBe(downloadedPaths(entries, 'a', 1));
   });
 });

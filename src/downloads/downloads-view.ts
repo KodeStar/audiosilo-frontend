@@ -11,6 +11,31 @@ export function entryBytes(e: Pick<DownloadEntry, 'bytes' | 'totalBytes' | 'stat
   return e.status === 'downloaded' ? Math.max(e.bytes, e.totalBytes) : e.bytes;
 }
 
+/** Which books the registry holds, in which state, as one string: it changes when a
+ * download starts, lands, fails or goes, never on a progress tick. */
+export function statusSignature(entries: Record<string, DownloadEntry>): string {
+  return Object.entries(entries)
+    .map(([k, e]) => `${k}=${e.status}`)
+    .sort()
+    .join('|');
+}
+
+/** The paths of one library's downloaded books, sorted and newline-joined: a value
+ * that only changes when a book finishes downloading or goes, for a selector that must
+ * not re-render on every progress tick. */
+export function downloadedPaths(
+  entries: Record<string, DownloadEntry>,
+  connectionId: string,
+  libraryId: number,
+): string {
+  const out: string[] = [];
+  for (const e of Object.values(entries)) {
+    if (e.status === 'downloaded' && e.connectionId === connectionId && e.libraryId === libraryId)
+      out.push(e.path);
+  }
+  return out.sort().join('\n');
+}
+
 /** Bytes still to fetch for a running download, when its total is known. */
 export function bytesToGo(e: Pick<DownloadEntry, 'bytes' | 'totalBytes'>): number | null {
   return e.totalBytes > 0 ? Math.max(0, e.totalBytes - e.bytes) : null;

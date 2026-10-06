@@ -10,10 +10,11 @@ import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import {
   groupByServer,
+  type ServerRef,
   splitDownloads,
+  statusSignature,
   storageBar,
   unsupportedReason,
-  type ServerRef,
 } from '@/downloads/downloads-view';
 import { aheadKey, type KeepAheadSlot } from '@/downloads/keep-ahead';
 import { useKeepAhead } from '@/downloads/keep-ahead-controller';
@@ -95,7 +96,11 @@ export function DownloadsScreen() {
   const { openBook, openPlayer } = useOpen();
   const { press } = useTabPress();
 
-  const entries = useDownloads((s) => s.entries);
+  // The page re-renders when a download starts, lands, fails or goes; a running row
+  // follows its own progress (`ActiveRow`).
+  const signature = useDownloads((s) => statusSignature(s.entries));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read on the signature
+  const entries = useMemo(() => useDownloads.getState().entries, [signature]);
   const supported = useDownloads((s) => s.supported);
   const hydrated = useDownloads((s) => s.hydrated);
   const connections = useSession((s) => s.connections);

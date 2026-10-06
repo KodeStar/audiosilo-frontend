@@ -10,6 +10,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { bytesToGo, entryBytes } from '@/downloads/downloads-view';
 import type { AheadBook, SlotState } from '@/downloads/keep-ahead';
+import { useDownloadEntry } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -109,7 +110,7 @@ function sizeMeta(t: TFunction, server: string, bytes: number, keptAhead: boolea
 
 /** A download that is running, waiting its turn or failed. */
 export function ActiveRow({
-  entry,
+  entry: listed,
   server,
   scope,
   first,
@@ -126,6 +127,8 @@ export function ActiveRow({
   const { t } = useTranslation();
   const themed = useThemeColors();
   const phone = useLayout() === 'phone';
+  // The live entry: the page re-renders on status changes only, the row on its progress.
+  const entry = useDownloadEntry(listed.connectionId, listed.libraryId, listed.path) ?? listed;
   const total = entry.totalBytes > 0 ? entry.totalBytes : entry.manifest.book.size;
   const toGo = bytesToGo(entry);
   const failed = entry.status === 'error';

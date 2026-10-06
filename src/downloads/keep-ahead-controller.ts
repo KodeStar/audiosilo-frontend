@@ -19,6 +19,7 @@ import { resolveNextBook } from '@/playback/next-book';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
+import { statusSignature } from './downloads-view';
 import {
   aheadKey,
   aheadWindow,
@@ -236,10 +237,7 @@ export async function runKeepAhead(): Promise<void> {
  * byte counts, which move on every progress tick). */
 function registrySignature(): string {
   const { entries, hydrated } = useDownloads.getState();
-  return `${hydrated}|${Object.entries(entries)
-    .map(([k, e]) => `${k}=${e.status}`)
-    .sort()
-    .join('|')}`;
+  return `${hydrated}|${statusSignature(entries)}`;
 }
 
 function currentSignature(): string {
@@ -297,19 +295,45 @@ export function startKeepAhead(): () => void {
     });
   };
 
+  // The plan's inputs are watched only while the setting is on (off is the default):
+  // the registry moves on every download's progress, the player on every tick.
+  let inputs: (() => void)[] = [];
+  const watchInputs = (on: boolean) => {
+    for (const off of inputs) off();
+    inputs = !on
+      ? []
+      : [
+          watch(currentSignature, (fn) =>
+            usePlayer.subscribe((s, prev) => {
+              if (s.nowPlaying !== prev.nowPlaying) fn();
+            }),
+          ),
+          watch(registrySignature, (fn) =>
+            useDownloads.subscribe((s, prev) => {
+              if (s.entries !== prev.entries || s.hydrated !== prev.hydrated) fn();
+            }),
+          ),
+          queryClient.getQueryCache().subscribe((event) => {
+            if (
+              event.type === 'updated' &&
+              event.action.type === 'success' &&
+              isQueueKey(event.query.queryKey)
+            )
+              schedule();
+          }),
+          onNetworkChange(schedule),
+        ];
+  };
+  const keepingAhead = () => useSettings.getState().keepAhead > 0;
+  watchInputs(keepingAhead());
   const unsubs = [
-    watch(currentSignature, (fn) => usePlayer.subscribe(fn)),
-    watch(settingsSignature, (fn) => useSettings.subscribe(fn)),
-    watch(registrySignature, (fn) => useDownloads.subscribe(fn)),
-    queryClient.getQueryCache().subscribe((event) => {
-      if (
-        event.type === 'updated' &&
-        event.action.type === 'success' &&
-        isQueueKey(event.query.queryKey)
-      )
-        schedule();
-    }),
-    onNetworkChange(schedule),
+    watch(settingsSignature, (fn) =>
+      useSettings.subscribe((s, prev) => {
+        if (s.keepAhead !== prev.keepAhead) watchInputs(s.keepAhead > 0);
+        fn();
+      }),
+    ),
+    () => watchInputs(false),
   ];
   schedule();
 

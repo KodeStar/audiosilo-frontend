@@ -15,7 +15,7 @@ import { ChipRow, ChipSeparator, FilterChip } from '@/components/ui/filter-chip'
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useDownloads } from '@/downloads/store';
-import { contentKey } from '@/lib/content-key';
+import { downloadedPaths } from '@/downloads/downloads-view';
 import { headIndexForLetter } from '@/lib/alpha-sections';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -103,16 +103,19 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
     [progress, connectionId, libraryId],
   );
   const canDownload = useDownloads((s) => s.supported);
-  const entries = useDownloads((s) => s.entries);
-  const factsOf = useMemo(
-    () =>
-      (b: Book): BookFacts => ({
-        status: bookStatus(progressMap.get(b.rel_path)),
-        downloaded:
-          entries[contentKey(connectionId, libraryId, b.rel_path)]?.status === 'downloaded',
-      }),
-    [progressMap, entries, connectionId, libraryId],
+  // This library's downloaded books as one string, read only while the filter is on: a
+  // running download updates the registry several times a second, and the list
+  // re-filters only when a book finishes or goes.
+  const downloadedList = useDownloads((s) =>
+    view.dl ? downloadedPaths(s.entries, connectionId, libraryId) : '',
   );
+  const factsOf = useMemo(() => {
+    const downloaded = new Set(downloadedList.split('\n'));
+    return (b: Book): BookFacts => ({
+      status: bookStatus(progressMap.get(b.rel_path)),
+      downloaded: downloaded.has(b.rel_path),
+    });
+  }, [progressMap, downloadedList]);
 
   const shown = useMemo(
     () => sortBooks(filterBooks(whole.books, view, factsOf), view.sort),

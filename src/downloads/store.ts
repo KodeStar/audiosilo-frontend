@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { create } from 'zustand';
 
 import { resolveClient } from '@/api/connection-clients';
@@ -205,8 +206,38 @@ export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntr
   };
 }
 
+/** While a download runs, its finished files reach storage at most this often
+ * (`persistSoon`); everything else saves at once. */
+const PERSIST_EVERY_MS = 2000;
+/** A running download's progress reaches the store (and every screen that shows it) at
+ * most this often; status changes and completion are never held back. */
+const PROGRESS_EVERY_MS = 250;
+/** A save `persistSoon` is holding, and the app-state watch that flushes it early. */
+let pendingSave: { timer: ReturnType<typeof setTimeout>; watch: { remove: () => void } } | null =
+  null;
+
+/** Save the registry now (and drop any save `persistSoon` was holding). */
 function persist(): Promise<void> {
+  if (pendingSave) {
+    clearTimeout(pendingSave.timer);
+    pendingSave.watch.remove();
+    pendingSave = null;
+  }
   return setItem(KEY, useDownloads.getState().entries);
+}
+
+/** Save the registry within `PERSIST_EVERY_MS`: a book of many files lands one file at
+ * a time, and each save writes the whole registry. A failure, completion, cancel or the
+ * app leaving the foreground saves at once (`persist`), so the kept-files record of a
+ * download the app is closed in the middle of still reaches storage. */
+function persistSoon() {
+  if (pendingSave) return;
+  pendingSave = {
+    timer: setTimeout(() => void persist(), PERSIST_EVERY_MS),
+    watch: AppState.addEventListener('change', (state) => {
+      if (state !== 'active') void persist();
+    }),
+  };
 }
 
 function patchEntry(key: string, patch: Partial<DownloadEntry>) {
@@ -283,9 +314,6 @@ async function runQueue() {
   }
 }
 
-/** The finished files of each running download, so a failure can keep them. */
-const progressFiles = new Map<string, { files: DownloadedFile[]; of: number }>();
-
 async function runOne(key: string) {
   const entry = useDownloads.getState().entries[key];
   if (!entry) return;
@@ -307,8 +335,12 @@ async function runOne(key: string) {
   patchEntry(key, { status: 'downloading', progress: 0, bytes: 0 });
   void persist();
 
+  // The files that finished, so a failure can keep them, and how many there are.
+  const files: DownloadedFile[] = [];
+  let fileCount = 0;
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
+    fileCount = specs.length;
     const knownTotal = specs.every((s) => s.size > 0)
       ? specs.reduce((sum, s) => sum + s.size, 0)
       : 0;
@@ -329,8 +361,8 @@ async function runOne(key: string) {
       // otherwise the cover is optional - carry on without it
     }
 
-    const files: DownloadedFile[] = [];
     let priorBytes = 0;
+    let lastTick = 0;
     // Files a failed attempt already finished, by position (the on-disk name is the
     // index, so a file only counts where it was saved).
     const earlier = entry.manifest.files;
@@ -339,7 +371,6 @@ async function runOne(key: string) {
       const done = earlier[i];
       if (done?.relPath === s.path && (await engine.fileExists(done.localUri))) {
         files.push(done);
-        progressFiles.set(key, { files: [...files], of: specs.length });
         priorBytes += done.bytes ?? s.size;
         patchEntry(key, {
           bytes: priorBytes,
@@ -357,6 +388,9 @@ async function runOne(key: string) {
         api.streamUrl(libraryId, s.path, true),
         (bytesWritten, totalBytes) => {
           curBytes = bytesWritten;
+          const now = Date.now();
+          if (now - lastTick < PROGRESS_EVERY_MS) return;
+          lastTick = now;
           const curFrac = totalBytes > 0 ? bytesWritten / totalBytes : 0;
           patchEntry(key, {
             bytes: priorBytes + bytesWritten,
@@ -368,16 +402,18 @@ async function runOne(key: string) {
       );
       priorBytes += curBytes;
       files.push({ relPath: s.path, localUri, bytes: curBytes });
-      progressFiles.set(key, { files: [...files], of: specs.length });
       // List each finished file as it lands, so a download the app is closed in the
       // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
       // finished further on stay listed in their places (the name on disk is the index).
       const cur = useDownloads.getState().entries[key];
       if (cur) {
         patchEntry(key, {
+          bytes: priorBytes,
+          totalBytes: knownTotal,
+          progress: (i + 1) / specs.length,
           manifest: { ...cur.manifest, files: [...files, ...earlier.slice(files.length)] },
         });
-        void persist();
+        persistSoon();
       }
     }
 
@@ -415,21 +451,19 @@ async function runOne(key: string) {
       // Keep the files that finished: a retry skips them, so a failure 41% through a
       // multi-file book doesn't throw that 41% away. (The one being written is partial,
       // and is written over by the retry.)
-      const saved = progressFiles.get(key);
-      const kept = saved ? saved.files.length / saved.of : 0;
+      const kept = fileCount > 0 ? files.length / fileCount : 0;
       const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
       const cur = useDownloads.getState().entries[key];
       patchEntry(key, {
         status: 'error',
         error: e instanceof Error ? e.message : 'Download failed',
         failure,
-        ...(cur ? { manifest: { ...cur.manifest, files: saved?.files ?? [] } } : {}),
+        ...(cur ? { manifest: { ...cur.manifest, files } } : {}),
       });
       void persist();
     }
   } finally {
     controllers.delete(key);
-    progressFiles.delete(key);
   }
 }
 
