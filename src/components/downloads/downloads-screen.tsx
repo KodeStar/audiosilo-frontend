@@ -16,10 +16,11 @@ import {
   storageBar,
   unsupportedReason,
 } from '@/downloads/downloads-view';
-import { aheadKey, type KeepAheadSlot } from '@/downloads/keep-ahead';
+import { type KeepAheadSlot } from '@/downloads/keep-ahead';
 import { useKeepAhead } from '@/downloads/keep-ahead-controller';
 import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
+import { contentKeyOf } from '@/lib/content-key';
 import { formatBytes, formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -119,7 +120,9 @@ export function DownloadsScreen() {
   const groups = useMemo(() => groupByServer(ready, servers), [ready, servers]);
   // Books the keep-ahead plan is holding back (Wi-Fi, room, its turn) and that aren't in
   // the registry yet.
-  const planned = slots.filter(isPlanned).filter((s) => !entries[aheadKey(s.book)]);
+  const planned = slots
+    .filter(isPlanned)
+    .filter((s) => !entries[downloadKey(s.book.connectionId, s.book.libraryId, s.book.path)]);
 
   const scope = storage.estimate?.scope ?? (Platform.OS === 'web' ? 'browser' : 'device');
   const bar = storageBar(groups, storage.estimate, storage.measured);
@@ -213,7 +216,7 @@ export function DownloadsScreen() {
               ))}
               {planned.map((s, i) => (
                 <PlannedRow
-                  key={aheadKey(s.book)}
+                  key={contentKeyOf(s.book)}
                   book={s.book}
                   state={s.state}
                   server={serverName(s.book.connectionId)}

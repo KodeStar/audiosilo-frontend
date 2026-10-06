@@ -1,4 +1,4 @@
-import { contentKey } from '@/lib/content-key';
+import { contentKeyOf } from '@/lib/content-key';
 import type { KeepAhead } from '@/stores/settings';
 
 import type { DownloadStatus, StorageEstimate } from './types';
@@ -77,10 +77,6 @@ export type KeepAheadPlan = {
   start: AheadBook[];
 };
 
-/** The one key for a book across the registry and the planner. */
-export const aheadKey = (b: { connectionId: string; libraryId: number; path: string }) =>
-  contentKey(b.connectionId, b.libraryId, b.path);
-
 /** About 128 kbps: a fair upper guess for an audiobook whose size the list doesn't give. */
 const BYTES_PER_SECOND = 16_000;
 /** When neither size nor length is known, assume a long book. */
@@ -126,11 +122,11 @@ export function aheadWindow(opts: {
   series: readonly AheadBook[];
   finished: ReadonlySet<string>;
 }): AheadBook[] {
-  const seen = new Set([aheadKey(opts.current)]);
+  const seen = new Set([contentKeyOf(opts.current)]);
   const out: AheadBook[] = [];
   for (const book of [...opts.queue, ...opts.series]) {
     if (out.length >= opts.count) break;
-    const key = aheadKey(book);
+    const key = contentKeyOf(book);
     if (seen.has(key) || opts.finished.has(key)) continue;
     seen.add(key);
     out.push(book);
@@ -143,7 +139,7 @@ export type KeepAheadInput = {
   network: NetworkGate;
   /** The window (`aheadWindow`); empty when nothing is loaded. */
   window: readonly AheadBook[];
-  /** The registry's status per `aheadKey`. */
+  /** The registry's status per `contentKeyOf`. */
   entries: ReadonlyMap<string, DownloadStatus>;
   declined: ReadonlySet<string>;
   /** Null when the room is not knowable. */
@@ -177,14 +173,14 @@ export function planKeepAhead(input: KeepAheadInput): KeepAheadPlan {
     : null;
   // Unknown room: one at a time.
   let unknownBudget = input.window.some((b) => {
-    const status = input.entries.get(aheadKey(b));
+    const status = input.entries.get(contentKeyOf(b));
     return status === 'queued' || status === 'downloading';
   })
     ? 0
     : 1;
   let blocked = false;
   const slots: KeepAheadSlot[] = input.window.map((book) => {
-    const key = aheadKey(book);
+    const key = contentKeyOf(book);
     const status = input.entries.get(key);
     if (status === 'downloaded') return { book, state: 'ready' };
     if (status === 'queued' || status === 'downloading') return { book, state: 'active' };

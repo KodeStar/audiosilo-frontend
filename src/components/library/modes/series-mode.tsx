@@ -5,7 +5,7 @@ import { useProgressLookup, useSeriesList } from '@/api/hooks';
 import { CardGrid } from '@/components/series/card-grid';
 import { EmptyShelf } from '@/components/series/empty-shelf';
 import { SeriesCard, SeriesCardSkeleton } from '@/components/series/series-card';
-import { useSession } from '@/stores/session';
+import { useConnectionName } from '@/stores/session';
 
 import type { LibraryModeProps } from '../library-modes';
 
@@ -21,9 +21,7 @@ export function SeriesMode({ connectionId, libraryId }: LibraryModeProps) {
   const { t } = useTranslation();
   const list = useSeriesList(libraryId, connectionId);
   const { progressOf } = useProgressLookup();
-  const connectionName = useSession(
-    (s) => s.connections.find((c) => c.id === connectionId)?.name ?? '',
-  );
+  const connectionName = useConnectionName(connectionId);
 
   if (list.isPending) {
     return (

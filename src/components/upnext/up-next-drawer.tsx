@@ -4,7 +4,6 @@ import { Platform, ScrollView, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
-import { useCapability } from '@/api/hooks';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
@@ -12,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { UpNextPanel, useQueuedLine } from './up-next-panel';
 import { clampDrawerWidth, DRAWER_MAX, DRAWER_MIN } from './up-next-model';
 import { closeUpNext, hydrateUpNext, useUpNext } from './up-next-store';
-import { useUpNextConnection, useUpNextData } from './use-up-next';
+import { useUpNextData, useUpNextServer } from './use-up-next';
 
 /** One keyboard step of the resize handle (web), in points. */
 const KEY_STEP = 20;
@@ -25,8 +24,7 @@ const KEY_STEP = 20;
  * remembered on this device. Nothing renders until the server is known to have `queue`.
  */
 export function UpNextDrawer() {
-  const cid = useUpNextConnection();
-  const supported = useCapability('queue', cid);
+  const { cid, supported } = useUpNextServer();
   const open = useUpNext((s) => s.drawerOpen);
   useEffect(() => {
     void hydrateUpNext();

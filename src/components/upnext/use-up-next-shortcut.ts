@@ -1,9 +1,8 @@
-import { useCapability } from '@/api/hooks';
 import { useGlobalShortcut } from '@/lib/keyboard';
 
 import { isUpNextShortcut } from './up-next-model';
 import { toggleUpNext } from './up-next-store';
-import { useUpNextConnection } from './use-up-next';
+import { useUpNextServer } from './use-up-next';
 
 /**
  * Q shows or hides Up next (web; STYLEGUIDE section 11): never while typing in a field,
@@ -12,6 +11,6 @@ import { useUpNextConnection } from './use-up-next';
  * shortcut (`useGlobalShortcut`).
  */
 export function useUpNextShortcut(enabled: boolean) {
-  const supported = useCapability('queue', useUpNextConnection()) === true;
+  const supported = useUpNextServer().supported === true;
   useGlobalShortcut(enabled && supported, isUpNextShortcut, toggleUpNext);
 }

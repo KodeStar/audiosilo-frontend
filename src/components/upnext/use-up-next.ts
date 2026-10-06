@@ -21,11 +21,17 @@ export function useUpNextConnection(): string | undefined {
   return queueConnectionId(loaded, defaultId, connections);
 }
 
-/** Up next for the entry points: whether the server has it (`undefined` until `/server`
- * answers, so nothing flashes) and how many books are queued. */
-export function useUpNextBadge() {
+/** The connection Up next shows and whether its server has a queue (`undefined` until
+ * `/server` answers, so nothing flashes). */
+export function useUpNextServer(): { cid: string | undefined; supported: boolean | undefined } {
   const cid = useUpNextConnection();
-  const supported = useCapability('queue', cid);
+  return { cid, supported: useCapability('queue', cid) };
+}
+
+/** Up next for the entry points: whether the server has it and how many books are
+ * queued. */
+export function useUpNextBadge() {
+  const { cid, supported } = useUpNextServer();
   const { data } = useQueue(cid);
   return { supported, count: data?.length ?? 0 };
 }

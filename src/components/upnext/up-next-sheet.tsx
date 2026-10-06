@@ -1,13 +1,12 @@
 import { useTranslation } from 'react-i18next';
 
-import { useCapability } from '@/api/hooks';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 
 import { UpNextPanel, useQueuedLine } from './up-next-panel';
 import { useUpNext } from './up-next-store';
-import { useUpNextConnection, useUpNextData } from './use-up-next';
+import { useUpNextData, useUpNextServer } from './use-up-next';
 
 /**
  * Up next on a tablet or phone: the same content as the desktop drawer in the shared
@@ -19,8 +18,7 @@ export function UpNextSheet() {
   const layout = useLayout();
   const open = useUpNext((s) => s.sheetOpen);
   const close = useUpNext((s) => s.closeSheet);
-  const cid = useUpNextConnection();
-  const supported = useCapability('queue', cid);
+  const { cid, supported } = useUpNextServer();
   const visible = open && layout !== 'desktop' && supported === true && !!cid;
   return (
     <Sheet

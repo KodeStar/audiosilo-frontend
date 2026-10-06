@@ -23,7 +23,7 @@ import {
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
-import { useSession } from '@/stores/session';
+import { useConnectionName, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -32,11 +32,6 @@ import { DropZone } from './drop-zone';
 import { entryTitle, QueueList, QueueSkeleton } from './queue-list';
 import type { Suggestion } from './up-next-model';
 import { usePlayNow, useUpNextData } from './use-up-next';
-
-/** The server's name, for "isn't on <server>" and the drawer's subline. */
-export function useConnectionName(cid: string | undefined): string {
-  return useSession((s) => s.connections.find((c) => c.id === cid)?.name ?? '');
-}
 
 /** "7h 2m queued" (with the server's name first when signed in to several). */
 export function useQueuedLine(cid: string | undefined, seconds: number, count: number): string {

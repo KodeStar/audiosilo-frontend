@@ -1,5 +1,4 @@
 import {
-  aheadKey,
   aheadWindow,
   estimateBytes,
   pendingBytes,
@@ -9,6 +8,8 @@ import {
   type KeepAheadInput,
 } from './keep-ahead';
 import type { DownloadStatus } from './types';
+
+import { contentKeyOf } from '@/lib/content-key';
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -42,7 +43,7 @@ function input(p: Partial<KeepAheadInput> = {}): KeepAheadInput {
 }
 
 const statuses = (pairs: [AheadBook, DownloadStatus][]) =>
-  new Map(pairs.map(([b, s]) => [aheadKey(b), s]));
+  new Map(pairs.map(([b, s]) => [contentKeyOf(b), s]));
 
 describe('estimateBytes', () => {
   it('uses the size, else the length at about 128 kbps, else a long book', () => {
@@ -96,7 +97,7 @@ describe('aheadWindow', () => {
       current,
       queue: [book('Now', { source: 'queue' }), book('Done', { source: 'queue' }), book('S1')],
       series: [book('S1'), book('S2'), book('S3')],
-      finished: new Set([aheadKey(book('Done'))]),
+      finished: new Set([contentKeyOf(book('Done'))]),
     });
     expect(w.map((b) => b.path)).toEqual(['S1', 'S2', 'S3']);
   });
@@ -153,7 +154,7 @@ describe('planKeepAhead', () => {
 
   it('never fetches a book removed this session, and does not reach past it', () => {
     const plan = planKeepAhead(
-      input({ count: 1, window: [book('A')], declined: new Set([aheadKey(book('A'))]) }),
+      input({ count: 1, window: [book('A')], declined: new Set([contentKeyOf(book('A'))]) }),
     );
     expect(plan.slots.map((s) => s.state)).toEqual(['declined']);
     expect(plan.start).toEqual([]);
@@ -179,7 +180,7 @@ describe('planKeepAhead', () => {
   it('is ready when the rest of the window is on the device', () => {
     const [a, b] = [book('A'), book('B')];
     const plan = planKeepAhead(
-      input({ entries: statuses([[b, 'downloaded']]), declined: new Set([aheadKey(a)]) }),
+      input({ entries: statuses([[b, 'downloaded']]), declined: new Set([contentKeyOf(a)]) }),
     );
     expect(plan.status).toBe('ready');
   });

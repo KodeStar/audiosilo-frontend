@@ -18,6 +18,7 @@ import { ShelfRow } from '@/components/library/shelf-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import type { MergedBook } from '@/lib/dedup';
@@ -30,7 +31,6 @@ import { ProgressTile } from './book-title';
 import { Greeting } from './greeting';
 import {
   type BookAt,
-  keyOf,
   libraryBooksHref,
   nextCandidates,
   nextInSeriesItems,
@@ -52,11 +52,9 @@ import { useSyncPill } from './use-sync-pill';
 /** Recently added / finished / favourites on Home; the rest live on their own pages. */
 const SHELF_LIMIT = 15;
 
-const progressKey = (p: SourcedProgress) => keyOf(progressAt(p));
-const bookKey = (b: MergedBook) =>
-  keyOf({ connectionId: b.connectionId, libraryId: b.library_id, path: b.rel_path });
-const favouriteKey = (f: SourcedFavourite) =>
-  keyOf({ connectionId: f.connectionId, libraryId: f.library_id, path: f.path });
+const progressKey = (p: SourcedProgress) => contentKeyOf(progressAt(p));
+const bookKey = (b: MergedBook) => contentKey(b.connectionId, b.library_id, b.rel_path);
+const favouriteKey = (f: SourcedFavourite) => contentKey(f.connectionId, f.library_id, f.path);
 
 /**
  * Home (STYLEGUIDE section 2, the Stacks Home): the greeting, the Now card (with This
@@ -94,7 +92,7 @@ export function HomeScreen() {
     ? { connectionId: np.connectionId, libraryId: np.libraryId, path: np.path }
     : null;
   const nowAt = pickNowBook(loaded, inProgress);
-  const nowKey = nowAt ? keyOf(nowAt) : null;
+  const nowKey = nowAt ? contentKeyOf(nowAt) : null;
   const nowSaved = nowKey ? progress.find((p) => progressKey(p) === nowKey) : undefined;
   const continuing = inProgress.filter((p) => progressKey(p) !== nowKey);
 

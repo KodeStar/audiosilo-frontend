@@ -33,7 +33,7 @@ import {
 import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import { useSeriesOrderings } from '@/stores/series-orderings';
-import { useSession } from '@/stores/session';
+import { useConnectionName } from '@/stores/session';
 import { percentOf } from '@/lib/progress-view';
 
 import { Bookcase, bookcaseScale } from './bookcase';
@@ -101,7 +101,7 @@ export function SeriesPage({
   const { t } = useTranslation();
   const layout = useLayout();
   const cid = useCid();
-  const here = useSession((s) => s.connections.find((c) => c.id === cid)?.name ?? '');
+  const here = useConnectionName(cid);
   const paddingBottom = useMiniPlayerInset();
   const { progressOf, isLoading: progressLoading } = useProgressLookup();
   const owned = useAllLibraryBooks(libraryId, { series: name });

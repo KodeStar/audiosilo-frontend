@@ -22,6 +22,7 @@ jest.mock('@/api/provider', () => ({
 jest.mock('@/stores/session', () => ({
   useSession: (sel: (s: unknown) => unknown) =>
     sel({ connections: [{ id: 'home', name: 'Home Library' }] }),
+  useConnectionName: (id: string) => (id === 'home' ? 'Home Library' : ''),
 }));
 
 let mockCaps: Record<string, boolean | undefined> = {};

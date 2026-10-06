@@ -2,7 +2,7 @@ import type { Href } from 'expo-router';
 
 import type { SourcedProgress } from '@/api/hooks';
 import type { Book, BookMetaSeriesWork, NextBook } from '@/api/types';
-import { contentKey } from '@/lib/content-key';
+import { contentKeyOf } from '@/lib/content-key';
 import type { MergedBook } from '@/lib/dedup';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
@@ -16,7 +16,6 @@ import { isInProgress, percentHeard } from '@/lib/progress-view';
 /** A book by where it lives. */
 export type BookAt = { connectionId: string; libraryId: number; path: string };
 
-export const keyOf = (b: BookAt) => contentKey(b.connectionId, b.libraryId, b.path);
 export const progressAt = (p: SourcedProgress): BookAt => ({
   connectionId: p.connectionId,
   libraryId: p.library_id,
@@ -89,17 +88,17 @@ export function nextCandidates(
   finished: readonly SourcedProgress[],
 ): NextCandidate[] {
   const out: NextCandidate[] = [];
-  const nowKey = now ? keyOf(now) : null;
+  const nowKey = now ? contentKeyOf(now) : null;
   if (now) out.push({ ...now, reason: { kind: 'current' } });
   for (const p of inProgress) {
     if (out.length >= NEXT_IN_PROGRESS) break;
-    if (keyOf(progressAt(p)) === nowKey) continue;
+    if (contentKeyOf(progressAt(p)) === nowKey) continue;
     const percent = percentHeard(p.position, p.duration, false);
     out.push({ ...progressAt(p), reason: { kind: 'progress', of: progressAt(p), percent } });
   }
   for (const p of finished) {
     if (out.length >= NEXT_CANDIDATES) break;
-    if (keyOf(progressAt(p)) === nowKey) continue;
+    if (contentKeyOf(progressAt(p)) === nowKey) continue;
     out.push({
       ...progressAt(p),
       reason: { kind: 'finished', of: progressAt(p), at: p.finished_at ?? p.updated_at },
@@ -141,7 +140,7 @@ export function nextInSeriesItems(
         libraryId: answer.next.library_id,
         path: answer.next.path,
       };
-      const key = keyOf(at);
+      const key = contentKeyOf(at);
       if (skip.has(key) || seen.has(key)) continue;
       seen.add(key);
       out.push({ kind: 'book', key, ...at, book: answer.book, reason: candidate.reason });
