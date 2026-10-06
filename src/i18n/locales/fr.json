@@ -398,8 +398,6 @@
     "detail": {
       "soon": "Cette page arrive bientôt.",
       "badLink": "Ce lien ne mène à rien ici.",
-      "author": "Auteur",
-      "narrator": "Narrateur",
       "collection": "Collection"
     }
   },
@@ -773,5 +771,114 @@
     "buttonLabel_one": "À suivre, {{count}} livre",
     "buttonLabel_other": "À suivre, {{count}} livres",
     "buttonLabelEmpty": "À suivre"
+  },
+  "series": {
+    "eyebrow": "Série",
+    "bookN": "Tome {{position}}",
+    "stats": {
+      "entries_one": "{{count}} titre",
+      "entries_other": "{{count}} titres",
+      "onServers": "{{count}} sur vos serveurs",
+      "missing": "{{count}} absents de votre bibliothèque",
+      "length": "{{duration}} à écouter"
+    },
+    "progress": {
+      "into": "{{percent}} % du tome {{position}}",
+      "intoTitle": "{{percent}} % de {{title}}",
+      "finished": "{{finished}} sur {{total}} terminés",
+      "ahead": "{{duration}} d’écoute devant vous",
+      "label": "Progression de la série"
+    },
+    "readingOrder": "Ordre de lecture",
+    "orderNote": {
+      "publication": "L’ordre de parution des livres.",
+      "chronological": "L’ordre dans lequel se déroule l’histoire.",
+      "recommended": "L’ordre que conseille la communauté."
+    },
+    "listTitle": {
+      "publication": "Dans l’ordre de parution",
+      "chronological": "Dans l’ordre de l’histoire",
+      "recommended": "Dans l’ordre conseillé",
+      "default": "Les livres de la série"
+    },
+    "shelfLabel": "{{series}} sur l’étagère. Choisissez un livre pour le sortir.",
+    "listening": "En écoute · {{percent}} %",
+    "listeningNow": "en cours d’écoute",
+    "resume": "Reprendre",
+    "resumeChapter": "Reprendre le chapitre {{chapter}}",
+    "play": "Lire",
+    "details": "Détails",
+    "open": "Ouvrir",
+    "openOn": "Ouvrir sur {{server}}",
+    "listenOn": "Écouter sur {{server}}",
+    "viewOnMeta": "Voir sur AudioSilo Meta",
+    "openBookLabel": "{{label}}. Ouvrir le livre",
+    "readBy": "Lu par {{narrator}}",
+    "elsewhereNote": "Absent de {{here}}, mais {{server}} l’a.",
+    "ghostNote": "Pas encore sur vos serveurs. Les données de série de la communauté le connaissent.",
+    "gapNote": "Ce numéro manque à vos livres.",
+    "legend": {
+      "owned": "Sur vos serveurs",
+      "elsewhere": "Sur un autre serveur",
+      "ghost": "Absent de votre bibliothèque",
+      "current": "En cours d’écoute"
+    },
+    "source": "Série et ordres de lecture issus de la communauté AudioSilo Meta",
+    "empty": {
+      "title": "Rien de cette série ici",
+      "hint": "Aucun livre de cette bibliothèque n’est classé sous {{name}}."
+    },
+    "error": {
+      "title": "Impossible de charger cette série",
+      "hint": "Le serveur n’a pas répondu. Rien n’est perdu."
+    },
+    "work": {
+      "eyebrow": "Un livre d’une série",
+      "hint": "Vous n’avez encore aucun livre de cette série.",
+      "published": "Paru pour la première fois en {{year}}",
+      "noRail": "La série complète s’affiche dès qu’un de ses livres est sur vos serveurs."
+    },
+    "mode": {
+      "books_one": "{{count}} livre",
+      "books_other": "{{count}} livres",
+      "ofTotal": "{{owned}} sur {{total}}",
+      "inProgress": "{{count}} en cours",
+      "finished": "{{count}} terminés",
+      "emptyTitle": "Pas encore de séries ici",
+      "emptyHint": "Les livres rattachés à une série apparaissent ici, en rangée de dos.",
+      "emptyAction": "Parcourir les livres",
+      "errorTitle": "Impossible de charger les séries"
+    }
+  },
+  "people": {
+    "author": "Auteur",
+    "narrator": "Narrateur",
+    "books_one": "{{count}} livre",
+    "books_other": "{{count}} livres",
+    "finished": "{{count}} terminés",
+    "unknownAuthor_one": "{{count}} livre n’a pas d’auteur.",
+    "unknownAuthor_other": "{{count}} livres n’ont pas d’auteur.",
+    "unknownNarrator_one": "{{count}} livre n’a pas de narrateur.",
+    "unknownNarrator_other": "{{count}} livres n’ont pas de narrateur.",
+    "stats": {
+      "books": "Livres ici",
+      "length": "Durée totale",
+      "finished": "Terminés",
+      "listened": "Écouté"
+    },
+    "readBy": "Lu par",
+    "booksBy": "Livres de",
+    "books": "Livres",
+    "otherBooks": "Autres livres",
+    "openSeries": "Ouvrir la série {{series}}",
+    "emptyAuthors": "Pas encore d’auteurs ici",
+    "emptyNarrators": "Pas encore de narrateurs ici",
+    "emptyHint": "Les livres apparaissent ici dès qu’ils portent le nom.",
+    "errorTitle": "Impossible de charger la liste",
+    "pageEmpty": "Aucun livre de {{name}} ici",
+    "pageEmptyHint": "Rien dans cette bibliothèque n’est attribué exactement à ce nom.",
+    "pageError": "Impossible de charger ces livres",
+    "narratorUnsupported": "Ce serveur ne peut pas encore lister les livres par narrateur",
+    "narratorUnsupportedHint": "Un serveur AudioSilo plus récent le permet."
   }
 }

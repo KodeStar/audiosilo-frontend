@@ -398,8 +398,6 @@
     "detail": {
       "soon": "Diese Seite ist unterwegs.",
       "badLink": "Dieser Link führt hier zu nichts.",
-      "author": "Autor",
-      "narrator": "Sprecher",
       "collection": "Sammlung"
     }
   },
@@ -773,5 +771,114 @@
     "buttonLabel_one": "Als Nächstes, {{count}} Buch",
     "buttonLabel_other": "Als Nächstes, {{count}} Bücher",
     "buttonLabelEmpty": "Als Nächstes"
+  },
+  "series": {
+    "eyebrow": "Reihe",
+    "bookN": "Band {{position}}",
+    "stats": {
+      "entries_one": "{{count}} Eintrag",
+      "entries_other": "{{count}} Einträge",
+      "onServers": "{{count}} auf deinen Servern",
+      "missing": "{{count}} nicht in deiner Bibliothek",
+      "length": "{{duration}} zum Hören"
+    },
+    "progress": {
+      "into": "{{percent}} % von Band {{position}}",
+      "intoTitle": "{{percent}} % von {{title}}",
+      "finished": "{{finished}} von {{total}} abgeschlossen",
+      "ahead": "noch {{duration}} zum Hören",
+      "label": "Fortschritt der Reihe"
+    },
+    "readingOrder": "Lesereihenfolge",
+    "orderNote": {
+      "publication": "Die Reihenfolge, in der die Bücher erschienen sind.",
+      "chronological": "Die Reihenfolge, in der die Geschichte spielt.",
+      "recommended": "Die Reihenfolge, die die Community empfiehlt."
+    },
+    "listTitle": {
+      "publication": "In Erscheinungsreihenfolge",
+      "chronological": "In der Reihenfolge der Handlung",
+      "recommended": "In empfohlener Reihenfolge",
+      "default": "Bücher der Reihe"
+    },
+    "shelfLabel": "{{series}} im Regal. Wähle ein Buch, um es herauszunehmen.",
+    "listening": "Hörst du · {{percent}} %",
+    "listeningNow": "hörst du gerade",
+    "resume": "Fortsetzen",
+    "resumeChapter": "Kapitel {{chapter}} fortsetzen",
+    "play": "Abspielen",
+    "details": "Details",
+    "open": "Öffnen",
+    "openOn": "Auf {{server}} öffnen",
+    "listenOn": "Auf {{server}} hören",
+    "viewOnMeta": "Auf AudioSilo Meta ansehen",
+    "openBookLabel": "{{label}}. Buch öffnen",
+    "readBy": "Gelesen von {{narrator}}",
+    "elsewhereNote": "Nicht auf {{here}}, aber {{server}} hat es.",
+    "ghostNote": "Noch auf keinem deiner Server. Die Reihendaten der Community kennen es.",
+    "gapNote": "Diese Nummer fehlt in deinen Büchern.",
+    "legend": {
+      "owned": "Auf deinen Servern",
+      "elsewhere": "Auf einem anderen Server",
+      "ghost": "Nicht in deiner Bibliothek",
+      "current": "Hörst du gerade"
+    },
+    "source": "Reihe und Lesereihenfolgen von der AudioSilo-Meta-Community",
+    "empty": {
+      "title": "Hier gibt es nichts aus dieser Reihe",
+      "hint": "Kein Buch in dieser Bibliothek ist unter {{name}} eingeordnet."
+    },
+    "error": {
+      "title": "Diese Reihe konnte nicht geladen werden",
+      "hint": "Der Server hat nicht geantwortet. Es ist nichts verloren."
+    },
+    "work": {
+      "eyebrow": "Ein Buch aus einer Reihe",
+      "hint": "Du hast noch kein Buch dieser Reihe.",
+      "published": "Erstmals erschienen {{year}}",
+      "noRail": "Die ganze Reihe erscheint, sobald eines ihrer Bücher auf deinen Servern ist."
+    },
+    "mode": {
+      "books_one": "{{count}} Buch",
+      "books_other": "{{count}} Bücher",
+      "ofTotal": "{{owned}} von {{total}}",
+      "inProgress": "{{count}} angefangen",
+      "finished": "{{count}} abgeschlossen",
+      "emptyTitle": "Noch keine Reihen hier",
+      "emptyHint": "Bücher mit einer Reihe erscheinen hier als Regal voller Buchrücken.",
+      "emptyAction": "Bücher durchsehen",
+      "errorTitle": "Die Reihen konnten nicht geladen werden"
+    }
+  },
+  "people": {
+    "author": "Autor",
+    "narrator": "Sprecher",
+    "books_one": "{{count}} Buch",
+    "books_other": "{{count}} Bücher",
+    "finished": "{{count}} abgeschlossen",
+    "unknownAuthor_one": "{{count}} Buch hat keinen Autor.",
+    "unknownAuthor_other": "{{count}} Bücher haben keinen Autor.",
+    "unknownNarrator_one": "{{count}} Buch hat keinen Sprecher.",
+    "unknownNarrator_other": "{{count}} Bücher haben keinen Sprecher.",
+    "stats": {
+      "books": "Bücher hier",
+      "length": "Gesamtlänge",
+      "finished": "Abgeschlossen",
+      "listened": "Gehört"
+    },
+    "readBy": "Gelesen von",
+    "booksBy": "Bücher von",
+    "books": "Bücher",
+    "otherBooks": "Weitere Bücher",
+    "openSeries": "Reihe {{series}} öffnen",
+    "emptyAuthors": "Noch keine Autoren hier",
+    "emptyNarrators": "Noch keine Sprecher hier",
+    "emptyHint": "Bücher erscheinen hier, sobald sie den Namen tragen.",
+    "errorTitle": "Die Liste konnte nicht geladen werden",
+    "pageEmpty": "Hier gibt es keine Bücher von {{name}}",
+    "pageEmptyHint": "In dieser Bibliothek ist nichts genau diesem Namen zugeordnet.",
+    "pageError": "Diese Bücher konnten nicht geladen werden",
+    "narratorUnsupported": "Dieser Server kann Bücher noch nicht nach Sprecher auflisten",
+    "narratorUnsupportedHint": "Ein neuerer AudioSilo-Server kann es."
   }
 }

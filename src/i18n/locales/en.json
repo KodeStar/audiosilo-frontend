@@ -398,8 +398,6 @@
     "detail": {
       "soon": "This page is on its way.",
       "badLink": "This link doesn't point to anything here.",
-      "author": "Author",
-      "narrator": "Narrator",
       "collection": "Collection"
     }
   },
@@ -773,5 +771,114 @@
     "buttonLabel_one": "Up next, {{count}} book",
     "buttonLabel_other": "Up next, {{count}} books",
     "buttonLabelEmpty": "Up next"
+  },
+  "series": {
+    "eyebrow": "Series",
+    "bookN": "Book {{position}}",
+    "stats": {
+      "entries_one": "{{count}} entry",
+      "entries_other": "{{count}} entries",
+      "onServers": "{{count}} on your servers",
+      "missing": "{{count}} not in your library",
+      "length": "{{duration}} to listen to"
+    },
+    "progress": {
+      "into": "{{percent}}% into book {{position}}",
+      "intoTitle": "{{percent}}% into {{title}}",
+      "finished": "{{finished}} of {{total}} finished",
+      "ahead": "{{duration}} of listening ahead",
+      "label": "Series progress"
+    },
+    "readingOrder": "Reading order",
+    "orderNote": {
+      "publication": "The order the books came out.",
+      "chronological": "The order the story happens in.",
+      "recommended": "The order the community suggests reading them in."
+    },
+    "listTitle": {
+      "publication": "In publication order",
+      "chronological": "In story order",
+      "recommended": "In recommended order",
+      "default": "Books in the series"
+    },
+    "shelfLabel": "{{series}} on the shelf. Choose a book to take it off the shelf.",
+    "listening": "Listening · {{percent}}%",
+    "listeningNow": "listening now",
+    "resume": "Resume",
+    "resumeChapter": "Resume chapter {{chapter}}",
+    "play": "Play",
+    "details": "Details",
+    "open": "Open",
+    "openOn": "Open on {{server}}",
+    "listenOn": "Listen on {{server}}",
+    "viewOnMeta": "View on AudioSilo Meta",
+    "openBookLabel": "{{label}}. Open the book",
+    "readBy": "Read by {{narrator}}",
+    "elsewhereNote": "Not on {{here}}, but {{server}} has it.",
+    "ghostNote": "Not on your servers yet. The community series data knows it exists.",
+    "gapNote": "Your copies skip this number.",
+    "legend": {
+      "owned": "On your servers",
+      "elsewhere": "On another server",
+      "ghost": "Not in your library",
+      "current": "Listening now"
+    },
+    "source": "Series and reading orders from the AudioSilo Meta community",
+    "empty": {
+      "title": "Nothing in this series here",
+      "hint": "No book in this library is filed under {{name}}."
+    },
+    "error": {
+      "title": "Couldn't load this series",
+      "hint": "The server did not answer. Nothing is lost."
+    },
+    "work": {
+      "eyebrow": "A book in a series",
+      "hint": "You don't have any of this series yet.",
+      "published": "First published {{year}}",
+      "noRail": "The full series shows once one of its books is on your servers."
+    },
+    "mode": {
+      "books_one": "{{count}} book",
+      "books_other": "{{count}} books",
+      "ofTotal": "{{owned}} of {{total}}",
+      "inProgress": "{{count}} in progress",
+      "finished": "{{count}} finished",
+      "emptyTitle": "No series here yet",
+      "emptyHint": "Books tagged with a series show up here as a shelf of spines.",
+      "emptyAction": "Browse books",
+      "errorTitle": "Couldn't load the series"
+    }
+  },
+  "people": {
+    "author": "Author",
+    "narrator": "Narrator",
+    "books_one": "{{count}} book",
+    "books_other": "{{count}} books",
+    "finished": "{{count}} finished",
+    "unknownAuthor_one": "{{count}} book has no author listed.",
+    "unknownAuthor_other": "{{count}} books have no author listed.",
+    "unknownNarrator_one": "{{count}} book has no narrator listed.",
+    "unknownNarrator_other": "{{count}} books have no narrator listed.",
+    "stats": {
+      "books": "Books here",
+      "length": "Total length",
+      "finished": "You finished",
+      "listened": "You listened"
+    },
+    "readBy": "Read by",
+    "booksBy": "Books by",
+    "books": "Books",
+    "otherBooks": "Other books",
+    "openSeries": "Open the series {{series}}",
+    "emptyAuthors": "No authors here yet",
+    "emptyNarrators": "No narrators here yet",
+    "emptyHint": "Books show up here once they carry the name.",
+    "errorTitle": "Couldn't load the list",
+    "pageEmpty": "No books by {{name}} here",
+    "pageEmptyHint": "Nothing in this library is credited to exactly this name.",
+    "pageError": "Couldn't load these books",
+    "narratorUnsupported": "This server can't list books by narrator yet",
+    "narratorUnsupportedHint": "A newer AudioSilo server adds it."
   }
 }
