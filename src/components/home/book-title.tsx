@@ -9,14 +9,19 @@ import { percentHeard } from '@/lib/progress-view';
 import type { BookAt } from './home-model';
 import { timeLeftAtSpeed } from './now-card-model';
 
+/** A shelf's titles and covers barely change: a tile mounted again within this long
+ * (Home, See all) shows what it has rather than asking again. */
+const TILE_BOOK_STALE_MS = 10 * 60_000;
+
 /**
- * A progress row carries only a path, so Home asks the book itself (`useBook`, the
- * book page's own cache entry) for its title, falling back to the path's last part
- * until it answers or when it can't. Mounted per visible tile, so only the covers on
- * screen ask.
+ * A progress row carries only a path, so Home asks the book itself (`/item`, the book
+ * page's own cache entry) for its title, falling back to the path's last part until it
+ * answers or when it can't. Mounted per visible tile, so only the covers on screen ask.
  */
-function useProgressBook(at: BookAt | null) {
-  return useBook(at?.libraryId ?? 0, at?.path ?? '', at?.connectionId).data;
+export function useProgressBook(at: BookAt | null) {
+  return useBook(at?.libraryId ?? 0, at?.path ?? '', at?.connectionId, {
+    staleTime: TILE_BOOK_STALE_MS,
+  }).data;
 }
 
 /** The title of a book Home knows only by path ('' for none). */

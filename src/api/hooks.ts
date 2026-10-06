@@ -380,11 +380,19 @@ export function useBrowseInfinite(libraryId: number, path: string) {
 // `useBook`/`useChapters` take an optional `connectionId` so the player (a root modal
 // outside any route scope) can address the playing book's own server; content screens
 // omit it and resolve to their route scope (the `?connection=` query param).
-export function useBook(libraryId: number, path: string, connectionId?: string) {
+export function useBook(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  { staleTime }: { staleTime?: number } = {},
+) {
   // Optional (not throwing) client: the player modal renders these hooks OUTSIDE the
   // `(app)` ContentScope guard, so a stale/removed connection id (e.g. tapping an
   // orphaned downloaded book) must yield a disabled query, not a fatal render throw.
-  return useQuery(itemQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path));
+  return useQuery({
+    ...itemQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
+    ...(staleTime !== undefined ? { staleTime } : {}),
+  });
 }
 
 export function useChapters(libraryId: number, path: string, connectionId?: string) {

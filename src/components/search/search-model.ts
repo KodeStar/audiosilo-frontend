@@ -36,12 +36,32 @@ export function fold(s: string): string {
  */
 export function matchRank(text: string, foldedQuery: string): 0 | 1 | 2 | null {
   if (!foldedQuery) return null;
-  const t = fold(text);
-  const i = t.indexOf(foldedQuery);
+  return rankFolded(fold(text), foldedQuery, wordStart(foldedQuery));
+}
+
+/** The query at a word start: after a non-letter/digit (space, hyphen, period...). */
+function wordStart(foldedQuery: string): RegExp {
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(foldedQuery)}`, 'u');
+}
+
+/** `matchRank` over text already folded, with the query's `wordStart` compiled once. */
+function rankFolded(folded: string, foldedQuery: string, atWordStart: RegExp): 0 | 1 | 2 | null {
+  const i = folded.indexOf(foldedQuery);
   if (i < 0) return null;
   if (i === 0) return 0;
-  // A word start: anything after a non-letter/digit (space, hyphen, period...).
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(foldedQuery)}`, 'u').test(t) ? 1 : 2;
+  return atWordStart.test(folded) ? 1 : 2;
+}
+
+/** Each browse list's names folded once (the lists are kept while their query data is),
+ * not on every keystroke. */
+const foldedLists = new WeakMap<readonly { name: string }[], string[]>();
+function foldedNames(items: readonly { name: string }[]): string[] {
+  let names = foldedLists.get(items);
+  if (!names) {
+    names = items.map((i) => fold(i.name));
+    foldedLists.set(items, names);
+  }
+  return names;
 }
 
 function escapeRegExp(s: string): string {
@@ -74,13 +94,15 @@ export function matchNamed<T extends { name: string; books: number }>(
 ): NamedHit<T>[] {
   const q = fold(query.trim());
   if (!q) return [];
+  const atWordStart = wordStart(q);
   const byName = new Map<string, { hit: NamedHit<T>; rank: number }>();
   for (const { source, items } of lists) {
-    for (const item of items) {
+    const names = foldedNames(items);
+    for (const [i, item] of items.entries()) {
       if (!item.name) continue;
-      const rank = matchRank(item.name, q);
+      const key = names[i];
+      const rank = rankFolded(key, q, atWordStart);
       if (rank === null) continue;
-      const key = fold(item.name);
       const seen = byName.get(key);
       if (seen) {
         if (
@@ -230,13 +252,15 @@ export function matchCharacters(
     { hit: CharacterHit; rank: number; attribution?: BookMetaAttribution }
   >();
   const unmet = new Set<string>();
+  const atWordStart = wordStart(q);
+  const rank = (text: string) => rankFolded(fold(text), q, atWordStart);
   books.forEach((book) => {
     for (const c of book.characters) {
       if (!c.name) continue;
-      const nameRank = matchRank(c.name, q);
-      const aliasHit = nameRank === null && (c.aliases ?? []).some((a) => matchRank(a, q) !== null);
-      if (nameRank === null && !aliasHit) continue;
       const name = fold(c.name);
+      const nameRank = rankFolded(name, q, atWordStart);
+      const aliasHit = nameRank === null && (c.aliases ?? []).some((a) => rank(a) !== null);
+      if (nameRank === null && !aliasHit) continue;
       if (!characterIsVisible(c, book.listening)) {
         unmet.add(name);
         continue;

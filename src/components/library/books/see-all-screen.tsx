@@ -5,11 +5,11 @@ import { View } from 'react-native';
 
 import {
   useAllProgressAll,
-  useBook,
   useRecentAll,
   type MergedBook,
   type SourcedProgress,
 } from '@/api/hooks';
+import { useProgressBook } from '@/components/home/book-title';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
@@ -135,7 +135,11 @@ function FinishedTile({
   width: number;
 }) {
   const { t } = useTranslation();
-  const book = useBook(p.library_id, p.path, p.connectionId).data;
+  const book = useProgressBook({
+    connectionId: p.connectionId,
+    libraryId: p.library_id,
+    path: p.path,
+  });
   return (
     <CoverTile
       connectionId={p.connectionId}
