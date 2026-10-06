@@ -74,6 +74,7 @@ describe('settings store', () => {
         virtualChapterInterval: 30 * 60,
         autoPlayNext: false,
         autoDownloadNext: 'wifi',
+        keepAhead: 0,
         autoDeleteFinished: true,
         autoSleepTimer: false,
         autoSleepFrom: '22:00',
@@ -142,5 +143,15 @@ describe('settings store', () => {
     expect(s.autoSleepFrom).toBe('22:00');
     expect(s.autoSleepUntil).toBe('06:00');
     expect(s.autoSleepType).toBe('chapter');
+  });
+
+  it('keeps the next books ready only at a valid choice, off by default', async () => {
+    expect(useSettings.getState().keepAhead).toBe(0);
+    await AsyncStorage.setItem(KEY, JSON.stringify({ keepAhead: 7 }));
+    await useSettings.getState().hydrate();
+    expect(useSettings.getState().keepAhead).toBe(0);
+    useSettings.getState().setKeepAhead(2);
+    await restart();
+    expect(useSettings.getState().keepAhead).toBe(2);
   });
 });

@@ -7,6 +7,16 @@ import { DEFAULT_VIRTUAL_CHAPTER_INTERVAL } from '@/playback/book-queue';
  * unmetered (wifi/ethernet) connection, or always. */
 export type AutoDownloadMode = 'never' | 'wifi' | 'always';
 
+/** How many books after the current one to keep downloaded ("Keep the next books
+ * ready"): 0 is off. Rules and the planner live in `src/downloads/keep-ahead.ts`. */
+export type KeepAhead = 0 | 1 | 2 | 3;
+export const KEEP_AHEAD_CHOICES: readonly KeepAhead[] = [0, 1, 2, 3];
+
+/** A stored value read back as a valid choice: anything that isn't one is off. */
+export function toKeepAhead(value: unknown): KeepAhead {
+  return KEEP_AHEAD_CHOICES.includes(value as KeepAhead) ? (value as KeepAhead) : 0;
+}
+
 /** What an auto-armed sleep timer does: stop at the end of the current chapter, or
  * after a fixed number of minutes. The numeric members are minutes; a string union
  * keeps the value trivially persistable and every `switch` over it exhaustive. */
@@ -31,6 +41,10 @@ export type PlaybackSettings = {
    * is still `autoDownloadNext` for hydration compatibility - it originally prefetched the
    * *next* book in a series near the current one's end; do not rename it. */
   autoDownloadNext: AutoDownloadMode;
+  /** Keep this many of the next books (Up next, then the series) downloaded while a book
+   * is loaded, under the `autoDownloadNext` network rule. Off by default: it downloads on
+   * its own, so the listener opts in. */
+  keepAhead: KeepAhead;
   /** Delete a downloaded book's local files once it is marked finished. */
   autoDeleteFinished: boolean;
   /** Automatically arm a sleep timer for playback started inside the nightly window. */
@@ -52,6 +66,7 @@ const DEFAULTS: PlaybackSettings = {
   virtualChapterInterval: DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
   autoPlayNext: false,
   autoDownloadNext: 'wifi',
+  keepAhead: 0,
   autoDeleteFinished: true,
   autoSleepTimer: false,
   autoSleepFrom: '22:00',
@@ -73,6 +88,7 @@ type SettingsState = PlaybackSettings & {
   setVirtualChapterInterval: (seconds: number) => void;
   setAutoPlayNext: (on: boolean) => void;
   setAutoDownloadNext: (mode: AutoDownloadMode) => void;
+  setKeepAhead: (count: KeepAhead) => void;
   setAutoDeleteFinished: (on: boolean) => void;
   setAutoSleepTimer: (on: boolean) => void;
   setAutoSleepFrom: (hhmm: string) => void;
@@ -96,7 +112,8 @@ export const useSettings = create<SettingsState>()((set, get) => {
   };
   return {
     ...DEFAULTS,
-    hydrate: () => stored.hydrate(DEFAULTS, (doc) => set(doc)),
+    hydrate: () =>
+      stored.hydrate(DEFAULTS, (doc) => set({ ...doc, keepAhead: toKeepAhead(doc.keepAhead) })),
     setSkipForward: (skipForward) => update({ skipForward }),
     setSkipBackward: (skipBackward) => update({ skipBackward }),
     setDefaultRate: (defaultRate) => update({ defaultRate }),
@@ -104,6 +121,7 @@ export const useSettings = create<SettingsState>()((set, get) => {
     setVirtualChapterInterval: (virtualChapterInterval) => update({ virtualChapterInterval }),
     setAutoPlayNext: (autoPlayNext) => update({ autoPlayNext }),
     setAutoDownloadNext: (autoDownloadNext) => update({ autoDownloadNext }),
+    setKeepAhead: (keepAhead) => update({ keepAhead: toKeepAhead(keepAhead) }),
     setAutoDeleteFinished: (autoDeleteFinished) => update({ autoDeleteFinished }),
     setAutoSleepTimer: (autoSleepTimer) => update({ autoSleepTimer }),
     setAutoSleepFrom: (autoSleepFrom) => update({ autoSleepFrom }),
