@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { QueueButton } from '@/components/library/queue-button';
 import { useQueueActions } from '@/components/library/use-queue-actions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -145,20 +146,14 @@ export function EntryActionButton({
       );
     case 'queue': {
       if (!copy) return null;
-      const queued = q.isQueued(copy.libraryId, copy.path);
       const button = (
-        <Button
+        <QueueButton
+          connectionId={copy.connectionId}
+          libraryId={copy.libraryId}
+          path={copy.path}
+          title={entry.title}
           size={size}
           variant={compact ? 'outline' : 'default'}
-          icon="queue"
-          loading={q.pending}
-          title={queued ? t('queue.queued') : t('queue.queueIt')}
-          accessibilityLabel={named(queued ? t('queue.queued') : t('queue.queueIt'))}
-          onPress={() =>
-            void (queued
-              ? q.unqueue(copy.libraryId, copy.path)
-              : q.queue(copy.libraryId, copy.path))
-          }
         />
       );
       if (compact) return button;

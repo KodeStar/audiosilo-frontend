@@ -149,13 +149,13 @@ describe('QueueButton', () => {
 
   it('queues a book, or takes a queued one off', async () => {
     await render(<QueueButton connectionId="c" libraryId={1} path="New" />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Add to Up next' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Queue it' }));
     expect(mockAdd).toHaveBeenCalled();
     expect(screen.getByText('Queue it')).toBeTruthy();
 
     await render(<QueueButton connectionId="c" libraryId={1} path="Old" />);
     expect(screen.getByText('Queued')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Remove from Up next' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Queued' }));
     expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: 'Old' });
   });
 });
