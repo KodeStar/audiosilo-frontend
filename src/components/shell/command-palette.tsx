@@ -25,7 +25,10 @@ import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { openUpNext } from '@/components/upnext/up-next-store';
+import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { chapterLabel } from '@/lib/chapter-label';
+import { isEditable, isModalOpen } from '@/lib/keyboard';
 import { useLayout } from '@/lib/layout';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useOpen } from '@/lib/open';
@@ -38,10 +41,10 @@ import { useRecentSearches } from '@/stores/search';
 import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { isEditable, isModalOpen } from '@/lib/keyboard';
 
 import { TOP_BAR_TABS, useTabPress } from './destinations';
 import {
+  buildActionItems,
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
@@ -76,81 +79,62 @@ const PaletteContent = withFlatStyle(DialogPrimitive.Content);
 const optionId = (index: number) => `palette-option-${index}`;
 const LIST_ID = 'palette-list';
 
-/** The palette's Actions for what the app can do right now (only what exists today:
- * the transport, the sleep timer, the full player, settings and appearance). */
+/** The palette's Actions (`buildActionItems`) over the player, the sleep timer, Up next,
+ * settings and the theme. */
 function useActionItems(): PaletteItem[] {
   const { t } = useTranslation();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
   const chapter = usePlayer(selectCurrentChapter);
+  const upNext = useUpNextBadge();
   const { scheme, toggleScheme } = useTheme();
   const { press } = useTabPress();
 
   return useMemo(() => {
-    const items: PaletteItem[] = [];
-    if (nowPlaying) {
-      const chapterName = chapter ? chapterLabel(chapter, t) : null;
-      items.push({
-        id: 'toggle',
-        title: isPlaying
-          ? t('player.controls.pause')
-          : t('palette.resume', { name: chapterName ?? nowPlaying.title }),
-        subtitle: nowPlaying.title,
-        icon: isPlaying ? 'pause' : 'play',
-        run: () => void usePlayer.getState().toggle(),
-      });
-      const sleepTitle = t('palette.sleepMinutes', { count: SLEEP_MINUTES });
-      const sleepHint = t('palette.sleepFades');
-      items.push({
-        id: 'sleep-minutes',
-        title: sleepTitle,
-        subtitle: sleepHint,
-        icon: 'sleep',
-        run: () => {
+    const chapterName = nowPlaying && chapter ? chapterLabel(chapter, t) : null;
+    const notify = (title: string, description?: string) => toast({ title, description });
+    return buildActionItems(
+      {
+        nowPlaying: nowPlaying
+          ? {
+              title: nowPlaying.title,
+              chapterName,
+              hasChapters: nowPlaying.queue.chapters.length > 0,
+            }
+          : null,
+        isPlaying,
+        sleepMinutes: SLEEP_MINUTES,
+        upNext: upNext.supported === true ? { count: upNext.count } : null,
+        dark: scheme === 'dark',
+      },
+      {
+        toggle: () => void usePlayer.getState().toggle(),
+        sleepMinutes: () => {
           useSleepTimer.getState().startDuration(SLEEP_MINUTES);
-          toast({ title: sleepTitle, description: sleepHint });
+          notify(t('palette.sleepMinutes', { count: SLEEP_MINUTES }), t('palette.sleepFades'));
         },
-      });
-      // Only with real chapters: without them "end of chapter" falls back to a short
-      // duration timer, which this label would misdescribe.
-      if (nowPlaying.queue.chapters.length > 0) {
-        const title = t('palette.sleepChapter');
-        items.push({
-          id: 'sleep-chapter',
-          title,
-          subtitle: chapterName ?? undefined,
-          icon: 'sleep',
-          run: () => {
-            useSleepTimer.getState().startChapterTimer({ allowEndOfBook: true });
-            toast({ title, description: chapterName ?? undefined });
-          },
-        });
-      }
-      items.push({
-        id: 'player',
-        title: t('palette.openPlayer'),
-        subtitle: nowPlaying.title,
-        icon: 'chevron-up',
-        run: () => router.push('/player'),
-      });
-    }
-    items.push({
-      id: 'settings',
-      title: t('palette.settings'),
-      subtitle: t('palette.settingsHint'),
-      icon: 'settings',
-      run: () => press('(me)'),
-    });
-    const dark = scheme === 'dark';
-    items.push({
-      id: 'appearance',
-      title: dark ? t('palette.light') : t('palette.dark'),
-      subtitle: t('settings.appearance.label'),
-      icon: 'settings',
-      run: toggleScheme,
-    });
-    return items;
-  }, [t, nowPlaying, isPlaying, chapter, scheme, toggleScheme, press]);
+        sleepChapter: () => {
+          useSleepTimer.getState().startChapterTimer({ allowEndOfBook: true });
+          notify(t('palette.sleepChapter'), chapterName ?? undefined);
+        },
+        player: () => router.push('/player'),
+        upNext: openUpNext,
+        settings: () => press('(me)'),
+        appearance: toggleScheme,
+      },
+      t,
+    );
+  }, [
+    t,
+    nowPlaying,
+    isPlaying,
+    chapter,
+    upNext.supported,
+    upNext.count,
+    scheme,
+    toggleScheme,
+    press,
+  ]);
 }
 
 /** Go to: the top bar's destinations (Downloads only where this browser can keep books). */

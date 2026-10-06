@@ -127,6 +127,14 @@ jest.mock('@/api/hooks', () => ({
   }),
 }));
 
+let mockUpNext: { supported: boolean | undefined; count: number } = {
+  supported: undefined,
+  count: 0,
+};
+jest.mock('@/components/upnext/use-up-next', () => ({ useUpNextBadge: () => mockUpNext }));
+const mockOpenUpNext = jest.fn();
+jest.mock('@/components/upnext/up-next-store', () => ({ openUpNext: () => mockOpenUpNext() }));
+
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 
@@ -189,6 +197,7 @@ async function openWith(query = '') {
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  mockUpNext = { supported: undefined, count: 0 };
   usePalette.setState({ open: false, query: '' });
   useRecentSearches.setState({ recent: [] });
   useSession.setState({
@@ -286,6 +295,19 @@ describe('CommandPalette', () => {
       title: 'Sleep in 30 minutes',
       description: 'Fades out over the last 30 seconds',
     });
+  });
+
+  it('opens Up next only where the server has a queue', async () => {
+    await openWith('up next');
+    expect(screen.queryByText('Open Up next')).toBeNull();
+
+    mockUpNext = { supported: true, count: 4 };
+    await act(async () => usePalette.getState().close());
+    await act(async () => usePalette.getState().openPalette());
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'up next');
+    expect(screen.getByText('4 books queued')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Open Up next'));
+    expect(mockOpenUpNext).toHaveBeenCalledTimes(1);
   });
 
   it('goes to a tab with JUMP_TO and switches the appearance', async () => {

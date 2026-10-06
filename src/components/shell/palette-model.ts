@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 import type { IconName } from '@/components/ui/icon';
 
 /**
@@ -37,6 +39,95 @@ export type PaletteGroup = {
   /** The flat (listbox) index of the group's first item: item `i` is option `start + i`. */
   start: number;
 };
+
+/** What the Actions group is built from: the app's state right now. */
+export type ActionState = {
+  /** The loaded book (none: no transport actions). `chapterName` is the current chapter's
+   * label; `hasChapters` whether the book has real chapters. */
+  nowPlaying: { title: string; chapterName: string | null; hasChapters: boolean } | null;
+  isPlaying: boolean;
+  /** The minutes the sleep action arms. */
+  sleepMinutes: number;
+  /** Up next is offered (the queue's server has `queue`), with this many books queued. */
+  upNext: { count: number } | null;
+  dark: boolean;
+};
+
+/** What each action does (the component wires the stores and the router). */
+export type ActionRuns = Record<
+  'toggle' | 'sleepMinutes' | 'sleepChapter' | 'player' | 'upNext' | 'settings' | 'appearance',
+  () => void
+>;
+
+/**
+ * The palette's Actions, only what the app can do right now: the transport (pause or
+ * "Resume <chapter>"), the sleep timer (end of chapter only with real chapters: without
+ * them it falls back to a short duration timer the label would misdescribe), the full
+ * player - all three only with a book loaded -, Up next (only where it is offered),
+ * settings and the light/dark switch.
+ */
+export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction): PaletteItem[] {
+  const items: PaletteItem[] = [];
+  const np = s.nowPlaying;
+  if (np) {
+    items.push({
+      id: 'toggle',
+      title: s.isPlaying
+        ? t('player.controls.pause')
+        : t('palette.resume', { name: np.chapterName ?? np.title }),
+      subtitle: np.title,
+      icon: s.isPlaying ? 'pause' : 'play',
+      run: run.toggle,
+    });
+    items.push({
+      id: 'sleep-minutes',
+      title: t('palette.sleepMinutes', { count: s.sleepMinutes }),
+      subtitle: t('palette.sleepFades'),
+      icon: 'sleep',
+      run: run.sleepMinutes,
+    });
+    if (np.hasChapters) {
+      items.push({
+        id: 'sleep-chapter',
+        title: t('palette.sleepChapter'),
+        subtitle: np.chapterName ?? undefined,
+        icon: 'sleep',
+        run: run.sleepChapter,
+      });
+    }
+    items.push({
+      id: 'player',
+      title: t('palette.openPlayer'),
+      subtitle: np.title,
+      icon: 'chevron-up',
+      run: run.player,
+    });
+  }
+  if (s.upNext) {
+    items.push({
+      id: 'up-next',
+      title: t('palette.upNext'),
+      subtitle: t('palette.upNextHint', { count: s.upNext.count }),
+      icon: 'queue',
+      run: run.upNext,
+    });
+  }
+  items.push({
+    id: 'settings',
+    title: t('palette.settings'),
+    subtitle: t('palette.settingsHint'),
+    icon: 'settings',
+    run: run.settings,
+  });
+  items.push({
+    id: 'appearance',
+    title: s.dark ? t('palette.light') : t('palette.dark'),
+    subtitle: t('settings.appearance.label'),
+    icon: 'settings',
+    run: run.appearance,
+  });
+  return items;
+}
 
 /** At most this many book results, and Continue listening rows on an empty query. */
 export const MAX_BOOKS = 8;
