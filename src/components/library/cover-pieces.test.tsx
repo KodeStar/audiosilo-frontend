@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet, Text } from 'react-native';
 
 import { settleFlashList } from '@/testing/flash-list';
@@ -35,7 +35,7 @@ jest.mock('@/lib/layout', () => ({
 /* eslint-disable import/first */
 import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
 
-import { CoverGrid, CoverGridSkeleton } from './cover-grid';
+import { CoverGrid, CoverGridSkeleton, CoverListRow } from './cover-grid';
 import { CoverTile } from './cover-tile';
 import { GhostCover, hatchLines } from './ghost-cover';
 import { ShelfRow } from './shelf-row';
@@ -224,5 +224,29 @@ describe('ChipRow', () => {
     const style = StyleSheet.flatten(screen.getByTestId('chip-row').props.style);
     expect(style?.flexGrow).toBe(0);
     expect(style?.marginHorizontal).toBe(-16);
+  });
+});
+
+describe('CoverListRow', () => {
+  it('keeps its trailing menu inside the row card, beside the press, not in a gutter', async () => {
+    const onPress = jest.fn();
+    await render(
+      <CoverListRow
+        {...tile}
+        subtitle="Frank Herbert"
+        onPress={onPress}
+        trailing={<Text>menu</Text>}
+      />,
+    );
+    const row = screen.getByTestId('cover-list-row');
+    expect(String(row.props.className)).toContain('border-border');
+    expect(String(row.props.className)).toContain('bg-card');
+    expect(within(row).getByText('menu')).toBeTruthy();
+    // The press is not a second card inside the first, and doesn't hold the menu.
+    const press = screen.getByRole('button', { name: 'Dune, Frank Herbert' });
+    expect(String(press.props.className)).toContain('bg-transparent');
+    expect(within(press).queryByText('menu')).toBeNull();
+    await fireEvent.press(press);
+    expect(onPress).toHaveBeenCalled();
   });
 });

@@ -3,7 +3,7 @@ import { type ReactElement, type Ref, useState } from 'react';
 import { View } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { PressableRow } from '@/components/ui/row-surface';
+import { PressableRow, RowSurface } from '@/components/ui/row-surface';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
@@ -154,7 +154,8 @@ export function CoverTileSkeleton({ width }: { width: number }) {
  * 48 cover, the title, one subtitle line, optional `aside` columns inside the row
  * (narrator, length, progress: text only, nothing pressable), and an optional trailing
  * slot (a menu button: keep any button in it a sibling of the row's own press, never
- * nested).
+ * nested). The surface wraps both, so the trailing button sits inside the row's card,
+ * not in a gutter beside it; the press covers the rest of the card.
  */
 export function CoverListRow({
   connectionId,
@@ -180,12 +181,13 @@ export function CoverListRow({
   trailing?: ReactElement | null;
 }) {
   return (
-    <View className="my-1 flex-row items-center gap-2">
+    <RowSurface testID="cover-list-row" className="my-1 flex-row items-center pr-1">
       <PressableRow
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={[title, subtitle].filter(Boolean).join(', ')}
-        className="min-h-[64px] flex-1 flex-row items-center gap-3 px-2 py-2"
+        // The surface is the wrapper's; the press keeps only its hover/pressed fill.
+        className="min-h-[64px] flex-1 flex-row items-center gap-3 border-0 bg-transparent px-2 py-2"
       >
         <BookCover
           connectionId={connectionId}
@@ -209,6 +211,6 @@ export function CoverListRow({
         {aside ?? null}
       </PressableRow>
       {trailing ?? null}
-    </View>
+    </RowSurface>
   );
 }
