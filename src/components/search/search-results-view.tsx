@@ -9,6 +9,10 @@ import { roleLabelKey } from '@/components/library/book-meta';
 import { coverGridMetrics } from '@/components/library/cover-layout';
 import { CoverTile } from '@/components/library/cover-tile';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
+import { SeriesCard } from '@/components/series/series-card';
+import type { ProgressLookup } from '@/components/series/series-model';
+import { useProgressLookup } from '@/components/series/use-series-data';
+import { matchRange } from '@/components/shell/palette-model';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -24,8 +28,6 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { NameToken } from './name-token';
-import { matchRange } from '@/components/shell/palette-model';
-
 import {
   alsoOnServers,
   type CharacterHit,
@@ -63,6 +65,7 @@ export function SearchResultsView({
   const apis = useApis();
   const online = useReachability((s) => s.online);
   const offline = apis.filter((a) => online[a.connection.id] === false);
+  const { progressOf } = useProgressLookup();
   const r = results;
   const settled = r.settled && !pending;
 
@@ -123,10 +126,11 @@ export function SearchResultsView({
             {(items) => (
               <View className="flex-row flex-wrap gap-3">
                 {items.map((s) => (
-                  <SeriesCard
+                  <SeriesResult
                     key={`${s.source.connectionId}:${s.source.libraryId}:${s.name}`}
                     hit={s}
                     query={query}
+                    progressOf={progressOf}
                     onOpened={onOpened}
                   />
                 ))}
@@ -285,19 +289,26 @@ function Highlighted({
   query,
   variant = 'label',
   numberOfLines = 1,
+  display = false,
 }: {
   text: string;
   query: string;
   variant?: 'label';
   numberOfLines?: number;
+  /** Set in the display face (a series card's name), which is bold already. */
+  display?: boolean;
 }) {
   const range = matchRange(text, query);
+  const face = display ? 'font-display text-[17px] tracking-tight' : undefined;
   return (
-    <Text variant={variant} numberOfLines={numberOfLines}>
+    <Text variant={variant} numberOfLines={numberOfLines} className={face}>
       {range ? (
         <>
           {text.slice(0, range[0])}
-          <Text variant={variant} className="font-sans-bold text-brand-ink">
+          <Text
+            variant={variant}
+            className={cn(face, display ? 'text-brand-ink' : 'font-sans-bold text-brand-ink')}
+          >
             {text.slice(range[0], range[1])}
           </Text>
           {text.slice(range[1])}
@@ -445,58 +456,37 @@ function useWhere(hit: NamedHit<object>) {
     .join(' · ');
 }
 
-function SeriesCard({
+/** A series result: the Library's series card (its mini shelf fetches the series' books
+ * once the card shows, so only the results on screen ask), with the match in bold. */
+function SeriesResult({
   hit,
   query,
+  progressOf,
   onOpened,
 }: {
   hit: SeriesHit;
   query: string;
+  progressOf: ProgressLookup;
   onOpened: () => void;
 }) {
   const { t } = useTranslation();
-  const themed = useThemeColors();
-  const { openSeries } = useOpen();
   const where = useWhere(hit);
-  const line = [t('search.bookCount', { count: hit.books }), hit.author]
-    .filter(Boolean)
-    .join(' · ');
   return (
-    <Pressable
-      onPress={() => {
-        onOpened();
-        openSeries(hit.source.connectionId, hit.source.libraryId, { name: hit.name });
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={[hit.name, t('search.seriesRole'), line, where]
-        .filter(Boolean)
-        .join(', ')}
-      // The prototype's `repeat(auto-fill, minmax(300px, 1fr))`, near enough: a lone
-      // card doesn't stretch across a desktop page.
-      style={{ flexBasis: 300, maxWidth: 520 }}
-      className={cn(
-        'min-h-[64px] grow flex-row items-center gap-3 rounded-card border border-border bg-card p-3 active:bg-accent',
-        Platform.select({
-          web: 'cursor-pointer outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-        }),
-      )}
-    >
-      <View className="h-10 w-10 items-center justify-center rounded-control bg-muted">
-        <Icon name="layers" size={18} color={themed.mutedForeground} />
-      </View>
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Highlighted text={hit.name} query={query} />
-        <Text variant="caption" numberOfLines={1}>
-          {line}
-        </Text>
-        {where ? (
-          <Text variant="caption" numberOfLines={1} className="text-subtle-foreground">
-            {where}
-          </Text>
-        ) : null}
-      </View>
-      <Icon name="chevron-right" size={16} color={themed.subtleForeground} />
-    </Pressable>
+    // The prototype's `repeat(auto-fill, minmax(300px, 1fr))`, near enough: a lone card
+    // doesn't stretch across a desktop page.
+    <View style={{ flexBasis: 300, maxWidth: 520 }} className="grow">
+      <SeriesCard
+        series={hit}
+        connectionId={hit.source.connectionId}
+        connectionName={hit.source.connectionName}
+        libraryId={hit.source.libraryId}
+        progressOf={progressOf}
+        heading={<Highlighted text={hit.name} query={query} numberOfLines={2} display />}
+        kindLabel={t('search.seriesRole')}
+        where={where}
+        onOpened={onOpened}
+      />
+    </View>
   );
 }
 

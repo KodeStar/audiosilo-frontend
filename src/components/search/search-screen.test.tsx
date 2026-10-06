@@ -26,6 +26,18 @@ jest.mock('@/api/hooks', () => ({
   useSeriesList: () => ({ data: [{}, {}] }),
   useCollections: () => ({ data: [{}] }),
   useAllProgressAll: () => ({ progress: [], isLoading: false, error: null }),
+  // A series result's mini shelf asks for that series' books.
+  useLibraryBooks: (_lib: number, query: { series?: string }) =>
+    mockSeriesBooks(query.series ?? ''),
+}));
+const mockSeriesBooks = jest.fn((_series: string) => ({
+  data: undefined,
+  isPending: true,
+  fetchStatus: 'fetching',
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  isError: false,
+  fetchNextPage: jest.fn(),
 }));
 jest.mock('@/components/library/use-selected-library', () => ({
   useSelectedLibrary: () => ({
@@ -196,12 +208,14 @@ describe('SearchScreen, results', () => {
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: 'The Expanse, Series, 4 books · James S. A. Corey, Home Library',
+        name: 'The Expanse, Series, James S. A. Corey · 1s, 4 books, Home Library',
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'James S. A. Corey, Author, 4 books, Home Library' }),
     ).toBeTruthy();
+    // Only the series on screen ask for their books.
+    expect(new Set(mockSeriesBooks.mock.calls.map((c) => c[0]))).toEqual(new Set(['The Expanse']));
     expect(screen.getByText("Only people you've already met")).toBeTruthy();
     expect(
       screen.getByText('2 more matches after your place in the book, hidden to avoid spoilers.'),

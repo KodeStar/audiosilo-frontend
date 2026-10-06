@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
@@ -34,6 +35,10 @@ function shelfPositions(positions: readonly number[]): number[] {
  * (the grid renders only the rows on screen), so a library of 300 series asks for the
  * few on screen, not all of them; until then the shelf is spine-shaped placeholders at
  * the positions the series list already gives.
+ *
+ * Search shows its series results with it too: `heading` replaces the plain name (the
+ * match in bold), `kindLabel` names it a series to a screen reader, `where` adds the
+ * server line ("Hearthside · Also on Maya's Shelf") and `onOpened` runs before it opens.
  */
 export function SeriesCard({
   series,
@@ -41,12 +46,20 @@ export function SeriesCard({
   connectionName,
   libraryId,
   progressOf,
+  heading,
+  kindLabel,
+  where,
+  onOpened,
 }: {
   series: SeriesCount;
   connectionId: string;
   connectionName: string;
   libraryId: number;
   progressOf: ProgressLookup;
+  heading?: ReactNode;
+  kindLabel?: string;
+  where?: string;
+  onOpened?: () => void;
 }) {
   const { t } = useTranslation();
   const { openSeries } = useOpen();
@@ -69,9 +82,14 @@ export function SeriesCard({
   const byline = [series.author, formatDuration(series.duration)].filter(Boolean).join(' · ');
   return (
     <Pressable
-      onPress={() => openSeries(connectionId, libraryId, { name: series.name })}
+      onPress={() => {
+        onOpened?.();
+        openSeries(connectionId, libraryId, { name: series.name });
+      }}
       accessibilityRole="button"
-      accessibilityLabel={[series.name, byline, summary].filter(Boolean).join(', ')}
+      accessibilityLabel={[series.name, kindLabel, byline, summary, where]
+        .filter(Boolean)
+        .join(', ')}
       className={CARD}
     >
       {entries ? (
@@ -84,9 +102,14 @@ export function SeriesCard({
         />
       )}
       <View className="gap-0.5">
-        <Text className="font-display text-[17px] tracking-tight text-foreground" numberOfLines={2}>
-          {series.name}
-        </Text>
+        {heading ?? (
+          <Text
+            className="font-display text-[17px] tracking-tight text-foreground"
+            numberOfLines={2}
+          >
+            {series.name}
+          </Text>
+        )}
         {byline ? (
           <Text variant="muted" numberOfLines={1} style={tabularNums}>
             {byline}
@@ -95,6 +118,11 @@ export function SeriesCard({
         <Text variant="caption" style={tabularNums}>
           {summary}
         </Text>
+        {where ? (
+          <Text variant="caption" numberOfLines={1} className="text-subtle-foreground">
+            {where}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
