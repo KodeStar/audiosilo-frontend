@@ -108,6 +108,21 @@ describe('CoverTile', () => {
 });
 
 describe('GhostCover', () => {
+  it("shows only the title's initials as a thumbnail, never a clipped title", async () => {
+    await render(<GhostCover title="Restoration of Faith" position="0.5" width={56} />);
+    expect(
+      screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true }).props.children,
+    ).toBe('RF');
+    expect(screen.queryByText('Restoration of Faith')).toBeNull();
+    expect(
+      screen.getByRole('image', { name: 'Book 0.5, Restoration of Faith, Not in your library' }),
+    ).toBeTruthy();
+    await render(<GhostCover title="Restoration of Faith" width={56} server="Maya's Shelf" />);
+    expect(
+      screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true }).props.children,
+    ).toBe('RF');
+  });
+
   it('names a missing book with its real title and place', async () => {
     await render(<GhostCover title="Rogue Protocol" position={3} width={132} />);
     expect(
