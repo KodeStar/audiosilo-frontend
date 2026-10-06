@@ -372,9 +372,11 @@ export class ApiClient {
     );
     return r.series ?? [];
   }
-  /** What to play after a book, resolved server-side from the first source that
-   * answers: the community series rail, else the local series, else the parent folder
-   * (see {@link NextBook}: its `next` can be in another of the caller's libraries).
+  /** What to play after a book, resolved server-side: the community series rail when it
+   * places its next work on one of the caller's books, else the local series, else the
+   * parent folder, else none (see {@link NextBook}: `source` names the step that
+   * answered, a `work` without `local` is the rail's next work this server couldn't
+   * place, and a community `next` can be in another of the caller's libraries).
    * Only call this when the server advertises `next_book`. It gets more time than other
    * requests: the server can spend its whole community-metadata budget first. */
   nextBook(libraryId: number, path: string, signal?: AbortSignal) {

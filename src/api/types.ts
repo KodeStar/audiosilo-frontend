@@ -299,19 +299,21 @@ export type SeriesCount = {
 };
 
 /** Response of GET /libraries/{id}/next (capability `next_book`): what to play
- * after a book, from the FIRST of these sources that answers at all (a later one is
- * not consulted, even when an earlier one says its series has ended):
- * - `community`: the book's community series rail. `work` is the next work on the
- *   rail, with `next`+`book` when the server could place one of the caller's books
- *   on it, in ANY of their libraries, so `next.library_id` can differ from the
- *   library asked. A `work` without `next` means no copy could be placed (placing
- *   needs the book's series to be named like the rail), so treat it as not owned
- *   rather than skip ahead. No `work` at all means nothing follows on the community
- *   rail, which can lag a library that already holds a newer book.
+ * after a book. `source` names the step that produced `next` (or that decided
+ * nothing follows):
+ * - `community`: the book's community series rail placed its next work on one of
+ *   the caller's books, in ANY of their libraries, so `next.library_id` can differ
+ *   from the library asked. `next`, `book` and `work` (with `local`) are all set.
  * - `series`: the next higher `series_index` of the same, exactly named, series in
- *   the same library; no `next` means nothing higher in that series.
+ *   the same library; no `next` means the end of that numbered local series.
  * - `folder`: the next item in the book's parent folder (`book` only when indexed).
- * - `none`: nothing follows. */
+ * - `none`: nothing found.
+ * The community rail answers only when it places its next work: failing to place it
+ * (untagged books, a series named unlike the rail) does not prove it is not owned,
+ * and a rail that ends at the current work can lag the library, so the local steps
+ * then answer. With any of them, a `work` WITHOUT `local` is the community's next
+ * work that this server couldn't place (e.g. "Next in the series: <title> (not on
+ * this server)" beside the local answer); no `work` means the rail named nothing. */
 export type NextBook = {
   source: 'community' | 'series' | 'folder' | 'none';
   /** What to play next: a book the caller can open. Open it by its own
@@ -320,7 +322,8 @@ export type NextBook = {
   /** The next book's indexed metadata in the list shape (no files, chapters or
    * description). */
   book?: Book;
-  /** `community` only: the next work on the rail, with `local` when owned. */
+  /** The community rail's next work: with `local` when `source` is `community`,
+   * without it beside a `series`/`folder`/`none` answer when it couldn't be placed. */
   work?: BookMetaSeriesWork;
 };
 

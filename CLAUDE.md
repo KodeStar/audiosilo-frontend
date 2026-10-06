@@ -343,8 +343,10 @@ no query function at all (`skipToken`), so it is never asked, not even by a manu
 `refetch`: `client.authors`/`narrators` (normalised to `PeopleList {people, unknown}`)
 and `seriesList` with `useAuthors`/`useNarrators`/`useSeriesList` (`browse_people`), and
 `client.listBooks` with `useLibraryBooks` (a `narrator` filter waits for
-`browse_people`); `client.nextBook` + `useNextBook` (`next_book`, server-resolved, first
-answer of community -> series -> folder -> none; `next` can be in another library);
+`browse_people`); `client.nextBook` + `useNextBook` (`next_book`, server-resolved: community when it
+places its next work, else series -> folder -> none, `source` naming who produced
+`next`; a `work` without `local` is the rail's next work left unplaced; a community
+`next` can be in another library);
 `coverUrl(lib, path, {size, version})` (`cover_sizes`; `size` bounds the longer side;
 `version` is the book's `cover_version`, sent as `v=` purely as a cache buster);
 `bookMeta(..., {includePrevious, hideSpoilers})` and `useBookMeta(..., opts)`
