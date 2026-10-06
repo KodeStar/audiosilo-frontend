@@ -21,6 +21,8 @@ jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,
 }));
 
+// The second chapter's title (the one the listener is in).
+let mockSecondTitle = 'Holden';
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockDays: { date: string; listened: number }[] | null = null;
 const mockChar = (name: string, chapter: number) => ({
@@ -49,7 +51,7 @@ jest.mock('@/api/hooks', () => ({
       chapters: [
         { title: 'Prologue', book_offset: 0, file_index: 0, file_path: 'a', start: 0, end: 1000 },
         {
-          title: 'Holden',
+          title: mockSecondTitle,
           book_offset: 1000,
           file_index: 0,
           file_path: 'a',
@@ -108,6 +110,7 @@ const saved = {
 beforeEach(() => {
   mockCaps = {};
   mockDays = null;
+  mockSecondTitle = 'Holden';
   mockPush.mockClear();
 });
 
@@ -123,6 +126,15 @@ describe('NowCard', () => {
     expect(screen.getByText('16m')).toBeTruthy();
     expect(screen.getByText('left at 1.5×')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Resume chapter 2' })).toBeTruthy();
+  });
+
+  it('names the chapter like the players do: a file name prettified, an untitled one by number', async () => {
+    mockSecondTitle = 'wonderland_ch_01_64kb';
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByText('wonderland ch 01')).toBeTruthy();
+    mockSecondTitle = '';
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByText('Chapter 2')).toBeTruthy();
   });
 
   it('estimates a finish date only from enough listening', async () => {

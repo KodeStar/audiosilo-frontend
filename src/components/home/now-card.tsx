@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { chapterLabel } from '@/lib/chapter-label';
 import { formatDayMonth, formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -171,7 +172,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
         </Text>
       </View>
       <Text variant="label" className="min-w-0 flex-1 text-[15px]" numberOfLines={1}>
-        {place.title}
+        {chapterLabel({ title: place.title, index: place.number - 1 }, t)}
       </Text>
     </View>
   ) : null;
