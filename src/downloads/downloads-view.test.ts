@@ -87,7 +87,7 @@ describe('groupByServer', () => {
 describe('storageBar', () => {
   const g = (connectionId: string, bytes: number) => ({ connectionId, name: connectionId, bytes });
 
-  it('gives each server a colour in order and shows other apps on a device', () => {
+  it('gives each server a colour in order, pink last, and shows other apps on a device', () => {
     const bar = storageBar(
       [g('a', 2 * GB), g('b', GB)],
       { scope: 'device', capacity: 128 * GB, free: 100 * GB },
@@ -96,8 +96,8 @@ describe('storageBar', () => {
     expect(bar.used).toBe(3 * GB);
     expect(bar.scale).toBe(128 * GB);
     expect(bar.segments).toEqual([
-      { kind: 'server', connectionId: 'a', name: 'a', bytes: 2 * GB, colour: 1 },
-      { kind: 'server', connectionId: 'b', name: 'b', bytes: GB, colour: 2 },
+      { kind: 'server', connectionId: 'a', name: 'a', bytes: 2 * GB, colour: 2 },
+      { kind: 'server', connectionId: 'b', name: 'b', bytes: GB, colour: 3 },
       { kind: 'other-apps', bytes: 25 * GB },
     ]);
   });
@@ -119,6 +119,10 @@ describe('storageBar', () => {
       null,
     );
     expect(bar.segments.slice(5)).toEqual([{ kind: 'more-servers', count: 2, bytes: 2 }]);
+    // Five colours, pink (chart-1) only for the fifth server.
+    expect(bar.segments.slice(0, 5).map((s) => (s.kind === 'server' ? s.colour : 0))).toEqual([
+      2, 3, 4, 5, 1,
+    ]);
     expect(bar.scale).toBe(7);
   });
 

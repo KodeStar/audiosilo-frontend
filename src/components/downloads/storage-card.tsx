@@ -23,8 +23,9 @@ export type StorageScope = StorageEstimate['scope'];
 
 /**
  * "Storage on this browser / device" (STYLEGUIDE section 8, stat and chart rules): the
- * used total, one bar with a segment per server in `chart-1..5` order (plus "Other apps"
- * on a device, where it is knowable), a legend that names every segment with its size
+ * used total, one bar with a segment per server in `CHART_ORDER` (blue first: the page's
+ * pink is its progress and switches), plus "Other apps" on a device, where it is
+ * knowable, a legend that names every segment with its size
  * (status is never colour alone), and one line on the room left. The bar is an image
  * with a full label; the legend is its text alternative.
  */

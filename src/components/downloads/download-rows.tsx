@@ -98,8 +98,8 @@ function RowFrame({
   );
 }
 
-/** A thin brand progress bar (the page's one pink thing, with the storage bar's first
- * server colour). */
+/** A thin brand progress bar (the page's one pink thing; the storage bar starts at blue
+ * so the two don't compete). */
 function ProgressBar({ fraction }: { fraction: number }) {
   return (
     <View className="h-1 overflow-hidden rounded-full bg-muted">

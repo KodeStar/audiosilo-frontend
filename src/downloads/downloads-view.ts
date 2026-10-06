@@ -79,6 +79,12 @@ export function groupByServer(
  * fold into one "other servers" segment. */
 export const CHART_COLOURS = 5;
 
+/** The order servers take the chart colours in: `chart-1` is the brand pink, and the
+ * Downloads page already has its one pink thing (progress, a switch that is on), so the
+ * bar starts at `chart-2` (blue) and reaches pink only for a fifth server (STYLEGUIDE:
+ * "One pink thing per view"; don't put pink charts beside pink controls). */
+export const CHART_ORDER = [2, 3, 4, 5, 1] as const;
+
 export type StorageSegment =
   | { kind: 'server'; connectionId: string; name: string; bytes: number; colour: number }
   | { kind: 'more-servers'; count: number; bytes: number }
@@ -95,7 +101,7 @@ export type StorageBar = {
 
 /**
  * The "Storage per server" bar. Each server with books on the device is a segment in
- * `chart-1..5` order (a sixth and on fold into one); on a device, the rest of the used
+ * `CHART_ORDER` (a sixth and on fold into one); on a device, the rest of the used
  * disk is "Other apps" (knowable there: capacity - free - ours). A browser can't see
  * other apps (its quota is per site), so it never shows that segment. `used` prefers
  * the engine's measurement (`totalBytesUsed`, which also counts files the registry no
@@ -114,7 +120,7 @@ export function storageBar(
     connectionId: g.connectionId,
     name: g.name,
     bytes: g.bytes,
-    colour: i + 1,
+    colour: CHART_ORDER[i],
   }));
   const rest = listed.slice(CHART_COLOURS);
   if (rest.length > 0)
