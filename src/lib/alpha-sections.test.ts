@@ -90,3 +90,19 @@ describe('sectionIndexForLetter', () => {
     expect(sectionIndexForLetter([], 'A')).toBe(-1);
   });
 });
+
+describe('groupByLetter over other items', () => {
+  it('groups by the name an accessor gives', () => {
+    const books = [
+      { title: 'Dune' },
+      { title: 'anathem' },
+      { title: '1984' },
+      { title: 'Dracula' },
+    ];
+    expect(groupByLetter(books, (b) => b.title)).toEqual([
+      { letter: 'A', data: [{ title: 'anathem' }] },
+      { letter: 'D', data: [{ title: 'Dune' }, { title: 'Dracula' }] },
+      { letter: '#', data: [{ title: '1984' }] },
+    ]);
+  });
+});

@@ -60,6 +60,19 @@ jest.mock('./modes/folders-mode', () => ({
     return <T>Folders body</T>;
   },
 }));
+// The Books and Collections bodies (their own tests) need the player and the stores.
+jest.mock('./modes/books-mode', () => ({
+  BooksMode: () => {
+    const { Text: T } = jest.requireActual('react-native');
+    return <T>Books body</T>;
+  },
+}));
+jest.mock('./modes/collections-mode', () => ({
+  CollectionsMode: () => {
+    const { Text: T } = jest.requireActual('react-native');
+    return <T>Collections body</T>;
+  },
+}));
 jest.mock('./modes/authors-mode', () => ({
   AuthorsMode: ({ connectionId, libraryId }: { connectionId: string; libraryId: number }) => {
     const { Text: T } = jest.requireActual('react-native');

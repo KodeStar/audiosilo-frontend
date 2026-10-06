@@ -380,7 +380,11 @@
       "emptyHint": "Tocca il cuore su un elemento per organizzarlo",
       "itemCount_one": "{{count}} elemento",
       "itemCount_other": "{{count}} elementi",
-      "empty": "Tocca il cuore su una cartella o un libro per aggiungerlo qui."
+      "empty": "Tocca il cuore su una cartella o un libro per aggiungerlo qui.",
+      "books": "Libri",
+      "folders": "Cartelle",
+      "error": "Impossibile caricare i tuoi preferiti",
+      "errorHint": "Un server non ha risposto. Riprova tra un momento."
     },
     "modes": {
       "label": "Sfoglia per",
@@ -399,6 +403,148 @@
       "soon": "Questa pagina sta arrivando.",
       "badLink": "Questo link non porta a niente qui.",
       "collection": "Raccolta"
+    },
+    "books": {
+      "count_one": "{{formatted}} libro",
+      "count_other": "{{formatted}} libri",
+      "matches_one": "{{shown}} su {{total}} corrisponde",
+      "matches_other": "{{shown}} su {{total}} corrispondono",
+      "loadingMore": "Caricamento di altri libri...",
+      "progress": "{{percent}} % · ne restano {{left}}",
+      "finishedWhen": "Finito {{when}}",
+      "rail": "Vai a una lettera",
+      "sort": {
+        "label": "Ordine: {{sort}}",
+        "heading": "Ordina per",
+        "recent": "Aggiunti di recente",
+        "title": "Titolo",
+        "author": "Autore",
+        "length": "Durata"
+      },
+      "layout": {
+        "label": "Visualizzazione",
+        "grid": "Griglia",
+        "list": "Elenco"
+      },
+      "filters": {
+        "label": "Filtri",
+        "new": "Non iniziati",
+        "progress": "In corso",
+        "finished": "Finiti",
+        "downloaded": "Scaricati",
+        "short": "Meno di 5 h",
+        "mid": "Da 5 a 15 h",
+        "long": "Oltre 15 h",
+        "clear": "Cancella"
+      },
+      "columns": {
+        "title": "Titolo",
+        "narrator": "Narratore",
+        "length": "Durata",
+        "progress": "Avanzamento"
+      },
+      "empty": {
+        "title": "Ancora nessun libro in {{library}}",
+        "hint": "I libri compaiono qui dopo la prossima scansione di questa biblioteca da parte del server.",
+        "action": "Controlla di nuovo"
+      },
+      "noMatches": {
+        "title": "Nessun libro corrisponde a questi filtri",
+        "hint": "Togline uno o cancellali tutti.",
+        "action": "Cancella i filtri"
+      },
+      "error": {
+        "title": "Impossibile caricare i libri",
+        "hint": "Il server non ha risposto. Non si è perso nulla: riprova.",
+        "partial": "Impossibile caricare tutti i libri",
+        "partialHint_one": "Viene mostrato il {{formatted}} libro caricato.",
+        "partialHint_other": "Vengono mostrati i {{formatted}} libri caricati."
+      }
+    },
+    "bookActions": {
+      "more": "Altro per {{title}}",
+      "play": "Riproduci",
+      "resume": "Riprendi",
+      "collect": "Aggiungi a una raccolta...",
+      "download": "Scarica per l’ascolto offline",
+      "removeDownload": "Rimuovi download",
+      "cancelDownload": "Annulla download",
+      "markFinished": "Segna come finito",
+      "markUnfinished": "Segna come non finito",
+      "moreInSeries": "Altro di questa serie",
+      "markedFinished": "Segnato come finito",
+      "markedUnfinished": "Segnato come non finito",
+      "downloading": "Download per l’ascolto offline",
+      "downloadRemoved": "Download rimosso",
+      "failed": "Impossibile aggiornare questo libro. Riprova.",
+      "playFailed": "Impossibile avviare questo libro. Riprova."
+    },
+    "collections": {
+      "itemCount_one": "{{count}} libro",
+      "itemCount_other": "{{count}} libri",
+      "favouritesHint": "Con il cuore, su ogni server",
+      "new": "Nuova raccolta",
+      "newHint": "Raggruppa libri, poi condividi una raccolta con qualcuno su questo server.",
+      "sharedWith": "Condivisa con {{names}}",
+      "sharedWithMore": "Condivisa con {{names}} e altri {{count}}",
+      "sharedBy": "Condivisa da {{name}}",
+      "error": "Impossibile caricare le tue raccolte"
+    },
+    "collection": {
+      "total": "{{length}} in tutto",
+      "notIndexed": "Al momento non è nell’indice della biblioteca",
+      "edit": "Modifica",
+      "delete": "Elimina",
+      "leave": "Abbandona",
+      "remove": "Rimuovi dalla raccolta",
+      "moveUp": "Sposta su",
+      "moveDown": "Sposta giù",
+      "added": "Aggiunto a {{name}}",
+      "removed": "Rimosso da {{name}}",
+      "deleted": "{{name}} eliminata",
+      "left": "Hai abbandonato {{name}}",
+      "full": "Questa raccolta è piena. Rimuovi un libro per aggiungerne un altro.",
+      "tooMany": "Hai tutte le raccolte che questo server consente. Eliminane una per crearne un’altra.",
+      "failed": "Impossibile aggiornare la raccolta. Riprova.",
+      "error": "Impossibile caricare questa raccolta",
+      "form": {
+        "newTitle": "Nuova raccolta",
+        "editTitle": "Modifica raccolta",
+        "newHint": "Raggruppa libri, poi condividi una raccolta con qualcuno su questo server.",
+        "name": "Nome",
+        "description": "Descrizione",
+        "create": "Crea",
+        "createAndAdd": "Crea e aggiungi"
+      },
+      "share": {
+        "action": "Condividi",
+        "title": "Condividi {{name}}",
+        "hint": "Possono vederla ma non modificarla, e ognuno vede solo i libri che può aprire.",
+        "none": "Su questo server non c’è ancora nessun altro con cui condividerla.",
+        "error": "Impossibile caricare le persone di questo server"
+      },
+      "deleteConfirm": {
+        "title": "Eliminare {{name}}?",
+        "message": "I libri restano nella tua biblioteca. Chi la riceve in condivisione la perde a sua volta."
+      },
+      "leaveConfirm": {
+        "title": "Abbandonare {{name}}?",
+        "message": "Sparisce dalle tue raccolte. {{owner}} può condividerla di nuovo con te."
+      },
+      "empty": {
+        "title": "Ancora niente in questa raccolta",
+        "hint": "Aggiungi libri dal menu di un libro nella visualizzazione a elenco.",
+        "viewerHint": "{{owner}} non ha ancora aggiunto un libro che puoi aprire."
+      },
+      "notFound": {
+        "title": "Questa raccolta non c’è",
+        "hint": "È stata eliminata, oppure non è più condivisa con te.",
+        "action": "Indietro"
+      },
+      "addTo": {
+        "title": "Aggiungi a una raccolta",
+        "none": "Non hai ancora raccolte. Creane una qui."
+      }
     }
   },
   "downloads": {

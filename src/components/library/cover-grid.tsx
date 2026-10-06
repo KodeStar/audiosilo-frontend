@@ -1,5 +1,5 @@
-import { FlashList, type FlashListProps } from '@shopify/flash-list';
-import { type ReactElement, useState } from 'react';
+import { FlashList, type FlashListProps, type FlashListRef } from '@shopify/flash-list';
+import { type ReactElement, type Ref, useState } from 'react';
 import { View } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -20,6 +20,8 @@ type PassThrough<T> = Pick<
   | 'onEndReachedThreshold'
   | 'onScroll'
   | 'refreshControl'
+  | 'getItemType'
+  | 'overrideItemLayout'
 >;
 
 /**
@@ -28,19 +30,23 @@ type PassThrough<T> = Pick<
  * it (`coverGridMetrics`), handing `renderItem` the tile width - give it a `CoverTile`.
  * It IS the page's scroller: put the page's header (chips, counts) in
  * `ListHeaderComponent`, which spans every column. Padded by the page gutter, and clear
- * of the phone's mini player at the bottom.
+ * of the phone's mini player at the bottom. A full-width row inside the grid (a letter
+ * head) takes every column through `overrideItemLayout` (`layout.span = maxColumns`);
+ * `listRef` scrolls it (an A-Z rail's jump).
  */
 export function CoverGrid<T>({
   data,
   keyExtractor,
   renderItem,
   gutter,
+  listRef,
   ...rest
 }: {
   data: readonly T[];
   keyExtractor: (item: T, index: number) => string;
   renderItem: (item: T, tileWidth: number) => ReactElement;
   gutter?: number;
+  listRef?: Ref<FlashListRef<T>>;
 } & PassThrough<T>) {
   const layout = useLayout();
   const pad = gutter ?? pageGutter(layout);
@@ -60,6 +66,7 @@ export function CoverGrid<T>({
         <FlashList
           // A new column count re-lays the whole list.
           key={columns}
+          ref={listRef}
           data={data}
           numColumns={columns}
           keyExtractor={keyExtractor}
@@ -128,8 +135,10 @@ export function CoverTileSkeleton({ width }: { width: number }) {
 
 /**
  * The list variant of a book for a grid/list toggle: a quiet row (`PressableRow`) with a
- * 48 cover, the title, one subtitle line, and an optional trailing slot (progress, a
- * menu button: keep any button in it a sibling of the row's own press, never nested).
+ * 48 cover, the title, one subtitle line, optional `aside` columns inside the row
+ * (narrator, length, progress: text only, nothing pressable), and an optional trailing
+ * slot (a menu button: keep any button in it a sibling of the row's own press, never
+ * nested).
  */
 export function CoverListRow({
   connectionId,
@@ -141,6 +150,7 @@ export function CoverListRow({
   coverVersion,
   onPress,
   onLongPress,
+  aside,
   trailing,
   accessibilityLabel,
 }: {
@@ -153,6 +163,7 @@ export function CoverListRow({
   coverVersion?: string;
   onPress: () => void;
   onLongPress?: () => void;
+  aside?: ReactElement | null;
   trailing?: ReactElement | null;
   accessibilityLabel?: string;
 }) {
@@ -184,6 +195,7 @@ export function CoverListRow({
             </Text>
           ) : null}
         </View>
+        {aside ?? null}
       </PressableRow>
       {trailing ?? null}
     </View>

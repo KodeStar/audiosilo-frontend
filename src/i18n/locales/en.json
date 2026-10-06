@@ -380,7 +380,11 @@
       "emptyHint": "Tap the heart on any item to curate",
       "itemCount_one": "{{count}} item",
       "itemCount_other": "{{count}} items",
-      "empty": "Tap the heart on a folder or book to add it here."
+      "empty": "Tap the heart on a folder or book to add it here.",
+      "books": "Books",
+      "folders": "Folders",
+      "error": "Couldn't load your favourites",
+      "errorHint": "A server did not answer. Try again in a moment."
     },
     "modes": {
       "label": "Browse by",
@@ -399,6 +403,148 @@
       "soon": "This page is on its way.",
       "badLink": "This link doesn't point to anything here.",
       "collection": "Collection"
+    },
+    "books": {
+      "count_one": "{{formatted}} book",
+      "count_other": "{{formatted}} books",
+      "matches_one": "{{shown}} of {{total}} matches",
+      "matches_other": "{{shown}} of {{total}} match",
+      "loadingMore": "Loading more...",
+      "progress": "{{percent}}% · {{left}} left",
+      "finishedWhen": "Finished {{when}}",
+      "rail": "Jump to letter",
+      "sort": {
+        "label": "Sort: {{sort}}",
+        "heading": "Sort by",
+        "recent": "Recently added",
+        "title": "Title",
+        "author": "Author",
+        "length": "Length"
+      },
+      "layout": {
+        "label": "Layout",
+        "grid": "Grid",
+        "list": "List"
+      },
+      "filters": {
+        "label": "Filters",
+        "new": "Not started",
+        "progress": "In progress",
+        "finished": "Finished",
+        "downloaded": "Downloaded",
+        "short": "Under 5 h",
+        "mid": "5 to 15 h",
+        "long": "Over 15 h",
+        "clear": "Clear"
+      },
+      "columns": {
+        "title": "Title",
+        "narrator": "Narrator",
+        "length": "Length",
+        "progress": "Progress"
+      },
+      "empty": {
+        "title": "No books in {{library}} yet",
+        "hint": "Books show up here after the server's next scan of this library.",
+        "action": "Check again"
+      },
+      "noMatches": {
+        "title": "No books match these filters",
+        "hint": "Try removing one, or clear them all.",
+        "action": "Clear filters"
+      },
+      "error": {
+        "title": "Couldn't load the books",
+        "hint": "The server didn't answer. Nothing is lost: try again.",
+        "partial": "Couldn't load every book",
+        "partialHint_one": "Showing the {{formatted}} that loaded.",
+        "partialHint_other": "Showing the {{formatted}} that loaded."
+      }
+    },
+    "bookActions": {
+      "more": "More for {{title}}",
+      "play": "Play",
+      "resume": "Resume",
+      "collect": "Add to collection...",
+      "download": "Download for offline",
+      "removeDownload": "Remove download",
+      "cancelDownload": "Cancel download",
+      "markFinished": "Mark as finished",
+      "markUnfinished": "Mark as not finished",
+      "moreInSeries": "More in this series",
+      "markedFinished": "Marked as finished",
+      "markedUnfinished": "Marked as not finished",
+      "downloading": "Downloading for offline",
+      "downloadRemoved": "Download removed",
+      "failed": "Couldn't update this book. Try again.",
+      "playFailed": "Couldn't start this book. Try again."
+    },
+    "collections": {
+      "itemCount_one": "{{count}} book",
+      "itemCount_other": "{{count}} books",
+      "favouritesHint": "Hearted on every server",
+      "new": "New collection",
+      "newHint": "Group books, then share one with someone on this server.",
+      "sharedWith": "Shared with {{names}}",
+      "sharedWithMore": "Shared with {{names}} and {{count}} more",
+      "sharedBy": "Shared by {{name}}",
+      "error": "Couldn't load your collections"
+    },
+    "collection": {
+      "total": "{{length}} in all",
+      "notIndexed": "Not in the library index right now",
+      "edit": "Edit",
+      "delete": "Delete",
+      "leave": "Leave",
+      "remove": "Remove from collection",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "added": "Added to {{name}}",
+      "removed": "Removed from {{name}}",
+      "deleted": "Deleted {{name}}",
+      "left": "Left {{name}}",
+      "full": "This collection is full. Remove a book to add another.",
+      "tooMany": "You have as many collections as this server allows. Delete one to make another.",
+      "failed": "Couldn't update the collection. Try again.",
+      "error": "Couldn't load this collection",
+      "form": {
+        "newTitle": "New collection",
+        "editTitle": "Edit collection",
+        "newHint": "Group books, then share one with someone on this server.",
+        "name": "Name",
+        "description": "Description",
+        "create": "Create",
+        "createAndAdd": "Create and add"
+      },
+      "share": {
+        "action": "Share",
+        "title": "Share {{name}}",
+        "hint": "They can see it but not change it, and each person sees only the books they can open.",
+        "none": "There's no one else on this server to share with yet.",
+        "error": "Couldn't load the people on this server"
+      },
+      "deleteConfirm": {
+        "title": "Delete {{name}}?",
+        "message": "The books stay in your library. Anyone it's shared with loses it too."
+      },
+      "leaveConfirm": {
+        "title": "Leave {{name}}?",
+        "message": "It goes from your collections. {{owner}} can share it with you again."
+      },
+      "empty": {
+        "title": "Nothing in this collection yet",
+        "hint": "Add books from a book's menu in the list view.",
+        "viewerHint": "{{owner}} hasn't added a book you can open yet."
+      },
+      "notFound": {
+        "title": "This collection isn't here",
+        "hint": "It was deleted, or it's no longer shared with you.",
+        "action": "Back"
+      },
+      "addTo": {
+        "title": "Add to collection",
+        "none": "You have no collections yet. Make one here."
+      }
     }
   },
   "downloads": {
