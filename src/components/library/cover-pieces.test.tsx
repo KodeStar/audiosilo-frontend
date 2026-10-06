@@ -77,6 +77,18 @@ describe('CoverTile', () => {
     expect(screen.getByText('Maya')).toBeTruthy();
   });
 
+  // Native/web layout jest can't measure: the flags row must be bound to the tile on
+  // both sides and the server name must be the part that gives way (an iPhone showed
+  // "mac-studio-3.local:18571" running off the cover's left edge).
+  it('keeps a long server name inside the cover, ellipsized', async () => {
+    await render(<CoverTile {...tile} server="mac-studio-3.local:18571" finished />);
+    const flags = String(screen.getByTestId('tile-flags').props.className).split(' ');
+    expect(flags).toEqual(expect.arrayContaining(['left-[7px]', 'right-[7px]', 'justify-end']));
+    const name = screen.getByTestId('tile-server-flag');
+    expect(name.props.numberOfLines).toBe(1);
+    expect(String(name.props.className).split(' ')).toContain('shrink');
+  });
+
   it('opens the book actions on a long-press, again on each, with the row it was given', async () => {
     mockTileActions.mockClear();
     const book = { rel_path: 'Dune' };

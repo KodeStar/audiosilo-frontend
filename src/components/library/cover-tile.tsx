@@ -26,7 +26,7 @@ function Flag({ children, className }: { children: ReactNode; className?: string
   return (
     <View
       className={cn(
-        'h-[22px] min-w-[22px] flex-row items-center justify-center gap-1 rounded-[7px] bg-black/65 px-1.5',
+        'h-[22px] min-w-[22px] shrink-0 flex-row items-center justify-center gap-1 rounded-[7px] bg-black/65 px-1.5',
         className,
       )}
     >
@@ -184,11 +184,20 @@ export function CoverTile({
           </View>
         ) : null}
         {server || downloaded || finished ? (
-          <View className="absolute right-[7px] top-[7px] flex-row gap-1">
+          // Bound on both sides, so a long server name ("mac-studio-3.local:18571")
+          // ellipsizes inside the cover instead of running off its left edge.
+          <View
+            testID="tile-flags"
+            className="absolute left-[7px] right-[7px] top-[7px] flex-row justify-end gap-1"
+          >
             {server ? (
-              <Flag>
+              <Flag className="min-w-0 shrink">
                 <Icon name="server" size={11} color={colors.white} />
-                <Text className="font-sans-bold text-[10.5px] text-white" numberOfLines={1}>
+                <Text
+                  testID="tile-server-flag"
+                  className="shrink font-sans-bold text-[10.5px] text-white"
+                  numberOfLines={1}
+                >
                   {server}
                 </Text>
               </Flag>
