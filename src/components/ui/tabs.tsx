@@ -3,6 +3,7 @@ import { Platform, ScrollView } from 'react-native';
 
 import { cn } from '@/lib/utils';
 
+import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { FOCUS_RING_CLASS, TextClassContext } from './text';
 
 /**
@@ -35,7 +36,9 @@ export function TabsList({
     >
       {scrollable ? (
         <ScrollView
+          testID="tabs-scroller"
           horizontal
+          style={HORIZONTAL_SCROLLER}
           showsHorizontalScrollIndicator={false}
           contentContainerClassName={ROW}
         >

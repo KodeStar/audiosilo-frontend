@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { Icon, type IconName } from './icon';
 import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
 
@@ -103,8 +104,8 @@ export function ChipRow({
       showsHorizontalScrollIndicator={false}
       role="group"
       accessibilityLabel={accessibilityLabel}
-      style={gutter ? { marginHorizontal: -gutter } : undefined}
-      className="grow-0"
+      testID="chip-row"
+      style={[HORIZONTAL_SCROLLER, gutter ? { marginHorizontal: -gutter } : undefined]}
       contentContainerClassName="flex-row items-center gap-2 py-1.5"
       contentContainerStyle={gutter ? { paddingHorizontal: gutter } : undefined}
     >

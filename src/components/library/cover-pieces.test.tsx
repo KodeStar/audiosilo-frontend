@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
 import { settleFlashList } from '@/testing/flash-list';
 
@@ -33,7 +33,7 @@ jest.mock('@/lib/layout', () => ({
 }));
 
 /* eslint-disable import/first */
-import { FilterChip } from '@/components/ui/filter-chip';
+import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
 
 import { CoverGrid, CoverGridSkeleton } from './cover-grid';
 import { CoverTile } from './cover-tile';
@@ -210,5 +210,19 @@ describe('FilterChip', () => {
     expect(onPress).toHaveBeenCalled();
     await render(<FilterChip label="Finished" selected onPress={jest.fn()} />);
     expect(screen.getByRole('checkbox', { name: 'Finished', checked: true })).toBeTruthy();
+  });
+});
+
+describe('ChipRow', () => {
+  // HORIZONTAL_SCROLLER: on native a growing row would swallow the column under it.
+  it('keeps to its own height (no native flex-grow), gutter bleed included', async () => {
+    await render(
+      <ChipRow accessibilityLabel="Filters" gutter={16}>
+        <FilterChip label="Finished" selected={false} onPress={jest.fn()} />
+      </ChipRow>,
+    );
+    const style = StyleSheet.flatten(screen.getByTestId('chip-row').props.style);
+    expect(style?.flexGrow).toBe(0);
+    expect(style?.marginHorizontal).toBe(-16);
   });
 });

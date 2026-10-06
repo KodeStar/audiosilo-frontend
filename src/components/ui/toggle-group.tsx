@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { FOCUS_RING_CLASS, Text, TextClassContext } from './text';
 
 /**
@@ -225,7 +226,9 @@ function SegmentScroller<T extends string>({
     <View className="relative min-w-0">
       <ScrollView
         ref={ref}
+        testID="segment-scroller"
         horizontal
+        style={HORIZONTAL_SCROLLER}
         showsHorizontalScrollIndicator={false}
         contentContainerClassName="flex-row gap-0.5"
         scrollEventThrottle={32}

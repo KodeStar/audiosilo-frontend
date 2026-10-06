@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import type { Book, BookMeta } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
@@ -142,6 +143,14 @@ describe('SeriesPage, local series', () => {
     expect(screen.getByRole('header', { name: 'Leviathan Wakes' })).toBeTruthy();
     await fireEvent.press(screen.getAllByRole('button', { name: /^Queue it/ })[0]);
     expect(mockQueue).toHaveBeenCalledWith(1, lw.rel_path);
+  });
+
+  // HORIZONTAL_SCROLLER: on native a growing row would swallow the column under it.
+  it('keeps the bookcase to its own height (no native flex-grow)', async () => {
+    mockBooks = loaded([lw, cw, ng]);
+    await render(<SeriesPage libraryId={1} name="The Expanse" />);
+    const shelf = screen.getByTestId('bookcase-scroller');
+    expect(StyleSheet.flatten(shelf.props.style)?.flexGrow).toBe(0);
   });
 
   it('turns a chosen spine face-out', async () => {

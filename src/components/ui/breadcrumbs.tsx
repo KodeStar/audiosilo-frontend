@@ -1,5 +1,6 @@
 import { Pressable, ScrollView } from 'react-native';
 
+import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { Text } from './text';
 
 export type Crumb = { label: string; onPress?: () => void; active?: boolean };
@@ -11,8 +12,8 @@ export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
   return (
     <ScrollView
       horizontal
+      style={HORIZONTAL_SCROLLER}
       showsHorizontalScrollIndicator={false}
-      className="grow-0"
       contentContainerClassName="flex-row items-center"
     >
       {crumbs.map((c, i) => (

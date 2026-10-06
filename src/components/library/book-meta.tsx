@@ -16,6 +16,7 @@ import type {
 } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
+import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
 import { Icon } from '@/components/ui/icon';
 import { RowSurface } from '@/components/ui/row-surface';
 import { SectionHeader } from '@/components/ui/section-header';
@@ -892,6 +893,7 @@ export function BookMetaSeriesTab({
           {rail.holdsWork ? null : <Text variant="caption">{t('book.meta.notInOrder')}</Text>}
           <ScrollView
             horizontal
+            style={HORIZONTAL_SCROLLER}
             showsHorizontalScrollIndicator={false}
             contentContainerClassName="gap-3 pb-1"
           >

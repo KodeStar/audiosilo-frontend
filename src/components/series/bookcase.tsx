@@ -14,6 +14,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
+import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
 import { FOCUS_RING_OFFSET_CLASS } from '@/components/ui/text';
 import { type LayoutClass } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -112,7 +113,9 @@ export function Bookcase({
     <View accessibilityLabel={accessibilityLabel} role="list">
       <ScrollView
         ref={scroller}
+        testID="bookcase-scroller"
         horizontal
+        style={HORIZONTAL_SCROLLER}
         showsHorizontalScrollIndicator={false}
         onLayout={(e) => setViewWidth(e.nativeEvent.layout.width)}
         contentContainerStyle={{
