@@ -1,34 +1,19 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRecentSearches } from '@/stores/search';
 
 import { usePalette } from './palette-store';
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+jest.mock('@/stores/search', () => {
+  const hydrate = jest.fn();
+  return { useRecentSearches: { getState: () => ({ hydrate }) } };
+});
 
 describe('usePalette', () => {
-  it('opens with a fresh query, reads the stored recent searches once, and keeps new ones', async () => {
-    await AsyncStorage.setItem('audiosilo.paletteRecent', JSON.stringify(['alice', 7, 'dickens']));
+  it('opens with a fresh query, reads the recent searches, and closes', () => {
     usePalette.setState({ query: 'old' });
-
     usePalette.getState().openPalette();
     expect(usePalette.getState()).toMatchObject({ open: true, query: '' });
-    // A search remembered before the stored list arrives stays newest.
-    usePalette.getState().remember('holmes');
-    await flush();
-    expect(usePalette.getState().recent).toEqual(['holmes', 'alice', 'dickens']);
-    expect(JSON.parse((await AsyncStorage.getItem('audiosilo.paletteRecent')) ?? '[]')).toEqual([
-      'holmes',
-      'alice',
-      'dickens',
-    ]);
-
+    expect(useRecentSearches.getState().hydrate).toHaveBeenCalled();
     usePalette.getState().close();
     expect(usePalette.getState().open).toBe(false);
-    usePalette.getState().remember('Alice');
-    expect(usePalette.getState().recent).toEqual(['Alice', 'holmes', 'dickens']);
-    expect(JSON.parse((await AsyncStorage.getItem('audiosilo.paletteRecent')) ?? '[]')).toEqual([
-      'Alice',
-      'holmes',
-      'dickens',
-    ]);
   });
 });

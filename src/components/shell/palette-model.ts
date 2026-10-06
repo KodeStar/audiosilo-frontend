@@ -6,7 +6,8 @@ import type { IconName } from '@/components/ui/icon';
  * component (`command-palette.tsx`) builds the candidates from the stores and runs them.
  */
 
-export type PaletteGroupKey = 'actions' | 'continue' | 'books' | 'goTo';
+export type PaletteGroupKey =
+  'actions' | 'continue' | 'books' | 'series' | 'authors' | 'narrators' | 'characters' | 'goTo';
 
 /** A book row's cover: resolved against its own server by the row. */
 export type PaletteCover = { connectionId: string; libraryId: number; path: string };
@@ -16,15 +17,23 @@ export type PaletteItem = {
   id: string;
   title: string;
   subtitle?: string;
-  /** Actions and Go to show a glyph tile; books show their cover. */
+  /** Actions, Go to and series show a glyph tile; books show their cover; people and
+   * characters their initials (`token`). */
   icon?: IconName;
   cover?: PaletteCover;
+  token?: PaletteToken;
   run: () => void;
 };
+
+/** A person's or character's initials disc in place of an icon. */
+export type PaletteToken = { kind: 'author' | 'narrator' | 'character'; name: string };
 
 export type PaletteGroup = {
   key: PaletteGroupKey;
   items: PaletteItem[];
+  /** A quiet line under the items that is not an option (the characters a listener
+   * hasn't met yet, counted). A group with a note shows even with no items. */
+  note?: string;
   /** The flat (listbox) index of the group's first item: item `i` is option `start + i`. */
   start: number;
 };
@@ -32,8 +41,8 @@ export type PaletteGroup = {
 /** At most this many book results, and Continue listening rows on an empty query. */
 export const MAX_BOOKS = 8;
 export const MAX_CONTINUE = 4;
-/** Recent searches kept on this device. */
-export const MAX_RECENT = 5;
+/** At most this many series, authors, narrators and characters each. */
+export const MAX_NAMED = 3;
 
 const fold = (s: string) => s.toLocaleLowerCase();
 
@@ -51,13 +60,20 @@ const matches = (text: string | undefined, q: string) => !!text && fold(text).in
 /**
  * The groups for a query, in order: Actions (matching their title, or their subtitle once
  * there is a query), then Books (the server search's results) - or, with no query,
- * Continue listening - then Go to. Empty groups are dropped.
+ * Continue listening -, then (with a query) Series, Authors, Narrators and Characters
+ * (already matched by the search model, `@/components/search/search-model`), then Go to.
+ * Empty groups are dropped, except Characters when it has a note (the unmet count).
  */
 export function buildPaletteGroups({
   query,
   actions,
   books,
   continueListening,
+  series = [],
+  authors = [],
+  narrators = [],
+  characters = [],
+  charactersNote,
   goTo,
 }: {
   query: string;
@@ -65,9 +81,20 @@ export function buildPaletteGroups({
   /** Results of the cross-server search for `query` (already matched by the server). */
   books: PaletteItem[];
   continueListening: PaletteItem[];
+  series?: PaletteItem[];
+  authors?: PaletteItem[];
+  narrators?: PaletteItem[];
+  /** Characters the listener has met (the model never hands over the others). */
+  characters?: PaletteItem[];
+  /** "2 more match after your place in the book": a count, never a name. */
+  charactersNote?: string;
   goTo: PaletteItem[];
 }): PaletteGroup[] {
   const q = query.trim();
+  const named = (key: PaletteGroupKey, items: PaletteItem[]) => ({
+    key,
+    items: q ? items.slice(0, MAX_NAMED) : [],
+  });
   const candidates: Omit<PaletteGroup, 'start'>[] = [
     {
       key: 'actions',
@@ -76,12 +103,16 @@ export function buildPaletteGroups({
     q
       ? { key: 'books', items: books.slice(0, MAX_BOOKS) }
       : { key: 'continue', items: continueListening.slice(0, MAX_CONTINUE) },
+    named('series', series),
+    named('authors', authors),
+    named('narrators', narrators),
+    { ...named('characters', characters), note: q ? charactersNote : undefined },
     { key: 'goTo', items: q ? goTo.filter((g) => matches(g.title, q)) : goTo },
   ];
   const groups: PaletteGroup[] = [];
   let start = 0;
   for (const g of candidates) {
-    if (g.items.length === 0) continue;
+    if (g.items.length === 0 && !g.note) continue;
     groups.push({ ...g, start });
     start += g.items.length;
   }
@@ -97,14 +128,6 @@ export function flattenGroups(groups: PaletteGroup[]): PaletteItem[] {
 export function moveSelection(index: number, delta: number, count: number): number {
   if (count <= 0) return 0;
   return Math.max(0, Math.min(count - 1, index + delta));
-}
-
-/** Puts a search at the front of the recent list: trimmed, de-duplicated ignoring case,
- * at most `MAX_RECENT`. An empty search changes nothing. */
-export function addRecent(recent: readonly string[], query: string): string[] {
-  const q = query.trim();
-  if (!q) return [...recent];
-  return [q, ...recent.filter((r) => fold(r) !== fold(q))].slice(0, MAX_RECENT);
 }
 
 /** The slice of a DOM KeyboardEvent the global shortcut reads. */

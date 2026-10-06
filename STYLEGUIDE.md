@@ -671,8 +671,9 @@ pixels when the server has `cover_sizes`, falling back to the full art), `CoverT
 
 The shell's section 8 pieces live in `src/components/shell/`: the **command palette** (`command-palette.tsx`,
 web only, on the Dialog primitive: a combobox with `aria-activedescendant` over a grouped listbox, 48 px
-options, the match in `brand-ink` bold, key hints and the result count in the footer; for now Actions,
-Books / Continue listening and Go to, since authors, series, narrators and characters need Phase 2) and the
+options, the match in `brand-ink` bold, key hints and the result count in the footer: Actions, Books / Continue listening, Series, Authors,
+Narrators, Characters (met only, the rest counted in a note row) and Go to, from the Search screen's
+model in `src/components/search/`) and the
 top bar's **profile menu** (`profile-menu.tsx`, a DropdownMenu: servers with their state, Add a server,
 the account, appearance; the household waits for Phase 8). The appearance items use the settings glyph:
 the vendored set has no sun or moon (adding one needs the FontAwesome generator's token), and the sleep

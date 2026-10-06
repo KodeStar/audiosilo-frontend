@@ -785,8 +785,9 @@ tab, browse scroll memory) are `useShellEffects`.
   from `useSourceLabeller`; empty query: Continue listening from the cached `useAllProgressAll` with
   `refetchOnMount: false`, disabled while a query is typed, `isInProgress` shared with Home), Go to (the
   top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do). A book opens
-  with a plain push, so it lands in the current tab. Authors, series, narrators and characters wait
-  for Phase 2.
+  with a plain push, so it lands in the current tab. With a query it also lists Series, Authors,
+  Narrators and Characters (three each) from the Search screen's model (below), and counts the
+  characters not met yet in a note row that is not an option.
 - **Up next** (`src/components/upnext/`, capability `queue`; nothing renders while `/server` is unknown):
   the desktop drawer in `DrawerSlot` (open by default, 300-480 wide by its left edge, both remembered
   per device in `up-next-store.ts`) and the same `UpNextPanel` in a bottom `Sheet` on tablet/phone (mounted
@@ -798,6 +799,18 @@ tab, browse scroll memory) are `useShellEffects`.
   desktop covers (`CoverTile`) are HTML5 drag sources (`drag-source.web.ts`) for the drawer's drop zone,
   which takes only a book from the queue's own server. The queue does NOT drive what plays next yet
   (Phase 3); the footer switch is the existing `autoPlayNext`. Pure rules: `up-next-model.ts`.
+- **Search** (`src/components/search/`, the `(search)` tab): the field, then recent searches (ONE list
+  with the palette, `useRecentSearches` in `stores/search.ts`, key `audiosilo.paletteRecent`) and
+  Browse cards (the selected library's counts, opening the Library modes), or the grouped results
+  (`useSearch`, shared with the palette): books from every server (`useSearchAll`, deduplicated),
+  series/authors/narrators matched on the device against every library's browse lists
+  (`usePeopleSources`, `browse_people`), and characters only once met (`useCharacterSources`: the
+  community characters of the newest 8 started books on `metadata` servers, each gated by the
+  listener's place in THAT book with `meta-gating`'s rules, chapters fetched only for unfinished
+  books with characters, "from the start" until they arrive). The pure `search-model.ts`
+  (`matchNamed`, `matchCharacters`, `listeningIn`) is where spoiler safety lives: an unmet character
+  is only ever counted ("2 more match after your place in the book"), never named, also not via an
+  alias, and a name met in any book is not counted again.
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
   saved-locally line: needs signing in again > offline > signed in as), opening its account screen;

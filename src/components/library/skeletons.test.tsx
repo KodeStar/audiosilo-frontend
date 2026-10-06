@@ -18,7 +18,6 @@ jest.mock('@/theme/theme-provider', () => ({
 
 /* eslint-disable import/first */
 import { GridCardSkeleton } from './poster-grid';
-import { BookRowSkeleton, BookRowSkeletonList } from './search-results';
 /* eslint-enable import/first */
 
 async function mount(ui: React.ReactElement) {
@@ -35,16 +34,6 @@ describe('library skeletons', () => {
 
   it('renders a grid card skeleton with a footer line', async () => {
     await mount(<GridCardSkeleton width={160} footer />);
-    expect(screen.root).toBeTruthy();
-  });
-
-  it('renders a single row skeleton', async () => {
-    await mount(<BookRowSkeleton />);
-    expect(screen.root).toBeTruthy();
-  });
-
-  it('renders the requested number of row skeletons', async () => {
-    await mount(<BookRowSkeletonList count={4} />);
     expect(screen.root).toBeTruthy();
   });
 });

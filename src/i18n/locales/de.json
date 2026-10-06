@@ -308,10 +308,6 @@
       "emptyHint": "In diesem Ordner gibt es nichts zum Abspielen.",
       "noMatchesHint": "Versuche einen anderen Suchbegriff."
     },
-    "bookRow": {
-      "alsoOn": "Auch auf {{servers}}",
-      "alsoIn": "Auch in {{libraries}}"
-    },
     "entryRow": {
       "duration": "Dauer: {{value}}",
       "bitrate": "Bitrate: {{value}}"
@@ -418,13 +414,52 @@
     "remove": "{{title}} entfernen"
   },
   "search": {
-    "placeholder": "Titel, Autoren, Reihen suchen…",
+    "placeholder": "Bücher, Personen, Reihen, Figuren suchen",
     "promptTitle": "Finde dein nächstes Hörbuch",
-    "noResultsTitle": "Keine Ergebnisse",
     "clear": "Suche löschen",
-    "prompt": "Suche nach Titeln, Autoren und Reihen.",
-    "failed": "Suche fehlgeschlagen.",
-    "noResults": "Keine Ergebnisse für „{{query}}“."
+    "prompt": "Suche nach Titeln, Autoren, Reihen, Sprechern und Figuren.",
+    "label": "Suche",
+    "fieldPlaceholder": "Bücher, Autoren, Reihen, Sprecher, Figuren",
+    "fieldPlaceholderShort": "Bücher, Personen, Reihen, Figuren",
+    "recentTitle": "Letzte Suchen",
+    "clearRecent": "Löschen",
+    "clearRecentLabel": "Letzte Suchen löschen",
+    "searchAgain": "Nach {{query}} suchen",
+    "browse": "Stöbern",
+    "browseIn": "In {{library}}",
+    "browseCard": "{{label}}, {{count}}",
+    "searching": "Suche läuft",
+    "resultsFor_one": "{{count}} Ergebnis für „{{query}}“",
+    "resultsFor_other": "{{count}} Ergebnisse für „{{query}}“",
+    "resultsAcross_one": "{{count}} Ergebnis für „{{query}}“ auf {{servers}}",
+    "resultsAcross_other": "{{count}} Ergebnisse für „{{query}}“ auf {{servers}}",
+    "someOffline": "Offline, daher nicht durchsucht: {{servers}}",
+    "offlineTitle": "Du bist offline",
+    "offlineHint": "Die Suche fragt deine Server. Heruntergeladene Bücher findest du unter Downloads.",
+    "noMatchesTitle": "Nichts namens „{{query}}“ auf deinen Servern",
+    "noMatchesHint": "Prüfe die Schreibweise oder suche stattdessen nach dem Autor.",
+    "groups": {
+      "books": "Bücher",
+      "series": "Reihen",
+      "people": "Personen",
+      "characters": "Figuren"
+    },
+    "charactersSub": "Nur Figuren, die dir schon begegnet sind",
+    "hiddenCharacters_one": "{{count}} weiterer Treffer nach deiner Stelle im Buch, ausgeblendet, um nichts vorwegzunehmen.",
+    "hiddenCharacters_other": "{{count}} weitere Treffer nach deiner Stelle im Buch, ausgeblendet, um nichts vorwegzunehmen.",
+    "roleAuthor": "Autor",
+    "roleNarrator": "Sprecher",
+    "seriesRole": "Reihe",
+    "bookCount_one": "{{count}} Buch",
+    "bookCount_other": "{{count}} Bücher",
+    "alsoOn": "Auch auf {{servers}}",
+    "alsoIn": "Auch in {{libraries}}",
+    "showAll": "Alle {{count}} zeigen",
+    "showFewer": "Weniger zeigen",
+    "booksFailed": "Deine Server haben auf diese Suche nicht geantwortet.",
+    "booksPartial": "Einige Server haben nicht geantwortet, daher fehlen eventuell ihre Bücher.",
+    "peopleFailed": "Autoren, Sprecher und Reihen konnten gerade nicht durchsucht werden.",
+    "charactersFailed": "Figuren konnten gerade nicht geprüft werden."
   },
   "book": {
     "loadError": "Dieses Buch konnte nicht geladen werden.",
@@ -639,7 +674,11 @@
     "groups": {
       "actions": "Aktionen",
       "books": "Bücher",
-      "goTo": "Gehe zu"
+      "goTo": "Gehe zu",
+      "series": "Reihen",
+      "authors": "Autoren",
+      "narrators": "Sprecher",
+      "characters": "Figuren"
     },
     "resume": "{{name}} fortsetzen",
     "sleepMinutes_one": "Schlafen in {{count}} Minute",
@@ -654,7 +693,7 @@
     "listened": "{{percent}} % gehört",
     "searching": "Suche läuft",
     "empty": "Nichts namens „{{query}}“",
-    "emptyHint": "Versuche einen Titel oder einen Autor.",
+    "emptyHint": "Versuche einen Autor, einen Sprecher oder eine Figur, die dir schon begegnet ist.",
     "keys": {
       "move": "bewegen",
       "open": "öffnen",
@@ -663,7 +702,10 @@
     "results_one": "{{count}} Ergebnis",
     "results_other": "{{count}} Ergebnisse",
     "resultsOn_one": "{{count}} Ergebnis · {{servers}}",
-    "resultsOn_other": "{{count}} Ergebnisse · {{servers}}"
+    "resultsOn_other": "{{count}} Ergebnisse · {{servers}}",
+    "hiddenCharacters_one": "{{count}} weiterer Treffer nach deiner Stelle im Buch",
+    "hiddenCharacters_other": "{{count}} weitere Treffer nach deiner Stelle im Buch",
+    "hiddenHint": "Ausgeblendet, um nichts vorwegzunehmen"
   },
   "covers": {
     "notInLibrary": "Nicht in deiner Bibliothek",
