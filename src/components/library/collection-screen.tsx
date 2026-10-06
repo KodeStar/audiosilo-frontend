@@ -41,7 +41,7 @@ import {
 } from './collections/collection-dialogs';
 import { moveIndex, shareLine, totalDuration } from './collections/collections-model';
 import { CoverGrid, CoverGridSkeleton, CoverListRow } from './cover-grid';
-import { coverGridMetrics, pageGutter } from './cover-layout';
+import { pageGutter } from './cover-layout';
 import { CoverTile } from './cover-tile';
 
 /**
@@ -232,7 +232,6 @@ function CollectionBody({
   );
 
   if (booksLayout === 'grid') {
-    const inset = coverGridMetrics(0, layout).columnGap / 2;
     return (
       <CoverGrid
         data={items}
@@ -256,8 +255,8 @@ function CollectionBody({
             />
           )
         }
-        ListHeaderComponent={<View style={{ paddingHorizontal: inset }}>{header}</View>}
-        ListEmptyComponent={<View style={{ paddingHorizontal: inset }}>{empty}</View>}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
       />
     );
   }

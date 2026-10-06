@@ -55,14 +55,12 @@ export function PersonPage({
 }) {
   const { t } = useTranslation();
   const cid = useCid();
-  const layout = useLayout();
   const browse = useCapability('browse_people');
   const { progressOf } = useProgressLookup();
   const q = useAllLibraryBooks(
     libraryId,
     kind === 'author' ? { author: name } : { narrator: name },
   );
-  const gap = layout === 'phone' ? 14 : 22;
 
   if (kind === 'narrator' && browse === false) {
     return (
@@ -92,7 +90,7 @@ export function PersonPage({
   const chips = kind === 'narrator' || browse === true ? others : [];
 
   const header = (
-    <View style={{ paddingHorizontal: gap / 2 }} className="gap-8 pb-2 pt-4">
+    <View className="gap-8 pb-2 pt-4">
       <PersonHeader kind={kind} name={name} books={q.books} progressOf={progressOf} />
       {series.map((g) => (
         <SeriesShelf
@@ -132,7 +130,7 @@ export function PersonPage({
       ListHeaderComponent={header}
       ListFooterComponent={
         chips.length > 0 ? (
-          <View style={{ paddingHorizontal: gap / 2 }} className="gap-3 pb-6 pt-2">
+          <View className="gap-3 pb-6 pt-2">
             <Text variant="heading" accessibilityRole="header">
               {kind === 'author' ? t('people.readBy') : t('people.booksBy')}
             </Text>

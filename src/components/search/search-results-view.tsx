@@ -6,7 +6,7 @@ import { type MergedBook, useAllProgressAll } from '@/api/hooks';
 import { useApis } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
 import { roleLabelKey } from '@/components/library/book-meta';
-import { coverGridMetrics } from '@/components/library/cover-layout';
+import { gridMetrics } from '@/components/library/cover-layout';
 import { CoverTile } from '@/components/library/cover-tile';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { SeriesCard } from '@/components/series/series-card';
@@ -338,7 +338,7 @@ function BooksGroup({
   const layout = useLayout();
   const [width, setWidth] = useState(0);
   const [all, setAll] = useState(false);
-  const { columns, tile, columnGap, rowGap } = coverGridMetrics(width, layout);
+  const { columns, tile, columnGap, rowGap } = gridMetrics(width, layout);
   const preview = Math.max(6, columns * BOOK_ROWS);
   const shown = all ? books : books.slice(0, preview);
 

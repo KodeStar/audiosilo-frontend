@@ -1,7 +1,8 @@
 import type { Book, BookMetaSeries, BookMetaSeriesWork, CoverColor, Progress } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import type { SeriesView } from '@/lib/series-orderings';
-import { progressFractionRemaining } from '@/lib/progress-view';
+import { foldAccents } from '@/lib/names';
+import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 
 /**
  * The series page's model (pure, tested): one ordered list of ENTRIES, built from the
@@ -82,9 +83,7 @@ export function indexLabel(index: number): string {
 
 /** Titles and names compared loosely: case, accents, punctuation and spacing ignored. */
 export function looseKey(s: string | undefined): string {
-  return (s ?? '')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
+  return foldAccents(s ?? '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '');
 }
@@ -448,7 +447,7 @@ export function metadataAnchor(
   let current: { book: Book; at: string } | undefined;
   for (const b of tagged) {
     const p = progressOf(connectionId, b.library_id, b.rel_path);
-    if (p && p.position > 0 && !p.finished && (!current || p.updated_at > current.at)) {
+    if (p && isInProgress(p) && (!current || p.updated_at > current.at)) {
       current = { book: b, at: p.updated_at };
     }
   }

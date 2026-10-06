@@ -16,6 +16,7 @@ import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useDownloads } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
+import { headIndexForLetter } from '@/lib/alpha-sections';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -34,7 +35,6 @@ import {
   bookStatus,
   filterBooks,
   hasFilters,
-  headIndexForLetter,
   LENGTH_BUCKETS,
   letterGrid,
   parseBooksView,
@@ -45,7 +45,7 @@ import {
 } from '../books/books-view';
 import { useWholeLibrary } from '../books/use-whole-library';
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
-import { coverGridMetrics, pageGutter } from '../cover-layout';
+import { pageGutter } from '../cover-layout';
 import type { LibraryModeProps } from '../library-modes';
 import { useSelectedLibrary } from '../use-selected-library';
 
@@ -62,7 +62,7 @@ const LENGTH_KEY = {
 } as const;
 
 const itemKey = (item: BooksGridItem) =>
-  item.kind === 'head' ? `#${item.letter}` : `b:${item.book.rel_path}`;
+  item.kind === 'head' ? `#${item.letter}` : `b:${item.item.rel_path}`;
 
 /**
  * The Library tab's Books mode for the selected library: the whole list loaded page by
@@ -126,7 +126,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
     () =>
       az
         ? letterGrid(shown)
-        : { items: shown.map((book): BooksGridItem => ({ kind: 'book', book })), heads: [] },
+        : { items: shown.map((item): BooksGridItem => ({ kind: 'item', item })), heads: [] },
     [az, shown],
   );
   const present = useMemo(() => new Set(grid.heads.map((h) => h.letter)), [grid.heads]);
@@ -157,12 +157,8 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
     />
   );
   const gutter = pageGutter(layout);
-  // The grid pads its content by the gutter less half a column gap (each tile carries
-  // the other half), so the header puts that half back to line up with the tiles.
-  const inset = booksLayout === 'grid' ? coverGridMetrics(0, layout).columnGap / 2 : 0;
-
   const header = (
-    <View className="gap-3 pb-4" style={{ paddingHorizontal: inset }}>
+    <View className="gap-3 pb-4">
       <ChipRow accessibilityLabel={t('library.books.filters.label')} gutter={gutter}>
         {BOOK_STATUSES.map((s) => (
           <FilterChip
@@ -226,7 +222,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   );
 
   const clear = () => setView({ status: undefined, dl: false, len: undefined });
-  const emptyBody = whole.isLoading ? (
+  const empty = whole.isLoading ? (
     booksLayout === 'grid' ? (
       <CoverGridSkeleton rows={3} gutter={0} />
     ) : (
@@ -254,7 +250,6 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       action={{ label: t('library.books.noMatches.action'), onPress: clear }}
     />
   ) : null;
-  const empty = <View style={{ paddingHorizontal: inset }}>{emptyBody}</View>;
 
   const footer =
     !whole.complete && !whole.error && total > 0 ? (
@@ -278,10 +273,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
         listRef={listRef}
         data={grid.items}
         keyExtractor={itemKey}
-        getItemType={(item) => item.kind}
-        overrideItemLayout={(l, item, _i, maxColumns) => {
-          if (item.kind === 'head') l.span = maxColumns;
-        }}
+        isFullRow={(item) => item.kind === 'head'}
         renderItem={(item, tile) =>
           item.kind === 'head' ? (
             renderHead(item.letter)
@@ -289,8 +281,8 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
             <BookTile
               connectionId={connectionId}
               libraryId={libraryId}
-              book={item.book}
-              progress={progressOf(item.book)}
+              book={item.item}
+              progress={progressOf(item.item)}
               sort={view.sort}
               width={tile}
             />
@@ -371,7 +363,7 @@ function BooksList({
         item.kind === 'head' ? (
           <View className="pb-4 pt-3">{renderHead(item.letter)}</View>
         ) : (
-          renderBook(item.book)
+          renderBook(item.item)
         )
       }
       ListHeaderComponent={header}

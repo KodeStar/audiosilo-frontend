@@ -1,5 +1,7 @@
 import type { Book, BookSort, Progress } from '@/api/types';
-import { groupByLetter, sectionIndexForLetter } from '@/lib/alpha-sections';
+import { type LetterItem, letterItems } from '@/lib/alpha-sections';
+import { foldAccents } from '@/lib/names';
+import { isInProgress } from '@/lib/progress-view';
 
 /**
  * The Library's Books mode as pure rules: the URL params it reads and writes (the
@@ -74,7 +76,7 @@ export function progressByPath(rows: readonly Progress[]): Map<string, Progress>
 export function bookStatus(progress: Progress | undefined): BookStatus {
   if (!progress) return 'new';
   if (progress.finished) return 'finished';
-  return progress.position > 0 ? 'progress' : 'new';
+  return isInProgress(progress) ? 'progress' : 'new';
 }
 
 const HOUR = 3600;
@@ -130,61 +132,45 @@ const ARTICLE = /^(the|an|a)\s+/i;
 /** A title as it sorts and files: accents folded ("Émile" under E), a leading article
  * dropped, trimmed. */
 export function titleKey(title: string): string {
-  const folded =
-    typeof title.normalize === 'function' ? title.normalize('NFD').replace(/[̀-ͯ]/g, '') : title;
-  const trimmed = folded.trim();
+  const trimmed = foldAccents(title).trim();
   const stripped = trimmed.replace(ARTICLE, '');
   // A title that IS an article ("A") keeps it.
   return stripped || trimmed;
 }
 
-const addedTime = (b: Book) => (b.added_at ? Date.parse(b.added_at) || 0 : 0);
+/** A book with its sort keys worked out once, not on every comparison. */
+type Keyed = { book: Book; title: string; added: number };
 
-const COMPARE: Record<BooksSort, (a: Book, b: Book) => number> = {
-  recent: (a, b) => addedTime(b) - addedTime(a) || b.id - a.id,
+const COMPARE: Record<BooksSort, (a: Keyed, b: Keyed) => number> = {
+  recent: (a, b) => b.added - a.added || b.book.id - a.book.id,
   title: (a, b) =>
-    collator.compare(titleKey(a.title), titleKey(b.title)) || collator.compare(a.author, b.author),
+    collator.compare(a.title, b.title) || collator.compare(a.book.author, b.book.author),
   author: (a, b) =>
-    collator.compare(a.author, b.author) ||
-    collator.compare(a.series, b.series) ||
-    a.series_index - b.series_index ||
-    collator.compare(titleKey(a.title), titleKey(b.title)),
-  length: (a, b) =>
-    b.duration - a.duration || collator.compare(titleKey(a.title), titleKey(b.title)),
+    collator.compare(a.book.author, b.book.author) ||
+    collator.compare(a.book.series, b.book.series) ||
+    a.book.series_index - b.book.series_index ||
+    collator.compare(a.title, b.title),
+  length: (a, b) => b.book.duration - a.book.duration || collator.compare(a.title, b.title),
 };
 
 /** A sorted copy (books without a title sort by their folder name's title, as shown). */
 export function sortBooks(books: readonly Book[], sort: BooksSort): Book[] {
-  return [...books].sort(COMPARE[sort]);
+  return books
+    .map((book): Keyed => ({
+      book,
+      title: titleKey(book.title),
+      added: book.added_at ? Date.parse(book.added_at) || 0 : 0,
+    }))
+    .sort(COMPARE[sort])
+    .map((k) => k.book);
 }
 
 /** One cell of the Books grid: a book, or (title order) the letter head of a group. */
-export type BooksGridItem = { kind: 'head'; letter: string } | { kind: 'book'; book: Book };
+export type BooksGridItem = LetterItem<Book>;
 
-/** The title-ordered grid: the books in A-Z groups (then '#'), each led by its letter
- * head, and where each head sits (the A-Z rail's jump targets). */
-export function letterGrid(sorted: readonly Book[]): {
-  items: BooksGridItem[];
-  heads: { letter: string; index: number }[];
-} {
-  const items: BooksGridItem[] = [];
-  const heads: { letter: string; index: number }[] = [];
-  for (const section of groupByLetter([...sorted], (b) => titleKey(b.title))) {
-    heads.push({ letter: section.letter, index: items.length });
-    items.push({ kind: 'head', letter: section.letter });
-    for (const book of section.data) items.push({ kind: 'book', book });
-  }
-  return { items, heads };
-}
-
-/** The grid index a rail letter jumps to: its head, else the next head after it, else
- * the last; -1 with no heads. */
-export function headIndexForLetter(
-  heads: readonly { letter: string; index: number }[],
-  letter: string,
-): number {
-  const i = sectionIndexForLetter(heads, letter);
-  return i < 0 ? -1 : heads[i].index;
+/** The title-ordered grid: the books under their A-Z heads (see `letterItems`). */
+export function letterGrid(sorted: readonly Book[]) {
+  return letterItems(sorted, (b) => titleKey(b.title));
 }
 
 /** Where a book marked as not finished resumes. One stored at (or within a minute of)

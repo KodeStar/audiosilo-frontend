@@ -13,6 +13,8 @@ import {
   listeningProgressFor,
 } from '@/components/library/meta-gating';
 import { contentKey } from '@/lib/content-key';
+import { hashString } from '@/lib/monogram';
+import { foldAccents } from '@/lib/names';
 import { isInProgress } from '@/lib/progress-view';
 
 /**
@@ -25,10 +27,7 @@ import { isInProgress } from '@/lib/progress-view';
 
 /** Case- and accent-insensitive form of a name or a query ("Émile" finds "emile"). */
 export function fold(s: string): string {
-  const lower = s.toLocaleLowerCase();
-  // Hermes has `normalize`; guarded anyway, so a runtime without it still matches
-  // case-insensitively.
-  return typeof lower.normalize === 'function' ? lower.normalize('NFD').replace(/[̀-ͯ]/g, '') : lower;
+  return foldAccents(s.toLocaleLowerCase());
 }
 
 /**
@@ -278,19 +277,5 @@ export function matchCharacters(
 
 /** A stable hue slot (0-3) for a name: the character token's tint. */
 export function hueSlot(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return Math.abs(h) % 4;
-}
-
-/** A name's initials for a portrait or token ("Amos Burton" -> "AB", "Naomi" -> "N"). */
-export function initials(name: string): string {
-  const words = name
-    .trim()
-    .split(/\s+/)
-    .filter((w) => /[\p{L}\p{N}]/u.test(w));
-  if (words.length === 0) return '?';
-  const first = Array.from(words[0])[0] ?? '';
-  const last = words.length > 1 ? (Array.from(words[words.length - 1])[0] ?? '') : '';
-  return (first + last).toLocaleUpperCase();
+  return hashString(name) % 4;
 }

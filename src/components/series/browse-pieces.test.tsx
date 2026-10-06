@@ -49,7 +49,7 @@ jest.mock('./use-series-data', () => ({
 import { GhostCover } from '@/components/library/ghost-cover';
 import { SeriesMode } from '@/components/library/modes/series-mode';
 
-import { cardGridMetrics, cardRows } from './card-grid';
+import { cardItems } from './card-grid';
 import { PeopleMode } from './people-mode';
 import { PersonPage } from './person-page';
 import { Spine } from './spine';
@@ -99,32 +99,14 @@ describe('GhostCover as a thumbnail', () => {
   });
 });
 
-describe('cardRows / cardGridMetrics', () => {
-  it('fits as many cards as the width allows, one or two on a phone', () => {
-    expect(cardGridMetrics(1200, 'desktop', 300, 1).columns).toBe(3);
-    expect(cardGridMetrics(370, 'phone', 300, 1).columns).toBe(1);
-    expect(cardGridMetrics(370, 'phone', 176, 2).columns).toBe(2);
-  });
-
-  it('chunks rows, with A-Z heads only for a long list', () => {
+describe('cardItems', () => {
+  it('adds A-Z heads only for a long list', () => {
     const names = ['Ann', 'Bob', 'Cy'];
-    expect(
-      cardRows(
-        names,
-        2,
-        (n) => n,
-        (n) => n,
-      ).map((r) => r.kind),
-    ).toEqual(['row', 'row']);
+    expect(cardItems(names, (n) => n).map((r) => r.kind)).toEqual(['item', 'item', 'item']);
     const many = Array.from({ length: 70 }, (_, i) => (i < 35 ? `A${i}` : `B${i}`));
-    const rows = cardRows(
-      many,
-      10,
-      (n) => n,
-      (n) => n,
-    );
-    expect(rows[0]).toEqual({ kind: 'head', letter: 'A' });
-    expect(rows.filter((r) => r.kind === 'head')).toHaveLength(2);
+    const items = cardItems(many, (n) => n);
+    expect(items[0]).toEqual({ kind: 'head', letter: 'A' });
+    expect(items.filter((r) => r.kind === 'head')).toHaveLength(2);
   });
 });
 

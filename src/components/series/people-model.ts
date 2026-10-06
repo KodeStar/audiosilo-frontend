@@ -1,5 +1,4 @@
 import type { Book } from '@/api/types';
-import { sectionLetter } from '@/lib/alpha-sections';
 import { hashString } from '@/lib/monogram';
 
 import { type ProgressLookup, sortSeriesBooks } from './series-model';
@@ -10,50 +9,9 @@ import { type ProgressLookup, sortSeriesBooks } from './series-model';
  * the other people credited on them.
  */
 
-/** A name's A-Z head: accents folded ("Émile" files under E), anything else '#'. */
-export function letterOf(name: string): string {
-  return sectionLetter(name.normalize('NFD').replace(/\p{M}/gu, ''));
-}
-
 /** Lists longer than this get A-Z heads (a shorter one reads as one grid: heads would
  * break a desktop row of seven into rows of one or two). */
 export const LETTER_HEADS_MIN = 60;
-
-export type Lettered<T> = { letter: string; items: T[] };
-
-/** Group a list (already in display order) under its A-Z heads, A-Z then '#'. */
-export function groupByLetter<T>(items: readonly T[], name: (item: T) => string): Lettered<T>[] {
-  const groups = new Map<string, T[]>();
-  for (const it of items) {
-    const l = letterOf(name(it));
-    const g = groups.get(l);
-    if (g) g.push(it);
-    else groups.set(l, [it]);
-  }
-  const rank = (l: string) => (l === '#' ? 27 : l.charCodeAt(0) - 64);
-  return [...groups.entries()]
-    .sort(([a], [b]) => rank(a) - rank(b))
-    .map(([letter, list]) => ({ letter, items: list }));
-}
-
-/** A credit can name several people ("Michael Kramer, Kate Reading"); the monogram is
- * the first person's. */
-function firstPerson(name: string): string {
-  return name.split(/\s*(?:,|&|\band\b|\/|;)\s*/)[0]?.trim() || name.trim();
-}
-
-/** The two-letter monogram of a portrait: the first person's first and last initials
- * ("James S. A. Corey" -> "JC"), one letter for a one-word name, '?' for none. */
-export function initials(name: string): string {
-  const words = firstPerson(name)
-    .split(/\s+/)
-    .map((w) => w.replace(/^[^\p{L}\p{N}]+/u, ''))
-    .filter(Boolean);
-  if (words.length === 0) return '?';
-  const first = [...words[0]][0] ?? '';
-  const last = words.length > 1 ? ([...words[words.length - 1]][0] ?? '') : '';
-  return (first + last).toUpperCase();
-}
 
 /** A portrait's hue (0-359), stable for a name. */
 export function portraitHue(name: string): number {

@@ -4,10 +4,7 @@ import { contentKey } from '@/lib/content-key';
 import {
   booksBySeries,
   creditedPeople,
-  groupByLetter,
   hslHex,
-  initials,
-  letterOf,
   personStats,
   portraitColors,
   portraitHue,
@@ -32,33 +29,7 @@ function book(title: string, extra: Partial<Book> = {}): Book {
   };
 }
 
-describe('letterOf / groupByLetter', () => {
-  it('folds accents and buckets the rest under #', () => {
-    expect(letterOf('Émile Zola')).toBe('E');
-    expect(letterOf('田中 晴美')).toBe('#');
-    expect(letterOf('o. henry')).toBe('O');
-  });
-
-  it('groups A-Z then #, keeping order inside a letter', () => {
-    const groups = groupByLetter(['Zola', '吾輩', 'Austen', 'Adams'], (s) => s);
-    expect(groups).toEqual([
-      { letter: 'A', items: ['Austen', 'Adams'] },
-      { letter: 'Z', items: ['Zola'] },
-      { letter: '#', items: ['吾輩'] },
-    ]);
-  });
-});
-
-describe('initials', () => {
-  it('takes the first person and their first and last initials', () => {
-    expect(initials('James S. A. Corey')).toBe('JC');
-    expect(initials('Michael Kramer, Kate Reading')).toBe('MK');
-    expect(initials('Michael Kramer & Kate Reading')).toBe('MK');
-    expect(initials('Homer')).toBe('H');
-    expect(initials('  ')).toBe('?');
-    expect(initials('田中 晴美')).toBe('田晴');
-  });
-
+describe('portraitHue', () => {
   it('gives a stable hue', () => {
     expect(portraitHue('Jim Butcher')).toBe(portraitHue('Jim Butcher'));
     expect(portraitHue('Jim Butcher')).toBeGreaterThanOrEqual(0);

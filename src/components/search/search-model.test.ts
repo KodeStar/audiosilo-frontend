@@ -6,7 +6,6 @@ import {
   characterBooksToLoad,
   fold,
   hueSlot,
-  initials,
   listeningIn,
   type ListSource,
   matchCharacters,
@@ -259,14 +258,7 @@ describe('matchCharacters (spoiler safety)', () => {
   });
 });
 
-describe('initials and hueSlot', () => {
-  it('takes the first and last word', () => {
-    expect(initials('James S. A. Corey')).toBe('JC');
-    expect(initials('Naomi')).toBe('N');
-    expect(initials('  ')).toBe('?');
-    expect(initials('田中 晴美')).toBe('田晴');
-  });
-
+describe('hueSlot', () => {
   it('is stable per name', () => {
     expect(hueSlot('Amos Burton')).toBe(hueSlot('Amos Burton'));
     expect(hueSlot('Amos Burton')).toBeGreaterThanOrEqual(0);

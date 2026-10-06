@@ -1,11 +1,12 @@
-import { useId } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { Text } from '@/components/ui/text';
 import { hashString } from '@/lib/monogram';
+import { initials } from '@/lib/names';
+import { useDomId } from '@/lib/use-dom-id';
 
-import { initials, portraitColors } from './people-model';
+import { portraitColors } from './people-model';
 
 const BARS = 24;
 
@@ -24,7 +25,7 @@ export function Portrait({
   kind: 'author' | 'narrator';
   size: number;
 }) {
-  const id = `pt${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const id = useDomId('pt');
   const c = portraitColors(name, kind);
   const narrator = kind === 'narrator';
   return (

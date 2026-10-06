@@ -6,7 +6,7 @@ import { GhostCovers, StateNotice } from '@/components/library/books/book-states
 import { LayoutToggle } from '@/components/library/books/books-controls';
 import { useBooksLayout } from '@/components/library/books/books-layout-store';
 import { CoverGrid, CoverGridSkeleton, CoverListRow } from '@/components/library/cover-grid';
-import { coverGridMetrics, pageGutter } from '@/components/library/cover-layout';
+import { pageGutter } from '@/components/library/cover-layout';
 import { CoverTile } from '@/components/library/cover-tile';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
@@ -91,7 +91,6 @@ export function FavouritesScreen() {
   );
 
   if (booksLayout === 'grid') {
-    const inset = coverGridMetrics(0, layout).columnGap / 2;
     return (
       <CoverGrid
         data={books}
@@ -108,8 +107,8 @@ export function FavouritesScreen() {
             width={tile}
           />
         )}
-        ListHeaderComponent={<View style={{ paddingHorizontal: inset }}>{header}</View>}
-        ListEmptyComponent={<View style={{ paddingHorizontal: inset }}>{empty}</View>}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
       />
     );
   }

@@ -13,12 +13,10 @@ import {
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
-import { useLayout } from '@/lib/layout';
 import { pathLeaf } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
-import { coverGridMetrics } from '../cover-layout';
 import { CoverTile } from '../cover-tile';
 import { titleOf, tileCaption } from './book-items';
 import { GhostCovers, StateNotice } from './book-states';
@@ -35,7 +33,6 @@ type SeeAllType = 'recent' | 'finished';
  */
 export function SeeAllScreen() {
   const { t } = useTranslation();
-  const layout = useLayout();
   const params = useLocalSearchParams<{ type?: string }>();
   const type: SeeAllType = params.type === 'finished' ? 'finished' : 'recent';
   const defaultCid = useSession((s) => s.defaultConnectionId);
@@ -54,7 +51,6 @@ export function SeeAllScreen() {
     [progress.progress],
   );
   const state = type === 'recent' ? recent : progress;
-  const inset = coverGridMetrics(0, layout).columnGap / 2;
 
   const header = (
     <View className="pb-5 pt-2">
@@ -90,8 +86,8 @@ export function SeeAllScreen() {
   );
 
   const common = {
-    ListHeaderComponent: <View style={{ paddingHorizontal: inset }}>{header}</View>,
-    ListEmptyComponent: <View style={{ paddingHorizontal: inset }}>{empty}</View>,
+    ListHeaderComponent: header,
+    ListEmptyComponent: empty,
   };
 
   return type === 'recent' ? (

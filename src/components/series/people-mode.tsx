@@ -119,7 +119,7 @@ export function PeopleMode({
       )}
       ListFooterComponent={
         unknown > 0 ? (
-          <Text variant="caption" className="px-4 pb-4 lg:px-8" style={tabularNums}>
+          <Text variant="caption" className="pb-4" style={tabularNums}>
             {kind === 'author'
               ? t('people.unknownAuthor', { count: unknown })
               : t('people.unknownNarrator', { count: unknown })}

@@ -2,10 +2,11 @@ import { View } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { initials } from '@/lib/names';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { hueSlot, initials } from './search-model';
+import { hueSlot } from './search-model';
 
 /** The tint behind a character's initials, by `hueSlot` (the categorical chart colours,
  * minus chart-1: that one is the brand pink). Pale, so ink initials stay AA. */

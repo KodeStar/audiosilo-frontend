@@ -9,59 +9,67 @@ import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 
 import { BookCover } from './book-cover';
-import { coverGridMetrics, pageGutter } from './cover-layout';
+import { type GridSpec, gridMetrics, pageGutter } from './cover-layout';
 
 type PassThrough<T> = Pick<
   FlashListProps<T>,
-  | 'ListHeaderComponent'
-  | 'ListFooterComponent'
-  | 'ListEmptyComponent'
-  | 'onEndReached'
-  | 'onEndReachedThreshold'
-  | 'onScroll'
-  | 'refreshControl'
-  | 'getItemType'
-  | 'overrideItemLayout'
+  'onEndReached' | 'onEndReachedThreshold' | 'onScroll' | 'refreshControl'
 >;
 
 /**
  * A page's grid of cover tiles on FlashList (STYLEGUIDE section 5: `repeat(auto-fill,
  * minmax(158px, 1fr))`, two columns on a phone): it measures its own width and divides
- * it (`coverGridMetrics`), handing `renderItem` the tile width - give it a `CoverTile`.
- * It IS the page's scroller: put the page's header (chips, counts) in
- * `ListHeaderComponent`, which spans every column. Padded by the page gutter, and clear
- * of the phone's mini player at the bottom. A full-width row inside the grid (a letter
- * head) takes every column through `overrideItemLayout` (`layout.span = maxColumns`);
- * `listRef` scrolls it (an A-Z rail's jump).
+ * it (`gridMetrics`, by `spec`: covers by default, `cardGrid` for cards), handing
+ * `renderItem` the tile width - give it a `CoverTile`. It IS the page's scroller: put the
+ * page's header (chips, counts) in `ListHeaderComponent`, which spans every column and,
+ * like the empty state and the footer, lines up with the tiles. Padded by the page
+ * gutter, and clear of the phone's mini player at the bottom. A full-width row inside the
+ * grid (a letter head, `isFullRow`) takes every column; `listRef` scrolls it (an A-Z
+ * rail's jump).
  */
 export function CoverGrid<T>({
   data,
   keyExtractor,
   renderItem,
   gutter,
+  spec,
+  isFullRow,
+  paddingTop = 4,
   listRef,
+  ListHeaderComponent,
+  ListEmptyComponent,
+  ListFooterComponent,
+  testID = 'cover-grid',
   ...rest
 }: {
   data: readonly T[];
   keyExtractor: (item: T, index: number) => string;
   renderItem: (item: T, tileWidth: number) => ReactElement;
   gutter?: number;
+  spec?: GridSpec;
+  isFullRow?: (item: T) => boolean;
+  paddingTop?: number;
   listRef?: Ref<FlashListRef<T>>;
+  ListHeaderComponent?: ReactElement | null;
+  ListEmptyComponent?: ReactElement | null;
+  ListFooterComponent?: ReactElement | null;
+  testID?: string;
 } & PassThrough<T>) {
   const layout = useLayout();
   const pad = gutter ?? pageGutter(layout);
   const [width, setWidth] = useState(0);
-  const { columns, tile, columnGap, rowGap } = coverGridMetrics(
+  const { columns, tile, columnGap, rowGap } = gridMetrics(
     Math.max(0, width - pad * 2),
     layout,
+    spec,
   );
   const paddingBottom = useMiniPlayerInset();
+  // The content is padded by the gutter less half a column gap (each tile carries the
+  // other half), so what spans the grid puts that half back to line up with the tiles.
+  const inset = (node: ReactElement | null | undefined) =>
+    node ? <View style={{ paddingHorizontal: columnGap / 2 }}>{node}</View> : null;
   return (
-    <View
-      testID="cover-grid"
-      className="flex-1"
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-    >
+    <View testID={testID} className="flex-1" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {width > 0 ? (
         <FlashList
           // A new column count re-lays the whole list.
@@ -75,9 +83,20 @@ export function CoverGrid<T>({
               {renderItem(item, tile)}
             </View>
           )}
+          {...(isFullRow
+            ? {
+                getItemType: (item: T) => (isFullRow(item) ? 'row' : 'tile'),
+                overrideItemLayout: (l: { span?: number }, item: T, _i: number, max: number) => {
+                  if (isFullRow(item)) l.span = max;
+                },
+              }
+            : {})}
+          ListHeaderComponent={inset(ListHeaderComponent)}
+          ListEmptyComponent={inset(ListEmptyComponent)}
+          ListFooterComponent={inset(ListFooterComponent)}
           contentContainerStyle={{
             paddingHorizontal: pad - columnGap / 2,
-            paddingTop: 4,
+            paddingTop,
             paddingBottom,
           }}
           {...rest}
@@ -96,10 +115,7 @@ export function CoverGridSkeleton({ rows = 2, gutter }: { rows?: number; gutter?
   const layout = useLayout();
   const pad = gutter ?? pageGutter(layout);
   const [width, setWidth] = useState(0);
-  const { columns, tile, columnGap, rowGap } = coverGridMetrics(
-    Math.max(0, width - pad * 2),
-    layout,
-  );
+  const { columns, tile, columnGap, rowGap } = gridMetrics(Math.max(0, width - pad * 2), layout);
   return (
     <View
       testID="cover-grid-skeleton"

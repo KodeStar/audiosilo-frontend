@@ -7,7 +7,6 @@ import {
   booksViewParams,
   filterBooks,
   hasFilters,
-  headIndexForLetter,
   lengthBucket,
   letterGrid,
   parseBooksView,
@@ -195,38 +194,15 @@ describe('titles and sorting', () => {
   });
 });
 
-describe('letterGrid / headIndexForLetter', () => {
-  const sorted = sortBooks(
-    [book('Babel'), book('The Body'), book('Anathem'), book('1984'), book('Dune')],
-    'title',
-  );
-  const { items, heads } = letterGrid(sorted);
-
-  it('groups A to Z then #, each led by its head', () => {
-    expect(items.map((i) => (i.kind === 'head' ? `#${i.letter}` : i.book.title))).toEqual([
-      '#A',
-      'Anathem',
-      '#B',
-      'Babel',
-      'The Body',
-      '#D',
-      'Dune',
-      '##',
-      '1984',
-    ]);
-    expect(heads).toEqual([
-      { letter: 'A', index: 0 },
-      { letter: 'B', index: 2 },
-      { letter: 'D', index: 5 },
-      { letter: '#', index: 7 },
-    ]);
-  });
-
-  it('jumps to the letter, else the next one, else the last', () => {
-    expect(headIndexForLetter(heads, 'B')).toBe(2);
-    expect(headIndexForLetter(heads, 'C')).toBe(5);
-    expect(headIndexForLetter(heads, 'Z')).toBe(7);
-    expect(headIndexForLetter([], 'A')).toBe(-1);
+describe('letterGrid', () => {
+  it('files titles by their sort key under A-Z heads', () => {
+    const sorted = sortBooks(
+      [book('Babel'), book('The Body'), book('Anathem'), book('1984'), book('Émile')],
+      'title',
+    );
+    expect(
+      letterGrid(sorted).items.map((i) => (i.kind === 'head' ? `#${i.letter}` : i.item.title)),
+    ).toEqual(['#A', 'Anathem', '#B', 'Babel', 'The Body', '#E', 'Émile', '##', '1984']);
   });
 });
 
