@@ -69,8 +69,10 @@ export const TABS: readonly Destination[] = [
     icon: 'library',
     sf: 'books.vertical',
     md: 'library_books',
-    // The browse mode (`/library?mode=authors`, see library-modes.ts).
-    rootParams: ['mode'],
+    // The browse mode (`/library?mode=authors`, see library-modes.ts) and the Books
+    // mode's sort and filters (`sort`, `status`, `dl`, `len`; books-view.ts), which links
+    // from Home and Search open.
+    rootParams: ['mode', 'sort', 'status', 'dl', 'len'],
   },
   {
     name: '(search)',
