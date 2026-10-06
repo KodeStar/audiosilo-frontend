@@ -708,15 +708,20 @@ describe('Phase 1b mutation cache updates', () => {
     expect(qc.getQueryData(qk.queue('c1'))).toEqual(stored);
   });
 
-  it('a progress edit stores the progress and refreshes the progress, stats and goal reads', async () => {
+  /** A cached progress row (only the fields the cache updates look at). */
+  const row = (path: string, extra: object = {}) => ({ library_id: 2, path, ...extra });
+
+  it('a finishing progress edit patches its row in place and refreshes the stats and goal', async () => {
     const { result, qc } = await mountMutation(
       { progress_edit: true },
       'progress_edit',
       useEditProgress,
     );
-    for (const key of [qk.allProgress('c1'), qk.myStats('c1', '30d'), qk.listeningGoal('c1')]) {
-      qc.setQueryData(key, {});
-    }
+    const stored = row('A/Book', { finished: true, finished_at: 'now' });
+    mockClients.c1.editProgress.mockResolvedValueOnce(stored as never);
+    qc.setQueryData(qk.allProgress('c1'), [row('Other'), row('A/Book', { finished: false })]);
+    qc.setQueryData(qk.myStats('c1', '30d'), {});
+    qc.setQueryData(qk.listeningGoal('c1'), {});
     await act(async () => {
       await result.current.m.mutateAsync({
         libraryId: 2,
@@ -724,13 +729,71 @@ describe('Phase 1b mutation cache updates', () => {
         edit: { finished: true },
       });
     });
-    expect(qc.getQueryData(qk.progress('c1', 2, 'A/Book'))).toEqual({
-      library_id: 2,
-      path: 'A/Book',
-    });
-    expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(true);
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.progress('c1', 2, 'A/Book'))).toEqual(stored);
+    expect(qc.getQueryData(qk.allProgress('c1'))).toEqual([row('Other'), stored]);
+    expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(false);
     expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it('clearing a finish date also refreshes the stats and goal', async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    qc.setQueryData(qk.myStats('c1', '7d'), {});
+    qc.setQueryData(qk.listeningGoal('c1'), {});
+    await act(async () => {
+      await result.current.m.mutateAsync({
+        libraryId: 2,
+        path: 'A/Book',
+        edit: { finished_at: null },
+      });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryState(qk.myStats('c1', '7d'))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it('a progress edit that moves no finish inserts its row and leaves the stats and goal', async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    qc.setQueryData(qk.allProgress('c1'), [row('Other')]);
+    qc.setQueryData(qk.myStats('c1', '30d'), {});
+    qc.setQueryData(qk.listeningGoal('c1'), {});
+    await act(async () => {
+      await result.current.m.mutateAsync({
+        libraryId: 2,
+        path: 'A/Book',
+        edit: { position: 30, started_at: '2026-09-01' },
+      });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.allProgress('c1'))).toEqual([row('A/Book'), row('Other')]);
+    expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(false);
+  });
+
+  it('a progress edit on a part path is cached under its book, and the asked path refreshes', async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    mockClients.c1.editProgress.mockResolvedValueOnce(row('A/Book') as never);
+    qc.setQueryData(qk.progress('c1', 2, 'A/Book/CD1'), null);
+    await act(async () => {
+      await result.current.m.mutateAsync({ libraryId: 2, path: 'A/Book/CD1', edit: {} });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.progress('c1', 2, 'A/Book'))).toEqual(row('A/Book'));
+    expect(qc.getQueryState(qk.progress('c1', 2, 'A/Book/CD1'))?.isInvalidated).toBe(true);
   });
 
   it("a rating on a part path is cached under its book's path, and the asked path refreshes", async () => {
@@ -741,9 +804,113 @@ describe('Phase 1b mutation cache updates', () => {
     await act(async () => {
       await result.current.m.mutateAsync({ libraryId: 2, path: 'A/Book/CD1', rating: 5 });
     });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
     expect(qc.getQueryData(qk.rating('c1', 2, 'A/Book'))).toMatchObject({ rating: 5 });
     expect(qc.getQueryState(qk.rating('c1', 2, 'A/Book/CD1'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(qk.myRatings('c1'))?.isInvalidated).toBe(true);
+  });
+
+  /** A cached collection (only the fields the cache updates look at). */
+  const col = (id: number, owned: boolean, updated_at: string, extra: object = {}) => ({
+    id,
+    owned,
+    updated_at,
+    item_count: 1,
+    ...extra,
+  });
+
+  it('an item write stores the detail and moves its collection in the list, in server order', async () => {
+    const { result, qc } = await mountMutation(
+      { collections: true },
+      'collections',
+      useAddCollectionItem,
+    );
+    // Owned first, newest updated_at first in each group, then the newest id.
+    const list = [
+      col(3, true, '2026-10-03T00:00:00.000Z'),
+      col(2, true, '2026-10-02T00:00:00.000Z'),
+      col(1, true, '2026-10-02T00:00:00.000Z'),
+      col(9, false, '2026-10-05T00:00:00.000Z'),
+    ];
+    qc.setQueryData(qk.collections('c1'), list);
+    const moved = col(1, true, '2026-10-06T00:00:00.000Z', { item_count: 2, preview: [] });
+    const detail = { collection: moved, items: [] };
+    mockClients.c1.addCollectionItem.mockResolvedValueOnce(detail as never);
+    await act(async () => {
+      await result.current.m.mutateAsync({ id: 1, libraryId: 2, path: 'A/Book' });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.collection('c1', 1))).toEqual(detail);
+    expect(qc.getQueryData(qk.collections('c1'))).toEqual([moved, list[0], list[1], list[3]]);
+    expect(qc.getQueryState(qk.collections('c1'))?.isInvalidated).toBe(false);
+  });
+
+  it.each([
+    {
+      name: 'a rename',
+      useHook: useUpdateCollection,
+      vars: { id: 2, name: 'Renamed' },
+      method: 'updateCollection' as const,
+    },
+    {
+      name: 'new shares',
+      useHook: useSetCollectionShares,
+      vars: { id: 2, userIds: [4] },
+      method: 'setCollectionShares' as const,
+    },
+  ])('$name patches the cached detail and list entry', async ({ useHook, vars, method }) => {
+    const { result, qc } = await mountMutation(
+      { collections: true },
+      'collections',
+      useHook as () => ReturnType<typeof useUpdateCollection>,
+    );
+    const other = col(1, true, '2026-10-01T00:00:00.000Z');
+    qc.setQueryData(qk.collections('c1'), [col(2, true, '2026-10-02T00:00:00.000Z'), other]);
+    qc.setQueryData(qk.collection('c1', 2), { collection: { id: 2 }, items: ['kept'] });
+    const stored = col(2, true, '2026-10-06T00:00:00.000Z', { name: 'Renamed' });
+    mockClients.c1[method].mockResolvedValueOnce(stored as never);
+    await act(async () => {
+      await result.current.m.mutateAsync(vars as never);
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.collection('c1', 2))).toEqual({
+      collection: stored,
+      items: ['kept'],
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.collections('c1'))).toEqual([stored, other]);
+    expect(qc.getQueryState(qk.collections('c1'))?.isInvalidated).toBe(false);
+  });
+
+  it('a write to a collection the cached list does not hold refreshes the list', async () => {
+    const { result, qc } = await mountMutation(
+      { collections: true },
+      'collections',
+      useSetCollectionItems,
+    );
+    qc.setQueryData(qk.collections('c1'), [col(1, true, '2026-10-01T00:00:00.000Z')]);
+    await act(async () => {
+      await result.current.m.mutateAsync({ id: 7, items: [] });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.collection('c1', 7))).toEqual({ collection: { id: 7 }, items: [] });
+    expect(qc.getQueryState(qk.collections('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it('removing an item (no answer) refreshes the detail and the list', async () => {
+    const { result, qc } = await mountMutation(
+      { collections: true },
+      'collections',
+      useRemoveCollectionItem,
+    );
+    qc.setQueryData(qk.collection('c1', 1), { collection: { id: 1 }, items: [] });
+    qc.setQueryData(qk.collections('c1'), [col(1, true, '2026-10-01T00:00:00.000Z')]);
+    await act(async () => {
+      await result.current.m.mutateAsync({ id: 1, libraryId: 2, path: 'A/Book' });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryState(qk.collection('c1', 1))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(qk.collections('c1'))?.isInvalidated).toBe(true);
   });
 
   it('deleting a collection drops its detail and refreshes the list', async () => {

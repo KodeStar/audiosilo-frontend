@@ -1,4 +1,5 @@
 import {
+  type QueryClient,
   skipToken,
   useInfiniteQuery,
   useMutation,
@@ -18,6 +19,7 @@ import type {
   Book,
   BookRef,
   Capabilities,
+  Collection,
   CollectionDetail,
   CollectionInput,
   CollectionPatch,
@@ -133,14 +135,15 @@ export class CapabilityError extends Error {
 
 /** A query that only runs once the connection's server advertises `flag`: until then it
  * has no function at all (`skipToken`), so not even a manual `refetch` reaches the
- * server (React Query rejects it instead). `ready` is the caller's own condition (an
- * `enabled` flag, a valid id). */
+ * server (React Query rejects it instead). `ready` is the caller's own condition of the
+ * same strength (an `enabled` flag, a valid id); `enabled` is React Query's own, which
+ * only stops automatic fetching (a manual `refetch` still runs). */
 function useCapabilityQuery<T>(
   flag: keyof Capabilities,
   queryKey: (cid: string) => readonly unknown[],
   load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
   connectionId?: string,
-  opts: { ready?: boolean; staleTime?: number } = {},
+  opts: { ready?: boolean; enabled?: boolean; staleTime?: number } = {},
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
@@ -149,6 +152,7 @@ function useCapabilityQuery<T>(
     queryKey: queryKey(cid),
     queryFn:
       supported && api && opts.ready !== false ? ({ signal }) => load(api, signal) : skipToken,
+    ...(opts.enabled !== undefined ? { enabled: opts.enabled } : {}),
     ...(opts.staleTime !== undefined ? { staleTime: opts.staleTime } : {}),
   });
 }
@@ -167,6 +171,38 @@ function useCapabilityMutationBase(flag: keyof Capabilities, connectionId?: stri
     return fn(api);
   };
   return { cid, qc, call };
+}
+
+/** Patch a cached list from a write's answer. `patch` returns the new list, or
+ * undefined when it can't place the answer, and then the list refetches; so does a list
+ * being fetched right now (that response may predate the write). With nothing cached
+ * there is nothing to patch: the next read fetches it. */
+function patchCachedList<T>(
+  qc: QueryClient,
+  queryKey: readonly unknown[],
+  patch: (list: T[]) => T[] | undefined,
+) {
+  const fetching = qc.getQueryState(queryKey)?.fetchStatus === 'fetching';
+  const list = qc.getQueryData<T[]>(queryKey);
+  if (!list && !fetching) return;
+  const next = list && !fetching ? patch(list) : undefined;
+  if (next) qc.setQueryData(queryKey, next);
+  else void qc.invalidateQueries({ queryKey });
+}
+
+/** Cache a write's answer under the path it came back with (the server keeps a
+ * part/disc path's state on its book), and refetch the path asked for when it resolved
+ * elsewhere. */
+function storeAtResolvedPath<T extends BookRef>(
+  qc: QueryClient,
+  key: (libraryId: number, path: string) => readonly unknown[],
+  asked: { libraryId: number; path: string },
+  value: T,
+) {
+  qc.setQueryData(key(value.library_id, value.path), value);
+  if (value.library_id !== asked.libraryId || value.path !== asked.path) {
+    void qc.invalidateQueries({ queryKey: key(asked.libraryId, asked.path) });
+  }
 }
 
 export function useLibraries() {
@@ -355,17 +391,13 @@ export function useNextBook(
   enabled = true,
   connectionId?: string,
 ) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  const supported = useCapability('next_book', connectionId) === true;
-  return useQuery({
-    queryKey: qk.nextBook(cid, libraryId, path),
-    queryFn:
-      supported && api && path.length > 0
-        ? ({ signal }) => api.nextBook(libraryId, path, signal)
-        : skipToken,
-    enabled,
-  });
+  return useCapabilityQuery(
+    'next_book',
+    (cid) => qk.nextBook(cid, libraryId, path),
+    (api, signal) => api.nextBook(libraryId, path, signal),
+    connectionId,
+    { ready: path.length > 0, enabled },
+  );
 }
 
 /** A book's saved listening position (or null when it has never been played).
@@ -724,15 +756,39 @@ export function useShareTargets(enabled = true, connectionId?: string) {
   );
 }
 
-/** Cache a collection detail a write answered with, and refresh the list (its count,
- * preview and order move with the items). */
-function storeCollectionDetail(
-  qc: ReturnType<typeof useQueryClient>,
-  cid: string,
-  detail: CollectionDetail,
-) {
+/** The server's order of the collections list: owned first, then each group newest
+ * `updated_at` first (fixed-width UTC stamps, so they compare as strings), then newest
+ * id. */
+function collectionOrder(a: Collection, b: Collection) {
+  if (a.owned !== b.owned) return a.owned ? -1 : 1;
+  if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1;
+  return b.id - a.id;
+}
+
+/** Put a collection a write answered with into the cached list (its count, preview
+ * and `updated_at` move with the items), in the server's order. A list that doesn't
+ * hold it refetches instead. */
+function patchCollectionsList(qc: QueryClient, cid: string, collection: Collection) {
+  patchCachedList<Collection>(qc, qk.collections(cid), (list) =>
+    list.some((c) => c.id === collection.id)
+      ? list.map((c) => (c.id === collection.id ? collection : c)).sort(collectionOrder)
+      : undefined,
+  );
+}
+
+/** Cache a collection a write answered with (a rename, new shares): into its cached
+ * detail, if any, and the list. */
+function storeCollection(qc: QueryClient, cid: string, collection: Collection) {
+  qc.setQueryData<CollectionDetail>(qk.collection(cid, collection.id), (d) =>
+    d ? { ...d, collection } : d,
+  );
+  patchCollectionsList(qc, cid, collection);
+}
+
+/** Cache a collection detail a write answered with, and its collection in the list. */
+function storeCollectionDetail(qc: QueryClient, cid: string, detail: CollectionDetail) {
   qc.setQueryData(qk.collection(cid, detail.collection.id), detail);
-  void qc.invalidateQueries({ queryKey: qk.collections(cid) });
+  patchCollectionsList(qc, cid, detail.collection);
 }
 
 /** Create a collection (capability `collections`); resolves to it. */
@@ -751,12 +807,7 @@ export function useUpdateCollection(connectionId?: string) {
   return useMutation({
     mutationFn: ({ id, ...patch }: CollectionPatch & { id: number }) =>
       call((api) => api.updateCollection(id, patch)),
-    onSuccess: (collection) => {
-      qc.setQueryData<CollectionDetail>(qk.collection(cid, collection.id), (d) =>
-        d ? { ...d, collection } : d,
-      );
-      void qc.invalidateQueries({ queryKey: qk.collections(cid) });
-    },
+    onSuccess: (collection) => storeCollection(qc, cid, collection),
   });
 }
 
@@ -813,12 +864,7 @@ export function useSetCollectionShares(connectionId?: string) {
   return useMutation({
     mutationFn: (v: { id: number; userIds: number[] }) =>
       call((api) => api.setCollectionShares(v.id, v.userIds)),
-    onSuccess: (collection) => {
-      qc.setQueryData<CollectionDetail>(qk.collection(cid, collection.id), (d) =>
-        d ? { ...d, collection } : d,
-      );
-      void qc.invalidateQueries({ queryKey: qk.collections(cid) });
-    },
+    onSuccess: (collection) => storeCollection(qc, cid, collection),
   });
 }
 
@@ -852,10 +898,7 @@ export function useSetRating(connectionId?: string) {
     mutationFn: (v: { libraryId: number; path: string; rating: RatingValue; note?: string }) =>
       call((api) => api.setRating(v.libraryId, v.path, v.rating, v.note)),
     onSuccess: (rating, v) => {
-      qc.setQueryData(qk.rating(cid, rating.library_id, rating.path), rating);
-      if (rating.library_id !== v.libraryId || rating.path !== v.path) {
-        void qc.invalidateQueries({ queryKey: qk.rating(cid, v.libraryId, v.path) });
-      }
+      storeAtResolvedPath(qc, (lib, path) => qk.rating(cid, lib, path), v, rating);
       void qc.invalidateQueries({ queryKey: qk.myRatings(cid) });
     },
   });
@@ -876,8 +919,9 @@ export function useDeleteRating(connectionId?: string) {
 
 /** The caller's own progress edit (capability `progress_edit`; see {@link ProgressEdit}):
  * mark finished or unfinished, move the position, set or clear the dates. The cache
- * takes the stored progress under `qk.progress` and the lists that read progress (all
- * progress, the stats and the goal's finished count) refetch.
+ * takes the stored progress under `qk.progress` and as its row of the all-progress
+ * list; the stats and the goal's finished count refetch only when the edit could move
+ * a finish (it names `finished` or `finished_at`).
  *
  * Server-side only: it does NOT touch the player's local progress mirror or offline
  * queue (playback internals are frozen in this phase), so a device that has the book
@@ -889,13 +933,16 @@ export function useEditProgress(connectionId?: string) {
     mutationFn: (v: { libraryId: number; path: string; edit: ProgressEdit }) =>
       call((api) => api.editProgress(v.libraryId, v.path, v.edit)),
     onSuccess: (progress, v) => {
-      qc.setQueryData(qk.progress(cid, progress.library_id, progress.path), progress);
-      if (progress.library_id !== v.libraryId || progress.path !== v.path) {
-        void qc.invalidateQueries({ queryKey: qk.progress(cid, v.libraryId, v.path) });
+      storeAtResolvedPath(qc, (lib, path) => qk.progress(cid, lib, path), v, progress);
+      const same = (p: Progress) =>
+        p.library_id === progress.library_id && p.path === progress.path;
+      patchCachedList<Progress>(qc, qk.allProgress(cid), (list) =>
+        list.some(same) ? list.map((p) => (same(p) ? progress : p)) : [progress, ...list],
+      );
+      if (v.edit.finished !== undefined || v.edit.finished_at !== undefined) {
+        void qc.invalidateQueries({ queryKey: qk.myStatsAll(cid) });
+        void qc.invalidateQueries({ queryKey: qk.listeningGoal(cid) });
       }
-      void qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
-      void qc.invalidateQueries({ queryKey: qk.myStatsAll(cid) });
-      void qc.invalidateQueries({ queryKey: qk.listeningGoal(cid) });
     },
   });
 }

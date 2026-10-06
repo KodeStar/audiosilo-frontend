@@ -597,26 +597,26 @@ export class ApiClient {
   // The caller's queue, in order, at most 500 books. Every write answers with the
   // whole stored queue, so the caller reconciles with what the server kept.
   async queue(signal?: AbortSignal) {
-    const r = await this.request<{ queue: QueueEntry[] | null }>('GET', '/me/queue', { signal });
-    return r.queue ?? [];
+    const r = await this.request<{ queue: QueueEntry[] }>('GET', '/me/queue', { signal });
+    return r.queue;
   }
   /** Replace the whole queue with `items`, in this order. Duplicates collapse (the
    * first wins) and an entry that is not an indexed book inside the caller's access
    * is skipped, not an error. More than 500 items is a 400. */
   async setQueue(items: BookRef[]) {
-    const r = await this.request<{ queue: QueueEntry[] | null }>('PUT', '/me/queue', {
+    const r = await this.request<{ queue: QueueEntry[] }>('PUT', '/me/queue', {
       body: { items },
     });
-    return r.queue ?? [];
+    return r.queue;
   }
   /** Queue one book (a part/disc path queues its book). `position` is a 0-based index
    * in the stored order (absent or past the end: the end). A book already queued moves
    * to `position` when one is given, else stays. A full queue is a 409 (`queue_full`). */
   async addToQueue(libraryId: number, path: string, position?: number) {
-    const r = await this.request<{ queue: QueueEntry[] | null }>('POST', '/me/queue', {
+    const r = await this.request<{ queue: QueueEntry[] }>('POST', '/me/queue', {
       body: { library_id: libraryId, path, position },
     });
-    return r.queue ?? [];
+    return r.queue;
   }
   /** Remove one book from the queue (idempotent, 204). */
   removeFromQueue(libraryId: number, path: string) {
@@ -628,10 +628,10 @@ export class ApiClient {
   // is a 404; a viewer's write is a 403 (`not_owner`).
   /** Owned collections first, then those shared with the caller, each newest first. */
   async collections(signal?: AbortSignal) {
-    const r = await this.request<{ collections: Collection[] | null }>('GET', '/me/collections', {
+    const r = await this.request<{ collections: Collection[] }>('GET', '/me/collections', {
       signal,
     });
-    return (r.collections ?? []).map(normalizeCollection);
+    return r.collections;
   }
   /** Create a collection. Over 100 owned is a 409 (`collections_full`); a bad name a
    * 400. */
@@ -639,19 +639,18 @@ export class ApiClient {
     const r = await this.request<{ collection: Collection }>('POST', '/me/collections', {
       body: input,
     });
-    return normalizeCollection(r.collection);
+    return r.collection;
   }
   /** A collection and its items in order, limited to the caller's own access. */
-  async collection(id: number, signal?: AbortSignal) {
-    const r = await this.request<CollectionDetail>('GET', `/me/collections/${id}`, { signal });
-    return normalizeCollectionDetail(r);
+  collection(id: number, signal?: AbortSignal) {
+    return this.request<CollectionDetail>('GET', `/me/collections/${id}`, { signal });
   }
   /** Rename it or change its description (owner only). */
   async updateCollection(id: number, patch: CollectionPatch) {
     const r = await this.request<{ collection: Collection }>('PATCH', `/me/collections/${id}`, {
       body: patch,
     });
-    return normalizeCollection(r.collection);
+    return r.collection;
   }
   /** The owner deletes the collection; a viewer leaves it (only their share goes). */
   deleteCollection(id: number) {
@@ -660,19 +659,17 @@ export class ApiClient {
   /** Replace the items (owner only), with the queue's rules: duplicates collapse and
    * an entry that is not an indexed book in the caller's access is skipped. More than
    * 1000 is a 400. Returns the stored detail. */
-  async setCollectionItems(id: number, items: BookRef[]) {
-    const r = await this.request<CollectionDetail>('PUT', `/me/collections/${id}/items`, {
+  setCollectionItems(id: number, items: BookRef[]) {
+    return this.request<CollectionDetail>('PUT', `/me/collections/${id}/items`, {
       body: { items },
     });
-    return normalizeCollectionDetail(r);
   }
   /** Add one book (owner only), placed like {@link addToQueue}. A full collection is
    * a 409 (`collection_full`). Returns the stored detail. */
-  async addCollectionItem(id: number, libraryId: number, path: string, position?: number) {
-    const r = await this.request<CollectionDetail>('POST', `/me/collections/${id}/items`, {
+  addCollectionItem(id: number, libraryId: number, path: string, position?: number) {
+    return this.request<CollectionDetail>('POST', `/me/collections/${id}/items`, {
       body: { library_id: libraryId, path, position },
     });
-    return normalizeCollectionDetail(r);
   }
   /** Remove one book (owner only; idempotent, 204). */
   removeCollectionItem(id: number, libraryId: number, path: string) {
@@ -689,14 +686,14 @@ export class ApiClient {
       `/me/collections/${id}/shares`,
       { body: { user_ids: userIds } },
     );
-    return normalizeCollection(r.collection);
+    return r.collection;
   }
   /** The users the caller can share with, by username. A demo account gets a 403. */
   async shareTargets(signal?: AbortSignal) {
-    const r = await this.request<{ users: ShareTarget[] | null }>('GET', '/me/share-targets', {
+    const r = await this.request<{ users: ShareTarget[] }>('GET', '/me/share-targets', {
       signal,
     });
-    return r.users ?? [];
+    return r.users;
   }
 
   // --- Ratings (capability `ratings`) --------------------------------------
@@ -725,10 +722,10 @@ export class ApiClient {
   }
   /** Every rating the caller can still see, newest change first. */
   async myRatings(signal?: AbortSignal) {
-    const r = await this.request<{ ratings: RatedBook[] | null }>('GET', '/me/ratings', {
+    const r = await this.request<{ ratings: RatedBook[] }>('GET', '/me/ratings', {
       signal,
     });
-    return r.ratings ?? [];
+    return r.ratings;
   }
 
   // --- Your listening (capability `user_stats`) -----------------------------
@@ -739,12 +736,11 @@ export class ApiClient {
       query: { range },
       signal,
     });
-    return normalizeStats(r.stats);
+    return r.stats;
   }
   /** The caller's listening day by day for a period. */
-  async myListening(range?: StatsRange, signal?: AbortSignal) {
-    const r = await this.request<MyListening>('GET', '/me/listening', { query: { range }, signal });
-    return { ...r, days: r.days ?? [] };
+  myListening(range?: StatsRange, signal?: AbortSignal) {
+    return this.request<MyListening>('GET', '/me/listening', { query: { range }, signal });
   }
   /** The caller's yearly goal (null when unset) and this year's finished books. */
   listeningGoal(signal?: AbortSignal) {
@@ -764,10 +760,10 @@ export class ApiClient {
   // --- My devices (capability `my_devices`) --------------------------------
   /** The caller's own live sessions and API keys, most recently seen first. */
   async myDevices(signal?: AbortSignal) {
-    const r = await this.request<{ devices: MyDevice[] | null }>('GET', '/me/devices', {
+    const r = await this.request<{ devices: MyDevice[] }>('GET', '/me/devices', {
       signal,
     });
-    return r.devices ?? [];
+    return r.devices;
   }
   /** Sign out one of the caller's own devices. `current: true` means it was this very
    * token, which every later request is refused with (the caller signs out locally).
@@ -794,34 +790,4 @@ export class ApiClient {
       body: span,
     });
   }
-}
-
-// Go encodes an empty slice as null when it was never made: the user-state readers
-// below turn null arrays into [], so a screen never has to.
-
-function normalizeCollection(c: Collection): Collection {
-  const out: Collection = { ...c, preview: c.preview ?? [] };
-  // `shared_with` is meaningful by absence (a viewer never gets it), so only an owner's
-  // null becomes [].
-  if (c.owned) out.shared_with = c.shared_with ?? [];
-  return out;
-}
-
-function normalizeCollectionDetail(d: CollectionDetail): CollectionDetail {
-  return { collection: normalizeCollection(d.collection), items: d.items ?? [] };
-}
-
-function normalizeStats(s: UserStats): UserStats {
-  return {
-    ...s,
-    days: s.days ?? [],
-    hour_weekday: s.hour_weekday ?? [],
-    top_books: s.top_books ?? [],
-    top_authors: s.top_authors ?? [],
-    top_narrators: s.top_narrators ?? [],
-    top_series: s.top_series ?? [],
-    finished_books: s.finished_books ?? [],
-    playback: s.playback ?? [],
-    clients: s.clients ?? [],
-  };
 }

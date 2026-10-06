@@ -652,9 +652,7 @@ export type UserRef = { id: number; username: string };
 /** One book on a stored list (Up next, a collection): its address, when it was
  * added (RFC3339), and the book in the list shape (no description) when the path is
  * indexed. */
-export type BookListEntry = {
-  library_id: number;
-  path: string;
+export type BookListEntry = BookRef & {
   added_at: string;
   book?: Book;
 };
@@ -708,9 +706,7 @@ export type RatingValue = 1 | 2 | 3 | 4 | 5;
 /** The caller's rating of a book (capability `ratings`), stored on the book's own
  * path (rating a part/disc path rates its book). `note` is trimmed, at most 500
  * characters, `''` when none. */
-export type Rating = {
-  library_id: number;
-  path: string;
+export type Rating = BookRef & {
   rating: RatingValue;
   note: string;
   created_at: string;
@@ -751,9 +747,7 @@ export type StatsTotals = {
 export type ListeningDay = { date: string; listened: number };
 
 /** A book by the caller's listening time in the period. */
-export type StatsTopBook = {
-  library_id: number;
-  path: string;
+export type StatsTopBook = BookRef & {
   title: string;
   author: string;
   listened: number;
@@ -764,9 +758,7 @@ export type StatsTopBook = {
 export type StatsTopName = { name: string; listened: number; books: number };
 
 /** A book the caller finished in the period; `finished_at` is RFC3339. */
-export type StatsFinishedBook = {
-  library_id: number;
-  path: string;
+export type StatsFinishedBook = BookRef & {
   title: string;
   author: string;
   finished_at: string;

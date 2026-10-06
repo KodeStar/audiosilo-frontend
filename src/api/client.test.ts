@@ -680,12 +680,10 @@ describe('ApiClient user state (Phase 1b)', () => {
   const c = () => new ApiClient('https://h', 'tok');
 
   describe('Up next', () => {
-    it('reads GET /me/queue, unwrapping { queue } and tolerating null', async () => {
+    it('reads GET /me/queue, unwrapping { queue }', async () => {
       const fetchMock = installFetch(() => ({ status: 200, body: { queue: [entry] } }));
       await expect(c().queue()).resolves.toEqual([entry]);
       expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/queue', method: 'GET' });
-      installFetch(() => ({ status: 200, body: { queue: null } }));
-      await expect(c().queue()).resolves.toEqual([]);
     });
 
     it('replaces the queue with PUT /me/queue { items } and returns the stored queue', async () => {
@@ -736,27 +734,20 @@ describe('ApiClient user state (Phase 1b)', () => {
   });
 
   describe('Collections', () => {
-    it('lists GET /me/collections, unwrapping and normalizing null arrays', async () => {
-      const viewer = { ...collectionWire, id: 6, owned: false, preview: null };
-      delete (viewer as { shared_with?: unknown }).shared_with;
-      const unshared = { ...collectionWire, id: 7, shared_with: null };
+    it('lists GET /me/collections, unwrapping { collections }', async () => {
+      // A viewer's entry has no shared_with at all (the server omits it).
+      const { shared_with: _omitted, ...viewer } = { ...collectionWire, id: 6, owned: false };
       const fetchMock = installFetch(() => ({
         status: 200,
-        body: { collections: [collectionWire, viewer, unshared] },
+        body: { collections: [collectionWire, viewer] },
       }));
       const list = await c().collections();
       expect(sent(fetchMock)).toMatchObject({
         url: 'https://h/api/v1/me/collections',
         method: 'GET',
       });
-      expect(list[0]).toEqual(collectionWire);
-      // A viewer's preview null becomes [], and it still has no shared_with (owner only).
-      expect(list[1].preview).toEqual([]);
+      expect(list).toEqual([collectionWire, viewer]);
       expect(list[1]).not.toHaveProperty('shared_with');
-      // An owner's null shared_with means unshared: [].
-      expect(list[2].shared_with).toEqual([]);
-      installFetch(() => ({ status: 200, body: { collections: null } }));
-      await expect(c().collections()).resolves.toEqual([]);
     });
 
     it('creates with POST /me/collections and unwraps { collection }', async () => {
@@ -787,8 +778,6 @@ describe('ApiClient user state (Phase 1b)', () => {
         url: 'https://h/api/v1/me/collections/5',
         method: 'GET',
       });
-      installFetch(() => ({ status: 200, body: { collection: collectionWire, items: null } }));
-      await expect(c().collection(5)).resolves.toMatchObject({ items: [] });
     });
 
     it("surfaces a stranger's collection as a 404 ApiError", async () => {
@@ -881,8 +870,6 @@ describe('ApiClient user state (Phase 1b)', () => {
         url: 'https://h/api/v1/me/share-targets',
         method: 'GET',
       });
-      installFetch(() => ({ status: 200, body: { users: null } }));
-      await expect(c().shareTargets()).resolves.toEqual([]);
     });
   });
 
@@ -932,8 +919,6 @@ describe('ApiClient user state (Phase 1b)', () => {
       const fetchMock = installFetch(() => ({ status: 200, body: { ratings } }));
       await expect(c().myRatings()).resolves.toEqual(ratings);
       expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/ratings', method: 'GET' });
-      installFetch(() => ({ status: 200, body: { ratings: null } }));
-      await expect(c().myRatings()).resolves.toEqual([]);
     });
   });
 
@@ -1024,28 +1009,10 @@ describe('ApiClient user state (Phase 1b)', () => {
       });
     });
 
-    it('omits range when not given (the server reads 30d) and turns null lists into []', async () => {
-      const nulls = Object.fromEntries(
-        [
-          'days',
-          'hour_weekday',
-          'top_books',
-          'top_authors',
-          'top_narrators',
-          'top_series',
-          'finished_books',
-          'playback',
-          'clients',
-        ].map((k) => [k, null]),
-      );
-      const fetchMock = installFetch(() => ({
-        status: 200,
-        body: { stats: { ...stats, ...nulls } },
-      }));
-      const got = await c().myStats();
+    it('omits range when not given (the server reads 30d)', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { stats } }));
+      await expect(c().myStats()).resolves.toEqual(stats);
       expect(sent(fetchMock).url).toBe('https://h/api/v1/me/stats');
-      for (const k of Object.keys(nulls)) expect(got[k as keyof typeof got]).toEqual([]);
-      expect(got.totals).toEqual(totals);
     });
 
     it('surfaces an unknown range as a 400 ApiError', async () => {
@@ -1056,7 +1023,7 @@ describe('ApiClient user state (Phase 1b)', () => {
       });
     });
 
-    it('reads GET /me/listening?range= as is, tolerating null days', async () => {
+    it('reads GET /me/listening?range= as is', async () => {
       const body = { ...period, days: [{ date: '2026-10-05', listened: 60 }] };
       const fetchMock = installFetch(() => ({ status: 200, body }));
       await expect(c().myListening('7d')).resolves.toEqual(body);
@@ -1064,8 +1031,6 @@ describe('ApiClient user state (Phase 1b)', () => {
         url: 'https://h/api/v1/me/listening?range=7d',
         method: 'GET',
       });
-      installFetch(() => ({ status: 200, body: { ...period, days: null } }));
-      await expect(c().myListening()).resolves.toEqual({ ...period, days: [] });
     });
 
     it('reads GET /me/goal as is (a goal or null)', async () => {
@@ -1115,12 +1080,10 @@ describe('ApiClient user state (Phase 1b)', () => {
       current: true,
     };
 
-    it('lists GET /me/devices, unwrapping { devices } and tolerating null', async () => {
+    it('lists GET /me/devices, unwrapping { devices }', async () => {
       const fetchMock = installFetch(() => ({ status: 200, body: { devices: [device] } }));
       await expect(c().myDevices()).resolves.toEqual([device]);
       expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/devices', method: 'GET' });
-      installFetch(() => ({ status: 200, body: { devices: null } }));
-      await expect(c().myDevices()).resolves.toEqual([]);
     });
 
     it('revokes with DELETE /me/devices/{id} and returns { current }', async () => {
