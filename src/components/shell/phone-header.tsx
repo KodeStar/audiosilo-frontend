@@ -43,7 +43,12 @@ export function PhoneHeader({
   return (
     <View style={{ paddingTop: insets.top }} className="bg-background">
       {canGoBack ? (
-        <View className="h-[44px] flex-row items-center px-2">
+        // A hairline under the bar: a pushed page scrolls up under it (the series page's
+        // rows), and on the page's own colour the back button seemed to float over them.
+        <View
+          testID="phone-header-bar"
+          className="h-[45px] flex-row items-center border-b border-border px-2"
+        >
           <AnimatedPressable
             onPress={onBack}
             hitSlop={8}
