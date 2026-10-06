@@ -1,7 +1,4 @@
-import { useQueries } from '@tanstack/react-query';
-
-import { qk, type SourcedLibrary } from '@/api/hooks';
-import { useApis } from '@/api/provider';
+import { type SourcedLibrary, useLibrariesAll } from '@/api/hooks';
 import {
   type LibraryGroup,
   resolveLibrarySelection,
@@ -19,34 +16,15 @@ export type LibraryChoiceGroup = LibraryGroup & { libraries: SourcedLibrary[] };
  * - `selection` / `library`: what to show (null while there is nothing yet);
  * - `groups`: every server's libraries in connection order, for `LibraryPicker`;
  * - `select`: remember another library.
- * The library lists share `useLibrariesAll`'s cache (`qk.libraries`).
+ * The library lists are `useLibrariesAll`'s.
  */
 export function useSelectedLibrary() {
-  const apis = useApis();
   const stored = useLibrarySelection((s) => s.selection);
   const select = useLibrarySelection((s) => s.select);
-  const groups = useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.libraries(connection.id),
-      queryFn: () => client.libraries(),
-    })),
-    combine: (results): LibraryChoiceGroup[] =>
-      results.map((r, i) => {
-        const { id, name } = apis[i].connection;
-        const libraries = (r.data ?? []).map((l): SourcedLibrary => ({
-          ...l,
-          connectionId: id,
-          connectionName: name,
-        }));
-        return {
-          connectionId: id,
-          connectionName: name,
-          libraries,
-          libraryIds: libraries.map((l) => l.id),
-          status: r.data ? 'ready' : r.isError ? 'error' : 'loading',
-        };
-      }),
-  });
+  const groups: LibraryChoiceGroup[] = useLibrariesAll().groups.map((g) => ({
+    ...g,
+    libraryIds: g.libraries.map((l) => l.id),
+  }));
   const selection = resolveLibrarySelection(stored, groups);
   const library = selection
     ? (groups

@@ -2,7 +2,7 @@ import type { Href } from 'expo-router';
 
 import type { SourcedProgress } from '@/api/hooks';
 import type { Book, BookMetaSeriesWork, NextBook } from '@/api/types';
-import { libraryBooksHref } from '@/components/library/books/books-view';
+import { lengthBucket, libraryBooksHref } from '@/components/library/books/books-view';
 import { contentKeyOf } from '@/lib/content-key';
 import type { MergedBook } from '@/lib/dedup';
 import { bookTitle, pathLeaf } from '@/lib/paths';
@@ -164,8 +164,6 @@ export function nextInSeriesItems(
 
 // --- Smart shelves -----------------------------------------------------------------
 
-/** "Short" as the Library's length filter reads it (`len=short`: under 5 hours). */
-export const SHORT_LISTEN_SECONDS = 5 * 3600;
 const WEEK_MS = 7 * 86_400_000;
 /** Covers fanned on a smart shelf card. */
 const FAN = 3;
@@ -226,7 +224,8 @@ export function smartShelves(input: {
         .map((p) => ({ ...progressAt(p), title: pathLeaf(p.path) })),
     });
   }
-  const short = input.recent.filter((b) => b.duration > 0 && b.duration < SHORT_LISTEN_SECONDS);
+  // "Short" as the Library's length filter reads it (`len=short`), which the shelf opens.
+  const short = input.recent.filter((b) => b.duration > 0 && lengthBucket(b.duration) === 'short');
   if (short.length > 0) out.push({ id: 'short', covers: short.slice(0, FAN).map(bookCover) });
   const n = input.narrator;
   if (n && n.sample.length > 0) {

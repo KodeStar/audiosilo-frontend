@@ -9,7 +9,6 @@ import type { FsEntry } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorNote } from '@/components/ui/query-state';
@@ -22,11 +21,12 @@ import {
   filterEntries,
   groupByLetter,
   presentLetters,
-  RAIL_LETTERS,
   sectionIndexForLetter,
 } from '@/lib/alpha-sections';
 import { libraryHref, segmentsToPath } from '@/lib/paths';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
+
+import { AzRail } from './books/az-rail';
 
 // Show the filter box + A–Z rail only once a folder is big enough to need them.
 const NARROW_THRESHOLD = 25;
@@ -275,31 +275,10 @@ function BrowseContent() {
           />
 
           {showTools && present.size > 1 ? (
-            // Inset the rail so its 27 letters distribute (each flex-1) within the
-            // column instead of overflowing: a top gap clears the filter box, and
-            // the same bottom inset the list uses keeps the last letters above the
-            // floating mini-player. pr-3 lifts it off the screen edge.
-            <View style={{ paddingTop: 12, paddingBottom }} className="w-11 items-center pr-2">
-              {RAIL_LETTERS.map((l) => {
-                const active = present.has(l);
-                return (
-                  <AnimatedPressable
-                    key={l}
-                    disabled={!active}
-                    onPress={() => jumpToLetter(l)}
-                    hitSlop={{ top: 3, bottom: 3, left: 14, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('library.browse.jumpTo', { letter: l })}
-                    className="w-7 flex-1 items-center justify-center rounded-full"
-                  >
-                    <Text
-                      className={`font-sans-semibold text-[11px] ${active ? 'text-brand-ink' : 'text-subtle-foreground'}`}
-                    >
-                      {l}
-                    </Text>
-                  </AnimatedPressable>
-                );
-              })}
+            // A top gap clears the filter box, and the list's bottom inset keeps the
+            // last letters above the floating mini player.
+            <View style={{ paddingTop: 12, paddingBottom }} className="pr-2">
+              <AzRail present={present} onJump={jumpToLetter} />
             </View>
           ) : null}
         </View>

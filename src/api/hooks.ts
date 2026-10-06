@@ -1297,6 +1297,16 @@ export type SourcedLibrary = Library & { connectionId: string; connectionName: s
 export type SourcedFavourite = Favourite & { connectionId: string; connectionName: string };
 export type SourcedProgress = Progress & { connectionId: string; connectionName: string };
 
+/** One connection's libraries, and whether its list has loaded. */
+export type LibrariesOfServer = {
+  connectionId: string;
+  connectionName: string;
+  libraries: SourcedLibrary[];
+  status: 'loading' | 'ready' | 'error';
+};
+
+/** Every connection's libraries: flattened (`libraries`) and per server, in connection
+ * order (`groups`). */
 export function useLibrariesAll() {
   const apis = useApis();
   return useQueries({
@@ -1304,17 +1314,27 @@ export function useLibrariesAll() {
       queryKey: qk.libraries(connection.id),
       queryFn: () => client.libraries(),
     })),
-    combine: (results) => ({
-      libraries: results.flatMap((r, i) =>
-        (r.data ?? []).map((l): SourcedLibrary => ({
-          ...l,
-          connectionId: apis[i].connection.id,
-          connectionName: apis[i].connection.name,
-        })),
-      ),
-      isLoading: results.some((r) => r.isLoading),
-      error: results.find((r) => r.error)?.error ?? null,
-    }),
+    combine: (results) => {
+      const groups = results.map((r, i): LibrariesOfServer => {
+        const { id, name } = apis[i].connection;
+        return {
+          connectionId: id,
+          connectionName: name,
+          libraries: (r.data ?? []).map((l): SourcedLibrary => ({
+            ...l,
+            connectionId: id,
+            connectionName: name,
+          })),
+          status: r.data ? 'ready' : r.isError ? 'error' : 'loading',
+        };
+      });
+      return {
+        groups,
+        libraries: groups.flatMap((g) => g.libraries),
+        isLoading: results.some((r) => r.isLoading),
+        error: results.find((r) => r.error)?.error ?? null,
+      };
+    },
   });
 }
 
