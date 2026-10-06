@@ -132,6 +132,6 @@ export interface DownloadEngine {
   /** Total bytes used by all downloads. */
   totalBytesUsed(): Promise<number>;
   /** How much room there is (see {@link StorageEstimate}), or null when the platform
-   * can't say. Omitted where it is never knowable. */
-  storageEstimate?(): Promise<StorageEstimate | null>;
+   * can't say. */
+  storageEstimate(): Promise<StorageEstimate | null>;
 }

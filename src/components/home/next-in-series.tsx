@@ -131,12 +131,14 @@ function seriesCaption(series: string, index: number): string {
   return index ? `${series} · ${index}` : series;
 }
 
+const SKELETON_TILES = [0, 1, 2, 3, 4, 5];
+
 /** A row of cover placeholders, the shape a shelf takes while it loads. */
-export function ShelfSkeleton({ count = 6 }: { count?: number }) {
+export function ShelfSkeleton() {
   return (
     <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <ShelfRow
-        data={Array.from({ length: count }, (_, i) => i)}
+        data={SKELETON_TILES}
         keyExtractor={(i) => String(i)}
         renderItem={(_, width) => <CoverTileSkeleton width={width} />}
       />

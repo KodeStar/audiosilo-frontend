@@ -12,6 +12,7 @@ import {
   useFavouritesAll,
   useRecentAll,
 } from '@/api/hooks';
+import { libraryBooksHref } from '@/components/library/books/books-view';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { libraryModeHref } from '@/components/library/library-modes';
 import { ShelfRow } from '@/components/library/shelf-row';
@@ -31,7 +32,6 @@ import { ProgressTile } from './book-title';
 import { Greeting } from './greeting';
 import {
   type BookAt,
-  libraryBooksHref,
   nextCandidates,
   nextInSeriesItems,
   pickNowBook,
@@ -77,8 +77,6 @@ export function HomeScreen() {
   const { favourites } = useFavouritesAll();
   const np = usePlayer((s) => s.nowPlaying);
 
-  // The progress overflow menu (mark finished, open the folder), opened by a long
-  // press on a Continue listening cover; one sheet at the screen root.
   // "Added this week" is counted from when Home opened.
   const [mountedAt] = useState(Date.now);
 

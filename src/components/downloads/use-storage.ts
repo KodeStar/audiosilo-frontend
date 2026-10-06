@@ -29,7 +29,7 @@ export function useStorage(): StorageReading {
     let cancelled = false;
     void Promise.all([
       engine.totalBytesUsed().catch(() => null),
-      engine.storageEstimate ? engine.storageEstimate().catch(() => null) : null,
+      engine.storageEstimate().catch(() => null),
     ]).then(([measured, estimate]) => {
       if (!cancelled) setReading({ measured, estimate });
     });

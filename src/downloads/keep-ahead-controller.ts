@@ -217,7 +217,7 @@ export async function runKeepAhead(): Promise<void> {
       declined: new Set(
         window.filter((b) => isDeclined(b.connectionId, b.libraryId, b.path)).map(contentKeyOf),
       ),
-      storage: engine.storageEstimate ? await engine.storageEstimate() : null,
+      storage: await engine.storageEstimate(),
       pending: pendingBytes(Object.values(entries)),
     });
     publish(plan.status, plan.slots);

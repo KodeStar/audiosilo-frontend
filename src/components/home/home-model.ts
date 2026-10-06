@@ -2,6 +2,7 @@ import type { Href } from 'expo-router';
 
 import type { SourcedProgress } from '@/api/hooks';
 import type { Book, BookMetaSeriesWork, NextBook } from '@/api/types';
+import { libraryBooksHref } from '@/components/library/books/books-view';
 import { contentKeyOf } from '@/lib/content-key';
 import type { MergedBook } from '@/lib/dedup';
 import { bookTitle, pathLeaf } from '@/lib/paths';
@@ -256,20 +257,8 @@ export function smartShelves(input: {
 
 // --- Links ---------------------------------------------------------------------------
 
-/** The Library's Books mode with filters (the deep-link contract the Library reads:
- * `/library?mode=books&sort=&status=&dl=&len=`). */
-export type LibraryBooksLink = {
-  sort?: 'recent' | 'title' | 'author' | 'length';
-  status?: 'new' | 'progress' | 'finished';
-  len?: 'short' | 'mid' | 'long';
-};
-
-export function libraryBooksHref(link: LibraryBooksLink): Href {
-  return { pathname: '/library', params: { mode: 'books', ...link } };
-}
-
-/** Where a smart shelf opens. */
-export function smartShelfHref(shelf: SmartShelf): Href | null {
+/** Where a smart shelf opens (the narrator's shelf opens their page, with useOpen()). */
+export function smartShelfHref(shelf: Exclude<SmartShelf, { id: 'narrator' }>): Href {
   switch (shelf.id) {
     case 'progress':
       return libraryBooksHref({ status: 'progress' });
@@ -277,7 +266,5 @@ export function smartShelfHref(shelf: SmartShelf): Href | null {
       return libraryBooksHref({ len: 'short' });
     case 'added':
       return libraryBooksHref({ sort: 'recent' });
-    case 'narrator':
-      return null; // the narrator page, opened with useOpen()
   }
 }

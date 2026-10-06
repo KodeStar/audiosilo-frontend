@@ -63,8 +63,7 @@ export function SmartShelves({ shelves }: { shelves: readonly SmartShelf[] }) {
             openNarrator(shelf.connectionId, shelf.libraryId, shelf.name);
             return;
           }
-          const href = smartShelfHref(shelf);
-          if (href) router.push(href);
+          router.push(smartShelfHref(shelf));
         };
         return (
           <AnimatedPressable

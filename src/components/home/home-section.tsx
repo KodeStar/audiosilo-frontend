@@ -18,13 +18,11 @@ export function HomeSection({
   sub,
   action,
   children,
-  className,
 }: {
   title: string;
   sub?: string;
   action?: { label: string; onPress: () => void };
   children: ReactNode;
-  className?: string;
 }) {
   const themed = useThemeColors();
   const phone = useLayout() === 'phone';
@@ -43,7 +41,7 @@ export function HomeSection({
     </AnimatedPressable>
   ) : null;
   return (
-    <View className={cn('gap-3.5', className)}>
+    <View className="gap-3.5">
       <View className={cn(phone ? 'gap-1' : 'flex-row items-baseline justify-between gap-3')}>
         <View className="min-w-0 flex-1 flex-row flex-wrap items-baseline gap-x-2.5 gap-y-1">
           <Text variant="heading" accessibilityRole="header">

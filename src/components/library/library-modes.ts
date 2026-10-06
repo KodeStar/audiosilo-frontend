@@ -2,6 +2,8 @@ import type { Href } from 'expo-router';
 
 import { firstParam } from '@/lib/paths';
 
+import { BOOKS_VIEW_PARAMS } from './books/books-view';
+
 /**
  * The Library tab's browse modes (STYLEGUIDE section 2): its sub-nav sections, in order.
  * The mode is the Library root's own search param, `/library?mode=<mode>` (absent =
@@ -72,6 +74,10 @@ export function resolveLibraryMode(requested: LibraryMode, caps: ModeCapabilitie
 export function libraryModeHref(mode: LibraryMode): Href {
   return mode === DEFAULT_LIBRARY_MODE ? '/library' : { pathname: '/library', params: { mode } };
 }
+
+/** The Library root's own URL params: its mode and the Books view's (Home's and
+ * Search's links open them), which the tab's navigation keeps on its root. */
+export const LIBRARY_ROOT_PARAMS = ['mode', ...BOOKS_VIEW_PARAMS] as const;
 
 /** What every single-library mode is given: the selected library (`useSelectedLibrary`). */
 export type LibraryModeProps = { connectionId: string; libraryId: number };

@@ -21,7 +21,8 @@ import type { SeriesEntry, SeriesStats, TrackSegment } from './series-model';
 import { RIBBON_WIDTH } from './spine';
 
 /** Diagonal hatching for a missing segment or swatch (decorative). */
-function Hatch({ color, gap = 4 }: { color: string; gap?: number }) {
+function Hatch({ color }: { color: string }) {
+  const gap = 4;
   return (
     <Svg width={600} height={40} style={{ position: 'absolute', left: 0, top: 0 }}>
       {Array.from({ length: Math.ceil(640 / gap) }, (_, i) => (

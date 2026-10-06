@@ -6,7 +6,7 @@ import { Platform, View } from 'react-native';
 import { BookCover } from '@/components/library/book-cover';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
+import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { bytesToGo, entryBytes } from '@/downloads/downloads-view';
 import type { AheadBook, SlotState } from '@/downloads/keep-ahead';
@@ -176,28 +176,51 @@ export function ActiveRow({
       actions={
         <>
           {failed ? (
-            <Button
+            <RowAction
               variant="outline"
-              size="sm"
               icon="rotate"
-              title={phone ? undefined : t('downloads.row.retry')}
+              withIcon
+              iconOnly={phone}
+              title={t('downloads.row.retry')}
               accessibilityLabel={t('downloads.row.retryLabel', { title: entry.title })}
               onPress={onRetry}
-              className={phone ? 'w-11 px-0' : undefined}
             />
           ) : null}
-          <Button
+          <RowAction
             variant="ghost"
-            size="sm"
-            icon={phone || failed ? 'close' : undefined}
-            title={phone || failed ? undefined : t('downloads.row.cancel')}
+            icon="close"
+            iconOnly={phone || failed}
+            title={t('downloads.row.cancel')}
             accessibilityLabel={t('downloads.row.cancelLabel', { title: entry.title })}
             onPress={onCancel}
-            className={phone || failed ? 'w-11 px-0' : undefined}
           />
         </>
       }
     />
+  );
+}
+
+/** A row's small button: its words (with the icon too when `withIcon`), or only its
+ * icon (a phone, a failed row's cancel) in a 44 wide square. */
+function RowAction({
+  iconOnly,
+  withIcon,
+  icon,
+  title,
+  ...button
+}: {
+  variant: 'outline' | 'ghost';
+  icon: IconName;
+  iconOnly: boolean;
+  withIcon?: boolean;
+  title: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+}) {
+  return iconOnly ? (
+    <Button size="sm" icon={icon} className="w-11 px-0" {...button} />
+  ) : (
+    <Button size="sm" icon={withIcon ? icon : undefined} title={title} {...button} />
   );
 }
 
@@ -244,14 +267,13 @@ export function PlannedRow({
         </Text>
       }
       actions={
-        <Button
+        <RowAction
           variant="ghost"
-          size="sm"
-          icon={phone ? 'close' : undefined}
-          title={phone ? undefined : t('downloads.row.cancel')}
+          icon="close"
+          iconOnly={phone}
+          title={t('downloads.row.cancel')}
           accessibilityLabel={t('downloads.row.cancelLabel', { title: book.title })}
           onPress={onCancel}
-          className={phone ? 'w-11 px-0' : undefined}
         />
       }
     />

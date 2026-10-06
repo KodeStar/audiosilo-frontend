@@ -122,8 +122,6 @@ describe('drag payload', () => {
   it("takes only a book from the queue's own server", () => {
     expect(canDrop(book, 'a')).toBe('ok');
     expect(canDrop(book, 'b')).toBe('other-server');
-    expect(canDrop(null, 'a')).toBe('invalid');
-    expect(canDrop(book, undefined)).toBe('invalid');
   });
 });
 

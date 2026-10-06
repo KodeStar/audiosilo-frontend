@@ -21,17 +21,12 @@ export function FilterChip({
   onPress,
   count,
   icon,
-  accessibilityLabel,
-  className,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   count?: number;
   icon?: IconName;
-  /** Defaults to the label plus the count. */
-  accessibilityLabel?: string;
-  className?: string;
 }) {
   const themed = useThemeColors();
   return (
@@ -39,9 +34,7 @@ export function FilterChip({
       role="checkbox"
       aria-checked={selected}
       accessibilityState={{ checked: selected }}
-      accessibilityLabel={
-        accessibilityLabel ?? (count === undefined ? label : `${label}, ${count}`)
-      }
+      accessibilityLabel={count === undefined ? label : `${label}, ${count}`}
       onPress={onPress}
       hitSlop={{ top: 6, bottom: 6 }}
       className={cn(
@@ -52,7 +45,6 @@ export function FilterChip({
         Platform.select({
           web: `cursor-pointer select-none transition-colors ${FOCUS_RING_OFFSET_CLASS}`,
         }),
-        className,
       )}
     >
       {icon ? (
@@ -99,13 +91,11 @@ export function ChipRow({
   children,
   accessibilityLabel,
   gutter = 0,
-  className,
 }: {
   children: ReactNode;
   /** What the chips filter ("Filters"). */
   accessibilityLabel: string;
   gutter?: number;
-  className?: string;
 }) {
   return (
     <ScrollView
@@ -114,7 +104,7 @@ export function ChipRow({
       role="group"
       accessibilityLabel={accessibilityLabel}
       style={gutter ? { marginHorizontal: -gutter } : undefined}
-      className={cn('grow-0', className)}
+      className="grow-0"
       contentContainerClassName="flex-row items-center gap-2 py-1.5"
       contentContainerStyle={gutter ? { paddingHorizontal: gutter } : undefined}
     >

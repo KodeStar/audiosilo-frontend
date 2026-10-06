@@ -1,10 +1,10 @@
 import type { SourcedProgress } from '@/api/hooks';
 import type { Book, NextBook } from '@/api/types';
+import { libraryBooksHref } from '@/components/library/books/books-view';
 import type { MergedBook } from '@/lib/dedup';
 
 import {
   greetingPart,
-  libraryBooksHref,
   nextCandidates,
   nextInSeriesItems,
   pickNowBook,

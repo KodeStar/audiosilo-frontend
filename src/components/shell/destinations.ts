@@ -2,6 +2,7 @@ import { router, useNavigationContainerRef, useSegments, type Href } from 'expo-
 import type { MaterialIcon, SFSymbolIcon } from 'expo-router/unstable-native-tabs';
 import { useCallback } from 'react';
 
+import { LIBRARY_ROOT_PARAMS } from '@/components/library/library-modes';
 import type { IconName } from '@/components/ui/icon';
 import { engine } from '@/downloads/engine';
 
@@ -72,7 +73,7 @@ export const TABS: readonly Destination[] = [
     // The browse mode (`/library?mode=authors`, see library-modes.ts) and the Books
     // mode's sort and filters (`sort`, `status`, `dl`, `len`; books-view.ts), which links
     // from Home and Search open.
-    rootParams: ['mode', 'sort', 'status', 'dl', 'len'],
+    rootParams: LIBRARY_ROOT_PARAMS,
   },
   {
     name: '(search)',

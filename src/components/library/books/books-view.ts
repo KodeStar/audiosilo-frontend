@@ -1,3 +1,5 @@
+import type { Href } from 'expo-router';
+
 import type { Book, Progress } from '@/api/types';
 import { type LetterItem, letterItems } from '@/lib/alpha-sections';
 import { foldAccents } from '@/lib/names';
@@ -42,6 +44,20 @@ export function parseBooksView(params: RawParams): BooksView {
     dl: firstParam(params.dl) === '1',
     len: oneOf(LENGTH_BUCKETS, firstParam(params.len)),
   };
+}
+
+/** The Books view's URL params (`parseBooksView` reads them). */
+export const BOOKS_VIEW_PARAMS = ['sort', 'status', 'dl', 'len'] as const;
+
+/** The Library's Books mode showing `view`: the deep-link contract other screens open
+ * (`/library?mode=books&sort=&status=&dl=1&len=`). */
+export function libraryBooksHref(view: Partial<BooksView>): Href {
+  const params: Record<string, string> = { mode: 'books' };
+  if (view.sort) params.sort = view.sort;
+  if (view.status) params.status = view.status;
+  if (view.dl) params.dl = '1';
+  if (view.len) params.len = view.len;
+  return { pathname: '/library', params };
 }
 
 /** The URL params of a view, for `router.setParams`: a default is `undefined`, which

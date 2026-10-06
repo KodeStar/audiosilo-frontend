@@ -123,8 +123,7 @@ export function parseDragPayload(raw: string | null | undefined): BookDragPayloa
 }
 
 /** Whether a dragged book can go on the queue shown: only one of the same server. */
-export function canDrop(payload: BookDragPayload | null, queueConnection: string | undefined) {
-  if (!payload || !queueConnection) return 'invalid' as const;
+export function canDrop(payload: BookDragPayload, queueConnection: string) {
   return payload.connectionId === queueConnection ? ('ok' as const) : ('other-server' as const);
 }
 

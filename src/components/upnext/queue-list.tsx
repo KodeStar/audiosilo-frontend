@@ -379,10 +379,10 @@ function RowButton({
 }
 
 /** Cover-shaped placeholder rows while the queue loads. */
-export function QueueSkeleton({ rows = 3 }: { rows?: number }) {
+export function QueueSkeleton() {
   return (
     <View testID="upnext-skeleton">
-      {Array.from({ length: rows }, (_, i) => (
+      {Array.from({ length: 3 }, (_, i) => (
         <View key={i} className="flex-row items-center gap-2.5 py-2 pl-1">
           <View className="w-6" />
           <Skeleton className="h-[44px] w-[44px] rounded-cover" />
