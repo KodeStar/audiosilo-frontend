@@ -22,6 +22,22 @@ export type Capabilities = {
    * treat missing as false. The player does not consume it; the type mirrors the
    * wire so the contract stays complete. */
   export?: boolean;
+  /** Whether GET cover accepts `?size=160|320|640` (a cached JPEG thumbnail; see
+   * {@link CoverSize}). Absent on older servers - treat missing as false and request
+   * the full art (an older server ignores `size` and sends it anyway). */
+  cover_sizes?: boolean;
+  /** Whether the browse lists exist: `/libraries/{id}/authors|narrators|series` and
+   * the `narrator=` filter on `/libraries/{id}/books`. Absent on older servers -
+   * treat missing as false and never request them. */
+  browse_people?: boolean;
+  /** Whether the server resolves what to play after a book (`/libraries/{id}/next`,
+   * {@link NextBook}). Absent on older servers - treat missing as false and keep the
+   * client-side folder-sibling fallback. */
+  next_book?: boolean;
+  /** Whether `/libraries/{id}/meta` honours `include=previous` and `spoilers=hide`.
+   * Tracks `metadata` (off when enrichment is off). Absent on older servers - treat
+   * missing as false: such a server ignores both params and sends the full envelope. */
+  meta_bundle?: boolean;
 };
 
 export type ServerInfo = {
@@ -212,6 +228,87 @@ export type Book = {
   /** The same book's other (non-winning) copies, so the UI can show "also on X"
    * and let the user switch. Present on de-duplicated lists. */
   other_locations?: BookLocation[];
+  /** Publication date, "YYYY", "YYYY-MM" or "YYYY-MM-DD" (the admin-edited or
+   * community value). Sent on every book response; absent when unknown or on an
+   * older server. */
+  published?: string;
+  /** The admin-edited/community description. Only GET /libraries/{id}/item sends
+   * it - list, search, recent and next responses leave it out to keep pages small.
+   * Not the CC BY-SA `community_description` on {@link BookMetaWork}. Absent on
+   * older servers. */
+  description?: string;
+  /** Colours taken from the cover art, for theming the book's screens. Absent
+   * until the server first makes a thumbnail of this art, and on older servers. */
+  cover_color?: CoverColor;
+  /** Opaque token that changes whenever the cover art changes. Pass it to
+   * `coverUrl(..., { version })` so a cached image is refetched after a cover is
+   * replaced. Absent until known, and on older servers. */
+  cover_version?: string;
+};
+
+/** Colours derived from a book's cover art, all lowercase "#rrggbb". `bg` is the
+ * dominant colour. `accent` is its vibrant colour, adjusted to reach a WCAG contrast
+ * of at least 4.5:1 against `bg`, and `on_accent` (`#ffffff` or `#000000`) is the
+ * text colour to put on it. `accent`/`on_accent` are omitted together when the art
+ * has no usable vibrant colour - fall back to the brand accent. Derived and
+ * rebuildable on the server, never user state. */
+export type CoverColor = { bg: string; accent?: string; on_accent?: string };
+
+/** Thumbnail widths GET cover accepts as `?size=` (capability `cover_sizes`).
+ * Any other value is a 400. */
+export type CoverSize = 160 | 320 | 640;
+
+/** A content address, (library_id, path): a book the caller can open. */
+export type BookRef = { library_id: number; path: string };
+
+/** Sort orders of GET /libraries/{id}/books (the server's default is `author`). */
+export type BookSort = 'author' | 'title' | 'recent';
+
+/** Response of GET /libraries/{id}/books: one keyset page. `next_cursor` is absent
+ * once the list is exhausted. */
+export type BookPage = { books: Book[]; next_cursor?: string };
+
+/** One distinct author or narrator in a library, with their book count and total
+ * `duration` (seconds). `name` is the whole field value: a "Kramer & Reading"
+ * credit is one entry, matching the exact `author=`/`narrator=` books filter. */
+export type PersonCount = { name: string; books: number; duration: number };
+
+/** GET /libraries/{id}/authors or /narrators (capability `browse_people`),
+ * normalized by the client: `people` is the `authors`/`narrators` array (sorted
+ * case-insensitively by the server), `unknown` the number of books with the field
+ * blank. Counts cover only books inside the caller's share scope. */
+export type PeopleList = { people: PersonCount[]; unknown: number };
+
+/** One distinct series in a library (GET /libraries/{id}/series, capability
+ * `browse_people`): its book count, total `duration` (seconds), and the
+ * `series_index` values the library holds (`positions`), so a UI can show gaps. */
+export type SeriesCount = {
+  name: string;
+  author: string;
+  books: number;
+  duration: number;
+  positions: number[];
+};
+
+/** Response of GET /libraries/{id}/next (capability `next_book`): what to play
+ * after a book, and how the server decided.
+ * - `community`: the next work on the book's community series rail. `work` is
+ *   always set; `next`+`book` only when the caller owns that work. A missing `next`
+ *   with a `work` means the next book is not in the library - do not skip ahead.
+ *   No `work` at all means this was the last book of the series.
+ * - `series`: the next higher `series_index` of the same series in the library; no
+ *   `next` means the end of the series.
+ * - `folder`: the next item in the book's parent folder (`book` only when indexed).
+ * - `none`: nothing follows. */
+export type NextBook = {
+  source: 'community' | 'series' | 'folder' | 'none';
+  /** What to play next; a book the caller can open. */
+  next?: BookRef;
+  /** The next book's indexed metadata in the list shape (no files, chapters or
+   * description). */
+  book?: Book;
+  /** `community` only: the next work on the rail, with `local` when owned. */
+  work?: BookMetaSeriesWork;
 };
 
 /** One copy of a book in a particular library - the non-winning copies behind a
@@ -298,6 +395,28 @@ export type BookMetaWork = {
   recaps?: BookMetaRecap[];
   /** Whole-work catch-up summary. Both fields reveal the ending - gate them. */
   recap_summary?: BookMetaRecapSummary;
+  /** The community-written description (CC BY-SA), separate from `description`.
+   * Absent on most works and on older servers. */
+  community_description?: BookMetaCommunityDescription;
+  /** The CC BY-SA credit for this work's community content. Present iff the work
+   * carries any (`characters`, `recaps`, `recap_summary` or
+   * `community_description`); the UI must show it beside that content. The server
+   * writes the legal text - render it, never compose it. Absent on older servers. */
+  attribution?: BookMetaAttribution;
+};
+
+/** A community-written work description (CC BY-SA). `license` names the licence
+ * when the entry states one. */
+export type BookMetaCommunityDescription = { text: string; license?: string };
+
+/** The licence credit for a work's community (CC BY-SA) content, written by the
+ * server. `source_url` is the work's page on the metadata site (the same as the
+ * envelope's `web_url`). */
+export type BookMetaAttribution = {
+  credit: string;
+  license: string;
+  license_url: string;
+  source_url: string;
 };
 
 /** The specific narration/production matched to this book. Narrator and runtime
@@ -310,6 +429,9 @@ export type BookMetaRecording = {
   release_date?: string;
   publisher?: string;
   cover_url?: string;
+  /** Number of chapters in this recording. Absent when unknown and on older
+   * servers. */
+  chapter_count?: number;
 };
 
 /** One work in a series rail. Carries its own `web_url` so the client never
@@ -321,6 +443,10 @@ export type BookMetaSeriesWork = {
   authors: MetaPersonRef[];
   cover_url?: string;
   web_url: string;
+  /** A book the CALLER can open that is this work (resolved per request against
+   * their libraries and share scope). Absent when they have no copy, and on older
+   * servers. */
+  local?: BookRef;
 };
 
 /** Which reading order a series records (metaserve's `ordering` enum). Typed
@@ -369,6 +495,11 @@ export type BookMeta =
       recording?: BookMetaRecording;
       series?: BookMetaSeries[];
       web_url: string;
+      /** The works before this one in its series, nearest first (at most 5). Only
+       * sent when asked for with `include=previous` (capability `meta_bundle`);
+       * absent when there are none and on older servers. With `spoilers=hide` each
+       * one's `recap_summary.ending` is left out. */
+      previous?: BookMetaWork[];
     };
 
 export type Progress = {

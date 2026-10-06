@@ -275,6 +275,177 @@ describe('ApiClient', () => {
     });
   });
 
+  // --- Player redesign 1a: meta bundle params ---------------------------------
+
+  it('requests meta with include=previous and spoilers=hide only when asked', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { matched: false } }));
+    const c = new ApiClient('https://h', 'tok');
+    await c.bookMeta(3, 'A/Book', undefined, { includePrevious: true, hideSpoilers: true });
+    await c.bookMeta(3, 'A/Book', undefined, { includePrevious: true });
+    await c.bookMeta(3, 'A/Book', undefined, { includePrevious: false, hideSpoilers: false });
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).toEqual([
+      'https://h/api/v1/libraries/3/meta?path=A%2FBook&include=previous&spoilers=hide',
+      'https://h/api/v1/libraries/3/meta?path=A%2FBook&include=previous',
+      // Explicitly-off options produce today's exact request.
+      'https://h/api/v1/libraries/3/meta?path=A%2FBook',
+    ]);
+  });
+
+  it('passes previous, attribution, community_description, chapter_count and local through', async () => {
+    const attribution = {
+      credit: 'AudioSilo Meta community contributors',
+      license: 'CC BY-SA 4.0',
+      license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+      source_url: 'https://meta.audiosilo.app/work?id=b2',
+    };
+    const envelope = {
+      matched: true,
+      work: {
+        id: 'b2',
+        title: 'Book Two',
+        authors: [],
+        language: 'en',
+        community_description: { text: 'A sequel.', license: 'CC BY-SA 4.0' },
+        attribution,
+      },
+      recording: { id: 'r2', narrators: [], chapter_count: 24 },
+      series: [
+        {
+          id: 's',
+          name: 'Saga',
+          position: '2',
+          works: [
+            {
+              id: 'b1',
+              title: 'Book One',
+              position: '1',
+              authors: [],
+              web_url: 'https://meta.audiosilo.app/work?id=b1',
+              local: { library_id: 1, path: 'Saga/1' },
+            },
+          ],
+        },
+      ],
+      previous: [{ id: 'b1', title: 'Book One', authors: [], language: 'en' }],
+      web_url: 'https://meta.audiosilo.app/work?id=b2',
+    };
+    installFetch(() => ({ status: 200, body: envelope }));
+    const meta = await new ApiClient('https://h', 'tok').bookMeta(1, 'Saga/2', undefined, {
+      includePrevious: true,
+    });
+    expect(meta).toEqual(envelope);
+    if (!meta.matched) throw new Error('expected a matched envelope');
+    expect(meta.work.attribution).toEqual(attribution);
+    expect(meta.recording?.chapter_count).toBe(24);
+    expect(meta.series?.[0].works[0].local).toEqual({ library_id: 1, path: 'Saga/1' });
+    expect(meta.previous?.[0].id).toBe('b1');
+  });
+
+  // --- Cover sizes -----------------------------------------------------------
+
+  it('keeps the old coverUrl shape when no options are passed', () => {
+    expect(new ApiClient('https://h', 'tok').coverUrl(3, 'A/Book')).toBe(
+      'https://h/api/v1/libraries/3/cover?path=A%2FBook&token=tok',
+    );
+  });
+
+  it('appends size and v to the cover URL, keeping the media token', () => {
+    const c = new ApiClient('https://h', 'tok');
+    expect(c.coverUrl(3, 'A/Book', { size: 320, version: 'ab12' })).toBe(
+      'https://h/api/v1/libraries/3/cover?path=A%2FBook&size=320&v=ab12&token=tok',
+    );
+    expect(c.coverUrl(3, 'A/Book', { size: 160 })).toBe(
+      'https://h/api/v1/libraries/3/cover?path=A%2FBook&size=160&token=tok',
+    );
+    // An empty cover_version is no version.
+    expect(c.coverUrl(3, 'A/Book', { version: '' })).toBe(
+      'https://h/api/v1/libraries/3/cover?path=A%2FBook&token=tok',
+    );
+  });
+
+  // --- Browse lists & books filter -------------------------------------------
+
+  it('lists books with filters, cursor and sort encoded, and returns the page', async () => {
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: { books: [{ id: 1, title: 'X' }], next_cursor: 'c2' },
+    }));
+    const page = await new ApiClient('https://h', 'tok').listBooks(2, {
+      narrator: 'Kramer & Reading',
+      sort: 'title',
+      limit: 20,
+      cursor: 'c1',
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://h/api/v1/libraries/2/books?narrator=Kramer+%26+Reading&sort=title&limit=20&cursor=c1',
+    );
+    expect(page).toEqual({ books: [{ id: 1, title: 'X' }], next_cursor: 'c2' });
+  });
+
+  it('lists books with no filters and tolerates a null books array', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { books: null } }));
+    await expect(new ApiClient('https://h', 'tok').listBooks(2)).resolves.toEqual({ books: [] });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://h/api/v1/libraries/2/books');
+  });
+
+  it('unwraps authors into people + unknown', async () => {
+    const authors = [{ name: 'Andy Weir', books: 2, duration: 72000 }];
+    const fetchMock = installFetch(() => ({ status: 200, body: { authors, unknown: 3 } }));
+    await expect(new ApiClient('https://h', 'tok').authors(4)).resolves.toEqual({
+      people: authors,
+      unknown: 3,
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/libraries/4/authors');
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('unwraps narrators into people + unknown, tolerating null and a missing count', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { narrators: null } }));
+    await expect(new ApiClient('https://h', 'tok').narrators(4)).resolves.toEqual({
+      people: [],
+      unknown: 0,
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://h/api/v1/libraries/4/narrators');
+  });
+
+  it('unwraps the series list and tolerates a null array', async () => {
+    const series = [{ name: 'Saga', author: 'A', books: 2, duration: 100, positions: [1, 3] }];
+    const fetchMock = installFetch(() => ({ status: 200, body: { series } }));
+    const c = new ApiClient('https://h', 'tok');
+    await expect(c.seriesList(4)).resolves.toEqual(series);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://h/api/v1/libraries/4/series');
+    installFetch(() => ({ status: 200, body: { series: null } }));
+    await expect(c.seriesList(4)).resolves.toEqual([]);
+  });
+
+  // --- Next book -------------------------------------------------------------
+
+  it('fetches the next book via GET /libraries/{id}/next?path= and returns it as is', async () => {
+    const body = {
+      source: 'community',
+      next: { library_id: 2, path: 'Saga/Book 3' },
+      book: { id: 9, library_id: 2, rel_path: 'Saga/Book 3', title: 'Book 3' },
+      work: {
+        id: 'b3',
+        title: 'Book 3',
+        position: '3',
+        authors: [],
+        web_url: 'https://meta.audiosilo.app/work?id=b3',
+        local: { library_id: 2, path: 'Saga/Book 3' },
+      },
+    };
+    const fetchMock = installFetch(() => ({ status: 200, body }));
+    await expect(new ApiClient('https://h', 'tok').nextBook(2, 'Saga/Book 2')).resolves.toEqual(
+      body,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://h/api/v1/libraries/2/next?path=Saga%2FBook+2');
+    expect(init.method).toBe('GET');
+  });
+
   // A fetch that never resolves until its signal aborts.
   function installHangingFetch() {
     globalThis.fetch = jest.fn(

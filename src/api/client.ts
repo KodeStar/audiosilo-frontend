@@ -12,16 +12,23 @@ import type {
   BookMeta,
   BookMetaWork,
   Bookmark,
+  BookPage,
+  BookSort,
   ChaptersResponse,
+  CoverSize,
   DemoSession,
   Favourite,
   History,
   Library,
   Listing,
+  NextBook,
   Note,
   PairingPayload,
+  PeopleList,
+  PersonCount,
   Progress,
   ProgressInput,
+  SeriesCount,
   ServerInfo,
   User,
 } from './types';
@@ -292,6 +299,68 @@ export class ApiClient {
     });
     return r.books ?? [];
   }
+  /** One page of a library's indexed books (the computed view), optionally filtered
+   * by an exact `author`, `series` or `narrator` value. Pass the previous page's
+   * `next_cursor` as `cursor` to continue. `narrator` needs the `browse_people`
+   * capability (an older server ignores it and returns the unfiltered list). */
+  async listBooks(
+    libraryId: number,
+    opts: {
+      author?: string;
+      series?: string;
+      narrator?: string;
+      sort?: BookSort;
+      limit?: number;
+      cursor?: string;
+    } = {},
+    signal?: AbortSignal,
+  ): Promise<BookPage> {
+    const r = await this.request<BookPage>('GET', `/libraries/${libraryId}/books`, {
+      query: opts,
+      signal,
+    });
+    return { ...r, books: r.books ?? [] };
+  }
+  // The browse lists (capability `browse_people`): every distinct author, narrator
+  // or series in a library with counts, limited to the caller's share scope.
+  /** Authors of a library, sorted case-insensitively, plus the count of books with
+   * no author. */
+  authors(libraryId: number, signal?: AbortSignal): Promise<PeopleList> {
+    return this.people(libraryId, 'authors', signal);
+  }
+  /** Narrators of a library, sorted case-insensitively, plus the count of books
+   * with no narrator. */
+  narrators(libraryId: number, signal?: AbortSignal): Promise<PeopleList> {
+    return this.people(libraryId, 'narrators', signal);
+  }
+  private async people(
+    libraryId: number,
+    kind: 'authors' | 'narrators',
+    signal?: AbortSignal,
+  ): Promise<PeopleList> {
+    const r = await this.request<
+      Partial<Record<typeof kind, PersonCount[] | null>> & { unknown?: number }
+    >('GET', `/libraries/${libraryId}/${kind}`, { signal });
+    return { people: r[kind] ?? [], unknown: r.unknown ?? 0 };
+  }
+  /** Series of a library, sorted case-insensitively. */
+  async seriesList(libraryId: number, signal?: AbortSignal) {
+    const r = await this.request<{ series: SeriesCount[] | null }>(
+      'GET',
+      `/libraries/${libraryId}/series`,
+      { signal },
+    );
+    return r.series ?? [];
+  }
+  /** What to play after a book, resolved server-side (community series rail, then
+   * the local series, then the parent folder). Only call this when the server
+   * advertises `next_book`. */
+  nextBook(libraryId: number, path: string, signal?: AbortSignal) {
+    return this.request<NextBook>('GET', `/libraries/${libraryId}/next`, {
+      query: { path },
+      signal,
+    });
+  }
   item(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<Book>('GET', `/libraries/${libraryId}/item`, { query: { path }, signal });
   }
@@ -306,10 +375,24 @@ export class ApiClient {
    * this when the server advertises the `metadata` capability. Returns
    * `{ matched: false }` when the book has no ids or no upstream match; throws an
    * `ApiError` (502) when the meta service is unreachable, so the caller can render
-   * nothing rather than block the page. */
-  bookMeta(libraryId: number, path: string, signal?: AbortSignal) {
+   * nothing rather than block the page.
+   *
+   * `opts` needs the `meta_bundle` capability (an older server ignores both and
+   * sends the full envelope): `includePrevious` adds `previous` (the works before
+   * this one), `hideSpoilers` has the server drop what the caller's saved progress
+   * has not reached yet. Without them the request is exactly `?path=`. */
+  bookMeta(
+    libraryId: number,
+    path: string,
+    signal?: AbortSignal,
+    opts?: { includePrevious?: boolean; hideSpoilers?: boolean },
+  ) {
     return this.request<BookMeta>('GET', `/libraries/${libraryId}/meta`, {
-      query: { path },
+      query: {
+        path,
+        include: opts?.includePrevious ? 'previous' : undefined,
+        spoilers: opts?.hideSpoilers ? 'hide' : undefined,
+      },
       signal,
     });
   }
@@ -340,8 +423,17 @@ export class ApiClient {
   private mediaTokenQuery(): Query {
     return this.token ? { token: this.token } : {};
   }
-  coverUrl(libraryId: number, path: string) {
-    return this.apiUrl(`/libraries/${libraryId}/cover`, { path, ...this.mediaTokenQuery() });
+  /** Build a cover URL. `size` asks for a JPEG thumbnail of that width (only when
+   * the server advertises `cover_sizes`; without it the full art is served).
+   * `version` is the book's `cover_version`, appended as `v` purely as a cache
+   * buster (the server ignores it) so a replaced cover is not served from cache. */
+  coverUrl(libraryId: number, path: string, opts?: { size?: CoverSize; version?: string }) {
+    return this.apiUrl(`/libraries/${libraryId}/cover`, {
+      path,
+      size: opts?.size,
+      v: opts?.version || undefined,
+      ...this.mediaTokenQuery(),
+    });
   }
   /** Build a stream URL. `transcode` requests an on-the-fly MP3 re-encode for
    * codecs the client can't decode natively (only useful when the server's

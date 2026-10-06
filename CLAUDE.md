@@ -335,6 +335,21 @@ a 502 from a down meta service doesn't spin). Strings under `book.meta.*` (plus 
 two `book.tabs.*` keys) in all 6 locales. The wire envelope (`BookMeta` discriminated
 union in `types.ts`) is hand-mirrored from the server.
 
+**Player-redesign data API (Phase 1a: wire only, no UI yet).** `src/api` mirrors the
+server's additive redesign endpoints, each gated on its own capability flag (absent on
+older servers = false; the hooks use a private `useCapability`, so an older server is
+never asked): `client.authors`/`narrators` (normalised to `PeopleList {people, unknown}`)
+and `seriesList` with `useAuthors`/`useNarrators`/`useSeriesList` (`browse_people`, also
+`listBooks({narrator})`); `client.nextBook` + `useNextBook` (`next_book`, server-resolved
+community -> series -> folder -> none); `coverUrl(lib, path, {size, version})`
+(`cover_sizes`; `version` is the book's `cover_version`, sent as `v=` purely as a cache
+buster); `bookMeta(..., {includePrevious, hideSpoilers})` (`meta_bundle`). `Book` gains
+`published`, `description` (item only), `cover_color`, `cover_version`; `BookMetaWork`
+gains `community_description` + `attribution` (render the server's text beside CC BY-SA
+content), rail entries `local`, the recording `chapter_count`. Nothing consumes them yet:
+Phase 2+ of PLAYER-REDESIGN-PLAN.md does, so the screens above still gate spoilers and
+pick the next book on the device.
+
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
 from **ONE whole-book POSITION** - the player's live position
