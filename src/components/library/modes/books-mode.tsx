@@ -20,10 +20,12 @@ import { headIndexForLetter } from '@/lib/alpha-sections';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { tabularNums } from '@/theme/tabular-nums';
+import { GhostCovers, GhostSpines } from '@/components/ui/ghost-art';
+import { EmptyState } from '@/components/ui/empty-state';
 
 import { AzRail } from '../books/az-rail';
 import { BookListHeader, BookListRow, BookTile } from '../books/book-items';
-import { GhostCovers, GhostSpines, LoadError, StateNotice } from '../books/book-states';
+import { LoadError } from '../books/book-states';
 import { BooksControls } from '../books/books-controls';
 import { useBooksLayout } from '../books/books-layout-store';
 import {
@@ -235,14 +237,16 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       onRetry={whole.retry}
     />
   ) : total === 0 ? (
-    <StateNotice
+    <EmptyState
+      variant="card"
       art={<GhostSpines />}
       title={t('library.books.empty.title', { library: libraryName })}
       hint={t('library.books.empty.hint')}
       action={{ label: t('library.books.empty.action'), onPress: whole.refresh }}
     />
   ) : whole.complete ? (
-    <StateNotice
+    <EmptyState
+      variant="card"
       art={<GhostCovers />}
       title={t('library.books.noMatches.title')}
       hint={t('library.books.noMatches.hint')}

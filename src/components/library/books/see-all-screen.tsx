@@ -15,11 +15,12 @@ import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
 import { useSession } from '@/stores/session';
+import { GhostCovers } from '@/components/ui/ghost-art';
+import { EmptyState } from '@/components/ui/empty-state';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { CoverTile } from '../cover-tile';
 import { tileCaption } from './book-items';
-import { GhostCovers, StateNotice } from './book-states';
 
 // How many recently added books to load per server (the Home shelf shows 15).
 const PAGE_LIMIT = 200;
@@ -70,7 +71,8 @@ export function SeeAllScreen() {
   const empty = state.isLoading ? (
     <CoverGridSkeleton rows={2} gutter={0} />
   ) : (
-    <StateNotice
+    <EmptyState
+      variant="card"
       art={<GhostCovers />}
       title={
         state.error

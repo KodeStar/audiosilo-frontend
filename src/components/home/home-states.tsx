@@ -6,28 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-
-/** Three dashed ghost covers, fanned: nothing is on the shelf yet. Decorative. */
-function GhostFan() {
-  return (
-    <View
-      className="h-[86px] flex-row items-end"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
-      {[-9, 0, 9].map((deg, i) => (
-        <View
-          key={deg}
-          className="h-[70px] w-[70px] rounded-cover border-[1.5px] border-dashed border-subtle-foreground bg-muted"
-          style={{
-            marginLeft: i === 0 ? 0 : -26,
-            transform: [{ translateY: i === 1 ? -8 : 0 }, { rotate: `${deg}deg` }],
-          }}
-        />
-      ))}
-    </View>
-  );
-}
+import { GhostCovers } from '@/components/ui/ghost-art';
 
 /** The Now card's place when nothing is in progress: ghost covers, one headline, one
  * sentence, one way into the Library. */
@@ -47,7 +26,7 @@ export function NowEmpty() {
             )
       }
     >
-      <GhostFan />
+      <GhostCovers size={70} />
       <View className={phone ? 'items-center gap-2' : 'flex-1 gap-2'}>
         <Text variant="heading" className={phone ? 'text-center' : undefined}>
           {t('home.empty.title')}

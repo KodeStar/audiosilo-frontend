@@ -1,74 +1,26 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
-import Svg, { Line } from 'react-native-svg';
 
-import { hatchLines } from '@/components/library/ghost-cover';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import type { UnsupportedReason } from '@/downloads/downloads-view';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-/** Three dashed, hatched cover outlines leaning on each other: the "nothing here yet"
- * picture of STYLEGUIDE section 8 (ghost covers, never fake art). Decorative. */
-function GhostCovers() {
-  const themed = useThemeColors();
-  const sizes = [64, 80, 64];
-  return (
-    <View
-      className="flex-row items-end gap-2"
-      importantForAccessibility="no-hide-descendants"
-      accessibilityElementsHidden
-    >
-      {sizes.map((size, i) => (
-        <View
-          key={i}
-          style={{ width: size, height: size }}
-          className="overflow-hidden rounded-cover border-[1.5px] border-dashed border-subtle-foreground bg-muted"
-        >
-          <Svg width={size} height={size}>
-            {hatchLines(size).map(([x1, y1, x2, y2]) => (
-              <Line
-                key={x1}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke={themed.borderStrong}
-                strokeOpacity={0.45}
-                strokeWidth={1}
-              />
-            ))}
-          </Svg>
-        </View>
-      ))}
-    </View>
-  );
-}
+import { GhostCovers } from '@/components/ui/ghost-art';
+import { EmptyState } from '@/components/ui/empty-state';
 
 /** Nothing downloaded and nothing on its way: ghost covers, one headline, one sentence,
  * one action. */
 export function DownloadsEmpty({ onBrowse }: { onBrowse: () => void }) {
   const { t } = useTranslation();
   return (
-    <View className="items-center gap-3 px-6 py-12">
-      <GhostCovers />
-      <Text variant="heading" className="mt-3 text-center">
-        {t('downloads.empty.title')}
-      </Text>
-      <Text variant="muted" className="max-w-[420px] text-center">
-        {t('downloads.empty.body')}
-      </Text>
-      <Button
-        title={t('downloads.empty.action')}
-        icon="library"
-        variant="secondary"
-        onPress={onBrowse}
-        className="mt-2"
-      />
-    </View>
+    <EmptyState
+      art={<GhostCovers size={64} />}
+      title={t('downloads.empty.title')}
+      hint={t('downloads.empty.body')}
+      action={{ label: t('downloads.empty.action'), icon: 'library', onPress: onBrowse }}
+    />
   );
 }
 

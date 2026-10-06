@@ -9,9 +9,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { GhostCovers } from '@/components/ui/ghost-art';
 
 import { BookCover } from '../book-cover';
-import { GhostCovers } from '../books/book-states';
 import { nameList, type ShareLine, shareLine } from './collections-model';
 
 /** Height of a card's cover stack for its width (the prototype's 1.45:1). */

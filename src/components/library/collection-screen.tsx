@@ -27,10 +27,12 @@ import { useOpen } from '@/lib/open';
 import { parseCollectionParams, pathLeaf } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
+import { GhostCovers } from '@/components/ui/ghost-art';
+import { EmptyState } from '@/components/ui/empty-state';
 
 import type { BookAction } from './books/book-actions';
 import { BookListHeader, BookListRow, BookTile } from './books/book-items';
-import { GhostCovers, LoadError, StateNotice } from './books/book-states';
+import { LoadError } from './books/book-states';
 import { LayoutToggle } from './books/books-controls';
 import { useBooksLayout } from './books/books-layout-store';
 import { useShareText } from './collections/collection-card';
@@ -68,7 +70,8 @@ function CollectionContent() {
   if (!params || supported === false || isGone(query.error)) {
     return (
       <Centered>
-        <StateNotice
+        <EmptyState
+          variant="card"
           art={<GhostCovers />}
           title={t('library.collection.notFound.title')}
           hint={t('library.collection.notFound.hint')}
@@ -220,7 +223,8 @@ function CollectionBody({
     />
   );
   const empty = (
-    <StateNotice
+    <EmptyState
+      variant="card"
       art={<GhostCovers />}
       title={t('library.collection.empty.title')}
       hint={

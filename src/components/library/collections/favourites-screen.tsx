@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
 import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/api/hooks';
-import { GhostCovers, StateNotice } from '@/components/library/books/book-states';
 import { LayoutToggle } from '@/components/library/books/books-controls';
 import { useBooksLayout } from '@/components/library/books/books-layout-store';
 import { CoverGrid, CoverGridSkeleton, CoverListRow } from '@/components/library/cover-grid';
@@ -19,6 +18,8 @@ import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { GhostCovers } from '@/components/ui/ghost-art';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.path}`;
 
@@ -76,13 +77,15 @@ export function FavouritesScreen() {
   const empty = isLoading ? (
     <CoverGridSkeleton rows={2} gutter={0} />
   ) : folders.length > 0 ? null : error ? (
-    <StateNotice
+    <EmptyState
+      variant="card"
       art={<Icon name="circle-exclamation" size={28} color={themed.destructive} />}
       title={t('library.favourites.error')}
       hint={t('library.favourites.errorHint')}
     />
   ) : (
-    <StateNotice
+    <EmptyState
+      variant="card"
       art={<GhostCovers />}
       title={t('library.favourites.empty')}
       hint={t('library.favourites.emptyHint')}
