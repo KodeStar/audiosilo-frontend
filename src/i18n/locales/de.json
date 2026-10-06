@@ -402,14 +402,111 @@
     }
   },
   "downloads": {
-    "storageUsed": "{{size}} belegt",
-    "downloaded": "Heruntergeladen",
-    "failed": "Download fehlgeschlagen",
-    "unsupported": "Offline-Downloads sind in diesem Browser nicht verfügbar. Verwende die installierte App oder eine sichere (https) Verbindung.",
-    "unsupportedTitle": "Downloads nicht verfügbar",
-    "empty": "Lade ein Buch über seine Detailseite herunter, um es offline zu hören.",
-    "emptyTitle": "Noch keine Downloads",
-    "remove": "{{title}} entfernen"
+    "summary": {
+      "device": "Auf diesem Gerät · {{size}}",
+      "browser": "In diesem Browser · {{size}}",
+      "browserQuota": "In diesem Browser · {{size}} von etwa {{quota}}, die der Browser erlaubt"
+    },
+    "storage": {
+      "titleDevice": "Speicher auf diesem Gerät",
+      "titleBrowser": "Speicher in diesem Browser",
+      "used": "{{size}} belegt",
+      "label": "Speicher nach Server",
+      "legend": "{{name}} {{size}}",
+      "moreServers_one": "{{count}} weiterer Server",
+      "moreServers_other": "{{count}} weitere Server",
+      "otherApps": "Andere Apps",
+      "unknownServer": "Unbekannter Server",
+      "freeDevice": "{{size}} frei auf diesem Gerät.",
+      "browserRoom": "Etwa {{size}} stehen diesem Browser zur Verfügung. Er kann Downloads löschen, wenn deine Festplatte voll wird.",
+      "browserUnknown": "Der Browser kann Downloads löschen, wenn deine Festplatte voll wird."
+    },
+    "rules": {
+      "title": "Automatische Downloads",
+      "mode": {
+        "label": "Automatisch herunterladen",
+        "never": "Nie",
+        "wifi": "Im WLAN",
+        "always": "Immer"
+      },
+      "modeHint": "Lädt ein Buch herunter, sobald du es zu hören beginnst.",
+      "webWifi": "Ein Browser kann WLAN nicht von mobilen Daten unterscheiden, daher lädt „Im WLAN“ hier über jede Verbindung herunter.",
+      "keepAhead": {
+        "label": "Die nächsten Bücher bereithalten",
+        "hint": "Lädt die nächsten Bücher aus „Als Nächstes“ und dann aus der Reihe herunter, bevor du sie brauchst.",
+        "off": "Aus"
+      },
+      "keepAheadStatus": {
+        "idle": "Startet, sobald du ein Buch abspielst.",
+        "never": "Schalte automatische Downloads ein, um das zu nutzen.",
+        "working": "Die nächsten Bücher werden bereitgestellt.",
+        "ready": "Die nächsten Bücher sind offline bereit.",
+        "waiting": "Wartet auf WLAN.",
+        "noSpace": "Pausiert: Es ist nicht genug Speicher frei. Automatische Downloads lassen immer mindestens 1 GB frei.",
+        "failed": "Eines der nächsten Bücher wurde nicht fertig geladen. Versuche es unter Downloads erneut.",
+        "declined": "Die nächsten Bücher bleiben unberührt: Du hast sie entfernt."
+      },
+      "autoDelete": "Download entfernen, wenn du das Buch beendet hast"
+    },
+    "browser": {
+      "title": "So funktionieren Downloads im Browser",
+      "body": "Audio wird im Speicher dieses Browsers abgelegt, nur über eine sichere (https) Verbindung. Der Browser kann es löschen, wenn der Speicher knapp wird, und auf iPhone und iPad stoppt Safari die Wiedergabe im Hintergrund. Für zuverlässiges Offline-Hören nutze die iOS- oder Android-App."
+    },
+    "inProgress": {
+      "title": "Wird geladen"
+    },
+    "row": {
+      "meta": "{{server}} · {{size}}",
+      "progress": "{{percent}} % · noch {{size}}",
+      "percent": "{{percent}} %",
+      "queued": "Wartet auf den Start",
+      "waitingWifi": "Wartet auf WLAN",
+      "noSpace": "Braucht mehr freien Speicher",
+      "keptAhead": "Vorausgeladen",
+      "stoppedAt": "Bei {{percent}} % angehalten",
+      "cancel": "Abbrechen",
+      "cancelLabel": "Download von {{title}} abbrechen",
+      "retry": "Erneut versuchen",
+      "retryLabel": "Download von {{title}} erneut versuchen",
+      "play": "{{title}} abspielen",
+      "remove": "{{title}} entfernen",
+      "notStarted": "Nicht begonnen",
+      "finished": "Beendet"
+    },
+    "failure": {
+      "network": "{{server}} antwortet nicht mehr.",
+      "server": "{{server}} konnte das Buch nicht senden (Fehler {{status}}).",
+      "storageDevice": "Auf diesem Gerät ist kein Speicher mehr frei.",
+      "storageBrowser": "Dem Browser ist der Speicher ausgegangen.",
+      "unservable": "Gespeichert, aber die Offline-Wiedergabe ist noch nicht bereit. Lade die App neu und versuche es dann erneut.",
+      "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
+      "unknown": "Der Download wurde angehalten.",
+      "kept": "Deine {{percent}} % bleiben erhalten.",
+      "restart": "Ein neuer Versuch beginnt von vorn."
+    },
+    "ready": {
+      "title": "Offline bereit",
+      "sub_one": "{{count}} Buch · spielt ohne Verbindung",
+      "sub_other": "{{count}} Bücher · spielen ohne Verbindung",
+      "serverSize": "{{server}} · {{size}}"
+    },
+    "remove": {
+      "title": "Diesen Download entfernen?",
+      "message": "{{title}} braucht dann wieder eine Verbindung zum Abspielen. Deine Stelle im Buch bleibt erhalten.",
+      "confirm": "Entfernen"
+    },
+    "empty": {
+      "title": "Noch nichts heruntergeladen",
+      "body": "Lade ein Buch auf seiner Seite herunter, um es ohne Verbindung zu hören.",
+      "action": "Bibliothek durchstöbern"
+    },
+    "unsupported": {
+      "title": "Downloads sind hier nicht verfügbar",
+      "insecure": "Offline-Audio braucht eine sichere (https) Verbindung. Öffne den Player über https oder nutze die iOS- oder Android-App.",
+      "noCache": "Dieser Browser kann kein Audio offline speichern. Nutze einen aktuellen Browser oder die iOS- oder Android-App.",
+      "noWorker": "Die Offline-Wiedergabe ist in diesem Browser noch nicht bereit. Lade die Seite neu, und wenn das nicht hilft, nutze die iOS- oder Android-App."
+    },
+    "loading": "Downloads werden geladen"
   },
   "search": {
     "placeholder": "Bücher, Personen, Reihen, Figuren suchen",

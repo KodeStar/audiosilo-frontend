@@ -402,14 +402,111 @@
     }
   },
   "downloads": {
-    "storageUsed": "{{size}} usados",
-    "downloaded": "Descargado",
-    "failed": "Error al descargar",
-    "unsupported": "Las descargas sin conexión no están disponibles en este navegador. Usa la aplicación instalada o una conexión segura (https).",
-    "unsupportedTitle": "Descargas no disponibles",
-    "empty": "Descarga un libro desde su pantalla de detalles para escucharlo sin conexión.",
-    "emptyTitle": "Aún no hay descargas",
-    "remove": "Eliminar {{title}}"
+    "summary": {
+      "device": "En este dispositivo · {{size}}",
+      "browser": "En este navegador · {{size}}",
+      "browserQuota": "En este navegador · {{size}} de unos {{quota}} que permite el navegador"
+    },
+    "storage": {
+      "titleDevice": "Almacenamiento en este dispositivo",
+      "titleBrowser": "Almacenamiento en este navegador",
+      "used": "{{size}} usados",
+      "label": "Almacenamiento por servidor",
+      "legend": "{{name}} {{size}}",
+      "moreServers_one": "{{count}} servidor más",
+      "moreServers_other": "{{count}} servidores más",
+      "otherApps": "Otras apps",
+      "unknownServer": "Servidor desconocido",
+      "freeDevice": "{{size}} libres en este dispositivo.",
+      "browserRoom": "Unos {{size}} disponibles para este navegador. Puede borrar las descargas si el disco se llena.",
+      "browserUnknown": "El navegador puede borrar las descargas si el disco se llena."
+    },
+    "rules": {
+      "title": "Descargas automáticas",
+      "mode": {
+        "label": "Descargar automáticamente",
+        "never": "Nunca",
+        "wifi": "Con wifi",
+        "always": "Siempre"
+      },
+      "modeHint": "Descarga un libro cuando empiezas a escucharlo.",
+      "webWifi": "Un navegador no distingue el wifi de los datos móviles, así que Con wifi descarga aquí con cualquier conexión.",
+      "keepAhead": {
+        "label": "Tener listos los próximos libros",
+        "hint": "Descarga los próximos libros de A continuación y luego de la serie antes de que los necesites.",
+        "off": "No"
+      },
+      "keepAheadStatus": {
+        "idle": "Empieza cuando reproduces un libro.",
+        "never": "Activa las descargas automáticas para usar esto.",
+        "working": "Preparando los próximos libros.",
+        "ready": "Los próximos libros están listos sin conexión.",
+        "waiting": "Esperando al wifi.",
+        "noSpace": "En pausa: no hay suficiente espacio libre. Las descargas automáticas siempre dejan al menos 1 GB libre.",
+        "failed": "Uno de los próximos libros dejó de descargarse. Reinténtalo en Descargas.",
+        "declined": "Los próximos libros se quedan como están: los quitaste."
+      },
+      "autoDelete": "Quitar una descarga al terminar el libro"
+    },
+    "browser": {
+      "title": "Cómo funcionan las descargas en un navegador",
+      "body": "El audio se guarda en el almacenamiento de este navegador, solo con una conexión segura (https). El navegador puede borrarlo si falta espacio, y en iPhone y iPad Safari detiene la reproducción en segundo plano. Para escuchar sin conexión de forma fiable, usa la app de iOS o Android."
+    },
+    "inProgress": {
+      "title": "En curso"
+    },
+    "row": {
+      "meta": "{{server}} · {{size}}",
+      "progress": "{{percent}} % · faltan {{size}}",
+      "percent": "{{percent}} %",
+      "queued": "Esperando para empezar",
+      "waitingWifi": "Esperando al wifi",
+      "noSpace": "Necesita más espacio libre",
+      "keptAhead": "Preparado",
+      "stoppedAt": "Detenida al {{percent}} %",
+      "cancel": "Cancelar",
+      "cancelLabel": "Cancelar la descarga de {{title}}",
+      "retry": "Reintentar",
+      "retryLabel": "Reintentar la descarga de {{title}}",
+      "play": "Reproducir {{title}}",
+      "remove": "Quitar {{title}}",
+      "notStarted": "Sin empezar",
+      "finished": "Terminado"
+    },
+    "failure": {
+      "network": "{{server}} dejó de responder.",
+      "server": "{{server}} no pudo enviar el libro (error {{status}}).",
+      "storageDevice": "Este dispositivo se quedó sin espacio.",
+      "storageBrowser": "El navegador se quedó sin espacio.",
+      "unservable": "Guardado, pero la reproducción sin conexión aún no está lista. Recarga la app y vuelve a intentarlo.",
+      "removed": "Ya no tienes la sesión iniciada en este servidor.",
+      "unknown": "La descarga se detuvo.",
+      "kept": "Tu {{percent}} % se conserva.",
+      "restart": "Al reintentar empieza de nuevo."
+    },
+    "ready": {
+      "title": "Listo sin conexión",
+      "sub_one": "{{count}} libro · se reproduce sin conexión",
+      "sub_other": "{{count}} libros · se reproducen sin conexión",
+      "serverSize": "{{server}} · {{size}}"
+    },
+    "remove": {
+      "title": "¿Quitar esta descarga?",
+      "message": "{{title}} necesitará conexión para volver a reproducirse. Tu punto en el libro se conserva.",
+      "confirm": "Quitar"
+    },
+    "empty": {
+      "title": "Aún no has descargado nada",
+      "body": "Descarga un libro desde su página para escucharlo sin conexión.",
+      "action": "Explorar la biblioteca"
+    },
+    "unsupported": {
+      "title": "Las descargas no están disponibles aquí",
+      "insecure": "El audio sin conexión necesita una conexión segura (https). Abre el reproductor con https o usa la app de iOS o Android.",
+      "noCache": "Este navegador no puede guardar audio sin conexión. Usa un navegador actual o la app de iOS o Android.",
+      "noWorker": "La reproducción sin conexión aún no está lista en este navegador. Recarga la página y, si no sirve, usa la app de iOS o Android."
+    },
+    "loading": "Cargando descargas"
   },
   "search": {
     "placeholder": "Busca libros, personas, series, personajes",

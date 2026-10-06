@@ -109,4 +109,14 @@ export const engine: DownloadEngine = {
       return 0;
     }
   },
+
+  async storageEstimate() {
+    try {
+      const capacity = Paths.totalDiskSpace;
+      const free = Paths.availableDiskSpace;
+      return capacity > 0 && free >= 0 ? { scope: 'device', capacity, free } : null;
+    } catch {
+      return null;
+    }
+  },
 };

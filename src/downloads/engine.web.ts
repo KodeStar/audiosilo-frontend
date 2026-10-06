@@ -47,7 +47,11 @@ async function hasControllingSW(): Promise<boolean> {
   const sw = navigator.serviceWorker;
   if (!sw) return false;
   if (sw.controller) return true;
-  await sw.ready.catch(() => undefined);
+  // `ready` never settles when no worker registers at all (blocked by the browser or a
+  // policy, or registration failed), so bound it: unbounded, the probe hung and the page
+  // kept offering downloads that could never play offline. Generous, so a first visit's
+  // worker still has time to install.
+  await Promise.race([sw.ready.catch(() => undefined), new Promise((r) => setTimeout(r, 10_000))]);
   if (!sw.controller) {
     await new Promise<void>((resolve) => {
       // Bound the wait so a never-activating worker can't hang the UI; on the
@@ -234,6 +238,23 @@ export const engine: DownloadEngine = {
       return sizes.reduce((sum, n) => sum + n, 0);
     } catch {
       return 0;
+    }
+  },
+
+  // The origin's quota, which is what the browser lets downloads grow to (Chrome: a share
+  // of the disk; Safari and Firefox: their own rules). Usage counts everything this site
+  // stores, so free is what is really left for another download.
+  async storageEstimate() {
+    try {
+      const est = await navigator.storage?.estimate?.();
+      if (!est?.quota) return null;
+      return {
+        scope: 'browser',
+        capacity: est.quota,
+        free: Math.max(0, est.quota - (est.usage ?? 0)),
+      };
+    } catch {
+      return null;
     }
   },
 };
