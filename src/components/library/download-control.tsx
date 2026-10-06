@@ -71,7 +71,7 @@ export function DownloadControl({
             variant="secondary"
             size="lg"
             onPress={() => setConfirming(true)}
-            accessibilityLabel={t('library.download.delete')}
+            accessibilityLabel={t('library.download.remove')}
           />
           {confirm}
         </>
@@ -127,7 +127,7 @@ export function DownloadControl({
           onPress={() => setConfirming(true)}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={t('library.download.delete')}
+          accessibilityLabel={t('library.download.remove')}
           className="h-11 w-11 items-center justify-center rounded-lg bg-muted"
         >
           <Icon name="trash" size={16} color={themed.mutedForeground} />

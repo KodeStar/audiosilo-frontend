@@ -57,8 +57,7 @@
         "description": "Download the book you start listening to so it is ready to hear offline."
       },
       "autoDelete": {
-        "label": "Automatically delete finished books",
-        "description": "Remove downloaded files once a book is finished."
+        "description": "Frees the space once you finish a book. Your place in it is kept."
       }
     },
     "account": {
@@ -346,7 +345,7 @@
     },
     "download": {
       "unavailable": "Downloads unavailable",
-      "delete": "Delete download",
+      "remove": "Remove download",
       "cancel": "Cancel download",
       "retry": "Retry download",
       "download": "Download",

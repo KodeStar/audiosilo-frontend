@@ -34,7 +34,7 @@ describe('DownloadControl', () => {
       await mountWithPortal(
         <DownloadControl libraryId={1} path="b" book={book} compact={compact} />,
       );
-      await fireEvent.press(screen.getByRole('button', { name: 'Delete download' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Remove download' }));
       expect(mockRemove).not.toHaveBeenCalled();
       expect(screen.getByText('Remove this download?')).toBeTruthy();
       expect(screen.getByText(/Blood Rites will need a connection.*It frees 50 MB\./)).toBeTruthy();
@@ -42,7 +42,7 @@ describe('DownloadControl', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
       expect(mockRemove).not.toHaveBeenCalled();
 
-      await fireEvent.press(screen.getByRole('button', { name: 'Delete download' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Remove download' }));
       await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
       expect(mockRemove).toHaveBeenCalledTimes(1);
     },

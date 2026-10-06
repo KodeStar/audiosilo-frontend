@@ -57,8 +57,7 @@
         "description": "Lädt das Buch herunter, das du zu hören beginnst, damit es offline bereitsteht."
       },
       "autoDelete": {
-        "label": "Beendete Bücher automatisch löschen",
-        "description": "Entfernt heruntergeladene Dateien, sobald ein Buch beendet ist."
+        "description": "Gibt den Platz frei, sobald du ein Buch beendet hast. Deine Stelle im Buch bleibt erhalten."
       }
     },
     "account": {
@@ -346,7 +345,7 @@
     },
     "download": {
       "unavailable": "Downloads nicht verfügbar",
-      "delete": "Download löschen",
+      "remove": "Download entfernen",
       "cancel": "Download abbrechen",
       "retry": "Download wiederholen",
       "download": "Herunterladen",

@@ -57,8 +57,7 @@
         "description": "Scarica il libro che inizi ad ascoltare così è pronto da ascoltare offline."
       },
       "autoDelete": {
-        "label": "Elimina automaticamente i libri finiti",
-        "description": "Rimuove i file scaricati quando un libro è finito."
+        "description": "Libera lo spazio quando finisci un libro. Il tuo punto nel libro è conservato."
       }
     },
     "account": {
@@ -346,7 +345,7 @@
     },
     "download": {
       "unavailable": "Download non disponibili",
-      "delete": "Elimina download",
+      "remove": "Rimuovi download",
       "cancel": "Annulla download",
       "retry": "Riprova download",
       "download": "Scarica",

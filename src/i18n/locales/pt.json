@@ -57,8 +57,7 @@
         "description": "Transfere o livro que começa a ouvir para o ouvir sem ligação."
       },
       "autoDelete": {
-        "label": "Eliminar automaticamente os livros terminados",
-        "description": "Remove os ficheiros transferidos quando um livro termina."
+        "description": "Liberta o espaço quando terminas um livro. A tua posição no livro fica guardada."
       }
     },
     "account": {
@@ -346,7 +345,7 @@
     },
     "download": {
       "unavailable": "Transferências indisponíveis",
-      "delete": "Eliminar transferência",
+      "remove": "Remover download",
       "cancel": "Cancelar transferência",
       "retry": "Repetir transferência",
       "download": "Transferir",
@@ -460,7 +459,7 @@
       "resume": "Retomar",
       "collect": "Adicionar a uma coleção...",
       "download": "Transferir para ouvir offline",
-      "removeDownload": "Remover transferência",
+      "removeDownload": "Remover download",
       "cancelDownload": "Cancelar transferência",
       "markFinished": "Marcar como terminado",
       "markUnfinished": "Marcar como não terminado",
@@ -468,7 +467,7 @@
       "markedFinished": "Marcado como terminado",
       "markedUnfinished": "Marcado como não terminado",
       "downloading": "A transferir para ouvir offline",
-      "downloadRemoved": "Transferência removida",
+      "downloadRemoved": "Download removido",
       "failed": "Não foi possível atualizar este livro. Tenta novamente.",
       "playFailed": "Não foi possível iniciar este livro. Tenta novamente.",
       "loadFailed": "Não foi possível carregar este livro. Tenta novamente."
@@ -587,7 +586,7 @@
         "failed": "O download de um dos próximos livros parou. Tente de novo em Transferências.",
         "declined": "Os próximos livros ficam como estão: você os removeu."
       },
-      "autoDelete": "Remover um download quando você terminar o livro"
+      "autoDelete": "Remover um download quando terminares o livro"
     },
     "browser": {
       "title": "Como os downloads funcionam num navegador",
@@ -634,7 +633,7 @@
     },
     "remove": {
       "title": "Remover este download?",
-      "message": "{{title}} vai precisar de conexão para tocar de novo. Sua posição no livro fica guardada.",
+      "message": "{{title}} vai precisar de ligação para tocar de novo. A tua posição no livro fica guardada.",
       "frees": "Liberta {{size}}.",
       "confirm": "Remover"
     },

@@ -57,8 +57,7 @@
         "description": "Télécharge le livre que vous commencez à écouter pour l'entendre hors ligne."
       },
       "autoDelete": {
-        "label": "Supprimer automatiquement les livres terminés",
-        "description": "Supprime les fichiers téléchargés une fois le livre terminé."
+        "description": "Libère l’espace une fois le livre terminé. Votre position dans le livre est conservée."
       }
     },
     "account": {
@@ -346,7 +345,7 @@
     },
     "download": {
       "unavailable": "Téléchargements indisponibles",
-      "delete": "Supprimer le téléchargement",
+      "remove": "Supprimer le téléchargement",
       "cancel": "Annuler le téléchargement",
       "retry": "Réessayer le téléchargement",
       "download": "Télécharger",
@@ -460,7 +459,7 @@
       "resume": "Reprendre",
       "collect": "Ajouter à une collection...",
       "download": "Télécharger pour hors ligne",
-      "removeDownload": "Retirer le téléchargement",
+      "removeDownload": "Supprimer le téléchargement",
       "cancelDownload": "Annuler le téléchargement",
       "markFinished": "Marquer comme terminé",
       "markUnfinished": "Marquer comme non terminé",
@@ -468,7 +467,7 @@
       "markedFinished": "Marqué comme terminé",
       "markedUnfinished": "Marqué comme non terminé",
       "downloading": "Téléchargement pour hors ligne",
-      "downloadRemoved": "Téléchargement retiré",
+      "downloadRemoved": "Téléchargement supprimé",
       "failed": "Impossible de mettre à jour ce livre. Réessaie.",
       "playFailed": "Impossible de lancer ce livre. Réessaie.",
       "loadFailed": "Impossible de charger ce livre. Réessayez."

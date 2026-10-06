@@ -358,8 +358,9 @@ export default function SettingsScreen() {
               />
               <KeepAheadStatusLine />
             </ChoiceRow>
+            {/* The same setting, and words, as the Downloads page's rules card. */}
             <ChoiceRow
-              label={t('settings.upNext.autoDelete.label')}
+              label={t('downloads.rules.autoDelete')}
               description={t('settings.upNext.autoDelete.description')}
             >
               <SegmentedControl
@@ -367,7 +368,7 @@ export default function SettingsScreen() {
                 value={autoDeleteFinished ? 'on' : 'off'}
                 onChange={(v) => setAutoDeleteFinished(v === 'on')}
                 grow
-                accessibilityLabel={t('settings.upNext.autoDelete.label')}
+                accessibilityLabel={t('downloads.rules.autoDelete')}
               />
             </ChoiceRow>
           </View>

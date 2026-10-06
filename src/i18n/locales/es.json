@@ -57,8 +57,7 @@
         "description": "Descarga el libro que empiezas a escuchar para tenerlo listo sin conexión."
       },
       "autoDelete": {
-        "label": "Eliminar automáticamente los libros terminados",
-        "description": "Elimina los archivos descargados cuando terminas un libro."
+        "description": "Libera el espacio cuando terminas un libro. Tu punto en el libro se conserva."
       }
     },
     "account": {
@@ -346,7 +345,7 @@
     },
     "download": {
       "unavailable": "Descargas no disponibles",
-      "delete": "Eliminar descarga",
+      "remove": "Quitar descarga",
       "cancel": "Cancelar descarga",
       "retry": "Reintentar descarga",
       "download": "Descargar",
