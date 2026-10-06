@@ -28,6 +28,7 @@ import { pathLeaf } from '@/lib/paths';
 import { chapterBookOffset } from '@/playback/book-queue';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
+import { usePlayBook } from '@/components/player/use-play-book';
 
 import { BookScale } from './book-scale';
 import { formatDayMonth } from './dates';
@@ -40,7 +41,6 @@ import {
   percentHeard,
   timeLeftAtSpeed,
 } from './now-card-model';
-import { useResumeBook } from './use-resume-book';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -63,7 +63,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const layout = useLayout();
   const phone = layout === 'phone';
   const { openBook } = useOpen();
-  const resume = useResumeBook();
+  const play = usePlayBook();
   const { libraryId, path } = at;
 
   const { data: book } = useBook(libraryId, path);
@@ -139,7 +139,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     : [t('home.continueListening'), series].filter(Boolean).join(' · ');
 
   const onResume = () =>
-    void resume(at).catch((e: unknown) => {
+    void play(at, { toggle: true, viaBookPage: true }).catch((e: unknown) => {
       console.warn('[home] resume failed', e);
       toast({ title: t('home.now.resumeFailed') });
     });

@@ -58,7 +58,7 @@ import {
   usePlacedBooks,
   useProgressLookup,
 } from './use-series-data';
-import { useResumeChapter } from './use-play-copy';
+import { useResumeChapter } from './use-resume-chapter';
 
 const ORDER_NOTE_KEY = {
   publication: 'series.orderNote.publication',

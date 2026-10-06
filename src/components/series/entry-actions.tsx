@@ -6,13 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { toast } from '@/components/ui/toast';
 import { useOpen } from '@/lib/open';
 import { openExternalUrl } from '@/lib/support';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { usePlayBook } from '@/components/player/use-play-book';
 
 import type { SeriesEntry } from './series-model';
-import { usePlayCopy } from './use-play-copy';
 
 /**
  * What an entry's status and action are, shared by the shelf's caption and the entry
@@ -103,7 +104,9 @@ export function EntryActionButton({
   const { t } = useTranslation();
   const themed = useThemeColors();
   const { openBook } = useOpen();
-  const play = usePlayCopy();
+  const play = usePlayBook();
+  const start = () =>
+    copy && void play(copy).catch(() => toast({ title: t('library.bookActions.playFailed') }));
   const copy = entry.copy;
   // Only an owned book is queued (on this page's server); a copy on another server
   // opens there, so its Up next is never asked for.
@@ -126,7 +129,7 @@ export function EntryActionButton({
           icon="play"
           title={label}
           accessibilityLabel={named(label)}
-          onPress={() => copy && void play(copy)}
+          onPress={start}
         />
       );
     case 'play':
@@ -137,7 +140,7 @@ export function EntryActionButton({
           icon="play"
           title={t('series.play')}
           accessibilityLabel={named(t('series.play'))}
-          onPress={() => copy && void play(copy)}
+          onPress={start}
         />
       );
     case 'queue': {

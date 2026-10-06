@@ -24,7 +24,7 @@ jest.mock('@/api/hooks', () => {
 const mockItem = jest.fn();
 const mockChapters = jest.fn();
 jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({ item: mockItem, chapters: mockChapters }),
+  useApis: () => [{ connection: { id: 'c' }, client: { item: mockItem, chapters: mockChapters } }],
 }));
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
@@ -37,6 +37,8 @@ const mockPlayBook = jest.fn();
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
+    selectBookKey: () => null,
+    selectIsTransportLive: () => false,
     usePlayer: create(() => ({
       nowPlaying: null,
       snapshot: { state: 'paused' },

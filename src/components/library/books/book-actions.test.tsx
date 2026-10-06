@@ -40,7 +40,7 @@ jest.mock('@/downloads/store', () => ({
 const mockOpenSeries = jest.fn();
 jest.mock('@/lib/open', () => ({ useOpen: () => ({ openSeries: mockOpenSeries }) }));
 const mockPlay = jest.fn();
-jest.mock('./use-play-book', () => ({ usePlayBook: () => mockPlay }));
+jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
 
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
@@ -189,7 +189,10 @@ describe('useBookActions', () => {
     const b = book();
     const { find, openCollect } = await actions(b);
     find('play')!.onPress();
-    expect(mockPlay).toHaveBeenCalledWith('c', 1, b.rel_path);
+    expect(mockPlay).toHaveBeenCalledWith(
+      { connectionId: 'c', libraryId: 1, path: b.rel_path },
+      { viaBookPage: true },
+    );
     find('queue')!.onPress();
     expect(mockQueue).toHaveBeenCalledWith(1, b.rel_path);
     find('collect')!.onPress();

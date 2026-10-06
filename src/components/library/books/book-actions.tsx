@@ -21,11 +21,11 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { usePlayBook } from '@/components/player/use-play-book';
 
 import { AddToCollectionDialog } from '../collections/collection-dialogs';
 import { useQueueActions } from '../use-queue-actions';
 import { bookStatus, unfinishedPosition } from './books-view';
-import { usePlayBook } from './use-play-book';
 
 /** One entry of a book's actions menu. `group` starts a new section (a separator). */
 export type BookAction = {
@@ -132,7 +132,7 @@ export function useBookActions(
       icon: 'play',
       label: t(status === 'progress' ? 'library.bookActions.resume' : 'library.bookActions.play'),
       onPress: () =>
-        void play(connectionId, libraryId, path).catch(() =>
+        void play({ connectionId, libraryId, path }, { viaBookPage: true }).catch(() =>
           toast({ title: t('library.bookActions.playFailed') }),
         ),
     },

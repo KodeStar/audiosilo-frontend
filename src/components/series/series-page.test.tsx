@@ -47,11 +47,9 @@ jest.mock('@/components/library/use-queue-actions', () => ({
     unqueue: jest.fn(),
   }),
 }));
-const mockPlay = jest.fn();
-jest.mock('./use-play-copy', () => ({
-  usePlayCopy: () => mockPlay,
-  useResumeChapter: () => 7,
-}));
+const mockPlay = jest.fn(() => Promise.resolve());
+jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
+jest.mock('./use-resume-chapter', () => ({ useResumeChapter: () => 7 }));
 
 type BooksResult = {
   books: Book[];

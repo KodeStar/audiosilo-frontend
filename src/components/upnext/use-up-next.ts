@@ -11,11 +11,10 @@ import {
   useQueue,
   useRemoveFromQueue,
 } from '@/api/hooks';
-import { useOptionalApi } from '@/api/provider';
 import type { BookRef, QueueEntry } from '@/api/types';
+import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
-import { useOpen } from '@/lib/open';
 import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 
@@ -147,41 +146,21 @@ export function useUpNextData(cid: string | undefined) {
 }
 
 /**
- * "Play now" for a queued book, through the existing paths: a phone opens the full
- * player (which starts the book where the listener left it); a tablet or desktop starts
- * it under the docked bar, as Home's progress cards do. The entry leaves the queue once
- * the book is on its way.
+ * "Play now" for a queued book, through the one play path (`usePlayBook`): a phone
+ * closes the sheet and opens the full player; a tablet or desktop starts it under the
+ * docked bar. The entry leaves the queue once the book is on its way.
  */
 export function usePlayNow(cid: string | undefined, dropPlayed: (e: BookRef) => unknown) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const api = useOptionalApi(cid);
-  const { openPlayer } = useOpen();
+  const play = usePlayBook();
   const closeSheet = useUpNext((s) => s.closeSheet);
 
   return async (entry: QueueEntry, title: string) => {
-    if (!cid || !api) return;
-    const current = usePlayer.getState().nowPlaying;
-    const isLoaded =
-      current?.connectionId === cid &&
-      current.libraryId === entry.library_id &&
-      current.path === entry.path;
-    if (phone) {
-      closeSheet();
-      openPlayer(cid, entry.library_id, entry.path);
-      void dropPlayed(entry);
-      return;
-    }
+    if (!cid) return;
+    if (phone) closeSheet();
     try {
-      if (!isLoaded) {
-        const [book, chapters] = await Promise.all([
-          api.item(entry.library_id, entry.path),
-          api.chapters(entry.library_id, entry.path),
-        ]);
-        await usePlayer.getState().playBook(cid, entry.library_id, book, chapters);
-      } else if (usePlayer.getState().snapshot.state !== 'playing') {
-        await usePlayer.getState().toggle();
-      }
+      await play({ connectionId: cid, libraryId: entry.library_id, path: entry.path });
       void dropPlayed(entry);
     } catch {
       toast({ title: t('upnext.playFailed', { title }) });
