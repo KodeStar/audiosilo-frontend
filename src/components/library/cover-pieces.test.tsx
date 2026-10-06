@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
+import { settleFlashList } from '@/testing/flash-list';
+
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
 jest.mock('@/api/provider', () => ({
@@ -118,6 +120,7 @@ describe('ShelfRow and CoverGrid', () => {
       />,
     );
     expect(new Set(widths)).toEqual(new Set([164]));
+    await settleFlashList();
   });
 
   it('lays a phone grid in two columns of the measured width', async () => {
@@ -144,6 +147,7 @@ describe('ShelfRow and CoverGrid', () => {
     expect(screen.getByText('C')).toBeTruthy();
     // 390 less two 16 gutters, less one 14 gap, in two.
     expect(new Set(widths)).toEqual(new Set([172]));
+    await settleFlashList();
   });
 
   it('shows exact cover-shaped placeholders while loading', async () => {

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, Progress } from '@/api/types';
+import { settleFlashList } from '@/testing/flash-list';
 
 let mockParams: Record<string, string | undefined> = {};
 const mockSetParams = jest.fn();
@@ -83,6 +84,7 @@ async function mount() {
   if (grid) {
     await fireEvent(grid, 'layout', { nativeEvent: { layout: { width: 390, height: 800 } } });
   }
+  await settleFlashList();
 }
 
 describe('BooksMode', () => {

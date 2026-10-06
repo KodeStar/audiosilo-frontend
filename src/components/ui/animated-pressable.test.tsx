@@ -1,12 +1,12 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import { AnimatedPressable } from './animated-pressable';
 
+// RNTL 14's render and fireEvent are async and act() themselves: wrapping render in
+// another act overlapped the two.
 async function mount(ui: React.ReactElement) {
-  await act(async () => {
-    render(ui);
-  });
+  await render(ui);
 }
 
 describe('AnimatedPressable', () => {
@@ -41,7 +41,7 @@ describe('AnimatedPressable', () => {
       </AnimatedPressable>,
     );
 
-    fireEvent.press(screen.getByText('Tap me'));
+    await fireEvent.press(screen.getByText('Tap me'));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
@@ -58,8 +58,8 @@ describe('AnimatedPressable', () => {
     );
 
     const node = screen.getByLabelText('Play');
-    fireEvent(node, 'pressIn');
-    fireEvent(node, 'pressOut');
+    await fireEvent(node, 'pressIn');
+    await fireEvent(node, 'pressOut');
     expect(onPressIn).toHaveBeenCalledTimes(1);
     expect(onPressOut).toHaveBeenCalledTimes(1);
   });

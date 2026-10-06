@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
@@ -137,6 +137,13 @@ function serverWith(id: string, caps: Partial<Capabilities>): ServerInfo {
 }
 
 const queryClients: QueryClient[] = [];
+
+// React Query hands results to its observers on a timer by default, so a hook's last
+// re-render (a mutation settling after `mutateAsync` resolved) fell after the act()
+// that caused it: "an update was not wrapped in act". Notify synchronously instead, so
+// every update lands inside the act or waitFor that triggered it.
+beforeAll(() => notifyManager.setScheduler((cb) => cb()));
+afterAll(() => notifyManager.setScheduler((cb) => setTimeout(cb, 0)));
 
 /** Render `useHooks` against stub servers advertising `servers[id]`, one stub client per
  * connection id. A negative test then waits until the hooks have RENDERED with the

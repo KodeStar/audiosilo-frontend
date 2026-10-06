@@ -20,9 +20,10 @@ function Probe({ onValue }: { onValue: (v: LangValue) => void }) {
   return null;
 }
 
-function mountProvider() {
+/** RNTL 14's render is async: awaiting it keeps the provider's hydration inside act. */
+async function mountProvider() {
   let latest: LangValue | null = null;
-  render(
+  await render(
     <LanguageProvider>
       <Probe onValue={(v) => (latest = v)} />
     </LanguageProvider>,
@@ -38,7 +39,7 @@ afterEach(async () => {
 describe('LanguageProvider', () => {
   it('coerces an invalid persisted pref to "system"', async () => {
     await setItem(STORAGE_KEY, 'not-a-language');
-    const value = mountProvider();
+    const value = await mountProvider();
 
     await waitFor(() => expect(value()).toBeTruthy());
     expect(value()!.pref).toBe('system');
@@ -46,7 +47,7 @@ describe('LanguageProvider', () => {
 
   it('loads and applies a valid persisted pref', async () => {
     await setItem(STORAGE_KEY, 'de');
-    const value = mountProvider();
+    const value = await mountProvider();
 
     await waitFor(() => expect(value()).toBeTruthy());
     expect(value()!.pref).toBe('de');
@@ -54,7 +55,7 @@ describe('LanguageProvider', () => {
   });
 
   it('persists a pref change via setPref', async () => {
-    const value = mountProvider();
+    const value = await mountProvider();
     await waitFor(() => expect(value()).toBeTruthy());
 
     await act(async () => {

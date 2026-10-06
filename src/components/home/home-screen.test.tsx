@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react-native';
 
+import { settleFlashList } from '@/testing/flash-list';
+
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h), navigate: (h: unknown) => mockPush(h) },
@@ -93,12 +95,14 @@ jest.mock('./use-sync-pill', () => ({ useSyncPill: () => null }));
 import { HomeScreen } from './home-screen';
 /* eslint-enable import/first */
 
-const mountHome = () =>
-  render(
+async function mountHome() {
+  await render(
     <QueryClientProvider client={new QueryClient()}>
       <HomeScreen />
     </QueryClientProvider>,
   );
+  await settleFlashList();
+}
 
 const started = (path: string, updated: string): Progress => ({
   connectionId: 'a',
