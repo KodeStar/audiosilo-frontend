@@ -6,15 +6,15 @@ import Svg, { Line } from 'react-native-svg';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
 import { Icon } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { percentOf } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { percentOf } from '@/lib/progress-view';
-import { ProgressBar } from '@/components/ui/progress-bar';
 
 import { EntryActionButton, EntryBadge } from './entry-actions';
 import type { SeriesEntry, SeriesStats, TrackSegment } from './series-model';
@@ -95,7 +95,7 @@ export function ProgressTrack({
 }
 
 /** "Book 2 · 2012 · 2h 30m": an entry's eyebrow, leaving out what isn't known. */
-export function entryFacts(entry: SeriesEntry, t: TFunction): string {
+function entryFacts(entry: SeriesEntry, t: TFunction): string {
   return [
     entry.position ? t('series.bookN', { position: entry.position }) : '',
     entry.year ?? '',
@@ -221,7 +221,7 @@ export function ShelfLegend({
 
 /** The entry list's number: 22 (18 on a phone), smaller for "0.5" and "12.25" so it
  * fits its column. */
-export function numberSize(position: string, phone: boolean): number {
+function numberSize(position: string, phone: boolean): number {
   const n = position.length;
   if (phone) return n >= 4 ? 12 : n === 3 ? 15 : 18;
   return n >= 4 ? 16 : n === 3 ? 19 : 22;

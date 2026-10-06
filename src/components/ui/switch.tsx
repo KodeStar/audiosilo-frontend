@@ -1,8 +1,8 @@
 import * as SwitchPrimitives from '@rn-primitives/switch';
 import { Platform, View } from 'react-native';
 
-import { cn } from '@/lib/utils';
 import { FOCUS_RING_OFFSET_CLASS } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 
 /**
  * A Stacks switch (STYLEGUIDE.md section 8): react-native-reusables' Switch, restyled -

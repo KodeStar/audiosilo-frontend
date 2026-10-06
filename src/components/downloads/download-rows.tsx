@@ -7,6 +7,7 @@ import { BookCover } from '@/components/library/book-cover';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { bytesToGo, entryBytes } from '@/downloads/downloads-view';
 import type { AheadBook, SlotState } from '@/downloads/keep-ahead';
@@ -17,7 +18,6 @@ import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { ProgressBar } from '@/components/ui/progress-bar';
 
 import type { StorageScope } from './storage-card';
 
@@ -28,7 +28,7 @@ const percent = (fraction: number) => Math.floor(Math.max(0, Math.min(1, fractio
  * section 12): the cause from `entry.failure`, then the share kept on the device or
  * that a retry starts over. Entries saved before failures were classified read as
  * "stopped". */
-export function failureText(
+function failureText(
   t: TFunction,
   entry: Pick<DownloadEntry, 'failure'>,
   server: string,

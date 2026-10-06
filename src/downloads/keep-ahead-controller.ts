@@ -21,6 +21,7 @@ import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
 import { statusSignature } from './downloads-view';
+import { engine } from './engine';
 import {
   aheadWindow,
   pendingBytes,
@@ -30,7 +31,6 @@ import {
   type KeepAheadStatus,
   type NetworkGate,
 } from './keep-ahead';
-import { engine } from './engine';
 import { isDeclined, useDownloads } from './store';
 import type { DownloadStatus } from './types';
 

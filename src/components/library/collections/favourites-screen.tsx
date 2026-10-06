@@ -9,6 +9,8 @@ import { pageGutter } from '@/components/library/cover-layout';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { GhostCovers } from '@/components/ui/ghost-art';
 import { Icon } from '@/components/ui/icon';
 import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
@@ -17,8 +19,6 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { GhostCovers } from '@/components/ui/ghost-art';
-import { EmptyState } from '@/components/ui/empty-state';
 
 const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.path}`;
 

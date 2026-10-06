@@ -6,6 +6,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { formatCount } from '@/lib/format';
 import { useDomId } from '@/lib/use-dom-id';
+import { useLatestRef } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -188,7 +189,8 @@ function SegmentScroller<T extends string>({
   const [viewport, setViewport] = useState(0);
   const [content, setContent] = useState(0);
   const [x, setX] = useState(0);
-  const xRef = useRef(0);
+  // The effect below reads the scroll position without re-running on the reader's scroll.
+  const xRef = useLatestRef(x);
   const selected = layouts[value];
 
   useEffect(() => {
@@ -229,10 +231,7 @@ function SegmentScroller<T extends string>({
         scrollEventThrottle={32}
         onLayout={(e) => setViewport(e.nativeEvent.layout.width)}
         onContentSizeChange={(w) => setContent(w)}
-        onScroll={(e) => {
-          xRef.current = e.nativeEvent.contentOffset.x;
-          setX(e.nativeEvent.contentOffset.x);
-        }}
+        onScroll={(e) => setX(e.nativeEvent.contentOffset.x)}
       >
         {children((v, e) => {
           const { x: lx, width } = e.nativeEvent.layout;

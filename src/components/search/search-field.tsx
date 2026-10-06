@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, TextInput, View } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
+import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { FOCUS_RING_CLASS } from '@/components/ui/text';
 
 /**
  * The Search screen's field (the prototype's 52-tall search input): a search glyph, the

@@ -1,6 +1,6 @@
 import type { BookRef, NextBook, Progress, QueueEntry } from '@/api/types';
-import { percentHeard } from '@/lib/progress-view';
 import type { ShortcutKey } from '@/lib/keyboard';
+import { percentHeard } from '@/lib/progress-view';
 
 /**
  * The pure rules behind Up next (the desktop drawer and the tablet/phone sheet): which

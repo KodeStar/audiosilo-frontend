@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
+import { useAllLibraryBooks } from '@/api/hooks';
 import type { SeriesCount } from '@/api/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
@@ -9,7 +10,6 @@ import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
-import { useAllLibraryBooks } from '@/api/hooks';
 
 import { MiniShelf, MiniShelfSkeleton } from './mini-shelf';
 import { localEntries, localGaps, type ProgressLookup } from './series-model';

@@ -14,16 +14,16 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
+import { FOCUS_RING_OFFSET_CLASS } from '@/components/ui/text';
 import { type LayoutClass } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { useDomId } from '@/lib/use-dom-id';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { SeriesEntry } from './series-model';
 import { READING_LIFT, Ribbon, RIBBON_WIDTH, Spine } from './spine';
 import { spineDims } from './spine-fit';
-import { FOCUS_RING_OFFSET_CLASS } from '@/components/ui/text';
-import { useDomId } from '@/lib/use-dom-id';
 
 /** The bookcase's scale per form factor (the prototype's 0.92 / 1.2 / 1.42). */
 export function bookcaseScale(layout: LayoutClass): number {
@@ -38,7 +38,7 @@ const HEADROOM = READING_LIFT + RIBBON_SHOW + 10;
 const GAP = 5;
 
 /** The words an entry's spine and face-out cover are read by. */
-export function entryLabel(entry: SeriesEntry, t: TFunction, current: boolean): string {
+function entryLabel(entry: SeriesEntry, t: TFunction, current: boolean): string {
   const title = entry.title ?? t('covers.bookNumber', { position: entry.position });
   const parts = [
     entry.title && entry.position ? t('series.bookN', { position: entry.position }) : '',

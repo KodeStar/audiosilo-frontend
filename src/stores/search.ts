@@ -21,7 +21,7 @@ export const useSearchStore = create<SearchState>()((set) => ({
 }));
 
 /** Recent searches kept on this device. */
-export const MAX_RECENT = 5;
+const MAX_RECENT = 5;
 
 /** The key predates the Search screen sharing the list (the palette had it first). */
 const RECENT_KEY = 'audiosilo.paletteRecent';

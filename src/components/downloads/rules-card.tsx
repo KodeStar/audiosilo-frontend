@@ -6,8 +6,8 @@ import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/toggle-group';
-import { useKeepAhead } from '@/downloads/keep-ahead-controller';
 import type { KeepAheadStatus } from '@/downloads/keep-ahead';
+import { useKeepAhead } from '@/downloads/keep-ahead-controller';
 import {
   KEEP_AHEAD_CHOICES,
   useSettings,

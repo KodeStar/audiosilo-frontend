@@ -1,10 +1,10 @@
 import { forwardRef } from 'react';
 import { Platform, View, type ViewProps } from 'react-native';
 
+import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
 import { AnimatedPressable, type AnimatedPressableProps } from './animated-pressable';
-import { FOCUS_RING_CLASS } from '@/components/ui/text';
 
 /**
  * The quiet list-row surface (STYLEGUIDE.md section 5: chrome is flat with a 1px

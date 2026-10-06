@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import type { Book, Progress } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -11,7 +12,6 @@ import { bookTitle } from '@/lib/paths';
 import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { ProgressBar } from '@/components/ui/progress-bar';
 
 import { CoverListRow } from '../cover-grid';
 import { CoverTile } from '../cover-tile';

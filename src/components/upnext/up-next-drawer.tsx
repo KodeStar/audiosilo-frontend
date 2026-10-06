@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
-import { UpNextPanel, useQueuedLine } from './up-next-panel';
 import { clampDrawerWidth, DRAWER_MAX, DRAWER_MIN } from './up-next-model';
+import { UpNextPanel, useQueuedLine } from './up-next-panel';
 import { closeUpNext, hydrateUpNext, useUpNext } from './up-next-store';
 import { useUpNextData, useUpNextServer } from './use-up-next';
 

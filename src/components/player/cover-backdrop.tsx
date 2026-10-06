@@ -2,9 +2,9 @@ import { Image, type ImageSource } from 'expo-image';
 import { Platform, type ViewStyle, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useDomId } from '@/lib/use-dom-id';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { useDomId } from '@/lib/use-dom-id';
 
 // react-native-web supports CSS `filter`, but it isn't in RN's ViewStyle type;
 // cast through `unknown` to attach it without an `any`. Beyond the blur we

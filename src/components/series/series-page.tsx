@@ -23,6 +23,7 @@ import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { percentOf } from '@/lib/progress-view';
 import {
   familyKey,
   familyName,
@@ -34,7 +35,6 @@ import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useConnectionName } from '@/stores/session';
-import { percentOf } from '@/lib/progress-view';
 
 import { Bookcase, bookcaseScale } from './bookcase';
 import { EmptyShelf } from './empty-shelf';
@@ -60,8 +60,8 @@ import {
   statsLine,
 } from './series-parts';
 import { spineDims } from './spine-fit';
-import { useElsewhereBooks, usePlacedBooks } from './use-series-data';
 import { useResumeChapter } from './use-resume-chapter';
+import { useElsewhereBooks, usePlacedBooks } from './use-series-data';
 
 const ORDER_NOTE_KEY = {
   publication: 'series.orderNote.publication',

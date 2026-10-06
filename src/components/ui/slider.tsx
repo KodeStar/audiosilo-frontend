@@ -3,11 +3,11 @@ import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
+import { FOCUS_RING_CLASS } from '@/components/ui/text';
+import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { useLatest } from '@/lib/use-latest';
-import { FOCUS_RING_CLASS } from '@/components/ui/text';
 
 const TRACK_H = 6; // slim visual track
 const HIT_H = 44; // the touch target (STYLEGUIDE.md section 14)

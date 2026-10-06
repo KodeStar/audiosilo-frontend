@@ -17,8 +17,8 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { EmptyShelf } from './empty-shelf';
-import { booksBySeries, creditedPeople, personStats } from './people-model';
 import type { PersonKind } from './people-mode';
+import { booksBySeries, creditedPeople, personStats } from './people-model';
 import { PersonChip } from './person-chip';
 import { Portrait } from './portrait';
 import { type ProgressLookup, yearOf } from './series-model';

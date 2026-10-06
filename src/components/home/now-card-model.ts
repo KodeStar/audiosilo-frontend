@@ -10,7 +10,7 @@ export type ScaleState = 'past' | 'current' | 'ahead';
 export type ScaleSegment = { weight: number; state: ScaleState };
 
 /** More ticks than this would blur into a bar at card width, so neighbours merge. */
-export const MAX_SCALE_SEGMENTS = 120;
+const MAX_SCALE_SEGMENTS = 120;
 
 /**
  * The scale's segments from the chapters' whole-book starts (ascending) and the book's

@@ -1,5 +1,6 @@
 import { type RefObject, useEffect } from 'react';
 import type { View } from 'react-native';
+
 import { useLatestRef } from '@/lib/use-latest';
 
 /**

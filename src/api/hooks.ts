@@ -124,7 +124,7 @@ export function serverInfoQuery(cid: string, client: MaybeClient) {
 
 /** How long a `/next` answer stays fresh where it is only a suggestion (Home's Next in
  * your series, keep-ahead's plan): the series doesn't move while you listen. */
-export const NEXT_BOOK_STALE_MS = 10 * 60_000;
+const NEXT_BOOK_STALE_MS = 10 * 60_000;
 
 /** `/next` for a book, as Home and keep-ahead read it (the player's `useNextBook` keeps
  * the default freshness). Ask only a server with `next_book`. */

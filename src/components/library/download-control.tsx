@@ -6,11 +6,11 @@ import type { Book, ChaptersResponse } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { ProgressBar } from '@/components/ui/progress-bar';
 
 /** Download affordance on the book detail screen: download / progress+cancel /
  * downloaded+delete / retry, with a fallback when offline storage is unavailable

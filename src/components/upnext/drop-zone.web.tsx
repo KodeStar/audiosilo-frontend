@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { cn } from '@/lib/utils';
 import { useLatestRef } from '@/lib/use-latest';
+import { cn } from '@/lib/utils';
 
 import { activeBookDrag } from './drag-source';
 import type { DropZoneProps } from './drop-zone-types';

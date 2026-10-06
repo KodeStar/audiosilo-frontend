@@ -11,13 +11,13 @@ import {
 } from 'react-native';
 import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
+import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
 import { FullWindowOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
-import { FOCUS_RING_CLASS } from '@/components/ui/text';
 
 /**
  * Stacks dialogs (STYLEGUIDE.md section 8): react-native-reusables' Dialog, restyled.

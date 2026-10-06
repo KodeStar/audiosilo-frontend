@@ -1,3 +1,5 @@
+import { contentKeyOf } from '@/lib/content-key';
+
 import {
   aheadWindow,
   estimateBytes,
@@ -8,8 +10,6 @@ import {
   type KeepAheadInput,
 } from './keep-ahead';
 import type { DownloadStatus } from './types';
-
-import { contentKeyOf } from '@/lib/content-key';
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;

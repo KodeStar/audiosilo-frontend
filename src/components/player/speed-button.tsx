@@ -4,8 +4,8 @@ import { Text as RNText, View } from 'react-native';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Sheet } from '@/components/ui/sheet';
 import { Stepper } from '@/components/ui/stepper';
-import { usePlayer } from '@/playback/store';
 import { formatSpeed } from '@/lib/format';
+import { usePlayer } from '@/playback/store';
 
 /**
  * Speed readout button. The sheet is mounted separately (`SpeedSheet`) at the

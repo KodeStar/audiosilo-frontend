@@ -10,12 +10,12 @@ import {
   type SourcedProgress,
 } from '@/api/hooks';
 import { useProgressBook } from '@/components/home/book-title';
+import { EmptyState } from '@/components/ui/empty-state';
+import { GhostCovers } from '@/components/ui/ghost-art';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
-import { GhostCovers } from '@/components/ui/ghost-art';
-import { EmptyState } from '@/components/ui/empty-state';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { CoverTile, useServerFlag } from '../cover-tile';

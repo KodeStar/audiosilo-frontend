@@ -14,7 +14,7 @@ import { isInProgress } from '@/lib/progress-view';
 
 export const BOOKS_SORTS = ['recent', 'title', 'author', 'length'] as const;
 export type BooksSort = (typeof BOOKS_SORTS)[number];
-export const DEFAULT_BOOKS_SORT: BooksSort = 'recent';
+const DEFAULT_BOOKS_SORT: BooksSort = 'recent';
 
 export const BOOK_STATUSES = ['new', 'progress', 'finished'] as const;
 /** The listener's state of a book: never played, started, finished. */

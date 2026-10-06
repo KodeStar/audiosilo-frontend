@@ -75,7 +75,7 @@ export type NextReason =
 export type NextCandidate = BookAt & { reason: NextReason };
 
 /** How many books Home asks `/next` about (one request each). */
-export const NEXT_CANDIDATES = 6;
+const NEXT_CANDIDATES = 6;
 /** Of those, at most this many are books in progress (the rest recently finished). */
 const NEXT_IN_PROGRESS = 4;
 

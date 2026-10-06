@@ -4,12 +4,12 @@ import { Platform, View } from 'react-native';
 
 import type { Collection } from '@/api/types';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { GhostCovers } from '@/components/ui/ghost-art';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { GhostCovers } from '@/components/ui/ghost-art';
 
 import { BookCover } from '../book-cover';
 import { nameList, type ShareLine, shareLine } from './collections-model';

@@ -30,7 +30,7 @@ type Advances = {
 };
 
 /** Average advance per character class, in ems. */
-export const SPINE_ADVANCE: Record<SpineFont, Advances> = {
+const SPINE_ADVANCE: Record<SpineFont, Advances> = {
   // Bricolage Grotesque 700 (font-display).
   display: { narrow: 0.3, wide: 0.98, upper: 0.7, digit: 0.61, space: 0.24, cjk: 1, other: 0.61 },
   // Figtree 600 (font-sans-semibold).
@@ -58,7 +58,7 @@ export function textAdvance(text: string, font: SpineFont): number {
 }
 
 /** JetBrains Mono's advance (every glyph), for the series number at a spine's top. */
-export const MONO_ADVANCE = 0.6;
+const MONO_ADVANCE = 0.6;
 
 /** The series number's size: 10px at scale 1, smaller when "12.25" must fit a thin
  * spine, never under the floor. */
@@ -70,9 +70,9 @@ export function spineIndexSize(position: string, across: number, scale: number):
 /** The smallest a spine title is ever set (the style guide's 5px floor). */
 export const SPINE_MIN_FONT = 5;
 /** How far a title may shrink on one line before wrapping is tried (82%). */
-export const SPINE_SHRINK = 0.82;
+const SPINE_SHRINK = 0.82;
 /** Spines at least this wide may set a title on two lines. */
-export const SPINE_WRAP_MIN_WIDTH = 40;
+const SPINE_WRAP_MIN_WIDTH = 40;
 /** A title line's height, as a multiple of its size. */
 const LINE = 1.1;
 /** Base tracking, and the tightened tracking tried before any shrinking (ems). */
@@ -166,7 +166,7 @@ export function fitSpineTitle({
 }
 
 /** A spine's listening length when it is unknown (a book on no server): ten hours. */
-export const UNKNOWN_SPINE_SECONDS = 10 * 3600;
+const UNKNOWN_SPINE_SECONDS = 10 * 3600;
 
 /**
  * A spine's width and height at `scale`: the width follows the listening length

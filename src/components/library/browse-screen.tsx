@@ -11,12 +11,12 @@ import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
 import { ErrorNote } from '@/components/ui/query-state';
+import { RowSurface } from '@/components/ui/row-surface';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { Input } from '@/components/ui/input';
-import { RowSurface } from '@/components/ui/row-surface';
 import {
   filterEntries,
   groupByLetter,

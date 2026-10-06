@@ -24,10 +24,10 @@ import { contentKeyOf } from '@/lib/content-key';
 import { formatBytes, formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
-import { percentHeard } from '@/lib/progress-view';
 
 import { ActiveRow, PlannedRow, ReadyRow } from './download-rows';
 import {

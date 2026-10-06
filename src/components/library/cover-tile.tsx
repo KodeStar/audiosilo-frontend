@@ -3,21 +3,20 @@ import { type ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useSavedProgress } from '@/api/hooks';
 import type { Book } from '@/api/types';
-
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useBookDragSource } from '@/components/upnext/drag-source';
 import { useDownloadEntry } from '@/downloads/store';
 import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
-import { cn } from '@/lib/utils';
-import { colors } from '@/theme/tokens';
 import { percentOf, progressFractionRemaining } from '@/lib/progress-view';
-import { ProgressBar } from '@/components/ui/progress-bar';
-import { useSavedProgress } from '@/api/hooks';
+import { cn } from '@/lib/utils';
 import { useSession } from '@/stores/session';
+import { colors } from '@/theme/tokens';
 
 import { BookCover } from './book-cover';
 import { TileActions } from './tile-actions';
@@ -37,7 +36,7 @@ function Flag({ children, className }: { children: ReactNode; className?: string
 }
 
 /** What a tile's state adds to its accessible name, in order. */
-export function tileStateLabels(opts: {
+function tileStateLabels(opts: {
   progress?: number;
   finished?: boolean;
   downloaded?: boolean;

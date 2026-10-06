@@ -13,10 +13,10 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
-import { CoverFrame } from '@/components/library/cover-frame';
 import { useAddBookmark } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';

@@ -5,10 +5,10 @@ import Svg, { Defs, Line, LinearGradient, Rect, Stop } from 'react-native-svg';
 import type { CoverColor } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { useDomId } from '@/lib/use-dom-id';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { useDomId } from '@/lib/use-dom-id';
 
 import { spinePalette } from './spine-colors';
 import {

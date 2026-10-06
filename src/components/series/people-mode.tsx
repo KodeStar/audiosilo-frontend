@@ -2,7 +2,6 @@ import type { TFunction } from 'i18next';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
-
 import type { UseQueryResult } from '@tanstack/react-query';
 
 import { useLibraryBooks, useProgressLookup } from '@/api/hooks';
@@ -18,8 +17,8 @@ import { tabularNums } from '@/theme/tabular-nums';
 
 import { CardGrid } from './card-grid';
 import { EmptyShelf } from './empty-shelf';
-import type { ProgressLookup } from './series-model';
 import { Portrait } from './portrait';
+import type { ProgressLookup } from './series-model';
 
 export type PersonKind = 'author' | 'narrator';
 

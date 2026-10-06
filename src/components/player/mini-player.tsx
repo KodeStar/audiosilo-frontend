@@ -20,12 +20,12 @@ import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
+import { formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { formatSpeed } from '@/lib/format';
 
 /** Height of the flush cover square, which is also the bar's content-row height. */
 const COVER_SIZE = 64;

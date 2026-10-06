@@ -11,7 +11,6 @@ import {
   useLibraries,
   useServerInfo,
 } from '@/api/hooks';
-import { CoverFrame } from '@/components/library/cover-frame';
 import { useApi, useScopedCid } from '@/api/provider';
 import { ContentScope } from '@/components/layout/content-scope';
 import {
@@ -24,13 +23,14 @@ import {
   seriesRails,
   summaryIsVisible,
 } from '@/components/library/book-meta';
-import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
-import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
-import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { BookStats } from '@/components/library/book-stats';
+import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { BookVersions } from '@/components/library/book-versions';
+import { BookmarksSection } from '@/components/library/bookmarks-section';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
+import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';

@@ -1,9 +1,9 @@
 import { usePathname } from 'expo-router';
 import { useEffect } from 'react';
 
+import { BROWSE_PATHS } from '@/lib/paths';
 import { clearScrollMemory } from '@/lib/scroll-memory';
 import { useSearchStore } from '@/stores/search';
-import { BROWSE_PATHS } from '@/lib/paths';
 
 import { useActiveTab } from './destinations';
 

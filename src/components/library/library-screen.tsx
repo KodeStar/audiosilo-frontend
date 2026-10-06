@@ -14,7 +14,6 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { useLayout } from '@/lib/layout';
 
-import { LibraryPicker } from './library-picker';
 import {
   availableLibraryModes,
   DEFAULT_LIBRARY_MODE,
@@ -25,6 +24,7 @@ import {
   parseLibraryMode,
   resolveLibraryMode,
 } from './library-modes';
+import { LibraryPicker } from './library-picker';
 import { AuthorsMode } from './modes/authors-mode';
 import { BooksMode } from './modes/books-mode';
 import { CollectionsMode } from './modes/collections-mode';

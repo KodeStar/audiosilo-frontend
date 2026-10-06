@@ -26,7 +26,7 @@ export function coverTint(color: CoverColor | undefined, brand: string): CoverTi
 }
 
 /** `--wash`: how strongly the cover colour tints a surface (STYLEGUIDE section 3). */
-export const WASH_STRENGTH = { light: 0.3, dark: 0.42 } as const;
+const WASH_STRENGTH = { light: 0.3, dark: 0.42 } as const;
 
 /** `#rrggbb` at an opacity, as `rgba(...)`. */
 export function hexAlpha(hex: string, alpha: number): string {

@@ -4,8 +4,8 @@ import { View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useLayout } from '@/lib/layout';
-import { useThemeColors } from '@/theme/use-theme-colors';
 import { useDomId } from '@/lib/use-dom-id';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { pageGutter, shelfMetrics } from './cover-layout';
 

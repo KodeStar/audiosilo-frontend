@@ -12,14 +12,15 @@ import {
   type SourcedProgress,
 } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
-import { matchedMeta } from '@/components/library/book-meta';
 import { BookCover } from '@/components/library/book-cover';
+import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
 import {
   chapterStartsOf,
   listeningProgressFor,
   splitCharacters,
 } from '@/components/library/meta-gating';
+import { usePlayBook } from '@/components/player/use-play-book';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -32,7 +33,6 @@ import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
-import { usePlayBook } from '@/components/player/use-play-book';
 
 import { BookScale } from './book-scale';
 import type { BookAt } from './home-model';

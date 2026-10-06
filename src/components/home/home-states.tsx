@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { GhostCovers } from '@/components/ui/ghost-art';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-import { GhostCovers } from '@/components/ui/ghost-art';
 
 /** The Now card's place when nothing is in progress: ghost covers, one headline, one
  * sentence, one way into the Library. */

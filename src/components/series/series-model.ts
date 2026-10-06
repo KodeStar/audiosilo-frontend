@@ -1,8 +1,8 @@
 import type { Book, BookMetaSeries, BookMetaSeriesWork, CoverColor, Progress } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
-import type { SeriesView } from '@/lib/series-orderings';
 import { foldAccents } from '@/lib/names';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
+import type { SeriesView } from '@/lib/series-orderings';
 
 /**
  * The series page's model (pure, tested): one ordered list of ENTRIES, built from the
@@ -28,8 +28,6 @@ export type SeriesCopy = {
   path: string;
   book?: Book;
 };
-
-export type SeriesEntryKind = 'owned' | 'elsewhere' | 'ghost';
 
 type EntryFields = {
   /** Stable across reading orders (the work id when there is one), for keys and moves. */
@@ -75,13 +73,13 @@ export type ElsewhereBook = Book & { connectionId: string; connectionName: strin
 /** A series position as a number ("2.5" -> 2.5, "1-3" -> 1), or undefined when it does
  * not parse. (The same rule as the book page's `seriesPositionValue`; that module is a
  * screen, so this pure one keeps its own copy.) */
-export function positionNumber(position: string | undefined): number | undefined {
+function positionNumber(position: string | undefined): number | undefined {
   const n = parseFloat(position ?? '');
   return Number.isFinite(n) ? n : undefined;
 }
 
 /** A local `series_index` as a position label ("3", "3.5"), '' when unset (0). */
-export function indexLabel(index: number): string {
+function indexLabel(index: number): string {
   return index > 0 ? String(index) : '';
 }
 
@@ -135,7 +133,7 @@ export function sortSeriesBooks(books: readonly Book[]): Book[] {
 
 /** Past this many numbered places a gap-filled shelf would be mostly ghosts; gaps are
  * then not drawn (an owned "book 400" doesn't conjure 399 ghosts). */
-export const MAX_LOCAL_GAPS = 60;
+const MAX_LOCAL_GAPS = 60;
 
 /** The whole numbers missing below the highest owned position: 1, 2 and 4 owned means
  * book 3 is missing. Fractional positions (3.5) never make gaps of their own. */

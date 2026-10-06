@@ -2,23 +2,23 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { CoverTile } from '@/components/library/cover-tile';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
+import { CoverTile } from '@/components/library/cover-tile';
 import { GhostCover } from '@/components/library/ghost-cover';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { useOpen } from '@/lib/open';
-import { useThemeColors } from '@/theme/use-theme-colors';
-import { bookTitle } from '@/lib/paths';
 import { formatDayMonth } from '@/lib/format';
+import { useOpen } from '@/lib/open';
+import { bookTitle } from '@/lib/paths';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { useBookTitle } from './book-title';
 import type { NextItem, NextReason } from './home-model';
 
 /** Why a next book is suggested, in words; `title` names the book it follows. */
-export function nextReasonText(reason: NextReason, title: string, t: TFunction): string {
+function nextReasonText(reason: NextReason, title: string, t: TFunction): string {
   switch (reason.kind) {
     case 'current':
       return t('home.next.afterCurrent');

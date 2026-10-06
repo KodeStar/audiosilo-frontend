@@ -18,6 +18,8 @@ import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { GhostCovers } from '@/components/ui/ghost-art';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
@@ -27,8 +29,6 @@ import { useOpen } from '@/lib/open';
 import { parseCollectionParams, pathLeaf } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
-import { GhostCovers } from '@/components/ui/ghost-art';
-import { EmptyState } from '@/components/ui/empty-state';
 
 import type { BookAction } from './books/book-actions';
 import { BookListHeader, BookListRow, BookTile } from './books/book-items';

@@ -29,7 +29,7 @@ export type GridSpec = {
 };
 
 /** The cover grid: `repeat(auto-fill, minmax(158px, 1fr))`, two columns on a phone. */
-export const COVER_GRID: GridSpec = {
+const COVER_GRID: GridSpec = {
   min: GRID_MIN_TILE,
   minColumns: 2,
   phoneColumns: 2,

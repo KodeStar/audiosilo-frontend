@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { CoverFrame } from './cover-frame';
 
 /** The thumbnail sizes the server makes (`cover_sizes`), smallest first. */
-export const COVER_SIZES: readonly CoverSize[] = [160, 320, 640];
+const COVER_SIZES: readonly CoverSize[] = [160, 320, 640];
 
 /**
  * The smallest thumbnail that covers a cover drawn `width` points wide on a screen of

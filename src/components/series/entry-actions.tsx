@@ -3,17 +3,17 @@ import { View } from 'react-native';
 
 import { QueueButton } from '@/components/library/queue-button';
 import { useQueueActions } from '@/components/library/use-queue-actions';
+import { usePlayBook } from '@/components/player/use-play-book';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useOpen } from '@/lib/open';
+import { percentOf } from '@/lib/progress-view';
 import { openExternalUrl } from '@/lib/support';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { usePlayBook } from '@/components/player/use-play-book';
-import { percentOf } from '@/lib/progress-view';
 
 import type { SeriesEntry } from './series-model';
 
@@ -33,7 +33,7 @@ export type EntryAction =
   | { kind: 'meta'; url: string }
   | { kind: 'none' };
 
-export function entryAction(entry: SeriesEntry, queueSupported: boolean): EntryAction {
+function entryAction(entry: SeriesEntry, queueSupported: boolean): EntryAction {
   if (entry.kind === 'ghost') return entry.webUrl ? { kind: 'meta', url: entry.webUrl } : NONE;
   if (entry.kind === 'elsewhere') {
     return { kind: 'elsewhere', server: entry.copy.connectionName };

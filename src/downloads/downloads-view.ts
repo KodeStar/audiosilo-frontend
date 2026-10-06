@@ -102,7 +102,7 @@ export function groupByServer(
 
 /** The storage bar has five categorical colours (`chart-1..5`); a sixth server and on
  * fold into one "other servers" segment. */
-export const CHART_COLOURS = 5;
+const CHART_COLOURS = 5;
 
 /** The order servers take the chart colours in: `chart-1` is the brand pink, and the
  * Downloads page already has its one pink thing (progress, a switch that is on), so the

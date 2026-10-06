@@ -25,11 +25,11 @@ import { TimeStepper } from '@/components/ui/time-stepper';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/toggle-group';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
+import { formatSpeed } from '@/lib/format';
 import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
 import { useSettings, type AutoSleepType } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
-import { formatSpeed } from '@/lib/format';
 
 const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
 

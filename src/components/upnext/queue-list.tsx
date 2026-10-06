@@ -21,9 +21,9 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
+import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { useLatest } from '@/lib/use-latest';
 
 import {
   dragShift,

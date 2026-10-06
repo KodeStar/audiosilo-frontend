@@ -2,13 +2,13 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { GhostCovers } from '@/components/ui/ghost-art';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import type { UnsupportedReason } from '@/downloads/downloads-view';
 import { useThemeColors } from '@/theme/use-theme-colors';
-import { GhostCovers } from '@/components/ui/ghost-art';
-import { EmptyState } from '@/components/ui/empty-state';
 
 /** Nothing downloaded and nothing on its way: ghost covers, one headline, one sentence,
  * one action. */
