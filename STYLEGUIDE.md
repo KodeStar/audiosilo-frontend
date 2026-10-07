@@ -422,7 +422,7 @@ for a missing next book ("Oathbringer is on Maya's Shelf"). Auto-play next switc
 Gated on the device by the listener's own position (the server can't know it, and downloads play offline).
 Who's who: newest first, character token (initial on a hue), name, role, aliases, a spoiler-safe blurb, "First
 appears in 5. City of Bells". A character whose chapter you just crossed animates in with a pink outline and
-"Just met", plus a toast. Hidden entries are counted, never named: "7 characters you haven't met yet are hidden"
+"Just met", plus a toast; that is the card's only pink (the role chip and "From chapter N" stay muted). Hidden entries are counted, never named: "7 characters you haven't met yet are hidden"
 with **Show anyway** (then a warning badge and "Hide them again"). Story so far: "Up to chapter 22", written to
 stop exactly there; the next paragraph fades in when you finish a chapter. The whole-book summary (`in_short`
 includes the ending) is blurred behind "Show the whole-book summary". Every block ends with the attribution

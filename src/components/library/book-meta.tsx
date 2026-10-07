@@ -212,17 +212,12 @@ export function revealFromStart(reveal: BookMetaPosition): boolean {
   return reveal.chapter <= 1;
 }
 
-/** The tiny uppercase pill this block uses for both its markers: `neutral` for the
- * spoiler chip, `primary` for a character's role. */
-function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
-  const primary = tone === 'primary';
+/** The tiny uppercase pill this block uses for both its markers (the spoiler chip, a
+ * character's role): muted, so a card's only pink is its "Just met" state. */
+function Chip({ label }: { label: string }) {
   return (
-    <View className={`rounded-full px-2 py-0.5 ${primary ? 'bg-brand-soft' : 'bg-muted'}`}>
-      <Text
-        className={`font-sans-medium text-[10px] uppercase ${primary ? 'text-brand-ink' : 'text-muted-foreground'}`}
-      >
-        {label}
-      </Text>
+    <View className="rounded-full bg-muted px-2 py-0.5">
+      <Text className="font-sans-medium text-[10px] uppercase text-muted-foreground">{label}</Text>
     </View>
   );
 }
@@ -231,13 +226,20 @@ function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
  * (only ever rendered once they have chosen to show spoilers anyway). */
 export function SpoilerChip() {
   const { t } = useTranslation();
-  return <Chip label={t('book.meta.spoiler')} tone="neutral" />;
+  return <Chip label={t('book.meta.spoiler')} />;
 }
 
-/** The open/closed marker every collapsible thing in this block shares. */
-function DisclosureChevron({ open }: { open: boolean }) {
+/** The open/closed marker every collapsible thing in this block shares: pink beside a
+ * pink link, `quiet` (muted) on a character card, whose only pink is "Just met". */
+function DisclosureChevron({ open, quiet }: { open: boolean; quiet?: boolean }) {
   const themed = useThemeColors();
-  return <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} color={themed.brand} />;
+  return (
+    <Icon
+      name={open ? 'chevron-up' : 'chevron-down'}
+      size={12}
+      color={quiet ? themed.mutedForeground : themed.brand}
+    />
+  );
 }
 
 /**
@@ -358,7 +360,7 @@ function HiddenNotice({
  * accordion, closed by default (spoiler-safe) and opened by tapping the card. Cards
  * with no description are static (not tappable). `spoiler` marks a card the listener
  * has not reached (shown only after they opted in); `justMet` one a chapter crossing
- * just revealed (Who's who: the pink outline and "Just met"). */
+ * just revealed (Who's who: the pink outline and "Just met", the card's only pink). */
 export function CharacterCard({
   character,
   spoiler,
@@ -401,7 +403,7 @@ export function CharacterCard({
                   {t('book.meta.alsoKnownAs', { names: character.aliases.join(', ') })}
                 </Text>
               ) : null}
-              <Text variant="caption" className="mt-1 text-brand-ink">
+              <Text variant="caption" className="mt-1">
                 {fromStart
                   ? t('book.meta.revealFromStart')
                   : t('book.meta.revealFromChapter', { chapter: character.reveal.chapter })}
@@ -409,8 +411,8 @@ export function CharacterCard({
             </View>
             <View className="flex-row items-center gap-2">
               {spoiler ? <SpoilerChip /> : null}
-              {roleKey ? <Chip label={t(roleKey)} tone="primary" /> : null}
-              {hasDescription ? <DisclosureChevron open={open} /> : null}
+              {roleKey ? <Chip label={t(roleKey)} /> : null}
+              {hasDescription ? <DisclosureChevron open={open} quiet /> : null}
             </View>
           </View>
           {open ? (
