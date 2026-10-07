@@ -70,7 +70,9 @@ let mockEnded = true;
 let mockSavedFinished = false;
 let mockSavedSpeed = 1.25;
 let mockStats: UserStats | undefined;
-let mockRating: { rating: number; note: string } | null = null;
+type MockRating = { library_id: number; path: string; rating: number; note: string };
+let mockRating: MockRating | null | undefined = null;
+let mockMyRatings: MockRating[] | undefined = [];
 const mockSetRating = jest.fn();
 const mockRemove = jest.fn();
 jest.mock('@/api/hooks', () => {
@@ -102,6 +104,7 @@ jest.mock('@/api/hooks', () => {
     useMyStats: () => ({ data: mockStats, isLoading: false }),
     useAllProgressAll: () => ({ progress: [] }),
     useRating: () => ({ data: mockRating }),
+    useMyRatings: () => ({ data: mockMyRatings, isError: false }),
     useSetRating: () => ({ mutateAsync: mockSetRating, isPending: false }),
     removeFromQueue: (_cid: string, _client: unknown, v: unknown) => mockRemove(v),
   };
@@ -207,6 +210,7 @@ beforeEach(() => {
   mockSavedFinished = false;
   mockSavedSpeed = 1.25;
   mockRating = null;
+  mockMyRatings = [];
   mockEntry = undefined;
   mockLayout = 'desktop';
   mockReplace.mockReset();
@@ -494,7 +498,7 @@ describe('EndCredits', () => {
   });
 
   it('rates the book with a toast, keeping the saved note', async () => {
-    mockRating = { rating: 2, note: 'Slow start' };
+    mockRating = { library_id: 1, path: PATH, rating: 2, note: 'Slow start' };
     await mount();
     const group = screen.getByLabelText('Your rating');
     expect(group).toBeTruthy();
@@ -510,6 +514,33 @@ describe('EndCredits', () => {
     await act(async () => {});
     expect(mockToast).toHaveBeenCalledWith({ title: 'Rating saved' });
     expect(screen.getByLabelText('4 stars')).toBeChecked();
+  });
+
+  it('waits for the saved rating before taking one: a PUT without its note erases it', async () => {
+    mockRating = undefined; // the GET is on its way (or failed)
+    await mount();
+    expect(screen.getByLabelText('4 stars')).toBeDisabled();
+    await fireEvent.press(screen.getByLabelText('4 stars'));
+    expect(mockSetRating).not.toHaveBeenCalled();
+  });
+
+  it("keeps the note of the book's rating when the finished path is one of its parts", async () => {
+    // A part/disc path rates its book, but the GET of exactly that path finds nothing.
+    mockRating = null;
+    mockMyRatings = [
+      { library_id: 1, path: 'Sanderson/The Way', rating: 5, note: 'Not this one' },
+      { library_id: 2, path: 'Sanderson', rating: 1, note: 'Another library' },
+      {
+        library_id: 1,
+        path: PATH.slice(0, PATH.lastIndexOf('/')),
+        rating: 3,
+        note: 'Disc 2 drags',
+      },
+    ];
+    await mount();
+    expect(screen.getByLabelText('3 stars')).toBeChecked();
+    await fireEvent.press(screen.getByLabelText('4 stars'));
+    expect(mockSetRating).toHaveBeenCalledWith(expect.objectContaining({ note: 'Disc 2 drags' }));
   });
 
   it('hides the rating without the ratings capability', async () => {

@@ -169,3 +169,22 @@ export function spinesThatFit(widths: readonly number[], room: number, gap: numb
   }
   return count;
 }
+
+/**
+ * The listener's saved rating of the book at `path`, which the credits' stars show and a
+ * re-rate keeps the note of (a PUT replaces the whole rating: sent without the saved
+ * note, it erases it). The rating of exactly that path (`exact`), else, for a part or
+ * disc of a book (a rate there rates the book, but the GET is exact), their rating of the
+ * book holding it among `mine`. Undefined while an answer it needs is still unknown (or
+ * the exact one failed): the stars wait rather than risk the note.
+ */
+export function savedRating<R extends { library_id: number; path: string }>(
+  libraryId: number,
+  path: string,
+  exact: R | null | undefined,
+  mine: readonly R[] | undefined,
+): R | null | undefined {
+  if (exact !== null) return exact;
+  if (mine === undefined) return undefined;
+  return mine.find((r) => r.library_id === libraryId && path.startsWith(`${r.path}/`)) ?? null;
+}

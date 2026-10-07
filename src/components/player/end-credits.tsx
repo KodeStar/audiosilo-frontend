@@ -13,6 +13,7 @@ import {
   useBookMeta,
   useBookProgress,
   useCapability,
+  useMyRatings,
   useMyStats,
   useRating,
   useSetRating,
@@ -42,6 +43,7 @@ import {
   endCreditsDecision,
   HISTORY_LIMIT,
   listeningSummary,
+  savedRating,
   yearShelf,
 } from './end-credits-logic';
 import {
@@ -252,12 +254,16 @@ function EndCreditsBody({
 
   const ratingsCap = useCapability('ratings', cid) === true;
   const rating = useRating(libraryId, path, cid);
+  const mine = useMyRatings(cid);
+  // A PUT replaces the whole rating: the stars wait for the saved one, whose note it
+  // carries (`savedRating`; a failed list counts as no rating of a parent book).
+  const rated = savedRating(libraryId, path, rating.data, mine.isError ? [] : mine.data);
   const setRating = useSetRating(cid);
   const [picked, setPicked] = useState<RatingValue | undefined>(undefined);
   const onRate = (value: RatingValue) => {
+    if (rated === undefined) return;
     setPicked(value);
-    // A PUT replaces the whole rating: carry the saved note so rating doesn't clear it.
-    setRating.mutateAsync({ libraryId, path, rating: value, note: rating.data?.note }).then(
+    setRating.mutateAsync({ libraryId, path, rating: value, note: rated?.note }).then(
       () => toast({ title: t('player.finished.ratingSaved') }),
       (e: unknown) => {
         setPicked(undefined);
@@ -393,9 +399,9 @@ function EndCreditsBody({
           <View className="items-center gap-1">
             <Text variant="label">{t('player.finished.howWasIt')}</Text>
             <RatingStars
-              value={picked ?? rating.data?.rating}
+              value={picked ?? rated?.rating}
               onRate={onRate}
-              disabled={setRating.isPending}
+              disabled={setRating.isPending || rated === undefined}
             />
           </View>
         ) : null}
