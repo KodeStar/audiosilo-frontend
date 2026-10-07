@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { shortcutHint } from '@/components/shell/palette-model';
 import {
@@ -46,7 +46,8 @@ function Row({ label, keys }: { label: string; keys: string[] }) {
 /**
  * The keyboard shortcuts overlay (web, STYLEGUIDE section 11): opened by ?, by anything
  * that calls `usePlayerSheets.getState().openSheet('shortcuts')`. A Dialog (Esc and the
- * backdrop close it). Mounted once by the web shell.
+ * backdrop close it). Mounted once by the web shell, so web only: the dialog frame caps
+ * the card to the window and scrolls it.
  */
 export function ShortcutsDialog() {
   const { t } = useTranslation();
@@ -78,11 +79,14 @@ export function ShortcutsDialog() {
             <DialogTitle>{t('player.shortcuts.title')}</DialogTitle>
             <DialogDescription>{t('player.shortcuts.hint')}</DialogDescription>
           </DialogHeader>
-          <ScrollView style={{ maxHeight: 460 }}>
+          {/* No inner scroller: a fixed-height one clipped the last rows inside the card.
+              The card itself is capped to the window and scrolls (the dialog frame), so
+              every row is reachable on a short window and nothing scrolls on a tall one. */}
+          <View testID="shortcuts-rows">
             {rows.map(([label, keys]) => (
               <Row key={label} label={label} keys={keys} />
             ))}
-          </ScrollView>
+          </View>
         </DialogContent>
       ) : null}
     </Dialog>
