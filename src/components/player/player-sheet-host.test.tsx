@@ -107,6 +107,27 @@ describe('PlayerSheetHost', () => {
     expect(screen.getAllByText('sleep sheet')).toHaveLength(1);
   });
 
+  // The book ends with its sleep sheet open in the shell: the sheet hides, and the next
+  // book to load must not pop it open by itself.
+  it("drops a book's sheet when the book unloads, so the next book doesn't reopen it", async () => {
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await open('sleep');
+    expect(screen.getByText('sleep sheet')).toBeTruthy();
+    await act(() => usePlayer.setState({ nowPlaying: null }));
+    expect(screen.queryByText('sleep sheet')).toBeNull();
+    expect(usePlayerSheets.getState().open).toBeNull();
+    await act(() => usePlayer.setState({ nowPlaying: BOOK }));
+    expect(screen.queryByText('sleep sheet')).toBeNull();
+  });
+
+  it('keeps Up next open with no book loaded', async () => {
+    usePlayer.setState({ nowPlaying: null });
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await open('upnext');
+    expect(screen.getByText('up next sheet')).toBeTruthy();
+    expect(usePlayerSheets.getState().open).toBe('upnext');
+  });
+
   it('keeps the companion sheet to the full player', async () => {
     await mountWithPortal(<PlayerSheetHost scope="shell" />);
     await open('companion');

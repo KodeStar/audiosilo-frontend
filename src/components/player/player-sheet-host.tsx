@@ -13,12 +13,23 @@ import { PlayerSheet } from './player-sheet';
 import { addBookmarkHere } from './player-shortcuts';
 import {
   hostIsActive,
+  type PlayerSheet as PlayerSheetName,
   type SheetHostScope,
   usePlayerOnTop,
   usePlayerSheets,
 } from './player-sheets';
 import { SleepSheet } from './sleep-timer-button';
 import { SpeedSheet } from './speed-button';
+
+/** The requests that need a loaded book (Up next and the shortcuts overlay do not). */
+const BOOK_SHEETS: ReadonlySet<PlayerSheetName> = new Set([
+  'speed',
+  'sleep',
+  'bookmark',
+  'output',
+  'chapters',
+  'companion',
+]);
 
 /**
  * The player's sheets, rendered from `usePlayerSheets` (STYLEGUIDE section 8, "Sheets"):
@@ -82,6 +93,13 @@ export function PlayerSheetHost({
       close();
     }
   }, [shown, close, t, inPlayer, layout, companionSheet]);
+
+  // A book's sheets go with the book: when it unloads (it ended, Mark as finished) the
+  // hidden request is dropped, or the next book to load would open it by itself.
+  useEffect(() => {
+    if (!active || loaded || !open || !BOOK_SHEETS.has(open)) return;
+    close();
+  }, [active, loaded, open, close]);
 
   // The full player's sheet goes with it (the keyboard overlay is the shell's own).
   useEffect(() => {
