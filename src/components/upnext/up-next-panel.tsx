@@ -352,22 +352,30 @@ function SuggestedBook({
   );
 }
 
-/** The existing auto-play setting, named for what it does today: the playback store
- * plays the next book in the series (or folder) when one ends; the queue is not played
- * yet. */
+/** The auto-play setting: when a book ends, the first book in Up next plays, else the
+ * next in the series (`resolveUpNext`). */
 function AutoPlaySwitch() {
   const { t } = useTranslation();
   const on = useSettings((s) => s.autoPlayNext);
   const set = useSettings((s) => s.setAutoPlayNext);
   const label = t('upnext.autoPlay');
+  const hint = t('upnext.autoPlayHint');
   return (
     <Pressable
       onPress={() => set(!on)}
       accessible={false}
       className="mt-3 flex-row items-center gap-2.5 px-2 py-2"
     >
-      <Switch checked={on} onCheckedChange={set} accessibilityLabel={label} />
-      <Text className="flex-1 text-[13px]">{label}</Text>
+      <Switch
+        checked={on}
+        onCheckedChange={set}
+        accessibilityLabel={label}
+        accessibilityHint={hint}
+      />
+      <View className="flex-1">
+        <Text className="text-[13px]">{label}</Text>
+        <Text variant="caption">{hint}</Text>
+      </View>
     </Pressable>
   );
 }

@@ -798,11 +798,13 @@ export class ApiClient {
     return this.request<MyDeviceRevoked>('DELETE', `/me/devices/${id}`);
   }
 
-  async history(libraryId: number, path: string) {
+  /** A book's listening spans, newest first: the server's default 100, or up to `limit`
+   * (it caps at 500). */
+  async history(libraryId: number, path: string, limit?: number) {
     const r = await this.request<{ history: History[] | null }>(
       'GET',
       `/libraries/${libraryId}/history`,
-      { query: { path } },
+      { query: { path, limit } },
     );
     return r.history ?? [];
   }
