@@ -4,10 +4,6 @@ import { Platform } from 'react-native';
 import type { Book, Bookmark, Note } from '@/api/types';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useSegments: () => [] }));
-jest.mock('@/playback/store', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@/testing/player-store-mock').createPlayerStoreMock(),
-);
 let mockAnnotations: boolean | undefined = true;
 const mockDeleteBookmark = jest.fn();
 const mockDeleteNote = jest.fn();
@@ -27,10 +23,9 @@ const mockAddNote = jest.fn((..._a: unknown[]) => Promise.resolve({}));
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: () => ({ addNote: (...a: unknown[]) => mockAddNote(...a) }),
 }));
-const mockStartInPlace = jest.fn((..._a: unknown[]) => Promise.resolve(true));
-jest.mock('@/components/player/start-book', () => ({
-  startBookInPlace: (...a: unknown[]) => mockStartInPlace(...a),
-}));
+// Where a jump goes is the one play path's (`playRoute`, its own table).
+const mockPlay = jest.fn((..._a: unknown[]) => Promise.resolve());
+jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 // The cover's own server lookups are not what these rows test.
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
@@ -41,11 +36,6 @@ jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => mockLayout,
 }));
-let mockTop: string | null = null;
-jest.mock('@/lib/root-stack', () => ({
-  currentNavState: () => undefined,
-  topRootRoute: () => mockTop,
-}));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 // The markdown renderer ships ESM jest can't load: render the body as plain text.
 jest.mock('react-native-marked', () => {
@@ -54,11 +44,8 @@ jest.mock('react-native-marked', () => {
 });
 
 /* eslint-disable import/first */
-import { router } from 'expo-router';
-
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { toast } from '@/components/ui/toast';
-import { playerStoreMock } from '@/testing/player-store-mock';
 import { expectNativeTarget } from '@/testing/touch-target';
 import { colors } from '@/theme/tokens';
 
@@ -126,14 +113,11 @@ function tintsIn(testID: string): string[] {
 }
 
 const OS = Platform.OS;
-const player = playerStoreMock();
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockAnnotations = true;
   mockLayout = 'phone';
-  mockTop = null;
-  player.reset();
   usePlayerSheets.setState({ open: null, editor: null });
   Platform.OS = OS;
 });
@@ -225,49 +209,16 @@ describe('BookmarkRow', () => {
     );
   });
 
-  it('jumps the loaded book in place (a seek, so the Undo chip follows)', async () => {
-    player.usePlayer.setState({
-      nowPlaying: {
-        connectionId: 'c',
-        libraryId: 1,
-        path: 'a/book',
-        queue: { chapters: [], total: 1 },
-      },
-    });
+  it('jumps through the one play path, and says so when the book cannot start', async () => {
+    mockPlay.mockRejectedValueOnce(new Error('offline'));
     await render(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Jump to 17:26:50' }));
-    expect(player.spies.seekBook).toHaveBeenCalledWith(62_810);
-    expect(router.push).not.toHaveBeenCalled();
-  });
-
-  it('opens the player there for another book on a phone', async () => {
-    await render(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Jump to 17:26:50' }));
-    expect(router.push).toHaveBeenCalledWith({
-      pathname: '/player',
-      params: { connection: 'c', libraryId: '1', path: 'a/book', position: '62810' },
-    });
-    expect(mockStartInPlace).not.toHaveBeenCalled();
-  });
-
-  // Pushing the player over the open one would stack a second full player.
-  it('starts another book in place with the full player already on top', async () => {
-    mockTop = 'player';
-    await render(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Jump to 17:26:50' }));
-    expect(router.push).not.toHaveBeenCalled();
-    expect(mockStartInPlace).toHaveBeenCalledTimes(1);
-  });
-
-  it('starts another book in place there on a tablet or desktop', async () => {
-    mockLayout = 'desktop';
-    await render(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Jump to 17:26:50' }));
-    expect(router.push).not.toHaveBeenCalled();
-    expect(mockStartInPlace).toHaveBeenCalledWith(
+    expect(mockPlay).toHaveBeenCalledWith(
       { connectionId: 'c', libraryId: 1, path: 'a/book' },
-      { position: 62_810 },
+      { at: { position: 62_810 } },
     );
+    await Promise.resolve();
+    expect(toast).toHaveBeenCalledWith({ title: "Couldn't start the book there" });
   });
 
   it('takes the caller’s jump when given (the companion)', async () => {
@@ -275,7 +226,7 @@ describe('BookmarkRow', () => {
     await render(<BookmarkRow bookmark={bookmark()} connectionId="c" onJump={onJump} />);
     await fireEvent.press(screen.getByRole('button', { name: 'Jump to 17:26:50' }));
     expect(onJump).toHaveBeenCalledWith(62_810);
-    expect(router.push).not.toHaveBeenCalled();
+    expect(mockPlay).not.toHaveBeenCalled();
   });
 
   it('names and opens its book in a list across books (the Journal)', async () => {

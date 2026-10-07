@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import type { BookmarkLabel } from '@/api/bookmark-labels';
@@ -6,50 +5,24 @@ import { resolveClient } from '@/api/connection-clients';
 import { addBookmark, qk, useDeleteBookmark, useDeleteNote } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Bookmark, Note } from '@/api/types';
-import { startBookInPlace } from '@/components/player/start-book';
+import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
-import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
-import { useLayout } from '@/lib/layout';
-import { currentNavState, topRootRoute } from '@/lib/root-stack';
-import { selectBookKey, usePlayer } from '@/playback/store';
 
 import type { AnnotationTarget } from './editor-model';
 
 /**
- * Jump to a place in a book (a bookmark's or a note's time chip), through the player's
- * own paths, whichever book is playing:
- * - the loaded book seeks there (`seekBook`: a deliberate seek, so the Undo chip offers
- *   the way back after a jump over a minute);
- * - another book on a phone opens the full player there (the route starts it at
- *   `position`), unless the player is already on top;
- * - else (a tablet or desktop, under the docked bar) it starts in place at `position`.
+ * Jump to a place in a book (a bookmark's or a note's time chip, a history span), through
+ * the one play path (`usePlayBook` with `at`), whichever book is playing: a phone opens
+ * the full player there (unless it is already on top); elsewhere the loaded book jumps
+ * there (`seekBook`, so the Undo chip offers the way back) and plays on, and another
+ * book starts in place there. Says so when the book can't start.
  */
 export function useJumpTo(): (target: AnnotationTarget, position: number) => void {
-  const phone = useLayout() === 'phone';
   const { t } = useTranslation();
+  const play = usePlayBook();
   return (target, position) => {
-    const store = usePlayer.getState();
-    if (selectBookKey(store) === contentKeyOf(target)) {
-      void store.seekBook(position);
-      return;
-    }
-    const at = Math.max(0, Math.round(position));
-    // Read at the press: pushing the player over the open one stacks a second player.
-    const playerOnTop = topRootRoute(currentNavState()) === 'player';
-    if (phone && !playerOnTop) {
-      router.push({
-        pathname: '/player',
-        params: {
-          connection: target.connectionId,
-          libraryId: String(target.libraryId),
-          path: target.path,
-          position: String(at),
-        },
-      });
-      return;
-    }
-    startBookInPlace(target, { position: at }).catch(() => {
+    play(target, { at: { position } }).catch(() => {
       toast({ title: t('annotations.jumpFailed') });
     });
   };

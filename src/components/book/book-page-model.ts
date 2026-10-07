@@ -6,7 +6,7 @@ import type { BookStatus } from '@/components/library/books/books-view';
 import type { IconName } from '@/components/ui/icon';
 import { formatBytes, formatDuration } from '@/lib/format';
 import type { LayoutClass } from '@/lib/layout';
-import { pathLeaf } from '@/lib/paths';
+import { type BookPlace, pathLeaf } from '@/lib/paths';
 import { synthesizeChapters } from '@/playback/book-queue';
 import { codecLabel } from '@/playback/transcode';
 
@@ -149,9 +149,8 @@ export function primaryLabel(t: TFunction, action: PrimaryAction): string {
 
 export type ListKind = 'chapters' | 'parts' | 'files';
 
-/** Where a row (or a tap on the timeline) starts the book: a whole-book position, or
- * a file by index (its durations may be unknown, so a position can't address it). */
-export type Jump = { position?: number; track?: number };
+/** Where a row (or a tap on the timeline) starts the book (`BookPlace`). */
+export type Jump = BookPlace;
 
 export type ListRow = {
   key: string;

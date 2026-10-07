@@ -92,15 +92,35 @@ export function accountHref(connectionId: string): Href {
   return { pathname: '/account', params: { connection: connectionId } };
 }
 
-/** The full-screen player modal for a book. The player is a root modal (outside any
+/** A place in a book to start or jump to: a whole-book position (seconds), or a file by
+ * index (its durations may be unknown, so a position can't address it). Neither: the
+ * saved place. */
+export type BookPlace = { position?: number; track?: number };
+
+/** The full-screen player modal for a book, at `place` when given (the route applies it
+ * once: a chapter, a pin, a bookmark). The player is a root modal (outside any
  * scope), so it carries the connection as a param - under the SAME `connection` name the
  * content routes use, so while the modal is presented the still-mounted `(app)` scope
  * layout keeps resolving to this book's server (a different name flipped it to the
  * default connection and fired background fetches against the wrong server). */
-export function playerHref(connectionId: string, libraryId: number, relPath: string): Href {
+export function playerHref(
+  connectionId: string,
+  libraryId: number,
+  relPath: string,
+  place: BookPlace = {},
+): Href {
   return {
     pathname: '/player',
-    params: { connection: connectionId, libraryId: String(libraryId), path: relPath },
+    params: {
+      connection: connectionId,
+      libraryId: String(libraryId),
+      path: relPath,
+      // Whole seconds: the route param is a string the player parses back.
+      ...(place.position !== undefined
+        ? { position: String(Math.max(0, Math.round(place.position))) }
+        : {}),
+      ...(place.track !== undefined ? { track: String(place.track) } : {}),
+    },
   };
 }
 

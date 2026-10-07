@@ -42,6 +42,7 @@ import { Attribution } from '@/components/player/companion/companion-pieces';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { selectIsLoaded } from '@/components/player/playing-target';
 import { useListeningPosition } from '@/components/player/use-listening-position';
+import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
 import { pinsOf, useBookAnnotations } from '@/components/player/use-playing-pins';
 import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left';
 import { ErrorNote } from '@/components/ui/query-state';
@@ -87,7 +88,6 @@ import {
 } from './book-page-model';
 import { BookSkeleton } from './book-skeleton';
 import { HeroActions } from './hero-actions';
-import { usePlayAt } from './use-play-at';
 
 /** How long the page trusts its book's bookmarks and notes (the tab counts and pins):
  * every write invalidates them, so this only bounds another device's new ones. */
@@ -175,10 +175,12 @@ function BookPage() {
     [annotations.bookmarks, annotations.notes],
   );
   const speed = useBookSpeed(target, progress?.playback_speed);
-  const { play, playAt } = usePlayAt(cid, libraryId, book, chapterData);
-  const onJump = useLatest((jump: Jump) => {
-    playAt(jump).catch(() => toast({ title: t('library.bookActions.playFailed') }));
-  });
+  // The primary toggles the loaded book in place (never restarting it); a chapter row, a
+  // timeline tap or a pin jumps there (`usePlayBook`: a phone opens the player there).
+  const playBook = usePlayBook();
+  const play = (opts: PlayOptions) =>
+    void playBook(target, opts).catch(() => toast({ title: t('library.bookActions.playFailed') }));
+  const onJump = useLatest((jump: Jump) => play({ at: jump }));
 
   // The selected tab, held as an intent: which tabs EXIST depends on data that can arrive
   // late (or vanish), so the render falls back to the first available tab.
@@ -506,9 +508,7 @@ function BookPage() {
                   ? current + 1
                   : undefined,
             })}
-            onPrimary={() =>
-              void play().catch(() => toast({ title: t('library.bookActions.playFailed') }))
-            }
+            onPrimary={() => play({ toggle: true })}
             stacked={!layout.heroSide}
           />
         }

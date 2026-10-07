@@ -1,4 +1,5 @@
 import { act, fireEvent, renderHook, screen } from '@testing-library/react-native';
+import { Text } from 'react-native';
 import { Platform } from 'react-native';
 
 import type { Book, Progress } from '@/api/types';
@@ -57,7 +58,7 @@ import { CapabilityError } from '@/api/hooks';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
-import { BookActionsButton, useBookActions } from './book-actions';
+import { BookActionsButton, BookActionsMenu, useBookActions } from './book-actions';
 /* eslint-enable import/first */
 
 const H = 3600;
@@ -288,5 +289,35 @@ describe('useBookActions on web, a list-shape book', () => {
     const { find } = await actions(book());
     expect(find('download')!.label).toBe('Remove download');
     mockEntry = undefined;
+  });
+});
+
+// The book page's menu leaves out what its own buttons do: with nothing else to offer it
+// draws no "..." at all (no empty menu).
+describe('BookActionsMenu', () => {
+  const OMIT = ['play', 'queue', 'collect', 'download'] as const;
+  const mount = (b: Book) =>
+    mountWithPortal(
+      <BookActionsMenu
+        connectionId="c"
+        libraryId={1}
+        book={b}
+        omit={OMIT}
+        sheetOpen={false}
+        onSheetOpenChange={jest.fn()}
+        trigger={<Text>more</Text>}
+      />,
+    );
+
+  it('renders nothing, trigger included, when every item is left out', async () => {
+    mockCaps = { progress_edit: undefined };
+    await mount(book({ series: '' }));
+    expect(screen.queryByText('more')).toBeNull();
+  });
+
+  it('draws its trigger while something is left to offer', async () => {
+    mockCaps = { progress_edit: undefined };
+    await mount(book());
+    expect(screen.getByText('more')).toBeTruthy();
   });
 });
