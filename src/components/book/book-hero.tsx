@@ -114,7 +114,9 @@ export function BookHero({
         {crumbs}
         <View
           className={cn(
-            layout.heroSide ? 'flex-row items-end' : 'gap-5',
+            layout.heroSide
+              ? cn('flex-row', layout.heroAlign === 'end' ? 'items-end' : 'items-start')
+              : 'gap-5',
             layout.heroSide && (layout.cover >= 300 ? 'gap-10' : 'gap-7'),
           )}
         >

@@ -3,6 +3,7 @@ import i18n from '@/i18n';
 
 import {
   bookFacts,
+  BODY_COLUMNS_MIN,
   bookPageLayout,
   chapterList,
   currentRow,
@@ -64,7 +65,24 @@ describe('bookPageLayout', () => {
   it('trusts the class before the first measure', () => {
     expect(bookPageLayout('desktop', 0)).toMatchObject({ heroSide: true, columns: 2 });
     expect(bookPageLayout('tablet', 0)).toMatchObject({ heroSide: true, columns: 1 });
-    expect(bookPageLayout('tablet', 834)).toMatchObject({ cover: 220, columns: 1 });
+  });
+
+  // The web pass at 834: the 220 cover hung below the title's top. The desktop's 300
+  // cover is taller than the text, which rests on its foot (the prototype).
+  it('levels a tablet cover with the text top, a desktop one with its foot', () => {
+    expect(bookPageLayout('tablet', 834).heroAlign).toBe('start');
+    expect(bookPageLayout('desktop', 1376).heroAlign).toBe('end');
+  });
+
+  // The web pass at 834: About and Your listening sat above the tabs, pushing them to
+  // y ~990. A 300 aside beside a 440 tab column fits from 828.
+  it('takes the aside as a column once it fits beside a 440 tab column', () => {
+    expect(BODY_COLUMNS_MIN).toBe(828);
+    expect(bookPageLayout('tablet', 834)).toMatchObject({ cover: 220, columns: 2, aside: 300 });
+    expect(bookPageLayout('tablet', 827)).toMatchObject({ columns: 1 });
+    expect(bookPageLayout('desktop', 828)).toMatchObject({ columns: 2 });
+    // A phone keeps its order whatever it measures.
+    expect(bookPageLayout('phone', 900)).toMatchObject({ columns: 1 });
   });
 });
 

@@ -21,8 +21,16 @@ import { codecLabel } from '@/playback/transcode';
 
 /** The narrowest page whose hero puts the cover beside the text (else stacked). */
 export const HERO_SIDE_MIN = 600;
-/** The narrowest page whose body takes the aside as a right-hand column. */
-export const BODY_COLUMNS_MIN = 900;
+/** The body's side padding (web `px-6`, the larger of web and native), its column gap
+ * (`gap-10`), the aside's narrowest width and the narrowest tab column worth having
+ * beside it (a chapter row with its start time and length). */
+const BODY_PAD = 24;
+const BODY_GAP = 40;
+const ASIDE_MIN = 300;
+const TAB_COLUMN_MIN = 440;
+/** The narrowest page whose body takes the aside as a right-hand column: where a 300
+ * aside fits beside a tab column of at least 440 (828; an 834 tablet already does). */
+export const BODY_COLUMNS_MIN = BODY_PAD * 2 + TAB_COLUMN_MIN + BODY_GAP + ASIDE_MIN;
 /** The narrowest page that takes the desktop's 300 cover and 52 title. */
 const HERO_LARGE_MIN = 1100;
 /** The narrowest page whose aside is 340 wide (else 300). */
@@ -33,6 +41,11 @@ export type TitleScale = 'lg' | 'md' | 'sm' | 'xs';
 export type BookPageLayout = {
   /** The cover beside the hero's text (tablet and desktop), else above it (phone). */
   heroSide: boolean;
+  /** How the side-by-side cover sits against the text: `end` (the desktop's 300 cover,
+   * taller than the text, which then rests on its foot as in the prototype) or `start`
+   * (the 220 cover, shorter than the text, level with its top; centred or bottom-aligned
+   * it left a gap above it while the title started higher). */
+  heroAlign: 'start' | 'end';
   /** The hero cover's width, points. */
   cover: number;
   /** The title's size step (see `TITLE_CLASS` in the hero). */
@@ -55,6 +68,7 @@ export function bookPageLayout(layout: LayoutClass, width: number): BookPageLayo
   if (phone) {
     return {
       heroSide: false,
+      heroAlign: 'start',
       cover: w > 0 ? Math.min(230, Math.round(w * 0.64)) : 230,
       title: 'sm',
       columns: 1,
@@ -65,6 +79,7 @@ export function bookPageLayout(layout: LayoutClass, width: number): BookPageLayo
   const large = w >= HERO_LARGE_MIN;
   return {
     heroSide: true,
+    heroAlign: large ? 'end' : 'start',
     cover: large ? 300 : 220,
     title: large ? 'lg' : 'md',
     columns: w >= BODY_COLUMNS_MIN ? 2 : 1,
