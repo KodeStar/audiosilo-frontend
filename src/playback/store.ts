@@ -184,6 +184,15 @@ type PlayerState = {
   nowPlaying: NowPlaying | null;
   snapshot: PlaybackSnapshot;
   rate: number;
+  /**
+   * The book (its `contentKey`) `playBook` just swapped in whose engine load has not landed
+   * yet, else null. Until it lands the snapshot still holds the PREVIOUS book's place (the
+   * native engine reports the new queue only once its load resolves, and the old book's
+   * ticks can still arrive meanwhile), so mapping it through this book's queue puts the
+   * listener somewhere they have never been. The spoiler gates wait it out
+   * (`selectPlacedBookKey`, `use-listening-position.ts`). Only set when the book changes.
+   */
+  loadingBook: string | null;
   /** Whether the engine can show an OS audio-route / casting picker on this platform
    * (set when the engine is created). Drives whether the player shows the cast button. */
   canRoutePick: boolean;
@@ -538,6 +547,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   nowPlaying: null,
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
+  loadingBook: null,
   canRoutePick: false,
 
   playBook: async (connectionId, libraryId, book, chapterData, startBookPosition, startTrack) => {
@@ -668,10 +678,15 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // The position we actually resumed from (covers resume, bookmark jump and startTrack);
     // the save guard won't let progress regress below it without a deliberate seek.
     resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
-    set({ rate: speed, nowPlaying });
+    // A different book's place is not known until its load lands (`loadingBook`).
+    const key = contentKey(connectionId, libraryId, book.rel_path);
+    const prev = get();
+    const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
+    set({ rate: speed, nowPlaying, loadingBook });
     restoreOutputGain(); // only now can the old book's fade no longer write over it
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
     await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
+    if (get().loadingBook === key) set({ loadingBook: null });
     await svc.setRate(speed);
     await startEngine(svc);
     // The save loop is started by the engine 'playing' transition (see subscribe).

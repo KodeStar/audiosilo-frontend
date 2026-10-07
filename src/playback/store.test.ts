@@ -1322,3 +1322,44 @@ describe('selectBookKey', () => {
     expect(selectBookKey(usePlayer.getState())).not.toBe(onC1);
   });
 });
+
+// --- a new book's place is unknown until its load lands --------------------
+
+describe('loadingBook', () => {
+  it("names a new book until its engine load lands, while the snapshot still holds the old book's place", async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 90));
+    expect(usePlayer.getState().loadingBook).toBeNull();
+
+    // The native engine answers the new queue only once its load resolves.
+    let land: () => void = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const started = usePlayer
+      .getState()
+      .playBook('c1', 2, makeBook({ rel_path: 'A/Other.m4b' }), undefined, 0);
+    await flushMicrotasks(20);
+    const s = usePlayer.getState();
+    expect(selectBookKey(s)).toBe('c1:2:A/Other.m4b');
+    expect(s.snapshot.position).toBe(90); // the OLD book's place
+    expect(s.loadingBook).toBe('c1:2:A/Other.m4b');
+
+    land();
+    await started;
+    expect(usePlayer.getState().loadingBook).toBeNull();
+  });
+
+  it('stays null when the same book is started again (its place is still its own)', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    let land: () => void = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const started = usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 40);
+    await flushMicrotasks(20);
+    expect(usePlayer.getState().loadingBook).toBeNull();
+    land();
+    await started;
+  });
+});

@@ -45,6 +45,8 @@ export type MockSnapshot = {
 export type PlayerMockState = {
   snapshot: MockSnapshot;
   nowPlaying: MockNowPlaying | null;
+  /** The real store's `loadingBook`: a just-started book whose load has not landed. */
+  loadingBook: string | null;
   rate: number;
   /** Whole-book position, i.e. what `selectBookPosition` reads. The real store derives
    * it from the queue's offsets; here it is simply set. */
@@ -84,6 +86,7 @@ function buildPlayerStoreMock() {
   const initialState = (): PlayerMockState => ({
     snapshot: { ...IDLE_SNAPSHOT },
     nowPlaying: null,
+    loadingBook: null,
     rate: 1,
     bookPosition: 0,
     /**
