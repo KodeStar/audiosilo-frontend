@@ -39,7 +39,9 @@ jest.mock('@/components/annotations', () => {
   return {
     ...jest.requireActual('@/components/annotations/drift-marker'),
     ...jest.requireActual('@/components/annotations/labels'),
-    BookmarkRow: ({ bookmark }: { bookmark: Bookmark }) => <T>{`bookmark: ${bookmark.note}`}</T>,
+    BookmarkRow: ({ bookmark, server }: { bookmark: Bookmark; server?: string }) => (
+      <T>{`bookmark: ${bookmark.note}${server ? ` @ ${server}` : ''}`}</T>
+    ),
     NoteRow: ({ note }: { note: { body: string } }) => <T>{`note: ${note.body}`}</T>,
     useChapterNamer: () => () => null,
     useJumpTo: () => mockJump,
@@ -280,6 +282,24 @@ describe('JournalScreen: bookmarks and notes', () => {
 
     await fireEvent.changeText(screen.getByLabelText('Search the journal'), 'nothing like it');
     expect(screen.getByText('No bookmarks match')).toBeTruthy();
+  });
+
+  it("names a friend's server on its rows when several servers are signed in", async () => {
+    mockParams = { tab: 'bookmarks' };
+    useSession.setState({
+      connections: [
+        { id: 'c1', name: 'Hearthside', serverUrl: 'u', token: 't', user: {} as never },
+        { id: 'c2', name: "Maya's Shelf", serverUrl: 'v', token: 't', user: {} as never },
+      ],
+      defaultConnectionId: 'c1',
+    });
+    mockSources.bookmarks = [
+      source('c1', [bookmark(1, { note: 'home' })]),
+      source('c2', [bookmark(2, { note: 'away' })]),
+    ];
+    await mount();
+    expect(screen.getByText('bookmark: home')).toBeTruthy();
+    expect(screen.getByText("bookmark: away @ Maya's Shelf")).toBeTruthy();
   });
 
   it('searches notes by their body', async () => {
