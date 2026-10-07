@@ -11,8 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClockTime } from '@/lib/clock-time';
-import { formatClock, formatDuration, formatTimeOfDay } from '@/lib/format';
+import { formatClock, formatDuration, formatTimeOfDay, formatWallClock } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
 import {
@@ -181,7 +180,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                 : t('player.sleepTimer.nChapters', { count: row.count });
             const chapter = chapterLabel(row.chapter, t);
             const ends = t('player.sleepTimer.endsAt', {
-              time: formatClockTime(now + row.untilEnd * 1000),
+              time: formatWallClock(new Date(now + row.untilEnd * 1000)),
             });
             const length = formatDuration(row.untilEnd);
             const selected = stopsAt(phase, pauseAtPosition, row.endPosition);

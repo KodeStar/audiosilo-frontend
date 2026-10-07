@@ -2,7 +2,7 @@ import { t } from 'i18next';
 
 import { resolveClient } from '@/api/connection-clients';
 import { toast } from '@/components/ui/toast';
-import { formatClockTime } from '@/lib/clock-time';
+import { formatWallClock } from '@/lib/format';
 
 import { driftOffer, saveDrift, takeDrift, type DriftRecord } from './drift';
 import { startInteractionWatch } from './last-interaction';
@@ -106,7 +106,7 @@ function prompt(bookKey: string, record: DriftRecord) {
   const offer = driftOffer(record, Date.now(), selectBookPosition(player));
   if (!offer) return;
   toast({
-    title: t('player.drift.title', { time: formatClockTime(offer.touchAt) }),
+    title: t('player.drift.title', { time: formatWallClock(new Date(offer.touchAt)) }),
     description: t('player.drift.description', { count: offer.minutes }),
     action: {
       label: t('player.drift.jumpBack'),
