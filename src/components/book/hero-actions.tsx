@@ -128,11 +128,15 @@ export function HeroActions({
   return (
     <>
       {stacked ? (
-        // A phone: the primary across the page (its words never wrap), then the rest.
+        // A phone: the primary across the page (its words never wrap), then the rest on
+        // ONE row: the download gives way (its words end in "...") so the icon buttons
+        // never wrap onto a row of their own.
         <View className="gap-2">
           {primaryButton}
-          <View className="flex-row flex-wrap items-center gap-2">
-            {download}
+          <View testID="hero-secondary-row" className="flex-row items-center gap-2">
+            <View testID="hero-download-slot" className="min-w-0 shrink">
+              {download}
+            </View>
             {icons}
           </View>
         </View>

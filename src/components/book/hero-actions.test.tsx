@@ -54,7 +54,7 @@ import { HeroActions } from './hero-actions';
 const BOOK = { title: 'The Book', rel_path: 'A/Book', series: 'S' } as Book;
 const entry = (path: string): QueueEntry => ({ library_id: 1, path }) as QueueEntry;
 
-async function mount() {
+async function mount(stacked = false) {
   await mountWithPortal(
     <HeroActions
       connectionId="home"
@@ -63,7 +63,7 @@ async function mount() {
       chaptersLoading={false}
       primary={{ kind: 'start' }}
       onPrimary={jest.fn()}
-      stacked={false}
+      stacked={stacked}
     />,
   );
 }
@@ -78,6 +78,19 @@ beforeEach(() => {
 });
 
 describe('HeroActions', () => {
+  // At 400 a wide download button ("100% · Cancel", "Downloaded") wrapped the "..." onto
+  // its own row: a phone's secondary row never wraps, and the download gives way.
+  it("keeps a phone's secondary actions on one row, the download giving way", async () => {
+    mockCaps = { queue: true, progress_edit: true, collections: true };
+    await mount(true);
+    const row = screen.getByTestId('hero-secondary-row');
+    expect(String(row.props.className)).not.toMatch(/flex-wrap/);
+    expect(String(screen.getByTestId('hero-download-slot').props.className)).toMatch(
+      /min-w-0 shrink/,
+    );
+    expect(screen.getByRole('button', { name: 'More for The Book' })).toBeTruthy();
+  });
+
   it('plays a book next, with an Undo that takes it off again', async () => {
     mockAdd.mockResolvedValue([entry('A/Book'), ...mockQueue]);
     mockRemove.mockResolvedValue([]);

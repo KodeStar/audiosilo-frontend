@@ -21,6 +21,9 @@ import { useLayout } from '@/lib/layout';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+/** The full control's buttons give way in a tight row (the Button base is `shrink-0`). */
+const SHRINKS = 'max-w-full shrink';
+
 /** Download affordance on the book detail screen: Download for offline / "52% · Cancel"
  * / Downloaded (a menu with its size and Remove download) / Retry download, with a
  * fallback when offline storage is unavailable (an insecure-context or very old browser,
@@ -126,9 +129,27 @@ export function DownloadControl({
   }
 
   // The book hero's full-width control (the prototype's `DownloadControl`): an outline
-  // button per state, so the hero's one pink thing stays its progress bar.
+  // button per state, so the hero's one pink thing stays its progress bar. It may shrink
+  // (a phone's row keeps the hero's icon buttons beside it), its words ending in "..."
+  // rather than wrapping the row.
+  const words = (text: string) => (
+    <Text numberOfLines={1} className="shrink" style={tabularNums}>
+      {text}
+    </Text>
+  );
   if (!supported) {
-    return <Button title={unavailableLabel} variant="outline" size="lg" icon="download" disabled />;
+    return (
+      <Button
+        variant="outline"
+        size="lg"
+        icon="download"
+        disabled
+        accessibilityLabel={unavailableLabel}
+        className={SHRINKS}
+      >
+        {words(unavailableLabel)}
+      </Button>
+    );
   }
 
   if (status === 'downloaded') {
@@ -141,9 +162,10 @@ export function DownloadControl({
               size="lg"
               accessibilityLabel={t('library.download.downloaded')}
               accessibilityHint={t('library.download.remove')}
+              className={SHRINKS}
             >
               <Icon name="circle-check" size={18} color={themed.success} />
-              <Text>{t('library.download.downloaded')}</Text>
+              {words(t('library.download.downloaded'))}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
@@ -167,7 +189,7 @@ export function DownloadControl({
   }
 
   if (status === 'downloading' || status === 'queued') {
-    const words =
+    const said =
       status === 'queued'
         ? t('book.download.queuedCancel')
         : t('book.download.progressCancel', { percent: Math.round(progress * 100) });
@@ -176,7 +198,8 @@ export function DownloadControl({
         variant="outline"
         size="lg"
         onPress={cancel}
-        accessibilityLabel={`${words}, ${t('library.download.cancel')}`}
+        accessibilityLabel={`${said}, ${t('library.download.cancel')}`}
+        className={SHRINKS}
       >
         <ProgressRing
           fraction={status === 'queued' ? 0 : progress}
@@ -185,27 +208,33 @@ export function DownloadControl({
           color={themed.foreground}
           trackColor={themed.border}
         />
-        <Text style={tabularNums}>{words}</Text>
+        {/* A phone says only Cancel: the ring and the progress line under the hero
+            carry the percent, and "52% · Cancel" pushed the row's icons onto a second
+            row at 400. */}
+        {words(phone ? t('common.cancel') : said)}
       </Button>
     );
   }
 
+  const idleLabel =
+    status === 'error'
+      ? t('library.download.retry')
+      : phone
+        ? t('library.download.download')
+        : t('book.download.forOffline');
   return (
-    <View className="gap-1.5">
+    <View className="min-w-0 shrink gap-1.5">
       <Button
-        title={
-          status === 'error'
-            ? t('library.download.retry')
-            : phone
-              ? t('library.download.download')
-              : t('book.download.forOffline')
-        }
         variant={status === 'error' ? 'destructive-outline' : 'outline'}
         size="lg"
         icon={status === 'error' ? 'rotate' : 'download'}
         disabled={disabled || !book}
         onPress={start}
-      />
+        accessibilityLabel={idleLabel}
+        className={SHRINKS}
+      >
+        {words(idleLabel)}
+      </Button>
       {status === 'error' && error ? (
         <Text variant="caption" className="max-w-[320px] text-destructive" numberOfLines={2}>
           {error}

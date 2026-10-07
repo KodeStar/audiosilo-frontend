@@ -25,6 +25,12 @@ jest.mock('@/downloads/store', () => ({
   useDownloads: { getState: () => ({ remove: mockRemove }) },
 }));
 
+let mockLayout = 'tablet';
+jest.mock('@/lib/layout', () => ({
+  ...jest.requireActual('@/lib/layout'),
+  useLayout: () => mockLayout,
+}));
+
 /* eslint-disable import/first */
 import type { Book } from '@/api/types';
 
@@ -36,6 +42,7 @@ const book = { title: 'Blood Rites' } as Book;
 beforeEach(() => {
   mockRemove.mockReset();
   mockControlsOverride = {};
+  mockLayout = 'tablet';
 });
 
 describe('DownloadControl', () => {
@@ -79,6 +86,27 @@ describe('DownloadControl', () => {
     expect(screen.getByText('52% · Cancel')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: '52% · Cancel, Cancel download' }));
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  // At 400 "100% · Cancel" pushed the hero's "..." onto a row of its own: a phone says
+  // only Cancel (the ring and the progress line carry the percent), and the words give
+  // way rather than wrap.
+  it('says only Cancel on a phone, the percent kept for screen readers', async () => {
+    mockLayout = 'phone';
+    mockControlsOverride = { status: 'downloading', progress: 1 };
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
+    expect(screen.queryByText('100% · Cancel')).toBeNull();
+    const label = screen.getByText('Cancel');
+    expect(label.props.numberOfLines).toBe(1);
+    const button = screen.getByRole('button', { name: '100% · Cancel, Cancel download' });
+    expect(String(button.props.className)).toMatch(/\bshrink\b/);
+    expect(String(button.props.className)).not.toMatch(/shrink-0/);
+  });
+
+  it('keeps Downloaded and Download to one line that can give way', async () => {
+    mockLayout = 'phone';
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
+    expect(screen.getByText('Downloaded').props.numberOfLines).toBe(1);
   });
 
   it('offers the download for offline, and a retry after a failure', async () => {
