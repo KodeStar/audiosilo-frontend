@@ -5,7 +5,9 @@ jest.mock('@/playback/store', () =>
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
-jest.mock('@/api/provider', () => ({ queryClient: { invalidateQueries: jest.fn() } }));
+jest.mock('@/api/provider', () => ({
+  queryClient: { invalidateQueries: jest.fn(), getQueryData: jest.fn() },
+}));
 jest.mock('@/api/connection-clients', () => ({ resolveClient: jest.fn() }));
 
 /* eslint-disable import/first */
@@ -299,6 +301,48 @@ describe('addBookmarkHere', () => {
     await addBookmarkHere(t);
     expect(lastInteraction('srv:1:a/book')).toEqual({ at: 1_000_000, position: 62_810.4 });
     jest.restoreAllMocks();
+  });
+
+  // Adding stays one tap; the toast's one action opens the editor on the new bookmark,
+  // where the server takes edits.
+  it('offers "Add note" on a server with annotations, opening the editor on it', async () => {
+    const made = {
+      id: 5,
+      library_id: 1,
+      path: 'a/book',
+      position: 62_810,
+      note: '',
+      label: '',
+      created_at: '2026-10-07T10:00:00Z',
+    };
+    (resolveClient as jest.Mock).mockReturnValue({ addBookmark: () => Promise.resolve(made) });
+    (queryClient.getQueryData as jest.Mock).mockImplementation((key: unknown[]) =>
+      key[0] === 'server' && key[1] === 'srv' ? { capabilities: { annotations: true } } : undefined,
+    );
+    await addBookmarkHere(t);
+    const shown = (toast as jest.Mock).mock.calls[0][0];
+    expect(shown).toMatchObject({ title: 'Bookmark added', description: '17:26:50' });
+    expect(shown.action.label).toBe('Add note');
+    usePlayerSheets.setState({ open: null, editor: null });
+    shown.action.onPress();
+    expect(usePlayerSheets.getState()).toMatchObject({
+      open: 'bookmark',
+      editor: {
+        kind: 'bookmark',
+        target: { connectionId: 'srv', libraryId: 1, path: 'a/book' },
+        position: 62_810,
+        bookmark: made,
+      },
+    });
+  });
+
+  it('offers no action where the server cannot edit a bookmark', async () => {
+    (resolveClient as jest.Mock).mockReturnValue({
+      addBookmark: () => Promise.resolve({ id: 5, position: 62_810 }),
+    });
+    (queryClient.getQueryData as jest.Mock).mockReturnValue({ capabilities: {} });
+    await addBookmarkHere(t);
+    expect(toast).toHaveBeenCalledWith({ title: 'Bookmark added', description: '17:26:50' });
   });
 
   it('says when it could not', async () => {
