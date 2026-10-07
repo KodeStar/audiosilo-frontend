@@ -1,21 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { ScopedTheme } from 'uniwind';
 import { create } from 'zustand';
 
-import {
-  type SourcedProgress,
-  useBook,
-  useBookMeta,
-  useCapability,
-  useChapters,
-} from '@/api/hooks';
+import type { SourcedProgress } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
 import { BookCover } from '@/components/library/book-cover';
-import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
-import { chapterStartsOf } from '@/components/library/meta-gating';
+import { useBookCommunity } from '@/components/library/use-book-community';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { startBookInPlace } from '@/components/player/start-book';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -92,17 +85,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
   const dismissed = useDismissed((s) => s.keys.includes(key));
   const dismiss = useDismissed((s) => s.dismiss);
   const loaded = usePlayer((s) => selectBookKey(s) === contentKey(connectionId, libraryId, path));
-  const metadata = useCapability('metadata', connectionId);
-  const { data: book } = useBook(libraryId, path, connectionId);
-  const metaEnabled = metadata === true && !!(book?.asin || book?.isbn);
-  const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
-  const { data: chapterData } = useChapters(libraryId, path, connectionId);
-  const chapters = useMemo(() => chapterData?.chapters ?? [], [chapterData]);
-  const starts = useMemo(
-    () => chapterStartsOf(chapters, chapterData?.files ?? []),
-    [chapters, chapterData],
-  );
-  const work = matchedMeta(meta, metaEnabled)?.work;
+  const { metadata, book, chapterData, chapterStarts, work } = useBookCommunity(at);
 
   const card = previouslyOn({
     saved,
@@ -111,12 +94,12 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
     dismissed,
     metadata,
     recaps: work?.recaps ?? [],
-    chapterStarts: starts,
+    chapterStarts,
   });
   if (!card || !saved) return null;
 
   const title = bookTitle(book?.title, path);
-  const chapter = chapters[card.chapter - 1];
+  const chapter = chapterData?.chapters[card.chapter - 1];
   const left = chapter
     ? t('home.previouslyOn.left', {
         title,

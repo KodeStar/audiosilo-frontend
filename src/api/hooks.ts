@@ -460,7 +460,7 @@ export function useBook(
   libraryId: number,
   path: string,
   connectionId?: string,
-  { staleTime }: { staleTime?: number } = {},
+  { staleTime, enabled }: { staleTime?: number; enabled?: boolean } = {},
 ) {
   // Optional (not throwing) client: the player modal renders these hooks OUTSIDE the
   // `(app)` ContentScope guard, so a stale/removed connection id (e.g. tapping an
@@ -468,13 +468,22 @@ export function useBook(
   return useQuery({
     ...itemQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
     ...(staleTime !== undefined ? { staleTime } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
   });
 }
 
-export function useChapters(libraryId: number, path: string, connectionId?: string) {
-  return useQuery(
-    chaptersQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
-  );
+/** A book's chapters and files; `enabled` false holds this reader back (a surface that
+ * needs them only for community metadata the book may not have). */
+export function useChapters(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  { enabled }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    ...chaptersQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
+    ...(enabled !== undefined ? { enabled } : {}),
+  });
 }
 
 /** Enriched community metadata for a book. `enabled` gates the query on the

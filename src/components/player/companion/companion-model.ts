@@ -2,6 +2,7 @@ import type { BookMetaCharacter, BookMetaRecap } from '@/api/types';
 import {
   characterIsVisible,
   type ListeningProgress,
+  sortRecaps,
   splitRecaps,
 } from '@/components/library/meta-gating';
 import { timeLeft } from '@/playback/time-left';
@@ -106,9 +107,7 @@ export function revealOnCrossing(
 export type StorySoFar = { parts: BookMetaRecap[]; upTo: number | null; hidden: BookMetaRecap[] };
 
 export function storySoFar(recaps: readonly BookMetaRecap[], p: ListeningProgress): StorySoFar {
-  // In story order (the book page's `sortRecaps` rule; that module draws, this one doesn't).
-  const ordered = [...recaps].sort((a, b) => a.through.chapter - b.through.chapter);
-  const { visible, hidden } = splitRecaps(ordered, p);
+  const { visible, hidden } = splitRecaps(sortRecaps(recaps), p);
   const last = visible[visible.length - 1];
   return {
     parts: visible,

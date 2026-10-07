@@ -18,6 +18,7 @@ import { CoverWash } from '@/components/library/cover-wash';
 import {
   chapterStartsOf,
   listeningProgressFor,
+  metaEnabledFor,
   splitCharacters,
 } from '@/components/library/meta-gating';
 import { usePlayBook } from '@/components/player/use-play-book';
@@ -71,8 +72,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const { data: book } = useBook(libraryId, path);
   const { data: chapterData } = useChapters(libraryId, path);
   const { data: bookmarks } = useBookmarks(libraryId, path);
-  const metadata = useCapability('metadata') === true;
-  const metaEnabled = metadata && !!(book?.asin || book?.isbn);
+  const metaEnabled = metaEnabledFor(useCapability('metadata'), book);
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const { data: stats } = useMyStats('30d');
 

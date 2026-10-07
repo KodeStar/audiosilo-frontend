@@ -6,6 +6,7 @@ import { ConnectionScope } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
@@ -35,19 +36,24 @@ export const COMPANION_TAB_LABEL = {
  * their own; the tablet's sits inline in the player's page and lets the page scroll. */
 export type CompanionVariant = 'column' | 'sheet' | 'inline';
 
-/** "Add bookmark at 1:16:19", in whole seconds (a leaf, so the panel above it does not
- * redraw per tick). */
-function useBookmarkLabel(): string {
+/** "Add bookmark at 1:16:19", in whole seconds: its own leaf, the one piece of the
+ * Bookmarks tab that follows the playhead (the list above it never redraws per tick). */
+function AddBookmarkHere() {
   const { t } = useTranslation();
   const at = usePlayer((s) => Math.floor(selectBookPosition(s)));
-  return t('player.bookmarks.addAt', { time: formatClock(at) });
+  return (
+    <Button
+      title={t('player.bookmarks.addAt', { time: formatClock(at) })}
+      icon="bookmark"
+      onPress={() => void addBookmarkHere(t)}
+    />
+  );
 }
 
 function OwnPanel({ tab, target }: { tab: 'bookmarks' | 'notes' | 'history'; target: PlayTarget }) {
   const { t } = useTranslation();
   const seekBook = usePlayer((s) => s.seekBook);
   const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters);
-  const addLabel = useBookmarkLabel();
   const onJump = (p: number) => void seekBook(p);
   const { connectionId, libraryId, path } = target;
   if (tab === 'bookmarks')
@@ -57,8 +63,7 @@ function OwnPanel({ tab, target }: { tab: 'bookmarks' | 'notes' | 'history'; tar
         path={path}
         connectionId={connectionId}
         emptyLabel={t('player.bookmarks.empty')}
-        onAdd={() => void addBookmarkHere(t)}
-        addLabel={addLabel}
+        addButton={<AddBookmarkHere />}
         onJump={onJump}
       />
     );

@@ -37,7 +37,14 @@ import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { type ListeningProgress, type Split, splitCharacters, splitRecaps } from './meta-gating';
+import {
+  type ListeningProgress,
+  recapDescriptor,
+  sortRecaps,
+  type Split,
+  splitCharacters,
+  splitRecaps,
+} from './meta-gating';
 
 /** Descriptions past this many characters get a collapse + "show more" toggle.
  * A deterministic length heuristic (rather than an onTextLayout measure pass) so
@@ -201,24 +208,6 @@ export function roleLabelKey(
  * at a named later chapter. Kept pure so the label choice is unit-testable. */
 export function revealFromStart(reveal: BookMetaPosition): boolean {
   return reveal.chapter <= 1;
-}
-
-/** How to head a recap. A chapter-0 "series" recap is the prior-books catch-up;
- * a chapter-0 "book" recap is a pre-book note; otherwise it covers up to chapter
- * N. Returns a descriptor the component maps to a translated string. */
-export type RecapDescriptor =
-  { kind: 'seriesPrior' } | { kind: 'beforeBook' } | { kind: 'upToChapter'; chapter: number };
-export function recapDescriptor(recap: BookMetaRecap): RecapDescriptor {
-  const ch = recap.through.chapter;
-  if (ch === 0) return recap.scope === 'series' ? { kind: 'seriesPrior' } : { kind: 'beforeBook' };
-  return { kind: 'upToChapter', chapter: ch };
-}
-
-/** Recaps ordered by position (ascending) so "story so far" reads in order. The
- * server already returns them ordered; this keeps the component independent of
- * that. Returns a new array; does not mutate the input. */
-export function sortRecaps(recaps: BookMetaRecap[]): BookMetaRecap[] {
-  return [...recaps].sort((a, b) => a.through.chapter - b.through.chapter);
 }
 
 /** The tiny uppercase pill this block uses for both its markers: `neutral` for the

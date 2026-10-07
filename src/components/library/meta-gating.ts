@@ -1,4 +1,4 @@
-import type { BookFile, BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
+import type { Book, BookFile, BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
 import { chapterBookOffset } from '@/playback/book-queue';
 
 /**
@@ -22,6 +22,20 @@ export type ListeningProgress = { chapter: number; finished: boolean };
  */
 export const LIVE_POSITION_BUCKET_S = 15;
 
+/**
+ * Whether a book's community metadata is worth asking for: its server advertises
+ * `metadata` (an older server omits it, and is never asked) and the book carries an
+ * ASIN or ISBN (a book with neither can never match). The one predicate for every
+ * surface that reads `/meta` (the book page, the player's companion and reveal toast,
+ * Home's Now card and Previously on, the end credits).
+ */
+export function metaEnabledFor(
+  metadata: boolean | undefined,
+  book: Pick<Book, 'asin' | 'isbn'> | undefined,
+): boolean {
+  return metadata === true && !!(book?.asin || book?.isbn);
+}
+
 /** Nothing known about the listener's position (no saved progress). */
 const NO_PROGRESS: ListeningProgress = { chapter: 0, finished: false };
 
@@ -34,7 +48,7 @@ const NO_PROGRESS: ListeningProgress = { chapter: 0, finished: false };
  * `chapters[0]` (the player must always be *somewhere*), which here would claim
  * chapter 1 has been reached on a book nobody has started.
  */
-export function chapterNumberAt(starts: number[], position: number): number {
+export function chapterNumberAt(starts: readonly number[], position: number): number {
   if (starts.length === 0 || position <= 0) return 0;
   let n = 0;
   for (let i = 0; i < starts.length; i++) {
@@ -75,7 +89,7 @@ export function chapterStartsOf(
  */
 export function listeningProgressFor(input: {
   /** Whole-book start offsets of the local chapters, ascending. */
-  chapterStarts: number[];
+  chapterStarts: readonly number[];
   /** Freshest whole-book position in seconds, or null/undefined when nothing is known. */
   position: number | null | undefined;
   /** Whether the book is marked finished (reveals everything). */
@@ -106,6 +120,24 @@ export function characterIsVisible(c: BookMetaCharacter, p: ListeningProgress): 
 export function recapIsVisible(r: BookMetaRecap, p: ListeningProgress): boolean {
   if (p.finished) return true;
   return r.through.chapter === 0 || r.through.chapter < p.chapter;
+}
+
+/** How to head a recap. A chapter-0 "series" recap is the prior-books catch-up;
+ * a chapter-0 "book" recap is a pre-book note; otherwise it covers up to chapter
+ * N. Returns a descriptor the component maps to a translated string. */
+export type RecapDescriptor =
+  { kind: 'seriesPrior' } | { kind: 'beforeBook' } | { kind: 'upToChapter'; chapter: number };
+export function recapDescriptor(recap: BookMetaRecap): RecapDescriptor {
+  const ch = recap.through.chapter;
+  if (ch === 0) return recap.scope === 'series' ? { kind: 'seriesPrior' } : { kind: 'beforeBook' };
+  return { kind: 'upToChapter', chapter: ch };
+}
+
+/** Recaps ordered by position (ascending) so "story so far" reads in order. The
+ * server already returns them ordered; this keeps every reader independent of
+ * that. Returns a new array; does not mutate the input. */
+export function sortRecaps(recaps: readonly BookMetaRecap[]): BookMetaRecap[] {
+  return [...recaps].sort((a, b) => a.through.chapter - b.through.chapter);
 }
 
 /** Entries split into the ones reached and the ones held back as spoilers. */

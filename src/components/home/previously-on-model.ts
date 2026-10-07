@@ -1,9 +1,6 @@
 import type { BookMetaRecap } from '@/api/types';
-import {
-  chapterNumberAt,
-  listeningProgressFor,
-  splitRecaps,
-} from '@/components/library/meta-gating';
+import { chapterNumberAt, listeningProgressFor } from '@/components/library/meta-gating';
+import { storySoFar } from '@/components/player/companion/companion-model';
 
 /**
  * Home's "Previously on" card (STYLEGUIDE section 8): shown when the listener comes back
@@ -69,13 +66,14 @@ export function previouslyOn(input: PreviouslyOnInput): PreviouslyOn | null {
   const days = daysSince(saved.updated_at, input.now);
   if (days === null || days < PREVIOUSLY_ON_GAP_DAYS) return null;
   const progress = listeningProgressFor({
-    chapterStarts: [...input.chapterStarts],
+    chapterStarts: input.chapterStarts,
     position: saved.position,
     finished: false,
   });
-  const ordered = [...input.recaps].sort((a, b) => a.through.chapter - b.through.chapter);
-  const { visible } = splitRecaps(ordered, progress);
-  const recap = [...visible].reverse().find((r) => r.text.trim().length > 0);
+  // The furthest part of Story so far (the companion's own gate) that has words.
+  const recap = storySoFar(input.recaps, progress)
+    .parts.reverse()
+    .find((r) => r.text.trim().length > 0);
   if (!recap) return null;
-  return { days, recap, chapter: chapterNumberAt([...input.chapterStarts], saved.position) };
+  return { days, recap, chapter: chapterNumberAt(input.chapterStarts, saved.position) };
 }

@@ -22,6 +22,7 @@ import type { RatingValue } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
+import { metaEnabledFor } from '@/components/library/meta-gating';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -232,8 +233,7 @@ function EndCreditsBody({
 
   // --- What the credits show -------------------------------------------------------
   const [creditsOpen, setCreditsOpen] = useState(false);
-  const metaEnabled =
-    useCapability('metadata', cid) === true && !!(book?.asin || book?.isbn) && creditsOpen;
+  const metaEnabled = metaEnabledFor(useCapability('metadata', cid), book) && creditsOpen;
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const matched = matchedMeta(meta, metaEnabled);
 

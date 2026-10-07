@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useBookmarks, useDeleteBookmark } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { RowSurface } from '@/components/ui/row-surface';
@@ -18,17 +18,16 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Bookmarks for a book: tap to jump in the player, trash to delete.
  *
- * Inline on the book screen it renders nothing when empty. The player sheet
- * passes `onAdd`/`emptyLabel` so it stays visible - an "add at current position"
- * button plus a placeholder - giving a way to both create and see bookmarks. */
+ * Inline on the book screen it renders nothing when empty. The player's companion
+ * passes `addButton`/`emptyLabel` so it stays visible - its "add at the current
+ * position" button (its own leaf: its label follows the playhead) plus a placeholder -
+ * giving a way to both create and see bookmarks. */
 export function BookmarksSection({
   libraryId,
   path,
   connectionId,
   emptyLabel,
-  onAdd,
-  adding,
-  addLabel,
+  addButton,
   onJump,
 }: {
   libraryId: number;
@@ -37,9 +36,8 @@ export function BookmarksSection({
    * passes the playing book's connection so it addresses the right server. */
   connectionId?: string;
   emptyLabel?: string;
-  onAdd?: () => void;
-  adding?: boolean;
-  addLabel?: string;
+  /** Leads the list (the companion's "Add bookmark at 1:16:19"). */
+  addButton?: ReactNode;
   /** Where a tap on a bookmark goes. The player's companion seeks the playing book in
    * place (a jump, so the Undo chip follows); without it a tap opens the player there. */
   onJump?: (position: number) => void;
@@ -53,7 +51,7 @@ export function BookmarksSection({
   const cid = useCid(connectionId);
 
   const empty = !bookmarks || bookmarks.length === 0;
-  if (empty && !onAdd && !emptyLabel) return null;
+  if (empty && !addButton && !emptyLabel) return null;
 
   const jump = (position: number) => {
     if (onJump) return onJump(position);
@@ -65,14 +63,7 @@ export function BookmarksSection({
 
   return (
     <View className="gap-2">
-      {onAdd ? (
-        <Button
-          title={addLabel ?? t('library.bookmarks.add')}
-          icon="bookmark"
-          onPress={onAdd}
-          loading={adding}
-        />
-      ) : null}
+      {addButton}
       {empty && emptyLabel ? (
         <EmptyState icon="bookmark" title={emptyLabel} className="py-6" />
       ) : null}
