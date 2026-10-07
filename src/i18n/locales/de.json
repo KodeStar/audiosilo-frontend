@@ -374,6 +374,124 @@
       "spoilerSafeStart": "Spoilerfrei: geschrieben vor Beginn dieses Buchs."
     }
   },
+  "stats": {
+    "server": {
+      "pick": "Server"
+    },
+    "unsupported": {
+      "title": "Hier gibt es noch keine Hörstatistik",
+      "body": "{{server}} führt noch keine Hörstatistik. Sie kommt mit einer neueren AudioSilo-Version."
+    },
+    "error": {
+      "title": "Dein Hören wurde nicht geladen",
+      "body": "{{server}} hat nicht geantwortet. Es ist nichts verloren; versuch es gleich noch einmal."
+    },
+    "header": {
+      "eyebrow": "Dein Hören · {{server}}",
+      "thisWeek": "{{duration}} diese Woche",
+      "openYear": "Deine Geschichte {{year}} öffnen"
+    },
+    "empty": {
+      "title": "Noch nichts gehört",
+      "body": "Spiel ein Buch ab, dann füllen sich hier deine Woche, deine Serie und dein Jahr."
+    },
+    "tiles": {
+      "week": "Diese Woche",
+      "deltaUp": "{{duration}} mehr als letzte Woche",
+      "deltaDown": "{{duration}} weniger als letzte Woche",
+      "deltaSame": "Genauso viel wie letzte Woche",
+      "streak": "Serie",
+      "days_one": "Tag",
+      "days_other": "Tage",
+      "streakValue_one": "{{count}} Tag",
+      "streakValue_other": "{{count}} Tage",
+      "longest_one": "Längste dieses Jahr: {{count}} Tag",
+      "longest_other": "Längste dieses Jahr: {{count}} Tage",
+      "average": "Tagesdurchschnitt",
+      "books_one": "Über {{count}} Buch dieses Jahr",
+      "books_other": "Über {{count}} Bücher dieses Jahr"
+    },
+    "goal": {
+      "label": "Ziel",
+      "none_one": "{{count}} Buch dieses Jahr beendet, kein Ziel gesetzt",
+      "none_other": "{{count}} Bücher dieses Jahr beendet, kein Ziel gesetzt",
+      "set": "Jahresziel setzen",
+      "of": "von {{goal}}",
+      "percent": "{{percent}} %",
+      "a11y_one": "Ziel: {{count}} von {{goal}} Büchern dieses Jahr beendet, {{percent}} %",
+      "a11y_other": "Ziel: {{count}} von {{goal}} Büchern dieses Jahr beendet, {{percent}} %",
+      "lower": "Jahresziel senken",
+      "raise": "Jahresziel erhöhen",
+      "clear": "Jahresziel entfernen",
+      "saveFailed": "Dein Ziel wurde nicht gespeichert"
+    },
+    "calendar": {
+      "title": "Hörkalender",
+      "sub": "Jeder Tag, an dem du gehört hast, dunkler für mehr",
+      "everyDevice": "Von allen Geräten",
+      "months": "Jan.,Feb.,März,Apr.,Mai,Juni,Juli,Aug.,Sep.,Okt.,Nov.,Dez.",
+      "weekdays": "Mo,,Mi,,Fr,,So",
+      "none": "Nichts gehört",
+      "label_one": "Hörkalender der letzten 12 Monate: Du hast an {{count}} Tag gehört",
+      "label_other": "Hörkalender der letzten 12 Monate: Du hast an {{count}} Tagen gehört",
+      "days_one": "{{count}} Tag mit Hören in den letzten 12 Monaten · heute ist umrandet",
+      "days_other": "{{count}} Tage mit Hören in den letzten 12 Monaten · heute ist umrandet",
+      "less": "Weniger",
+      "more": "Mehr"
+    },
+    "clock": {
+      "title": "Deine Höruhr",
+      "peaksOne": "Am meisten {{a}}",
+      "peaksTwo": "Am meisten {{a}} und {{b}}",
+      "allDay": "den ganzen Tag",
+      "label": "Hören nach Tageszeit in diesem Jahr. Meiste Stunde {{hour}}. {{peaks}}",
+      "labelEmpty": "Hören nach Tageszeit: dieses Jahr noch nichts",
+      "none": "Dieses Jahr noch nichts gehört",
+      "busiest": "deine meiste Stunde",
+      "hourTotal": "{{duration}} dieses Jahr"
+    },
+    "weeks": {
+      "title": "Stunden pro Woche",
+      "sub": "Letzte 12 Wochen · {{duration}} insgesamt",
+      "thisWeek": "diese Woche",
+      "weeksAgo_one": "vor {{count}} Woche",
+      "weeksAgo_other": "vor {{count}} Wochen",
+      "thisWeekShort": "Diese Wo.",
+      "agoShort_one": "vor {{count}} Wo.",
+      "agoShort_other": "vor {{count}} Wo.",
+      "label": "Gehörte Stunden pro Woche, letzte 12 Wochen: {{weeks}}"
+    },
+    "rank": {
+      "authors": "Meistgehörte Autorinnen und Autoren",
+      "authorsSub": "Dieses Jahr, nach Stunden",
+      "narrators": "Meistgehörte Sprecher",
+      "narratorsSub": "Du hast {{duration}} mit {{name}} verbracht",
+      "series": "Meistgehörte Reihen",
+      "seriesSub": "Reihen, zu denen du immer wieder zurückkamst",
+      "rowLabel_one": "{{rank}}. {{name}}, {{duration}}, {{count}} Buch",
+      "rowLabel_other": "{{rank}}. {{name}}, {{duration}}, {{count}} Bücher",
+      "open": {
+        "author": "Öffnet die Autorenseite",
+        "narrator": "Öffnet die Sprecherseite",
+        "series": "Öffnet die Reihe"
+      }
+    },
+    "finished": {
+      "title": "Dieses Jahr beendet",
+      "count_one": "{{count}} Buch",
+      "count_other": "{{count}} Bücher",
+      "none": "Dieses Jahr noch nichts beendet",
+      "journal": "In deinem Journal ansehen",
+      "spineLabel": "{{title}} von {{author}}, beendet {{date}}"
+    },
+    "year": {
+      "eyebrow": "Bereit, wenn du es bist",
+      "title": "Dein Hörjahr {{year}}",
+      "play": "Geschichte abspielen",
+      "summary_one": "Bisher {{duration}} gehört und {{count}} Buch beendet.",
+      "summary_other": "Bisher {{duration}} gehört und {{count}} Bücher beendet."
+    }
+  },
   "library": {
     "browse": {
       "fallbackName": "Bibliothek",

@@ -41,7 +41,13 @@ describe('weeklyTotals', () => {
   });
 
   it('counts days outside the response as none', () => {
-    expect(weeklyTotals(run(TODAY, 3, () => 100), TODAY, 2)).toEqual([0, 300]);
+    expect(
+      weeklyTotals(
+        run(TODAY, 3, () => 100),
+        TODAY,
+        2,
+      ),
+    ).toEqual([0, 300]);
   });
 
   it('compares this week with last week', () => {
@@ -91,14 +97,20 @@ describe('calendarGrid', () => {
   });
 
   it('leaves the days before the period empty', () => {
-    const grid = calendarGrid(run(TODAY, 10, () => 60), TODAY);
+    const grid = calendarGrid(
+      run(TODAY, 10, () => 60),
+      TODAY,
+    );
     const cells = grid.columns.flat().filter(Boolean);
     expect(cells).toHaveLength(10);
     expect(cells[0]?.date).toBe(addDays(TODAY, -9));
   });
 
   it('labels each month at the column holding its first day, three columns apart', () => {
-    const grid = calendarGrid(run(TODAY, 366, () => 0), TODAY);
+    const grid = calendarGrid(
+      run(TODAY, 366, () => 0),
+      TODAY,
+    );
     const oct = grid.months.find((m) => m.month === 9 && m.column > 40);
     const firstOct = grid.columns[oct!.column].some((c) => c?.date === '2026-10-01');
     expect(firstOct).toBe(true);
@@ -109,7 +121,10 @@ describe('calendarGrid', () => {
   });
 
   it('finds the cell under a point', () => {
-    const grid = calendarGrid(run(TODAY, 366, () => 60), TODAY);
+    const grid = calendarGrid(
+      run(TODAY, 366, () => 60),
+      TODAY,
+    );
     // Cells 10 wide with a 2 gap: column 52, row 3 is today.
     expect(calendarCellAt(grid, 52 * 12 + 4, 3 * 12 + 4, 10, 2)?.date).toBe(TODAY);
     expect(calendarCellAt(grid, 52 * 12 + 4, 5 * 12 + 4, 10, 2)).toBeNull(); // the future
@@ -128,7 +143,7 @@ describe('levelScale', () => {
     expect(level(10 * 600)).toBe(3);
   });
 
-  it("keeps one marathon from washing out every other day", () => {
+  it('keeps one marathon from washing out every other day', () => {
     const days = run(TODAY, 40, (i) => (i === 0 ? 20 * 3600 : 3600));
     expect(levelScale(days)(3600)).toBe(5);
   });
@@ -226,9 +241,7 @@ describe('rank lists', () => {
         { library_id: 2, path: 'a', title: 'A', author: 'Ann', listened: 1 },
         { library_id: 1, path: 'b', title: 'B', author: 'Bo', listened: 1 },
       ],
-      finished_books: [
-        { library_id: 1, path: 'c', title: 'C', author: 'Cy', finished_at: '' },
-      ],
+      finished_books: [{ library_id: 1, path: 'c', title: 'C', author: 'Cy', finished_at: '' }],
     };
     expect(libraryForName(stats, 'author', 'Ann')).toBe(2);
     expect(libraryForName(stats, 'narrator', 'Ann')).toBe(1);
@@ -299,13 +312,21 @@ describe('layout and servers', () => {
     ).toBe('b');
     // Still loading: wait on the default.
     expect(
-      statsServerChoice({ connectionIds: ids, userStats: { b: true }, defaultId: 'a', picked: null })
-        .cid,
+      statsServerChoice({
+        connectionIds: ids,
+        userStats: { b: true },
+        defaultId: 'a',
+        picked: null,
+      }).cid,
     ).toBe('a');
     // None keep stats: the default explains it.
     expect(
-      statsServerChoice({ connectionIds: ids, userStats: { a: false }, defaultId: 'a', picked: 'c' })
-        .cid,
+      statsServerChoice({
+        connectionIds: ids,
+        userStats: { a: false },
+        defaultId: 'a',
+        picked: 'c',
+      }).cid,
     ).toBe('a');
   });
 
