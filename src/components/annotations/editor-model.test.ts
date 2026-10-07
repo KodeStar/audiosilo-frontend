@@ -1,12 +1,7 @@
 import type { Bookmark, Note } from '@/api/types';
+import { editBookmarkRequest, editNoteRequest } from '@/lib/annotation-request';
 
-import {
-  bookmarkSave,
-  editBookmarkRequest,
-  editNoteRequest,
-  initialBookmarkDraft,
-  noteSave,
-} from './editor-model';
+import { bookmarkSave, initialBookmarkDraft, noteSave } from './editor-model';
 
 const bookmark = (over: Partial<Bookmark> = {}): Bookmark => ({
   id: 7,

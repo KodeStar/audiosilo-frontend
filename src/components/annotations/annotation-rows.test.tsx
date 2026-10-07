@@ -188,7 +188,7 @@ describe('BookmarkRow', () => {
     await view.rerender(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Edit bookmark at 17:26:50' }));
     expect(usePlayerSheets.getState()).toMatchObject({
-      open: 'bookmark',
+      open: 'editor',
       editor: {
         kind: 'bookmark',
         target: { connectionId: 'c', libraryId: 1, path: 'a/book' },
@@ -343,7 +343,7 @@ describe('NoteRow', () => {
     await render(<NoteRow note={note()} connectionId="c" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Edit note at 10:20:00' }));
     expect(usePlayerSheets.getState()).toMatchObject({
-      open: 'note',
+      open: 'editor',
       editor: { kind: 'note', position: 37_200, note: note() },
     });
     await fireEvent.press(screen.getByRole('button', { name: 'Delete note at 10:20:00' }));

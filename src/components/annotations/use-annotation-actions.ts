@@ -12,8 +12,7 @@ import { formatClock } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { selectBookKey, usePlayer } from '@/playback/store';
-
-import type { AnnotationTarget } from './editor-model';
+import type { AnnotationTarget } from '@/lib/annotation-request';
 
 /**
  * Jump to a place in a book (a bookmark's or a note's time chip), through the player's

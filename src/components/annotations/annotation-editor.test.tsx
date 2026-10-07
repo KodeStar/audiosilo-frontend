@@ -29,7 +29,7 @@ jest.mock('@/playback/store', () =>
 import { toast } from '@/components/ui/toast';
 
 import { AnnotationEditor } from './annotation-editor';
-import type { EditorRequest } from './editor-model';
+import type { EditorRequest } from '@/lib/annotation-request';
 /* eslint-enable import/first */
 
 const target = { connectionId: 'c', libraryId: 1, path: 'a/book' };

@@ -8,10 +8,10 @@ import { Text } from '@/components/ui/text';
 import { formatClock, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
+import { type AnnotationTarget, editBookmarkRequest } from '@/lib/annotation-request';
 
 import { LabelChip, TimeChip } from './chips';
 import { isDriftBookmark, shownNote } from './drift-marker';
-import { type AnnotationTarget, editBookmarkRequest } from './editor-model';
 import { AnnotationRowFrame, RowAction, RowCover, RowMeta } from './row-parts';
 import { useDeleteWithUndo, useJumpTo } from './use-annotation-actions';
 

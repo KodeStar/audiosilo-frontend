@@ -17,13 +17,13 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Textarea } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import type { EditorRequest } from '@/lib/annotation-request';
 import { formatClock } from '@/lib/format';
 
 import { LabelPicker, TimeChip } from './chips';
 import {
   BOOKMARK_NOTE_MAX,
   bookmarkSave,
-  type EditorRequest,
   initialBookmarkDraft,
   NOTE_BODY_MAX,
   noteSave,

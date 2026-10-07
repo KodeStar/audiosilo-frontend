@@ -9,8 +9,8 @@ import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { selectBookKey, usePlayer } from '@/playback/store';
+import type { AnnotationTarget } from '@/lib/annotation-request';
 
-import type { AnnotationTarget } from './editor-model';
 import { usePlaceIn } from './use-book-place';
 
 /** "See all in your journal": the listener's bookmarks or notes across every book. From

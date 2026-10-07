@@ -10,9 +10,9 @@ import { formatClock, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { useTheme } from '@/theme/theme-provider';
+import { type AnnotationTarget, editNoteRequest } from '@/lib/annotation-request';
 
 import { TimeChip } from './chips';
-import { type AnnotationTarget, editNoteRequest } from './editor-model';
 import { AnnotationRowFrame, RowAction, RowCover, RowMeta } from './row-parts';
 import { useDeleteWithUndo, useJumpTo } from './use-annotation-actions';
 

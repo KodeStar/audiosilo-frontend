@@ -1,7 +1,7 @@
 import { useSegments } from 'expo-router';
 import { create } from 'zustand';
 
-import type { EditorRequest } from '@/components/annotations/editor-model';
+import type { EditorRequest } from '@/lib/annotation-request';
 
 import type { CompanionTab } from './companion/companion-model';
 import { useCompanion } from './companion/companion-store';
@@ -10,11 +10,10 @@ import { useCompanion } from './companion/companion-store';
 export type PlayerSheet =
   | 'speed'
   | 'sleep'
-  /** With an editor request (`openEditor`), the bookmark editor; without one, an action:
-   * a bookmark at the playing book's place (`addBookmarkHere`). */
+  /** An action, not a sheet: a bookmark at the playing book's place (`addBookmarkHere`). */
   | 'bookmark'
-  /** The note editor (`openEditor` only). */
-  | 'note'
+  /** The bookmark or note editor on `editor` (`openEditor` only). */
+  | 'editor'
   | 'output'
   | 'chapters'
   | 'shortcuts'
@@ -27,12 +26,11 @@ export type PlayerSheet =
 type PlayerSheetsState = {
   /** The sheet asked for, or null. */
   open: PlayerSheet | null;
-  /** What the bookmark or note editor is open on while `open` is its kind. Kept after
-   * `close()`, so the sheet slides away with its content (`editorFor` reads it only
-   * while open); another sheet clears it. */
+  /** What the editor is open on while `open` is `'editor'`. Kept after `close()`, so the
+   * sheet slides away with its content; another sheet clears it. */
   editor: EditorRequest | null;
-  /** Open a sheet (the note editor opens through `openEditor`). */
-  openSheet: (sheet: Exclude<PlayerSheet, 'note'>) => void;
+  /** Open a sheet (the editor opens through `openEditor`). */
+  openSheet: (sheet: Exclude<PlayerSheet, 'editor'>) => void;
   /** Open the bookmark or note editor on a book, which need not be the playing one. */
   openEditor: (request: EditorRequest) => void;
   /** Show the companion on `tab`: one intent for every caller (the phone's chips, the
@@ -55,7 +53,7 @@ export const usePlayerSheets = create<PlayerSheetsState>()((set) => ({
   open: null,
   editor: null,
   openSheet: (open) => set({ open, editor: null }),
-  openEditor: (editor) => set({ open: editor.kind, editor }),
+  openEditor: (editor) => set({ open: 'editor', editor }),
   openCompanion: (tab) => {
     useCompanion.getState().setTab(tab);
     set({ open: 'companion', editor: null });
@@ -63,8 +61,8 @@ export const usePlayerSheets = create<PlayerSheetsState>()((set) => ({
   close: () => set({ open: null }),
 }));
 
-/** The requests that need a loaded book (Up next, the shortcuts overlay and the editors,
- * which carry their own book, do not). */
+/** The requests that need a loaded book (Up next, the shortcuts overlay and the editor,
+ * which carries its own book, do not). */
 const BOOK_SHEETS: ReadonlySet<PlayerSheet> = new Set([
   'speed',
   'sleep',
@@ -74,36 +72,23 @@ const BOOK_SHEETS: ReadonlySet<PlayerSheet> = new Set([
   'companion',
 ]);
 
-/** The editor request `open` stands for, or null: the bookmark or note editor is open
- * only with a request of its own kind. */
-export function editorFor(open: PlayerSheet | null, editor: EditorRequest | null) {
-  return editor && open === editor.kind ? editor : null;
-}
-
 /**
  * What an active host shows for `request` (pure): a book's sheets only while a book is
- * loaded; Up next with or without one; an editor whatever plays, since it carries its
- * own book (a bookmark of a book that is not playing, on any connection). The note kind
- * without a request shows nothing.
+ * loaded; Up next with or without one; the editor whatever plays, since it carries its
+ * own book (a bookmark of a book that is not playing, on any connection).
  */
-export function shownSheet(
-  request: PlayerSheet | null,
-  editor: EditorRequest | null,
-  loaded: boolean,
-): PlayerSheet | null {
-  if (editorFor(request, editor)) return request;
-  if (request === 'note') return null;
-  if (request === 'upnext') return request;
+export function shownSheet(request: PlayerSheet | null, loaded: boolean): PlayerSheet | null {
+  if (request === 'editor' || request === 'upnext') return request;
   return loaded ? request : null;
 }
 
 /**
  * Whether the open request goes when the book unloads (it ended, Mark as finished), so
- * the next book to load doesn't open it by itself. An editor stays: it is about its own
+ * the next book to load doesn't open it by itself. The editor stays: it is about its own
  * book, playing or not, and closing it would throw away what the listener is typing.
  */
-export function dropsWithBook(open: PlayerSheet | null, editor: EditorRequest | null): boolean {
-  return open !== null && BOOK_SHEETS.has(open) && !editorFor(open, editor);
+export function dropsWithBook(open: PlayerSheet | null): boolean {
+  return open !== null && BOOK_SHEETS.has(open);
 }
 
 /** Where a sheet host is mounted: inside the full player, or once in the app shell (for

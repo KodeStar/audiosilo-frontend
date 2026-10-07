@@ -264,7 +264,7 @@ describe('PlayerSheetHost', () => {
     expect(screen.getByText('bookmark editor for other/book')).toBeTruthy();
     await act(() => usePlayer.setState({ nowPlaying: null }));
     expect(screen.getByText('bookmark editor for other/book')).toBeTruthy();
-    expect(usePlayerSheets.getState().open).toBe('bookmark');
+    expect(usePlayerSheets.getState().open).toBe('editor');
     expect(mockAddBookmark).not.toHaveBeenCalled();
   });
 

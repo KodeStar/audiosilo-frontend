@@ -9,20 +9,22 @@ export { BookmarkRow, type BookmarkRowProps } from './bookmark-row';
 export { LabelChip, LabelPicker, TimeChip, type TimeChipTone } from './chips';
 export { isDriftBookmark, isFellAsleepNote, shownNote } from './drift-marker';
 export {
-  type AnnotationTarget,
   BOOKMARK_NOTE_MAX,
   type BookmarkDraft,
   type BookmarkSave,
   bookmarkSave,
-  editBookmarkRequest,
-  editNoteRequest,
-  type EditorRequest,
   initialBookmarkDraft,
   NOTE_BODY_MAX,
   type NoteSave,
   noteSave,
 } from './editor-model';
 export { labelText, toggleLabel } from './labels';
+export {
+  type AnnotationTarget,
+  editBookmarkRequest,
+  editNoteRequest,
+  type EditorRequest,
+} from '@/lib/annotation-request';
 export { NoteMarkdown, NoteRow, type NoteRowProps } from './note-row';
 export { AddBookmarkAction, AddNoteAction, JournalLink } from './section-actions';
 export {

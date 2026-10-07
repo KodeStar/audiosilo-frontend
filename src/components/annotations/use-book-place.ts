@@ -11,8 +11,7 @@ import { chapterLabel } from '@/lib/chapter-label';
 import { contentKeyOf } from '@/lib/content-key';
 import { chapterAt } from '@/playback/book-queue';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-
-import type { AnnotationTarget } from './editor-model';
+import type { AnnotationTarget } from '@/lib/annotation-request';
 
 type PlacedFiles = Pick<BookFile, 'rel_path' | 'duration'>[] | undefined;
 

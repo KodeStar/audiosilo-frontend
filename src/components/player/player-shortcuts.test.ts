@@ -326,7 +326,7 @@ describe('addBookmarkHere', () => {
     usePlayerSheets.setState({ open: null, editor: null });
     shown.action.onPress();
     expect(usePlayerSheets.getState()).toMatchObject({
-      open: 'bookmark',
+      open: 'editor',
       editor: {
         kind: 'bookmark',
         target: { connectionId: 'srv', libraryId: 1, path: 'a/book' },

@@ -165,7 +165,7 @@ describe('BookmarksSection', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Bookmark 10:20:00' }));
     expect(mockAddHere).not.toHaveBeenCalled();
     expect(usePlayerSheets.getState()).toMatchObject({
-      open: 'bookmark',
+      open: 'editor',
       editor: { kind: 'bookmark', target, position: 37_200 },
     });
   });
@@ -195,7 +195,7 @@ describe('NotesSection', () => {
     await render(<NotesSection libraryId={1} path="a/book" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Note at 17:26:50' }));
     expect(usePlayerSheets.getState()).toMatchObject({
-      open: 'note',
+      open: 'editor',
       editor: { kind: 'note', target, position: 62_810 },
     });
   });
