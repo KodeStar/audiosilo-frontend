@@ -393,18 +393,13 @@
       "markFinished": "Als abgeschlossen markieren"
     },
     "notes": {
-      "title": "Notizen",
-      "placeholder": "Notiz hinzufügen (Markdown unterstützt)…",
-      "add": "Notiz hinzufügen",
-      "delete": "Notiz löschen"
+      "title": "Notizen"
     },
     "history": {
       "title": "Verlauf"
     },
     "bookmarks": {
-      "title": "Lesezeichen",
-      "add": "Lesezeichen hinzufügen",
-      "delete": "Lesezeichen löschen"
+      "title": "Lesezeichen"
     },
     "versions": {
       "choose": "Eine Version wählen",
@@ -863,7 +858,6 @@
     "bookmarks": {
       "label": "Lesezeichen",
       "empty": "Noch keine Lesezeichen.",
-      "addAt": "Lesezeichen bei {{time}} hinzufügen",
       "added": "Lesezeichen hinzugefügt",
       "addFailed": "Lesezeichen konnte nicht hinzugefügt werden"
     },

@@ -393,18 +393,13 @@
       "markFinished": "Segna come finito"
     },
     "notes": {
-      "title": "Note",
-      "placeholder": "Aggiungi una nota (markdown supportato)…",
-      "add": "Aggiungi nota",
-      "delete": "Elimina nota"
+      "title": "Note"
     },
     "history": {
       "title": "Cronologia"
     },
     "bookmarks": {
-      "title": "Segnalibri",
-      "add": "Aggiungi segnalibro",
-      "delete": "Elimina segnalibro"
+      "title": "Segnalibri"
     },
     "versions": {
       "choose": "Scegli una versione",
@@ -863,7 +858,6 @@
     "bookmarks": {
       "label": "Segnalibri",
       "empty": "Ancora nessun segnalibro.",
-      "addAt": "Aggiungi segnalibro a {{time}}",
       "added": "Segnalibro aggiunto",
       "addFailed": "Impossibile aggiungere il segnalibro"
     },

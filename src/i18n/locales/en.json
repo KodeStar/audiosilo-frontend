@@ -393,18 +393,13 @@
       "markFinished": "Mark as Finished"
     },
     "notes": {
-      "title": "Notes",
-      "placeholder": "Add a note (markdown supported)…",
-      "add": "Add note",
-      "delete": "Delete note"
+      "title": "Notes"
     },
     "history": {
       "title": "History"
     },
     "bookmarks": {
-      "title": "Bookmarks",
-      "add": "Add bookmark",
-      "delete": "Delete bookmark"
+      "title": "Bookmarks"
     },
     "versions": {
       "choose": "Choose a version",
@@ -863,7 +858,6 @@
     "bookmarks": {
       "label": "Bookmarks",
       "empty": "No bookmarks yet.",
-      "addAt": "Add bookmark at {{time}}",
       "added": "Bookmark added",
       "addFailed": "Couldn't add the bookmark"
     },

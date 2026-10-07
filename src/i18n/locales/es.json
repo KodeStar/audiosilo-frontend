@@ -393,18 +393,13 @@
       "markFinished": "Marcar como terminado"
     },
     "notes": {
-      "title": "Notas",
-      "placeholder": "Añade una nota (admite markdown)…",
-      "add": "Añadir nota",
-      "delete": "Eliminar nota"
+      "title": "Notas"
     },
     "history": {
       "title": "Historial"
     },
     "bookmarks": {
-      "title": "Marcadores",
-      "add": "Añadir marcador",
-      "delete": "Eliminar marcador"
+      "title": "Marcadores"
     },
     "versions": {
       "choose": "Elegir una versión",
@@ -863,7 +858,6 @@
     "bookmarks": {
       "label": "Marcadores",
       "empty": "Aún no hay marcadores.",
-      "addAt": "Añadir marcador en {{time}}",
       "added": "Marcador añadido",
       "addFailed": "No se pudo añadir el marcador"
     },

@@ -393,18 +393,13 @@
       "markFinished": "Marquer comme terminé"
     },
     "notes": {
-      "title": "Notes",
-      "placeholder": "Ajouter une note (markdown pris en charge)…",
-      "add": "Ajouter une note",
-      "delete": "Supprimer la note"
+      "title": "Notes"
     },
     "history": {
       "title": "Historique"
     },
     "bookmarks": {
-      "title": "Signets",
-      "add": "Ajouter un signet",
-      "delete": "Supprimer le signet"
+      "title": "Signets"
     },
     "versions": {
       "choose": "Choisir une version",
@@ -863,7 +858,6 @@
     "bookmarks": {
       "label": "Signets",
       "empty": "Aucun signet pour l'instant.",
-      "addAt": "Ajouter un signet à {{time}}",
       "added": "Signet ajouté",
       "addFailed": "Impossible d'ajouter le signet"
     },
