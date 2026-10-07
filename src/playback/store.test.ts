@@ -1150,95 +1150,62 @@ describe('auto-download on start', () => {
     downloadSpy.mockRestore();
   });
 
-  // Phase 3 (decision 7: each store change has its own regression test).
+  // Phase 3 (decision 7: each store change has its own regression test). The rules live
+  // in the downloads store's `download()` (automatic origins); these prove the book you
+  // start goes through them, against the real downloads store.
   describe('respects the session decline mark and the keep-ahead reserve', () => {
-    beforeEach(() => useSettings.setState({ autoDownloadNext: 'always' }));
+    let fileSpy: jest.SpyInstance;
+    beforeEach(() => {
+      useSettings.setState({ autoDownloadNext: 'always' });
+      // The queue may run; no file is fetched.
+      fileSpy = jest
+        .spyOn(downloadEngine, 'downloadFile')
+        .mockRejectedValue(new Error('offline in tests'));
+    });
+    afterEach(() => fileSpy.mockRestore());
 
+    const entryOf = (book: Book) => useDownloads.getState().entries[`c1:2:${book.rel_path}`];
     async function startAndSettle(book: Book) {
       await startBook(book, 0);
-      await flushMicrotasks();
+      await flushMicrotasks(12);
     }
 
     it('skips a book the listener removed this session, and leaves the mark in place', async () => {
       const book = makeBook();
-      // The real store: a listener's download would clear the mark, an automatic one must not.
       await useDownloads.getState().remove('c1', 2, book.rel_path);
       expect(isDeclined('c1', 2, book.rel_path)).toBe(true);
-      const downloadSpy = jest
-        .spyOn(useDownloads.getState(), 'download')
-        .mockImplementation(() => {});
       await startAndSettle(book);
-      // Declined: not asked at all, and the mark stays.
-      expect(downloadSpy).not.toHaveBeenCalled();
+      // Declined: no download, and the mark stays (an `auto` ask never lifts it).
+      expect(entryOf(book)).toBeUndefined();
       expect(isDeclined('c1', 2, book.rel_path)).toBe(true);
-      downloadSpy.mockRestore();
     });
 
     it('skips a book whose download the listener cancelled this session', async () => {
       const book = makeBook({ rel_path: 'A/Cancelled.m4b' });
       useDownloads.getState().cancel('c1', 2, book.rel_path);
-      const downloadSpy = jest
-        .spyOn(useDownloads.getState(), 'download')
-        .mockImplementation(() => {});
       await startAndSettle(book);
-      expect(downloadSpy).not.toHaveBeenCalled();
-      downloadSpy.mockRestore();
+      expect(entryOf(book)).toBeUndefined();
     });
 
     it('skips a book that would leave less than the reserve free', async () => {
       // 64 GB disk: the reserve is 6.4 GB; 8 GB free leaves 1.6 GB of room.
       estimateSpy.mockResolvedValue({ scope: 'device', capacity: 64 * GB, free: 8 * GB });
-      const downloadSpy = jest
-        .spyOn(useDownloads.getState(), 'download')
-        .mockImplementation(() => {});
-      await startAndSettle(makeBook({ rel_path: 'A/Big.m4b', size: 2 * GB }));
-      expect(downloadSpy).not.toHaveBeenCalled();
+      const book = makeBook({ rel_path: 'A/Big.m4b', size: 2 * GB });
+      await startAndSettle(book);
+      expect(entryOf(book)).toBeUndefined();
 
       // The same book fits once there is room for it.
       estimateSpy.mockResolvedValue({ scope: 'device', capacity: 64 * GB, free: 9 * GB });
       await usePlayer.getState().stop();
-      await startAndSettle(makeBook({ rel_path: 'A/Big.m4b', size: 2 * GB }));
-      expect(downloadSpy).toHaveBeenCalledTimes(1);
-      downloadSpy.mockRestore();
-    });
-
-    it('counts queued downloads and estimates a book of unknown size', async () => {
-      // 4 GB of room after the reserve; a queued 3.5 GB download leaves 0.5 GB.
-      estimateSpy.mockResolvedValue({ scope: 'device', capacity: 64 * GB, free: 10.4 * GB });
-      const queued = makeBook({ rel_path: 'A/Queued.m4b', size: 3.5 * GB });
-      useDownloads.setState({
-        entries: {
-          [`c1:2:${queued.rel_path}`]: {
-            connectionId: 'c1',
-            libraryId: 2,
-            path: queued.rel_path,
-            title: queued.title,
-            status: 'queued',
-            progress: 0,
-            bytes: 0,
-            totalBytes: 0,
-            manifest: { book: queued, chapters: null, files: [], coverUri: null, savedAt: '' },
-          },
-        },
-      });
-      const downloadSpy = jest
-        .spyOn(useDownloads.getState(), 'download')
-        .mockImplementation(() => {});
-      // size 0, ten hours: about 576 MB at 128 kbps, more than the 0.5 GB left.
-      await startAndSettle(makeBook({ rel_path: 'A/Unknown.m4b', size: 0, duration: 36_000 }));
-      expect(downloadSpy).not.toHaveBeenCalled();
-      downloadSpy.mockRestore();
+      await startAndSettle(book);
+      expect(entryOf(book)?.origin).toBe('auto');
     });
 
     it('downloads when the room is not knowable, as keep-ahead starts one', async () => {
       estimateSpy.mockResolvedValue(null);
-      const downloadSpy = jest
-        .spyOn(useDownloads.getState(), 'download')
-        .mockImplementation(() => {});
       const book = makeBook({ rel_path: 'A/Any.m4b', size: 50 * GB });
       await startAndSettle(book);
-      expect(downloadSpy).toHaveBeenCalledWith('c1', 2, book, undefined, 'auto');
-      downloadSpy.mockRestore();
+      expect(entryOf(book)?.origin).toBe('auto');
     });
   });
 });

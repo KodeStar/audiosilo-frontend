@@ -39,8 +39,9 @@ import type { DownloadStatus } from './types';
  * ## How it sits beside the existing automatic download
  * The playback store already downloads the book you START (`maybeAutoDownloadCurrent`
  * in `src/playback/store.ts`, under `autoDownloadNext`), and the player switches to the
- * local copy once it lands. That stays in the store (decision 7); it skips a declined
- * book and keeps the same reserve free (`roomLeft`) as this plan. This controller adds
+ * local copy once it lands. That stays in the store (decision 7); both ask as automatic
+ * origins, so the downloads store's `download()` skips a declined book and keeps the
+ * same reserve free (`roomLeft`) as this plan for either. This controller adds
  * the books AFTER it: with the setting at N, the next N from Up next and then the
  * series (the order the end of a book plays them in, `resolveUpNext`). Both obey the
  * same network rule, both go through the
@@ -151,7 +152,8 @@ async function startOne(client: ApiClient, book: AheadBook): Promise<void> {
     queryClient.fetchQuery(itemQuery(cid, client, libraryId, path)),
     queryClient.fetchQuery(chaptersQuery(cid, client, libraryId, path)),
   ]);
-  if (isDeclined(cid, libraryId, path)) return;
+  // Not an errored one either: keep-ahead never retries a failure on its own. The store
+  // applies the automatic rules (declined this session, the reserve).
   if (useDownloads.getState().entries[contentKeyOf(book)]) return;
   useDownloads.getState().download(cid, libraryId, item, chapters, 'keep-ahead');
 }

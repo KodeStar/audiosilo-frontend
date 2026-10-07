@@ -819,6 +819,9 @@ when the book can't be fetched, so the caller can say so.
   goes first; it never changes the playback store.
 - **The session decline mark**: cancelling or removing a download marks it declined until the app
   restarts (`isDeclined`, memory only); automatic downloads skip it, a listener's download lifts it.
+- **One choke point**: `useDownloads.download(..., origin)` applies the automatic rules itself for
+  the `auto` (the book you start) and `keep-ahead` origins: the decline mark and the reserve
+  (`roomLeft`). Callers just ask with their origin; the listener's own download is never held back.
 - **Kept files**: a failed download keeps the files that finished (classified cause in
   `failure.ts`, `failure.kept`), and a retry fetches only the rest. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download

@@ -12,6 +12,7 @@ import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
+import { estimateBytes, pendingBytes, roomLeft } from './keep-ahead';
 import { classifyDownloadError } from './failure';
 import type {
   DownloadedFile,
@@ -19,6 +20,7 @@ import type {
   DownloadFailure,
   DownloadManifest,
   DownloadOrigin,
+  StorageEstimate,
 } from './types';
 
 const KEY = 'audiosilo.downloads';
@@ -130,33 +132,29 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     const key = downloadKey(connectionId, libraryId, book.rel_path);
     const existing = get().entries[key];
     if (existing && existing.status !== 'error') return; // already queued/downloading/done
-    if (origin === 'listener') declined.delete(key);
-
-    const manifest: DownloadManifest = {
-      book,
-      chapters: chapterData ?? existing?.manifest.chapters ?? null,
-      // A retry keeps the files the failed attempt finished (runOne skips those still
-      // on disk).
-      files: existing?.manifest.files ?? [],
-      coverUri: null,
-      savedAt: new Date().toISOString(),
-    };
-    const entry: DownloadEntry = {
-      connectionId,
-      libraryId,
-      path: book.rel_path,
-      title: book.title,
-      status: 'queued',
-      progress: 0,
-      bytes: 0,
-      totalBytes: 0,
-      origin,
-      manifest,
-    };
-    set({ entries: { ...get().entries, [key]: entry } });
-    void persist();
-    if (!queue.includes(key)) queue.push(key);
-    void runQueue();
+    if (origin === 'listener') {
+      declined.delete(key);
+      enqueue(key, connectionId, libraryId, book, chapterData, origin);
+      return;
+    }
+    // An automatic download (the book you start, keep-ahead) never takes back a book
+    // the listener cancelled or removed this session, and never eats into the reserve
+    // (`roomLeft`; an unknowable room lets it start, one at a time).
+    if (declined.has(key)) return;
+    void (async () => {
+      let storage: StorageEstimate | null = null;
+      try {
+        storage = await engine.storageEstimate();
+      } catch {
+        // not knowable: start it, one at a time like keep-ahead
+      }
+      const room = roomLeft(storage, pendingBytes(Object.values(get().entries)));
+      if (room !== null && estimateBytes(book) > room) return;
+      // Things may have moved while the room was read.
+      const now = get().entries[key];
+      if (declined.has(key) || (now && now.status !== 'error')) return;
+      enqueue(key, connectionId, libraryId, book, chapterData, origin);
+    })();
   },
 
   cancel: (connectionId, libraryId, path) => {
@@ -181,6 +179,45 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 }));
 
 // --- helpers ---------------------------------------------------------------
+
+/** Put a book on the one-at-a-time queue (`download` decided it may go). An errored
+ * entry is retried, keeping the files its failed attempt finished. */
+function enqueue(
+  key: string,
+  connectionId: string,
+  libraryId: number,
+  book: Book,
+  chapterData: ChaptersResponse | undefined,
+  origin: DownloadOrigin,
+) {
+  const { entries } = useDownloads.getState();
+  const existing = entries[key];
+  const manifest: DownloadManifest = {
+    book,
+    chapters: chapterData ?? existing?.manifest.chapters ?? null,
+    // A retry keeps the files the failed attempt finished (runOne skips those still
+    // on disk).
+    files: existing?.manifest.files ?? [],
+    coverUri: null,
+    savedAt: new Date().toISOString(),
+  };
+  const entry: DownloadEntry = {
+    connectionId,
+    libraryId,
+    path: book.rel_path,
+    title: book.title,
+    status: 'queued',
+    progress: 0,
+    bytes: 0,
+    totalBytes: 0,
+    origin,
+    manifest,
+  };
+  useDownloads.setState({ entries: { ...entries, [key]: entry } });
+  void persist();
+  if (!queue.includes(key)) queue.push(key);
+  void runQueue();
+}
 
 /**
  * What a saved entry becomes on launch (`allPresent`: every file it lists is on disk):
