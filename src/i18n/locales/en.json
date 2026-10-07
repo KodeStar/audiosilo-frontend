@@ -985,8 +985,6 @@
       "hideAgain": "Hide them again",
       "spoilersShown": "Spoilers shown",
       "justMet": "Just met",
-      "firstAppears": "First appears in chapter {{chapter}}",
-      "firstAppearsStart": "There from the start",
       "metCount_one": "{{count}} person you've met",
       "metCount_other": "{{count}} people you've met",
       "charactersHidden_one": "{{count}} character you haven't met yet is hidden",

@@ -985,8 +985,6 @@
       "hideAgain": "Ocultarlos de nuevo",
       "spoilersShown": "Spoilers visibles",
       "justMet": "Recién conocido",
-      "firstAppears": "Aparece por primera vez en el capítulo {{chapter}}",
-      "firstAppearsStart": "Presente desde el principio",
       "metCount_one": "{{count}} persona que conoces",
       "metCount_other": "{{count}} personas que conoces",
       "charactersHidden_one": "{{count}} personaje que aún no conoces está oculto",

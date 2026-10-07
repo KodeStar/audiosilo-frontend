@@ -3,11 +3,17 @@ import { View } from 'react-native';
 import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
 
 import type { BookMetaRecap } from '@/api/types';
-import { RecapSummaryBlock, SpoilerChip, summaryIsVisible } from '@/components/library/book-meta';
+import {
+  RecapSummaryBlock,
+  recapHeading,
+  SpoilerChip,
+  summaryIsVisible,
+} from '@/components/library/book-meta';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Text } from '@/components/ui/text';
 
 import { storySoFar } from './companion-model';
-import { Attribution, CompanionEmpty, HiddenStrip } from './companion-pieces';
+import { Attribution, SpoilerStrip } from './companion-pieces';
 import { selectRevealed, useCompanion } from './companion-store';
 import type { CompanionData } from './use-companion-data';
 
@@ -19,14 +25,9 @@ const ARRIVE = FadeIn.duration(520).reduceMotion(ReduceMotion.System);
  * parts that sit outside the book's chapters ("Previously, in earlier books"). */
 function StoryPart({ recap, spoiler }: { recap: BookMetaRecap; spoiler?: boolean }) {
   const { t } = useTranslation();
-  const heading =
-    recap.through.chapter === 0
-      ? recap.scope === 'series'
-        ? t('book.meta.recapSeriesPrior')
-        : t('book.meta.recapBeforeBook')
-      : spoiler
-        ? t('book.meta.recapUpToChapter', { chapter: recap.through.chapter })
-        : null;
+  // In the reached story a part covering chapters needs no heading: the panel's own
+  // "Up to chapter 22" says where it stops.
+  const heading = recap.through.chapter === 0 || spoiler ? recapHeading(t, recap) : null;
   return (
     <View className="gap-1">
       {heading || spoiler ? (
@@ -59,7 +60,7 @@ export function StoryPanel({ data }: { data: CompanionData }) {
   const summaryVisible = summaryIsVisible(data.summary, data.listening.finished);
   if (data.status === 'none' || (data.recaps.length === 0 && !summaryVisible)) {
     return (
-      <CompanionEmpty
+      <EmptyState
         icon="book-open"
         title={t('player.companion.storyEmptyTitle')}
         hint={t('player.companion.storyEmptyHint')}
@@ -95,7 +96,8 @@ export function StoryPanel({ data }: { data: CompanionData }) {
       {summaryVisible ? (
         <RecapSummaryBlock summary={data.summary} finished={data.listening.finished} />
       ) : null}
-      <HiddenStrip
+      <SpoilerStrip
+        token={false}
         count={story.hidden.length}
         title={t('player.companion.recapsHidden', { count: story.hidden.length })}
         hint={t('player.companion.recapsHiddenHint')}

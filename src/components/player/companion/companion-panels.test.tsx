@@ -85,7 +85,7 @@ describe("Who's who", () => {
     expect(screen.getByText("1 character you haven't met yet is hidden")).toBeTruthy();
     expect(screen.getByText("2 people you've met")).toBeTruthy();
     expect(screen.getByText('Also Smeagol')).toBeTruthy();
-    expect(screen.getByText('First appears in chapter 5')).toBeTruthy();
+    expect(screen.getByText('From chapter 5')).toBeTruthy();
   });
 
   it('keeps a description behind its own tap (it is written for the whole book)', async () => {
