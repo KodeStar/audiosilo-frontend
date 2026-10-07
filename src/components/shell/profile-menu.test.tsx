@@ -2,7 +2,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
-const mockRouter = { push: jest.fn() };
+const mockRouter = { push: jest.fn(), navigate: jest.fn() };
 jest.mock('expo-router', () => ({
   get router() {
     return mockRouter;
@@ -71,10 +71,19 @@ describe('ProfileMenu', () => {
     expect(screen.getByText('Dark appearance')).toBeTruthy();
   });
 
-  it('opens the Journal', async () => {
+  it("opens the You hub's Journal", async () => {
     await open();
     await fireEvent.press(screen.getByText('Journal'));
-    expect(mockRouter.push).toHaveBeenCalledWith('/journal');
+    expect(mockRouter.navigate).toHaveBeenCalledWith({
+      pathname: '/you',
+      params: { section: 'journal' },
+    });
+  });
+
+  it('opens Settings on the current tab', async () => {
+    await open();
+    await fireEvent.press(screen.getByText('Settings'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/settings');
   });
 
   it("opens a server's account screen", async () => {

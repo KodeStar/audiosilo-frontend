@@ -10,11 +10,16 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Icon } from '@/components/ui/icon';
 import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
+import { touchTarget } from '@/components/ui/touch-target';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
 import { accountHref } from '@/lib/paths';
+import { cn } from '@/lib/utils';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSession, type Connection } from '@/stores/session';
+
+/** The drawn remove button's size in rem (`h-9 w-9`). */
+const REMOVE_REM = 2.25;
 
 /**
  * The remove-connection flow, split into a hook so the owning screen holds the confirm
@@ -75,20 +80,20 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
   return { onRemove, dialog };
 }
 
-/** Settings section to manage server connections: open one to manage its account,
- * remove a connection, or add another. Content from every connection appears in the
- * unified Home/Search; tapping a row opens that server's per-connection account
- * screen (`/account?connection=<id>`). The remove flow's confirm dialog is owned by
+/** Settings' "Accounts and devices" pane: the signed-in servers, each opening its own
+ * account (`/account?connection=<id>`: password, devices, API keys, sign out), a remove
+ * action per server, and Add a server. Content from every connection appears in the
+ * unified Home/Search. The remove flow's confirm dialog is owned by
  * `useConnectionRemoval` and rendered by the screen; this section just invokes
- * `onRemove`. */
+ * `onRemove`. The pane's heading is the caller's. */
 export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => void }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
   const connections = useSession((s) => s.connections);
+  const { frameClass, hitSlop } = touchTarget(REMOVE_REM, REMOVE_REM);
 
   return (
     <View className="gap-2">
-      <Text variant="eyebrow">{t('account.connections.label')}</Text>
       <View className="gap-2">
         {connections.map((c) => (
           <RowSurface key={c.id} className="flex-row items-center gap-1 pr-1">
@@ -111,12 +116,14 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
             </AnimatedPressable>
             <AnimatedPressable
               onPress={() => onRemove(c)}
-              hitSlop={8}
+              hitSlop={hitSlop}
               accessibilityRole="button"
               accessibilityLabel={t('account.connections.remove', { name: c.name })}
-              className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10"
+              className={cn('items-center justify-center', frameClass)}
             >
-              <Icon name="trash" size={16} color={themed.destructive} />
+              <View className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10">
+                <Icon name="trash" size={16} color={themed.destructive} />
+              </View>
             </AnimatedPressable>
           </RowSurface>
         ))}
@@ -125,6 +132,7 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
           icon="plus"
           variant="secondary"
           onPress={() => router.push('/connect?add=1')}
+          className="self-start"
         />
       </View>
     </View>

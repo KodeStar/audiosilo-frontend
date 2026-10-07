@@ -64,19 +64,28 @@ Desktop
 | Home | none: greeting, Now card, This week, Continue listening, Next in your series, Listening in the house, Smart shelves, Recently added, Favourites, Recently finished | `#home` |
 | Library | Books · Authors · Series · Narrators · Collections · Folders | `#library`, `#series`, `#author`, `#book` |
 | Downloads | none (storage, rules, queue, ready offline) | `#downloads` |
-| You | Stats · Year in listening · Journal | `#stats`, `#year`, `#journal` |
-| Settings (gear) | Preferences · Accounts and devices | `#settings`, `#account` |
+| You | Stats · Year in listening · Journal | `/you?section=stats\|year\|journal` (the Me tab's root) |
+| Settings (gear) | none: a page pushed on the current tab (Back returns there), with its own grouped section nav | `/settings?section=preferences\|accounts\|<pane>`, `/account?connection=` |
 | Overlays | Full player and Finished rise over the current page | `#player`, `#finished` |
 | Standalone | Onboarding / first run; kids mode replaces the whole app | `#connect` |
 
-- Phone **Me** tab is a hub: a large title and a scrolling segmented control (Stats · Year · Journal ·
-  Settings · Account).
+- Phone **Me** tab is a hub (`/you?section=`): a large title naming the section ("Your listening") and a
+  scrolling segmented control (Stats · Year · Journal · Settings · Account). On tablet and desktop the same
+  root is the top bar's **You**; its sub-nav offers only Stats · Year in listening · Journal (Settings is the
+  gear, Account the profile menu; an old link to either still renders). The Journal is a section of the hub
+  (`/journal?tab=` still opens for older links).
+- **Settings** (`SettingsContent`, the `/settings` page and the phone hub's Settings segment) lays out by
+  its measured width: from 720 a grouped section nav (Listening · App · Servers) beside one pane's card,
+  narrower every pane stacked under its group's name.
 - Detail pages (`#series`, `#author`, `#book`) replace the segmented control with Back + breadcrumbs.
 - Hash routes are bare tokens; sub-state (tab, filters, selected series entry) lives in app state
   (Expo Router search params in the real build).
-- **Each setting lives in exactly one place**: Settings sections are Playback, Sleep, Up next and downloads,
-  Appearance, Language, Accessibility, Household and sharing, Servers, Support. Download rules also show in
-  Downloads and in the series page as *shortcuts to the same value*, never a second copy.
+- **Each setting lives in exactly one place**: Settings panes are Listening (Playback, Sleep, Up next and
+  downloads), App (Appearance, Language, Household and sharing: a quiet "arrives with profiles" notice until
+  profiles ship) and Servers (Accounts and devices: the signed-in servers, each opening its Account, and Add
+  a server; Support, hidden in Apple builds). Accessibility gets a pane only once the app has a setting of
+  its own for it (motion and text size follow the system today). Download rules also show in Downloads and
+  in the series page as *shortcuts to the same value*, never a second copy.
 
 ---
 

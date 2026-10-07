@@ -137,8 +137,8 @@ describe('BookmarksSection', () => {
     await render(<BookmarksSection libraryId={1} path="a/book" />);
     await fireEvent.press(screen.getByRole('button', { name: 'See all in your journal' }));
     expect(mockPushInShell).toHaveBeenCalledWith({
-      pathname: '/journal',
-      params: { tab: 'bookmarks' },
+      pathname: '/you',
+      params: { section: 'journal', tab: 'bookmarks' },
     });
   });
 

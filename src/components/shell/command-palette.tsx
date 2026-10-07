@@ -46,6 +46,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { TOP_BAR_TABS, useTabPress } from './destinations';
 import {
   buildActionItems,
+  buildGoToItems,
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
@@ -87,7 +88,6 @@ function useActionItems(): PaletteItem[] {
   const chapter = usePlayer(selectCurrentChapter);
   const upNext = useUpNextBadge();
   const { scheme, toggleScheme } = useTheme();
-  const { press } = useTabPress();
 
   return useMemo(() => {
     const chapterName = nowPlaying && chapter ? chapterLabel(chapter, t) : null;
@@ -118,39 +118,24 @@ function useActionItems(): PaletteItem[] {
         },
         player: () => router.push('/player'),
         upNext: openUpNext,
-        settings: () => press('(me)'),
         appearance: toggleScheme,
       },
       t,
     );
-  }, [
-    t,
-    nowPlaying,
-    isPlaying,
-    chapter,
-    upNext.supported,
-    upNext.count,
-    scheme,
-    toggleScheme,
-    press,
-  ]);
+  }, [t, nowPlaying, isPlaying, chapter, upNext.supported, upNext.count, scheme, toggleScheme]);
 }
 
-/** Go to: the top bar's destinations (Downloads only where this browser can keep books),
- * then the Journal, a page of its own until the You destination arrives (Phase 5). */
+/** Go to (`buildGoToItems`): the top bar's destinations (Downloads only where this
+ * browser can keep books), You's sections, the Journal and Settings. */
 function useGoToItems(): PaletteItem[] {
   const { t } = useTranslation();
   const { press } = useTabPress();
-  const { openJournal } = useOpen();
-  return [
-    ...TOP_BAR_TABS.map((d): PaletteItem => ({
-      id: `go:${d.name}`,
-      title: t(d.labelKey),
-      icon: d.icon,
-      run: () => press(d.name),
-    })),
-    { id: 'go:journal', title: t('journal.title'), icon: 'history', run: () => openJournal() },
-  ];
+  const { openJournal, openSettings, openYou } = useOpen();
+  return buildGoToItems(
+    TOP_BAR_TABS,
+    { tab: press, you: openYou, journal: () => openJournal(), settings: () => openSettings() },
+    t,
+  );
 }
 
 /** Books for the query (the cross-server search, from `useSearch`) and, with no query,

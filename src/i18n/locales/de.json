@@ -15,11 +15,13 @@
       "label": "Darstellung",
       "light": "Hell",
       "dark": "Dunkel",
-      "system": "System"
+      "system": "System",
+      "description": "Hell, dunkel oder wie dieses Gerät."
     },
     "language": {
       "label": "Sprache",
-      "system": "System"
+      "system": "System",
+      "description": "Die Sprache der App. System folgt diesem Gerät."
     },
     "playback": {
       "label": "Wiedergabe",
@@ -127,7 +129,35 @@
       "intro": "AudioSilo wird selbst gehostet und ist kostenlos. Wenn du die Entwicklung unterstützen möchtest, kannst du über GitHub Sponsors beitragen.",
       "cta": "AudioSilo unterstützen"
     },
-    "version": "AudioSilo v{{version}}"
+    "version": "AudioSilo v{{version}}",
+    "sectionsLabel": "Bereiche der Einstellungen",
+    "groups": {
+      "listening": "Hören",
+      "app": "App",
+      "servers": "Server"
+    },
+    "sections": {
+      "playback": "Wiedergabe",
+      "sleep": "Sleep-Timer",
+      "downloads": "Als Nächstes und Downloads",
+      "appearance": "Darstellung",
+      "language": "Sprache",
+      "household": "Haushalt und Teilen",
+      "accounts": "Konten und Geräte",
+      "support": "AudioSilo unterstützen"
+    },
+    "household": {
+      "title": "Profile kommen später",
+      "body": "Für alle im Haushalt ein eigener Platz in jedem Buch, ein Kindermodus und Teilen kommen mit den Profilen in einem späteren Update.",
+      "flag": "Kommt mit den Profilen"
+    },
+    "accounts": {
+      "intro": "Die Server, bei denen dieses Gerät angemeldet ist. Öffne einen für Passwort, deine Geräte und API-Schlüssel."
+    },
+    "stepper": {
+      "less": "{{label}}, weniger",
+      "more": "{{label}}, mehr"
+    }
   },
   "account": {
     "connections": {
@@ -1164,8 +1194,27 @@
     "offline": "Offline – Änderungen werden bei erneuter Verbindung synchronisiert",
     "someOffline": "Einige Server offline",
     "me": "Ich",
+    "you": "Du",
     "back": "Zurück",
     "backTo": "Zurück zu {{name}}"
+  },
+  "you": {
+    "sections": {
+      "label": "Bereiche von Du",
+      "stats": "Statistik",
+      "year": "Jahr",
+      "journal": "Journal",
+      "settings": "Einstellungen",
+      "account": "Konto"
+    },
+    "titles": {
+      "stats": "Dein Hören",
+      "year": "Dein Hörjahr",
+      "journal": "Journal",
+      "settings": "Einstellungen",
+      "account": "Konto"
+    },
+    "placeholder": "Dieser Bereich kommt bald."
   },
   "ui": {
     "error": "Etwas ist schiefgelaufen.",
@@ -1240,7 +1289,6 @@
     "upNext": "Als Nächstes öffnen",
     "upNextHint_one": "{{count}} Buch vorgemerkt",
     "upNextHint_other": "{{count}} Bücher vorgemerkt",
-    "settings": "Zu den Einstellungen",
     "settingsHint": "Server, Darstellung und Wiedergabe",
     "dark": "Zur dunklen Darstellung wechseln",
     "light": "Zur hellen Darstellung wechseln",
@@ -1445,7 +1493,6 @@
   "journal": {
     "title": "Journal",
     "heading": "Alles, was du markiert hast",
-    "entryHint": "Dein Hörtagebuch, deine Lesezeichen und Notizen",
     "tabs": {
       "label": "Bereiche des Journals",
       "diary": "Tagebuch",
