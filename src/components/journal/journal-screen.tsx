@@ -53,7 +53,11 @@ export function JournalScreen() {
   const tab = parseJournalTab(params.tab);
   const [query, setQuery] = useState('');
   const [width, setWidth] = useState(0);
-  const sources = useJournalSources();
+  // The notes are asked for once the Notes tab is first opened (the Diary shows none);
+  // the export reads them on its own.
+  const [notesWanted, setNotesWanted] = useState(tab === 'notes');
+  if (tab === 'notes' && !notesWanted) setNotesWanted(true);
+  const sources = useJournalSources({ notes: notesWanted });
   const exporter = useJournalExport(sources);
 
   const setTab = (next: JournalTab) =>
@@ -118,7 +122,6 @@ export function JournalScreen() {
 
   return (
     <View className="flex-1" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      {sources.feeders}
       {tab === 'diary' ? (
         <DiaryTab
           header={header}

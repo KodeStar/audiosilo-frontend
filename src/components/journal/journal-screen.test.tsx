@@ -54,7 +54,7 @@ let mockSources: {
   notes: Source<MyNote>[];
 };
 jest.mock('./use-journal-sources', () => ({
-  useJournalSources: () => ({ ...mockSources, feeders: null }),
+  useJournalSources: () => mockSources,
 }));
 const mockRun = jest.fn();
 jest.mock('./use-journal-export', () => ({
@@ -82,6 +82,7 @@ function source<T>(connectionId: string, rows: T[], over: Partial<Source<T>> = {
     connectionId,
     connectionName: connectionId === 'c1' ? 'Hearthside' : "Maya's Shelf",
     status: 'ready',
+    supported: true,
     rows,
     hasNextPage: false,
     isFetchingNextPage: false,

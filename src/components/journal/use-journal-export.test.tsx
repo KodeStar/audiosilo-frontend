@@ -58,6 +58,7 @@ function source<T>(connectionId: string, status: Source<T>['status']): Source<T>
     connectionId,
     connectionName: connectionId === 'c1' ? 'Hearthside' : connectionId === 'c2' ? 'Maya' : 'Old',
     status,
+    supported: status !== 'unsupported',
     rows: [],
     hasNextPage: false,
     isFetchingNextPage: false,
