@@ -1,4 +1,4 @@
-import { scaleRuns, type ScaleRun } from '@/components/home/now-card-model';
+import { chapterIndexAt, scaleRuns, type ScaleRun } from '@/components/home/now-card-model';
 
 /**
  * The whole-book timeline's maths (STYLEGUIDE section 8, "Seek bar and chapter
@@ -50,4 +50,23 @@ export function runBox(run: ScaleRun, total: number): { left: number; width: num
 export function heardIn(run: ScaleRun, at: number): number {
   const span = run.to - run.from;
   return span > 0 ? Math.min(1, Math.max(0, (at - run.from) / span)) : 0;
+}
+
+/** How finely the bound timeline follows the playhead: about a pixel of a wide timeline,
+ * at least a second. */
+export const positionStep = (total: number) => Math.max(1, total / 2000);
+
+/**
+ * The place the bound timeline draws for the listener at `position` (whole-book seconds)
+ * in a book `total` long with chapters starting at `starts`: rounded down to a
+ * `positionStep`, so it re-renders per step rather than per tick, but never below the
+ * start of the chapter `position` is in. Right after a jump to a chapter's start (Next
+ * chapter, a chapter row, a step on the timeline itself) a plain floor would land in the
+ * chapter before, and the timeline would mark and name that one as playing.
+ */
+export function timelinePosition(position: number, total: number, starts: readonly number[]) {
+  const step = positionStep(total);
+  const floored = Math.floor(position / step) * step;
+  const start = starts[chapterIndexAt(starts, position)];
+  return start !== undefined && position >= start ? Math.max(floored, start) : floored;
 }

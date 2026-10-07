@@ -1,6 +1,12 @@
 import { chapterIndexAt, runState } from '@/components/home/now-card-model';
 
-import { heardIn, maxSegmentsFor, runBox, timelineRuns } from './book-timeline-model';
+import {
+  heardIn,
+  maxSegmentsFor,
+  runBox,
+  timelinePosition,
+  timelineRuns,
+} from './book-timeline-model';
 
 /** The runs as the timeline draws them with the listener at `at`: where each sits (percent
  * of the track), its state and how much of it is heard. */
@@ -105,5 +111,25 @@ describe('maxSegmentsFor', () => {
     expect(maxSegmentsFor(0)).toBe(Infinity);
     expect(maxSegmentsFor(98)).toBe(20);
     expect(maxSegmentsFor(1)).toBe(1);
+  });
+});
+
+describe('timelinePosition', () => {
+  // 36 000 s follows in 18 s steps.
+  const starts = [0, 600, 18_001.5];
+
+  it('rounds the place down to a step', () => {
+    expect(timelinePosition(1000, 36_000, starts)).toBe(990);
+  });
+
+  it('never below the start of the chapter the place is in (a jump to its start)', () => {
+    expect(timelinePosition(18_001.5, 36_000, starts)).toBe(18_001.5);
+    expect(timelinePosition(18_010, 36_000, starts)).toBe(18_001.5);
+    expect(timelinePosition(18_020, 36_000, starts)).toBe(18_018);
+  });
+
+  it('is the plain step before the first chapter and without chapters', () => {
+    expect(timelinePosition(25, 36_000, [30, 600])).toBe(18);
+    expect(timelinePosition(25, 36_000, [])).toBe(18);
   });
 });

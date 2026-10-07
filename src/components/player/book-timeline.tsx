@@ -20,7 +20,13 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { heardIn, runBox, SEGMENT_GAP, timelineRuns } from './book-timeline-model';
+import {
+  heardIn,
+  runBox,
+  SEGMENT_GAP,
+  timelinePosition,
+  timelineRuns,
+} from './book-timeline-model';
 import { Playhead, ScrubTip, useWebHoverFraction } from './scrub-parts';
 import { scrubTarget, stepSegment } from './transport';
 import type { BookPins } from './use-playing-pins';
@@ -301,10 +307,6 @@ export function BookTimeline({
   );
 }
 
-/** How finely the bound timeline follows the playhead: about a pixel of a wide timeline,
- * at least a second. */
-const positionStep = (total: number) => Math.max(1, total / 2000);
-
 /**
  * The whole-book timeline of the PLAYING book: its chapters, place, and the pins the
  * caller fetched once (`usePlayingPins`), seeking through the store (a jump: the Undo chip
@@ -324,10 +326,6 @@ export function PlayerBookTimeline({
   const { t } = useTranslation();
   const queue = usePlayer((s) => s.nowPlaying?.queue ?? null);
   const total = queue?.total ?? 0;
-  const position = usePlayer((s) => {
-    const step = positionStep(total);
-    return Math.floor(selectBookPosition(s) / step) * step;
-  });
   const seekBook = usePlayer((s) => s.seekBook);
   const chapters = queue?.chapters;
   const { starts, titles } = useMemo(
@@ -337,6 +335,7 @@ export function PlayerBookTimeline({
     }),
     [chapters, t],
   );
+  const position = usePlayer((s) => timelinePosition(selectBookPosition(s), total, starts));
   if (!queue || total <= 0) return null;
   return (
     <BookTimeline

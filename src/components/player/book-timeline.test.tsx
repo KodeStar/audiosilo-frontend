@@ -270,6 +270,25 @@ describe('PlayerBookTimeline', () => {
     expect(player.getState().seekBook).toHaveBeenLastCalledWith(3970);
   });
 
+  it('names the chapter a jump just landed on, not the one before', async () => {
+    // A 10-hour book follows the playhead in 18 s steps; chapter 3 starts off a step.
+    const starts = [0, 600, 18_001.5, 30_000];
+    player.setState({
+      nowPlaying: {
+        queue: {
+          total: 36_000,
+          offsets: [0],
+          chapters: starts.map((s, i) => ({ index: i, title: TITLES[i], book_offset: s })),
+        },
+      },
+      bookPosition: 18_001.5, // Next chapter landed exactly on its start
+    });
+    await render(<PlayerBookTimeline />);
+    expect(screen.getByRole('adjustable').props['aria-valuetext']).toMatch(/^Bridge Four, /);
+    expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
+    expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
+  });
+
   it('steps to the next chapter like the transport', async () => {
     await render(<PlayerBookTimeline />);
     await fireEvent(screen.getByRole('adjustable'), 'accessibilityAction', {
