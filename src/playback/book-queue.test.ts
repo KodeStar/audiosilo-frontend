@@ -557,3 +557,62 @@ describe('nextChapterEnd', () => {
     expect(nextChapterEnd(broken, 0, 1, 30)?.endPosition).toBe(100);
   });
 });
+
+describe('buildBookQueue transcode (web negotiation)', () => {
+  // A client whose stream url shows the transcode option, so the test can see it.
+  const transcodingApi = {
+    coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+    streamUrl: (lib: number, path: string, _download?: boolean, opts?: { transcode?: boolean }) =>
+      `stream:${lib}:${path}${opts?.transcode ? ':transcode' : ''}`,
+    authHeaders: () => ({}),
+  } as unknown as ApiClient;
+  const book = makeBook({
+    rel_path: 'A/Book',
+    is_folder: true,
+    files: [
+      { rel_path: 'A/Book/01.ac3', seq: 1, duration: 60, format: 'ac3', size: 5 },
+      { rel_path: 'A/Book/02.ac3', seq: 2, duration: 100, format: 'ac3', size: 10 },
+    ],
+  });
+
+  it('requests the transcoded stream for every file and flags the tracks', () => {
+    const q = buildBookQueue(transcodingApi, 2, book, undefined, undefined, undefined, true);
+    expect(q.tracks.map((t) => t.url)).toEqual([
+      'stream:2:A/Book/01.ac3:transcode',
+      'stream:2:A/Book/02.ac3:transcode',
+    ]);
+    expect(q.tracks.every((t) => t.transcoded === true)).toBe(true);
+    // The timeline is unchanged: durations come from the file list, not the stream.
+    expect(q.offsets).toEqual([0, 60]);
+    expect(q.tracks[1].duration).toBe(100);
+  });
+
+  it('leaves a direct stream exactly as before (no flag key at all)', () => {
+    const q = buildBookQueue(transcodingApi, 2, book);
+    expect(q.tracks[0].url).toBe('stream:2:A/Book/01.ac3');
+    expect('transcoded' in q.tracks[0]).toBe(false);
+  });
+
+  it('never transcodes a local file', () => {
+    const local = { files: new Map([['A/Book/01.ac3', 'file:///01.ac3']]) };
+    const q = buildBookQueue(transcodingApi, 2, book, undefined, local, undefined, true);
+    expect(q.tracks[0]).toMatchObject({ url: 'file:///01.ac3' });
+    expect(q.tracks[0].transcoded).toBeUndefined();
+    // A file still streaming (a partial local map) does.
+    expect(q.tracks[1]).toMatchObject({
+      url: 'stream:2:A/Book/02.ac3:transcode',
+      transcoded: true,
+    });
+  });
+
+  it('cannot transcode without a client (an offline, all-local book)', () => {
+    const local = {
+      files: new Map([
+        ['A/Book/01.ac3', 'file:///01.ac3'],
+        ['A/Book/02.ac3', 'file:///02.ac3'],
+      ]),
+    };
+    const q = buildBookQueue(null, 2, book, undefined, local, undefined, true);
+    expect(q.tracks.some((t) => t.transcoded)).toBe(false);
+  });
+});

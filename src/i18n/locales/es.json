@@ -341,6 +341,7 @@
     },
     "download": {
       "unavailable": "Descargas no disponibles",
+      "notInBrowser": "No se puede descargar en este navegador",
       "remove": "Quitar descarga",
       "cancel": "Cancelar descarga",
       "retry": "Reintentar descarga",
@@ -704,6 +705,8 @@
     "bitrate": "Tasa de bits: {{value}}",
     "byAuthor": "De {{author}}",
     "narratedBy": "Narrado por {{narrator}}",
+    "transcodeNote": "El audio {{codec}} se convierte a MP3 para este navegador",
+    "transcodeNoteGeneric": "Este audio se convierte a MP3 para este navegador",
     "listen": "Escuchar",
     "tabs": {
       "recaps": "Resúmenes",

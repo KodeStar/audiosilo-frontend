@@ -8,6 +8,7 @@ import type { Book, ChaptersResponse } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { getItem, setItem } from '@/lib/storage';
 import { bookFileSpecs } from '@/playback/book-queue';
+import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
@@ -122,6 +123,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
     if (!engine.supported) return;
+    // A book this browser plays through the server's transcoder would download as its
+    // raw files, which it can't play offline: refuse (every path - the book page, auto
+    // download, keep-ahead - lands here). The UI says why (useDownloadControls).
+    if (webTranscodeFromCache(connectionId, book, chapterData)) return;
     const key = downloadKey(connectionId, libraryId, book.rel_path);
     const existing = get().entries[key];
     if (existing && existing.status !== 'error') return; // already queued/downloading/done

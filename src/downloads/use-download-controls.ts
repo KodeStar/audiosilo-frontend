@@ -1,7 +1,10 @@
 import { useCallback } from 'react';
+import { Platform } from 'react-native';
 
+import { useCapability } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
+import { needsWebTranscode } from '@/playback/transcode';
 
 import { useDownloadEntry, useDownloads } from './store';
 import type { DownloadStatus } from './types';
@@ -10,6 +13,10 @@ export type DownloadControls = {
   /** The connection the download belongs to. */
   connectionId: string;
   supported: boolean;
+  /** Web only: this book streams through the server's transcoder here, so its raw
+   * files would not play offline in this browser and downloading it is off (`supported`
+   * is false too). Lets the UI say why instead of a generic "unavailable". */
+  needsTranscode: boolean;
   status: DownloadStatus | undefined;
   error: string | undefined;
   progress: number;
@@ -34,7 +41,15 @@ export function useDownloadControls(
   const entry = useDownloadEntry(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
   // serve offline media), not just the static Cache-API capability.
-  const supported = useDownloads((s) => s.supported);
+  const storeSupported = useDownloads((s) => s.supported);
+  // A download already on disk stays manageable (remove), so only an absent or failed
+  // one is blocked.
+  const canTranscode = useCapability('transcode', cid);
+  const needsTranscode =
+    !!book &&
+    (entry === undefined || entry.status === 'error') &&
+    needsWebTranscode(Platform.OS, book, chapterData, canTranscode);
+  const supported = storeSupported && !needsTranscode;
 
   const start = useCallback(() => {
     if (book) useDownloads.getState().download(cid, libraryId, book, chapterData);
@@ -47,6 +62,7 @@ export function useDownloadControls(
   return {
     connectionId: cid,
     supported,
+    needsTranscode,
     status: entry?.status,
     error: entry?.error,
     progress: entry?.progress ?? 0,

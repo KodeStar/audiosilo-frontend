@@ -176,6 +176,11 @@ export function synthesizeChapters(
  * be built with no server client (its connection may be gone, e.g. a token that failed to
  * hydrate). Every server-derived value - stream URLs, auth headers, the remote cover - is
  * only reached for a track WITHOUT a local file, which a downloaded book never has.
+ *
+ * `transcode` (web only, decided by the caller - see `playback/transcode.ts`) streams
+ * every non-local file through the server's transcoder: the url carries `transcode=1`
+ * and the track is flagged `transcoded` so the web engine seeks by re-requesting. A
+ * local file is never transcoded.
  */
 export function buildBookQueue(
   api: ApiClient | null,
@@ -184,6 +189,7 @@ export function buildBookQueue(
   chapterData?: ChaptersResponse,
   local?: { files: Map<string, string>; artwork?: string },
   virtualChapterInterval: number = DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
+  transcode = false,
 ): BookQueue {
   // Native engines authenticate via headers; web embeds the token in the URL. No client
   // (offline downloaded book) => no headers needed, since every track is a local file.
@@ -195,18 +201,26 @@ export function buildBookQueue(
 
   const tracks: PlaybackTrack[] = specs.map((s) => {
     const localUri = local?.files.get(s.path);
+    const transcoded = transcode && !localUri && !!api;
     return {
       id: `${libraryId}:${s.path}`,
       // A downloaded book has a local uri for every file; the `api?.streamUrl` fallback is
       // only for streaming (api present). The final `?? ''` is unreachable for a book the
       // caller vetted as playable (downloaded => all-local, or streaming => api present).
-      url: localUri ?? api?.streamUrl(libraryId, s.path) ?? '',
+      url:
+        localUri ??
+        (transcoded
+          ? api.streamUrl(libraryId, s.path, false, { transcode: true })
+          : api?.streamUrl(libraryId, s.path)) ??
+        '',
       headers: localUri ? undefined : headers,
       title: book.title,
       album: book.series || book.title,
       artist: book.author || book.narrator || '',
       artwork,
       duration: s.duration > 0 ? s.duration : undefined,
+      // Only present when set, so a direct stream's track is exactly what it always was.
+      ...(transcoded ? { transcoded: true } : {}),
     };
   });
 

@@ -21,6 +21,7 @@ import {
   saveProgress,
 } from './progress-sync';
 import { createPlaybackService } from './service';
+import { mayNeedWebTranscode, resolveWebTranscode } from './transcode-capability';
 import {
   clampVolume,
   INITIAL_SNAPSHOT,
@@ -547,6 +548,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
     resumeLookupFailed = false;
 
+    // Web only: a book the browser can't decode streams through the server's transcoder
+    // when it has one (playback/transcode.ts). Decided once here, so every later reload
+    // (retry, seeks) reuses the queue's transcoded tracks; a downloaded book is local
+    // files and never transcodes. Every other book skips the lookup (and its await).
+    const transcode =
+      !local &&
+      mayNeedWebTranscode(book, chapterData) &&
+      (await resolveWebTranscode(connectionId, api, book, chapterData));
     const queue = buildBookQueue(
       api,
       libraryId,
@@ -554,6 +563,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       chapterData,
       local,
       useSettings.getState().virtualChapterInterval,
+      transcode,
     );
     const nowPlaying: NowPlaying = {
       connectionId,
