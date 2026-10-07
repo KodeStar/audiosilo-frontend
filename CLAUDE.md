@@ -398,8 +398,8 @@ the player's chapter identity**: a chapterless single-file book gets *synthetic*
 reading them as logical chapter numbers revealed the whole cast an hour in. The
 consequence is that a chapterless book gates to 0 whether playing or not (accepted -
 "Show anyway" is the escape hatch). The live position is sampled in coarse buckets
-(`LIVE_POSITION_BUCKET_S`, exported by `meta-gating.ts` for the book page, the player's companion
-and Previously on) so the screen re-renders at chapter-ish granularity
+(`LIVE_POSITION_BUCKET_S`, exported by `meta-gating.ts` for the book page and the player's
+companion; Previously on reads the saved place, never the live one) so the screen re-renders at chapter-ish granularity
 rather than per tick; rounding DOWN can only delay a reveal, never reveal early.
 That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
@@ -928,7 +928,18 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   presenter, `PlayerSheet` (`body` `scroll` or `fill`); one host in the full player and one in the
   shell (`ShellPlayerOverlays`, with the floating `GraceCard` where a toast would sit; it publishes a
   `grace` chrome edge, so the toasts lift above it), and `hostIsActive` lets the shell's stand back
-  while the player route is on top. The player keys stand back over any open layer (`isModalOpen`: an
+  while the player route is on top. A book's sheet request (speed, sleep, chapters, the companion) is
+  dropped when the book unloads, so the next book never opens it by itself. Only the top app shell
+  (`useIsTopShell`) mounts these overlays, the palette, the shortcuts overlay and the keys. **Never
+  stack shells**: a page of the app shell opened from a root route (the full player, the credits)
+  goes through `pushInShell` (`src/lib/open.ts`; `useOpen` does it), never `router.push` or
+  `router.replace`, which would put a second `(app)` over the first. Code that must know where the
+  player is at a press reads `topRootRoute(currentNavState())` (`src/lib/root-stack.ts`) instead of
+  subscribing with `usePlayerOnTop`. **Touch targets**: a rem is 14 pt on native, so a rem-sized
+  control (`h-11` = 38.5 pt) takes `hitSlop={slopTo44(rem)}` (`control-pill.tsx`; zero on the web
+  for 2.75 rem); tests assert it with `expectNativeTarget` (`src/testing/touch-target.ts`). The
+  sync line (`usePlaceSync`) counts only the playing book's server's queued saves and polls while
+  playing (a 5xx save queues with the server still online). The player keys stand back over any open layer (`isModalOpen`: an
   `aria-modal` `Sheet`, or a Radix Dialog, AlertDialog, menu or select, which say so with
   `data-state="open"` and no `aria-modal`); Space stands aside for a focused control Space activates
   (`ownsSpace`: a button, a tab...) and the arrows for one that moves with them (`ownsArrows`: a
@@ -941,7 +952,9 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   far gate); "Resume, with 30 seconds of overlap" (`resumeWithOverlap`) starts 30 s before the NEWEST
   saved place at its speed: the resume lookup (`loadInitialProgress`: the server, the local mirror and
   the offline queue) against Home's server row, since a start at an explicit position skips the
-  store's own reconciliation.
+  store's own reconciliation. The card is dark in both themes through `ScopedThemeColors`
+  (`use-theme-colors.tsx`), which also hands the dark colours to `useThemeColors` below it, so colour
+  props (a Button's spinner, icons) follow the scope as classes do.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
   omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:
@@ -971,8 +984,12 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   Move up/down) is a positioned add with the visible index, Clear is exact-path deletes with one Undo.
   Play now goes through the shared `usePlayBook` (below). Web
   desktop covers (`CoverTile`) are HTML5 drag sources (`drag-source.web.ts`) for the drawer's drop zone,
-  which takes only a book from the queue's own server. The queue does NOT drive what plays next yet
-  (Phase 3); the footer switch is the existing `autoPlayNext`. Pure rules: `up-next-model.ts`.
+  which takes only a book from the queue's own server. The queue's head is what plays next
+  (`resolveUpNext`: the queue, then the server's `next_book`, then the folder); the footer switch is
+  `autoPlayNext`. Q closes the sheet it opened (the sheet carries `layer="upnext"`, which
+  `useGlobalShortcut` does not count as a blocking layer). A row or a suggestion opens its page
+  through `useOpen`, which from over the full player lands in the shell underneath (`pushInShell`).
+  Pure rules: `up-next-model.ts`.
 - **Search** (`src/components/search/`, the `(search)` tab): the field, then recent searches (ONE list
   with the palette, `useRecentSearches` in `stores/search.ts`, key `audiosilo.paletteRecent`) and
   Browse cards (the selected library's counts, opening the Library modes), or the grouped results
