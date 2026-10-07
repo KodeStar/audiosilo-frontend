@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react';
-import { Uniwind, useUniwind } from 'uniwind';
+import { ScopedTheme, Uniwind, useUniwind } from 'uniwind';
 
 import { colors, type ThemeColors } from '@/theme/tokens';
 
@@ -17,6 +17,26 @@ export function ThemeColorsProvider({ children }: { children: ReactNode }) {
   const { theme } = useUniwind();
   return (
     <ThemeColorsContext.Provider value={forTheme(theme)}>{children}</ThemeColorsContext.Provider>
+  );
+}
+
+/**
+ * Uniwind's `ScopedTheme` (a subtree in a fixed theme: Home's dark Previously on card)
+ * that also hands that theme's colours to `useThemeColors` below it, so colour props
+ * follow the scope as classes do: a light-mode spinner on a dark-scope primary button
+ * was near-white on near-white.
+ */
+export function ScopedThemeColors({
+  theme,
+  children,
+}: {
+  theme: 'light' | 'dark';
+  children: ReactNode;
+}) {
+  return (
+    <ScopedTheme theme={theme}>
+      <ThemeColorsContext.Provider value={forTheme(theme)}>{children}</ThemeColorsContext.Provider>
+    </ScopedTheme>
   );
 }
 

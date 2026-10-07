@@ -50,6 +50,22 @@ describe('Sheet', () => {
       const json = JSON.stringify(screen.toJSON());
       expect(json.match(/"aria-modal":true/g)).toHaveLength(1);
       expect(json).toContain('"role":"dialog"');
+      expect(json).not.toContain('"dataSet"');
+    } finally {
+      Platform.OS = prevOS;
+    }
+  });
+
+  it('names its layer on the web, for the shortcut that toggles it', async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      await mount(
+        <Sheet visible onClose={jest.fn()} layer="upnext">
+          <Text>Hosted</Text>
+        </Sheet>,
+      );
+      expect(JSON.stringify(screen.toJSON())).toContain('"dataSet":{"layer":"upnext"}');
     } finally {
       Platform.OS = prevOS;
     }

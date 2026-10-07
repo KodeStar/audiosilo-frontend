@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { BookMetaRecap, Progress } from '@/api/types';
 
@@ -51,6 +51,8 @@ jest.mock('@/components/library/use-book-community', () => ({
 }));
 
 /* eslint-disable import/first */
+import { colors } from '@/theme/tokens';
+
 import { PreviouslyOnCard, resumeWithOverlap } from './previously-on';
 /* eslint-enable import/first */
 
@@ -128,5 +130,31 @@ describe('PreviouslyOnCard', () => {
       ]),
     );
     expect(mockStart).toHaveBeenCalledWith(at, { position: 4970, speed: 1.5 });
+  });
+
+  // The card is always dark (a scoped theme), but the Resume spinner took the app theme's
+  // colour: in light mode a near-white spinner on the dark scope's near-white button.
+  it("spins in the card's dark ink while resuming, whatever the app theme", async () => {
+    let finish!: (v: unknown) => void;
+    mockLookup.mockReturnValue(new Promise((r) => (finish = r)));
+    // Another book: the test above resumed (and so dismissed) Mistborn's card.
+    const other = { ...at, path: 'Sanderson/Elantris' };
+    await render(<PreviouslyOnCard at={other} saved={{ ...saved, path: other.path }} />);
+    await fireEvent.press(screen.getByText('Resume, with 30 seconds of overlap'));
+    type Node = { type: string; props: { color?: string }; children?: (Node | string)[] | null };
+    const find = (n: Node | string | null): Node | null => {
+      if (!n || typeof n === 'string') return null;
+      if (n.type === 'ActivityIndicator') return n;
+      for (const c of n.children ?? []) {
+        const hit = find(c);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    const tree = screen.toJSON() as Node | Node[] | null;
+    const spinner = (Array.isArray(tree) ? tree : [tree]).map(find).find(Boolean);
+    expect(spinner?.props.color).toBe(colors.dark.primaryForeground);
+    expect(colors.dark.primaryForeground).not.toBe(colors.light.primaryForeground);
+    await act(async () => finish({ kind: 'empty' }));
   });
 });

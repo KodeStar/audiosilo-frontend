@@ -36,9 +36,12 @@ jest.mock('./undo-chip', () => {
 
 /* eslint-disable import/first */
 import { useJumpUndo } from '@/playback/jump-undo';
+import { usePlayer } from '@/playback/store';
 import { playerStoreMock } from '@/testing/player-store-mock';
+import { mountWithPortal } from '@/testing/render-overlay';
+import { expectNativeTarget } from '@/testing/touch-target';
 
-import { PlayerActions, PlayerStatusLine } from './player-parts';
+import { CompanionChips, PlayerActions, PlayerHeader, PlayerStatusLine } from './player-parts';
 import { usePlayerSheets } from './player-sheets';
 /* eslint-enable import/first */
 
@@ -97,6 +100,33 @@ describe('PlayerStatusLine', () => {
     await mount(<PlayerStatusLine />);
     expect(screen.getByText('Back to 1:00:00')).toBeTruthy();
     expect(screen.queryByText(/Synced/)).toBeNull();
+  });
+});
+
+// STYLEGUIDE section 14: 44 pt targets. A rem is 14 pt on iOS and Android, so the 2.75
+// rem (`h-11`) buttons and pills were 38.5 pt there without their hit slop.
+describe('touch targets on native', () => {
+  it('gives the header buttons, the action pills and the companion chips 44 pt', async () => {
+    usePlayer.setState({ canRoutePick: true });
+    await mountWithPortal(
+      <>
+        <PlayerHeader onClose={jest.fn()} onChapters={jest.fn()} />
+        <PlayerActions wide upNext />
+        <CompanionChips />
+      </>,
+    );
+    for (const label of [
+      'Minimise player',
+      'More',
+      'Playback speed, 1.25×',
+      'Add a bookmark',
+      'AirPlay or Cast',
+      "Who's who",
+      'Chapters',
+    ]) {
+      expectNativeTarget(screen.getByLabelText(label));
+    }
+    expectNativeTarget(screen.getByTestId('player-upnext'));
   });
 });
 

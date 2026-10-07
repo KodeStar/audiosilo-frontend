@@ -24,6 +24,7 @@ import { useShellMetrics } from '@/components/shell/shell-metrics';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
+import { expectNativeTarget } from '@/testing/touch-target';
 
 import { selectChapterFraction } from './chapter-progress';
 import {
@@ -68,6 +69,12 @@ beforeEach(() => {
 });
 
 describe('MiniPlayer', () => {
+  // 2.5 rem is 35 pt on native (a 14 pt rem): skip back needs its slop to reach 44.
+  it('gives skip back a 44 pt target on native', async () => {
+    await render(<MiniPlayer />);
+    expectNativeTarget(screen.getByLabelText('Back 15 seconds'));
+  });
+
   it('shows the chapter, then the book and its time left at the listening speed', async () => {
     await render(<MiniPlayer />);
     expect(screen.getByText('Bridge Four')).toBeTruthy();

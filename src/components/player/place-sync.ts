@@ -38,8 +38,9 @@ const TEXT = {
 /**
  * The sync line of the playing book's server (`placeSync`), as an icon and words, for
  * the docked bar and the full player's status line. Null for a book whose server was
- * removed (a download playing on). The offline queue is read as servers come and go,
- * and polled only while something waits in it or a server is offline.
+ * removed (a download playing on). The offline queue (this server's saves only) is read
+ * as servers come and go, and polled while playing (a save refused with a 5xx is queued
+ * while the server stays online), while something waits in it or a server is offline.
  */
 export function usePlaceSync(
   connectionId: string,
@@ -51,7 +52,7 @@ export function usePlaceSync(
   const status = useReachability((s) =>
     serverStatus({ id: connectionId, needsReconnect }, s.online),
   );
-  const pending = usePendingSaves({ pollWhenClear: false });
+  const pending = usePendingSaves({ pollWhenClear: playing, connectionId });
   if (!connection) return null;
   const state = placeSync(status, pending, playing);
   return { icon: ICON[state], text: t(TEXT[state]) };

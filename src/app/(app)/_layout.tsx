@@ -12,6 +12,7 @@ import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { TABS } from '@/components/shell/destinations';
 import { ShellFrame } from '@/components/shell/shell-frame';
+import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
@@ -36,6 +37,7 @@ function NativeShell() {
   const themed = useThemeColors();
   const wide = useLayout() !== 'phone';
   const loaded = usePlayer((s) => s.nowPlaying != null);
+  const top = useIsTopShell();
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
   // it (on iOS 26 a missing theme shows default-white artifacts in tab transitions).
@@ -91,7 +93,8 @@ function NativeShell() {
             ) : null}
           </NativeTabs>
         </ShellFrame>
-        <ShellPlayerOverlays />
+        {/* In the top shell only, should a second one ever be stacked over this one. */}
+        {top ? <ShellPlayerOverlays /> : null}
       </View>
     </ThemeProvider>
   );

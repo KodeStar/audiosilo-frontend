@@ -80,10 +80,14 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
-/** How many saves wait in the offline replay queue (read-only: Home's sync pill). */
-export async function pendingSaveCount(): Promise<number> {
+/** How many saves wait in the offline replay queue (read-only: Home's sync pill), or
+ * only `connectionId`'s (the player's sync line: another server's backlog is not this
+ * book's). */
+export async function pendingSaveCount(connectionId?: string): Promise<number> {
   const queue = await readQueue();
-  return Array.isArray(queue) ? queue.length : 0;
+  if (!Array.isArray(queue)) return 0;
+  if (connectionId === undefined) return queue.length;
+  return queue.filter((s) => s.connectionId === connectionId).length;
 }
 
 export async function loadInitialProgress(

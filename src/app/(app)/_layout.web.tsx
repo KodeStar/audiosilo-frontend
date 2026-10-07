@@ -10,6 +10,7 @@ import { CommandPalette, usePaletteShortcut } from '@/components/shell/command-p
 import { TABS, useActiveTab } from '@/components/shell/destinations';
 import { PhoneTabBar } from '@/components/shell/phone-tab-bar';
 import { ShellFrame } from '@/components/shell/shell-frame';
+import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useUpNextShortcut } from '@/components/upnext/use-up-next-shortcut';
 
@@ -29,13 +30,16 @@ import { useUpNextShortcut } from '@/components/upnext/use-up-next-shortcut';
  */
 function WebShell() {
   useShellEffects();
+  // The shell's singletons (keys, palette, overlays) live in the top shell only, should a
+  // second one ever be stacked over this one.
+  const top = useIsTopShell();
   // Not over the full player or the finished screen (root modals: no active tab).
   const onTabPage = useActiveTab() !== null;
-  usePaletteShortcut(onTabPage);
-  useUpNextShortcut(onTabPage);
+  usePaletteShortcut(onTabPage && top);
+  useUpNextShortcut(onTabPage && top);
   // The player's keys (Space, J/K/L, arrows, [ ], B, P, Z, ?, Esc): on every page AND over
   // the full player, which is a root route, not a dialog.
-  usePlayerShortcuts();
+  usePlayerShortcuts(top);
   return (
     <Tabs style={{ flex: 1 }}>
       <TabList style={{ display: 'none' }}>
@@ -55,9 +59,13 @@ function WebShell() {
       >
         <TabSlot />
       </ShellFrame>
-      <ShellPlayerOverlays />
-      <CommandPalette />
-      <ShortcutsDialog />
+      {top ? (
+        <>
+          <ShellPlayerOverlays />
+          <CommandPalette />
+          <ShortcutsDialog />
+        </>
+      ) : null}
     </Tabs>
   );
 }

@@ -86,6 +86,7 @@ export function QueueList({
   onMove,
   onRemove,
   onPlay,
+  onNavigate,
 }: {
   entries: readonly QueueEntry[];
   progress: ProgressIndex;
@@ -93,6 +94,8 @@ export function QueueList({
   onMove: (entry: QueueEntry, to: number) => Promise<boolean>;
   onRemove: (entry: QueueEntry) => void;
   onPlay: (entry: QueueEntry) => void;
+  /** Runs before a row opens its book's page (the sheet closes itself then). */
+  onNavigate?: () => void;
 }) {
   // An optimistic order (the same entries, moved) until the server's queue next changes.
   const [pending, setPending] = useState<{
@@ -139,6 +142,7 @@ export function QueueList({
           onMove={move}
           onRemove={() => onRemove(e)}
           onPlay={() => onPlay(e)}
+          onNavigate={onNavigate}
         />
       ))}
     </View>
@@ -157,6 +161,7 @@ function QueueRow({
   onMove,
   onRemove,
   onPlay,
+  onNavigate,
 }: {
   entry: QueueEntry;
   index: number;
@@ -169,6 +174,7 @@ function QueueRow({
   onMove: (from: number, to: number, viaKeyboard?: boolean) => void;
   onRemove: () => void;
   onPlay: () => void;
+  onNavigate?: () => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
@@ -301,7 +307,10 @@ function QueueRow({
           </Pressable>
         </GestureDetector>
         <AnimatedPressable
-          onPress={() => openBook(connectionId, entry.library_id, entry.path)}
+          onPress={() => {
+            onNavigate?.();
+            openBook(connectionId, entry.library_id, entry.path);
+          }}
           accessibilityRole="button"
           accessibilityLabel={`${title}, ${caption}`}
           className={cn(

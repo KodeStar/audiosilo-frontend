@@ -13,7 +13,7 @@ import Animated, {
 import { BookCover } from '@/components/library/book-cover';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
 import { usePlayerOnTop } from '@/components/player/player-sheets';
-import { pillClass } from '@/components/player/control-pill';
+import { pillClass, slopTo44 } from '@/components/player/control-pill';
 import { SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { useSleepCountdown } from '@/components/player/use-sleep-countdown';
@@ -223,7 +223,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           onPress={() => void skipSeconds(-skipBackward)}
           color={themed.foreground}
           fontSize={13}
-          hitSlop={2}
+          hitSlop={slopTo44(2.5)}
           className={pillClass('ghost', 'h-10 w-10')}
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />

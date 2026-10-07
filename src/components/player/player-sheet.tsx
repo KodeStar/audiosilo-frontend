@@ -36,6 +36,7 @@ export function PlayerSheet({
   body = 'scroll',
   fraction = 0.7,
   className,
+  layer,
   children,
 }: {
   visible: boolean;
@@ -46,6 +47,8 @@ export function PlayerSheet({
   fraction?: number;
   /** The body's padding (a `scroll` body; a `fill` body pads itself). */
   className?: string;
+  /** The bottom sheet's layer name (`Sheet`'s `layer`). */
+  layer?: string;
   children: ReactNode;
 }) {
   const layout = useLayout();
@@ -91,6 +94,7 @@ export function PlayerSheet({
       visible={visible}
       onClose={onClose}
       title={title}
+      layer={layer}
       {...(fill
         ? { fill: true, maxHeightFraction: fraction }
         : { scroll: true, contentClassName: cn('px-4 pb-4', className) })}

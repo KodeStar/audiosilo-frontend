@@ -17,6 +17,7 @@ import { Text } from '@/components/ui/text';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { formatCount, formatSpeed } from '@/lib/format';
+import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
@@ -28,7 +29,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { COMPANION_TAB_LABEL, type CompanionTab } from './companion/companion-model';
-import { ControlPill, type PillLook, pillClass } from './control-pill';
+import { ControlPill, type PillLook, pillClass, slopTo44 } from './control-pill';
 import { usePlaceSync } from './place-sync';
 import { addBookmarkHere } from './player-shortcuts';
 import { usePlayerSheets } from './player-sheets';
@@ -37,8 +38,10 @@ import { UndoChip } from './undo-chip';
 import { useSleepPill } from './use-sleep-countdown';
 import { usePlayingTimeLeft } from './use-time-left';
 
-/** The header's round 44 pt buttons. */
+/** The header's round buttons: 44 px on the web, 38.5 pt on native (a 14 pt rem), where
+ * `ROUND_SLOP` makes the target 44 pt. */
 const ROUND = 'h-11 w-11';
+const ROUND_SLOP = slopTo44(2.75);
 
 /**
  * The full player's top row: minimise on the left; "Playing from <server>" over the
@@ -69,7 +72,9 @@ export function PlayerHeader({
   if (!np) return null;
   const { connectionId, libraryId, path } = np;
 
-  // These replace the player with where they go; playback runs on for the first two.
+  // The credits replace the player (a root route of their own); playback runs on for
+  // View credits. The book's page opens in the shell underneath (`pushInShell`): a
+  // replace from here stacked a second app shell.
   const goTo = (href: Parameters<typeof router.replace>[0]) => router.replace(href);
   const onMarkFinished = () => {
     // finishBook persists finished, tears down the engine and clears nowPlaying; it
@@ -80,7 +85,12 @@ export function PlayerHeader({
 
   return (
     <View className="h-14 flex-row items-center gap-2 px-3">
-      <ControlPill onPress={onClose} label={t('player.full.minimise')} className={ROUND}>
+      <ControlPill
+        onPress={onClose}
+        label={t('player.full.minimise')}
+        className={ROUND}
+        hitSlop={ROUND_SLOP}
+      >
         <Icon name="chevron-down" size={22} color={themed.foreground} />
       </ControlPill>
       <View className="min-w-0 flex-1 items-center">
@@ -106,6 +116,7 @@ export function PlayerHeader({
         <DropdownMenuTrigger
           accessibilityLabel={t('player.menu.label')}
           className={pillClass('ghost', ROUND)}
+          hitSlop={ROUND_SLOP}
           testID="player-menu"
         >
           <Icon name="ellipsis" size={20} color={themed.foreground} />
@@ -113,7 +124,7 @@ export function PlayerHeader({
         <DropdownMenuContent align="end" className="w-[240px]">
           <DropdownMenuItem
             icon="book-open"
-            onPress={() => goTo(bookHref(connectionId, libraryId, path))}
+            onPress={() => pushInShell(bookHref(connectionId, libraryId, path))}
           >
             <Text>{t('player.finished.viewDetails')}</Text>
           </DropdownMenuItem>
@@ -213,6 +224,7 @@ function Pill({
       look={look}
       label={label}
       testID={testID}
+      hitSlop={ROUND_SLOP}
       className="h-11 min-w-[44px] flex-row gap-2 px-3.5"
     >
       {icon ? (
@@ -338,6 +350,7 @@ export function CompanionChips() {
             look="outline"
             label={label}
             onPress={() => usePlayerSheets.getState().openCompanion(tab)}
+            hitSlop={ROUND_SLOP}
             className="h-11 flex-row gap-1.5 px-3"
           >
             <Icon name={icon} size={15} color={themed.foreground} />
