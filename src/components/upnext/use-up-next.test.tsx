@@ -62,7 +62,7 @@ import { CapabilityError } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { useSession } from '@/stores/session';
 
-import { useUpNext } from './up-next-store';
+import { usePlayerSheets } from '@/components/player/player-sheets';
 import { usePlayNow, useUpNextConnection, useUpNextData } from './use-up-next';
 /* eslint-enable import/first */
 
@@ -177,13 +177,13 @@ describe('usePlayNow', () => {
 
   it('opens the full player on a phone, closing the sheet first', async () => {
     mockLayout = 'phone';
-    useUpNext.setState({ sheetOpen: true });
+    usePlayerSheets.setState({ open: 'upnext' });
     const drop = jest.fn();
     const { result } = await renderHook(() => usePlayNow('c', drop));
     await act(async () => {
       await result.current(entry('B'), 'Book B');
     });
-    expect(useUpNext.getState().sheetOpen).toBe(false);
+    expect(usePlayerSheets.getState().open).toBeNull();
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/player',
       params: { connection: 'c', libraryId: '1', path: 'B' },

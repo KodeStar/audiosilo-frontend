@@ -46,6 +46,12 @@ jest.mock('./companion/companion', () => {
   return { Companion: () => <T>companion</T> };
 });
 jest.mock('./grace-card', () => ({ GraceCard: () => null }));
+jest.mock('@/components/upnext/up-next-sheet', () => {
+  const { Text: T } = jest.requireActual('react-native');
+  return {
+    UpNextSheet: ({ visible }: { visible: boolean }) => (visible ? <T>up next sheet</T> : null),
+  };
+});
 
 /* eslint-disable import/first */
 import { usePlayer } from '@/playback/store';
@@ -59,9 +65,13 @@ import { hostIsActive, usePlayerSheets } from './player-sheets';
 const open = (sheet: Parameters<ReturnType<typeof usePlayerSheets.getState>['openSheet']>[0]) =>
   act(() => usePlayerSheets.getState().openSheet(sheet));
 
+const BOOK = usePlayer.getState().nowPlaying;
+
 beforeEach(() => {
   mockSegments = ['(app)'];
   usePlayerSheets.setState({ open: null });
+  useCompanion.setState({ tab: null });
+  usePlayer.setState({ nowPlaying: BOOK });
   mockAddBookmark.mockClear();
 });
 
@@ -112,11 +122,70 @@ describe('PlayerSheetHost', () => {
 
   it('turns chapters into the companion tab where the player has a column', async () => {
     mockSegments = ['player'];
-    await mountWithPortal(<PlayerSheetHost scope="player" chaptersInColumn />);
+    await mountWithPortal(<PlayerSheetHost scope="player" layout="desktop" />);
     await open('chapters');
     expect(screen.queryByText('chapter list')).toBeNull();
+    expect(screen.queryByText('companion')).toBeNull();
     expect(useCompanion.getState().tab).toBe('chapters');
     expect(usePlayerSheets.getState().open).toBeNull();
+  });
+
+  it("keeps one chapters UI on a phone player: the companion sheet's Chapters tab", async () => {
+    mockSegments = ['player'];
+    await mountWithPortal(<PlayerSheetHost scope="player" layout="phone" />);
+    await open('chapters');
+    expect(screen.getByText('companion')).toBeTruthy();
+    expect(screen.queryByText('chapter list')).toBeNull();
+    expect(useCompanion.getState().tab).toBe('chapters');
+  });
+
+  it('shows the chapter sheet in the tablet player and in the shell', async () => {
+    mockSegments = ['player'];
+    const view = await mountWithPortal(<PlayerSheetHost scope="player" layout="tablet" />);
+    await open('chapters');
+    expect(screen.getByText('chapter list')).toBeTruthy();
+    await act(async () => view.unmount());
+    mockSegments = ['(app)'];
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await open('chapters');
+    expect(screen.getByText('chapter list')).toBeTruthy();
+  });
+
+  it('opens the companion on a tab from one intent; wider players already show it', async () => {
+    mockSegments = ['player'];
+    await mountWithPortal(<PlayerSheetHost scope="player" layout="tablet" />);
+    await act(() => usePlayerSheets.getState().openCompanion('who'));
+    expect(useCompanion.getState().tab).toBe('who');
+    expect(screen.queryByText('companion')).toBeNull();
+    expect(usePlayerSheets.getState().open).toBeNull();
+  });
+
+  it('leaves a companion request in the shell for the full player it is opening', async () => {
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await act(() => usePlayerSheets.getState().openCompanion('who'));
+    expect(usePlayerSheets.getState().open).toBe('companion');
+  });
+
+  it('renders Up next with or without a book, once with both hosts mounted', async () => {
+    usePlayer.setState({ nowPlaying: null });
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await open('upnext');
+    expect(screen.getByText('up next sheet')).toBeTruthy();
+    await open('speed');
+    expect(screen.queryByText('up next sheet')).toBeNull();
+    expect(screen.queryByText('speed sheet')).toBeNull();
+  });
+
+  it('shows Up next over the full player from the player host only', async () => {
+    mockSegments = ['player'];
+    await mountWithPortal(
+      <>
+        <PlayerSheetHost scope="shell" />
+        <PlayerSheetHost scope="player" layout="phone" />
+      </>,
+    );
+    await open('upnext');
+    expect(screen.getAllByText('up next sheet')).toHaveLength(1);
   });
 
   it('runs bookmark and output as actions, not sheets', async () => {

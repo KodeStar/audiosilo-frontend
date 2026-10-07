@@ -1,6 +1,9 @@
 import { useSegments } from 'expo-router';
 import { create } from 'zustand';
 
+import type { CompanionTab } from './companion/companion-model';
+import { useCompanion } from './companion/companion-store';
+
 /** The player's sheets and overlays anyone can ask to open. */
 export type PlayerSheet =
   | 'speed'
@@ -9,29 +12,38 @@ export type PlayerSheet =
   | 'output'
   | 'chapters'
   | 'shortcuts'
-  /** The full player's companion as a sheet (a phone); its tab is `useCompanion`'s. */
-  | 'companion';
+  /** The full player's companion on `useCompanion`'s tab (`openCompanion`): its sheet on a
+   * phone, the column or the inline companion wider. */
+  | 'companion'
+  /** Up next on a tablet or phone (a desktop has the drawer; `openUpNext`). */
+  | 'upnext';
 
 type PlayerSheetsState = {
   /** The sheet asked for, or null. */
   open: PlayerSheet | null;
   openSheet: (sheet: PlayerSheet) => void;
+  /** Show the companion on `tab`: one intent for every caller (the phone's chips, the
+   * reveal toast's Show); the active sheet host picks the form by its measured layout. */
+  openCompanion: (tab: CompanionTab) => void;
   close: () => void;
 };
 
 /**
  * Which player sheet is open, as a store anyone can drive: the web keyboard (Z opens the
- * sleep sheet, ? the shortcuts), a palette action, a button. The surface that OWNS a
- * sheet (the docked bar on tablet/desktop, the full player when it is open) renders it
- * from `open === '<sheet>'` and closes it with `close()`; a sheet nothing renders stays a
- * no-op request. One sheet at a time, so opening one replaces another.
+ * sleep sheet, ? the shortcuts), a palette action, a button. A request says WHAT, never
+ * where: the active `PlayerSheetHost` (`player-sheet-host.tsx`, mounted in the full
+ * player and once in the shell) renders it from `open` in the form its layout calls for
+ * and closes it with `close()`. One sheet at a time, so opening one replaces another.
  *
- * `shortcuts` is rendered by `ShortcutsDialog` (web shell); the rest by `PlayerSheetHost`
- * (`player-sheet-host.tsx`), mounted in the full player and once in the shell.
+ * `shortcuts` is rendered by `ShortcutsDialog` (web shell).
  */
 export const usePlayerSheets = create<PlayerSheetsState>()((set) => ({
   open: null,
   openSheet: (open) => set({ open }),
+  openCompanion: (tab) => {
+    useCompanion.getState().setTab(tab);
+    set({ open: 'companion' });
+  },
   close: () => set({ open: null }),
 }));
 

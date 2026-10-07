@@ -32,7 +32,6 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { CompanionTab } from './companion/companion-model';
-import { useCompanion } from './companion/companion-store';
 import { addBookmarkHere } from './player-shortcuts';
 import { usePlayerSheets } from './player-sheets';
 import { playerContext, syncState } from './player-view-model';
@@ -359,12 +358,6 @@ function Chip({ icon, label, onPress }: { icon: IconName; label: string; onPress
   );
 }
 
-/** Open the companion sheet (a phone) on `tab`. */
-export function openCompanionSheet(tab: CompanionTab) {
-  useCompanion.getState().setTab(tab);
-  usePlayerSheets.getState().openSheet('companion');
-}
-
 /** The phone's way into the companion: Who's who, Story so far (where the server has
  * community data) and Chapters, each opening the companion sheet on that tab. One row,
  * centred where it fits and scrolling sideways where it doesn't (a narrow phone, a long
@@ -392,7 +385,12 @@ export function CompanionChips() {
       contentContainerClassName="grow justify-center gap-2"
     >
       {chips.map((c) => (
-        <Chip key={c.tab} icon={c.icon} label={c.label} onPress={() => openCompanionSheet(c.tab)} />
+        <Chip
+          key={c.tab}
+          icon={c.icon}
+          label={c.label}
+          onPress={() => usePlayerSheets.getState().openCompanion(c.tab)}
+        />
       ))}
     </ScrollView>
   );

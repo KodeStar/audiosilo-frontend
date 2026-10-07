@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Dimensions } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useBook, useBookMeta, useBookProgress, useCapability, useChapters } from '@/api/hooks';
@@ -11,7 +10,6 @@ import { matchedMeta } from '@/components/library/book-meta';
 import { chapterNumberAt, chapterStartsOf } from '@/components/library/meta-gating';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
-import { layoutFor } from '@/lib/layout';
 import { useLatest } from '@/lib/use-latest';
 import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 
@@ -20,13 +18,11 @@ import type { PlayTarget } from '../use-play-book';
 import { type RevealSample, revealOnCrossing } from './companion-model';
 import { useCompanion } from './companion-store';
 
-/** Open the full player on Who's who (the reveal toast's Show): the companion sheet on a
- * phone, the column or the inline companion elsewhere. */
+/** Open the full player on Who's who (the reveal toast's Show): the full player's sheet
+ * host shows the companion where its measured layout keeps it (a sheet on a phone, the
+ * column or the inline companion wider). */
 export function showWhoIsWho(playerOnTop: boolean) {
-  useCompanion.getState().setTab('who');
-  if (layoutFor(Dimensions.get('window').width) === 'phone') {
-    usePlayerSheets.getState().openSheet('companion');
-  }
+  usePlayerSheets.getState().openCompanion('who');
   if (!playerOnTop) router.push('/player');
 }
 

@@ -11,7 +11,6 @@ import { TABS, useActiveTab } from '@/components/shell/destinations';
 import { PhoneTabBar } from '@/components/shell/phone-tab-bar';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
-import { UpNextSheet } from '@/components/upnext/up-next-sheet';
 import { useUpNextShortcut } from '@/components/upnext/use-up-next-shortcut';
 
 /**
@@ -56,7 +55,6 @@ function WebShell() {
       >
         <TabSlot />
       </ShellFrame>
-      <UpNextSheet />
       <ShellPlayerOverlays />
       <CommandPalette />
       <ShortcutsDialog />

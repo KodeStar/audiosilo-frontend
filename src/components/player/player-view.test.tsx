@@ -43,7 +43,13 @@ jest.mock('./transport-controls', () => {
   const { Text: T } = jest.requireActual('react-native');
   return { TransportControls: ({ size }: { size: string }) => <T>{`transport ${size}`}</T> };
 });
-jest.mock('./player-sheet-host', () => ({ PlayerSheetHost: () => null }));
+let mockHostLayout: string | undefined;
+jest.mock('./player-sheet-host', () => ({
+  PlayerSheetHost: ({ layout }: { layout?: string }) => {
+    mockHostLayout = layout;
+    return null;
+  },
+}));
 let mockGraceOpen = false;
 jest.mock('./grace-card', () => {
   const { Text: T } = jest.requireActual('react-native');
@@ -52,7 +58,6 @@ jest.mock('./grace-card', () => {
     useGraceCardOpen: () => mockGraceOpen,
   };
 });
-jest.mock('@/components/upnext/up-next-sheet', () => ({ UpNextSheet: () => null }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/components/library/cover-wash', () => ({ CoverWash: () => null }));
 
@@ -161,14 +166,14 @@ describe('PlayerView', () => {
     expect(usePlayerSheets.getState().open).toBe('chapters');
   });
 
-  it("opens the chapters from the title in the desktop's column", async () => {
+  it('asks for the chapters on a desktop too: its sheet host, told the layout, picks the column', async () => {
     mockLayout = 'desktop';
     await mount(<PlayerView onClose={jest.fn()} />);
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Holden, show chapters'));
     });
-    expect(useCompanion.getState().tab).toBe('chapters');
-    expect(usePlayerSheets.getState().open).toBeNull();
+    expect(usePlayerSheets.getState().open).toBe('chapters');
+    expect(mockHostLayout).toBe('desktop');
   });
 
   it.each(['phone', 'tablet', 'desktop'] as const)(

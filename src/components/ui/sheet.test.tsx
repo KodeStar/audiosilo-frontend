@@ -27,7 +27,7 @@ describe('Sheet', () => {
   it('floats a hosted sheet at 560 on a tablet and scrolls a long body', async () => {
     mockLayout = 'tablet';
     await mount(
-      <Sheet visible onClose={jest.fn()} scroll inline={false}>
+      <Sheet visible onClose={jest.fn()} scroll>
         <Text>Sheet body</Text>
       </Sheet>,
     );
@@ -38,19 +38,14 @@ describe('Sheet', () => {
     mockLayout = 'phone';
   });
 
-  it('is a modal layer on the web when hosted (the player shortcuts stand back), not inline', async () => {
+  it('is a modal layer on the web (the player shortcuts stand back)', async () => {
     const prevOS = Platform.OS;
     Platform.OS = 'web';
     try {
       await mount(
-        <>
-          <Sheet visible onClose={jest.fn()}>
-            <Text>Hosted</Text>
-          </Sheet>
-          <Sheet visible inline onClose={jest.fn()}>
-            <Text>Inline</Text>
-          </Sheet>
-        </>,
+        <Sheet visible onClose={jest.fn()}>
+          <Text>Hosted</Text>
+        </Sheet>,
       );
       const json = JSON.stringify(screen.toJSON());
       expect(json.match(/"aria-modal":true/g)).toHaveLength(1);
@@ -58,6 +53,19 @@ describe('Sheet', () => {
     } finally {
       Platform.OS = prevOS;
     }
+  });
+
+  it('gives a fill body a definite height to measure its own scroller against', async () => {
+    await mount(
+      <Sheet visible onClose={jest.fn()} fill maxHeightFraction={0.5}>
+        <Text>List</Text>
+      </Sheet>,
+    );
+    const json = JSON.stringify(screen.toJSON());
+    // Half the (1334 tall) test window, as a height rather than a cap.
+    expect(json).toContain('"height":667');
+    expect(json).not.toContain('"maxHeight"');
+    expect(json).not.toContain('RCTScrollView');
   });
 
   it('renders children while visible and closes on backdrop press', async () => {
@@ -110,7 +118,7 @@ describe('Sheet', () => {
     expect(screen.queryByText('Sheet body')).toBeNull();
   });
 
-  it('presents in hosted mode by default (no RN Modal) and routes Android hardware-back to onClose', async () => {
+  it('presents through an OverlayHost (no RN Modal) and routes Android hardware-back to onClose', async () => {
     const prevOS = Platform.OS;
     Platform.OS = 'android';
     const addSpy = jest.spyOn(BackHandler, 'addEventListener');
@@ -127,65 +135,12 @@ describe('Sheet', () => {
       // renders it in place. Either way, no Modal host node.
       expect(screen.root?.type).not.toBe('Modal');
       expect(screen.getByText('Sheet body')).toBeTruthy();
-      // Hosted mode: the OverlayHost owns Android hardware-back (the Sheet's own manual
-      // handler stays inline-only, so there's exactly one registration). Pressing it closes.
+      // The OverlayHost owns Android hardware-back (exactly one registration). Pressing it
+      // closes.
       expect(addSpy).toHaveBeenCalledWith('hardwareBackPress', expect.any(Function));
       const handler = addSpy.mock.calls[0][1] as () => boolean;
       expect(handler()).toBe(true);
       expect(onClose).toHaveBeenCalledTimes(1);
-    } finally {
-      addSpy.mockRestore();
-      Platform.OS = prevOS;
-    }
-  });
-
-  it('inline mode renders the overlay directly and closes on backdrop press', async () => {
-    const onClose = jest.fn();
-    await mount(
-      <Sheet inline visible onClose={onClose}>
-        <Text>Sheet body</Text>
-      </Sheet>,
-    );
-
-    // Inline mode does not use a Modal (it must present inside the iOS player modal).
-    expect(screen.root?.type).not.toBe('Modal');
-    expect(screen.getByText('Sheet body')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('Close'));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('inline mode registers an Android hardware-back handler that closes it, and cleans up', async () => {
-    const prevOS = Platform.OS;
-    Platform.OS = 'android';
-    const removeSub = jest.fn();
-    const addSpy = jest
-      .spyOn(BackHandler, 'addEventListener')
-      .mockReturnValue({ remove: removeSub } as unknown as ReturnType<
-        typeof BackHandler.addEventListener
-      >);
-    const onClose = jest.fn();
-
-    try {
-      const { rerender } = await mount(
-        <Sheet inline visible onClose={onClose}>
-          <Text>Sheet body</Text>
-        </Sheet>,
-      );
-
-      expect(addSpy).toHaveBeenCalledWith('hardwareBackPress', expect.any(Function));
-      const handler = addSpy.mock.calls[0][1] as () => boolean;
-      expect(handler()).toBe(true);
-      expect(onClose).toHaveBeenCalledTimes(1);
-
-      // Hiding the sheet tears the handler down.
-      await act(async () => {
-        rerender(
-          <Sheet inline visible={false} onClose={onClose}>
-            <Text>Sheet body</Text>
-          </Sheet>,
-        );
-      });
-      expect(removeSub).toHaveBeenCalled();
     } finally {
       addSpy.mockRestore();
       Platform.OS = prevOS;

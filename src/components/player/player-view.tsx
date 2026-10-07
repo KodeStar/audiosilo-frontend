@@ -18,7 +18,6 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { UpNextSheet } from '@/components/upnext/up-next-sheet';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
 import { pathLeaf } from '@/lib/paths';
@@ -29,7 +28,6 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { PlayerBookTimeline } from './book-timeline';
 import { Companion } from './companion/companion';
-import { useCompanion } from './companion/companion-store';
 import { GraceCard, useGraceCardOpen } from './grace-card';
 import {
   CompanionChips,
@@ -190,11 +188,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
 
   if (!np) return <Spinner center />;
 
-  // Chapters: the companion's tab where the column shows it, the chapter sheet elsewhere.
-  const onChapters = () => {
-    if (desktop) useCompanion.getState().setTab('chapters');
-    else usePlayerSheets.getState().openSheet('chapters');
-  };
+  // The chapters: the sheet host shows them where this layout keeps them.
+  const onChapters = () => usePlayerSheets.getState().openSheet('chapters');
   const w = width || windowWidth;
   const bottomPad = insets.bottom + (phone ? 12 : 24);
   const coverSize = phone
@@ -280,8 +275,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           ) : null}
         </ScrollView>
       )}
-      <PlayerSheetHost scope="player" chaptersInColumn={desktop} />
-      <UpNextSheet scope="player" />
+      <PlayerSheetHost scope="player" layout={layout} />
     </View>
   );
 }

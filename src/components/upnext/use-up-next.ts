@@ -11,7 +11,7 @@ import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 
 import { pickSuggestions, progressIndex, queueConnectionId, queuedSeconds } from './up-next-model';
-import { useUpNext } from './up-next-store';
+import { closeUpNext } from './up-next-store';
 
 /** The connection whose queue Up next shows (`queueConnectionId`). */
 export function useUpNextConnection(): string | undefined {
@@ -142,11 +142,10 @@ export function usePlayNow(cid: string | undefined, dropPlayed: (e: BookRef) => 
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const play = usePlayBook();
-  const closeSheet = useUpNext((s) => s.closeSheet);
 
   return async (entry: QueueEntry, title: string) => {
     if (!cid) return;
-    if (phone) closeSheet();
+    if (phone) closeUpNext();
     try {
       await play({ connectionId: cid, libraryId: entry.library_id, path: entry.path });
       void dropPlayed(entry);
