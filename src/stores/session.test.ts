@@ -181,6 +181,7 @@ describe('session store (multi-connection)', () => {
         .getState()
         .setSession({ serverUrl: 'https://a', serverId: 'old-a', token: 't', user: mkUser('a') });
       await AsyncStorage.setItem('audiosilo.downloads', JSON.stringify({ 'old-a:1:x': {} }));
+      await AsyncStorage.setItem('audiosilo.offlineServers', JSON.stringify({ 'old-a': {} }));
       await AsyncStorage.removeItem('audiosilo.storageVersion');
       await AsyncStorage.removeItem(CACHE_VERSION_KEY);
 
@@ -190,6 +191,7 @@ describe('session store (multi-connection)', () => {
       // Connections, their tokens, and scoped state are gone; both versions are recorded.
       expect(await AsyncStorage.getItem('audiosilo.connections')).toBeNull();
       expect(await AsyncStorage.getItem('audiosilo.downloads')).toBeNull();
+      expect(await AsyncStorage.getItem('audiosilo.offlineServers')).toBeNull();
       expect(await SecureStore.getItemAsync('audiosilo.token.old-a')).toBeNull();
       expect(await AsyncStorage.getItem('audiosilo.storageVersion')).not.toBeNull();
       expect(await AsyncStorage.getItem(CACHE_VERSION_KEY)).not.toBeNull();
@@ -233,6 +235,7 @@ describe('session store (multi-connection)', () => {
       await AsyncStorage.setItem('audiosilo.storageVersion', JSON.stringify(2));
       await AsyncStorage.setItem(CACHE_VERSION_KEY, JSON.stringify(CACHE_STORAGE_VERSION - 1));
       await AsyncStorage.setItem('audiosilo.downloads', JSON.stringify({ 'srv-a:1:x': {} }));
+      await AsyncStorage.setItem('audiosilo.offlineServers', JSON.stringify({ 'srv-a': {} }));
 
       const res = await resetStaleStorage();
 
@@ -240,6 +243,7 @@ describe('session store (multi-connection)', () => {
       expect(res.authReset).toBe(false);
       // Scoped cache gone.
       expect(await AsyncStorage.getItem('audiosilo.downloads')).toBeNull();
+      expect(await AsyncStorage.getItem('audiosilo.offlineServers')).toBeNull();
       // But the connection + its token survive - nobody is logged out.
       expect(await AsyncStorage.getItem('audiosilo.connections')).not.toBeNull();
       expect(await SecureStore.getItemAsync('audiosilo.token.srv-a')).toBe('tokA');

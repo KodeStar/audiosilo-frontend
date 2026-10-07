@@ -1149,3 +1149,133 @@ describe('ApiClient user state (Phase 1b)', () => {
     });
   });
 });
+
+describe('ApiClient annotations (Phase 4)', () => {
+  const c = () => new ApiClient('https://h', 'tok');
+  const bookmarkWire = {
+    id: 7,
+    library_id: 2,
+    path: 'Saga/Book 1',
+    position: 61,
+    note: 'Here',
+    label: 'quote',
+    created_at: '2026-10-01T10:00:00Z',
+  };
+  const noteWire = {
+    id: 8,
+    library_id: 2,
+    path: 'Saga/Book 1',
+    position: 30,
+    body: 'A thought',
+    created_at: '2026-10-01T10:00:00Z',
+    updated_at: '2026-10-02T10:00:00Z',
+  };
+  const span = {
+    id: 9,
+    library_id: 2,
+    path: 'Saga/Book 1',
+    from_pos: 0,
+    to_pos: 60,
+    started_at: '2026-10-01T10:00:00Z',
+    ended_at: '2026-10-01T10:01:00Z',
+  };
+
+  it('adds a bookmark with POST, sending label only when given', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: bookmarkWire }));
+    await expect(c().addBookmark(2, 'Saga/Book 1', 61, 'Here', 'quote')).resolves.toEqual(
+      bookmarkWire,
+    );
+    await c().addBookmark(2, 'Saga/Book 1', 61);
+    expect(sent(fetchMock, 0)).toEqual({
+      url: 'https://h/api/v1/libraries/2/bookmarks?path=Saga%2FBook+1',
+      method: 'POST',
+      body: { position: 61, note: 'Here', label: 'quote' },
+      contentType: 'application/json',
+    });
+    // An older server rejects an unknown field, so no label means no `label` key at all.
+    expect(sent(fetchMock, 1).body).toEqual({ position: 61, note: '' });
+  });
+
+  it('edits a bookmark with PATCH /bookmarks/{id}, sending only the given fields', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: bookmarkWire }));
+    await expect(c().updateBookmark(7, { label: 'quote' })).resolves.toEqual(bookmarkWire);
+    // A spread cached row carries id/position/...: only note and label go out.
+    await c().updateBookmark(7, { ...bookmarkWire, label: '' } as never);
+    expect(sent(fetchMock, 0)).toEqual({
+      url: 'https://h/api/v1/bookmarks/7',
+      method: 'PATCH',
+      body: { label: 'quote' },
+      contentType: 'application/json',
+    });
+    expect(sent(fetchMock, 1).body).toEqual({ note: 'Here', label: '' });
+  });
+
+  it('edits a note with PATCH /notes/{id}, sending only the given fields', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: noteWire }));
+    await expect(c().updateNote(8, { body: 'A thought' })).resolves.toEqual(noteWire);
+    await c().updateNote(8, { ...noteWire, position: 0 } as never);
+    expect(sent(fetchMock, 0)).toEqual({
+      url: 'https://h/api/v1/notes/8',
+      method: 'PATCH',
+      body: { body: 'A thought' },
+      contentType: 'application/json',
+    });
+    expect(sent(fetchMock, 1).body).toEqual({ body: 'A thought', position: 0 });
+  });
+
+  it("surfaces someone else's bookmark or note as a 404 ApiError", async () => {
+    installFetch(() => ({ status: 404, body: { error: 'bookmark not found' } }));
+    await expect(c().updateBookmark(99, { note: 'x' })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      message: 'bookmark not found',
+    });
+  });
+
+  it('pages GET /me/bookmarks into { items, next_cursor }', async () => {
+    const row = { ...bookmarkWire, book };
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: { bookmarks: [row], next_cursor: 'abc' },
+    }));
+    await expect(c().myBookmarks({ limit: 50, cursor: 'xyz' })).resolves.toEqual({
+      items: [row],
+      next_cursor: 'abc',
+    });
+    await c().myBookmarks();
+    expect(sent(fetchMock, 0)).toMatchObject({
+      url: 'https://h/api/v1/me/bookmarks?limit=50&cursor=xyz',
+      method: 'GET',
+    });
+    expect(sent(fetchMock, 1).url).toBe('https://h/api/v1/me/bookmarks');
+  });
+
+  it('pages GET /me/notes, reading a last page (no cursor, null rows) as none more', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { notes: null } }));
+    await expect(c().myNotes({ cursor: 'n2' })).resolves.toEqual({ items: [] });
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/me/notes?cursor=n2',
+      method: 'GET',
+    });
+  });
+
+  it('pages GET /me/history, and reads an older server (no next_cursor) as one page', async () => {
+    const fetchMock = installFetch((url) =>
+      url.includes('cursor')
+        ? { status: 200, body: { history: [{ ...span, book }] } }
+        : { status: 200, body: { history: [span], next_cursor: 'h2' } },
+    );
+    await expect(c().allHistory({ limit: 100 })).resolves.toEqual({
+      items: [span],
+      next_cursor: 'h2',
+    });
+    await expect(c().allHistory({ limit: 100, cursor: 'h2' })).resolves.toEqual({
+      items: [{ ...span, book }],
+    });
+    expect(sent(fetchMock, 0)).toMatchObject({
+      url: 'https://h/api/v1/me/history?limit=100',
+      method: 'GET',
+    });
+    expect(sent(fetchMock, 1).url).toBe('https://h/api/v1/me/history?limit=100&cursor=h2');
+  });
+});

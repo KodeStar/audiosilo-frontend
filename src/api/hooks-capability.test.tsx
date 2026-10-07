@@ -1,8 +1,14 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  type InfiniteData,
+  QueryClient,
+  QueryClientProvider,
+  useInfiniteQuery,
+} from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import type { Capabilities, ServerInfo } from '@/api/types';
+import type { ApiClient } from '@/api/client';
+import type { Capabilities, Page, ServerInfo } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // The capability-gated hooks must never send a request the connected server does not
@@ -59,6 +65,36 @@ function makeClient() {
     revokeMyDevice: jest.fn(async () => ({ current: false })),
     createApiKey: jest.fn(async () => ({ id: 13, token: 'secret' })),
     revokeApiKey: jest.fn(async () => undefined),
+    // Phase 4 annotations. The across-books lists have two pages: the first carries a
+    // cursor to the second.
+    myBookmarks: jest.fn(async (page: { cursor?: string }) =>
+      page.cursor ? { items: [] } : { items: [], next_cursor: 'b2' },
+    ),
+    myNotes: jest.fn(async (page: { cursor?: string }) =>
+      page.cursor ? { items: [] } : { items: [], next_cursor: 'n2' },
+    ),
+    allHistory: jest.fn(async (_page: { cursor?: string }): Promise<object> => ({ items: [] })),
+    addBookmark: jest.fn(async (lib: number, path: string, position: number) => ({
+      id: 30,
+      library_id: lib,
+      path,
+      position,
+    })),
+    updateBookmark: jest.fn(async (id: number, patch: object) => ({
+      id,
+      library_id: 2,
+      path: 'A/Book',
+      ...patch,
+    })),
+    deleteBookmark: jest.fn(async () => undefined),
+    addNote: jest.fn(async () => ({ id: 40 })),
+    updateNote: jest.fn(async (id: number, patch: object) => ({
+      id,
+      library_id: 2,
+      path: 'A/Book',
+      ...patch,
+    })),
+    deleteNote: jest.fn(async () => undefined),
   };
 }
 type StubClient = ReturnType<typeof makeClient>;
@@ -79,8 +115,19 @@ jest.mock('@/playback/progress-sync', () => ({
 /* eslint-disable import/first */
 import {
   CapabilityError,
+  flattenPages,
   qk,
+  useAddBookmark,
   useAddCollectionItem,
+  useAddNote,
+  keepFirstPage,
+  myBookmarksQuery,
+  myHistoryQuery,
+  myNotesQuery,
+  useDeleteBookmark,
+  useDeleteNote,
+  useUpdateBookmark,
+  useUpdateNote,
   useAddToQueue,
   useAuthors,
   useBookMeta,
@@ -1193,5 +1240,400 @@ describe('Phase 1b mutation cache updates', () => {
     expect(mockClients.c2.setQueue).not.toHaveBeenCalled();
     expect(qc.getQueryData(qk.queue('c1'))).toEqual(stored);
     expect(qc.getQueryData(qk.queue('c2'))).toBeUndefined();
+  });
+});
+
+// --- Annotations (Phase 4) -----------------------------------------------------
+// Negative cases run against a server with every other flag on, so a hook gated on the
+// wrong flag (or not at all) sends a request and fails.
+
+/** Every flag on except `annotations`. */
+const ALL_BUT_ANNOTATIONS: Partial<Capabilities> = {
+  ...allBut('queue'),
+  queue: true,
+  annotations: false,
+};
+
+/** Mount `useHooks` beside the `annotations` flag, and wait until that is known. */
+async function mountAnnotations<T>(caps: Partial<Capabilities>, useHooks: () => T) {
+  const r = await mount({ c1: caps }, () => ({
+    m: useHooks(),
+    known: useCapability('annotations'),
+  }));
+  await waitFor(() => expect(r.result.current.known).toBeDefined());
+  return { ...r, qc: queryClients[queryClients.length - 1] };
+}
+
+type PagedCase = {
+  name: string;
+  useHook: () => {
+    refetch: () => Promise<{ isError: boolean }>;
+    fetchNextPage: () => Promise<unknown>;
+    isSuccess: boolean;
+    hasNextPage: boolean;
+  };
+  method: keyof StubClient;
+  next: string;
+};
+
+/** An across-books list read as the Journal reads it (`useJournalSources`): through its
+ * option factory, told whether the connection's server has `annotations`. */
+const client = (cid: string) => mockClients[cid] as unknown as ApiClient;
+const useMyBookmarks = (cid = 'c1') =>
+  useInfiniteQuery(myBookmarksQuery(cid, client(cid), useCapability('annotations', cid) === true));
+const useMyNotes = (cid = 'c1') =>
+  useInfiniteQuery(myNotesQuery(cid, client(cid), useCapability('annotations', cid) === true));
+const useAllHistory = () => useInfiniteQuery(myHistoryQuery('c1', client('c1')));
+
+const pagedCases: PagedCase[] = [
+  { name: 'myBookmarksQuery', useHook: () => useMyBookmarks(), method: 'myBookmarks', next: 'b2' },
+  { name: 'myNotesQuery', useHook: () => useMyNotes(), method: 'myNotes', next: 'n2' },
+];
+
+describe('Phase 4 across-books lists', () => {
+  it.each(pagedCases)(
+    '$name asks nothing, even on refetch, of a server without annotations',
+    async ({ useHook, method }) => {
+      const quiet = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const { result } = await mountAnnotations(ALL_BUT_ANNOTATIONS, useHook);
+        expect(result.current.known).toBe(false);
+        const refetched = await act(async () => result.current.m.refetch());
+        expect(refetched.isError).toBe(true);
+        expect(mockClients.c1[method]).not.toHaveBeenCalled();
+      } finally {
+        quiet.mockRestore();
+      }
+    },
+  );
+
+  it.each(pagedCases)(
+    '$name asks a server with annotations alone, page by page on next_cursor',
+    async ({ useHook, method, next }) => {
+      const { result } = await mountAnnotations({ annotations: true }, useHook);
+      await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+      expect(result.current.m.hasNextPage).toBe(true);
+      await act(async () => {
+        await result.current.m.fetchNextPage();
+      });
+      expect(result.current.m.hasNextPage).toBe(false);
+      expect(mockClients.c1[method].mock.calls).toEqual([
+        [{ limit: 100, cursor: undefined }, expect.anything()],
+        [{ limit: 100, cursor: next }, expect.anything()],
+      ]);
+    },
+  );
+
+  // A list read deep would refetch every page it holds, one after another, on a revisit.
+  it.each(pagedCases)(
+    '$name keeps only its first page once nothing reads it, and its date',
+    async ({ useHook, method }) => {
+      const { result, unmount, qc } = await mountAnnotations({ annotations: true }, useHook);
+      await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+      await act(async () => {
+        await result.current.m.fetchNextPage();
+      });
+      const key = method === 'myBookmarks' ? qk.myBookmarks('c1') : qk.myNotes('c1');
+      const before = qc.getQueryState(key)!.dataUpdatedAt;
+      // Still read: left alone.
+      keepFirstPage(qc, key);
+      expect(qc.getQueryData<InfiniteData<unknown>>(key)!.pages).toHaveLength(2);
+      await act(async () => unmount());
+      keepFirstPage(qc, key);
+      const kept = qc.getQueryData<InfiniteData<unknown>>(key)!;
+      expect(kept.pages).toHaveLength(1);
+      expect(kept.pageParams).toEqual([undefined]);
+      expect(qc.getQueryState(key)!.dataUpdatedAt).toBe(before);
+    },
+  );
+
+  it("asks the given connection's server, gated on that server's flag", async () => {
+    const { result } = await mount({ c1: {}, c2: { annotations: true } }, () => ({
+      c2: [useMyBookmarks('c2'), useMyNotes('c2')],
+      c1: [useMyBookmarks(), useMyNotes()],
+      c1Known: useCapability('annotations'),
+    }));
+    await waitFor(() => {
+      expect(result.current.c2.every((q) => q.isSuccess)).toBe(true);
+      expect(result.current.c1Known).toBe(false);
+    });
+    expect(mockClients.c1.myBookmarks).not.toHaveBeenCalled();
+    expect(mockClients.c1.myNotes).not.toHaveBeenCalled();
+  });
+
+  it('reads history on any server, an older one (no next_cursor) as exactly one page', async () => {
+    const span = { id: 1, library_id: 2, path: 'A/Book' };
+    const { result } = await mount(
+      { c1: {} },
+      () => useAllHistory(),
+      () => mockClients.c1.allHistory.mockResolvedValue({ items: [span] }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.hasNextPage).toBe(false);
+    expect(flattenPages(result.current.data)).toEqual([span]);
+    expect(mockClients.c1.allHistory).toHaveBeenCalledTimes(1);
+    expect(mockClients.c1.allHistory).toHaveBeenCalledWith(
+      { limit: 100, cursor: undefined },
+      expect.anything(),
+    );
+  });
+
+  it('pages history on next_cursor, and a recorded span (historyAll) reads it again', async () => {
+    const { result } = await mount(
+      { c1: { annotations: true } },
+      () => useAllHistory(),
+      () =>
+        mockClients.c1.allHistory.mockImplementation(async (page) =>
+          page.cursor ? { items: [{ id: 2 }] } : { items: [{ id: 1 }], next_cursor: 'h2' },
+        ),
+    );
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    expect(flattenPages(result.current.data)).toEqual([{ id: 1 }, { id: 2 }]);
+    const qc = queryClients[queryClients.length - 1];
+    // What store.ts does after recording a listening span.
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: qk.historyAll('c1') });
+    });
+    expect(mockClients.c1.allHistory).toHaveBeenCalledTimes(4);
+  });
+});
+
+type EditCase = {
+  name: string;
+  useHook: () => { mutateAsync: (vars: never) => Promise<unknown> };
+  vars: unknown;
+  method: keyof StubClient;
+  args: unknown[];
+};
+
+const editCases: EditCase[] = [
+  {
+    name: 'useUpdateBookmark',
+    useHook: useUpdateBookmark,
+    vars: { id: 7, label: 'quote' },
+    method: 'updateBookmark',
+    args: [7, { label: 'quote' }],
+  },
+  {
+    name: 'useUpdateNote',
+    useHook: useUpdateNote,
+    vars: { id: 8, body: 'Edited', position: 12 },
+    method: 'updateNote',
+    args: [8, { body: 'Edited', position: 12 }],
+  },
+];
+
+describe('Phase 4 gated edits', () => {
+  it.each(editCases)(
+    '$name rejects without a request on a server without annotations',
+    async ({ useHook, vars, method }) => {
+      const { result } = await mountAnnotations(ALL_BUT_ANNOTATIONS, useHook);
+      let error: unknown;
+      await act(async () => {
+        await result.current.m.mutateAsync(vars as never).catch((e: unknown) => (error = e));
+      });
+      expect(error).toBeInstanceOf(CapabilityError);
+      expect(error).toMatchObject({ capability: 'annotations', unknown: false });
+      expect(mockClients.c1[method]).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(editCases)(
+    '$name rejects while the server capabilities are still unknown',
+    async ({ useHook, vars, method }) => {
+      const { result } = await mount({ c1: { annotations: true } }, useHook, () =>
+        mockClients.c1.serverInfo.mockReturnValue(new Promise(() => {})),
+      );
+      let error: unknown;
+      await act(async () => {
+        await result.current.mutateAsync(vars as never).catch((e: unknown) => (error = e));
+      });
+      expect(error).toMatchObject({ capability: 'annotations', unknown: true });
+      expect(mockClients.c1[method]).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(editCases)(
+    '$name sends its request to a server with annotations alone',
+    async ({ useHook, vars, method, args }) => {
+      const { result } = await mountAnnotations({ annotations: true }, useHook);
+      await act(async () => {
+        await result.current.m.mutateAsync(vars as never);
+      });
+      expect(mockClients.c1[method]).toHaveBeenCalledTimes(1);
+      expect(mockClients.c1[method]).toHaveBeenCalledWith(...args);
+    },
+  );
+});
+
+describe('Phase 4 bookmark labels on add', () => {
+  it('sends the label to a server with annotations', async () => {
+    const { result } = await mountAnnotations({ annotations: true }, () =>
+      useAddBookmark(2, 'A/Book'),
+    );
+    await act(async () => {
+      await result.current.m.mutateAsync({ position: 61, label: 'funny' });
+    });
+    expect(mockClients.c1.addBookmark).toHaveBeenCalledWith(2, 'A/Book', 61, '', 'funny');
+  });
+
+  it('drops the label on a server without annotations, still making the bookmark', async () => {
+    const { result } = await mountAnnotations(ALL_BUT_ANNOTATIONS, () =>
+      useAddBookmark(2, 'A/Book'),
+    );
+    await act(async () => {
+      await result.current.m.mutateAsync({ position: 61, note: 'Here', label: 'funny' });
+    });
+    expect(mockClients.c1.addBookmark.mock.calls).toEqual([[2, 'A/Book', 61, 'Here']]);
+  });
+
+  it('drops the label while the server capabilities are still unknown', async () => {
+    const { result } = await mount(
+      { c1: { annotations: true } },
+      () => useAddBookmark(2, 'A/Book'),
+      () => mockClients.c1.serverInfo.mockReturnValue(new Promise(() => {})),
+    );
+    await act(async () => {
+      await result.current.mutateAsync({ position: 61, label: 'funny' });
+    });
+    expect(mockClients.c1.addBookmark.mock.calls).toEqual([[2, 'A/Book', 61, '']]);
+  });
+});
+
+describe('Phase 4 cache updates', () => {
+  const bookmark = (id: number, extra: object = {}) => ({
+    id,
+    library_id: 2,
+    path: 'A/Book',
+    position: id * 10,
+    note: '',
+    label: '',
+    ...extra,
+  });
+  const note = (id: number, position: number, extra: object = {}) => ({
+    id,
+    library_id: 2,
+    path: 'A/Book',
+    position,
+    body: 'b',
+    ...extra,
+  });
+  const pages = (...lists: object[][]) => ({
+    pages: lists.map((items, i) =>
+      i < lists.length - 1 ? { items, next_cursor: `p${i + 2}` } : { items },
+    ),
+    pageParams: lists.map((_, i) => (i === 0 ? undefined : `p${i + 1}`)),
+  });
+  const book = { title: 'Book' };
+  /** The rows of a cached across-books list. */
+  const rows = (qc: QueryClient, key: readonly unknown[]) =>
+    flattenPages(qc.getQueryData<InfiniteData<Page<unknown>>>(key));
+
+  it("an edited bookmark replaces its row in the book's list and the across-books pages", async () => {
+    const { result, qc } = await mountAnnotations({ annotations: true }, useUpdateBookmark);
+    qc.setQueryData(qk.bookmarks('c1', 2, 'A/Book'), [bookmark(1), bookmark(2)]);
+    qc.setQueryData(qk.myBookmarks('c1'), pages([{ ...bookmark(2), book }], [bookmark(1)]));
+    mockClients.c1.updateBookmark.mockResolvedValueOnce(bookmark(2, { label: 'quote' }) as never);
+    await act(async () => {
+      await result.current.m.mutateAsync({ id: 2, label: 'quote' });
+    });
+    expect(qc.getQueryData(qk.bookmarks('c1', 2, 'A/Book'))).toEqual([
+      bookmark(1),
+      bookmark(2, { label: 'quote' }),
+    ]);
+    // The row keeps its `book` (an edit answers without it), and the list is read again.
+    expect(rows(qc, qk.myBookmarks('c1'))).toEqual([
+      { ...bookmark(2, { label: 'quote' }), book },
+      bookmark(1),
+    ]);
+    expect(qc.getQueryState(qk.myBookmarks('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it("an edited note keeps its book's list in position order", async () => {
+    const { result, qc } = await mountAnnotations({ annotations: true }, useUpdateNote);
+    qc.setQueryData(qk.notes('c1', 2, 'A/Book'), [note(1, 10), note(2, 20), note(3, 30)]);
+    qc.setQueryData(qk.myNotes('c1'), pages([note(3, 30), note(2, 20)], [note(1, 10)]));
+    mockClients.c1.updateNote.mockResolvedValueOnce(note(1, 25, { body: 'moved' }) as never);
+    await act(async () => {
+      await result.current.m.mutateAsync({ id: 1, position: 25 });
+    });
+    expect(qc.getQueryData(qk.notes('c1', 2, 'A/Book'))).toEqual([
+      note(2, 20),
+      note(1, 25, { body: 'moved' }),
+      note(3, 30),
+    ]);
+    // The across-books list stays newest made first: the row changes in place.
+    expect(rows(qc, qk.myNotes('c1'))).toEqual([
+      note(3, 30),
+      note(2, 20),
+      note(1, 25, { body: 'moved' }),
+    ]);
+    expect(qc.getQueryState(qk.myNotes('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it("an edit to a row the caches don't hold reads them again", async () => {
+    const { result, qc } = await mountAnnotations({ annotations: true }, useUpdateBookmark);
+    qc.setQueryData(qk.bookmarks('c1', 2, 'A/Book'), [bookmark(1)]);
+    qc.setQueryData(qk.myBookmarks('c1'), pages([bookmark(1)]));
+    await act(async () => {
+      await result.current.m.mutateAsync({ id: 9, note: 'x' });
+    });
+    expect(qc.getQueryState(qk.bookmarks('c1', 2, 'A/Book'))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(qk.myBookmarks('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it('a delete takes the row out of the across-books pages and refreshes both lists', async () => {
+    const { result, qc } = await mountAnnotations({ annotations: true }, () => ({
+      bookmark: useDeleteBookmark(2, 'A/Book'),
+      note: useDeleteNote(2, 'A/Book'),
+    }));
+    qc.setQueryData(qk.bookmarks('c1', 2, 'A/Book'), [bookmark(1), bookmark(2)]);
+    qc.setQueryData(qk.myBookmarks('c1'), pages([bookmark(2)], [bookmark(1)]));
+    qc.setQueryData(qk.notes('c1', 2, 'A/Book'), [note(1, 10)]);
+    qc.setQueryData(qk.myNotes('c1'), pages([note(1, 10)]));
+    await act(async () => {
+      await result.current.m.bookmark.mutateAsync(2);
+      await result.current.m.note.mutateAsync(1);
+    });
+    expect(rows(qc, qk.myBookmarks('c1'))).toEqual([bookmark(1)]);
+    expect(rows(qc, qk.myNotes('c1'))).toEqual([]);
+    for (const key of [
+      qk.bookmarks('c1', 2, 'A/Book'),
+      qk.myBookmarks('c1'),
+      qk.notes('c1', 2, 'A/Book'),
+      qk.myNotes('c1'),
+    ]) {
+      expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    }
+  });
+
+  it('an add refreshes the book list and the across-books list', async () => {
+    const { result, qc } = await mountAnnotations({ annotations: true }, () => ({
+      bookmark: useAddBookmark(2, 'A/Book'),
+      note: useAddNote(2, 'A/Book'),
+    }));
+    for (const key of [
+      qk.bookmarks('c1', 2, 'A/Book'),
+      qk.myBookmarks('c1'),
+      qk.notes('c1', 2, 'A/Book'),
+      qk.myNotes('c1'),
+    ]) {
+      qc.setQueryData(key, key[0] === 'myBookmarks' || key[0] === 'myNotes' ? pages([]) : []);
+    }
+    await act(async () => {
+      await result.current.m.bookmark.mutateAsync({ position: 5 });
+      await result.current.m.note.mutateAsync({ body: 'n' });
+    });
+    for (const key of [
+      qk.bookmarks('c1', 2, 'A/Book'),
+      qk.myBookmarks('c1'),
+      qk.notes('c1', 2, 'A/Book'),
+      qk.myNotes('c1'),
+    ]) {
+      expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    }
   });
 });

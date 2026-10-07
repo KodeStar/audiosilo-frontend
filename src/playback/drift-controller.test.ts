@@ -16,6 +16,9 @@ let mockClient: { addBookmark: typeof mockAddBookmark } | null = null;
 jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }));
 
 /* eslint-disable import/first */
+import { qk } from '@/api/hooks';
+import { queryClient } from '@/api/provider';
+import type { ServerInfo } from '@/api/types';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { resetInteractions } from '@/playback/last-interaction';
 import { GRACE_SECONDS, useSleepTimer } from '@/playback/sleep-timer';
@@ -134,6 +137,28 @@ describe('drift controller', () => {
     player.setPlayState('playing');
     await settle();
     expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels the bookmark fell_asleep on a server with annotations', async () => {
+    await fallAsleep();
+    // Cached after the five minutes asleep, which would garbage-collect an unobserved entry.
+    queryClient.setQueryData<Partial<ServerInfo>>(qk.server('srv-1'), {
+      capabilities: {
+        admin_ui: true,
+        web_player: true,
+        transcode: false,
+        upload: false,
+        websocket: false,
+        annotations: true,
+      },
+    });
+    try {
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      await settle();
+      expect(mockAddBookmark).toHaveBeenCalledWith(1, 'a.m4b', 1300, 'Fell asleep', 'fell_asleep');
+    } finally {
+      queryClient.removeQueries({ queryKey: qk.server('srv-1') });
+    }
   });
 
   it('offers it at once when the morning play is what closes the grace', async () => {

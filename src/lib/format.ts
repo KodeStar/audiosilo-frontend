@@ -51,11 +51,18 @@ export function formatCount(n: number, locale: string = getLocale()): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n);
 }
 
+/** Average kilobits a second of a file's bytes over its seconds (`size * 8 / duration`,
+ * as the server's admin derives it), or null when not derivable. */
+export function bitrateKbps(sizeBytes?: number, durationSec?: number): number | null {
+  if (!sizeBytes || sizeBytes <= 0 || !durationSec || durationSec <= 0) return null;
+  const kbps = Math.round((sizeBytes * 8) / durationSec / 1000);
+  return kbps > 0 ? kbps : null;
+}
+
 /** "128kbps" from a file's bytes + seconds; empty when not derivable. */
 export function formatBitrate(sizeBytes?: number, durationSec?: number): string {
-  if (!sizeBytes || !durationSec || durationSec <= 0) return '';
-  const kbps = Math.round((sizeBytes * 8) / durationSec / 1000);
-  return kbps > 0 ? `${kbps}kbps` : '';
+  const kbps = bitrateKbps(sizeBytes, durationSec);
+  return kbps === null ? '' : `${kbps}kbps`;
 }
 
 /** "8m52s" / "1h33m" / "45s" - compact spoken-style duration (per old client). */
@@ -136,13 +143,55 @@ function dateFormatter(locale: string, use: string, opts: Intl.DateTimeFormatOpt
   return fmt;
 }
 
-/** A date with `opts`, or its ISO date where the runtime can't format it. */
-function formatDate(date: Date, use: string, opts: Intl.DateTimeFormatOptions, locale: string) {
+/** A date with `opts`, or `fallback` (its ISO date) where the runtime can't format it. */
+function formatDate(
+  date: Date,
+  use: string,
+  opts: Intl.DateTimeFormatOptions,
+  locale: string,
+  fallback: (date: Date) => string = (d) => d.toISOString().slice(0, 10),
+) {
   try {
     return dateFormatter(locale, use, opts).format(date);
   } catch {
-    return date.toISOString().slice(0, 10);
+    return fallback(date);
   }
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** The device's local date as "2026-10-03" (an ISO string would be the UTC day). */
+export function localIsoDay(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/** "Saturday" (the Journal's days this week). */
+export function formatWeekday(date: Date, locale: string = getLocale()): string {
+  return formatDate(date, 'weekday', { weekday: 'long' }, locale, (d) => formatDayDate(d, locale));
+}
+
+/** "3 October" ("October 3" in en-US), with the year when it isn't `now`'s. */
+export function formatDayDate(date: Date, locale: string = getLocale(), now = new Date()): string {
+  return date.getFullYear() === now.getFullYear()
+    ? formatDate(date, 'dayMonth', { day: 'numeric', month: 'long' }, locale, localIsoDay)
+    : formatDate(
+        date,
+        'dayMonthYear',
+        { day: 'numeric', month: 'long', year: 'numeric' },
+        locale,
+        localIsoDay,
+      );
+}
+
+/** "Sun 3 Oct": a short day (the book page's History rows). */
+export function formatShortDay(date: Date, locale: string = getLocale()): string {
+  return formatDate(
+    date,
+    'shortDay',
+    { weekday: 'short', day: 'numeric', month: 'short' },
+    locale,
+    localIsoDay,
+  );
 }
 
 /** "Monday 5 October" (the device's own date: Home's greeting is about the listener's
@@ -154,6 +203,12 @@ export function formatLongDate(date: Date, locale: string = getLocale()): string
 /** "20 Oct". */
 export function formatDayMonth(date: Date, locale: string = getLocale()): string {
   return formatDate(date, 'dm', { day: 'numeric', month: 'short' }, locale);
+}
+
+/** A date as a record: "20 Oct", with the year ("20 Oct 2024") when it is not `now`'s. */
+export function formatRecordDate(date: Date, now: Date, locale: string = getLocale()): string {
+  if (date.getFullYear() === now.getFullYear()) return formatDayMonth(date, locale);
+  return formatDate(date, 'dmy', { day: 'numeric', month: 'short', year: 'numeric' }, locale);
 }
 
 /** "20 Oct" for a server `YYYY-MM-DD` day, read as that calendar day (not shifted into

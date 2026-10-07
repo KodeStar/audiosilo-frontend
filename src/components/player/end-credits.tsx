@@ -6,20 +6,15 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  CapabilityError,
   historyQuery,
   useAllProgressAll,
   useBook,
   useBookMeta,
   useBookProgress,
   useCapability,
-  useMyRatings,
   useMyStats,
-  useRating,
-  useSetRating,
 } from '@/api/hooks';
 import { ConnectionScope, useCid, useOptionalApi } from '@/api/provider';
-import type { RatingValue } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
@@ -45,7 +40,6 @@ import {
   endCreditsDecision,
   HISTORY_LIMIT,
   listeningSummary,
-  savedRating,
   yearShelf,
 } from './end-credits-logic';
 import {
@@ -58,6 +52,7 @@ import {
   type ShelfBook,
 } from './end-credits-parts';
 import { RatingStars } from './rating-stars';
+import { useBookRating } from './use-book-rating';
 import type { PlayTarget } from './use-play-book';
 import { useBookSpeed } from './use-time-left';
 import { advanceTo, dropFromQueue, useAutoPlayHold } from './end-of-book';
@@ -274,24 +269,7 @@ function EndCreditsBody({
   }, [stats.data, libraryId, path, finished, phone, allProgress, cid]);
 
   const ratingsCap = useCapability('ratings', cid) === true;
-  const rating = useRating(libraryId, path, cid);
-  const mine = useMyRatings(cid);
-  // A PUT replaces the whole rating: the stars wait for the saved one, whose note it
-  // carries (`savedRating`; a failed list counts as no rating of a parent book).
-  const rated = savedRating(libraryId, path, rating.data, mine.isError ? [] : mine.data);
-  const setRating = useSetRating(cid);
-  const [picked, setPicked] = useState<RatingValue | undefined>(undefined);
-  const onRate = (value: RatingValue) => {
-    if (rated === undefined) return;
-    setPicked(value);
-    setRating.mutateAsync({ libraryId, path, rating: value, note: rated?.note }).then(
-      () => toast({ title: t('player.finished.ratingSaved') }),
-      (e: unknown) => {
-        setPicked(undefined);
-        if (!(e instanceof CapabilityError)) toast({ title: t('player.finished.ratingFailed') });
-      },
-    );
-  };
+  const rating = useBookRating(cid, libraryId, path);
 
   // --- Layout ----------------------------------------------------------------------------
   const shelfOrCover =
@@ -357,23 +335,30 @@ function EndCreditsBody({
         <FallbackBackdrop cid={cid} libraryId={libraryId} path={path} hasBook={!!book} />
       )}
 
+      {/* The eyebrow sits on the page's centre line like the title block below: the two
+          buttons differ in width, so each gets an equal flex-1 side slot (a flex-1 eyebrow
+          between them centred it on the gap, off to the left). */}
       <View className={cn('flex-row items-center gap-2 py-2', phone ? 'px-2' : 'px-4')}>
-        <Button
-          variant="ghost"
-          size="icon"
-          icon="close"
-          accessibilityLabel={t('common.close')}
-          onPress={onClose}
-        />
-        <Text variant="eyebrow" className="flex-1 text-center" accessibilityRole="header">
+        <View testID="end-credits-bar-start" className="flex-1 flex-row justify-start">
+          <Button
+            variant="ghost"
+            size="icon"
+            icon="close"
+            accessibilityLabel={t('common.close')}
+            onPress={onClose}
+          />
+        </View>
+        <Text variant="eyebrow" className="shrink text-center" accessibilityRole="header">
           {t('player.finished.eyebrow')}
         </Text>
-        <Button
-          variant="ghost"
-          size="sm"
-          title={t('player.finished.credits')}
-          onPress={() => setCreditsOpen(true)}
-        />
+        <View testID="end-credits-bar-end" className="flex-1 flex-row justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            title={t('player.finished.credits')}
+            onPress={() => setCreditsOpen(true)}
+          />
+        </View>
       </View>
 
       <ScrollView
@@ -419,11 +404,7 @@ function EndCreditsBody({
         {ratingsCap ? (
           <View className="items-center gap-1">
             <Text variant="label">{t('player.finished.howWasIt')}</Text>
-            <RatingStars
-              value={picked ?? rated?.rating}
-              onRate={onRate}
-              disabled={setRating.isPending || rated === undefined}
-            />
+            <RatingStars value={rating.value} onRate={rating.rate} disabled={!rating.ready} />
           </View>
         ) : null}
 

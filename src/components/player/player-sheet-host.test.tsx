@@ -46,6 +46,19 @@ jest.mock('./companion/companion', () => {
   return { Companion: () => <T>companion</T> };
 });
 jest.mock('./grace-card', () => ({ GraceCard: () => null }));
+jest.mock('@/components/annotations/annotation-editor', () => {
+  const { Text: T } = jest.requireActual('react-native');
+  return {
+    AnnotationEditorSheet: ({
+      visible,
+      request,
+    }: {
+      visible: boolean;
+      request: { kind: string; target: { path: string } } | null;
+    }) =>
+      visible && request ? <T>{`${request.kind} editor for ${request.target.path}`}</T> : null,
+  };
+});
 jest.mock('@/components/upnext/up-next-sheet', () => {
   const { Text: T } = jest.requireActual('react-native');
   return {
@@ -69,7 +82,7 @@ const BOOK = usePlayer.getState().nowPlaying;
 
 beforeEach(() => {
   mockSegments = ['(app)'];
-  usePlayerSheets.setState({ open: null });
+  usePlayerSheets.setState({ open: null, editor: null });
   useCompanion.setState({ tab: null });
   usePlayer.setState({ nowPlaying: BOOK });
   mockAddBookmark.mockClear();
@@ -216,6 +229,63 @@ describe('PlayerSheetHost', () => {
     expect(usePlayerSheets.getState().open).toBeNull();
     await open('output');
     expect(usePlayer.getState().showRoutePicker).toHaveBeenCalledTimes(1);
+  });
+
+  // A bookmark on the book page of a book that is not playing, while another plays.
+  const OTHER = { connectionId: 'b', libraryId: 2, path: 'other/book' };
+  const EDIT = {
+    kind: 'bookmark' as const,
+    target: OTHER,
+    position: 30,
+    bookmark: {
+      id: 4,
+      library_id: 2,
+      path: 'other/book',
+      position: 30,
+      note: '',
+      created_at: '2026-10-01T10:00:00Z',
+    },
+  };
+
+  it('opens the editors with no book loaded: they carry their own book', async () => {
+    usePlayer.setState({ nowPlaying: null });
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await act(() =>
+      usePlayerSheets.getState().openEditor({ kind: 'note', target: OTHER, position: 12 }),
+    );
+    expect(screen.getByText('note editor for other/book')).toBeTruthy();
+  });
+
+  // The rule that drops a book's sheet when the book unloads must not take an edit of
+  // another book's bookmark with it (the listener would lose what they were typing).
+  it("keeps an edit of a non-playing book's bookmark open when the playing book unloads", async () => {
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await act(() => usePlayerSheets.getState().openEditor(EDIT));
+    expect(screen.getByText('bookmark editor for other/book')).toBeTruthy();
+    await act(() => usePlayer.setState({ nowPlaying: null }));
+    expect(screen.getByText('bookmark editor for other/book')).toBeTruthy();
+    expect(usePlayerSheets.getState().open).toBe('editor');
+    expect(mockAddBookmark).not.toHaveBeenCalled();
+  });
+
+  it('shows the editor once with both hosts mounted: the player one, on top', async () => {
+    mockSegments = ['player'];
+    await mountWithPortal(
+      <>
+        <PlayerSheetHost scope="shell" />
+        <PlayerSheetHost scope="player" layout="phone" />
+      </>,
+    );
+    await act(() => usePlayerSheets.getState().openEditor(EDIT));
+    expect(screen.getAllByText('bookmark editor for other/book')).toHaveLength(1);
+  });
+
+  it('closes the editor without adding a bookmark here', async () => {
+    await mountWithPortal(<PlayerSheetHost scope="shell" />);
+    await act(() => usePlayerSheets.getState().openEditor(EDIT));
+    await act(() => usePlayerSheets.getState().close());
+    expect(screen.queryByText('bookmark editor for other/book')).toBeNull();
+    expect(mockAddBookmark).not.toHaveBeenCalled();
   });
 
   it('closes its sheet when the full player goes away, so it does not reopen behind', async () => {

@@ -151,6 +151,67 @@
       "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device."
     }
   },
+  "annotations": {
+    "labels": {
+      "quote": "Quote",
+      "favourite": "Favourite",
+      "relisten": "Re-listen",
+      "funny": "Funny",
+      "question": "Question",
+      "fell_asleep": "Fell asleep"
+    },
+    "labelGroup": "Label",
+    "labelClearHint": "Tap again to clear the label",
+    "quoted": "“{{text}}”",
+    "jumpTo": "Jump to {{time}}",
+    "jumpFailed": "Couldn't start the book there",
+    "undo": "Undo",
+    "seeAll": "See all in your journal",
+    "editUnsupported": "Editing needs a newer AudioSilo server.",
+    "drift": {
+      "marker": "You drifted off around here"
+    },
+    "bookmark": {
+      "title": "Bookmark",
+      "editTitle": "Edit bookmark",
+      "noteLabel": "Note",
+      "notePlaceholder": "What happened here? A quote, a thought, a reminder.",
+      "save": "Save bookmark",
+      "addAt": "Bookmark {{time}}",
+      "saved": "Bookmark saved",
+      "saveFailed": "Couldn't save the bookmark",
+      "deleted": "Bookmark deleted",
+      "deleteFailed": "Couldn't delete the bookmark",
+      "restoreFailed": "Couldn't bring the bookmark back",
+      "edit": "Edit bookmark at {{time}}",
+      "delete": "Delete bookmark at {{time}}",
+      "noNote": "No note",
+      "addNote": "Add note",
+      "loadFailed": "Couldn't load your bookmarks",
+      "emptyHintWeb": "Press B while listening, or tap the bookmark in the player.",
+      "emptyHintNative": "Tap the bookmark in the player while listening."
+    },
+    "note": {
+      "title": "Note",
+      "editTitle": "Edit note",
+      "bodyLabel": "Note",
+      "placeholder": "Markdown works: **bold**, *italic*, lists.",
+      "pin": "Pin note",
+      "save": "Save note",
+      "addAt": "Note at {{time}}",
+      "pinned": "Note pinned at {{time}}",
+      "saved": "Note saved",
+      "saveFailed": "Couldn't save the note",
+      "deleted": "Note deleted",
+      "deleteFailed": "Couldn't delete the note",
+      "restoreFailed": "Couldn't bring the note back",
+      "edit": "Edit note at {{time}}",
+      "delete": "Delete note at {{time}}",
+      "loadFailed": "Couldn't load your notes",
+      "empty": "No notes yet.",
+      "emptyHint": "Pin a thought, a theory or a reminder to a place in the book."
+    }
+  },
   "connect": {
     "server": {
       "subtitle": "Connect to your audiobook server",
@@ -332,35 +393,21 @@
       "markFinished": "Mark as Finished"
     },
     "notes": {
-      "title": "Notes",
-      "placeholder": "Add a note (markdown supported)…",
-      "add": "Add note",
-      "delete": "Delete note"
+      "title": "Notes"
     },
     "history": {
       "title": "History"
     },
     "bookmarks": {
-      "title": "Bookmarks",
-      "add": "Add bookmark",
-      "delete": "Delete bookmark"
+      "title": "Bookmarks"
     },
     "versions": {
-      "choose": "Choose a version",
-      "thisCopy": "This copy",
-      "otherCount_one": "{{count}} other version",
-      "otherCount_other": "{{count}} other versions",
       "multiFile": "multi-file",
       "singleFile": "single file"
     },
     "favourite": {
       "remove": "Remove from favourites",
       "add": "Add to favourites"
-    },
-    "bookStats": {
-      "favourite": "Favourite",
-      "audio": "Audio",
-      "length": "length"
     },
     "download": {
       "unavailable": "Downloads unavailable",
@@ -725,11 +772,7 @@
     "libraryFallback": "Library",
     "chaptersTitle": "Chapters",
     "filesTitle": "Files",
-    "chapterFallback": "Chapter {{number}}",
     "duration": "Duration: {{value}}",
-    "bitrate": "Bitrate: {{value}}",
-    "byAuthor": "By {{author}}",
-    "narratedBy": "Narrated by {{narrator}}",
     "transcodeNote": "{{codec}} audio is converted to MP3 for this browser",
     "transcodeNoteGeneric": "This audio is converted to MP3 for this browser",
     "listen": "Listen",
@@ -782,7 +825,95 @@
         "minor": "Minor"
       }
     },
-    "openPlayer": "Open the player"
+    "page": {
+      "crumbs": "Where this book is",
+      "loading": "Loading the book"
+    },
+    "hero": {
+      "by": "by",
+      "readBy": "read by",
+      "openAuthor": "Books by {{name}}",
+      "openNarrator": "Books read by {{name}}",
+      "openSeries": "Open the series {{series}}",
+      "seriesBook": "{{series}} · Book {{position}}",
+      "chapters_one": "{{count}} chapter",
+      "chapters_other": "{{count}} chapters",
+      "parts_one": "{{count}} part of {{minutes}} min",
+      "parts_other": "{{count}} parts of {{minutes}} min",
+      "files_one": "{{count}} {{format}} file",
+      "files_other": "{{count}} {{format}} files",
+      "chapterOf": "Chapter {{chapter}} of {{total}}",
+      "partOf": "Part {{part}} of {{total}}",
+      "finished": "Finished",
+      "finishedOn": "Finished {{date}}",
+      "start": "Start listening",
+      "resume": "Resume",
+      "resumeChapter": "Resume chapter {{chapter}}",
+      "again": "Listen again",
+      "pause": "Pause"
+    },
+    "upNext": {
+      "label": "Up next for {{title}}",
+      "playNext": "Play next",
+      "addToEnd": "Add to the end of Up next",
+      "playsNext": "Plays next"
+    },
+    "download": {
+      "forOffline": "Download for offline",
+      "progressCancel": "{{percent}}% · Cancel",
+      "queuedCancel": "Queued · Cancel",
+      "onDevice": "{{size}} on this device"
+    },
+    "chapters": {
+      "wholeBook": "The whole book",
+      "bookmarks": "Bookmarks",
+      "notes": "Notes",
+      "parts": "Parts",
+      "part": "Part {{number}}",
+      "partsTitle": "This book has no chapter marks",
+      "partsBody": "So it's split into {{minutes}}-minute parts you can jump between. Change their length in Settings, under Chapter length.",
+      "here": "you're here",
+      "heard": "listened",
+      "hasBookmark": "has a bookmark",
+      "startsAt": "starts at {{time}}"
+    },
+    "details": {
+      "title": "Details",
+      "direct": "Direct play",
+      "directBody": "The original file streams as it is. Nothing is converted, and seeking is instant.",
+      "local": "Plays from this device",
+      "localBody": "The downloaded original files play here, with or without a connection.",
+      "converted": "Converted for this browser",
+      "convertedBody": "This browser can't play {{codec}}, so {{server}} converts it as you listen. The iOS and Android apps play the original.",
+      "convertedBodyGeneric": "This browser can't play this audio, so {{server}} converts it as you listen. The iOS and Android apps play the original.",
+      "file": "File",
+      "codec": "Codec",
+      "bitrate": "Bitrate",
+      "length": "Length",
+      "kbps": "about {{kbps}} kbps",
+      "moreFiles_one": "and {{count}} more file",
+      "moreFiles_other": "and {{count}} more files",
+      "pathOn": "Path on {{server}}",
+      "pathNote": "Books are identified by this path, so your progress survives re-tagging and rescans."
+    },
+    "about": {
+      "improve": "Improve this",
+      "yes": "Yes",
+      "no": "No",
+      "fallbackBoth": "{{title}} by {{author}}, read by {{narrator}}.",
+      "fallbackAuthor": "{{title}} by {{author}}.",
+      "none": "No description yet."
+    },
+    "versions": {
+      "title": "Other versions"
+    },
+    "listening": {
+      "title": "Your listening",
+      "listened": "Listened",
+      "speed": "Speed",
+      "started": "Started",
+      "finished": "Finished"
+    }
   },
   "player": {
     "controls": {
@@ -802,7 +933,6 @@
     "bookmarks": {
       "label": "Bookmarks",
       "empty": "No bookmarks yet.",
-      "addAt": "Add bookmark at {{time}}",
       "added": "Bookmark added",
       "addFailed": "Couldn't add the bookmark"
     },
@@ -1311,5 +1441,123 @@
     "pageError": "Couldn't load these books",
     "narratorUnsupported": "This server can't list books by narrator yet",
     "narratorUnsupportedHint": "A newer AudioSilo server adds it."
+  },
+  "journal": {
+    "title": "Journal",
+    "heading": "Everything you've marked",
+    "entryHint": "Your listening diary, bookmarks and notes",
+    "tabs": {
+      "label": "Journal sections",
+      "diary": "Diary",
+      "bookmarks": "Bookmarks",
+      "notes": "Notes"
+    },
+    "search": {
+      "placeholder": "Search your bookmarks and notes",
+      "label": "Search the journal"
+    },
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "openBook": "Open {{title}}",
+    "openLibrary": "Go to the Library",
+    "jumpFailed": "Couldn't start {{title}}",
+    "diary": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "when": "{{time}}, {{minutes}}",
+      "range": "{{from}} to {{to}}",
+      "barLabel": "Listening across the day: {{spans}}",
+      "finished": "Finished the book",
+      "empty": {
+        "title": "Nothing listened yet",
+        "hint": "Every day you listen shows here, with the books and the chapters you heard."
+      },
+      "error": {
+        "title": "Couldn't load your listening",
+        "hint": "Nothing is lost. Check the connection to your server and try again."
+      },
+      "drift": {
+        "jumpBack_one": "You drifted off around {{time}}. Jump back {{count}} minute?",
+        "jumpBack_other": "You drifted off around {{time}}. Jump back {{count}} minutes?",
+        "jumpBackAction": "Jump back",
+        "resume": "The sleep timer stopped this at {{time}}.",
+        "resumeAction": "Play from where you drifted off"
+      }
+    },
+    "bookmarks": {
+      "labels": "Labels",
+      "allLabels": "All labels",
+      "noMatch": "No bookmarks match",
+      "error": "Couldn't load your bookmarks",
+      "empty": {
+        "title": "No bookmarks yet",
+        "hint": "Add one from the player while you listen. They gather here from every book."
+      },
+      "unsupported": {
+        "title": "This server can't list all your bookmarks yet",
+        "hint": "Each book's page still shows its own bookmarks. A newer AudioSilo server lists them all here."
+      }
+    },
+    "notes": {
+      "noMatch": "No notes match",
+      "error": "Couldn't load your notes",
+      "empty": {
+        "title": "No notes yet",
+        "hint": "Add a note from the player while you listen. They gather here from every book."
+      },
+      "unsupported": {
+        "title": "This server can't list all your notes yet",
+        "hint": "Each book's page still shows its own notes. A newer AudioSilo server lists them all here."
+      }
+    },
+    "servers": {
+      "failed": {
+        "history": "Couldn't reach {{server}}, so its listening isn't shown.",
+        "bookmarks": "Couldn't reach {{server}}, so its bookmarks aren't shown.",
+        "notes": "Couldn't reach {{server}}, so its notes aren't shown."
+      },
+      "unsupported": {
+        "bookmarks": "{{server}} can't list its bookmarks here yet. Find them on each book's page.",
+        "notes": "{{server}} can't list its notes here yet. Find them on each book's page."
+      }
+    },
+    "export": {
+      "label": "Export",
+      "menu": "Export the journal",
+      "download": "Download",
+      "copyMarkdown": "Copy as Markdown",
+      "downloadMarkdown": "Download Markdown",
+      "downloadCsv": "Download CSV",
+      "shareMarkdown": "Share as Markdown",
+      "shareCsv": "Share as CSV",
+      "preparing_one": "Gathering {{n}} entry",
+      "preparing_other": "Gathering {{n}} entries",
+      "copied": "Journal copied as Markdown",
+      "nothing": "No bookmarks or notes to export yet",
+      "failed": "Couldn't export the journal",
+      "failedServers": "Couldn't include {{servers}}",
+      "truncated_one": "Only the newest {{max}} entry of a list was exported",
+      "truncated_other": "Only the newest {{max}} entries of a list were exported",
+      "dialogTitle": "Export the journal",
+      "exported": "Exported {{date}}",
+      "bookmark": "Bookmark",
+      "note": "Note",
+      "columns": {
+        "server": "Server",
+        "kind": "Type",
+        "book": "Book",
+        "author": "Author",
+        "position": "Position",
+        "chapter": "Chapter",
+        "label": "Label",
+        "text": "Text",
+        "created": "Created"
+      }
+    },
+    "history": {
+      "jump": "Jump",
+      "jumpLabel": "Jump to {{time}}",
+      "span": "{{from}} to {{to}}"
+    }
   }
 }

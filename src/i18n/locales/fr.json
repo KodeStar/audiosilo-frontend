@@ -151,6 +151,67 @@
       "downloadsWarning_other": "La déconnexion supprimera aussi {{count}} livres téléchargés depuis ce serveur sur cet appareil."
     }
   },
+  "annotations": {
+    "labels": {
+      "quote": "Citation",
+      "favourite": "Favori",
+      "relisten": "À réécouter",
+      "funny": "Drôle",
+      "question": "Question",
+      "fell_asleep": "Endormi"
+    },
+    "labelGroup": "Étiquette",
+    "labelClearHint": "Touchez à nouveau pour retirer l'étiquette",
+    "quoted": "« {{text}} »",
+    "jumpTo": "Aller à {{time}}",
+    "jumpFailed": "Impossible de lancer le livre à cet endroit",
+    "undo": "Annuler",
+    "seeAll": "Tout voir dans votre journal",
+    "editUnsupported": "La modification nécessite un serveur AudioSilo plus récent.",
+    "drift": {
+      "marker": "Vous vous êtes endormi vers ce moment"
+    },
+    "bookmark": {
+      "title": "Signet",
+      "editTitle": "Modifier le signet",
+      "noteLabel": "Note",
+      "notePlaceholder": "Que s'est-il passé ici ? Une citation, une pensée, un rappel.",
+      "save": "Enregistrer le signet",
+      "addAt": "Signet à {{time}}",
+      "saved": "Signet enregistré",
+      "saveFailed": "Impossible d'enregistrer le signet",
+      "deleted": "Signet supprimé",
+      "deleteFailed": "Impossible de supprimer le signet",
+      "restoreFailed": "Impossible de rétablir le signet",
+      "edit": "Modifier le signet à {{time}}",
+      "delete": "Supprimer le signet à {{time}}",
+      "noNote": "Aucune note",
+      "addNote": "Ajouter une note",
+      "loadFailed": "Impossible de charger vos signets",
+      "emptyHintWeb": "Appuyez sur B pendant l'écoute, ou touchez le signet dans le lecteur.",
+      "emptyHintNative": "Touchez le signet dans le lecteur pendant l'écoute."
+    },
+    "note": {
+      "title": "Note",
+      "editTitle": "Modifier la note",
+      "bodyLabel": "Note",
+      "placeholder": "Le markdown fonctionne : **gras**, *italique*, listes.",
+      "pin": "Épingler la note",
+      "save": "Enregistrer la note",
+      "addAt": "Note à {{time}}",
+      "pinned": "Note épinglée à {{time}}",
+      "saved": "Note enregistrée",
+      "saveFailed": "Impossible d'enregistrer la note",
+      "deleted": "Note supprimée",
+      "deleteFailed": "Impossible de supprimer la note",
+      "restoreFailed": "Impossible de rétablir la note",
+      "edit": "Modifier la note à {{time}}",
+      "delete": "Supprimer la note à {{time}}",
+      "loadFailed": "Impossible de charger vos notes",
+      "empty": "Aucune note pour l'instant.",
+      "emptyHint": "Épinglez une pensée, une théorie ou un rappel à un moment du livre."
+    }
+  },
   "connect": {
     "server": {
       "subtitle": "Connectez-vous à votre serveur de livres audio",
@@ -332,35 +393,21 @@
       "markFinished": "Marquer comme terminé"
     },
     "notes": {
-      "title": "Notes",
-      "placeholder": "Ajouter une note (markdown pris en charge)…",
-      "add": "Ajouter une note",
-      "delete": "Supprimer la note"
+      "title": "Notes"
     },
     "history": {
       "title": "Historique"
     },
     "bookmarks": {
-      "title": "Signets",
-      "add": "Ajouter un signet",
-      "delete": "Supprimer le signet"
+      "title": "Signets"
     },
     "versions": {
-      "choose": "Choisir une version",
-      "thisCopy": "Cette copie",
-      "otherCount_one": "{{count}} autre version",
-      "otherCount_other": "{{count}} autres versions",
       "multiFile": "plusieurs fichiers",
       "singleFile": "fichier unique"
     },
     "favourite": {
       "remove": "Retirer des favoris",
       "add": "Ajouter aux favoris"
-    },
-    "bookStats": {
-      "favourite": "Favori",
-      "audio": "Audio",
-      "length": "durée"
     },
     "download": {
       "unavailable": "Téléchargements indisponibles",
@@ -725,11 +772,7 @@
     "libraryFallback": "Bibliothèque",
     "chaptersTitle": "Chapitres",
     "filesTitle": "Fichiers",
-    "chapterFallback": "Chapitre {{number}}",
     "duration": "Durée : {{value}}",
-    "bitrate": "Débit : {{value}}",
-    "byAuthor": "De {{author}}",
-    "narratedBy": "Lu par {{narrator}}",
     "transcodeNote": "L’audio {{codec}} est converti en MP3 pour ce navigateur",
     "transcodeNoteGeneric": "Cet audio est converti en MP3 pour ce navigateur",
     "listen": "Écouter",
@@ -782,7 +825,95 @@
         "minor": "Mineur"
       }
     },
-    "openPlayer": "Ouvrir le lecteur"
+    "page": {
+      "crumbs": "Emplacement de ce livre",
+      "loading": "Chargement du livre"
+    },
+    "hero": {
+      "by": "de",
+      "readBy": "lu par",
+      "openAuthor": "Livres de {{name}}",
+      "openNarrator": "Livres lus par {{name}}",
+      "openSeries": "Ouvrir la série {{series}}",
+      "seriesBook": "{{series}} · Tome {{position}}",
+      "chapters_one": "{{count}} chapitre",
+      "chapters_other": "{{count}} chapitres",
+      "parts_one": "{{count}} partie de {{minutes}} min",
+      "parts_other": "{{count}} parties de {{minutes}} min",
+      "files_one": "{{count}} fichier {{format}}",
+      "files_other": "{{count}} fichiers {{format}}",
+      "chapterOf": "Chapitre {{chapter}} sur {{total}}",
+      "partOf": "Partie {{part}} sur {{total}}",
+      "finished": "Terminé",
+      "finishedOn": "Terminé le {{date}}",
+      "start": "Commencer l’écoute",
+      "resume": "Reprendre",
+      "resumeChapter": "Reprendre le chapitre {{chapter}}",
+      "again": "Réécouter",
+      "pause": "Pause"
+    },
+    "upNext": {
+      "label": "À suivre pour {{title}}",
+      "playNext": "Lire ensuite",
+      "addToEnd": "Ajouter à la fin de À suivre",
+      "playsNext": "Sera lu ensuite"
+    },
+    "download": {
+      "forOffline": "Télécharger pour hors ligne",
+      "progressCancel": "{{percent}} % · Annuler",
+      "queuedCancel": "En attente · Annuler",
+      "onDevice": "{{size}} sur cet appareil"
+    },
+    "chapters": {
+      "wholeBook": "Le livre entier",
+      "bookmarks": "Signets",
+      "notes": "Notes",
+      "parts": "Parties",
+      "part": "Partie {{number}}",
+      "partsTitle": "Ce livre n’a pas de marques de chapitre",
+      "partsBody": "Il est donc découpé en parties de {{minutes}} minutes entre lesquelles vous pouvez naviguer. Changez leur durée dans Réglages, sous Durée de chapitre.",
+      "here": "vous êtes ici",
+      "heard": "écouté",
+      "hasBookmark": "contient un signet",
+      "startsAt": "commence à {{time}}"
+    },
+    "details": {
+      "title": "Détails",
+      "direct": "Lecture directe",
+      "directBody": "Le fichier original est diffusé tel quel. Rien n’est converti, et les sauts sont instantanés.",
+      "local": "Lu depuis cet appareil",
+      "localBody": "Les fichiers originaux téléchargés sont lus ici, avec ou sans connexion.",
+      "converted": "Converti pour ce navigateur",
+      "convertedBody": "Ce navigateur ne lit pas le {{codec}}, alors {{server}} le convertit pendant l’écoute. Les apps iOS et Android lisent l’original.",
+      "convertedBodyGeneric": "Ce navigateur ne lit pas cet audio, alors {{server}} le convertit pendant l’écoute. Les apps iOS et Android lisent l’original.",
+      "file": "Fichier",
+      "codec": "Codec",
+      "bitrate": "Débit",
+      "length": "Durée",
+      "kbps": "environ {{kbps}} kbit/s",
+      "moreFiles_one": "et {{count}} autre fichier",
+      "moreFiles_other": "et {{count}} autres fichiers",
+      "pathOn": "Chemin sur {{server}}",
+      "pathNote": "Les livres sont identifiés par ce chemin, donc votre progression survit aux changements de tags et aux nouvelles analyses."
+    },
+    "about": {
+      "improve": "Améliorer",
+      "yes": "Oui",
+      "no": "Non",
+      "fallbackBoth": "{{title}} de {{author}}, lu par {{narrator}}.",
+      "fallbackAuthor": "{{title}} de {{author}}.",
+      "none": "Pas encore de description."
+    },
+    "versions": {
+      "title": "Autres versions"
+    },
+    "listening": {
+      "title": "Votre écoute",
+      "listened": "Écouté",
+      "speed": "Vitesse",
+      "started": "Commencé",
+      "finished": "Terminé"
+    }
   },
   "player": {
     "controls": {
@@ -802,7 +933,6 @@
     "bookmarks": {
       "label": "Signets",
       "empty": "Aucun signet pour l'instant.",
-      "addAt": "Ajouter un signet à {{time}}",
       "added": "Signet ajouté",
       "addFailed": "Impossible d'ajouter le signet"
     },
@@ -1311,5 +1441,123 @@
     "pageError": "Impossible de charger ces livres",
     "narratorUnsupported": "Ce serveur ne peut pas encore lister les livres par narrateur",
     "narratorUnsupportedHint": "Un serveur AudioSilo plus récent le permet."
+  },
+  "journal": {
+    "title": "Journal",
+    "heading": "Tout ce que vous avez marqué",
+    "entryHint": "Votre journal d'écoute, vos signets et vos notes",
+    "tabs": {
+      "label": "Sections du journal",
+      "diary": "Écoutes",
+      "bookmarks": "Signets",
+      "notes": "Notes"
+    },
+    "search": {
+      "placeholder": "Rechercher dans vos signets et vos notes",
+      "label": "Rechercher dans le journal"
+    },
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "openBook": "Ouvrir {{title}}",
+    "openLibrary": "Aller à la bibliothèque",
+    "jumpFailed": "Impossible de lancer {{title}}",
+    "diary": {
+      "today": "Aujourd'hui",
+      "yesterday": "Hier",
+      "when": "{{time}}, {{minutes}}",
+      "range": "{{from}} à {{to}}",
+      "barLabel": "Écoute au fil de la journée : {{spans}}",
+      "finished": "Livre terminé",
+      "empty": {
+        "title": "Rien écouté pour l'instant",
+        "hint": "Chaque jour d'écoute s'affiche ici, avec les livres et les chapitres entendus."
+      },
+      "error": {
+        "title": "Impossible de charger votre écoute",
+        "hint": "Rien n'est perdu. Vérifiez la connexion à votre serveur et réessayez."
+      },
+      "drift": {
+        "jumpBack_one": "Vous vous êtes endormi vers {{time}}. Revenir {{count}} minute en arrière ?",
+        "jumpBack_other": "Vous vous êtes endormi vers {{time}}. Revenir {{count}} minutes en arrière ?",
+        "jumpBackAction": "Revenir en arrière",
+        "resume": "La minuterie de sommeil a arrêté la lecture à {{time}}.",
+        "resumeAction": "Reprendre là où vous vous êtes endormi"
+      }
+    },
+    "bookmarks": {
+      "labels": "Étiquettes",
+      "allLabels": "Toutes les étiquettes",
+      "noMatch": "Aucun signet ne correspond",
+      "error": "Impossible de charger vos signets",
+      "empty": {
+        "title": "Aucun signet pour l'instant",
+        "hint": "Ajoutez-en un depuis le lecteur pendant l'écoute. Les signets de tous vos livres se retrouvent ici."
+      },
+      "unsupported": {
+        "title": "Ce serveur ne peut pas encore lister tous vos signets",
+        "hint": "La page de chaque livre affiche toujours ses signets. Un serveur AudioSilo plus récent les liste tous ici."
+      }
+    },
+    "notes": {
+      "noMatch": "Aucune note ne correspond",
+      "error": "Impossible de charger vos notes",
+      "empty": {
+        "title": "Aucune note pour l'instant",
+        "hint": "Ajoutez une note depuis le lecteur pendant l'écoute. Les notes de tous vos livres se retrouvent ici."
+      },
+      "unsupported": {
+        "title": "Ce serveur ne peut pas encore lister toutes vos notes",
+        "hint": "La page de chaque livre affiche toujours ses notes. Un serveur AudioSilo plus récent les liste toutes ici."
+      }
+    },
+    "servers": {
+      "failed": {
+        "history": "Impossible de joindre {{server}}, son écoute n'est donc pas affichée.",
+        "bookmarks": "Impossible de joindre {{server}}, ses signets ne sont donc pas affichés.",
+        "notes": "Impossible de joindre {{server}}, ses notes ne sont donc pas affichées."
+      },
+      "unsupported": {
+        "bookmarks": "{{server}} ne peut pas encore lister ses signets ici. Retrouvez-les sur la page de chaque livre.",
+        "notes": "{{server}} ne peut pas encore lister ses notes ici. Retrouvez-les sur la page de chaque livre."
+      }
+    },
+    "export": {
+      "label": "Exporter",
+      "menu": "Exporter le journal",
+      "download": "Télécharger",
+      "copyMarkdown": "Copier en Markdown",
+      "downloadMarkdown": "Télécharger en Markdown",
+      "downloadCsv": "Télécharger en CSV",
+      "shareMarkdown": "Partager en Markdown",
+      "shareCsv": "Partager en CSV",
+      "preparing_one": "Collecte de {{n}} entrée",
+      "preparing_other": "Collecte de {{n}} entrées",
+      "copied": "Journal copié en Markdown",
+      "nothing": "Aucun signet ni aucune note à exporter pour l'instant",
+      "failed": "Impossible d'exporter le journal",
+      "failedServers": "Impossible d'inclure {{servers}}",
+      "truncated_one": "Seule l'entrée la plus récente ({{max}}) d'une liste a été exportée",
+      "truncated_other": "Seules les {{max}} entrées les plus récentes d'une liste ont été exportées",
+      "dialogTitle": "Exporter le journal",
+      "exported": "Exporté le {{date}}",
+      "bookmark": "Signet",
+      "note": "Note",
+      "columns": {
+        "server": "Serveur",
+        "kind": "Type",
+        "book": "Livre",
+        "author": "Auteur",
+        "position": "Position",
+        "chapter": "Chapitre",
+        "label": "Étiquette",
+        "text": "Texte",
+        "created": "Créé le"
+      }
+    },
+    "history": {
+      "jump": "Aller",
+      "jumpLabel": "Aller à {{time}}",
+      "span": "{{from}} à {{to}}"
+    }
   }
 }

@@ -11,7 +11,6 @@ import type {
   BookMetaPosition,
   BookMetaRecap,
   BookMetaRecapSummary,
-  BookMetaSeries,
   BookMetaSeriesWork,
   BookMetaWork,
 } from '@/api/types';
@@ -25,16 +24,7 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import {
-  familyKey,
-  familyName,
-  type OrderingPicks,
-  orderingLabelKey,
-  selectedView,
-  seriesViews,
-  type SeriesView,
-  viewHoldsWork,
-} from '@/lib/series-orderings';
+import { familyName, orderingLabelKey } from '@/lib/series-orderings';
 import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -47,6 +37,7 @@ import {
   splitCharacters,
   splitRecaps,
 } from './meta-gating';
+import type { SeriesRail } from './series-rails';
 
 /** Descriptions past this many characters get a collapse + "show more" toggle.
  * A deterministic length heuristic (rather than an onTextLayout measure pass) so
@@ -71,93 +62,6 @@ export function matchedMeta(
 /** Whether a description is long enough to warrant the collapse toggle. */
 export function descriptionIsLong(text: string | undefined): boolean {
   return (text?.length ?? 0) > LONG_DESCRIPTION_CHARS;
-}
-
-/** One series rail: one ordering FAMILY (see `@/lib/series-orderings`) - its main
- * series, every reading order it comes in, the order currently shown, and that
- * order's works with the current work removed. */
-export type SeriesRail = {
-  series: BookMetaSeries;
-  /** The family key the reader's pick is remembered under. */
-  family: string;
-  /** Every reading order of the family, in family order (one when it has none). */
-  views: SeriesView[];
-  /** The order shown: the remembered pick, else the main view. */
-  view: SeriesView;
-  /** The shown order's works, minus the current work. */
-  works: BookMetaSeriesWork[];
-  /** Whether the current work is part of the shown order (else the rail says so). */
-  holdsWork: boolean;
-};
-
-/** Every series rail worth rendering - one per family, showing the order `picks`
- * selects. A rail is dropped only when EVERY one of its orders is empty once the
- * current work is removed, so switching order can never make the tab vanish. The
- * screen uses the count to decide whether the Series tab exists, and passes the
- * rails straight to `BookMetaSeriesTab` - one computation, no drift. */
-export function seriesRails(
-  series: BookMetaSeries[] | undefined,
-  currentWorkId: string,
-  picks: OrderingPicks = {},
-): SeriesRail[] {
-  const others = (works: BookMetaSeriesWork[]) => works.filter((w) => w.id !== currentWorkId);
-  return (series ?? [])
-    .map((s) => {
-      const views = seriesViews(s);
-      const view = selectedView(s, picks, views);
-      return {
-        series: s,
-        family: familyKey(s),
-        views,
-        view,
-        works: others(view.works),
-        holdsWork: viewHoldsWork(view, currentWorkId),
-      };
-    })
-    .filter((r) => r.views.some((v) => others(v.works).length > 0));
-}
-
-/** A series position ("1", "2.5", "1-3.5") as a number, or undefined when it does
- * not parse. Only the FIRST number counts, so an omnibus spanning "1-3.5" sorts at
- * its start (1). Unparsable positions are never guessed at - the caller drops them,
- * because mis-ordering a series is worse than omitting an entry. */
-export function seriesPositionValue(position: string | undefined): number | undefined {
-  const n = parseFloat(position ?? '');
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/**
- * The earlier books of every series this work belongs to: the works positioned
- * BEFORE the current work, deduplicated by work id (two series can list the same
- * book) and ordered by position DESCENDING - the immediately-preceding book first,
- * since that is the one you most need catching up on.
- *
- * Reads the `rails` `seriesRails` built, so each family contributes from the ONE
- * reading order its rail shows (the reader's pick, else the main view) - the rail and
- * this list can never follow different orders, and never the union of a family's: in
- * publication order The Lion, the Witch and the Wardrobe is book 1, and offering The
- * Magician's Nephew as a "previous book" through the chronological order would spoil
- * a reader going in publication order. An order the current work is not part of
- * contributes nothing (there is no "before" in it). Different families still union.
- *
- * Entries whose position does not parse are excluded, as is a whole series whose
- * *own* current position does not parse (there is then nothing to compare against).
- * A duplicate keeps the first series' entry, so ordering is deterministic.
- */
-export function previousWorks(rails: readonly SeriesRail[]): BookMetaSeriesWork[] {
-  const found = new Map<string, { work: BookMetaSeriesWork; pos: number }>();
-  for (const { view, works } of rails) {
-    const current = seriesPositionValue(view.position);
-    if (current === undefined) continue;
-    // `works` is the shown order minus the current work.
-    for (const w of works) {
-      if (found.has(w.id)) continue;
-      const pos = seriesPositionValue(w.position);
-      if (pos === undefined || pos >= current) continue;
-      found.set(w.id, { work: w, pos });
-    }
-  }
-  return [...found.values()].sort((a, b) => b.pos - a.pos).map((e) => e.work);
 }
 
 /**
@@ -229,9 +133,10 @@ export function SpoilerChip() {
   return <Chip label={t('book.meta.spoiler')} />;
 }
 
-/** The open/closed marker every collapsible thing in this block shares: pink beside a
- * pink link, `quiet` (muted) on a character card, whose only pink is "Just met". */
-function DisclosureChevron({ open, quiet }: { open: boolean; quiet?: boolean }) {
+/** The open/closed marker every collapsible thing in this block shares (and the book
+ * page's About card): pink beside a pink link, `quiet` (muted) on a character card,
+ * whose only pink is "Just met". */
+export function DisclosureChevron({ open, quiet }: { open: boolean; quiet?: boolean }) {
   const themed = useThemeColors();
   return (
     <Icon
@@ -533,10 +438,12 @@ function PreviousBookRow({
       }
     >
       <View className="gap-2 px-3 pb-3">
-        {isError ? (
-          <PreviousBookNote message={t('book.meta.couldntLoad')} url={entry.web_url} />
-        ) : data ? (
+        {/* An answer in hand wins over a failed refetch: a downloaded book's kept work
+            is stale offline, and its refetch fails there. */}
+        {data ? (
           <Body work={data} entry={entry} />
+        ) : isError ? (
+          <PreviousBookNote message={t('book.meta.couldntLoad')} url={entry.web_url} />
         ) : (
           <SkeletonText lines={3} className="py-1" />
         )}
@@ -669,87 +576,6 @@ function PreviousCharactersBody({
       {cast.map((c) => (
         <CharacterCard key={c.id} character={c} />
       ))}
-    </View>
-  );
-}
-
-/**
- * The "About" block of the enriched metadata: description (collapsed past a
- * length threshold), the compact production detail rows, the abridged badge and
- * the link out to AudioSilo Meta. Lives in the book screen's overview, above the
- * tabs - it is the one part of the meta that is not spoiler-shaped.
- */
-export function BookMetaAbout({ meta }: { meta: MatchedBookMeta }) {
-  const { t } = useTranslation();
-  const { work, recording, web_url } = meta;
-  const [expanded, setExpanded] = useState(false);
-
-  const description = work.description?.trim() ?? '';
-  const canCollapse = descriptionIsLong(description);
-  const abridged = !!recording?.abridged;
-
-  // Compact detail rows. Narrator + runtime are shown elsewhere on the screen, so
-  // they are intentionally omitted here.
-  const details: { label: string; value: string }[] = [];
-  if (recording?.publisher)
-    details.push({ label: t('book.meta.publisher'), value: recording.publisher });
-  if (recording?.release_date)
-    details.push({ label: t('book.meta.released'), value: recording.release_date });
-  if (work.first_published)
-    details.push({ label: t('book.meta.firstPublished'), value: work.first_published });
-
-  const hasAbout = description.length > 0 || details.length > 0 || abridged;
-
-  return (
-    <View className="gap-3">
-      {hasAbout ? (
-        <View className="gap-2">
-          <SectionHeader title={t('book.meta.about')} />
-          {description.length > 0 ? (
-            <View className="gap-1">
-              <Text variant="body" numberOfLines={expanded || !canCollapse ? undefined : 6}>
-                {description}
-              </Text>
-              {canCollapse ? (
-                <AnimatedPressable
-                  onPress={() => setExpanded((v) => !v)}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  className="flex-row items-center gap-1 self-start py-0.5"
-                >
-                  <Text className="font-sans-medium text-sm text-brand-ink">
-                    {expanded ? t('book.meta.showLess') : t('book.meta.showMore')}
-                  </Text>
-                  <DisclosureChevron open={expanded} />
-                </AnimatedPressable>
-              ) : null}
-            </View>
-          ) : null}
-          {details.length > 0 || abridged ? (
-            <View className="mt-1 gap-1.5">
-              {details.map((d) => (
-                <View key={d.label} className="flex-row gap-2">
-                  <Text variant="muted" className="w-32">
-                    {d.label}
-                  </Text>
-                  <Text variant="label" className="flex-1">
-                    {d.value}
-                  </Text>
-                </View>
-              ))}
-              {abridged ? (
-                <View className="mt-0.5 self-start rounded-full bg-brand/10 px-2.5 py-1 dark:bg-brand/15">
-                  <Text className="font-sans-medium text-xs text-brand-ink">
-                    {t('book.meta.abridged')}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
-      <ViewOnMetaLink url={web_url} />
     </View>
   );
 }

@@ -202,6 +202,47 @@ export const engine: DownloadEngine = {
     }
   },
 
+  // A text file sits in the media cache under the book's own prefix, so `removeBook` (by
+  // prefix) and `clearAll` take it with the audio. It is read back from the cache
+  // directly, never fetched through the service worker.
+  async writeText(connectionId, libraryId, path, fileName, text) {
+    if (!supported) return false;
+    try {
+      const body = new Blob([text], { type: 'application/json' });
+      const cache = await caches.open(MEDIA_CACHE);
+      await cache.put(
+        bookPrefix(connectionId, libraryId, path) + fileName,
+        new Response(body, {
+          headers: { 'Content-Type': 'application/json', 'Content-Length': String(body.size) },
+        }),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async readText(connectionId, libraryId, path, fileName) {
+    if (!supported) return null;
+    try {
+      const cache = await caches.open(MEDIA_CACHE);
+      const res = await cache.match(bookPrefix(connectionId, libraryId, path) + fileName);
+      return res ? await res.text() : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async removeFile(connectionId, libraryId, path, fileName) {
+    if (!supported) return;
+    try {
+      const cache = await caches.open(MEDIA_CACHE);
+      await cache.delete(bookPrefix(connectionId, libraryId, path) + fileName);
+    } catch {
+      // best-effort cleanup
+    }
+  },
+
   async removeBook(connectionId, libraryId, path) {
     try {
       const cache = await caches.open(MEDIA_CACHE);

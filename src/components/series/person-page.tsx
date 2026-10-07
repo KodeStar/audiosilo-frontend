@@ -13,6 +13,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration, formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { yearOf } from '@/lib/published';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -21,7 +22,7 @@ import type { PersonKind } from './people-mode';
 import { booksBySeries, creditedPeople, personStats } from './people-model';
 import { PersonChip } from './person-chip';
 import { Portrait } from './portrait';
-import { type ProgressLookup, yearOf } from './series-model';
+import type { ProgressLookup } from './series-model';
 
 /** A tile's caption on these pages: "2004 · 12h 20m". */
 function bookCaption(b: Book): string {

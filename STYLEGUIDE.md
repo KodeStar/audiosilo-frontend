@@ -252,6 +252,8 @@ deterministic palette that draws the procedural cover.
 
 - All times, counts and speeds use `font-variant-numeric: tabular-nums` (`tabular-nums`).
 - Quotes (bookmarks labelled "Quote") are set in Fraunces italic; this is the only literary flourish in UI chrome.
+  In the app they render in the body font in italic inside the locale's quote marks, because Fraunces is not
+  bundled.
 - Cover fonts (Cinzel, Anton, Fraunces, Instrument Serif, Fredoka, Unbounded) appear only inside covers, spines,
   quotes and kids mode. Bundle them with expo-font; subset to Latin.
 - Every label survives +30% (de/fr/pt/es/it): buttons grow, segmented controls scroll horizontally, tile titles
@@ -442,8 +444,9 @@ Phone: bottom sheet with grabber (`@expo/ui` detents on native, vaul on web).
 - **Sleep**: 5/10/15/30/45/60 min, End of chapter (with its countdown), "Or stop after" 1-4 chapters with their
   end times ("ends 22:49"), Auto sleep (window from Settings), Shake to extend (native only), and the note that a
   "Fell asleep" bookmark is saved. The last 30 s show the **grace card**: "Fading out in 24 s · Keep listening".
-- **Bookmark**: position, note, a label (Quote, Favourite, Re-listen, Funny, Question), and the clearly marked
-  future "clip" affordance.
+- **Bookmark**: position, note, and a label: Quote, Favourite, Re-listen, Funny or Question (plus the automatic
+  Fell asleep, which the sleep timer sets and the picker never offers). The clip affordance is not built: no phase
+  schedules clips, so the player shows no placeholder for it.
 - **Output**: this device, AirPods, AirPlay speakers, Chromecast; "Continue on iPad" hand-off (flagged: needs a
   realtime channel).
 
@@ -656,8 +659,9 @@ a bottom sheet on a phone, `useLayout()`), `alert-dialog` (+ the `confirm-dialog
 `skeleton` (web: a CSS keyframe shimmer, the `skeleton-shimmer` utility; native: one shared clock for every
 skeleton) and `kbd` (a key hint). Hand-built on primitives:
 `slider`, `toast` (`toast({ title, description, action })`; the root `ShellToastHost` renders `<ToastHost>`
-lifted clear of the measured bottom chrome: the tab bar and mini player on a phone, or the docked player bar) and `row-surface`
-(`RowSurface` / `PressableRow`, the quiet list row: the book page's chapter rows use it too). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
+lifted clear of the measured bottom chrome: the tab bar and mini player on a phone, or the docked player bar), `notice`
+(`Notice`, `tone` info / success / warning: the book page's and the Downloads page's) and `row-surface`
+(`RowSurface` / `PressableRow`, the quiet list row). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
 through `TextClassContext`; a primitive that renders its own text node reuses `EYEBROW_CLASS`. Overlays portal into the root `<PortalHost />` (`src/app/_layout.tsx`) and wrap in
 `FullWindowOverlay` on iOS (`overlay.tsx`); they read the window's safe-area insets from `RootInsetsProvider`
 (`useRootInsets` / `useOverlayInsets`), wherever they are opened from, and every Content part goes through
@@ -682,6 +686,15 @@ scale, This week card and smart shelves (`src/components/home/`), the Up next dr
 and drop zone (`src/components/upnext/`), the Downloads page's storage bar, rules card and rows
 (`src/components/downloads/`, with `RemoveDownloadConfirm`) and the Search screen's grouped results
 (`src/components/search/`).
+
+Phase 4's pieces: the book page (`src/components/book/`: `BookScreen`, the washed `BookHero` and its
+`HeroActions`, `BookTabPanel` with the Chapters and Details tabs, the aside with `BookAbout`), the bookmark and
+note pieces (`src/components/annotations/`: `AnnotationRow` as `BookmarkRow` / `NoteRow`, `AnnotationSection`,
+the `TimeChip`, `LabelChip` and `LabelPicker` chips, `RowCover` and `ServerFlag`, and the editor sheet), and the
+Journal (`src/components/journal/`: the Diary with its session rows and drift strips, the bookmarks and notes
+lists, the export menu). `ui/notice.tsx` is the one `Notice` (above), and `ui/touch-target.ts` holds the 44 pt
+rule: `slopTo44` for a rem-sized control (the player controls), `touchTarget` for a small one (a chip, a row's
+icon action: a real 44 pt frame on iOS and Android, a slop on the web).
 
 The shell's section 8 pieces live in `src/components/shell/`: the **command palette** (`command-palette.tsx`,
 web only, on the Dialog primitive: a combobox with `aria-activedescendant` over a grouped listbox, 48 px

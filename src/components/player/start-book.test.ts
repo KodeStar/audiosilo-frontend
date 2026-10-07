@@ -69,6 +69,19 @@ describe('startBookInPlace', () => {
     expect(mockSetRate).not.toHaveBeenCalled();
   });
 
+  it('starts at a file by index, for a book whose durations are unknown', async () => {
+    await startBookInPlace(target, { track: 2 });
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c1',
+      2,
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      2,
+      undefined,
+    );
+  });
+
   it('does nothing when the connection is gone', async () => {
     mockClient = null;
     await expect(startBookInPlace(target)).resolves.toBe(false);

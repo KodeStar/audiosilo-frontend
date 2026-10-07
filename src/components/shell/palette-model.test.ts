@@ -256,3 +256,21 @@ describe('buildActionItems', () => {
     expect(buildActionItems(state(), runs(), i18n.t)[0].title).toBe('Resume Stave One');
   });
 });
+
+describe('the Go to group', () => {
+  it('finds the Journal by its title in the Go to group', () => {
+    const groups = buildPaletteGroups({
+      query: 'jour',
+      actions: [],
+      books: [],
+      continueListening: [],
+      goTo: [
+        { id: 'go:(home)', title: 'Home', icon: 'home', run: jest.fn() },
+        { id: 'go:journal', title: i18n.t('journal.title'), icon: 'history', run: jest.fn() },
+      ],
+    });
+    expect(groups.map((g) => [g.key, g.items.map((i) => i.id)])).toEqual([
+      ['goTo', ['go:journal']],
+    ]);
+  });
+});

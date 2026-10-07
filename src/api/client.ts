@@ -12,6 +12,8 @@ import type {
   BookMeta,
   BookMetaWork,
   Bookmark,
+  BookmarkLabel,
+  BookmarkPatch,
   BookPage,
   BookRef,
   BookSort,
@@ -24,14 +26,20 @@ import type {
   DemoSession,
   Favourite,
   History,
+  HistoryEntry,
   Library,
   ListeningGoalStatus,
   Listing,
   MyDevice,
   MyDeviceRevoked,
+  MyBookmark,
   MyListening,
+  MyNote,
   NextBook,
   Note,
+  NotePatch,
+  Page,
+  PageQuery,
   PairingPayload,
   PeopleList,
   PersonCount,
@@ -558,14 +566,30 @@ export class ApiClient {
     );
     return r.bookmarks ?? [];
   }
-  addBookmark(libraryId: number, path: string, position: number, note = '') {
+  /** Bookmark a book at `position`. `label` is sent only when given, and only a server
+   * with `annotations` takes it: an older one rejects the unknown field with a 400, so
+   * prefer the `addBookmark` helper or `useAddBookmark` (src/api/hooks.ts), which drop it
+   * there. */
+  addBookmark(libraryId: number, path: string, position: number, note = '', label?: BookmarkLabel) {
     return this.request<Bookmark>('POST', `/libraries/${libraryId}/bookmarks`, {
       query: { path },
-      body: { position, note },
+      body: label === undefined ? { position, note } : { position, note, label },
     });
+  }
+  /** Edit one of the caller's bookmarks (capability `annotations`; see
+   * {@link BookmarkPatch}) and return it whole. Someone else's, an unknown id, or one
+   * on a book outside the caller's current access is a 404. Only the patch's own fields
+   * are sent (the server decodes strictly, so a spread `Bookmark` would be a 400). */
+  updateBookmark(id: number, { note, label }: BookmarkPatch) {
+    return this.request<Bookmark>('PATCH', `/bookmarks/${id}`, { body: { note, label } });
   }
   deleteBookmark(id: number) {
     return this.request<void>('DELETE', `/bookmarks/${id}`);
+  }
+  /** One page of the caller's bookmarks across books, newest made first (capability
+   * `annotations`; see {@link Page}). */
+  myBookmarks(page: PageQuery = {}, signal?: AbortSignal) {
+    return this.page<MyBookmark, 'bookmarks'>('/me/bookmarks', 'bookmarks', page, signal);
   }
 
   async notes(libraryId: number, path: string) {
@@ -580,8 +604,37 @@ export class ApiClient {
       body: { body, position },
     });
   }
+  /** Edit one of the caller's notes (capability `annotations`; see {@link NotePatch})
+   * and return it whole, with its new `updated_at`. Someone else's, an unknown id, or one
+   * on a book outside the caller's current access is a 404. Only the patch's own fields
+   * are sent. */
+  updateNote(id: number, { body, position }: NotePatch) {
+    return this.request<Note>('PATCH', `/notes/${id}`, { body: { body, position } });
+  }
   deleteNote(id: number) {
     return this.request<void>('DELETE', `/notes/${id}`);
+  }
+  /** One page of the caller's notes across books, newest made first (capability
+   * `annotations`; see {@link Page}). */
+  myNotes(page: PageQuery = {}, signal?: AbortSignal) {
+    return this.page<MyNote, 'notes'>('/me/notes', 'notes', page, signal);
+  }
+
+  /** GET one page of an across-books list and normalize its `{ <key>: rows,
+   * next_cursor? }` envelope to a {@link Page} (a null array reads as none). */
+  private async page<T, K extends string>(
+    path: string,
+    key: K,
+    { limit, cursor }: PageQuery,
+    signal?: AbortSignal,
+  ): Promise<Page<T>> {
+    const r = await this.request<Record<K, T[] | null> & { next_cursor?: string }>('GET', path, {
+      query: { limit, cursor },
+      signal,
+    });
+    return r.next_cursor
+      ? { items: r[key] ?? [], next_cursor: r.next_cursor }
+      : { items: r[key] ?? [] };
   }
 
   // --- Favourites ----------------------------------------------------------
@@ -807,6 +860,13 @@ export class ApiClient {
       { query: { path, limit } },
     );
     return r.history ?? [];
+  }
+  /** One page of the caller's listening spans across books, newest ended first (see
+   * {@link Page}). Every server has this route: one without `annotations` ignores
+   * `cursor`, never sends `next_cursor` (so its answer is one page, the newest `limit`)
+   * and leaves out each row's `book`. */
+  allHistory(page: PageQuery = {}, signal?: AbortSignal) {
+    return this.page<HistoryEntry, 'history'>('/me/history', 'history', page, signal);
   }
   addHistory(
     libraryId: number,

@@ -88,6 +88,9 @@ Sessions in this repo run a fixed division of labour between models:
      also builds Expo modules from source (precompiled modules require the prebuilt core), so
      builds are slower but correct. Do not re-enable the prebuilt core without confirming the
      Fabric symbols are exported.
+- **The Android window does not resize for the keyboard** (edge to edge, SDK 56): an overlay or a
+  bottom-anchored panel must lift itself (`useKeyboardAvoidance`, Styling below), and only a device
+  run shows it; neither jest nor the web build has a software keyboard.
 - **Web dev needs CORS**: set `cors_origins` in the server config to the web origin
   (e.g. `http://localhost:8081`), or serve same-origin. Self-signed TLS may need
   trusting / `tls.mode: autocert`.
@@ -260,36 +263,57 @@ returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated
 the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 `settings.apiKeys.*`.
 
-**The book screen is tabbed.** `src/app/(app)/(home,library,search,offline,me)/book/[libraryId].tsx` shows an
-**overview** (breadcrumbs, `BookVersions`, cover hero/stats/listen/`DownloadControl`,
-then the meta **About** block) and puts *everything else* behind a
-`Tabs` row (`src/components/ui/tabs.tsx`, the Stacks underline tabs with
-`scrollable`, so the row scrolls horizontally and carries tablist/tab/tabpanel
-a11y roles; when the tabs overflow, a chevron beside the tablist pages the row, `tabsScrollCue`): **Chapters** (label
-switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
-**History** · **Notes** · **Series**. Both layouts share the same tab section; tablet and
-desktop keep a right-hand cover panel (300 / 380 wide) whose button plays inline - the docked
-player bar is the transport there, so the panel never carries one (while this book plays its
-button opens the full player instead). A long chapter list used to bury the
-sections below it - with tabs each is one tap away, and the active panel renders
-inside the page's existing ScrollView (never a nested vertical scroller). Which tabs
-exist is the pure, tested `bookTabs()` (`src/components/library/book-tabs.ts`):
-chapters when there's a list, the three community-metadata tabs only when that data
-is non-empty (so nothing regresses on an older server or an unmatched book),
-bookmarks/history/notes always (they're user-creatable, so they must be reachable
-from empty - hence the `emptyLabel`; those sections render no heading of their own,
-the tab label is the heading). `tab` is held as an *intent*; render falls back to
-the first existing tab when data changes under it. Labels come from
+**The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
+`BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
+Stacks book page, laid out by its MEASURED width (`bookPageLayout`: the cover beside the text
+from 600, the aside as a right-hand column from 900, between the hero and the tabs below it;
+the Up next drawer can leave a desktop page phone-narrow). **Hero** (`book-hero.tsx`):
+`CoverWash` from `cover_color` (a neutral wash without one), quiet folder crumbs, the eyebrow
+(series + "Book N", opening the series page; else library and server), the title (one size
+smaller past 48 characters), the byline (author and narrator pages; the narrator is plain text
+where `browse_people` is off), the facts (`bookFacts`), then the place of a book in progress
+(percent, "Chapter N of M", time left at the book's own speed, the progress bar: the page's one
+pink thing) or the finished badge (`finished_at`) and the stars (`ratings`, `useBookRating`
+keeps the note). **Actions** (`hero-actions.tsx`): the primary (`primaryAction`: Pause while
+this book plays, Resume chapter N, Start listening, Listen again; through `usePlayBook` with
+`toggle`, so it never restarts the loaded book), `DownloadControl` (`short` on a stacked hero), Up next (Play
+next / Add to the end, `queue`), favourite (ink, never pink), Add to collection
+(`collections`) and `BookActionsMenu` with `omit` (the items the hero already has).
+`DownloadProgress` and the transcode note sit under them. Chapter rows, timeline taps and pins
+go through `usePlayBook` with `at` (below): a phone opens the player on the place, a tablet or
+desktop jumps the loaded book there and plays on, or starts this one there. **Tabs** (`bookTabs()`, `src/components/library/book-tabs.ts`):
+Chapters (label Chapters / Parts / Files; the default tab) · Recaps · Characters · Bookmarks ·
+History · Notes · Series · **Details**, with counts where already in hand (chapters, bookmarks,
+notes, characters met; the counts and the pins read `useBookAnnotations` under the route's path,
+the same entries the Bookmarks and Notes tabs write). The active tab's panel is `BookTabPanel`
+(`book-tab-panel.tsx`; the tab row is the page's). Chapters (`book-chapters-tab.tsx`) is "The whole book" (the player's
+`BookTimeline` for ANY book, pins from `useBookAnnotations`, which `usePlayingPins` reads for
+the playing book; the rows' place is `rowAt`, previous/next for a book not playing the player's
+own `nextSegmentStart`/`previousSegmentStart`) then the rows (`chapterList`: the real chapters at their corrected starts, a
+long chapterless file's 30-minute parts as the player makes them, else the files). Bookmarks and
+Notes are the shared `AnnotationSection` (below), History is `HistorySection` over the shared
+listening sessions. Details (`book-details-tab.tsx`): a `Notice` (`ui/notice.tsx`) saying direct
+play / converted for this browser (web, `useNeedsWebTranscode`) / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
+and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookAbout`, its words
+from the pure `aboutContent` in `book-details-model.ts`: `community_description` with the server's
+attribution and "Improve this", else the server's `description`, else the work's core
+description, else a sentence naming the author and narrator; then the production facts known),
+Other versions
+(`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
+listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
+vertical scroller). Which tabs exist: chapters when there's a list, the three community-metadata
+tabs only when that data is non-empty (so nothing regresses on an older server or an unmatched
+book), bookmarks/history/notes always (they're user-creatable, so they must be reachable from
+empty - hence the `emptyLabel`), Details always. `tab` is held as an *intent* (`?tab=`); render
+falls back to the first existing tab when data changes under it. Labels come from
 `TAB_LABEL_KEY` (same module), which deliberately **reuses** the existing strings
-(`library.{bookmarks,history,notes}.title`, `book.meta.characters`) - only
-`book.tabs.{recaps,series}` are tab-only keys.
+(`library.{bookmarks,history,notes}.title`, `book.meta.characters`).
 
 **Enriched book metadata.** One `useBookMeta` fetch at the screen level feeds
 `matchedMeta()` and the placeable blocks exported from
-`src/components/library/book-meta.tsx`: `BookMetaAbout` (description with the
-6-line collapse, production details, abridged badge, "View on AudioSilo Meta" link -
-in the overview, above the tabs), `BookMetaRecapsTab`, `BookMetaCharactersTab`,
-`BookMetaSeriesTab`. Those take **plain data, not a query**, so a sibling block can be
+`src/components/library/book-meta.tsx` (and the book page's About card, above):
+`BookMetaRecapsTab`, `BookMetaCharactersTab`,
+`BookMetaSeriesTab` (the rails' pure rules are `series-rails.ts`). Those take **plain data, not a query**, so a sibling block can be
 appended without another restructure - which is how the **"catch up on previous books"**
 block lands: `previousWorks(rails)` (pure, tested - earlier positions only, from each
 rail's shown reading order, deduped, position-DESCENDING, unparsable positions dropped)
@@ -385,6 +409,27 @@ it, and reads again), is keyed by connection (`mutationKey`, so a pending write 
 its own connection) and runs one at a time per capability and connection (`scope`).
 Gating tests live in `hooks-capability.test.tsx`; each was checked to fail with its gate
 removed.
+
+**Player-redesign annotations (Phase 4, the wire).** One more flag, `annotations`: bookmark
+labels, edits, and the across-books lists. A bookmark's `label` is a machine key, never display
+text (`''` for none; the player's keys and `isBookmarkLabel` are `src/api/bookmark-labels.ts`:
+the five `PICKABLE_BOOKMARK_LABELS` and `FELL_ASLEEP_LABEL`; a newer client may store others,
+so name a label only once the guard knows it). `client.updateBookmark` / `updateNote` PATCH
+(`BookmarkPatch {note?, label?}`, `''` clears the label; `NotePatch {body?, position?}`) and send
+only the patch's own fields; `myBookmarks` / `myNotes` / `allHistory` return one `Page {items,
+next_cursor?}` (`allHistory` works on every server: an older one ignores the cursor and answers
+one page without each row's `book`). The across-books lists are infinite-query option factories
+in `hooks.ts`, `myHistoryQuery` / `myBookmarksQuery` / `myNotesQuery` (one `PAGE_SIZE` and stale
+time; the two gated ones take `supported` and get `skipToken` without it), read with
+`keepFirstPage` on release so a list read 20 pages deep doesn't refetch all 20 next time.
+`useUpdateBookmark` / `useUpdateNote` are capability mutations (`CapabilityError`, nothing sent,
+as above). **`label` is sent ONLY to a server known to have `annotations`**, because the server's
+decoder refuses unknown fields (a 400, and the bookmark is lost): the one owner of that gate is
+`postBookmark` in `hooks.ts` (`useAddBookmark` on `useCapability`, the framework-free
+`addBookmark` on `cachedCapability`; not known yet counts as no, and the bookmark is still made
+without its label). Never call `client.addBookmark` with a label directly. The server answers
+fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]` for an empty
+per-book list (the client still reads an older server's `null` as none).
 
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
@@ -624,6 +669,17 @@ tokens, type and components; its section 17 maps them onto these files.
   crashed react-native-web's style setter): every Content part is wrapped once in `withFlatStyle`
   (`overlay.tsx`), so a style array is fine at the call site. Tests render overlays with
   `mountWithPortal` (`src/testing/render-overlay.tsx`, which adds the RootInsetsProvider too).
+- **The keyboard over a bottom-anchored overlay** (`useKeyboardAvoidance`, `src/lib/keyboard-lift.ts`,
+  used by `Sheet` and the phone `Dialog`): the panel rises by how much of the WINDOW the keyboard
+  covers, the keyboard frame's SCREEN top (`endCoordinates.screenY`) against the window height, on
+  both platforms (`keyboardOverlap`, then `keyboardLift` net of the home-indicator padding), and its
+  height is capped to what the keyboard leaves under the top safe edge (`keyboardCap`), so the title
+  stays on screen and the body scrolls. iOS lays the keyboard over the window; Android edge to edge
+  (SDK 56, Android 15+) no longer resizes the window either, so `adjustResize` alone is not enough
+  (the Phase 4 device pass caught the Android sheet hidden behind the keyboard). A window that DID
+  resize ends at the keyboard's top and reads 0, so nothing lifts twice. Don't reach for
+  `KeyboardAvoidingView` inside a portal or `FullWindowOverlay`: absolutely positioned there, it
+  measures nothing useful. The web is the browser's business (always 0).
 - **Web keyboard (Space):** `src/lib/rnw-button-fix.web.ts` (imported first by the root layout) also
   patches react-native-web's press responder: Space presses any role-bearing pressable (`tab`, `radio`,
   `switch`, `checkbox`, `option`, menu items; RNW only did `button`), and a `role="button"` pressable
@@ -732,6 +788,7 @@ src/app/(app)/(me)/settings.tsx                 /settings   (the "Me" tab; the M
 src/app/(app)/(home,library,search,offline,me)/_layout.tsx    one Stack per tab (array group)
 src/app/(app)/(home,library,search,offline,me)/{book/[libraryId],library/[libraryId],library/favourites,account,browse}.tsx
 src/app/(app)/(home,library,search,offline,me)/{series,author,narrator,collection}.tsx   Phase 2 detail pages
+src/app/(app)/(home,library,search,offline,me)/journal.tsx    /journal (Phase 4)
 ```
 Groups are invisible in URLs, so every URL is unchanged. The destinations (labels, icons,
 SF Symbols / Material names, tab roots) are one table, `src/components/shell/destinations.ts`.
@@ -821,13 +878,70 @@ your series uses `next_book` (a work without `local` is a ghost opening the seri
 shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
 offline queue length without changing progress-sync (decision 7).
 
-**One play path** (`src/components/player/use-play-book.ts`): `usePlayBook()` is how Home, the
-Library, the series page and Up next start a book: a phone opens the full player (over the book page
-with `viaBookPage`), a tablet or desktop plays it under the docked bar through the book's own
-connection once its chapters are in, a loaded book plays on (or toggles, with `toggle`). With the full
-player already on top (Up next's sheet over it), every layout starts in place: pushing `/player` over
-the open one stacked a second player. It rejects when the book can't be fetched, so the caller can say
-so.
+**One play path** (`src/components/player/use-play-book.ts`; the rule is the pure `playRoute` in
+`play-route.ts`, fed by `navFor`, which reads the navigator at the press, never subscribed):
+`usePlayBook()` with `{ at, toggle, viaBookPage }` is how Home, the Library, the series page, Up
+next, the book page and the jumps (bookmark and note rows, history spans and drift strips, all
+through `useJumpTo`) start a book or move into one. A `toggle` on the loaded book pauses or plays
+it in place on every layout. Otherwise a phone opens the full player (`playerHref(cid, lib, path,
+place)`, which the route applies once) - **also for the playing book, so a jump there opens the
+player on the place** - first pushing the book page under it with `viaBookPage` unless that page
+is already the one on screen. A tablet or desktop, and every layout while the full player is
+already on top (Up next's sheet over it; pushing `/player` over the open one stacked a second
+player), plays the loaded book on (`seekBook` to `at`, so the Undo chip offers the way back,
+resuming a paused one) or starts another in place under the docked bar through its own connection
+once its chapters are in (`startBookInPlace`, at `at`). It rejects when the book can't be fetched,
+so the caller can say so (`useJumpTo` toasts).
+
+**Bookmarks and notes** (`src/components/annotations/`, the barrel exports only what outside
+callers use; rules in the pure `labels.ts`, `drift-marker.ts`, `editor-model.ts`). Adding a
+bookmark stays one tap: `addBookmarkHere` (the dock, the player, B) bookmarks the live place and
+its toast offers **Add note** where the server has `annotations` (an older server can't edit the
+bookmark it made); a book page's `AddBookmarkAction` does the same while that book is the placed
+one (`selectPlacedBookKey`), else opens the editor at the listener's place (`usePlaceIn`). The
+editors (`AnnotationEditorSheet`, one frame and one save runner for both kinds) open through the
+player sheets: `usePlayerSheets().openEditor(request)` sets `open: 'editor'`, the request types
+and `editBookmarkRequest` / `editNoteRequest` live in the neutral `src/lib/annotation-request.ts`
+(so the sheet store and the components don't import each other), and the request carries its own
+book, so it works for any book on any connection and is **never dropped when the playing book
+unloads** (`dropsWithBook`: closing it would throw away what the listener is typing). Notes are
+pinned to the listener's place when made; a note at 0 is a legacy one (older apps wrote every note
+at 0), so `pinsOf` draws no pin for it (they stacked on 0:00 and pulled taps there) while the lists
+still show 0:00. One row, `AnnotationRow` (`BookmarkRow` / `NoteRow`), and one section per book,
+`AnnotationSection` (the book page's `BookmarksSection` / `NotesSection` and the companion's
+tabs), with `chapterNamer` / `useChapterNamer` naming the chapter. Delete is immediate with an
+Undo toast that re-adds the row (`useDeleteWithUndo`): another device and the pins agree at once
+and nothing waits on a timer an app suspend could stop; the cost is a new id and date. A
+"Fell asleep" marker is `isDriftBookmark`: label `fell_asleep`, or (no label: an older server, an
+older bookmark) the sleep timer's note in ANY of the six locales, read from the i18n resources
+(the note is stored translated at the time). A Quote renders italic in the body face inside the
+locale's quote marks (`annotations.quoted`; Fraunces is not bundled). Small row actions and chips
+take `touchTarget` (below).
+
+**The Journal** (`/journal?tab=diary|bookmarks|notes`, the array-group route `journal.tsx` names
+`JournalScreen`, `src/components/journal/`; `parseJournalTab` in `journal-model.ts`). Entry
+points go through `journalHref(tab?)` (`src/lib/paths.ts`) or `useOpen().openJournal`: the Me
+screen's `JournalEntryRow`, the profile menu, the palette's Go to, and each book section's
+`JournalLink`. It lists EVERY signed-in server's lists, each through its own connection and gated
+on its own flag (`useJournalSources`): one infinite query per server and list through
+`useInfiniteQueries` (`src/lib/use-infinite-queries.ts`, TanStack has nothing for a growing list of
+infinite queries; one `InfiniteQueryObserver` per query hash), merged by `mergeNewestFirst`
+(`merge-model.ts`: a k-way merge of the newest-first heads, cut at the hold-back boundary, the
+newest oldest-loaded row of any server with more pages, since anything older could still have a
+newer neighbour on that server's next page; a loading, failed or unsupported server never holds
+the others back). The Notes list is held back (`enabled: false`) until its tab first opens; the
+Diary shows none. **Sessions** (`src/lib/listening-sessions.ts`, shared with the book page's
+History tab so the two agree): spans of the same book on the same server join while the pause is
+under 10 minutes (`SESSION_GAP_MS`) and the positions are contiguous (a seek starts a new one),
+placed on local days. **Drift strips**: `matchDrifts` (`diary-model.ts`) pairs each drift bookmark
+with the session it ended (same book, made just after, near its end); with this device's drift
+record still kept (`useDriftRecords`, read once) the strip offers "Jump back N minutes", and the
+jump spends the record (`takeDrift`) so the strip then offers the bookmark, never a second jump.
+**Export** (`use-journal-export.ts`, pure formats in `export-format.ts`): CSV (RFC 4180, a UTF-8
+BOM, CRLF, `csvField`'s formula guard so a shared file opened in Excel never runs a note) or
+Markdown grouped by book; native writes a file and opens `expo-sharing` (`export-save.ts`), the
+web downloads it (`export-save.web.ts`) or copies the Markdown; only servers with `annotations`
+are asked, at most 10,000 rows.
 
 **Downloads page and automatic downloads** (`src/components/downloads/`, `src/downloads/`):
 - **Keep the next books ready** (`keepAhead`: Off / 1 / 2 / 3, default Off; Downloads page, Settings
@@ -856,6 +970,25 @@ so.
   after the page's load event (before, offline web playback never worked), and the download-support
   probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).
 - Removing a download asks first everywhere (`RemoveDownloadConfirm`, with the room it frees).
+- **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
+  metadata (the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
+  prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
+  that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
+  can be hundreds of KB, and AsyncStorage on Android / localStorage on web cap the whole store at a
+  few MB; the registry carries only a marker (`DownloadManifest.meta`). The seeds fill exactly the
+  keys the readers use (`qk.bookMeta`, its `includePrevious` variant when fetched that way,
+  `qk.metaWork`, and the store's own `qk.item` / `qk.chapters`) through `seedQuery`: never over
+  data the cache already holds, dated by `savedAt` so an online screen still refetches on its own
+  schedule, and kept for the session through `setQueryDefaults` (`gcTime: Infinity`; else a book
+  downloaded an hour before the flight opens with nothing) until `releaseOfflineBook` on remove.
+  Every reader first waits on the `metadata` flag, so each connection's last `/server` answer is
+  kept under `audiosilo.offlineServers` (`OFFLINE_SERVERS_KEY`, in `SCOPED_STORAGE_KEYS`): a cold
+  offline launch still knows the flags. The launch restore runs after first paint
+  (`afterLaunch`), reads three files at a time, seeds the books before the server answers (so a
+  gate it opens finds the data), then backfills downloads that kept none and refreshes copies
+  older than a week (only servers with `metadata`; a failure keeps what the book had). The spoiler
+  gate is unchanged: it still runs on the device.
 
 Content routes are **flat** - `library/[libraryId].tsx` (re-exports
 `src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -
@@ -933,21 +1066,24 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   writes on the way still counts; a seek never does), reading the chapter in the gate's own
   15 s buckets so the toast and Who's who agree; Show reads whether the player is on top when
   pressed. Unknown `metadata` counts as off for the companion, as for the phone's chips. **Sheets**: `PlayerSheetHost` renders `usePlayerSheets` (speed, sleep,
-  chapters, the companion through `openCompanion(tab)`, Up next's `upnext`; bookmark/output are
-  actions), deciding the form from its layout (the full player's MEASURED one), all through one
+  chapters, the companion through `openCompanion(tab)`, Up next's `upnext`, the annotation editor
+  through `openEditor`; bookmark/output are actions), deciding the form from its layout (the full player's MEASURED one), all through one
   presenter, `PlayerSheet` (`body` `scroll` or `fill`); one host in the full player and one in the
   shell (`ShellPlayerOverlays`, with the floating `GraceCard` where a toast would sit; it publishes a
   `grace` chrome edge, so the toasts lift above it), and `hostIsActive` lets the shell's stand back
   while the player route is on top. A book's sheet request (speed, sleep, chapters, the companion) is
-  dropped when the book unloads, so the next book never opens it by itself. Only the top app shell
+  dropped when the book unloads, so the next book never opens it by itself (the editor, which
+  carries its own book, stays: `dropsWithBook`). Only the top app shell
   (`useIsTopShell`) mounts these overlays, the palette, the shortcuts overlay and the keys. **Never
   stack shells**: a page of the app shell opened from a root route (the full player, the credits)
   goes through `pushInShell` (`src/lib/open.ts`; `useOpen` does it), never `router.push` or
   `router.replace`, which would put a second `(app)` over the first. Code that must know where the
   player is at a press reads `topRootRoute(currentNavState())` (`src/lib/root-stack.ts`) instead of
   subscribing with `usePlayerOnTop`. **Touch targets**: a rem is 14 pt on native, so a rem-sized
-  control (`h-11` = 38.5 pt) takes `hitSlop={slopTo44(rem)}` (`control-pill.tsx`; zero on the web
-  for 2.75 rem); tests assert it with `expectNativeTarget` (`src/testing/touch-target.ts`). The
+  control (`h-11` = 38.5 pt: the player controls) takes `hitSlop={slopTo44(rem)}` (`src/components/ui/touch-target.ts`;
+  zero on the web for 2.75 rem), and a small one (a chip, a row's icon action) takes
+  `touchTarget(h, w?)` there instead: a real 44 pt frame on native (`frameClass`: a slop grows the touch but
+  not the frame, which the accessibility tree reports and device audits measure), a slop on the web; tests assert both with `expectNativeTarget` (`src/testing/touch-target.ts`). The
   sync line (`usePlaceSync`) counts only the playing book's server's queued saves and polls while
   playing (a 5xx save queues with the server still online). The player keys stand back over any open layer (`isModalOpen`: an
   `aria-modal` `Sheet`, or a Radix Dialog, AlertDialog, menu or select, which say so with
@@ -1039,7 +1175,7 @@ src/app/            Expo Router routes ((app) tab groups, connect/, player + fin
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
-src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
+src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider

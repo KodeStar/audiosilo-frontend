@@ -14,6 +14,24 @@ import { onConnectionRemoved } from '@/stores/session';
 import { engine } from './engine';
 import { estimateBytes, pendingBytes, roomLeft } from './keep-ahead';
 import { classifyDownloadError } from './failure';
+import {
+  canMatch,
+  captureOfflineMeta,
+  currentServerSnapshot,
+  forgetServerSnapshot,
+  readOfflineMeta,
+  readServerSnapshots,
+  releaseOfflineBook,
+  removeOfflineMeta,
+  saveServerSnapshot,
+  seedOfflineMeta,
+  seedQuery,
+  seedServerSnapshot,
+  serverHasMetadata,
+  type ServerSnapshot,
+  whenSessionReady,
+  writeOfflineMeta,
+} from './offline-meta';
 import type {
   DownloadedFile,
   DownloadEntry,
@@ -116,6 +134,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     }
     set({ entries: merged, hydrated: true, supported: engine.supported });
     await persist();
+    // The community metadata kept with each downloaded book, seeded for offline reading
+    // (and filled in for a download made before it was kept). In the background, once the
+    // launch's first screens are up: the registry is usable without it.
+    afterLaunch(() => void restoreOfflineMeta(Object.keys(cleaned)).catch(() => {}));
 
     // On web, having the Cache API isn't enough - offline files only play if the
     // service worker is actually controlling the page and serving them. Probe the
@@ -176,6 +198,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     controllers.get(key)?.abort();
     await engine.removeBook(connectionId, libraryId, path);
     removeEntry(key);
+    releaseOfflineBook(connectionId, libraryId, path);
   },
 }));
 
@@ -382,15 +405,158 @@ function removeEntry(key: string) {
   void persist();
 }
 
+/** Seed a downloaded book's item and chapters for offline reading (`seedQuery`: never
+ * over an answer the cache holds, which is the server's own and at least as full - the
+ * manifest's book can be the list shape; dated when the download was saved, so an online
+ * screen refetches it once stale; kept past `gcTime`, so the book page still opens offline
+ * long after launch). */
 function seedQueryCache(
   connectionId: string,
   libraryId: number,
   path: string,
   manifest: DownloadManifest,
 ) {
-  queryClient.setQueryData(qk.item(connectionId, libraryId, path), manifest.book);
+  const savedAt = Date.parse(manifest.savedAt) || Date.now();
+  seedQuery(qk.item(connectionId, libraryId, path), manifest.book, savedAt);
   if (manifest.chapters)
-    queryClient.setQueryData(qk.chapters(connectionId, libraryId, path), manifest.chapters);
+    seedQuery(qk.chapters(connectionId, libraryId, path), manifest.chapters, savedAt);
+}
+
+// --- the offline companion (see offline-meta.ts) ----------------------------
+
+/** The downloads whose community metadata this session already tried to keep, by
+ * download (its key and completion time, so a book removed and downloaded again tries
+ * afresh): one attempt each per launch, so an unreachable server or a down metadata
+ * service never turns into a retry storm. The next launch tries again. */
+const metaTried = new Set<string>();
+
+/** Whether `entry` is still the downloaded book in the registry (not removed, nor
+ * replaced by a new download of it). */
+function stillDownloaded(key: string, entry: DownloadEntry): boolean {
+  const now = useDownloads.getState().entries[key];
+  return now?.status === 'downloaded' && now.manifest.savedAt === entry.manifest.savedAt;
+}
+
+/** Keep a downloaded book's community metadata beside its files (best effort, once per
+ * launch): read it, save it, mark the manifest and seed the cache. */
+async function keepOfflineMeta(key: string): Promise<void> {
+  const entry = useDownloads.getState().entries[key];
+  if (!entry || entry.status !== 'downloaded' || !engine.writeText) return;
+  const attempt = `${key}@${entry.manifest.savedAt}`;
+  if (metaTried.has(attempt)) return;
+  metaTried.add(attempt);
+  const payload = await captureOfflineMeta(entry);
+  if (!payload || !stillDownloaded(key, entry)) return;
+  if (!(await writeOfflineMeta(entry, payload))) return;
+  if (!stillDownloaded(key, entry)) {
+    // Removed while it was written: don't leave the file behind (a new download of the
+    // book writes its own over it).
+    if (!useDownloads.getState().entries[key]) void removeOfflineMeta(entry);
+    return;
+  }
+  const { manifest } = useDownloads.getState().entries[key];
+  patchEntry(key, {
+    manifest: { ...manifest, meta: { savedAt: new Date(payload.savedAt).toISOString() } },
+  });
+  // Many books in a row (the launch's fill-in) save the registry once, not once each.
+  persistSoon();
+  seedOfflineMeta(entry.connectionId, entry.libraryId, entry.path, payload);
+  const server = currentServerSnapshot(entry.connectionId);
+  if (server) void saveServerSnapshot(entry.connectionId, server);
+}
+
+/** A kept copy older than this is read again on a launch that can reach its server, so
+ * what a book carries offline follows the community's edits (new recaps, characters). */
+const KEPT_META_REFRESH_MS = 7 * 24 * 60 * 60_000;
+
+/** How many kept payloads the launch reads at once. */
+const RESTORE_READS_AT_ONCE = 3;
+
+/** On launch: seed the metadata every downloaded book kept, then each such connection's
+ * kept `/server` answer where the cache has none (after the books, so a gate it opens
+ * finds their data; a file from before the answer had its own key carries it over), then
+ * fill in, one book at a time, the downloads that kept none (made before this existed, or
+ * whose file is gone or unreadable), then refresh the copies older than a week. That asks
+ * only a server with `metadata`, each server's flags once; a failure keeps what the book
+ * had. */
+async function restoreOfflineMeta(keys: string[]): Promise<void> {
+  const downloaded = keys
+    .map((key) => [key, useDownloads.getState().entries[key]] as const)
+    .filter((pair): pair is readonly [string, DownloadEntry] => pair[1]?.status === 'downloaded');
+  const read = await mapLimit(downloaded, RESTORE_READS_AT_ONCE, async ([key, e]) => ({
+    key,
+    entry: e,
+    payload: e.manifest.meta ? await readOfflineMeta(e) : null,
+  }));
+  // The connections whose books kept their metadata, and the `/server` answer a file
+  // from before it had its own key carries (the first such file's).
+  const connections = new Set<string>();
+  const carried = new Map<string, ServerSnapshot>();
+  const missing: string[] = [];
+  const old: string[] = [];
+  for (const { key, entry, payload } of read) {
+    if (!payload) {
+      missing.push(key);
+      continue;
+    }
+    seedOfflineMeta(entry.connectionId, entry.libraryId, entry.path, payload);
+    connections.add(entry.connectionId);
+    if (payload.server && !carried.has(entry.connectionId)) {
+      carried.set(entry.connectionId, payload.server);
+    }
+    if (Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) old.push(key);
+  }
+  const snapshots = await readServerSnapshots();
+  for (const cid of connections) {
+    const snapshot = snapshots[cid] ?? carried.get(cid);
+    if (!snapshot) continue;
+    seedServerSnapshot(cid, snapshot);
+    if (!snapshots[cid]) void saveServerSnapshot(cid, snapshot);
+  }
+  if (missing.length === 0 && old.length === 0) return;
+
+  await whenSessionReady();
+  const hasMetadata = new Map<string, Promise<boolean>>();
+  for (const key of [...missing, ...old]) {
+    const e = useDownloads.getState().entries[key];
+    if (!e || e.status !== 'downloaded' || !canMatch(e)) continue;
+    let check = hasMetadata.get(e.connectionId);
+    if (!check) {
+      check = serverHasMetadata(e.connectionId);
+      hasMetadata.set(e.connectionId, check);
+    }
+    if (await check) await keepOfflineMeta(key);
+  }
+}
+
+/** `fn` over `items`, at most `limit` at a time, the results in order. */
+async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/** Run `task` once the launch's first screens are up: when the JS thread is next idle
+ * (`requestIdleCallback`, on native and most browsers), else a moment later. */
+function afterLaunch(task: () => void) {
+  const idle = (
+    globalThis as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => unknown;
+    }
+  ).requestIdleCallback;
+  if (typeof idle === 'function') idle(task, { timeout: 2000 });
+  else setTimeout(task, 250);
 }
 
 /**
@@ -570,6 +736,9 @@ async function runOne(key: string) {
     patchEntry(key, { status: 'downloaded', progress: 1, bytes: priorBytes, manifest });
     void persist();
     seedQueryCache(connectionId, libraryId, path, manifest);
+    // Keep its community metadata for offline use, after the download and apart from it:
+    // a failure there never fails (or holds up) the book.
+    keepOfflineMeta(key).catch(() => {});
   } catch (e) {
     if (isAbort(e)) {
       void engine.removeBook(connectionId, libraryId, path);
@@ -609,6 +778,7 @@ onConnectionRemoved(async (id) => {
     delete next[key];
   }
   useDownloads.setState({ entries: next });
+  void forgetServerSnapshot(id);
   // The file deletions are independent (and on web each one re-lists the cache), so
   // run them concurrently rather than making removal wait on N sequential scans.
   await Promise.all(doomed.map(([, e]) => engine.removeBook(e.connectionId, e.libraryId, e.path)));

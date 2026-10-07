@@ -4,6 +4,7 @@ import {
   bookHref,
   collectionHref,
   finishedHref,
+  journalHref,
   libraryHref,
   narratorHref,
   parentPath,
@@ -11,6 +12,7 @@ import {
   parsePersonParams,
   parseSeriesParams,
   pathLeaf,
+  playerHref,
   segmentsToPath,
   seriesHref,
 } from '@/lib/paths';
@@ -109,6 +111,28 @@ describe('accountHref', () => {
   });
 });
 
+describe('playerHref', () => {
+  it('opens the player on a book, at its saved place by default', () => {
+    expect(playerHref('c1', 3, 'A/B')).toEqual({
+      pathname: '/player',
+      params: { connection: 'c1', libraryId: '3', path: 'A/B' },
+    });
+  });
+
+  it('carries a place: whole seconds (never below 0), or a file by index', () => {
+    expect(playerHref('c1', 3, 'A/B', { position: 62_810.6 })).toMatchObject({
+      params: { position: '62811' },
+    });
+    expect(playerHref('c1', 3, 'A/B', { position: -0.2 })).toMatchObject({
+      params: { position: '0' },
+    });
+    expect(playerHref('c1', 3, 'A/B', { track: 2 })).toEqual({
+      pathname: '/player',
+      params: { connection: 'c1', libraryId: '3', path: 'A/B', track: '2' },
+    });
+  });
+});
+
 describe('finishedHref', () => {
   it('carries connection + path and defaults auto to 0 (early open)', () => {
     expect(finishedHref('c1', 3, 'Author/Book Title')).toEqual({
@@ -156,6 +180,14 @@ describe('browse detail hrefs', () => {
       pathname: '/collection',
       params: { connection: 'c', id: '7' },
     });
+  });
+});
+
+describe('journalHref', () => {
+  it('is the plain route for the Diary and carries any other tab', () => {
+    expect(journalHref()).toBe('/journal');
+    expect(journalHref('diary')).toBe('/journal');
+    expect(journalHref('notes')).toEqual({ pathname: '/journal', params: { tab: 'notes' } });
   });
 });
 

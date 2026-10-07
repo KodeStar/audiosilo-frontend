@@ -3,8 +3,11 @@ import { type Href, router } from 'expo-router';
 import {
   authorHref,
   bookHref,
+  type BookPlace,
   type BookTab,
   collectionHref,
+  journalHref,
+  type JournalTab,
   libraryHref,
   narratorHref,
   playerHref,
@@ -56,9 +59,9 @@ export function useOpen() {
     /** A book page, on `tab` when given (see `parseBookTab`). */
     openBook: (connectionId: string, libraryId: number, path: string, tab?: BookTab) =>
       go(bookHref(connectionId, libraryId, path, tab)),
-    // A root route of its own, never inside the shell.
-    openPlayer: (connectionId: string, libraryId: number, path: string) =>
-      router.push(playerHref(connectionId, libraryId, path)),
+    // A root route of its own, never inside the shell. At `place` when given.
+    openPlayer: (connectionId: string, libraryId: number, path: string, place?: BookPlace) =>
+      router.push(playerHref(connectionId, libraryId, path, place)),
     /** A series page: a local series by `name`, a community one by `work` (see `SeriesRef`). */
     openSeries: (connectionId: string, libraryId: number, ref: SeriesRef) =>
       go(seriesHref(connectionId, libraryId, ref)),
@@ -67,5 +70,7 @@ export function useOpen() {
     openNarrator: (connectionId: string, libraryId: number, name: string) =>
       go(narratorHref(connectionId, libraryId, name)),
     openCollection: (connectionId: string, id: number) => go(collectionHref(connectionId, id)),
+    /** The Journal (across every server), on `tab` when given. */
+    openJournal: (tab?: JournalTab) => go(journalHref(tab)),
   };
 }

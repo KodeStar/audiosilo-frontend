@@ -1,6 +1,8 @@
 import {
   type DefaultError,
   type FetchQueryOptions,
+  infiniteQueryOptions,
+  type InfiniteData,
   MutationObserver,
   type QueryClient,
   type QueryKey,
@@ -14,6 +16,7 @@ import {
 } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
 
+import { byPosition } from '@/lib/by-position';
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
@@ -25,6 +28,8 @@ import { noteError } from './reachability';
 import type {
   Book,
   Bookmark,
+  BookmarkLabel,
+  BookmarkPatch,
   BookRef,
   Capabilities,
   Collection,
@@ -32,8 +37,15 @@ import type {
   CollectionInput,
   CollectionPatch,
   Favourite,
+  HistoryEntry,
   Library,
   ListeningGoalStatus,
+  MyBookmark,
+  MyNote,
+  Note,
+  NotePatch,
+  Page,
+  PageQuery,
   Progress,
   ProgressEdit,
   Rating,
@@ -77,8 +89,16 @@ export const qk = {
   bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
   notes: (cid: string, lib: number, path: string) => ['notes', cid, lib, path] as const,
   history: (cid: string, lib: number, path: string) => ['history', cid, lib, path] as const,
-  /** Prefix matching every history key of a connection (invalidation). */
+  /** Prefix matching every history key of a connection (invalidation), the
+   * across-books list (`myHistory`) included. */
   historyAll: (cid: string) => ['history', cid] as const,
+  /** The caller's listening across books (`myHistoryQuery`, an infinite query), under
+   * `historyAll` so a recorded span refreshes it. */
+  myHistory: (cid: string) => ['history', cid, 'me'] as const,
+  /** The caller's bookmarks across books (`myBookmarksQuery`, an infinite query). */
+  myBookmarks: (cid: string) => ['myBookmarks', cid] as const,
+  /** The caller's notes across books (`myNotesQuery`, an infinite query). */
+  myNotes: (cid: string) => ['myNotes', cid] as const,
   favourites: (connectionId: string) => ['favourites', connectionId] as const,
   apiKeys: (cid: string) => ['apiKeys', cid] as const,
   search: (cid: string, q: string) => ['search', cid, q] as const,
@@ -224,6 +244,10 @@ export function itemQuery(cid: string, client: MaybeClient, libraryId: number, p
   });
 }
 
+/** How long a book's chapters stay fresh: they change only when a rescan re-reads the
+ * book. The play and download paths ask for a fresher answer of their own (30 s). */
+const CHAPTERS_STALE_MS = 30 * 60_000;
+
 /** A book's chapters and files. */
 export function chaptersQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
   return queryOptions({
@@ -232,6 +256,43 @@ export function chaptersQuery(cid: string, client: MaybeClient, libraryId: numbe
       client && path.length > 0
         ? ({ signal }) => client.chapters(libraryId, path, signal)
         : skipToken,
+    staleTime: CHAPTERS_STALE_MS,
+  });
+}
+
+/** How long community metadata stays fresh (the server caches it too). */
+export const META_STALE_MS = 60 * 60_000;
+
+/** A book's community metadata envelope (capability `metadata`; `opts`, capability
+ * `meta_bundle`, pick the request variant, each its own entry). Long `staleTime`, except
+ * a `hideSpoilers` envelope, which is cut at the saved progress when it is fetched; no
+ * retry (a 502 from a down meta service should render nothing, not spin). */
+export function bookMetaQuery(
+  cid: string,
+  client: MaybeClient,
+  libraryId: number,
+  path: string,
+  opts?: BookMetaOptions,
+) {
+  return queryOptions({
+    queryKey: qk.bookMeta(cid, libraryId, path, opts),
+    queryFn:
+      client && path.length > 0
+        ? ({ signal }) => client.bookMeta(libraryId, path, signal, opts)
+        : skipToken,
+    ...(opts?.hideSpoilers ? {} : { staleTime: META_STALE_MS }),
+    retry: false,
+  });
+}
+
+/** One community-metadata work by its meta-site id. Same policy as `bookMetaQuery`. */
+export function metaWorkQuery(cid: string, client: MaybeClient, workId: string) {
+  return queryOptions({
+    queryKey: qk.metaWork(cid, workId),
+    queryFn:
+      client && workId.length > 0 ? ({ signal }) => client.metaWork(workId, signal) : skipToken,
+    staleTime: META_STALE_MS,
+    retry: false,
   });
 }
 
@@ -267,12 +328,50 @@ export function historyQuery(
   });
 }
 
+/** What a bookmark add sends: `label` only reaches a server with `annotations`. */
+export type AddBookmarkVars = { position: number; note?: string; label?: BookmarkLabel };
+
+/** The add request, with the one rule for its label (`addBookmark` and `useAddBookmark`
+ * both send through it): `label` goes only to a server known to have `annotations` (not
+ * known yet counts as no, since an older server rejects the unknown field); otherwise it
+ * is dropped and the bookmark is still made. */
+function postBookmark(
+  client: ApiClient,
+  annotations: boolean | undefined,
+  libraryId: number,
+  path: string,
+  { position, note = '', label }: AddBookmarkVars,
+): Promise<Bookmark> {
+  return label !== undefined && annotations === true
+    ? client.addBookmark(libraryId, path, position, note, label)
+    : client.addBookmark(libraryId, path, position, note);
+}
+
+/** After an add: the book's bookmarks or notes (every reader: the book page, the
+ * companion, the scrubber pins) and the connection's across-books list. */
+function refreshAfterAdd(
+  qc: QueryClient,
+  kind: 'bookmarks' | 'notes',
+  cid: string,
+  libraryId: number,
+  path: string,
+) {
+  void qc.invalidateQueries({
+    queryKey: kind === 'bookmarks' ? qk.myBookmarks(cid) : qk.myNotes(cid),
+  });
+  return qc.invalidateQueries({
+    queryKey:
+      kind === 'bookmarks' ? qk.bookmarks(cid, libraryId, path) : qk.notes(cid, libraryId, path),
+  });
+}
+
 /**
- * Add a bookmark to a book on ONE connection's server and refresh that book's bookmarks
- * (every `qk.bookmarks` reader: the book page, the companion, the scrubber pins).
- * Framework-free, for the callers that run outside React or for a book that is not the
- * screen's (the playing book's shortcut, the sleep timer's "Fell asleep"). Resolves the
- * new bookmark; rejects when the connection is gone or the server refused.
+ * Add a bookmark to a book on ONE connection's server, then refresh its lists
+ * (`refreshAfterAdd`). Framework-free, for the callers that run outside React or for a
+ * book that is not the screen's (the playing book's shortcut, the sleep timer's "Fell
+ * asleep", a delete's Undo). `label` follows `postBookmark`'s rule, on the cached
+ * `/server` answer. Resolves the new bookmark; rejects when the connection is gone or the
+ * server refused.
  */
 export async function addBookmark(
   connectionId: string,
@@ -280,11 +379,35 @@ export async function addBookmark(
   path: string,
   position: number,
   note = '',
+  label?: BookmarkLabel,
 ): Promise<Bookmark> {
   const client = resolveClient(connectionId);
   if (!client) throw new Error('connection gone');
-  const created = await client.addBookmark(libraryId, path, position, note);
-  void queryClient.invalidateQueries({ queryKey: qk.bookmarks(connectionId, libraryId, path) });
+  const created = await postBookmark(
+    client,
+    cachedCapability(connectionId, 'annotations'),
+    libraryId,
+    path,
+    { position, note, label },
+  );
+  void refreshAfterAdd(queryClient, 'bookmarks', connectionId, libraryId, path);
+  return created;
+}
+
+/** `addBookmark` for a note: pin `body` at `position` of a book on ONE connection's
+ * server (every server takes a place), then refresh its lists. Framework-free (a
+ * delete's Undo). */
+export async function addNote(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  body: string,
+  position: number,
+): Promise<Note> {
+  const client = resolveClient(connectionId);
+  if (!client) throw new Error('connection gone');
+  const created = await client.addNote(libraryId, path, body, position);
+  void refreshAfterAdd(queryClient, 'notes', connectionId, libraryId, path);
   return created;
 }
 
@@ -535,14 +658,9 @@ export function useBookMeta(
   enabled: boolean,
   opts?: BookMetaOptions,
 ) {
-  const api = useOptionalApi();
-  const cid = useCid();
   return useQuery({
-    queryKey: qk.bookMeta(cid, libraryId, path, opts),
-    queryFn: ({ signal }) => api!.bookMeta(libraryId, path, signal, opts),
-    enabled: enabled && !!api && path.length > 0,
-    ...(opts?.hideSpoilers ? {} : { staleTime: 60 * 60_000 }),
-    retry: false,
+    ...bookMetaQuery(useCid(), useOptionalApi(), libraryId, path, opts),
+    enabled,
   });
 }
 
@@ -552,15 +670,7 @@ export function useBookMeta(
  * and no retry - and an older server (which lacks the route entirely) 404s, which
  * the UI renders as a quiet "couldn't load", never an error banner. */
 export function useMetaWork(workId: string, enabled: boolean) {
-  const api = useOptionalApi();
-  const cid = useCid();
-  return useQuery({
-    queryKey: qk.metaWork(cid, workId),
-    queryFn: ({ signal }) => api!.metaWork(workId, signal),
-    enabled: enabled && !!api && workId.length > 0,
-    staleTime: 60 * 60_000,
-    retry: false,
-  });
+  return useQuery({ ...metaWorkQuery(useCid(), useOptionalApi(), workId), enabled });
 }
 
 // --- Browse lists & next book ----------------------------------------------
@@ -819,14 +929,55 @@ export function useBookmarks(libraryId: number, path: string, connectionId?: str
   return useQuery(bookmarksQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
+/** Bookmark a book at `position`, with an optional `note` and `label`, then refresh the
+ * book's bookmarks and the across-books list. Works on every server: `label` follows
+ * `postBookmark`'s rule, on this connection's `useCapability`. Resolves the new
+ * bookmark. */
+export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
+  const api = useApi(connectionId);
+  const cid = useCid(connectionId);
+  const annotations = useCapability('annotations', connectionId);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: AddBookmarkVars) => postBookmark(api, annotations, libraryId, path, vars),
+    onSuccess: () => refreshAfterAdd(qc, 'bookmarks', cid, libraryId, path),
+  });
+}
+
+/** Delete one of a book's bookmarks, then refresh the book's bookmarks; the row leaves
+ * the across-books list at once (which is read again). */
 export function useDeleteBookmark(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteBookmark(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(cid, libraryId, path) }),
+    onSuccess: (_none, id) => {
+      refreshPages<MyBookmark>(qc, qk.myBookmarks(cid), (data) => removeFromPages(data, id));
+      return qc.invalidateQueries({ queryKey: qk.bookmarks(cid, libraryId, path) });
+    },
   });
+}
+
+/** Edit one of the caller's bookmarks, its `note` and/or `label` (capability
+ * `annotations`; vars `{ id, ...BookmarkPatch }`, see {@link BookmarkPatch}). The returned
+ * row replaces the cached one in its book's bookmarks and in the across-books list (so
+ * the edit shows without a flash), and the across-books list is read again. Rejects with
+ * a `CapabilityError`, sending nothing, when the flag is off or not known yet. */
+export function useUpdateBookmark(connectionId?: string) {
+  return useCapabilityMutation(
+    'annotations',
+    connectionId,
+    (api, { id, ...patch }: BookmarkPatch & { id: number }) => api.updateBookmark(id, patch),
+    async ({ qc, cid }, bookmark) => {
+      refreshPages<MyBookmark>(qc, qk.myBookmarks(cid), (data) => replaceInPages(data, bookmark));
+      await storeAnswer<Bookmark[]>(
+        qc,
+        qk.bookmarks(cid, bookmark.library_id, bookmark.path),
+        (list) => replaceRow(list, bookmark),
+      );
+    },
+  );
 }
 
 // --- Notes -----------------------------------------------------------------
@@ -834,6 +985,7 @@ export function useNotes(libraryId: number, path: string, connectionId?: string)
   return useQuery(notesQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
+/** Add a note to a book, then refresh the book's notes and the across-books list. */
 export function useAddNote(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
@@ -841,23 +993,192 @@ export function useAddNote(libraryId: number, path: string, connectionId?: strin
   return useMutation({
     mutationFn: (vars: { body: string; position?: number }) =>
       api.addNote(libraryId, path, vars.body, vars.position ?? 0),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(cid, libraryId, path) }),
+    onSuccess: () => refreshAfterAdd(qc, 'notes', cid, libraryId, path),
   });
 }
 
+/** Delete one of a book's notes, then refresh the book's notes; the row leaves the
+ * across-books list at once (which is read again). */
 export function useDeleteNote(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteNote(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes(cid, libraryId, path) }),
+    onSuccess: (_none, id) => {
+      refreshPages<MyNote>(qc, qk.myNotes(cid), (data) => removeFromPages(data, id));
+      return qc.invalidateQueries({ queryKey: qk.notes(cid, libraryId, path) });
+    },
   });
+}
+
+/** Edit one of the caller's notes, its `body` and/or `position` (capability
+ * `annotations`; vars `{ id, ...NotePatch }`, see {@link NotePatch}). The returned row
+ * replaces the cached one in its book's notes (kept in the server's position order) and
+ * in the across-books list, which is then read again. Rejects with a `CapabilityError`,
+ * sending nothing, when the flag is off or not known yet. */
+export function useUpdateNote(connectionId?: string) {
+  return useCapabilityMutation(
+    'annotations',
+    connectionId,
+    (api, { id, ...patch }: NotePatch & { id: number }) => api.updateNote(id, patch),
+    async ({ qc, cid }, note) => {
+      refreshPages<MyNote>(qc, qk.myNotes(cid), (data) => replaceInPages(data, note));
+      await storeAnswer<Note[]>(qc, qk.notes(cid, note.library_id, note.path), (list) => {
+        const next = replaceRow(list, note);
+        return next && byPosition(next);
+      });
+    },
+  );
 }
 
 // --- History ---------------------------------------------------------------
 export function useHistory(libraryId: number, path: string, connectionId?: string) {
   return useQuery(historyQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
+}
+
+// --- Across books (Phase 4) -----------------------------------------------------
+// The caller's bookmarks, notes and listening over every book, newest first, as infinite
+// query options on the server's `next_cursor` (the Journal reads every server's at once,
+// `useJournalSources`; call `fetchNextPage` while `hasNextPage`).
+// `flattenPages` turns `data` into one list. Bookmarks and notes are gated on
+// `annotations` like the Phase 1b reads (no query function at all until the flag is
+// known to be on); history works on every server, and an older one answers one page.
+
+/** Rows per page of the across-books lists (the server's default; it takes 1-500). */
+const PAGE_SIZE = 100;
+
+/** Every row of an across-books infinite query's pages so far, in order (`[]` before
+ * the first page). */
+export function flattenPages<T>(data: InfiniteData<Page<T>> | undefined): T[] {
+  return data ? data.pages.flatMap((p) => p.items) : [];
+}
+
+/** How long an across-books list stays fresh: this device's writes refresh it at once
+ * (`addBookmark`, the delete and edit hooks, a recorded span), so a revisit reads the
+ * cache instead of asking again. */
+const PAGED_STALE_MS = 5 * 60_000;
+
+/**
+ * When the last reader of an across-books list goes, keep only its first page: a list
+ * read 20 pages deep would otherwise refetch all 20, one after another, the next time it
+ * is read again. The cache keeps its date (and its invalidation, if a write left it
+ * waiting for a read), so a revisit refreshes it exactly when it would have.
+ */
+export function keepFirstPage(qc: QueryClient, queryKey: readonly unknown[]) {
+  const query = qc.getQueryCache().find({ queryKey, exact: true });
+  if (!query || query.getObserversCount() > 0) return;
+  const { data, dataUpdatedAt, isInvalidated } = query.state as {
+    data?: InfiniteData<unknown>;
+    dataUpdatedAt: number;
+    isInvalidated: boolean;
+  };
+  if (!data || data.pages.length <= 1) return;
+  qc.setQueryData<InfiniteData<unknown>>(
+    queryKey,
+    { pages: data.pages.slice(0, 1), pageParams: data.pageParams.slice(0, 1) },
+    { updatedAt: dataUpdatedAt },
+  );
+  if (isInvalidated) void qc.invalidateQueries({ queryKey, exact: true, refetchType: 'none' });
+}
+
+/** An across-books list as infinite query options. A null `load` gives no query function
+ * (`skipToken`), so not even a manual `refetch` asks. */
+function pagedList<T>(
+  queryKey: readonly unknown[],
+  load: ((page: PageQuery, signal: AbortSignal) => Promise<Page<T>>) | null,
+) {
+  return infiniteQueryOptions<
+    Page<T>,
+    Error,
+    InfiniteData<Page<T>, string | undefined>,
+    readonly unknown[],
+    string | undefined
+  >({
+    queryKey,
+    queryFn: load
+      ? ({ pageParam, signal }) => load({ limit: PAGE_SIZE, cursor: pageParam }, signal)
+      : skipToken,
+    initialPageParam: undefined,
+    getNextPageParam: (last) => last.next_cursor || undefined,
+    staleTime: PAGED_STALE_MS,
+  });
+}
+
+/** The caller's bookmarks across books, newest made first, each with its `book` when
+ * indexed. Gated on `annotations`: `supported` is whether the connection's server is
+ * known to have it (no query function otherwise). Read with `keepFirstPage` on release. */
+export function myBookmarksQuery(cid: string, client: MaybeClient, supported: boolean) {
+  return pagedList<MyBookmark>(
+    qk.myBookmarks(cid),
+    supported && client ? (page, signal) => client.myBookmarks(page, signal) : null,
+  );
+}
+
+/** The caller's notes across books, as `myBookmarksQuery`. */
+export function myNotesQuery(cid: string, client: MaybeClient, supported: boolean) {
+  return pagedList<MyNote>(
+    qk.myNotes(cid),
+    supported && client ? (page, signal) => client.myNotes(page, signal) : null,
+  );
+}
+
+/** The caller's listening spans across books, newest ended first. Not gated: every
+ * server has `/me/history`. One with `annotations` pages on and sends each row's `book`;
+ * an older one answers its newest 100 as the only page, without `book`. Kept under
+ * `qk.historyAll`, so a recorded span refreshes it. */
+export function myHistoryQuery(cid: string, client: MaybeClient) {
+  return pagedList<HistoryEntry>(
+    qk.myHistory(cid),
+    client ? (page, signal) => client.allHistory(page, signal) : null,
+  );
+}
+
+/** `row` in place of the list's row with its id, or undefined when the list (or the
+ * row) isn't cached, so `storeAnswer` reads the list again. */
+function replaceRow<T extends { id: number }>(list: T[] | undefined, row: T): T[] | undefined {
+  return list?.some((r) => r.id === row.id)
+    ? list.map((r) => (r.id === row.id ? row : r))
+    : undefined;
+}
+
+/** The pages with `row`'s fields over the row of its id (keeping the row's `book`), or
+ * undefined when no page holds it. */
+function replaceInPages<T extends { id: number }>(
+  data: InfiniteData<Page<T>>,
+  row: Partial<T> & { id: number },
+): InfiniteData<Page<T>> | undefined {
+  if (!data.pages.some((p) => p.items.some((r) => r.id === row.id))) return undefined;
+  return {
+    ...data,
+    pages: data.pages.map((p) => ({
+      ...p,
+      items: p.items.map((r) => (r.id === row.id ? { ...r, ...row } : r)),
+    })),
+  };
+}
+
+/** The pages without the row of `id`. */
+function removeFromPages<T extends { id: number }>(
+  data: InfiniteData<Page<T>>,
+  id: number,
+): InfiniteData<Page<T>> {
+  return {
+    ...data,
+    pages: data.pages.map((p) => ({ ...p, items: p.items.filter((r) => r.id !== id) })),
+  };
+}
+
+/** After a write: patch an across-books list in place where it can (so the change shows
+ * at once), then read it again (a read already out is cancelled and made again, so it
+ * can't land over the patch). A no-op for a list nothing has read. */
+function refreshPages<T>(
+  qc: QueryClient,
+  queryKey: readonly unknown[],
+  patch: (data: InfiniteData<Page<T>>) => InfiniteData<Page<T>> | undefined,
+) {
+  qc.setQueryData<InfiniteData<Page<T>>>(queryKey, (data) => (data ? patch(data) : undefined));
+  void qc.invalidateQueries({ queryKey });
 }
 
 // --- Favourites ------------------------------------------------------------
@@ -1228,12 +1549,13 @@ export function useRating(libraryId: number, path: string, connectionId?: string
 }
 
 /** Every rating the caller can still see, newest change first (capability `ratings`). */
-export function useMyRatings(connectionId?: string) {
+export function useMyRatings(connectionId?: string, opts: { enabled?: boolean } = {}) {
   return useCapabilityQuery(
     'ratings',
     qk.myRatings,
     (api, signal) => api.myRatings(signal),
     connectionId,
+    opts,
   );
 }
 

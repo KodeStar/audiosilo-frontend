@@ -19,20 +19,22 @@ jest.mock('@/api/hooks', () => ({
 }));
 // CoverFrame's iOS shadow hook reads the theme provider, whose module side-effect-
 // imports global.css (unparseable in Node); stub the hook.
+const mockOpenExternal = jest.fn();
+jest.mock('@/lib/support', () => ({
+  openExternalUrl: (url: string) => mockOpenExternal(url),
+}));
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
 }));
 
 /* eslint-disable import/first */
 import {
-  BookMetaAbout,
   BookMetaCharactersTab,
   BookMetaRecapsTab,
   BookMetaSeriesTab,
-  type MatchedBookMeta,
-  seriesRails,
   summaryIsVisible,
 } from './book-meta';
+import { seriesRails } from './series-rails';
 /* eslint-enable import/first */
 
 // The spoiler reveal is the SCREEN's state (shared by both tabs), so these
@@ -72,6 +74,7 @@ function RecapsTab({ summaryVisible, ...props }: RecapsProps) {
 }
 
 beforeEach(() => {
+  mockOpenExternal.mockReset();
   mockUseMetaWork.mockReset();
   mockUseMetaWork.mockReturnValue({ data: undefined, isError: false });
 });
@@ -109,34 +112,6 @@ const recaps: BookMetaRecap[] = [
   { through: { chapter: 0 }, scope: 'series', text: 'Prior books.' },
   { through: { chapter: 6 }, scope: 'book', text: 'So far.' },
 ];
-
-const matched: MatchedBookMeta = {
-  matched: true,
-  work: {
-    id: 'the-hobbit',
-    title: 'The Hobbit',
-    authors: [{ id: 'jrr', name: 'J. R. R. Tolkien' }],
-    language: 'en',
-    description: 'In a hole in the ground there lived a hobbit.',
-    first_published: '1937',
-    characters,
-    recaps,
-  },
-  recording: { id: 'rec', narrators: [], publisher: 'Recorded Books', abridged: true },
-  web_url: 'https://m/work?id=the-hobbit',
-};
-
-describe('BookMetaAbout', () => {
-  it('renders the description, production details and the meta link', async () => {
-    await mount(<BookMetaAbout meta={matched} />);
-    expect(screen.getByText('About')).toBeTruthy();
-    expect(screen.getByText('In a hole in the ground there lived a hobbit.')).toBeTruthy();
-    expect(screen.getByText('Recorded Books')).toBeTruthy();
-    expect(screen.getByText('1937')).toBeTruthy();
-    expect(screen.getByText('Abridged')).toBeTruthy();
-    expect(screen.getByText('View on AudioSilo Meta')).toBeTruthy();
-  });
-});
 
 describe('BookMetaCharactersTab', () => {
   it('hides characters the listener has not reached, then reveals them on request', async () => {

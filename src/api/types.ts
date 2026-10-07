@@ -60,6 +60,13 @@ export type Capabilities = {
   /** Whether the caller can list and sign out their own devices (`/me/devices`,
    * {@link MyDevice}). */
   my_devices?: boolean;
+  /** Whether the server keeps bookmark labels ({@link BookmarkLabel}), takes edits to
+   * bookmarks and notes (`PATCH /bookmarks/{id}`, `PATCH /notes/{id}`), and lists the
+   * caller's bookmarks and notes across books (`/me/bookmarks`, `/me/notes`) with
+   * `/me/history` paged on a cursor (player redesign Phase 4). Absent on older servers:
+   * treat missing as false, never send a `label` (such a server rejects the unknown field
+   * with a 400) and never call the routes it gates. */
+  annotations?: boolean;
 };
 
 export type ServerInfo = {
@@ -606,8 +613,26 @@ export type Bookmark = {
   path: string;
   position: number;
   note: string;
+  /** A machine key, never display text: `''` when none, else `^[a-z][a-z0-9_]{0,31}$`.
+   * The player's own keys are {@link BookmarkLabel}; a newer client may store others, so
+   * check with `isBookmarkLabel` (`src/api/bookmark-labels.ts`) before naming one.
+   * Sent by a server with `annotations` (always, `''` included); absent on older
+   * servers. */
+  label?: string;
   created_at: string;
 };
+
+/** The bookmark labels this player knows: the five a listener picks, and `fell_asleep`,
+ * the sleep timer's automatic bookmark. The server checks only a label's shape (see
+ * {@link Bookmark.label}), never this list. Ordered lists and a type guard live in
+ * `src/api/bookmark-labels.ts`. */
+export type BookmarkLabel =
+  'quote' | 'favourite' | 'relisten' | 'funny' | 'question' | 'fell_asleep';
+
+/** Body of PATCH /bookmarks/{id} (capability `annotations`, owner only): absent fields
+ * are left as they are, at least one is required. `label: ''` clears the label; `note`
+ * is at most 2000 characters. */
+export type BookmarkPatch = { note?: string; label?: BookmarkLabel | '' };
 
 export type Note = {
   id: number;
@@ -618,6 +643,12 @@ export type Note = {
   created_at: string;
   updated_at: string;
 };
+
+/** Body of PATCH /notes/{id} (capability `annotations`, owner only): absent fields are
+ * left as they are, at least one is required. `body` is at most 10000 characters;
+ * `position` (seconds on the whole-book timeline) is finite and >= 0. The edit moves
+ * `updated_at`. */
+export type NotePatch = { body?: string; position?: number };
 
 /** A user-hearted item, addressed by (library_id, path). May be a navigation
  * folder, a book folder, or a single-file book. `is_book` reports whether the
@@ -646,6 +677,33 @@ export type History = {
   started_at: string;
   ended_at: string;
 };
+
+// --- Across books (player redesign Phase 4, capability `annotations`) -----------
+// The caller's own rows over every book they can still open, newest first, one keyset
+// page at a time. A row whose path is outside the caller's CURRENT access is left out
+// (kept on the server). `book` is the list shape (no description), present when the
+// path is indexed.
+
+/** One page of an across-books list, as the client normalizes it: the rows (`items`,
+ * the wire's `bookmarks`/`notes`/`history` array) and the cursor to the next page,
+ * absent on the last one. An older server never sends `next_cursor`, so its answer is
+ * exactly one page. Pass `next_cursor` back as {@link PageQuery.cursor}. */
+export type Page<T> = { items: T[]; next_cursor?: string };
+
+/** Paging of the across-books lists. `limit` is 1-500 (the server's default 100, a
+ * larger value is clamped); `cursor` is a previous page's opaque `next_cursor` (a
+ * malformed one is a 400). */
+export type PageQuery = { limit?: number; cursor?: string };
+
+/** One of the caller's bookmarks across books (GET /me/bookmarks): newest made first. */
+export type MyBookmark = Bookmark & { book?: Book };
+
+/** One of the caller's notes across books (GET /me/notes): newest made first. */
+export type MyNote = Note & { book?: Book };
+
+/** One of the caller's listening spans across books (GET /me/history, every server):
+ * newest ended first. `book` is sent by a server with `annotations` only. */
+export type HistoryEntry = History & { book?: Book };
 
 // --- User state & personal stats (player redesign Phase 1b) --------------------
 // Each route is gated on its own capability flag (see Capabilities). Stored rows are

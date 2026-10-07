@@ -1,0 +1,154 @@
+import type { ReactNode } from 'react';
+import { Platform, View } from 'react-native';
+
+import type { Book } from '@/api/types';
+import { BookCover } from '@/components/library/book-cover';
+import { pillClass } from '@/components/player/control-pill';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { Icon, type IconName } from '@/components/ui/icon';
+import { Text } from '@/components/ui/text';
+import { touchTarget } from '@/components/ui/touch-target';
+import { bookTitle } from '@/lib/paths';
+import { cn } from '@/lib/utils';
+import { useThemeColors } from '@/theme/use-theme-colors';
+
+/** A row action's drawn size in rem (`h-9 w-9`), for its 44 pt target. */
+const ACTION_REM = 2.25;
+
+/** A row's icon action (edit, delete), named for what it acts on ("Delete bookmark at
+ * 17:26:50"), with a 44 pt touch on native. Always a quiet muted glyph, delete too (as the
+ * prototype): a list must not be a column of red; the destructive colour belongs inside
+ * a confirmation, and a row's delete offers Undo instead. */
+export function RowAction({
+  icon,
+  label,
+  onPress,
+  testID,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  testID?: string;
+}) {
+  const themed = useThemeColors();
+  // Native: a real 44 pt frame (a slop alone left the control's own frame at 32 pt); the
+  // web keeps its 36 px button and a slop.
+  const target = touchTarget(ACTION_REM, ACTION_REM);
+  return (
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={target.hitSlop}
+      testID={testID}
+      className={pillClass('ghost', target.frameClass ?? 'h-9 w-9')}
+    >
+      <Icon name={icon} size={15} color={themed.mutedForeground} />
+    </AnimatedPressable>
+  );
+}
+
+/** The book a row across books belongs to: its cover, opening its page. Its label is
+ * the book's title unless the caller names the link (`accessibilityLabel`). `book` needs
+ * only where it lives (a Diary span of an older server knows no more until its item
+ * comes). */
+export function RowCover({
+  connectionId,
+  book,
+  onOpen,
+  accessibilityLabel,
+}: {
+  connectionId: string;
+  book: Pick<Book, 'library_id' | 'rel_path'> &
+    Partial<Pick<Book, 'title' | 'author' | 'cover_version'>>;
+  onOpen: () => void;
+  accessibilityLabel?: string;
+}) {
+  const title = bookTitle(book.title, book.rel_path);
+  return (
+    <AnimatedPressable
+      accessibilityRole="link"
+      accessibilityLabel={accessibilityLabel ?? title}
+      onPress={onOpen}
+    >
+      <BookCover
+        connectionId={connectionId}
+        libraryId={book.library_id}
+        path={book.rel_path}
+        coverVersion={book.cover_version}
+        width={40}
+        title={title}
+        author={book.author}
+      />
+    </AnimatedPressable>
+  );
+}
+
+/** The server a row is on, in a list across servers (the Diary's server flag look): a
+ * server glyph and the name in `info`. */
+export function ServerFlag({ name }: { name: string }) {
+  const themed = useThemeColors();
+  return (
+    <View className="shrink flex-row items-center gap-1" testID="row-server">
+      <Icon name="server" size={11} color={themed.info} />
+      <Text variant="caption" className="text-info" numberOfLines={1}>
+        {name}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * The shared shape of a bookmark or note row (STYLEGUIDE section 8, "Bookmark"; the
+ * prototype's book page tabs and Journal): a hairline above every row but the first, the
+ * lead (a time chip, or a cover across books), the body, then the actions.
+ */
+export function AnnotationRowFrame({
+  lead,
+  children,
+  actions,
+  first,
+  testID,
+}: {
+  lead: ReactNode;
+  children: ReactNode;
+  actions: ReactNode;
+  first?: boolean;
+  testID?: string;
+}) {
+  return (
+    <View
+      testID={testID}
+      className={cn('flex-row items-start gap-3 py-3.5', !first && 'border-t border-border')}
+    >
+      {lead}
+      <View className="min-w-0 flex-1 gap-1">{children}</View>
+      <View className={cn('flex-row items-center', Platform.OS === 'web' ? '-my-1' : '-my-2.5')}>
+        {actions}
+      </View>
+    </View>
+  );
+}
+
+/** A row's meta line: "Chapter · title · 3 days ago", whichever parts it has, and the
+ * server it is on (`server`, a list across servers only: `ServerFlag`). */
+export function RowMeta({
+  parts,
+  server,
+}: {
+  parts: (string | null | undefined)[];
+  server?: string;
+}) {
+  const text = parts.filter((p): p is string => !!p).join(' · ');
+  if (!text && !server) return null;
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-2 gap-y-0.5">
+      {text ? (
+        <Text variant="caption" className="shrink text-subtle-foreground" numberOfLines={1}>
+          {text}
+        </Text>
+      ) : null}
+      {server ? <ServerFlag name={server} /> : null}
+    </View>
+  );
+}

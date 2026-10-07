@@ -1,4 +1,4 @@
-import { focusManager, onlineManager, QueryObserver } from '@tanstack/react-query';
+import { focusManager, onlineManager, QueryObserver, skipToken } from '@tanstack/react-query';
 
 import { ApiError, TimeoutError, type ApiClient } from '@/api/client';
 import type { Capabilities, Progress, ServerInfo } from '@/api/types';
@@ -42,12 +42,18 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import {
   addBookmark,
+  addNote,
   anyCapability,
+  bookMetaQuery,
+  chaptersQuery,
   fetchBookProgress,
   fetchCapabilities,
+  flattenPages,
   historyQuery,
   isQueueKey,
   isSearchKey,
+  META_STALE_MS,
+  metaWorkQuery,
   qk,
   serverInfoQuery,
 } from '@/api/hooks';
@@ -213,12 +219,88 @@ describe('addBookmark', () => {
     });
   });
 
+  it('refreshes the across-books bookmarks too', async () => {
+    mockResolveClient.mockReturnValue({ addBookmark: async () => ({ id: 7 }) });
+    await addBookmark('srv', 2, 'A/Book', 61);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: qk.myBookmarks('srv'),
+    });
+  });
+
+  describe('a label', () => {
+    const caps = (annotations?: boolean) =>
+      queryClient.setQueryData(qk.server('srv'), {
+        capabilities: annotations === undefined ? {} : { annotations },
+      } as ServerInfo);
+    afterEach(() => queryClient.clear());
+
+    it('is sent to a server with annotations', async () => {
+      const add = jest.fn(async () => ({ id: 7 }));
+      mockResolveClient.mockReturnValue({ addBookmark: add });
+      caps(true);
+      await addBookmark('srv', 2, 'A/Book', 61, 'Fell asleep', 'fell_asleep');
+      expect(add).toHaveBeenCalledWith(2, 'A/Book', 61, 'Fell asleep', 'fell_asleep');
+    });
+
+    it('is dropped (the bookmark still made) without annotations, or before /server is known', async () => {
+      const add = jest.fn(async () => ({ id: 7 }));
+      mockResolveClient.mockReturnValue({ addBookmark: add });
+      caps(false);
+      await addBookmark('srv', 2, 'A/Book', 61, 'Fell asleep', 'fell_asleep');
+      caps();
+      await addBookmark('srv', 2, 'A/Book', 62, '', 'quote');
+      queryClient.clear();
+      await addBookmark('srv', 2, 'A/Book', 63, '', 'quote');
+      expect(add.mock.calls).toEqual([
+        [2, 'A/Book', 61, 'Fell asleep'],
+        [2, 'A/Book', 62, ''],
+        [2, 'A/Book', 63, ''],
+      ]);
+    });
+  });
+
   it('rejects without touching the cache when the connection is gone or the add fails', async () => {
     mockResolveClient.mockReturnValue(null);
     await expect(addBookmark('gone', 2, 'A/Book', 61)).rejects.toThrow('connection gone');
     mockResolveClient.mockReturnValue({ addBookmark: async () => Promise.reject(new Error('x')) });
     await expect(addBookmark('srv', 2, 'A/Book', 61)).rejects.toThrow('x');
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('addNote', () => {
+  it("pins the note on the connection's own server and refreshes both its lists", async () => {
+    const add = jest.fn(async () => ({ id: 9 }));
+    mockResolveClient.mockReturnValue({ addNote: add });
+    await expect(addNote('srv', 2, 'A/Book', 'Theory', 61)).resolves.toEqual({ id: 9 });
+    expect(add).toHaveBeenCalledWith(2, 'A/Book', 'Theory', 61);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: qk.notes('srv', 2, 'A/Book'),
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: qk.myNotes('srv') });
+  });
+
+  it('rejects without touching the cache when the connection is gone', async () => {
+    mockResolveClient.mockReturnValue(null);
+    await expect(addNote('gone', 2, 'A/Book', 'x', 0)).rejects.toThrow('connection gone');
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('across-books lists', () => {
+  it("keeps the across-books history under the connection's history prefix", () => {
+    // store.ts invalidates qk.historyAll after recording a span: it must reach this list.
+    expect(qk.myHistory('c').slice(0, 2)).toEqual([...qk.historyAll('c')]);
+  });
+
+  it('flattens the pages so far, in order', () => {
+    expect(flattenPages(undefined)).toEqual([]);
+    expect(
+      flattenPages({
+        pages: [{ items: [1, 2], next_cursor: 'p2' }, { items: [3] }],
+        pageParams: [undefined, 'p2'],
+      }),
+    ).toEqual([1, 2, 3]);
   });
 });
 
@@ -229,6 +311,36 @@ describe('historyQuery', () => {
       ...qk.history('srv', 2, 'A/Book'),
       20,
     ]);
+  });
+});
+
+describe('read specs', () => {
+  const client = {} as ApiClient;
+
+  it('keeps a book’s chapters fresh for a long while: only a rescan changes them', () => {
+    expect(chaptersQuery('c', client, 2, 'A/Book').staleTime).toBeGreaterThanOrEqual(10 * 60_000);
+    expect(chaptersQuery('c', null, 2, 'A/Book').queryFn).toBe(skipToken);
+  });
+
+  it('reads community metadata on its key, long-lived but for the spoiler-cut variant', () => {
+    const plain = bookMetaQuery('c', client, 2, 'A/Book');
+    expect(plain.queryKey).toEqual(qk.bookMeta('c', 2, 'A/Book'));
+    expect(plain).toMatchObject({ staleTime: META_STALE_MS, retry: false });
+    const hidden = bookMetaQuery('c', client, 2, 'A/Book', { hideSpoilers: true });
+    expect(hidden.queryKey).toEqual(qk.bookMeta('c', 2, 'A/Book', { hideSpoilers: true }));
+    expect(hidden.staleTime).toBeUndefined();
+    expect(bookMetaQuery('c', null, 2, 'A/Book').queryFn).toBe(skipToken);
+    expect(bookMetaQuery('c', client, 2, '').queryFn).toBe(skipToken);
+  });
+
+  it('reads one meta work on its key, never without a client or an id', () => {
+    expect(metaWorkQuery('c', client, 'w1')).toMatchObject({
+      queryKey: qk.metaWork('c', 'w1'),
+      staleTime: META_STALE_MS,
+      retry: false,
+    });
+    expect(metaWorkQuery('c', null, 'w1').queryFn).toBe(skipToken);
+    expect(metaWorkQuery('c', client, '').queryFn).toBe(skipToken);
   });
 });
 

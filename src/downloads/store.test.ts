@@ -28,8 +28,49 @@ jest.mock('@/downloads/engine', () => ({
     verify: undefined,
     probe: undefined,
     totalBytesUsed: jest.fn(async () => 0),
+    // The offline companion's payload file (its IO goes through offline-meta, mocked
+    // below); only its presence gates keeping metadata.
+    writeText: jest.fn(async () => true),
   },
 }));
+
+// The offline companion (offline-meta.ts has its own tests): the store's part is WHEN it
+// keeps, restores and fills in a book's metadata, observed through these fakes.
+const mockCapture = jest.fn(async (_e: DownloadEntry): Promise<unknown> => null);
+const mockWriteMeta = jest.fn(async (_e: DownloadEntry, _p: unknown) => true);
+const mockReadMeta = jest.fn(async (_e: DownloadEntry): Promise<unknown> => null);
+const mockRemoveMeta = jest.fn(async (_e: DownloadEntry) => {});
+const mockSeedMeta = jest.fn();
+const mockSeedServer = jest.fn();
+const mockSeedQuery = jest.fn();
+const mockHasMetadata = jest.fn(async (_cid: string) => true);
+const mockCanMatch = jest.fn((_e: DownloadEntry) => true);
+const mockReadSnapshots = jest.fn(async (): Promise<Record<string, unknown>> => ({}));
+const mockSaveSnapshot = jest.fn(async (..._a: unknown[]) => {});
+const mockForgetSnapshot = jest.fn(async (_cid: string) => {});
+const mockCurrentSnapshot = jest.fn((_cid: string): unknown => undefined);
+const mockRelease = jest.fn();
+jest.mock('@/downloads/offline-meta', () => ({
+  canMatch: (e: DownloadEntry) => mockCanMatch(e),
+  captureOfflineMeta: (e: DownloadEntry) => mockCapture(e),
+  writeOfflineMeta: (e: DownloadEntry, p: unknown) => mockWriteMeta(e, p),
+  readOfflineMeta: (e: DownloadEntry) => mockReadMeta(e),
+  removeOfflineMeta: (e: DownloadEntry) => mockRemoveMeta(e),
+  seedOfflineMeta: (...a: unknown[]) => mockSeedMeta(...a),
+  seedServerSnapshot: (...a: unknown[]) => mockSeedServer(...a),
+  seedQuery: (...a: unknown[]) => mockSeedQuery(...a),
+  serverHasMetadata: (cid: string) => mockHasMetadata(cid),
+  whenSessionReady: async () => {},
+  readServerSnapshots: () => mockReadSnapshots(),
+  saveServerSnapshot: (...a: unknown[]) => mockSaveSnapshot(...a),
+  forgetServerSnapshot: (cid: string) => mockForgetSnapshot(cid),
+  currentServerSnapshot: (cid: string) => mockCurrentSnapshot(cid),
+  releaseOfflineBook: (...a: unknown[]) => mockRelease(...a),
+}));
+
+// The launch's restore waits for the JS thread to be idle: here, the next turn.
+(globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback = (cb) =>
+  setTimeout(cb, 0);
 
 // The connection-clients seam: runOne resolves each entry's own client via resolveClient.
 jest.mock('@/api/connection-clients', () => ({
@@ -194,6 +235,11 @@ beforeEach(async () => {
   mockEngine.probe = undefined;
   // Reset the connection-clients seam so a per-test override can't leak.
   mockResolveClient.mockReset().mockReturnValue(null);
+  mockCapture.mockReset().mockResolvedValue(null);
+  mockWriteMeta.mockReset().mockResolvedValue(true);
+  mockReadMeta.mockReset().mockResolvedValue(null);
+  mockHasMetadata.mockReset().mockResolvedValue(true);
+  mockCanMatch.mockReset().mockReturnValue(true);
   // Clear any entries leaked from a prior test (the store is a module singleton).
   useDownloads.setState({ entries: {}, hydrated: false });
 });
@@ -789,6 +835,252 @@ describe('failures, retry and the session decline mark', () => {
     useDownloads.getState().download('c1', 2, book, undefined, 'auto');
     await settle();
     expect(useDownloads.getState().entries[key]).toBeUndefined();
+  });
+});
+
+// Before the reserve tests: they leave a download that never finishes holding the
+// module's one-at-a-time queue.
+describe('the offline companion (community metadata kept with a download)', () => {
+  const api = {
+    coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+    streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
+  } as unknown as ApiClient;
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  const payload = (savedAt = Date.parse('2026-05-01T10:00:00Z')) => ({
+    v: 1,
+    savedAt,
+    previous: true,
+    meta: { matched: false },
+    works: [],
+    server: { info: { capabilities: { metadata: true } }, savedAt },
+  });
+  // metaTried is module-level: give each test its own book so one test's attempt never
+  // stands in for another's.
+  let n = 0;
+  const nextPath = () => `M/Book${++n}`;
+
+  beforeEach(() => {
+    mockResolveClient.mockReturnValue(api);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c: string, _l: number, _p: string, name: string) => `local:${name}`,
+    );
+  });
+
+  async function downloadOne(path: string) {
+    useDownloads.getState().download('c1', 2, makeBook({ rel_path: path, files: undefined }));
+    await settle();
+    await settle();
+  }
+
+  it('keeps it once the book is downloaded: saved beside the files, marked, seeded', async () => {
+    const path = nextPath();
+    const p = payload();
+    mockCapture.mockResolvedValue(p);
+    const snapshot = { info: { capabilities: { metadata: true } }, savedAt: 7 };
+    mockCurrentSnapshot.mockReturnValueOnce(snapshot);
+    const watch = jest.spyOn(AppState, 'addEventListener');
+    await downloadOne(path);
+    const key = downloadKey('c1', 2, path);
+    const entry = useDownloads.getState().entries[key];
+    expect(entry?.status).toBe('downloaded');
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    expect(mockWriteMeta).toHaveBeenCalledWith(expect.objectContaining({ path }), p);
+    expect(entry?.manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
+    // The marker reaches storage within a couple of seconds, at once when the app leaves
+    // the foreground (the payload itself is not in the registry).
+    watch.mock.calls.findLast(([type]) => type === 'change')?.[1]('background');
+    await settle();
+    const saved = (await readPersisted())[key];
+    expect(saved?.manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
+    expect(JSON.stringify(saved)).not.toContain('"works"');
+    expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, p);
+    // The server's answer, kept once for the connection.
+    expect(mockSaveSnapshot).toHaveBeenCalledWith('c1', snapshot);
+  });
+
+  it('a book with nothing to keep downloads exactly as before, unmarked', async () => {
+    const path = nextPath();
+    await downloadOne(path);
+    const entry = useDownloads.getState().entries[downloadKey('c1', 2, path)];
+    expect(entry?.status).toBe('downloaded');
+    expect(entry?.manifest.meta).toBeUndefined();
+    expect(mockWriteMeta).not.toHaveBeenCalled();
+  });
+
+  it('a capture that fails never fails the download', async () => {
+    const path = nextPath();
+    mockCapture.mockRejectedValue(new Error('meta down'));
+    await downloadOne(path);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.status).toBe('downloaded');
+  });
+
+  it('a removed book stops keeping its cache entries for good', async () => {
+    const path = nextPath();
+    mockCapture.mockResolvedValue(payload());
+    await downloadOne(path);
+    expect(mockRelease).not.toHaveBeenCalled();
+    await useDownloads.getState().remove('c1', 2, path);
+    expect(mockRelease).toHaveBeenCalledWith('c1', 2, path);
+  });
+
+  it('a book removed while its metadata was read keeps nothing', async () => {
+    const path = nextPath();
+    let release: (v: unknown) => void = () => {};
+    mockCapture.mockImplementation(() => new Promise((r) => (release = r)));
+    await downloadOne(path);
+    await useDownloads.getState().remove('c1', 2, path);
+    release(payload());
+    await settle();
+    expect(mockWriteMeta).not.toHaveBeenCalled();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]).toBeUndefined();
+  });
+
+  it('a book removed while its metadata was being written deletes the file', async () => {
+    const path = nextPath();
+    mockCapture.mockResolvedValue(payload());
+    let release: (v: boolean) => void = () => {};
+    mockWriteMeta.mockImplementation(() => new Promise((r) => (release = r)));
+    await downloadOne(path);
+    await useDownloads.getState().remove('c1', 2, path);
+    release(true);
+    await settle();
+    expect(mockRemoveMeta).toHaveBeenCalledWith(expect.objectContaining({ path }));
+  });
+
+  it("on launch, seeds what each book kept and then the connection's kept /server answer", async () => {
+    const path = nextPath();
+    const kept = { info: { capabilities: { metadata: true } }, savedAt: 3 };
+    mockReadSnapshots.mockResolvedValueOnce({ c1: kept });
+    await seed({
+      [downloadKey('c1', 2, path)]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    const p = { ...payload(Date.now() - 60_000), server: undefined };
+    mockReadMeta.mockResolvedValue(p);
+    await useDownloads.getState().hydrate();
+    await settle();
+    await settle();
+    expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, p);
+    expect(mockSeedServer).toHaveBeenCalledWith('c1', kept);
+    // The book page's metadata is seeded before the flag that opens its gate.
+    expect(mockSeedMeta.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSeedServer.mock.invocationCallOrder[0],
+    );
+    expect(mockSaveSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('carries over the /server answer a file kept from before it had its own key', async () => {
+    const path = nextPath();
+    const older = payload(Date.now() - 60_000); // this week's: not read again
+    await seed({
+      [downloadKey('c1', 2, path)]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    mockReadMeta.mockResolvedValue(older);
+    await useDownloads.getState().hydrate();
+    await settle();
+    await settle();
+    expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, older);
+    expect(mockSeedServer).toHaveBeenCalledWith('c1', older.server);
+    // ... and keeps it under the connection's own key from now on.
+    expect(mockSaveSnapshot).toHaveBeenCalledWith('c1', older.server);
+    expect(mockCapture).not.toHaveBeenCalled();
+  });
+
+  it("forgets a removed connection's /server answer with its downloads", async () => {
+    const path = nextPath();
+    await seed({ [downloadKey('c9', 2, path)]: downloadedEntry({ connectionId: 'c9', path }) });
+    await useDownloads.getState().hydrate();
+    await removalCleanup('c9');
+    expect(mockForgetSnapshot).toHaveBeenCalledWith('c9');
+  });
+
+  it('fills in a download made before it was kept, once per launch', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await seed({ [key]: downloadedEntry({ path }) });
+    mockCapture.mockResolvedValue(payload());
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockReadMeta).not.toHaveBeenCalled(); // no marker, no file to read
+    expect(mockHasMetadata).toHaveBeenCalledWith('c1');
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+
+    // A second hydrate in the same launch (or a failure) asks no more.
+    mockCapture.mockClear();
+    await seed({ [key]: downloadedEntry({ path }) });
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockCapture).not.toHaveBeenCalled();
+  });
+
+  it('reads a copy older than a week again, keeping it when that fails', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await seed({
+      [key]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    const stale = payload(Date.now() - 8 * 24 * 60 * 60_000);
+    mockReadMeta.mockResolvedValue(stale);
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, stale);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    // The capture found nothing: the kept copy and its marker stay.
+    expect(mockWriteMeta).not.toHaveBeenCalled();
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+  });
+
+  it('leaves a copy from this week alone', async () => {
+    const path = nextPath();
+    await seed({
+      [downloadKey('c1', 2, path)]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    mockReadMeta.mockResolvedValue(payload(Date.now() - 60_000));
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockCapture).not.toHaveBeenCalled();
+  });
+
+  it('fills in a download whose saved file is missing or unreadable', async () => {
+    const path = nextPath();
+    await seed({
+      [downloadKey('c1', 2, path)]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    mockReadMeta.mockResolvedValue(null);
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockSeedMeta).not.toHaveBeenCalled();
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks nothing of a server without metadata, nor for a book that can't match", async () => {
+    const a = nextPath();
+    const b = nextPath();
+    await seed({
+      [downloadKey('c1', 2, a)]: downloadedEntry({ path: a }),
+      [downloadKey('c2', 2, b)]: downloadedEntry({ connectionId: 'c2', path: b }),
+    });
+    mockHasMetadata.mockImplementation(async (cid: string) => cid !== 'c1');
+    mockCanMatch.mockImplementation((e: DownloadEntry) => e.connectionId !== 'c2');
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockHasMetadata).not.toHaveBeenCalledWith('c2');
+    expect(mockCapture).not.toHaveBeenCalled();
   });
 });
 

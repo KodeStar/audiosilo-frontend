@@ -141,6 +141,26 @@ describe('runKeepAhead', () => {
     expect(client.nextBook).toHaveBeenCalledTimes(2);
   });
 
+  // The files it downloads are the ones the server has now: a chapters (or item) answer
+  // read minutes ago is asked again, as the store's own download asks.
+  it("asks for the book's item and chapters again unless read in the last 30 s", async () => {
+    const minutesAgo = Date.now() - 5 * 60_000;
+    const qc = queryClient as QueryClient;
+    qc.setQueryData(['item', 'c1', 1, 'B2'], book('B2', { title: 'old' }), {
+      updatedAt: minutesAgo,
+    });
+    qc.setQueryData(
+      ['chapters', 'c1', 1, 'B2'],
+      { path: 'B2', chapters: [], files: [] },
+      {
+        updatedAt: minutesAgo,
+      },
+    );
+    await runKeepAhead();
+    expect(client.item).toHaveBeenCalledWith(1, 'B2', expect.anything());
+    expect(client.chapters).toHaveBeenCalledWith(1, 'B2', expect.anything());
+  });
+
   it('takes Up next first, skipping finished and unindexed entries', async () => {
     queue = [
       { library_id: 1, path: 'Done', added_at: '', book: book('Done') },

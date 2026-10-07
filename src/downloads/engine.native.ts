@@ -83,6 +83,39 @@ export const engine: DownloadEngine = {
     return new File(bookDir(connectionId, libraryId, path), fileName).uri;
   },
 
+  async writeText(connectionId, libraryId, path, fileName, text) {
+    try {
+      // Never (re)create the folder: a book whose download was removed meanwhile has
+      // none, and a lone text file there would be orphaned.
+      const dir = bookDir(connectionId, libraryId, path);
+      if (!dir.exists) return false;
+      const file = new File(dir, fileName);
+      if (!file.exists) file.create();
+      file.write(text);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async readText(connectionId, libraryId, path, fileName) {
+    try {
+      const file = new File(bookDir(connectionId, libraryId, path), fileName);
+      return file.exists ? await file.text() : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async removeFile(connectionId, libraryId, path, fileName) {
+    try {
+      const file = new File(bookDir(connectionId, libraryId, path), fileName);
+      if (file.exists) file.delete();
+    } catch {
+      // best-effort cleanup
+    }
+  },
+
   async removeBook(connectionId, libraryId, path) {
     try {
       const dir = bookDir(connectionId, libraryId, path);

@@ -9,7 +9,7 @@ import type { FsEntry } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
+import { BreadCrumbs, pathCrumbs } from '@/components/ui/breadcrumbs';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { ErrorNote } from '@/components/ui/query-state';
@@ -155,23 +155,9 @@ function BrowseContent() {
 
   const libraryName =
     libraries?.find((l) => l.id === libraryId)?.name ?? t('library.browse.fallbackName');
-  const segments = path ? path.split('/') : [];
-  const crumbs: Crumb[] = [
-    {
-      label: libraryName,
-      active: segments.length === 0,
-      onPress: segments.length === 0 ? undefined : () => router.push(libraryHref(cid, libraryId)),
-    },
-    ...segments.map((seg, i) => {
-      const isLast = i === segments.length - 1;
-      const sub = segments.slice(0, i + 1).join('/');
-      return {
-        label: seg,
-        active: isLast,
-        onPress: isLast ? undefined : () => router.push(libraryHref(cid, libraryId, sub)),
-      } satisfies Crumb;
-    }),
-  ];
+  const crumbs = pathCrumbs(libraryName, path, (sub) =>
+    router.push(libraryHref(cid, libraryId, sub)),
+  );
 
   const onViewableItemsChanged = useCallback((info: { viewableItems: ViewToken[] }) => {
     const idxs = info.viewableItems.map((v) => v.index).filter((i): i is number => i != null);

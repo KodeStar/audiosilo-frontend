@@ -10,8 +10,8 @@ const none = {
 };
 
 describe('bookTabs', () => {
-  it('always offers the user-creatable tabs, in order', () => {
-    expect(bookTabs(none)).toEqual(['bookmarks', 'history', 'notes']);
+  it('always offers the user-creatable tabs, in order, then Details', () => {
+    expect(bookTabs(none)).toEqual(['bookmarks', 'history', 'notes', 'details']);
   });
 
   it('leads with chapters when the book has a list', () => {
@@ -54,7 +54,7 @@ describe('bookTabs', () => {
     expect(tabs).toContain('characters');
   });
 
-  it('orders a fully-populated book chapters → meta → user state → series', () => {
+  it('orders a fully-populated book chapters → meta → user state → series → details', () => {
     expect(
       bookTabs({
         ...none,
@@ -63,7 +63,16 @@ describe('bookTabs', () => {
         hasCharacters: true,
         hasSeries: true,
       }),
-    ).toEqual(['chapters', 'recaps', 'characters', 'bookmarks', 'history', 'notes', 'series']);
+    ).toEqual([
+      'chapters',
+      'recaps',
+      'characters',
+      'bookmarks',
+      'history',
+      'notes',
+      'series',
+      'details',
+    ]);
   });
 });
 
@@ -93,6 +102,7 @@ describe('TAB_LABEL_KEY', () => {
 describe('parseBookTab', () => {
   it('reads a known tab from a link and ignores anything else', () => {
     expect(parseBookTab('characters')).toBe('characters');
+    expect(parseBookTab('details')).toBe('details');
     expect(parseBookTab(['recaps', 'notes'])).toBe('recaps');
     expect(parseBookTab('spoilers')).toBeNull();
     expect(parseBookTab(undefined)).toBeNull();

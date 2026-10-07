@@ -151,6 +151,67 @@
       "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht."
     }
   },
+  "annotations": {
+    "labels": {
+      "quote": "Zitat",
+      "favourite": "Favorit",
+      "relisten": "Nochmal hören",
+      "funny": "Lustig",
+      "question": "Frage",
+      "fell_asleep": "Eingeschlafen"
+    },
+    "labelGroup": "Label",
+    "labelClearHint": "Erneut tippen, um das Label zu entfernen",
+    "quoted": "„{{text}}“",
+    "jumpTo": "Zu {{time}} springen",
+    "jumpFailed": "Das Buch konnte dort nicht gestartet werden",
+    "undo": "Rückgängig",
+    "seeAll": "Alle in deinem Journal ansehen",
+    "editUnsupported": "Zum Bearbeiten braucht es einen neueren AudioSilo-Server.",
+    "drift": {
+      "marker": "Ungefähr hier bist du eingeschlafen"
+    },
+    "bookmark": {
+      "title": "Lesezeichen",
+      "editTitle": "Lesezeichen bearbeiten",
+      "noteLabel": "Notiz",
+      "notePlaceholder": "Was ist hier passiert? Ein Zitat, ein Gedanke, eine Erinnerung.",
+      "save": "Lesezeichen speichern",
+      "addAt": "Lesezeichen {{time}}",
+      "saved": "Lesezeichen gespeichert",
+      "saveFailed": "Lesezeichen konnte nicht gespeichert werden",
+      "deleted": "Lesezeichen gelöscht",
+      "deleteFailed": "Lesezeichen konnte nicht gelöscht werden",
+      "restoreFailed": "Lesezeichen konnte nicht wiederhergestellt werden",
+      "edit": "Lesezeichen bei {{time}} bearbeiten",
+      "delete": "Lesezeichen bei {{time}} löschen",
+      "noNote": "Keine Notiz",
+      "addNote": "Notiz hinzufügen",
+      "loadFailed": "Deine Lesezeichen konnten nicht geladen werden",
+      "emptyHintWeb": "Drücke beim Hören B oder tippe im Player auf das Lesezeichen.",
+      "emptyHintNative": "Tippe beim Hören im Player auf das Lesezeichen."
+    },
+    "note": {
+      "title": "Notiz",
+      "editTitle": "Notiz bearbeiten",
+      "bodyLabel": "Notiz",
+      "placeholder": "Markdown geht: **fett**, *kursiv*, Listen.",
+      "pin": "Notiz anheften",
+      "save": "Notiz speichern",
+      "addAt": "Notiz bei {{time}}",
+      "pinned": "Notiz bei {{time}} angeheftet",
+      "saved": "Notiz gespeichert",
+      "saveFailed": "Notiz konnte nicht gespeichert werden",
+      "deleted": "Notiz gelöscht",
+      "deleteFailed": "Notiz konnte nicht gelöscht werden",
+      "restoreFailed": "Notiz konnte nicht wiederhergestellt werden",
+      "edit": "Notiz bei {{time}} bearbeiten",
+      "delete": "Notiz bei {{time}} löschen",
+      "loadFailed": "Deine Notizen konnten nicht geladen werden",
+      "empty": "Noch keine Notizen.",
+      "emptyHint": "Hefte einen Gedanken, eine Theorie oder eine Erinnerung an eine Stelle im Buch."
+    }
+  },
   "connect": {
     "server": {
       "subtitle": "Mit deinem Hörbuch-Server verbinden",
@@ -332,35 +393,21 @@
       "markFinished": "Als abgeschlossen markieren"
     },
     "notes": {
-      "title": "Notizen",
-      "placeholder": "Notiz hinzufügen (Markdown unterstützt)…",
-      "add": "Notiz hinzufügen",
-      "delete": "Notiz löschen"
+      "title": "Notizen"
     },
     "history": {
       "title": "Verlauf"
     },
     "bookmarks": {
-      "title": "Lesezeichen",
-      "add": "Lesezeichen hinzufügen",
-      "delete": "Lesezeichen löschen"
+      "title": "Lesezeichen"
     },
     "versions": {
-      "choose": "Eine Version wählen",
-      "thisCopy": "Diese Kopie",
-      "otherCount_one": "{{count}} weitere Version",
-      "otherCount_other": "{{count}} weitere Versionen",
       "multiFile": "mehrere Dateien",
       "singleFile": "eine Datei"
     },
     "favourite": {
       "remove": "Aus Favoriten entfernen",
       "add": "Zu Favoriten hinzufügen"
-    },
-    "bookStats": {
-      "favourite": "Favorit",
-      "audio": "Audio",
-      "length": "Länge"
     },
     "download": {
       "unavailable": "Downloads nicht verfügbar",
@@ -725,11 +772,7 @@
     "libraryFallback": "Bibliothek",
     "chaptersTitle": "Kapitel",
     "filesTitle": "Dateien",
-    "chapterFallback": "Kapitel {{number}}",
     "duration": "Dauer: {{value}}",
-    "bitrate": "Bitrate: {{value}}",
-    "byAuthor": "Von {{author}}",
-    "narratedBy": "Gesprochen von {{narrator}}",
     "transcodeNote": "{{codec}}-Audio wird für diesen Browser in MP3 umgewandelt",
     "transcodeNoteGeneric": "Dieses Audio wird für diesen Browser in MP3 umgewandelt",
     "listen": "Anhören",
@@ -782,7 +825,95 @@
         "minor": "Randfigur"
       }
     },
-    "openPlayer": "Player öffnen"
+    "page": {
+      "crumbs": "Wo dieses Buch liegt",
+      "loading": "Buch wird geladen"
+    },
+    "hero": {
+      "by": "von",
+      "readBy": "gelesen von",
+      "openAuthor": "Bücher von {{name}}",
+      "openNarrator": "Bücher gelesen von {{name}}",
+      "openSeries": "Reihe {{series}} öffnen",
+      "seriesBook": "{{series}} · Band {{position}}",
+      "chapters_one": "{{count}} Kapitel",
+      "chapters_other": "{{count}} Kapitel",
+      "parts_one": "{{count}} Teil à {{minutes}} Min.",
+      "parts_other": "{{count}} Teile à {{minutes}} Min.",
+      "files_one": "{{count}} {{format}}-Datei",
+      "files_other": "{{count}} {{format}}-Dateien",
+      "chapterOf": "Kapitel {{chapter}} von {{total}}",
+      "partOf": "Teil {{part}} von {{total}}",
+      "finished": "Beendet",
+      "finishedOn": "Beendet am {{date}}",
+      "start": "Anhören",
+      "resume": "Fortsetzen",
+      "resumeChapter": "Kapitel {{chapter}} fortsetzen",
+      "again": "Noch einmal hören",
+      "pause": "Pause"
+    },
+    "upNext": {
+      "label": "Als Nächstes für {{title}}",
+      "playNext": "Als Nächstes abspielen",
+      "addToEnd": "Ans Ende von „Als Nächstes“",
+      "playsNext": "Wird als Nächstes abgespielt"
+    },
+    "download": {
+      "forOffline": "Für offline herunterladen",
+      "progressCancel": "{{percent}} % · Abbrechen",
+      "queuedCancel": "Wartet · Abbrechen",
+      "onDevice": "{{size}} auf diesem Gerät"
+    },
+    "chapters": {
+      "wholeBook": "Das ganze Buch",
+      "bookmarks": "Lesezeichen",
+      "notes": "Notizen",
+      "parts": "Teile",
+      "part": "Teil {{number}}",
+      "partsTitle": "Dieses Buch hat keine Kapitelmarken",
+      "partsBody": "Darum ist es in {{minutes}}-Minuten-Teile aufgeteilt, zwischen denen du springen kannst. Ihre Länge änderst du in den Einstellungen unter Kapitellänge.",
+      "here": "du bist hier",
+      "heard": "gehört",
+      "hasBookmark": "mit Lesezeichen",
+      "startsAt": "beginnt bei {{time}}"
+    },
+    "details": {
+      "title": "Details",
+      "direct": "Direkte Wiedergabe",
+      "directBody": "Die Originaldatei wird unverändert gestreamt. Nichts wird umgewandelt, und Springen geht sofort.",
+      "local": "Wird von diesem Gerät abgespielt",
+      "localBody": "Die heruntergeladenen Originaldateien spielen hier, mit oder ohne Verbindung.",
+      "converted": "Für diesen Browser umgewandelt",
+      "convertedBody": "{{codec}} kann dieser Browser nicht abspielen, darum wandelt {{server}} es beim Hören um. Die iOS- und Android-Apps spielen das Original.",
+      "convertedBodyGeneric": "Dieser Browser kann dieses Audio nicht abspielen, darum wandelt {{server}} es beim Hören um. Die iOS- und Android-Apps spielen das Original.",
+      "file": "Datei",
+      "codec": "Codec",
+      "bitrate": "Bitrate",
+      "length": "Länge",
+      "kbps": "etwa {{kbps}} kbit/s",
+      "moreFiles_one": "und {{count}} weitere Datei",
+      "moreFiles_other": "und {{count}} weitere Dateien",
+      "pathOn": "Pfad auf {{server}}",
+      "pathNote": "Bücher werden an diesem Pfad erkannt, darum bleibt dein Fortschritt beim Neu-Taggen und erneuten Scannen erhalten."
+    },
+    "about": {
+      "improve": "Verbessern",
+      "yes": "Ja",
+      "no": "Nein",
+      "fallbackBoth": "{{title}} von {{author}}, gelesen von {{narrator}}.",
+      "fallbackAuthor": "{{title}} von {{author}}.",
+      "none": "Noch keine Beschreibung."
+    },
+    "versions": {
+      "title": "Andere Fassungen"
+    },
+    "listening": {
+      "title": "Dein Hören",
+      "listened": "Gehört",
+      "speed": "Tempo",
+      "started": "Begonnen",
+      "finished": "Beendet"
+    }
   },
   "player": {
     "controls": {
@@ -802,7 +933,6 @@
     "bookmarks": {
       "label": "Lesezeichen",
       "empty": "Noch keine Lesezeichen.",
-      "addAt": "Lesezeichen bei {{time}} hinzufügen",
       "added": "Lesezeichen hinzugefügt",
       "addFailed": "Lesezeichen konnte nicht hinzugefügt werden"
     },
@@ -1311,5 +1441,123 @@
     "pageError": "Diese Bücher konnten nicht geladen werden",
     "narratorUnsupported": "Dieser Server kann Bücher noch nicht nach Sprecher auflisten",
     "narratorUnsupportedHint": "Ein neuerer AudioSilo-Server kann es."
+  },
+  "journal": {
+    "title": "Journal",
+    "heading": "Alles, was du markiert hast",
+    "entryHint": "Dein Hörtagebuch, deine Lesezeichen und Notizen",
+    "tabs": {
+      "label": "Bereiche des Journals",
+      "diary": "Tagebuch",
+      "bookmarks": "Lesezeichen",
+      "notes": "Notizen"
+    },
+    "search": {
+      "placeholder": "Lesezeichen und Notizen durchsuchen",
+      "label": "Das Journal durchsuchen"
+    },
+    "minutes_one": "{{count}} Min.",
+    "minutes_other": "{{count}} Min.",
+    "openBook": "{{title}} öffnen",
+    "openLibrary": "Zur Bibliothek",
+    "jumpFailed": "{{title}} konnte nicht gestartet werden",
+    "diary": {
+      "today": "Heute",
+      "yesterday": "Gestern",
+      "when": "{{time}}, {{minutes}}",
+      "range": "{{from}} bis {{to}}",
+      "barLabel": "Hören über den Tag: {{spans}}",
+      "finished": "Buch beendet",
+      "empty": {
+        "title": "Noch nichts gehört",
+        "hint": "Jeder Tag, an dem du hörst, erscheint hier, mit den Büchern und Kapiteln, die du gehört hast."
+      },
+      "error": {
+        "title": "Dein Hörverlauf konnte nicht geladen werden",
+        "hint": "Es ist nichts verloren. Prüfe die Verbindung zu deinem Server und versuche es erneut."
+      },
+      "drift": {
+        "jumpBack_one": "Du bist gegen {{time}} eingeschlafen. {{count}} Minute zurückspringen?",
+        "jumpBack_other": "Du bist gegen {{time}} eingeschlafen. {{count}} Minuten zurückspringen?",
+        "jumpBackAction": "Zurückspringen",
+        "resume": "Der Sleep-Timer hat die Wiedergabe um {{time}} angehalten.",
+        "resumeAction": "Ab dem Einschlafen abspielen"
+      }
+    },
+    "bookmarks": {
+      "labels": "Labels",
+      "allLabels": "Alle Labels",
+      "noMatch": "Keine passenden Lesezeichen",
+      "error": "Deine Lesezeichen konnten nicht geladen werden",
+      "empty": {
+        "title": "Noch keine Lesezeichen",
+        "hint": "Setze beim Hören im Player eines. Hier sammeln sich die Lesezeichen aller Bücher."
+      },
+      "unsupported": {
+        "title": "Dieser Server kann noch nicht alle deine Lesezeichen auflisten",
+        "hint": "Die Seite jedes Buchs zeigt weiterhin seine Lesezeichen. Ein neuerer AudioSilo-Server listet sie hier alle auf."
+      }
+    },
+    "notes": {
+      "noMatch": "Keine passenden Notizen",
+      "error": "Deine Notizen konnten nicht geladen werden",
+      "empty": {
+        "title": "Noch keine Notizen",
+        "hint": "Schreib beim Hören im Player eine Notiz. Hier sammeln sich die Notizen aller Bücher."
+      },
+      "unsupported": {
+        "title": "Dieser Server kann noch nicht alle deine Notizen auflisten",
+        "hint": "Die Seite jedes Buchs zeigt weiterhin seine Notizen. Ein neuerer AudioSilo-Server listet sie hier alle auf."
+      }
+    },
+    "servers": {
+      "failed": {
+        "history": "{{server}} ist nicht erreichbar, daher fehlt sein Hörverlauf.",
+        "bookmarks": "{{server}} ist nicht erreichbar, daher fehlen seine Lesezeichen.",
+        "notes": "{{server}} ist nicht erreichbar, daher fehlen seine Notizen."
+      },
+      "unsupported": {
+        "bookmarks": "{{server}} kann seine Lesezeichen hier noch nicht auflisten. Du findest sie auf der Seite jedes Buchs.",
+        "notes": "{{server}} kann seine Notizen hier noch nicht auflisten. Du findest sie auf der Seite jedes Buchs."
+      }
+    },
+    "export": {
+      "label": "Exportieren",
+      "menu": "Das Journal exportieren",
+      "download": "Herunterladen",
+      "copyMarkdown": "Als Markdown kopieren",
+      "downloadMarkdown": "Markdown herunterladen",
+      "downloadCsv": "CSV herunterladen",
+      "shareMarkdown": "Als Markdown teilen",
+      "shareCsv": "Als CSV teilen",
+      "preparing_one": "{{n}} Eintrag wird gesammelt",
+      "preparing_other": "{{n}} Einträge werden gesammelt",
+      "copied": "Journal als Markdown kopiert",
+      "nothing": "Noch keine Lesezeichen oder Notizen zum Exportieren",
+      "failed": "Das Journal konnte nicht exportiert werden",
+      "failedServers": "{{servers}} konnte nicht einbezogen werden",
+      "truncated_one": "Nur der neueste {{max}} Eintrag einer Liste wurde exportiert",
+      "truncated_other": "Nur die neuesten {{max}} Einträge einer Liste wurden exportiert",
+      "dialogTitle": "Das Journal exportieren",
+      "exported": "Exportiert am {{date}}",
+      "bookmark": "Lesezeichen",
+      "note": "Notiz",
+      "columns": {
+        "server": "Server",
+        "kind": "Typ",
+        "book": "Buch",
+        "author": "Autor",
+        "position": "Position",
+        "chapter": "Kapitel",
+        "label": "Label",
+        "text": "Text",
+        "created": "Erstellt"
+      }
+    },
+    "history": {
+      "jump": "Springen",
+      "jumpLabel": "Zu {{time}} springen",
+      "span": "{{from}} bis {{to}}"
+    }
   }
 }

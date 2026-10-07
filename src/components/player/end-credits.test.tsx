@@ -255,6 +255,25 @@ describe('EndCredits', () => {
     expect(mockHistory).toHaveBeenCalledWith(1, PATH, 500);
   });
 
+  it.each(['phone', 'desktop'] as const)(
+    'centres the End of book eyebrow on the page (%s): equal side slots around it',
+    async (layout) => {
+      mockLayout = layout;
+      await mount();
+      const eyebrow = screen.getByText('End of book');
+      const classes = (el: { props: { className?: unknown } }) => String(el.props.className ?? '');
+      expect(classes(eyebrow)).toContain('text-center');
+      // Not flex-1 itself: that centred it on the gap between two buttons of different
+      // widths, off the page's centre line.
+      expect(classes(eyebrow)).not.toContain('flex-1');
+      for (const id of ['end-credits-bar-start', 'end-credits-bar-end']) {
+        expect(classes(screen.getByTestId(id))).toContain('flex-1');
+      }
+      expect(classes(screen.getByTestId('end-credits-bar-start'))).toContain('justify-start');
+      expect(classes(screen.getByTestId('end-credits-bar-end'))).toContain('justify-end');
+    },
+  );
+
   it("says the speed the book plays at: its saved one, else the listener's default", async () => {
     mockSavedSpeed = 0;
     useSettings.setState({ defaultRate: 1.1 });

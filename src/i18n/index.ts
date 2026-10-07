@@ -39,7 +39,9 @@ export function isSupportedCode(code: string | null | undefined): code is Suppor
   return !!code && (SUPPORTED_CODES as readonly string[]).includes(code);
 }
 
-const resources = {
+/** The bundled catalogs, by language code (also read directly where a string must be
+ * known in every language at once, like the sleep timer's stored note). */
+export const resources = {
   en: { translation: en },
   es: { translation: es },
   fr: { translation: fr },

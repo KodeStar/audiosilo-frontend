@@ -1,6 +1,7 @@
 import { t } from 'i18next';
 import { AppState } from 'react-native';
 
+import { FELL_ASLEEP_LABEL } from '@/api/bookmark-labels';
 import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatWallClock } from '@/lib/format';
@@ -111,6 +112,8 @@ function makeBookmark(connectionId: string, libraryId: number, path: string, pos
       path,
       Math.round(position),
       t('player.sleepTimer.fellAsleepNote'),
+      // Sent only to a server with `annotations` (addBookmark drops it elsewhere).
+      FELL_ASLEEP_LABEL,
     ).catch(() => {
       // gone, offline or refused: there is simply no bookmark this time
     });

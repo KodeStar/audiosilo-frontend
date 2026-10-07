@@ -161,9 +161,11 @@ let tooBig: { registry: string; keys: Set<string> } = { registry: '', keys: new 
  * Resolves what the downloads store did with it. */
 async function startOne(client: ApiClient, book: AheadBook): Promise<DownloadOutcome> {
   const { connectionId: cid, libraryId, path } = book;
+  // A fresh answer, as the store's own download asks (`chaptersQuery` alone trusts a
+  // cached one for 30 minutes): the files downloaded are the ones the server has now.
   const [item, chapters] = await Promise.all([
-    queryClient.fetchQuery(itemQuery(cid, client, libraryId, path)),
-    queryClient.fetchQuery(chaptersQuery(cid, client, libraryId, path)),
+    queryClient.fetchQuery({ ...itemQuery(cid, client, libraryId, path), staleTime: 30_000 }),
+    queryClient.fetchQuery({ ...chaptersQuery(cid, client, libraryId, path), staleTime: 30_000 }),
   ]);
   // Not an errored one either: keep-ahead never retries a failure on its own. The store
   // applies the automatic rules (declined this session, the reserve).

@@ -227,8 +227,9 @@ describe('CommandPalette', () => {
     expect(screen.getByText('Alice')).toBeTruthy();
     expect(screen.getByText('25% listened')).toBeTruthy();
     expect(screen.getByLabelText('Go to')).toBeTruthy();
-    // Six actions, one book in progress, three destinations.
-    expect(screen.getByText('10 results · Hearthside')).toBeTruthy();
+    expect(screen.getByText('Journal')).toBeTruthy();
+    // Six actions, one book in progress, three destinations and the Journal.
+    expect(screen.getByText('11 results · Hearthside')).toBeTruthy();
   });
 
   it('searches books, moves with the arrows and opens the active one with Enter', async () => {
@@ -323,6 +324,12 @@ describe('CommandPalette', () => {
     await fireEvent.changeText(screen.getByTestId('palette-input'), 'dark');
     await fireEvent.press(screen.getByText('Switch to dark appearance'));
     expect(mockSetPref).toHaveBeenCalledWith('dark');
+
+    // The Journal, a page of its own.
+    await act(async () => usePalette.getState().openPalette());
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'journal');
+    await fireEvent.press(screen.getByText('Journal'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/journal');
   });
 
   it('says so when nothing matches, and offers recent searches on an empty query', async () => {

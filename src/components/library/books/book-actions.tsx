@@ -36,9 +36,12 @@ import { AddToCollectionDialog } from '../collections/collection-dialogs';
 import { useQueueActions } from '../use-queue-actions';
 import { bookStatus, unfinishedPosition } from './books-view';
 
+/** The keys of `useBookActions`' own items (a screen's `extra` brings its own). */
+export type BookActionKey = 'play' | 'queue' | 'collect' | 'download' | 'finish' | 'series';
+
 /** One entry of a book's actions menu. `group` starts a new section (a separator). */
-export type BookAction = {
-  key: string;
+export type BookAction<K extends string = string> = {
+  key: K;
   icon: IconName;
   label: string;
   onPress: () => void;
@@ -81,7 +84,7 @@ export function useBookActions(
   { connectionId, libraryId, book, progress }: Target,
   { openCollect, confirmRemove }: BookActionDialogs,
   opened = false,
-): BookAction[] {
+): BookAction<BookActionKey>[] {
   const { t } = useTranslation();
   const path = book.rel_path;
   const play = usePlayBook();
@@ -148,7 +151,7 @@ export function useBookActions(
     });
   };
 
-  const out: BookAction[] = [
+  const out: BookAction<BookActionKey>[] = [
     {
       key: 'play',
       icon: 'play',
@@ -233,7 +236,9 @@ export function useBookActions(
  * tablet and desktop, the same items in a bottom sheet on a phone (`sheetOpen`). It
  * also renders the dialogs the actions open (Add to collection, the remove-download
  * confirm). `BookActionsButton` gives it a visible "..." trigger; a cover tile a hidden
- * anchor it opens through `triggerRef` (`TileActions`).
+ * anchor it opens through `triggerRef` (`TileActions`). `omit` leaves out items by key
+ * (the book page, whose own buttons already play, queue, collect and download). With
+ * nothing left to offer it renders nothing, its trigger included.
  */
 export function BookActionsMenu({
   connectionId,
@@ -241,6 +246,7 @@ export function BookActionsMenu({
   book,
   progress,
   extra = [],
+  omit = [],
   trigger,
   triggerRef,
   sheetOpen,
@@ -248,6 +254,7 @@ export function BookActionsMenu({
   onCloseAutoFocus,
 }: Target & {
   extra?: BookAction[];
+  omit?: readonly BookActionKey[];
   trigger: ReactElement;
   triggerRef?: Ref<TriggerRef>;
   sheetOpen: boolean;
@@ -268,9 +275,10 @@ export function BookActionsMenu({
       { connectionId, libraryId, book, progress },
       { openCollect: () => setCollect(true), confirmRemove: () => setRemoving(true) },
       opened,
-    ),
+    ).filter((a) => !omit.includes(a.key)),
     ...extra,
   ];
+  if (actions.length === 0) return null;
   return (
     <>
       {phone ? (
@@ -281,9 +289,9 @@ export function BookActionsMenu({
             {trigger}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onCloseAutoFocus={onCloseAutoFocus}>
-            {actions.map((a) => (
+            {actions.map((a, i) => (
               <Fragment key={a.key}>
-                {a.group ? <DropdownMenuSeparator /> : null}
+                {a.group && i > 0 ? <DropdownMenuSeparator /> : null}
                 <DropdownMenuItem
                   icon={a.icon}
                   variant={a.destructive ? 'destructive' : 'default'}

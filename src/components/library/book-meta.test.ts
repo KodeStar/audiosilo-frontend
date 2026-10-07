@@ -13,14 +13,12 @@ import {
   descriptionIsLong,
   lastBookRecap,
   matchedMeta,
-  previousWorks,
   revealFromStart,
   roleLabelKey,
-  seriesPositionValue,
-  seriesRails,
   summaryIsVisible,
 } from './book-meta';
 import { recapDescriptor, sortRecaps } from './meta-gating';
+import { previousWorks, seriesPositionValue, seriesRails } from './series-rails';
 /* eslint-enable import/first */
 
 function work(id: string, position: string) {

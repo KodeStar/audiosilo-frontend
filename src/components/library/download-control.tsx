@@ -1,36 +1,55 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { Book, ChaptersResponse } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
+import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
+import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** Download affordance on the book detail screen: download / progress+cancel /
- * downloaded+delete / retry, with a fallback when offline storage is unavailable
- * (an insecure-context or very old browser). Delete asks first (the Downloads page's
- * confirm, with the size): the only undo is downloading the book again. */
+/** The full control's buttons give way in a tight row (the Button base is `shrink-0`). */
+const SHRINKS = 'max-w-full shrink';
+
+/**
+ * The book hero's download control (the prototype's `DownloadControl`): Download for
+ * offline / "52% · Cancel" / Downloaded (a menu with its size and Remove download) /
+ * Retry download, with a fallback when offline storage is unavailable (an
+ * insecure-context or very old browser, or a book this browser only plays converted).
+ * Delete asks first (the Downloads page's confirm, with the size): the only undo is
+ * downloading the book again. An outline button per state, so the hero's one pink thing
+ * stays its progress bar. It may shrink (a phone's row keeps the hero's icon buttons
+ * beside it), its words ending in "..." rather than wrapping the row.
+ */
 export function DownloadControl({
   libraryId,
   path,
   book,
   chapterData,
   disabled,
-  compact,
+  short,
 }: {
   libraryId: number;
   path: string;
   book?: Book;
   chapterData?: ChaptersResponse;
   disabled?: boolean;
-  /** Render an icon-only square button (sits inline next to the Listen button). */
-  compact?: boolean;
+  /** The hero's row is narrow (stacked, by the page's measured width): the short words,
+   * beside its icon buttons. */
+  short?: boolean;
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
@@ -41,7 +60,6 @@ export function DownloadControl({
     status,
     error,
     progress,
-    bytes,
     totalBytes,
     start,
     cancel,
@@ -59,148 +77,134 @@ export function DownloadControl({
     />
   );
 
-  // Icon-only variant for the overview's inline button row. Each state collapses
-  // to a single square (height matches the Listen button via the row's stretch).
-  if (compact) {
-    if (!supported) {
-      return (
-        <Button
-          icon="download"
-          variant="secondary"
-          size="lg"
-          disabled
-          accessibilityLabel={unavailableLabel}
-        />
-      );
-    }
-    // The icon shows the action, not the state: trash = delete the download,
-    // stop = cancel the one in progress (the bar below already signals progress).
-    if (status === 'downloaded') {
-      return (
-        <>
-          <Button
-            icon="trash"
-            variant="secondary"
-            size="lg"
-            onPress={() => setConfirming(true)}
-            accessibilityLabel={t('library.download.remove')}
-          />
-          {confirm}
-        </>
-      );
-    }
-    if (status === 'downloading' || status === 'queued') {
-      return (
-        <Button
-          icon="circle-stop"
-          variant="secondary"
-          size="lg"
-          onPress={cancel}
-          accessibilityLabel={t('library.download.cancel')}
-        />
-      );
-    }
+  const words = (text: string) => (
+    <Text numberOfLines={1} className="shrink" style={tabularNums}>
+      {text}
+    </Text>
+  );
+  if (!supported) {
     return (
       <Button
-        icon="download"
-        variant="secondary"
+        variant="outline"
         size="lg"
-        disabled={disabled || !book}
-        onPress={start}
-        accessibilityLabel={
-          status === 'error' ? t('library.download.retry') : t('library.download.download')
-        }
-      />
+        icon="download"
+        disabled
+        accessibilityLabel={unavailableLabel}
+        className={SHRINKS}
+      >
+        {words(unavailableLabel)}
+      </Button>
     );
-  }
-
-  if (!supported) {
-    return <Button title={unavailableLabel} variant="secondary" icon="download" disabled />;
   }
 
   if (status === 'downloaded') {
     return (
-      <View className="flex-row items-center gap-2">
-        <View className="flex-1 flex-row items-center gap-2 rounded-lg bg-muted px-4 py-3">
-          <Icon name="check" size={16} color={themed.brand} />
-          <Text className="font-sans-semibold">
-            {t('library.download.downloaded')}
-            {totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : ''}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => setConfirming(true)}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={t('library.download.remove')}
-          className="h-11 w-11 items-center justify-center rounded-lg bg-muted"
-        >
-          <Icon name="trash" size={16} color={themed.mutedForeground} />
-        </Pressable>
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="lg"
+              accessibilityLabel={t('library.download.downloaded')}
+              accessibilityHint={t('library.download.remove')}
+              className={SHRINKS}
+            >
+              <Icon name="circle-check" size={18} color={themed.success} />
+              {words(t('library.download.downloaded'))}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {totalBytes > 0 ? (
+              <DropdownMenuLabel>
+                {t('book.download.onDevice', { size: formatBytes(totalBytes) })}
+              </DropdownMenuLabel>
+            ) : null}
+            <DropdownMenuItem
+              icon="trash"
+              variant="destructive"
+              onPress={() => setConfirming(true)}
+            >
+              <Text>{t('library.download.remove')}</Text>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {confirm}
-      </View>
+      </>
     );
   }
 
   if (status === 'downloading' || status === 'queued') {
+    const said =
+      status === 'queued'
+        ? t('book.download.queuedCancel')
+        : t('book.download.progressCancel', { percent: Math.round(progress * 100) });
     return (
-      <View className="gap-1.5">
-        <View className="flex-row items-center gap-2">
-          <Text variant="muted" className="flex-1" numberOfLines={1}>
-            {status === 'queued'
-              ? t('library.download.queued')
-              : t('library.download.downloading', { percent: Math.round(progress * 100) })}
-            {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
-          </Text>
-          <Pressable
-            onPress={cancel}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t('library.download.cancel')}
-            className="h-8 w-8 items-center justify-center"
-          >
-            <Icon name="close" size={16} color={themed.mutedForeground} />
-          </Pressable>
-        </View>
-        <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
-      </View>
+      <Button
+        variant="outline"
+        size="lg"
+        onPress={cancel}
+        accessibilityLabel={`${said}, ${t('library.download.cancel')}`}
+        className={SHRINKS}
+      >
+        <ProgressRing
+          fraction={status === 'queued' ? 0 : progress}
+          size={18}
+          stroke={2.5}
+          color={themed.foreground}
+          trackColor={themed.border}
+        />
+        {/* A short row says only Cancel: the ring and the progress line under the hero
+            carry the percent, and "52% · Cancel" pushed the row's icons onto a second
+            row at 400. */}
+        {words(short ? t('common.cancel') : said)}
+      </Button>
     );
   }
 
+  const idleLabel =
+    status === 'error'
+      ? t('library.download.retry')
+      : short
+        ? t('library.download.download')
+        : t('book.download.forOffline');
   return (
-    <View className="gap-1.5">
+    <View className="min-w-0 shrink gap-1.5">
+      <Button
+        variant={status === 'error' ? 'destructive-outline' : 'outline'}
+        size="lg"
+        icon={status === 'error' ? 'rotate' : 'download'}
+        disabled={disabled || !book}
+        onPress={start}
+        accessibilityLabel={idleLabel}
+        className={SHRINKS}
+      >
+        {words(idleLabel)}
+      </Button>
       {status === 'error' && error ? (
-        <Text className="text-xs text-destructive" numberOfLines={2}>
+        <Text variant="caption" className="max-w-[320px] text-destructive" numberOfLines={2}>
           {error}
         </Text>
       ) : null}
-      <Button
-        title={status === 'error' ? t('library.download.retry') : t('library.download.download')}
-        variant="secondary"
-        icon="download"
-        disabled={disabled || !book}
-        onPress={start}
-      />
     </View>
   );
 }
 
-/** The in-flight download progress bar, shown only while downloading/queued.
- * Pairs with the compact DownloadControl button (which handles cancel), so it
- * carries no controls of its own - just the percentage and bar. */
+/** The in-flight download's line, shown only while downloading/queued: the percentage
+ * and the bytes so far over an ink bar (the hero's pink is the book's progress). Pairs
+ * with the control's button (which handles cancel), so it carries no controls. */
 export function DownloadProgress({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
   const { status, progress, bytes, totalBytes } = useDownloadControls(libraryId, path);
   if (status !== 'downloading' && status !== 'queued') return null;
   return (
-    <View className="gap-1.5">
-      <Text variant="muted" numberOfLines={1}>
+    <View className="max-w-[560px] gap-1.5">
+      <Text variant="caption" numberOfLines={1} style={tabularNums}>
         {status === 'queued'
           ? t('library.download.queued')
           : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
-      <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
+      <ProgressBar fraction={progress} minPercent={4} fillClassName="bg-foreground/60" />
     </View>
   );
 }

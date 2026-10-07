@@ -9,8 +9,16 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
+import { useNeedsWebTranscode } from '@/playback/transcode-capability';
+
 import { TranscodeNote } from './transcode-note';
 /* eslint-enable import/first */
+
+/** The note as the book page draws it: under the page's own read of the rule. */
+function PageNote(props: { book: Book; chapterData?: ChaptersResponse; downloaded: boolean }) {
+  const transcoded = useNeedsWebTranscode(props.book, props.chapterData, 'c1');
+  return <TranscodeNote {...props} transcoded={transcoded} />;
+}
 
 const book = (p: Partial<Book> = {}) =>
   ({ title: 'B', rel_path: 'A/B.m4b', direct_playable: false, codec: 'ac3', ...p }) as Book;
@@ -26,17 +34,15 @@ describe('TranscodeNote', () => {
   });
 
   it('says the codec is converted for this browser on web', async () => {
-    await render(<TranscodeNote book={book()} connectionId="c1" downloaded={false} />);
+    await render(<PageNote book={book()} downloaded={false} />);
     expect(screen.getByText('AC-3 audio is converted to MP3 for this browser')).toBeTruthy();
   });
 
   it('prefers the chapters codec and falls back to generic copy without one', async () => {
     const chapters = { codec: 'alac' } as ChaptersResponse;
-    await render(
-      <TranscodeNote book={book()} chapterData={chapters} connectionId="c1" downloaded={false} />,
-    );
+    await render(<PageNote book={book()} chapterData={chapters} downloaded={false} />);
     expect(screen.getByText('ALAC audio is converted to MP3 for this browser')).toBeTruthy();
-    await render(<TranscodeNote book={book({ codec: '' })} connectionId="c1" downloaded={false} />);
+    await render(<PageNote book={book({ codec: '' })} downloaded={false} />);
     expect(screen.getByText('This audio is converted to MP3 for this browser')).toBeTruthy();
   });
 
@@ -49,7 +55,7 @@ describe('TranscodeNote', () => {
   ] as const)('renders nothing %s', async (_label, os, b, canTranscode, downloaded) => {
     Platform.OS = os;
     mockCanTranscode = canTranscode;
-    await render(<TranscodeNote book={b} connectionId="c1" downloaded={downloaded} />);
+    await render(<PageNote book={b} downloaded={downloaded} />);
     expect(screen.queryByText(/converted to MP3/)).toBeNull();
   });
 });
