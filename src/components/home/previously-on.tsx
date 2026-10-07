@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
-import { ScopedTheme } from 'uniwind';
 import { create } from 'zustand';
 
 import { resolveClient } from '@/api/connection-clients';
@@ -27,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { loadInitialProgress } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
 import { colors } from '@/theme/tokens';
+import { ScopedThemeColors } from '@/theme/use-theme-colors';
 
 import type { BookAt } from './home-model';
 import { overlapStart, previouslyOn } from './previously-on-model';
@@ -158,7 +158,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
   const ink = colors.dark;
 
   return (
-    <ScopedTheme theme="dark">
+    <ScopedThemeColors theme="dark">
       <View
         testID="previously-on"
         accessibilityRole="summary"
@@ -231,6 +231,6 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
           </View>
         </View>
       </View>
-    </ScopedTheme>
+    </ScopedThemeColors>
   );
 }
