@@ -14,20 +14,35 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 
 import type { AnnotationTarget } from './editor-model';
 
+type PlacedFiles = Pick<BookFile, 'rel_path' | 'duration'>[] | undefined;
+
+/** Each chapter list on its recomputed offsets, per list (and the files it was placed
+ * with), so every row of one book shares one copy instead of making its own. */
+const placedCache = new WeakMap<Chapter[], { files: PlacedFiles; placed: Chapter[] }>();
+
+function placedChapters(chapters: Chapter[], files: PlacedFiles): Chapter[] {
+  const hit = placedCache.get(chapters);
+  if (hit && hit.files === files) return hit.placed;
+  const starts = chapterStartsOf(chapters, files ?? []);
+  const placed = chapters.map((ch, i) => ({ ...ch, book_offset: starts[i] }));
+  placedCache.set(chapters, { files, placed });
+  return placed;
+}
+
 /**
  * A namer of the chapter at a whole-book position (pure): the book's chapters on their
  * offsets recomputed from the file durations (the server's `book_offset` is unreliable
  * for some books; `chapterStartsOf`, as the book page does), each named as the player
  * names it ("Bridge Four", else "Chapter 23"). A book without chapters names nothing.
+ * The placed list is computed once per chapter list (`placedCache`).
  */
 export function chapterNamer(
   chapters: Chapter[] | undefined,
-  files: Pick<BookFile, 'rel_path' | 'duration'>[] | undefined,
+  files: PlacedFiles,
   t: TFunction,
 ): (position: number) => string | null {
   if (!chapters || chapters.length === 0) return () => null;
-  const starts = chapterStartsOf(chapters, files ?? []);
-  const placed = chapters.map((ch, i) => ({ ...ch, book_offset: starts[i] }));
+  const placed = placedChapters(chapters, files);
   return (position) => {
     const ch = chapterAt(placed, position);
     return ch ? chapterLabel(ch, t) : null;
