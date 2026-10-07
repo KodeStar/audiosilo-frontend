@@ -8,7 +8,7 @@ import { useTheme } from '@/theme/theme-provider';
 import { AnnotationRow, type AnnotationRowProps } from './annotation-row';
 
 /** A note's markdown body. `useMarkdown` is a hook, so each note renders its own. */
-export function NoteMarkdown({ body }: { body: string }) {
+function NoteMarkdown({ body }: { body: string }) {
   const { scheme } = useTheme();
   const elements = useMarkdown(body, { colorScheme: scheme });
   return (
@@ -20,7 +20,7 @@ export function NoteMarkdown({ body }: { body: string }) {
   );
 }
 
-export type NoteRowProps = AnnotationRowProps & { note: Note };
+type NoteRowProps = AnnotationRowProps & { note: Note };
 
 /** One note (`AnnotationRow`): a `community` time chip at the place it is pinned to (a
  * note made before notes had places reads 0:00), the markdown body, then the shared meta

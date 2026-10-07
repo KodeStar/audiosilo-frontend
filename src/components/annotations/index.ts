@@ -1,37 +1,15 @@
 /**
- * Bookmarks and notes (player redesign Phase 4): the rows, chips, editors and rules the
- * book page, the player's companion and the Journal share. Pure modules (`labels`,
- * `drift-marker`, `editor-model`, `order`) have no React; the rest are components and
- * hooks.
+ * Bookmarks and notes (player redesign Phase 4): what the book page, the player's
+ * companion and the Journal use of them. Inside, pure modules (`labels`, `drift-marker`,
+ * `editor-model`) hold the rules, the rest are components and hooks; the player's sheet
+ * host imports the editor sheet from `./annotation-editor` itself, and the editor's
+ * request lives in `@/lib/annotation-request`.
  */
-export { AnnotationEditor, AnnotationEditorSheet } from './annotation-editor';
 export { AnnotationSection, type AnnotationSectionProps } from './annotation-section';
-export { BookmarkRow, type BookmarkRowProps } from './bookmark-row';
-export { LabelChip, LabelPicker, TimeChip, type TimeChipTone } from './chips';
-export { isDriftBookmark, isFellAsleepNote, shownNote } from './drift-marker';
-export {
-  BOOKMARK_NOTE_MAX,
-  type BookmarkDraft,
-  type BookmarkSave,
-  bookmarkSave,
-  initialBookmarkDraft,
-  NOTE_BODY_MAX,
-  type NoteSave,
-  noteSave,
-} from './editor-model';
-export { labelText, toggleLabel } from './labels';
-export {
-  type AnnotationTarget,
-  editBookmarkRequest,
-  editNoteRequest,
-  type EditorRequest,
-} from '@/lib/annotation-request';
-export { NoteMarkdown, NoteRow, type NoteRowProps } from './note-row';
-export { AddBookmarkAction, AddNoteAction, JournalLink } from './section-actions';
-export {
-  restoreBookmark,
-  restoreNote,
-  useDeleteWithUndo,
-  useJumpTo,
-} from './use-annotation-actions';
-export { chapterNamer, useChapterNamer, usePlaceIn } from './use-book-place';
+export { BookmarkRow } from './bookmark-row';
+export { isDriftBookmark } from './drift-marker';
+export { labelText } from './labels';
+export { NoteRow } from './note-row';
+export { RowCover, ServerFlag } from './row-parts';
+export { useJumpTo } from './use-annotation-actions';
+export { chapterNamer, useChapterNamer } from './use-book-place';

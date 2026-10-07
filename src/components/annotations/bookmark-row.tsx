@@ -7,7 +7,7 @@ import { AnnotationRow, type AnnotationRowProps } from './annotation-row';
 import { LabelChip } from './chips';
 import { isDriftBookmark, shownNote } from './drift-marker';
 
-export type BookmarkRowProps = AnnotationRowProps & { bookmark: Bookmark };
+type BookmarkRowProps = AnnotationRowProps & { bookmark: Bookmark };
 
 /**
  * One bookmark (`AnnotationRow`): the label as a kicker, the note (a Quote as a

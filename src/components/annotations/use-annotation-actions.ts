@@ -57,7 +57,7 @@ export function useJumpTo(): (target: AnnotationTarget, position: number) => voi
  * on the same book, through its own connection. The server gives it a new id and date
  * (an undone bookmark reads as just made). A label reaches only a server with
  * `annotations` (the one that gave it). */
-export function restoreBookmark(connectionId: string, bookmark: Bookmark): Promise<Bookmark> {
+function restoreBookmark(connectionId: string, bookmark: Bookmark): Promise<Bookmark> {
   return addBookmark(
     connectionId,
     bookmark.library_id,
@@ -71,7 +71,7 @@ export function restoreBookmark(connectionId: string, bookmark: Bookmark): Promi
 
 /** Put a deleted note back (the delete toast's Undo): the same body at the same place,
  * through the book's own connection. New id and dates, like `restoreBookmark`. */
-export function restoreNote(connectionId: string, note: Note): Promise<Note> {
+function restoreNote(connectionId: string, note: Note): Promise<Note> {
   return addNote(connectionId, note.library_id, note.path, note.body, note.position);
 }
 
