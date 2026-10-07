@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { ConnectionsSection, useConnectionRemoval } from '@/components/account/connections-section';
 import {
@@ -29,6 +29,7 @@ import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
 import { formatSpeed } from '@/lib/format';
 import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
+import { shakeAvailable } from '@/playback/use-shake-to-extend';
 import { useSettings, type AutoSleepType } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
 
@@ -140,7 +141,7 @@ export default function SettingsScreen() {
   const shakeToExtend = useSettings((s) => s.shakeToExtend);
   const setShakeToExtend = useSettings((s) => s.setShakeToExtend);
   // The web has no accelerometer: the row stays, saying so (STYLEGUIDE section 13).
-  const shakeAvailable = Platform.OS !== 'web';
+  const canShake = shakeAvailable();
   // Five options is too many to stay readable in a SegmentedControl on a phone, so
   // the timer type is a Select.
   const sleepTypeOptions: (SelectOption & { value: AutoSleepType })[] = [
@@ -318,12 +319,12 @@ export default function SettingsScreen() {
             <ChoiceRow
               label={t('settings.sleep.shake.label')}
               description={
-                shakeAvailable
+                canShake
                   ? t('settings.sleep.shake.description')
                   : t('settings.sleep.shake.unavailable')
               }
             >
-              {shakeAvailable ? (
+              {canShake ? (
                 <SegmentedControl
                   options={onOff}
                   value={shakeToExtend ? 'on' : 'off'}
@@ -333,7 +334,7 @@ export default function SettingsScreen() {
                 />
               ) : null}
             </ChoiceRow>
-            {shakeAvailable && shakeToExtend ? (
+            {canShake && shakeToExtend ? (
               <ChoiceRow
                 label={t('settings.sleep.sensitivity.label')}
                 description={t('settings.sleep.sensitivity.description')}

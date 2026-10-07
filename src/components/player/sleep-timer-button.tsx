@@ -21,6 +21,7 @@ import {
   useSleepTimer,
 } from '@/playback/sleep-timer';
 import { selectBookPosition, usePlayer } from '@/playback/store';
+import { shakeAvailable } from '@/playback/use-shake-to-extend';
 import { SHAKE_SENSITIVITIES, useSettings, type ShakeSensitivity } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -368,7 +369,7 @@ function SleepSettingsCard() {
   const type = useSettings((s) => s.autoSleepType);
   const shake = useSettings((s) => s.shakeToExtend);
   const setShake = useSettings((s) => s.setShakeToExtend);
-  const web = Platform.OS === 'web';
+  const web = !shakeAvailable();
 
   const window = { from: formatTimeOfDay(from), until: formatTimeOfDay(until) };
   const autoDescription =

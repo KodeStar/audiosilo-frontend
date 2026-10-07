@@ -16,7 +16,12 @@ jest.mock('expo-sensors/build/Accelerometer', () => ({
 
 /* eslint-disable import/first */
 import { useSleepTimer } from '@/playback/sleep-timer';
-import { createShakeDetector, shakeTuning, useShakeToExtend } from '@/playback/use-shake-to-extend';
+import {
+  createShakeDetector,
+  shakeAvailable,
+  shakeTuning,
+  useShakeToExtend,
+} from '@/playback/use-shake-to-extend';
 import { useSettings } from '@/stores/settings';
 /* eslint-enable import/first */
 
@@ -169,5 +174,21 @@ describe('useShakeToExtend', () => {
     await renderHook(() => useShakeToExtend());
     await ending();
     expect(addListener).not.toHaveBeenCalled();
+  });
+});
+
+describe('shakeAvailable', () => {
+  const prevOS = Platform.OS;
+  afterEach(() => {
+    Platform.OS = prevOS;
+  });
+
+  it('is native only, read when asked', () => {
+    Platform.OS = 'ios';
+    expect(shakeAvailable()).toBe(true);
+    Platform.OS = 'android';
+    expect(shakeAvailable()).toBe(true);
+    Platform.OS = 'web';
+    expect(shakeAvailable()).toBe(false);
   });
 });
