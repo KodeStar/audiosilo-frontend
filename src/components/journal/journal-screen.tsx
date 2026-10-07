@@ -135,8 +135,7 @@ export function JournalScreen() {
           kind={tab}
           header={header}
           query={query}
-          bookmarks={sources.bookmarks}
-          notes={sources.notes}
+          sources={tab === 'bookmarks' ? sources.bookmarks : sources.notes}
         />
       )}
     </View>
