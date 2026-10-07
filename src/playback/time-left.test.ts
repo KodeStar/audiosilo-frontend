@@ -25,6 +25,12 @@ describe('bookSpeed', () => {
     expect(bookSpeed(0, 1.5)).toBe(1.5);
     expect(bookSpeed(null, 0)).toBe(1);
   });
+
+  it('clamps to the range the player plays at, as playBook does', () => {
+    expect(bookSpeed(3, 1)).toBe(2); // saved by another client
+    expect(bookSpeed(0.25, 1)).toBe(0.5);
+    expect(bookSpeed(undefined, 2.5)).toBe(2);
+  });
 });
 
 describe('timeLeft', () => {

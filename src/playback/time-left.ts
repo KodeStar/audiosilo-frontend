@@ -2,7 +2,7 @@ import type { TFunction } from 'i18next';
 
 import { formatDuration, formatSpeed } from '@/lib/format';
 
-import { wallClockSeconds } from './rate';
+import { clampRate, wallClockSeconds } from './rate';
 
 /**
  * Time left in a book, the way every screen says it (frontend#50: the speed is saved per
@@ -30,10 +30,11 @@ export type TimeLeft = {
 };
 
 /** The speed a book plays at when it is not the loaded one: its own saved speed when it
- * has one, else the listener's default speed (what `playBook` would start it at). */
+ * has one, else the listener's default speed, clamped to the product's range as `playBook`
+ * clamps it (a 3x saved by another client plays at 2x). */
 export function bookSpeed(saved: number | null | undefined, defaultRate: number): number {
-  if (saved && saved > 0) return saved;
-  return defaultRate > 0 ? defaultRate : 1;
+  if (saved && saved > 0) return clampRate(saved);
+  return clampRate(defaultRate > 0 ? defaultRate : 1);
 }
 
 /** Time left from `position` to `total` at `speed`, or null without a timeline. */

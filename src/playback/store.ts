@@ -20,6 +20,7 @@ import {
   loadInitialProgress,
   saveProgress,
 } from './progress-sync';
+import { clampRate } from './rate';
 import { createPlaybackService } from './service';
 import { mayNeedWebTranscode } from './transcode';
 import { resolveWebTranscode } from './transcode-capability';
@@ -142,10 +143,6 @@ const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor i
 function lowerFloorTo(bookPosition: number) {
   if (Number.isFinite(bookPosition)) resumeFloor = Math.min(resumeFloor, Math.max(0, bookPosition));
 }
-
-const MIN_RATE = 0.5;
-const MAX_RATE = 2; // engines support more; the product caps speed at 2x
-const clampRate = (r: number) => Math.max(MIN_RATE, Math.min(MAX_RATE, r));
 
 /** Engine tunables derived from the settings store. */
 function currentConfig() {
