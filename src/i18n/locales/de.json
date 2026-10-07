@@ -44,6 +44,18 @@
       "type": {
         "label": "Timer-Typ",
         "chapter": "Kapitelende"
+      },
+      "shake": {
+        "label": "Schütteln zum Verlängern",
+        "description": "Schüttle dein Telefon in den letzten 30 Sekunden oder kurz nachdem der Timer gestoppt hat, um weiterzuhören.",
+        "unavailable": "Im Browser nicht verfügbar."
+      },
+      "sensitivity": {
+        "label": "Schüttelempfindlichkeit",
+        "description": "Wie kräftig du schütteln musst. Wähle Niedrig, wenn Erschütterungen im Bett das Buch weiterlaufen lassen.",
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch"
       }
     },
     "upNext": {
@@ -796,26 +808,59 @@
     },
     "sleepTimer": {
       "title": "Sleep-Timer",
-      "running": "Timer läuft",
-      "timeSection": "Zeit",
       "minutes_one": "{{count}} Min.",
       "minutes_other": "{{count}} Min.",
-      "endOfChapterSection": "Kapitelende",
       "endOf": "Ende von {{chapter}}",
       "endOfChapterNumber": "Ende von Kapitel {{number}}",
-      "current": " (aktuell)",
       "endOfBook": "Ende des Buches",
-      "noChapters": "Keine Kapitel verfügbar.",
-      "fading": "Wird ausgeblendet",
-      "ending": "Endet gleich",
-      "grace": "Wiedergabe pausiert",
       "keepListening": "Weiterhören",
-      "shakeHint": "Schüttle dein Telefon, um weiterzuhören",
       "keepGoingShort": "Weiter",
-      "cancel": "Timer abbrechen"
+      "minutesUnit_one": "Minute",
+      "minutesUnit_other": "Minuten",
+      "afterChapters_one": "Nach {{count}} Kapitel",
+      "afterChapters_other": "Nach {{count}} Kapiteln",
+      "endOfChapter": "Kapitelende",
+      "inTime": "in {{time}}",
+      "stopAfter": "Oder anhalten nach",
+      "thisChapter": "Diesem Kapitel",
+      "nChapters_one": "{{count}} Kapitel",
+      "nChapters_other": "{{count}} Kapiteln",
+      "endsAt": "endet {{time}}",
+      "pillRunning": "Sleep-Timer, {{label}}, noch {{time}}",
+      "turnOff": "Ausschalten",
+      "notice": {
+        "on": "Sleep-Timer an",
+        "book": "Stoppt am Ende des Buches",
+        "chapters_one": "Stoppt am Ende dieses Kapitels",
+        "chapters_other": "Stoppt nach {{count}} Kapiteln",
+        "left": "Noch {{time}}",
+        "leftFades": "Noch {{time}} · wird in den letzten 30 s ausgeblendet",
+        "graceLeft": "Noch {{time}}, um weiterzuhören"
+      },
+      "grace": {
+        "fadingIn_one": "Wird in {{count}} s ausgeblendet",
+        "fadingIn_other": "Wird in {{count}} s ausgeblendet",
+        "stoppingIn_one": "Stoppt in {{count}} s",
+        "stoppingIn_other": "Stoppt in {{count}} s",
+        "pausedTitle": "Vom Sleep-Timer pausiert",
+        "stillAwakeShake": "Noch wach? Schüttle dein Telefon oder tippe, um weiterzuhören.",
+        "stillAwake": "Noch wach? Hör einfach weiter.",
+        "pausedShake": "Noch wach? Schüttle dein Telefon oder tippe, um dort weiterzumachen, wo es aufgehört hat.",
+        "paused": "Noch wach? Mach dort weiter, wo es aufgehört hat."
+      },
+      "autoChapter": "Stoppt am Kapitelende, wenn du zwischen {{from}} und {{until}} auf Wiedergabe tippst.",
+      "autoMinutes_one": "Startet einen {{count}}-Minuten-Timer, wenn du zwischen {{from}} und {{until}} auf Wiedergabe tippst.",
+      "autoMinutes_other": "Startet einen {{count}}-Minuten-Timer, wenn du zwischen {{from}} und {{until}} auf Wiedergabe tippst.",
+      "fellAsleepHint": "Wenn du einschläfst, markiert ein Lesezeichen „Eingeschlafen“ die Stelle, an der der Timer gestoppt hat, und beim nächsten Abspielen des Buches kannst du zu dem Moment zurückspringen, in dem du zuletzt wach warst.",
+      "fellAsleepNote": "Eingeschlafen"
     },
     "speed": {
-      "title": "Wiedergabegeschwindigkeit"
+      "title": "Wiedergabegeschwindigkeit",
+      "leftInBook": "Noch {{time}} im Buch bei {{speed}} · für dieses Buch gespeichert",
+      "slower": "0,05 langsamer",
+      "faster": "0,05 schneller",
+      "presets": "Geschwindigkeitsvorgaben",
+      "presetLabel": "{{speed}}, noch {{time}}"
     },
     "seek": {
       "label": "Position im Kapitel",
@@ -905,6 +950,12 @@
       "palette": "Suche und Befehle",
       "help": "Diese Hilfe",
       "space": "Leertaste"
+    },
+    "drift": {
+      "title": "Du bist gegen {{time}} eingeschlafen",
+      "description_one": "{{count}} Minute zurückspringen?",
+      "description_other": "{{count}} Minuten zurückspringen?",
+      "jumpBack": "Zurückspringen"
     }
   },
   "reconnect": {

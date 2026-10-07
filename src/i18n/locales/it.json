@@ -44,6 +44,18 @@
       "type": {
         "label": "Tipo di timer",
         "chapter": "Fine del capitolo"
+      },
+      "shake": {
+        "label": "Scuoti per prolungare",
+        "description": "Scuoti il telefono negli ultimi 30 secondi, o subito dopo che il timer si è fermato, per continuare ad ascoltare.",
+        "unavailable": "Non disponibile nel browser."
+      },
+      "sensitivity": {
+        "label": "Sensibilità allo scuotimento",
+        "description": "Quanto forte devi scuotere. Scegli Bassa se i movimenti nel letto fanno continuare il libro.",
+        "low": "Bassa",
+        "medium": "Media",
+        "high": "Alta"
       }
     },
     "upNext": {
@@ -796,26 +808,59 @@
     },
     "sleepTimer": {
       "title": "Timer di spegnimento",
-      "running": "Timer in corso",
-      "timeSection": "Tempo",
       "minutes_one": "{{count}} min",
       "minutes_other": "{{count}} min",
-      "endOfChapterSection": "Fine del capitolo",
       "endOf": "Fine di {{chapter}}",
       "endOfChapterNumber": "Fine del capitolo {{number}}",
-      "current": " (attuale)",
       "endOfBook": "Fine del libro",
-      "noChapters": "Nessun capitolo disponibile.",
-      "fading": "Dissolvenza in corso",
-      "ending": "Termina a breve",
-      "grace": "Riproduzione in pausa",
       "keepListening": "Continua ad ascoltare",
-      "shakeHint": "Scuoti il telefono per continuare ad ascoltare",
       "keepGoingShort": "Continua",
-      "cancel": "Annulla timer"
+      "minutesUnit_one": "minuto",
+      "minutesUnit_other": "minuti",
+      "afterChapters_one": "Dopo {{count}} capitolo",
+      "afterChapters_other": "Dopo {{count}} capitoli",
+      "endOfChapter": "Fine del capitolo",
+      "inTime": "tra {{time}}",
+      "stopAfter": "Oppure fermati dopo",
+      "thisChapter": "Questo capitolo",
+      "nChapters_one": "{{count}} capitolo",
+      "nChapters_other": "{{count}} capitoli",
+      "endsAt": "finisce alle {{time}}",
+      "pillRunning": "Timer di spegnimento, {{label}}, mancano {{time}}",
+      "turnOff": "Disattiva",
+      "notice": {
+        "on": "Timer di spegnimento attivo",
+        "book": "Si ferma alla fine del libro",
+        "chapters_one": "Si ferma alla fine di questo capitolo",
+        "chapters_other": "Si ferma dopo {{count}} capitoli",
+        "left": "Mancano {{time}}",
+        "leftFades": "Mancano {{time}} · dissolvenza negli ultimi 30 s",
+        "graceLeft": "Mancano {{time}} per continuare ad ascoltare"
+      },
+      "grace": {
+        "fadingIn_one": "Dissolvenza, si ferma tra {{count}} s",
+        "fadingIn_other": "Dissolvenza, si ferma tra {{count}} s",
+        "stoppingIn_one": "Si ferma tra {{count}} s",
+        "stoppingIn_other": "Si ferma tra {{count}} s",
+        "pausedTitle": "In pausa per il timer di spegnimento",
+        "stillAwakeShake": "Ancora sveglio? Scuoti il telefono o tocca per continuare ad ascoltare.",
+        "stillAwake": "Ancora sveglio? Continua ad ascoltare.",
+        "pausedShake": "Ancora sveglio? Scuoti il telefono o tocca per riprendere da dove si è fermato.",
+        "paused": "Ancora sveglio? Riprendi da dove si è fermato."
+      },
+      "autoChapter": "Si ferma alla fine del capitolo ogni volta che avvii la riproduzione tra le {{from}} e le {{until}}.",
+      "autoMinutes_one": "Avvia un timer di {{count}} minuto ogni volta che avvii la riproduzione tra le {{from}} e le {{until}}.",
+      "autoMinutes_other": "Avvia un timer di {{count}} minuti ogni volta che avvii la riproduzione tra le {{from}} e le {{until}}.",
+      "fellAsleepHint": "Se ti addormenti, un segnalibro «Addormentato» segna il punto in cui il timer si è fermato, e la prossima volta che riproduci il libro potrai tornare all'ultimo momento in cui eri sveglio.",
+      "fellAsleepNote": "Addormentato"
     },
     "speed": {
-      "title": "Velocità di riproduzione"
+      "title": "Velocità di riproduzione",
+      "leftInBook": "Mancano {{time}} alla fine del libro a {{speed}} · memorizzata per questo libro",
+      "slower": "Più lenta di 0,05",
+      "faster": "Più veloce di 0,05",
+      "presets": "Velocità predefinite",
+      "presetLabel": "{{speed}}, mancano {{time}}"
     },
     "seek": {
       "label": "Posizione nel capitolo",
@@ -905,6 +950,12 @@
       "palette": "Ricerca e comandi",
       "help": "Questa guida",
       "space": "Spazio"
+    },
+    "drift": {
+      "title": "Ti sei addormentato verso le {{time}}",
+      "description_one": "Tornare indietro di {{count}} minuto?",
+      "description_other": "Tornare indietro di {{count}} minuti?",
+      "jumpBack": "Torna indietro"
     }
   },
   "reconnect": {
