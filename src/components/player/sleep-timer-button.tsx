@@ -26,7 +26,7 @@ import { SHAKE_SENSITIVITIES, useSettings, type ShakeSensitivity } from '@/store
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { ControlPill } from './control-pill';
+import { ControlPill, slopTo44 } from './control-pill';
 import { OptionTile } from './option-tile';
 import { PlayerSheet } from './player-sheet';
 import {
@@ -38,6 +38,9 @@ import {
   stopsAt,
 } from './sleep-sheet-model';
 import { useSleepPill } from './use-sleep-countdown';
+
+/** The pill is `h-9`: 36 px on the web, 31.5 pt on native, where this makes 44 pt. */
+const PILL_SLOP = slopTo44(2.25);
 
 /**
  * The dock's sleep pill (`useSleepPill`): the moon alone while idle; with a timer its
@@ -53,7 +56,7 @@ export function SleepTimerButton({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       look={active ? 'active' : 'ghost'}
       className={cn('h-9 flex-row gap-1.5', active ? 'px-3' : 'px-2')}
-      hitSlop={6}
+      hitSlop={PILL_SLOP}
       label={label}
     >
       <Icon name="sleep" size={18} color={active ? themed.brandInk : themed.foreground} />

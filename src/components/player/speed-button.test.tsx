@@ -2,6 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 import { playerStoreMock } from '@/testing/player-store-mock';
+import { expectNativeTarget } from '@/testing/touch-target';
 
 jest.mock('@/playback/store', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -59,6 +60,14 @@ describe('SpeedSheet', () => {
     expect(player.spies.setRate).toHaveBeenLastCalledWith(1.2);
     await fireEvent.press(screen.getByLabelText('Faster by 0.05'));
     expect(player.spies.setRate).toHaveBeenLastCalledWith(1.3);
+  });
+
+  // STYLEGUIDE section 14: `h-11` is 38.5 pt on native (a 14 pt rem).
+  it('gives the minus and plus buttons a 44 pt target on native', async () => {
+    load(1.25);
+    await open();
+    expectNativeTarget(screen.getByLabelText('Slower by 0.05'));
+    expectNativeTarget(screen.getByLabelText('Faster by 0.05'));
   });
 
   it('stops the buttons at the ends of the range', async () => {

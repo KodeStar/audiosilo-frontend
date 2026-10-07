@@ -14,6 +14,7 @@ import Animated, {
 
 import type { QueueEntry } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
+import { slopTo44 } from '@/components/player/control-pill';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -357,6 +358,9 @@ function QueueRow({
   );
 }
 
+/** A row button is `h-9 w-9`: 36 px on the web, 31.5 pt on native, where this makes 44 pt. */
+const ROW_BUTTON_SLOP = slopTo44(2.25);
+
 function RowButton({
   icon,
   label,
@@ -372,7 +376,7 @@ function RowButton({
   return (
     <AnimatedPressable
       onPress={onPress}
-      hitSlop={4}
+      hitSlop={ROW_BUTTON_SLOP}
       accessibilityRole="button"
       accessibilityLabel={label}
       className={cn(

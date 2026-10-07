@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, QueueEntry } from '@/api/types';
+import { expectNativeTarget } from '@/testing/touch-target';
 
 jest.mock('react-native-gesture-handler', () => ({
   ...jest.requireActual('react-native-gesture-handler'),
@@ -15,6 +16,7 @@ jest.mock('@/api/hooks', () => ({
 const mockQueue = jest.fn();
 const mockUnqueue = jest.fn();
 jest.mock('./use-up-next', () => ({ usePlayNow: () => jest.fn() }));
+jest.mock('@/components/player/use-time-left', () => ({ usePlayingTimeLeft: () => '' }));
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
 jest.mock('@/playback/store', () => {
@@ -27,6 +29,7 @@ jest.mock('@/playback/store', () => {
 });
 
 /* eslint-disable import/first */
+import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
@@ -136,5 +139,23 @@ describe('UpNextPanel', () => {
     const sw = screen.getByLabelText('Play the next book automatically');
     await fireEvent.press(sw);
     expect(useSettings.getState().autoPlayNext).toBe(true);
+  });
+
+  // STYLEGUIDE section 14: rem-sized buttons (`h-11`, `h-9`) are 38.5 and 31.5 pt on native.
+  it("gives play/pause and the suggestions' + a 44 pt target on native", async () => {
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c', libraryId: 1, path: 'N', title: 'Now' },
+    } as never);
+    await render(
+      <UpNextPanel
+        cid="c"
+        data={data({
+          suggestions: [{ kind: 'next', ref: { library_id: 1, path: 'S/2' }, series: 'Saga' }],
+        })}
+      />,
+    );
+    expectNativeTarget(screen.getByLabelText('Play'));
+    expectNativeTarget(screen.getByLabelText('Add Title of S/2 to Up next'));
+    usePlayer.setState({ nowPlaying: null } as never);
   });
 });

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { Book, QueueEntry } from '@/api/types';
+import { expectNativeTarget } from '@/testing/touch-target';
 
 // The drag is gesture-handler + reanimated on the UI thread; this suite covers the
 // keyboard and screen-reader paths, so the detector just renders.
@@ -152,5 +153,12 @@ describe('QueueList', () => {
       });
     });
     expect(titles()).toEqual(['Alpha', 'Beta', 'Gamma']);
+  });
+
+  // STYLEGUIDE section 14: the row buttons are `h-9 w-9`, 31.5 pt on native without a slop.
+  it('gives the row buttons a 44 pt target on native', async () => {
+    await setup();
+    expectNativeTarget(screen.getByLabelText('Play Beta now'));
+    expectNativeTarget(screen.getByLabelText('Remove Gamma from Up next'));
   });
 });

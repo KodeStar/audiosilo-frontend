@@ -5,6 +5,7 @@ import { useBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
+import { slopTo44 } from '@/components/player/control-pill';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
@@ -201,6 +202,7 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
       </View>
       <AnimatedPressable
         onPress={() => void toggle()}
+        hitSlop={slopTo44(2.75)}
         accessibilityRole="button"
         accessibilityLabel={isPlaying ? t('player.controls.pause') : t('player.controls.play')}
         className={cn(
@@ -338,6 +340,7 @@ function SuggestedBook({
         accessibilityLabel={t('upnext.add', { title })}
         onPress={onQueue}
         className="h-9 w-9"
+        hitSlop={slopTo44(2.25)}
       />
     </View>
   );

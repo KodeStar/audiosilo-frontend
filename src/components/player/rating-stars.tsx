@@ -7,7 +7,12 @@ import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { slopTo44 } from './control-pill';
+
 const VALUES: readonly RatingValue[] = [1, 2, 3, 4, 5];
+
+/** A star is `h-11 w-11`: 44 px on the web, 38.5 pt on native, where this makes 44 pt. */
+const STAR_SLOP = slopTo44(2.75);
 
 /** A five-point star on a 24 grid. Drawn here because the vendored glyph set has no star
  * yet (adding one needs the FontAwesome generator); swap it for `<Icon name="star">`
@@ -50,6 +55,7 @@ export function RatingStars({
             accessibilityLabel={t('player.finished.stars', { count: n })}
             disabled={disabled}
             onPress={() => onRate(n)}
+            hitSlop={STAR_SLOP}
             className={cn(
               'h-11 w-11 items-center justify-center rounded-full active:bg-accent',
               Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),

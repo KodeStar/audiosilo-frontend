@@ -4,6 +4,7 @@ import { Dimensions, Platform } from 'react-native';
 import type { Chapter } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
 import { playerStoreMock, type MockNowPlaying } from '@/testing/player-store-mock';
+import { expectNativeTarget } from '@/testing/touch-target';
 
 // The button and the sheet need only the sleep-timer store and the player store. Mock
 // the player store (pulled in transitively through `sleep-timer`) so no engine / API
@@ -105,6 +106,17 @@ describe('SleepTimerButton', () => {
     });
     expect(useSleepTimer.getState().phase).toBe('ending');
     expect(screen.getByLabelText('Keep listening')).toBeTruthy();
+  });
+
+  // STYLEGUIDE section 14: the pill is `h-9`, 31.5 pt on native (a 14 pt rem).
+  it('takes a 44 pt touch on native, idle and with a timer', async () => {
+    loadBook();
+    await mount();
+    expectNativeTarget(screen.getByLabelText('Sleep timer'));
+    await act(async () => {
+      useSleepTimer.getState().startDuration(25);
+    });
+    expectNativeTarget(screen.getByLabelText('Sleep timer, 25 min, 25:00 left'));
   });
 });
 

@@ -9,6 +9,7 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { timeLeft } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
 
+import { slopTo44 } from './control-pill';
 import { OptionTile } from './option-tile';
 import { PlayerSheet } from './player-sheet';
 import {
@@ -20,6 +21,10 @@ import {
   SPEED_STEP,
   steppedRate,
 } from './speed-model';
+
+/** The minus and plus buttons are `h-11 w-11`: 44 px on the web, 38.5 pt on native,
+ * where this makes 44 pt. */
+const STEP_SLOP = slopTo44(2.75);
 
 /**
  * The playback-speed sheet (STYLEGUIDE section 8, "Sheets"): the big readout, how long
@@ -70,6 +75,7 @@ function SpeedSheetBody() {
           disabled={rate <= SPEED_MIN}
           accessibilityLabel={t('player.speed.slower')}
           className="h-11 w-11"
+          hitSlop={STEP_SLOP}
         />
         {/* The slider runs in hundredths so its integer aria values are exact (it rounds
             them for the seek bar's seconds); the value text says "1.25x". */}
@@ -91,6 +97,7 @@ function SpeedSheetBody() {
           disabled={rate >= SPEED_MAX}
           accessibilityLabel={t('player.speed.faster')}
           className="h-11 w-11"
+          hitSlop={STEP_SLOP}
         />
       </View>
 
