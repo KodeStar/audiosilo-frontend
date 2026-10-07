@@ -55,8 +55,15 @@ jest.mock('./progress-sync', () => ({
 }));
 
 // Keep React Query out of the unit test.
+// `fetchQuery`/`getQueryData` answer the web transcode negotiation's `/server` read.
+const mockFetchQuery = jest.fn(async (..._a: unknown[]): Promise<unknown> => ({}));
 jest.mock('@/api/provider', () => ({
-  queryClient: { invalidateQueries: jest.fn(), setQueryData: jest.fn() },
+  queryClient: {
+    invalidateQueries: jest.fn(),
+    setQueryData: jest.fn(),
+    fetchQuery: (...a: unknown[]) => mockFetchQuery(...a),
+    getQueryData: jest.fn(() => undefined),
+  },
 }));
 
 // playBook fires an auto-download of the started book through @/lib/network's policy gate;
@@ -72,7 +79,8 @@ jest.mock('@/lib/network', () => ({
 // downloaded-book case). clearAllMocks() keeps this default implementation.
 const fakeClient = {
   coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
-  streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
+  streamUrl: (lib: number, path: string, _download?: boolean, opts?: { transcode?: boolean }) =>
+    `stream:${lib}:${path}${opts?.transcode ? ':transcode' : ''}`,
   authHeaders: () => ({ Authorization: 'Bearer x' }),
   addHistory: jest.fn(async () => {}),
 };
@@ -83,6 +91,8 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 
 /* eslint-disable import/first */
+import { Platform } from 'react-native';
+
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
@@ -841,6 +851,67 @@ describe('plays a downloaded book whose connection is gone', () => {
     // No local files + no client => nothing to play; the online/streaming path is unchanged.
     expect(mockSvc.load).not.toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+});
+
+// --- web transcode negotiation (playBook decides; retry reuses the queue) ---------
+
+describe('web transcode negotiation', () => {
+  const prevOS = Platform.OS;
+  const undecodable = () => makeBook({ direct_playable: false, codec: 'ac3' });
+  const loadedTracks = () =>
+    (mockSvc.load as jest.Mock).mock.calls[0][0] as { url: string; transcoded?: boolean }[];
+
+  beforeEach(() => {
+    Platform.OS = 'web';
+    mockFetchQuery.mockResolvedValue({ capabilities: { transcode: true } });
+    (mockSvc.load as jest.Mock).mockClear();
+  });
+  afterEach(() => {
+    Platform.OS = prevOS;
+  });
+
+  it('streams an undecodable book transcoded on web when its server can', async () => {
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0]).toMatchObject({
+      url: 'stream:2:A/Book.m4b:transcode',
+      transcoded: true,
+    });
+  });
+
+  it('streams directly when the server has no transcoder, or its /server read fails', async () => {
+    mockFetchQuery.mockResolvedValueOnce({ capabilities: { transcode: false } });
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+    expect(loadedTracks()[0].transcoded).toBeUndefined();
+
+    (mockSvc.load as jest.Mock).mockClear();
+    mockFetchQuery.mockRejectedValueOnce(new Error('offline'));
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+  });
+
+  it('never asks for a direct-playable book, or off web', async () => {
+    await startBook(makeBook({ direct_playable: true }), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+    Platform.OS = 'ios';
+    (mockSvc.load as jest.Mock).mockClear();
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+    expect(mockFetchQuery).not.toHaveBeenCalled();
+  });
+
+  it('retry reloads the same transcoded tracks at the track-absolute position', async () => {
+    await startBook(undecodable(), 0);
+    pushSnapshot(snap('playing', 42));
+    await Promise.resolve();
+    pushSnapshot(snap('error', 42));
+    await Promise.resolve();
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    expect(loadedTracks()[0].transcoded).toBe(true);
+    // The engine re-requests at this position (`&t=42`, see service.web.test.ts).
+    expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(42);
   });
 });
 

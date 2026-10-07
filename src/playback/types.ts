@@ -9,6 +9,11 @@ export type PlaybackTrack = {
   artwork?: string;
   /** Track duration in seconds, if known. */
   duration?: number;
+  /** Web only: `url` is the server's transcoded stream (`?transcode=1`, see
+   * `playback/transcode.ts`). It isn't byte-seekable and the element can't know its
+   * length, so the web engine seeks by re-requesting with `&t=` and takes the duration
+   * from `duration` above. Never set on a local file or on native. */
+  transcoded?: boolean;
 };
 
 /**
