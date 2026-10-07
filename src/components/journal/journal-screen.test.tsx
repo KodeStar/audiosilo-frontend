@@ -39,6 +39,8 @@ jest.mock('@/components/annotations', () => {
   return {
     ...jest.requireActual('@/components/annotations/drift-marker'),
     ...jest.requireActual('@/components/annotations/labels'),
+    // The Diary's rows lead with the shared cover and server flag.
+    ...jest.requireActual('@/components/annotations/row-parts'),
     BookmarkRow: ({ bookmark, server }: { bookmark: Bookmark; server?: string }) => (
       <T>{`bookmark: ${bookmark.note}${server ? ` @ ${server}` : ''}`}</T>
     ),

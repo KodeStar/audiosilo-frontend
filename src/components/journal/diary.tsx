@@ -1,12 +1,10 @@
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useBook } from '@/api/hooks';
 import type { Bookmark } from '@/api/types';
-import { useChapterNamer, useJumpTo } from '@/components/annotations';
-import { BookCover } from '@/components/library/book-cover';
+import { RowCover, ServerFlag, useChapterNamer, useJumpTo } from '@/components/annotations';
 import { useServerFlag } from '@/components/library/cover-tile';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -170,22 +168,12 @@ function SessionRow({
   });
   return (
     <View className="flex-row items-start gap-3">
-      <AnimatedPressable
-        onPress={() => openBook(span.connectionId, span.libraryId, span.path, 'history')}
-        accessibilityRole="link"
+      <RowCover
+        connectionId={span.connectionId}
+        book={book ?? { library_id: span.libraryId, rel_path: span.path }}
+        onOpen={() => openBook(span.connectionId, span.libraryId, span.path, 'history')}
         accessibilityLabel={t('journal.openBook', { title })}
-        className={cn('rounded-cover', Platform.select({ web: 'cursor-pointer' }))}
-      >
-        <BookCover
-          connectionId={span.connectionId}
-          libraryId={span.libraryId}
-          path={span.path}
-          coverVersion={book?.cover_version}
-          width={40}
-          title={title}
-          author={book?.author}
-        />
-      </AnimatedPressable>
+      />
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="body" className="text-[13px]" numberOfLines={2}>
           <Text className="font-sans-semibold text-[13px] text-foreground">{title}</Text>
@@ -196,14 +184,7 @@ function SessionRow({
         <Text variant="caption" numberOfLines={1} style={tabularNums}>
           {spanRange(span, nameAt, t)}
         </Text>
-        {serverFlag ? (
-          <View className="flex-row items-center gap-1">
-            <Icon name="server" size={11} color={themed.info} />
-            <Text variant="caption" className="text-info" numberOfLines={1}>
-              {serverFlag}
-            </Text>
-          </View>
-        ) : null}
+        {serverFlag ? <ServerFlag name={serverFlag} /> : null}
         {drift ? (
           <DriftStripView span={{ ...span, book }} bookmark={drift} records={records} />
         ) : null}

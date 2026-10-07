@@ -49,7 +49,9 @@ export function RowAction({
 }
 
 /** The book a row across books belongs to: its cover, opening its page. Its label is
- * the book's title unless the caller names the link (`accessibilityLabel`). */
+ * the book's title unless the caller names the link (`accessibilityLabel`). `book` needs
+ * only where it lives (a Diary span of an older server knows no more until its item
+ * comes). */
 export function RowCover({
   connectionId,
   book,
@@ -57,7 +59,8 @@ export function RowCover({
   accessibilityLabel,
 }: {
   connectionId: string;
-  book: Book;
+  book: Pick<Book, 'library_id' | 'rel_path'> &
+    Partial<Pick<Book, 'title' | 'author' | 'cover_version'>>;
   onOpen: () => void;
   accessibilityLabel?: string;
 }) {
