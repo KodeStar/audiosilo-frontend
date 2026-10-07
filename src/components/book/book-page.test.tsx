@@ -58,6 +58,7 @@ jest.mock('@/lib/layout', () => ({
 
 jest.mock('@/playback/store', () =>
   // `require` because a jest.mock factory is hoisted above every import.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
 
