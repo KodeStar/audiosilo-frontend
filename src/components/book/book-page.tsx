@@ -153,7 +153,14 @@ function BookPage() {
   );
   const downloaded = useDownloadEntry(cid, libraryId, path)?.status === 'downloaded';
   const transcoded = useNeedsWebTranscode(book, chapterData, cid);
-  const annotations = useBookAnnotations(book ? target : null, ANNOTATIONS_STALE_MS);
+  // The tab counts and pins read the entries the Bookmarks and Notes tabs read and write
+  // (`AnnotationSection`, keyed by the route's path, which can differ from `rel_path`), so
+  // an add, edit or delete there moves them too.
+  const listTarget = useMemo(
+    () => ({ connectionId: cid, libraryId, path }),
+    [cid, libraryId, path],
+  );
+  const annotations = useBookAnnotations(book ? listTarget : null, ANNOTATIONS_STALE_MS);
   const speed = useBookSpeed(target, progress?.playback_speed);
   // The primary toggles the loaded book in place (never restarting it); a chapter row, a
   // timeline tap or a pin jumps there (`usePlayBook`: a phone opens the player there).

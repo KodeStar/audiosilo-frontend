@@ -68,15 +68,15 @@ jest.mock('@/components/player/use-play-book', () => ({
 }));
 
 let mockBookmarks: Bookmark[] = [];
+const mockAnnotationsFor = jest.fn();
 jest.mock('@/components/player/use-playing-pins', () => {
   const actual = jest.requireActual('@/components/player/use-playing-pins');
   return {
     ...actual,
-    useBookAnnotations: () => ({
-      bookmarks: mockBookmarks,
-      notes: [],
-      pins: actual.pinsOf(mockBookmarks, []),
-    }),
+    useBookAnnotations: (target: unknown) => {
+      mockAnnotationsFor(target);
+      return { bookmarks: mockBookmarks, notes: [], pins: actual.pinsOf(mockBookmarks, []) };
+    },
   };
 });
 
@@ -248,6 +248,20 @@ describe('book page primary action', () => {
     expect(screen.getByRole('button', { name: 'Listen again' })).toBeTruthy();
     expect(screen.getByText(/^Finished (3 Oct|Oct 3)$/)).toBeTruthy();
     expect(screen.getAllByRole('radio')).toHaveLength(5);
+  });
+});
+
+describe('book page tabs', () => {
+  // The Bookmarks and Notes tabs read and write their entries under the route's path; the
+  // tab counts and the pins must read the same ones, or an add there never moves them.
+  it("counts and pins the annotations under the route's path, not the book's rel_path", async () => {
+    mockBook = { ...BOOK, rel_path: 'Author/Book/' };
+    await mountAt('desktop');
+    expect(mockAnnotationsFor).toHaveBeenLastCalledWith({
+      connectionId: 'home',
+      libraryId: 1,
+      path: 'Author/Book',
+    });
   });
 });
 
