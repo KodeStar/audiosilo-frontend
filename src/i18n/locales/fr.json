@@ -1005,7 +1005,9 @@
       "revealTitle": "Nouveau dans Qui est qui : {{names}}",
       "revealBody_one": "Vous venez de faire sa connaissance au chapitre {{chapter}}. Rien au-delà n’est affiché.",
       "revealBody_other": "Vous venez de faire leur connaissance au chapitre {{chapter}}. Rien au-delà n’est affiché.",
-      "show": "Afficher"
+      "show": "Afficher",
+      "noServerTitle": "Le serveur de ce livre n'est pas connecté",
+      "noServerHint": "Les signets, les notes et l'historique reviendront dès qu'il le sera."
     }
   },
   "reconnect": {

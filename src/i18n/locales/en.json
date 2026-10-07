@@ -1005,7 +1005,9 @@
       "revealTitle": "New in Who's who: {{names}}",
       "revealBody_one": "You just met them in chapter {{chapter}}. Nothing past this point is shown.",
       "revealBody_other": "You just met them in chapter {{chapter}}. Nothing past this point is shown.",
-      "show": "Show"
+      "show": "Show",
+      "noServerTitle": "This book's server isn't connected",
+      "noServerHint": "Bookmarks, notes and history come back once it is."
     }
   },
   "reconnect": {

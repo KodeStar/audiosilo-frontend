@@ -1005,7 +1005,9 @@
       "revealTitle": "Novo em Quem é quem: {{names}}",
       "revealBody_one": "Acabou de conhecer esta personagem no capítulo {{chapter}}. Nada para além deste ponto é mostrado.",
       "revealBody_other": "Acabou de conhecer estas personagens no capítulo {{chapter}}. Nada para além deste ponto é mostrado.",
-      "show": "Mostrar"
+      "show": "Mostrar",
+      "noServerTitle": "O servidor deste livro não está ligado",
+      "noServerHint": "Os marcadores, as notas e o histórico voltam assim que estiver."
     }
   },
   "reconnect": {

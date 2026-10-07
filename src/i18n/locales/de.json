@@ -1005,7 +1005,9 @@
       "revealTitle": "Neu bei Wer ist wer: {{names}}",
       "revealBody_one": "Du hast diese Figur gerade in Kapitel {{chapter}} kennengelernt. Nichts nach dieser Stelle wird gezeigt.",
       "revealBody_other": "Du hast sie gerade in Kapitel {{chapter}} kennengelernt. Nichts nach dieser Stelle wird gezeigt.",
-      "show": "Anzeigen"
+      "show": "Anzeigen",
+      "noServerTitle": "Der Server dieses Buchs ist nicht verbunden",
+      "noServerHint": "Lesezeichen, Notizen und Verlauf sind wieder da, sobald er es ist."
     }
   },
   "reconnect": {

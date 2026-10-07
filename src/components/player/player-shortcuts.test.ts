@@ -261,6 +261,23 @@ describe('addBookmarkHere', () => {
     expect(toast).toHaveBeenCalledWith({ title: 'Bookmark added', description: '17:26:50' });
   });
 
+  it('adds one bookmark for a double tap while the first is on its way', async () => {
+    let land: (v: object) => void = () => {};
+    const addBookmark = jest
+      .fn(() => Promise.resolve({}))
+      .mockImplementationOnce(() => new Promise<object>((r) => (land = r)));
+    (resolveClient as jest.Mock).mockReturnValue({ addBookmark });
+    const first = addBookmarkHere(t);
+    const second = addBookmarkHere(t);
+    land({});
+    await Promise.all([first, second]);
+    expect(addBookmark).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledTimes(1);
+    // Once it has landed, the next tap adds another.
+    await addBookmarkHere(t);
+    expect(addBookmark).toHaveBeenCalledTimes(2);
+  });
+
   it('says when it could not', async () => {
     (resolveClient as jest.Mock).mockReturnValue({
       addBookmark: () => Promise.reject(new Error('offline')),

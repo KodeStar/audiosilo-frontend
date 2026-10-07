@@ -1005,7 +1005,9 @@
       "revealTitle": "Novità in Chi è chi: {{names}}",
       "revealBody_one": "L’hai appena incontrato nel capitolo {{chapter}}. Non viene mostrato nulla oltre questo punto.",
       "revealBody_other": "Li hai appena incontrati nel capitolo {{chapter}}. Non viene mostrato nulla oltre questo punto.",
-      "show": "Mostra"
+      "show": "Mostra",
+      "noServerTitle": "Il server di questo libro non è connesso",
+      "noServerHint": "Segnalibri, note e cronologia torneranno appena lo sarà."
     }
   },
   "reconnect": {

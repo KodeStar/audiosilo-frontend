@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
-import { ConnectionScope } from '@/api/provider';
+import { ConnectionScope, useOptionalApi } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
 import { formatClock } from '@/lib/format';
@@ -32,20 +34,52 @@ import { WhoPanel } from './who-panel';
 export type CompanionVariant = 'column' | 'sheet' | 'inline';
 
 /** "Add bookmark at 1:16:19", in whole seconds: its own leaf, the one piece of the
- * Bookmarks tab that follows the playhead (the list above it never redraws per tick). */
+ * Bookmarks tab that follows the playhead (the list above it never redraws per tick).
+ * Busy while the bookmark is on its way (`addBookmarkHere` adds one at a time). */
 function AddBookmarkHere() {
   const { t } = useTranslation();
   const at = usePlayer((s) => Math.floor(selectBookPosition(s)));
+  const [adding, setAdding] = useState(false);
+  const add = () => {
+    setAdding(true);
+    void addBookmarkHere(t).finally(() => setAdding(false));
+  };
   return (
     <Button
       title={t('player.bookmarks.addAt', { time: formatClock(at) })}
       icon="bookmark"
-      onPress={() => void addBookmarkHere(t)}
+      loading={adding}
+      onPress={add}
     />
   );
 }
 
+/** Bookmarks, Notes and History: the listener's own, on the book's server. A downloaded
+ * book can play on with that connection gone (removed, or its token failed to load), and
+ * those sections need it: say so instead of asking. */
 function OwnPanel({ tab, target }: { tab: 'bookmarks' | 'notes' | 'history'; target: PlayTarget }) {
+  const { connectionId } = target;
+  const { t } = useTranslation();
+  const api = useOptionalApi(connectionId);
+  if (!api) {
+    return (
+      <EmptyState
+        icon="server"
+        title={t('player.companion.noServerTitle')}
+        hint={t('player.companion.noServerHint')}
+      />
+    );
+  }
+  return <OwnSection tab={tab} target={target} />;
+}
+
+function OwnSection({
+  tab,
+  target,
+}: {
+  tab: 'bookmarks' | 'notes' | 'history';
+  target: PlayTarget;
+}) {
   const { t } = useTranslation();
   const seekBook = usePlayer((s) => s.seekBook);
   const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters);

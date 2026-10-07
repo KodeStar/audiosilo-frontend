@@ -83,12 +83,24 @@ export function playerShortcutFor(e: PlayerKey, ctx: PlayerKeyContext): PlayerSh
   return LETTERS[e.key.toLowerCase()] ?? null;
 }
 
+/** The bookmark being added, while it is (`addBookmarkHere`). */
+let adding: Promise<void> | null = null;
+
 /**
  * Add a bookmark at the playing book's current position, on its own server, and say so
  * ("Bookmark added", the clock). Framework-free (the shortcut can fire from any page),
- * through the PLAYING book's connection.
+ * through the PLAYING book's connection. One at a time: a double tap on the companion's
+ * button, or B held down, while one is on its way adds nothing more (the caller gets the
+ * one in flight).
  */
-export async function addBookmarkHere(t: TFunction): Promise<void> {
+export function addBookmarkHere(t: TFunction): Promise<void> {
+  adding ??= addNow(t).finally(() => {
+    adding = null;
+  });
+  return adding;
+}
+
+async function addNow(t: TFunction): Promise<void> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
