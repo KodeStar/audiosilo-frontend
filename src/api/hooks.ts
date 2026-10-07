@@ -1,7 +1,7 @@
 import {
   type DefaultError,
   type FetchQueryOptions,
-  hashKey,
+  infiniteQueryOptions,
   type InfiniteData,
   MutationObserver,
   type QueryClient,
@@ -37,6 +37,7 @@ import type {
   CollectionInput,
   CollectionPatch,
   Favourite,
+  HistoryEntry,
   Library,
   ListeningGoalStatus,
   MyBookmark,
@@ -91,12 +92,12 @@ export const qk = {
   /** Prefix matching every history key of a connection (invalidation), the
    * across-books list (`myHistory`) included. */
   historyAll: (cid: string) => ['history', cid] as const,
-  /** The caller's listening across books (`useAllHistory`, an infinite query), under
+  /** The caller's listening across books (`myHistoryQuery`, an infinite query), under
    * `historyAll` so a recorded span refreshes it. */
   myHistory: (cid: string) => ['history', cid, 'me'] as const,
-  /** The caller's bookmarks across books (`useMyBookmarks`, an infinite query). */
+  /** The caller's bookmarks across books (`myBookmarksQuery`, an infinite query). */
   myBookmarks: (cid: string) => ['myBookmarks', cid] as const,
-  /** The caller's notes across books (`useMyNotes`, an infinite query). */
+  /** The caller's notes across books (`myNotesQuery`, an infinite query). */
   myNotes: (cid: string) => ['myNotes', cid] as const,
   favourites: (connectionId: string) => ['favourites', connectionId] as const,
   apiKeys: (cid: string) => ['apiKeys', cid] as const,
@@ -1038,7 +1039,8 @@ export function useHistory(libraryId: number, path: string, connectionId?: strin
 
 // --- Across books (Phase 4) -----------------------------------------------------
 // The caller's bookmarks, notes and listening over every book, newest first, as infinite
-// queries on the server's `next_cursor` (call `fetchNextPage` while `hasNextPage`).
+// query options on the server's `next_cursor` (the Journal reads every server's at once,
+// `useJournalSources`; call `fetchNextPage` while `hasNextPage`).
 // `flattenPages` turns `data` into one list. Bookmarks and notes are gated on
 // `annotations` like the Phase 1b reads (no query function at all until the flag is
 // known to be on); history works on every server, and an older one answers one page.
@@ -1063,7 +1065,7 @@ const PAGED_STALE_MS = 5 * 60_000;
  * is read again. The cache keeps its date (and its invalidation, if a write left it
  * waiting for a read), so a revisit refreshes it exactly when it would have.
  */
-function keepFirstPage(qc: QueryClient, queryKey: readonly unknown[]) {
+export function keepFirstPage(qc: QueryClient, queryKey: readonly unknown[]) {
   const query = qc.getQueryCache().find({ queryKey, exact: true });
   if (!query || query.getObserversCount() > 0) return;
   const { data, dataUpdatedAt, isInvalidated } = query.state as {
@@ -1080,65 +1082,55 @@ function keepFirstPage(qc: QueryClient, queryKey: readonly unknown[]) {
   if (isInvalidated) void qc.invalidateQueries({ queryKey, exact: true, refetchType: 'none' });
 }
 
-/** An across-books list as an infinite query. A null `load` gives no query function
+/** An across-books list as infinite query options. A null `load` gives no query function
  * (`skipToken`), so not even a manual `refetch` asks. */
-function usePagedList<T>(
+function pagedList<T>(
   queryKey: readonly unknown[],
   load: ((page: PageQuery, signal: AbortSignal) => Promise<Page<T>>) | null,
 ) {
-  const query = useInfiniteQuery({
+  return infiniteQueryOptions<
+    Page<T>,
+    Error,
+    InfiniteData<Page<T>, string | undefined>,
+    readonly unknown[],
+    string | undefined
+  >({
     queryKey,
     queryFn: load
       ? ({ pageParam, signal }) => load({ limit: PAGE_SIZE, cursor: pageParam }, signal)
       : skipToken,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last: Page<T>) => last.next_cursor || undefined,
+    initialPageParam: undefined,
+    getNextPageParam: (last) => last.next_cursor || undefined,
     staleTime: PAGED_STALE_MS,
   });
-  // After the query hook, so its observer has unsubscribed when this cleanup runs (React
-  // cleans a component's effects up in order).
-  const qc = useQueryClient();
-  const hash = hashKey(queryKey);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- the key, by its hash
-  useEffect(() => () => keepFirstPage(qc, queryKey), [qc, hash]);
-  return query;
 }
 
-/** The caller's bookmarks or notes across books, newest made first, each with its `book`
- * when indexed (capability `annotations`). */
-function useMyAnnotations<K extends 'bookmarks' | 'notes'>(kind: K, connectionId?: string) {
-  type Row = K extends 'bookmarks' ? MyBookmark : MyNote;
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  const supported = useCapability('annotations', connectionId) === true;
-  return usePagedList<Row>(
-    kind === 'bookmarks' ? qk.myBookmarks(cid) : qk.myNotes(cid),
-    supported && api
-      ? (page, signal) =>
-          (kind === 'bookmarks'
-            ? api.myBookmarks(page, signal)
-            : api.myNotes(page, signal)) as Promise<Page<Row>>
-      : null,
+/** The caller's bookmarks across books, newest made first, each with its `book` when
+ * indexed. Gated on `annotations`: `supported` is whether the connection's server is
+ * known to have it (no query function otherwise). Read with `keepFirstPage` on release. */
+export function myBookmarksQuery(cid: string, client: MaybeClient, supported: boolean) {
+  return pagedList<MyBookmark>(
+    qk.myBookmarks(cid),
+    supported && client ? (page, signal) => client.myBookmarks(page, signal) : null,
   );
 }
 
-/** The caller's bookmarks across books (`useMyAnnotations`). */
-export const useMyBookmarks = (connectionId?: string) =>
-  useMyAnnotations('bookmarks', connectionId);
-
-/** The caller's notes across books (`useMyAnnotations`). */
-export const useMyNotes = (connectionId?: string) => useMyAnnotations('notes', connectionId);
+/** The caller's notes across books, as `myBookmarksQuery`. */
+export function myNotesQuery(cid: string, client: MaybeClient, supported: boolean) {
+  return pagedList<MyNote>(
+    qk.myNotes(cid),
+    supported && client ? (page, signal) => client.myNotes(page, signal) : null,
+  );
+}
 
 /** The caller's listening spans across books, newest ended first. Not gated: every
  * server has `/me/history`. One with `annotations` pages on and sends each row's `book`;
  * an older one answers its newest 100 as the only page, without `book`. Kept under
  * `qk.historyAll`, so a recorded span refreshes it. */
-export function useAllHistory(connectionId?: string) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  return usePagedList(
+export function myHistoryQuery(cid: string, client: MaybeClient) {
+  return pagedList<HistoryEntry>(
     qk.myHistory(cid),
-    api ? (page, signal) => api.allHistory(page, signal) : null,
+    client ? (page, signal) => client.allHistory(page, signal) : null,
   );
 }
 

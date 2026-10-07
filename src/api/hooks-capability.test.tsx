@@ -1,7 +1,13 @@
-import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  type InfiniteData,
+  QueryClient,
+  QueryClientProvider,
+  useInfiniteQuery,
+} from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import type { ApiClient } from '@/api/client';
 import type { Capabilities, Page, ServerInfo } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
@@ -114,11 +120,12 @@ import {
   useAddBookmark,
   useAddCollectionItem,
   useAddNote,
-  useAllHistory,
+  keepFirstPage,
+  myBookmarksQuery,
+  myHistoryQuery,
+  myNotesQuery,
   useDeleteBookmark,
   useDeleteNote,
-  useMyBookmarks,
-  useMyNotes,
   useUpdateBookmark,
   useUpdateNote,
   useAddToQueue,
@@ -1269,9 +1276,18 @@ type PagedCase = {
   next: string;
 };
 
+/** An across-books list read as the Journal reads it (`useJournalSources`): through its
+ * option factory, told whether the connection's server has `annotations`. */
+const client = (cid: string) => mockClients[cid] as unknown as ApiClient;
+const useMyBookmarks = (cid = 'c1') =>
+  useInfiniteQuery(myBookmarksQuery(cid, client(cid), useCapability('annotations', cid) === true));
+const useMyNotes = (cid = 'c1') =>
+  useInfiniteQuery(myNotesQuery(cid, client(cid), useCapability('annotations', cid) === true));
+const useAllHistory = () => useInfiniteQuery(myHistoryQuery('c1', client('c1')));
+
 const pagedCases: PagedCase[] = [
-  { name: 'useMyBookmarks', useHook: () => useMyBookmarks(), method: 'myBookmarks', next: 'b2' },
-  { name: 'useMyNotes', useHook: () => useMyNotes(), method: 'myNotes', next: 'n2' },
+  { name: 'myBookmarksQuery', useHook: () => useMyBookmarks(), method: 'myBookmarks', next: 'b2' },
+  { name: 'myNotesQuery', useHook: () => useMyNotes(), method: 'myNotes', next: 'n2' },
 ];
 
 describe('Phase 4 across-books lists', () => {
@@ -1319,7 +1335,11 @@ describe('Phase 4 across-books lists', () => {
       });
       const key = method === 'myBookmarks' ? qk.myBookmarks('c1') : qk.myNotes('c1');
       const before = qc.getQueryState(key)!.dataUpdatedAt;
+      // Still read: left alone.
+      keepFirstPage(qc, key);
+      expect(qc.getQueryData<InfiniteData<unknown>>(key)!.pages).toHaveLength(2);
       await act(async () => unmount());
+      keepFirstPage(qc, key);
       const kept = qc.getQueryData<InfiniteData<unknown>>(key)!;
       expect(kept.pages).toHaveLength(1);
       expect(kept.pageParams).toEqual([undefined]);

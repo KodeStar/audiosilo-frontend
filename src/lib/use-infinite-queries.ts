@@ -11,6 +11,8 @@ import {
 } from '@tanstack/react-query';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
+import { useLatestRef } from '@/lib/use-latest';
+
 /**
  * Many infinite queries at once, one per entry of a list that can grow and shrink (a list
  * per signed-in server): TanStack has `useQueries` for plain queries but nothing for
@@ -78,14 +80,19 @@ class ObserverPool<TPage, TPageParam> {
     return this.#observers;
   }
 
-  /** Subscribe the observers not subscribed yet and drop the ones no longer listed: a
-   * query that stays in the list stays subscribed (no refetch on a second mount). */
-  track(observers: readonly Observer<TPage, TPageParam>[]) {
+  /** Subscribe the observers not subscribed yet and drop the ones no longer listed (each
+   * dropped query's key goes to `onRelease`, after it is unsubscribed): a query that stays
+   * in the list stays subscribed (no refetch on a second mount). */
+  track(
+    observers: readonly Observer<TPage, TPageParam>[],
+    onRelease?: (queryKey: QueryKey) => void,
+  ) {
     const keep = new Set(observers);
     for (const [o, unsubscribe] of this.#subscriptions) {
       if (keep.has(o)) continue;
       unsubscribe();
       this.#subscriptions.delete(o);
+      onRelease?.(o.options.queryKey);
     }
     for (const o of observers) {
       if (!this.#subscriptions.has(o)) this.#subscriptions.set(o, o.subscribe(this.#notify));
@@ -114,17 +121,21 @@ function sameItems<T>(a: readonly T[], b: readonly T[]): boolean {
 
 export function useInfiniteQueries<TPage, TPageParam>(
   list: readonly InfiniteQueriesOptions<TPage, TPageParam>[],
+  /** Called with a query's key once this hook stops reading it (it left the list, or the
+   * component unmounted), e.g. to trim its pages (`keepFirstPage`). */
+  onRelease?: (queryKey: QueryKey) => void,
 ): readonly InfiniteQueriesResult<TPage, TPageParam>[] {
   const client = useQueryClient();
   const [pool] = useState(() => new ObserverPool<TPage, TPageParam>(client));
   const observers = pool.observersFor(list);
 
   // The options first, so a newly subscribed observer fetches by this render's.
+  const release = useLatestRef(onRelease);
   useEffect(() => {
     observers.forEach((o, i) => o.setOptions(list[i]));
-    pool.track(observers);
-  }, [pool, observers, list]);
-  useEffect(() => () => pool.track([]), [pool]);
+    pool.track(observers, (key) => release.current?.(key));
+  }, [pool, observers, list, release]);
+  useEffect(() => () => pool.track([], (key) => release.current?.(key)), [pool, release]);
 
   const snapshot = () => pool.resultsOf(observers);
   return useSyncExternalStore(pool.subscribe, snapshot, snapshot);

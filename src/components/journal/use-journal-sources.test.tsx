@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
@@ -36,6 +36,8 @@ let mockConnections: { connection: { id: string; name: string }; client: Stub }[
 jest.mock('@/api/provider', () => ({ useApis: () => mockConnections }));
 
 /* eslint-disable import/first */
+import { qk } from '@/api/hooks';
+
 import { useJournalSources } from './use-journal-sources';
 /* eslint-enable import/first */
 
@@ -118,6 +120,18 @@ describe('useJournalSources', () => {
     await waitFor(() => expect(result.current.notes[0].status).toBe('ready'));
     // A page of notes never rebuilds the other lists.
     expect(result.current.history).toBe(history);
+  });
+
+  // A list read deep would refetch every page it holds, one after another, on a revisit.
+  it('leaves each list with only its first page once the Journal closes', async () => {
+    const { result, unmount } = await mount();
+    await waitFor(() => expect(result.current.history[0].hasNextPage).toBe(true));
+    await act(async () => result.current.history[0].fetchNextPage());
+    await waitFor(() =>
+      expect(qc.getQueryData<InfiniteData<unknown>>(qk.myHistory('c1'))!.pages).toHaveLength(2),
+    );
+    await act(async () => unmount());
+    expect(qc.getQueryData<InfiniteData<unknown>>(qk.myHistory('c1'))!.pages).toHaveLength(1);
   });
 
   it('drops a removed server', async () => {

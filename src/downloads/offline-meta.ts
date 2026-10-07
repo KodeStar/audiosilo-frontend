@@ -2,7 +2,7 @@ import type { QueryKey } from '@tanstack/react-query';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { fetchCapabilities, fetchFailFast, qk } from '@/api/hooks';
+import { bookMetaQuery, fetchCapabilities, fetchFailFast, metaWorkQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, BookMeta, BookMetaWork, ServerInfo } from '@/api/types';
 import { metaEnabledFor } from '@/components/library/meta-gating';
@@ -51,9 +51,6 @@ import type { DownloadEntry } from './types';
 /** The payload's file name in the book's folder (audio files are numbered, the cover is
  * `cover.jpg`). */
 export const OFFLINE_META_FILE = 'meta.json';
-
-/** `useBookMeta`'s `staleTime`: a read here reuses a fresh answer the screens fetched. */
-const META_STALE_MS = 60 * 60_000;
 
 /** A server's `/server` answer and when it was read (epoch ms). */
 export type ServerSnapshot = { info: ServerInfo; savedAt: number };
@@ -264,15 +261,12 @@ export async function captureOfflineMeta(entry: DownloadEntry): Promise<OfflineM
     if (!caps.metadata) return null;
     const previous = !!caps.meta_bundle;
     const opts = previous ? { includePrevious: true } : undefined;
-    const key = qk.bookMeta(cid, libraryId, path, opts);
-    // Kept for good from this read on, so its answer outlives the cache's own timer.
-    keepForGood(key);
-    const meta = await fetchFailFast({
-      queryKey: key,
-      queryFn: ({ signal }) => client.bookMeta(libraryId, path, signal, opts),
-      staleTime: META_STALE_MS,
-    });
-    const savedAt = queryClient.getQueryState(key)?.dataUpdatedAt || Date.now();
+    // The screens' own read (`bookMetaQuery`: a fresh answer they hold is reused), kept
+    // for good from here on, so its answer outlives the cache's own timer.
+    const query = bookMetaQuery(cid, client, libraryId, path, opts);
+    keepForGood(query.queryKey);
+    const meta = await fetchFailFast(query);
+    const savedAt = queryClient.getQueryState(query.queryKey)?.dataUpdatedAt || Date.now();
     const works = meta.matched ? await nearestPreviousWork(cid, client, meta) : [];
     return { v: 1, savedAt, previous, meta, works };
   } catch {
@@ -292,13 +286,9 @@ async function nearestPreviousWork(
     const picks = useSeriesOrderings.getState().picks;
     const nearest = previousWorks(seriesRails(meta.series, meta.work.id, picks))[0];
     if (!nearest || meta.previous?.some((w) => w.id === nearest.id)) return [];
-    keepForGood(qk.metaWork(cid, nearest.id));
-    const work = await fetchFailFast({
-      queryKey: qk.metaWork(cid, nearest.id),
-      queryFn: ({ signal }) => client.metaWork(nearest.id, signal),
-      staleTime: META_STALE_MS,
-    });
-    return [work];
+    const query = metaWorkQuery(cid, client, nearest.id);
+    keepForGood(query.queryKey);
+    return [await fetchFailFast(query)];
   } catch {
     return [];
   }

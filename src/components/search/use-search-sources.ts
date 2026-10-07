@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 
 import {
   anyCapability,
+  bookMetaQuery,
   chaptersQuery,
   qk,
   useAllProgressAll,
@@ -31,7 +32,6 @@ import {
 
 /** Same freshness as the browse lists (`hooks.ts`). */
 const BROWSE_STALE_MS = 5 * 60_000;
-const META_STALE_MS = 60 * 60_000;
 /** How coarsely the loaded book's live position is sampled (as the book page does): a
  * reveal is only ever late by this much, never early. */
 const LIVE_POSITION_BUCKET_S = 15;
@@ -159,16 +159,8 @@ export function useCharacterSources(
   const metas = useQueries({
     queries: picks.map((p) => {
       const client = clients.get(p.connectionId);
-      return {
-        queryKey: qk.bookMeta(p.connectionId, p.library_id, p.path),
-        queryFn: client
-          ? ({ signal }: { signal: AbortSignal }) => client.bookMeta(p.library_id, p.path, signal)
-          : skipToken,
-        enabled,
-        staleTime: META_STALE_MS,
-        // As `useBookMeta`: a down meta service answers 502; don't spin on it.
-        retry: false,
-      };
+      // As `useBookMeta` (no retry: a down meta service answers 502).
+      return { ...bookMetaQuery(p.connectionId, client, p.library_id, p.path), enabled };
     }),
   });
   const withCharacters = (meta: BookMeta | undefined) =>

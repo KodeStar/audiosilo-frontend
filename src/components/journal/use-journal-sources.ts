@@ -1,14 +1,22 @@
-import { type InfiniteData, type QueryKey, skipToken, useQueries } from '@tanstack/react-query';
+import {
+  type InfiniteData,
+  type QueryKey,
+  useQueries,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useMemo } from 'react';
 
-import { flattenPages, qk, serverInfoQuery } from '@/api/hooks';
-import { useApis } from '@/api/provider';
-import type { HistoryEntry, MyBookmark, MyNote, Page, PageQuery } from '@/api/types';
 import {
-  type InfiniteQueriesOptions,
-  type InfiniteQueriesResult,
-  useInfiniteQueries,
-} from '@/lib/use-infinite-queries';
+  flattenPages,
+  keepFirstPage,
+  myBookmarksQuery,
+  myHistoryQuery,
+  myNotesQuery,
+  serverInfoQuery,
+} from '@/api/hooks';
+import { useApis } from '@/api/provider';
+import type { HistoryEntry, MyBookmark, MyNote, Page } from '@/api/types';
+import { type InfiniteQueriesResult, useInfiniteQueries } from '@/lib/use-infinite-queries';
 
 import type { SourceSnapshot, SourceStatus } from './merge-model';
 
@@ -17,9 +25,10 @@ import type { SourceSnapshot, SourceStatus } from './merge-model';
  * notes, each one infinite query per server (`useInfiniteQueries`), through each server's
  * own connection and gated on its own capability (bookmarks and notes need `annotations`;
  * no query function at all until it is known to be on). A server's query never waits on
- * another's, and a removed server's queries go with it. The queries share the cache of
- * `useAllHistory`, `useMyBookmarks` and `useMyNotes` (`qk.myHistory`/`myBookmarks`/
- * `myNotes`, the same page size), so a mutation's refresh of those reaches the Journal.
+ * another's, and a removed server's queries go with it. The options are `hooks.ts`'s
+ * (`myHistoryQuery`, `myBookmarksQuery`, `myNotesQuery`), so a mutation's refresh of
+ * those keys reaches the Journal, and a list nothing reads any more keeps only its first
+ * page (`keepFirstPage`).
  */
 
 /** One server's list, with the actions to page it. */
@@ -36,26 +45,6 @@ export type JournalSources = {
   bookmarks: Source<MyBookmark>[];
   notes: Source<MyNote>[];
 };
-
-/** Rows per page: the across-books hooks' (`hooks.ts`), so the cached pages agree. */
-const PAGE_SIZE = 100;
-
-type Lister<T> = (page: PageQuery, signal: AbortSignal) => Promise<Page<T>>;
-type Options<T> = InfiniteQueriesOptions<Page<T>, string | undefined>;
-
-/** An across-books list as infinite query options, as `hooks.ts` builds them; a null
- * `load` gives no query function (`skipToken`). */
-function pagedList<T>(queryKey: QueryKey, load: Lister<T> | null, enabled = true): Options<T> {
-  return {
-    queryKey,
-    queryFn: load
-      ? ({ pageParam, signal }) => load({ limit: PAGE_SIZE, cursor: pageParam }, signal)
-      : skipToken,
-    initialPageParam: undefined,
-    getNextPageParam: (last) => last.next_cursor || undefined,
-    enabled,
-  };
-}
 
 /** Each loaded page's rows as one list, the same array while the pages are. */
 const flattened = new WeakMap<InfiniteData<unknown>, unknown[]>();
@@ -126,39 +115,35 @@ export function useJournalSources({ notes: wantNotes = true } = {}): JournalSour
       })),
   });
 
+  const qc = useQueryClient();
+  const release = (key: QueryKey) => keepFirstPage(qc, key);
   const historyQueries = useInfiniteQueries(
     useMemo(
-      () =>
-        apis.map(({ connection, client }) =>
-          pagedList<HistoryEntry>(qk.myHistory(connection.id), (p, s) => client.allHistory(p, s)),
-        ),
+      () => apis.map(({ connection, client }) => myHistoryQuery(connection.id, client)),
       [apis],
     ),
+    release,
   );
   const bookmarkQueries = useInfiniteQueries(
     useMemo(
       () =>
         apis.map(({ connection, client }, i) =>
-          pagedList<MyBookmark>(
-            qk.myBookmarks(connection.id),
-            infos[i]?.supported === true ? (p, s) => client.myBookmarks(p, s) : null,
-          ),
+          myBookmarksQuery(connection.id, client, infos[i]?.supported === true),
         ),
       [apis, infos],
     ),
+    release,
   );
   const noteQueries = useInfiniteQueries(
     useMemo(
       () =>
-        apis.map(({ connection, client }, i) =>
-          pagedList<MyNote>(
-            qk.myNotes(connection.id),
-            infos[i]?.supported === true ? (p, s) => client.myNotes(p, s) : null,
-            wantNotes,
-          ),
-        ),
+        apis.map(({ connection, client }, i) => ({
+          ...myNotesQuery(connection.id, client, infos[i]?.supported === true),
+          enabled: wantNotes,
+        })),
       [apis, infos, wantNotes],
     ),
+    release,
   );
 
   // Per list, so a page of notes never rebuilds the Diary's sources.
