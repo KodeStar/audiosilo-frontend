@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { useScopedCid } from '@/api/provider';
 import { AccountSection } from '@/components/account/account-section';
@@ -46,7 +46,9 @@ function AccountContent() {
       contentContainerStyle={{ paddingBottom }}
       keyboardShouldPersistTaps="handled"
     >
-      <BreadCrumbs crumbs={crumbs} />
+      <View className="w-full max-w-[880px] self-center">
+        <BreadCrumbs crumbs={crumbs} />
+      </View>
       <AccountSection connectionId={cid || undefined} />
     </ScrollView>
   );

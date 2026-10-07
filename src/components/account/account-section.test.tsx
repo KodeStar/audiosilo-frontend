@@ -53,6 +53,7 @@ jest.mock('@/downloads/store', () => ({
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 
 import { AccountSection } from './account-section';
+import { IdentityCard } from './identity-card';
 /* eslint-enable import/first */
 
 const user = (over: Partial<User> = {}): User => ({
@@ -195,5 +196,15 @@ describe('AccountSection', () => {
     await fireEvent.press(setButtons[setButtons.length - 1]);
     expect(await screen.findByLabelText('New password')).toBeTruthy();
     expect(mockSession.removeConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('IdentityCard', () => {
+  it('gives the device count its own sentence-case line on a narrow card', async () => {
+    await mountWithPortal(
+      <IdentityCard user={user()} serverName="Hearthside" deviceCount={1} stacked />,
+    );
+    expect(screen.getByText('@chris · Administrator on Hearthside')).toBeTruthy();
+    expect(screen.getByText('Signed in on 1 device')).toBeTruthy();
   });
 });

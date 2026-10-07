@@ -25,6 +25,10 @@ import { useApiKeysManager } from './use-api-keys-manager';
 import { usePasswordEditor } from './use-password-editor';
 import { useSignOut } from './use-sign-out';
 
+/** Below this measured width the identity card puts the device count on its own line
+ * (a wrapped "· signed in on 4 devices" would start a line with the separator). */
+const IDENTITY_ONE_LINE_MIN = 560;
+
 /** The narrowest measured column that takes the password and pairing cards side by side
  * (two ~330 cards). Measured, not the window class: the Up next drawer can take 300-480
  * of a desktop. */
@@ -68,15 +72,16 @@ export function AccountSection({ connectionId }: { connectionId?: string }) {
 
   const switcher =
     !connectionId && connections.length > 1 ? (
-      <View className="gap-1.5">
+      <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1.5">
         <SegmentedControl
           scrollable
           accessibilityLabel={t('account.switcher')}
           options={connections.map((c) => ({ value: c.id, label: c.name }))}
           value={cid}
           onChange={setPicked}
+          className="max-w-full self-start"
         />
-        <Text variant="caption" numberOfLines={1}>
+        <Text variant="caption" numberOfLines={1} className="shrink">
           {connection.serverUrl.replace(/^https?:\/\//, '')}
         </Text>
       </View>
@@ -101,6 +106,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const phone = useLayout() === 'phone';
   const [width, setWidth] = useState(0);
   const beside = !phone && (width === 0 || width >= CARDS_BESIDE_MIN);
+  const identityStacked = width === 0 ? phone : width < IDENTITY_ONE_LINE_MIN;
 
   // Signed-in sessions for the identity line (the same query the devices list reads).
   const devices = useMyDevices(cid);
@@ -124,7 +130,12 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
     >
       {switcher}
 
-      <IdentityCard user={user} serverName={serverName} deviceCount={deviceCount} />
+      <IdentityCard
+        user={user}
+        serverName={serverName}
+        deviceCount={deviceCount}
+        stacked={identityStacked}
+      />
 
       <View className={beside ? 'flex-row items-stretch gap-4' : 'gap-4'}>
         {/* Demo accounts can't set a password (the server refuses it). */}

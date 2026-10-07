@@ -158,7 +158,9 @@
       "line": "@{{user}} · {{role}} em {{server}}",
       "devices_one": "com sessão iniciada em {{count}} dispositivo",
       "devices_other": "com sessão iniciada em {{count}} dispositivos",
-      "demo": "Demonstração"
+      "demo": "Demonstração",
+      "devicesLine_one": "Com sessão iniciada em {{count}} dispositivo",
+      "devicesLine_other": "Com sessão iniciada em {{count}} dispositivos"
     },
     "password": {
       "bodySet": "Use-a para iniciar sessão num novo dispositivo ou num navegador.",

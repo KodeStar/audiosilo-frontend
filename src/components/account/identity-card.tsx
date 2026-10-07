@@ -17,22 +17,30 @@ export function IdentityCard({
   user,
   serverName,
   deviceCount,
+  stacked,
 }: {
   user: User | null;
   serverName: string;
   /** Signed-in sessions, from `my_devices`; undefined when the server doesn't say. */
   deviceCount: number | undefined;
+  /** The device count on its own line (a narrow card). */
+  stacked: boolean;
 }) {
   const { t } = useTranslation();
   const name = user?.username ?? t('settings.account.signedIn');
   const role =
     user?.role === 'admin' ? t('settings.account.administrator') : t('settings.account.user');
-  const line = [
-    user ? t('account.identity.line', { user: user.username, role, server: serverName }) : null,
-    deviceCount !== undefined ? t('account.identity.devices', { count: deviceCount }) : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const who = user
+    ? t('account.identity.line', { user: user.username, role, server: serverName })
+    : null;
+  // One line where it fits; on a narrow card the count gets its own, in sentence case
+  // (a wrapped "· signed in on 4 devices" would start a line with the separator).
+  const lines =
+    deviceCount === undefined
+      ? [who]
+      : stacked || !who
+        ? [who, t('account.identity.devicesLine', { count: deviceCount })]
+        : [`${who} · ${t('account.identity.devices', { count: deviceCount })}`];
   return (
     <Card className="flex-row flex-wrap items-center gap-x-4 gap-y-3">
       <Avatar name={name} size={64} />
@@ -40,7 +48,13 @@ export function IdentityCard({
         <Text variant="display" numberOfLines={1} className="text-2xl leading-7">
           {name}
         </Text>
-        {line ? <Text variant="muted">{line}</Text> : null}
+        {lines.map((line) =>
+          line ? (
+            <Text key={line} variant="muted">
+              {line}
+            </Text>
+          ) : null,
+        )}
       </View>
       {user ? (
         <View className="flex-row gap-2">

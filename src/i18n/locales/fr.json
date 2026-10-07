@@ -158,7 +158,9 @@
       "line": "@{{user}} · {{role}} sur {{server}}",
       "devices_one": "connecté sur {{count}} appareil",
       "devices_other": "connecté sur {{count}} appareils",
-      "demo": "Démo"
+      "demo": "Démo",
+      "devicesLine_one": "Connecté sur {{count}} appareil",
+      "devicesLine_other": "Connecté sur {{count}} appareils"
     },
     "password": {
       "bodySet": "Utilisez-le pour vous connecter sur un nouvel appareil ou dans un navigateur.",

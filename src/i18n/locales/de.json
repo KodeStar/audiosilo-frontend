@@ -158,7 +158,9 @@
       "line": "@{{user}} · {{role}} auf {{server}}",
       "devices_one": "auf {{count}} Gerät angemeldet",
       "devices_other": "auf {{count}} Geräten angemeldet",
-      "demo": "Demo"
+      "demo": "Demo",
+      "devicesLine_one": "Auf {{count}} Gerät angemeldet",
+      "devicesLine_other": "Auf {{count}} Geräten angemeldet"
     },
     "password": {
       "bodySet": "Damit meldest du dich auf einem neuen Gerät oder im Browser an.",
