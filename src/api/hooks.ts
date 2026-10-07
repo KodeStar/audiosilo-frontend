@@ -1,6 +1,7 @@
 import {
   type DefaultError,
   type FetchQueryOptions,
+  hashKey,
   type InfiniteData,
   MutationObserver,
   type QueryClient,
@@ -15,6 +16,7 @@ import {
 } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
 
+import { byPosition } from '@/lib/by-position';
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
@@ -241,6 +243,10 @@ export function itemQuery(cid: string, client: MaybeClient, libraryId: number, p
   });
 }
 
+/** How long a book's chapters stay fresh: they change only when a rescan re-reads the
+ * book. The play and download paths ask for a fresher answer of their own (30 s). */
+const CHAPTERS_STALE_MS = 30 * 60_000;
+
 /** A book's chapters and files. */
 export function chaptersQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
   return queryOptions({
@@ -249,6 +255,43 @@ export function chaptersQuery(cid: string, client: MaybeClient, libraryId: numbe
       client && path.length > 0
         ? ({ signal }) => client.chapters(libraryId, path, signal)
         : skipToken,
+    staleTime: CHAPTERS_STALE_MS,
+  });
+}
+
+/** How long community metadata stays fresh (the server caches it too). */
+export const META_STALE_MS = 60 * 60_000;
+
+/** A book's community metadata envelope (capability `metadata`; `opts`, capability
+ * `meta_bundle`, pick the request variant, each its own entry). Long `staleTime`, except
+ * a `hideSpoilers` envelope, which is cut at the saved progress when it is fetched; no
+ * retry (a 502 from a down meta service should render nothing, not spin). */
+export function bookMetaQuery(
+  cid: string,
+  client: MaybeClient,
+  libraryId: number,
+  path: string,
+  opts?: BookMetaOptions,
+) {
+  return queryOptions({
+    queryKey: qk.bookMeta(cid, libraryId, path, opts),
+    queryFn:
+      client && path.length > 0
+        ? ({ signal }) => client.bookMeta(libraryId, path, signal, opts)
+        : skipToken,
+    ...(opts?.hideSpoilers ? {} : { staleTime: META_STALE_MS }),
+    retry: false,
+  });
+}
+
+/** One community-metadata work by its meta-site id. Same policy as `bookMetaQuery`. */
+export function metaWorkQuery(cid: string, client: MaybeClient, workId: string) {
+  return queryOptions({
+    queryKey: qk.metaWork(cid, workId),
+    queryFn:
+      client && workId.length > 0 ? ({ signal }) => client.metaWork(workId, signal) : skipToken,
+    staleTime: META_STALE_MS,
+    retry: false,
   });
 }
 
@@ -560,14 +603,9 @@ export function useBookMeta(
   enabled: boolean,
   opts?: BookMetaOptions,
 ) {
-  const api = useOptionalApi();
-  const cid = useCid();
   return useQuery({
-    queryKey: qk.bookMeta(cid, libraryId, path, opts),
-    queryFn: ({ signal }) => api!.bookMeta(libraryId, path, signal, opts),
-    enabled: enabled && !!api && path.length > 0,
-    ...(opts?.hideSpoilers ? {} : { staleTime: 60 * 60_000 }),
-    retry: false,
+    ...bookMetaQuery(useCid(), useOptionalApi(), libraryId, path, opts),
+    enabled,
   });
 }
 
@@ -577,15 +615,7 @@ export function useBookMeta(
  * and no retry - and an older server (which lacks the route entirely) 404s, which
  * the UI renders as a quiet "couldn't load", never an error banner. */
 export function useMetaWork(workId: string, enabled: boolean) {
-  const api = useOptionalApi();
-  const cid = useCid();
-  return useQuery({
-    queryKey: qk.metaWork(cid, workId),
-    queryFn: ({ signal }) => api!.metaWork(workId, signal),
-    enabled: enabled && !!api && workId.length > 0,
-    staleTime: 60 * 60_000,
-    retry: false,
-  });
+  return useQuery({ ...metaWorkQuery(useCid(), useOptionalApi(), workId), enabled });
 }
 
 // --- Browse lists & next book ----------------------------------------------
@@ -951,9 +981,10 @@ export function useUpdateNote(connectionId?: string) {
     (api, { id, ...patch }: NotePatch & { id: number }) => api.updateNote(id, patch),
     async ({ qc, cid }, note) => {
       refreshPages<MyNote>(qc, qk.myNotes(cid), (data) => replaceInPages(data, note));
-      await storeAnswer<Note[]>(qc, qk.notes(cid, note.library_id, note.path), (list) =>
-        replaceRow(list, note)?.sort((a, b) => a.position - b.position || a.id - b.id),
-      );
+      await storeAnswer<Note[]>(qc, qk.notes(cid, note.library_id, note.path), (list) => {
+        const next = replaceRow(list, note);
+        return next && byPosition(next);
+      });
     },
   );
 }
@@ -973,16 +1004,38 @@ export function useHistory(libraryId: number, path: string, connectionId?: strin
 /** Rows per page of the across-books lists (the server's default; it takes 1-500). */
 const PAGE_SIZE = 100;
 
-/** Options of the across-books hooks. */
-export type PagedListOptions = {
-  /** False: read the cache, fetch nothing (React Query's own `enabled`). */
-  enabled?: boolean;
-};
-
 /** Every row of an across-books infinite query's pages so far, in order (`[]` before
  * the first page). */
 export function flattenPages<T>(data: InfiniteData<Page<T>> | undefined): T[] {
   return data ? data.pages.flatMap((p) => p.items) : [];
+}
+
+/** How long an across-books list stays fresh: this device's writes refresh it at once
+ * (`addBookmark`, the delete and edit hooks, a recorded span), so a revisit reads the
+ * cache instead of asking again. */
+const PAGED_STALE_MS = 5 * 60_000;
+
+/**
+ * When the last reader of an across-books list goes, keep only its first page: a list
+ * read 20 pages deep would otherwise refetch all 20, one after another, the next time it
+ * is read again. The cache keeps its date (and its invalidation, if a write left it
+ * waiting for a read), so a revisit refreshes it exactly when it would have.
+ */
+function keepFirstPage(qc: QueryClient, queryKey: readonly unknown[]) {
+  const query = qc.getQueryCache().find({ queryKey, exact: true });
+  if (!query || query.getObserversCount() > 0) return;
+  const { data, dataUpdatedAt, isInvalidated } = query.state as {
+    data?: InfiniteData<unknown>;
+    dataUpdatedAt: number;
+    isInvalidated: boolean;
+  };
+  if (!data || data.pages.length <= 1) return;
+  qc.setQueryData<InfiniteData<unknown>>(
+    queryKey,
+    { pages: data.pages.slice(0, 1), pageParams: data.pageParams.slice(0, 1) },
+    { updatedAt: dataUpdatedAt },
+  );
+  if (isInvalidated) void qc.invalidateQueries({ queryKey, exact: true, refetchType: 'none' });
 }
 
 /** An across-books list as an infinite query. A null `load` gives no query function
@@ -990,56 +1043,60 @@ export function flattenPages<T>(data: InfiniteData<Page<T>> | undefined): T[] {
 function usePagedList<T>(
   queryKey: readonly unknown[],
   load: ((page: PageQuery, signal: AbortSignal) => Promise<Page<T>>) | null,
-  { enabled }: PagedListOptions,
 ) {
-  return useInfiniteQuery({
+  const query = useInfiniteQuery({
     queryKey,
     queryFn: load
       ? ({ pageParam, signal }) => load({ limit: PAGE_SIZE, cursor: pageParam }, signal)
       : skipToken,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last: Page<T>) => last.next_cursor || undefined,
-    ...(enabled !== undefined ? { enabled } : {}),
+    staleTime: PAGED_STALE_MS,
   });
+  // After the query hook, so its observer has unsubscribed when this cleanup runs (React
+  // cleans a component's effects up in order).
+  const qc = useQueryClient();
+  const hash = hashKey(queryKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the key, by its hash
+  useEffect(() => () => keepFirstPage(qc, queryKey), [qc, hash]);
+  return query;
 }
 
-/** The caller's bookmarks across books, newest made first, each with its `book` when
- * indexed (capability `annotations`). */
-export function useMyBookmarks(connectionId?: string, opts: PagedListOptions = {}) {
+/** The caller's bookmarks or notes across books, newest made first, each with its `book`
+ * when indexed (capability `annotations`). */
+function useMyAnnotations<K extends 'bookmarks' | 'notes'>(kind: K, connectionId?: string) {
+  type Row = K extends 'bookmarks' ? MyBookmark : MyNote;
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   const supported = useCapability('annotations', connectionId) === true;
-  return usePagedList(
-    qk.myBookmarks(cid),
-    supported && api ? (page, signal) => api.myBookmarks(page, signal) : null,
-    opts,
+  return usePagedList<Row>(
+    kind === 'bookmarks' ? qk.myBookmarks(cid) : qk.myNotes(cid),
+    supported && api
+      ? (page, signal) =>
+          (kind === 'bookmarks'
+            ? api.myBookmarks(page, signal)
+            : api.myNotes(page, signal)) as Promise<Page<Row>>
+      : null,
   );
 }
 
-/** The caller's notes across books, newest made first, each with its `book` when
- * indexed (capability `annotations`). */
-export function useMyNotes(connectionId?: string, opts: PagedListOptions = {}) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  const supported = useCapability('annotations', connectionId) === true;
-  return usePagedList(
-    qk.myNotes(cid),
-    supported && api ? (page, signal) => api.myNotes(page, signal) : null,
-    opts,
-  );
-}
+/** The caller's bookmarks across books (`useMyAnnotations`). */
+export const useMyBookmarks = (connectionId?: string) =>
+  useMyAnnotations('bookmarks', connectionId);
+
+/** The caller's notes across books (`useMyAnnotations`). */
+export const useMyNotes = (connectionId?: string) => useMyAnnotations('notes', connectionId);
 
 /** The caller's listening spans across books, newest ended first. Not gated: every
  * server has `/me/history`. One with `annotations` pages on and sends each row's `book`;
  * an older one answers its newest 100 as the only page, without `book`. Kept under
  * `qk.historyAll`, so a recorded span refreshes it. */
-export function useAllHistory(connectionId?: string, opts: PagedListOptions = {}) {
+export function useAllHistory(connectionId?: string) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   return usePagedList(
     qk.myHistory(cid),
     api ? (page, signal) => api.allHistory(page, signal) : null,
-    opts,
   );
 }
 

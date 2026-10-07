@@ -1,4 +1,4 @@
-import { byPosition } from './order';
+import { byPosition } from './by-position';
 
 it('orders a book’s rows by place, ties by id, without touching the input', () => {
   const rows = [

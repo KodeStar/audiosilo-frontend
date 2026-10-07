@@ -1,4 +1,4 @@
-import { focusManager, onlineManager, QueryObserver } from '@tanstack/react-query';
+import { focusManager, onlineManager, QueryObserver , skipToken } from '@tanstack/react-query';
 
 import { ApiError, TimeoutError, type ApiClient } from '@/api/client';
 import type { Capabilities, Progress, ServerInfo } from '@/api/types';
@@ -43,12 +43,16 @@ jest.mock('@/api/connection-clients', () => ({
 import {
   addBookmark,
   anyCapability,
+  bookMetaQuery,
+  chaptersQuery,
   fetchBookProgress,
   fetchCapabilities,
   flattenPages,
   historyQuery,
   isQueueKey,
   isSearchKey,
+  META_STALE_MS,
+  metaWorkQuery,
   qk,
   serverInfoQuery,
 } from '@/api/hooks';
@@ -287,6 +291,36 @@ describe('historyQuery', () => {
       ...qk.history('srv', 2, 'A/Book'),
       20,
     ]);
+  });
+});
+
+describe('read specs', () => {
+  const client = {} as ApiClient;
+
+  it('keeps a book’s chapters fresh for a long while: only a rescan changes them', () => {
+    expect(chaptersQuery('c', client, 2, 'A/Book').staleTime).toBeGreaterThanOrEqual(10 * 60_000);
+    expect(chaptersQuery('c', null, 2, 'A/Book').queryFn).toBe(skipToken);
+  });
+
+  it('reads community metadata on its key, long-lived but for the spoiler-cut variant', () => {
+    const plain = bookMetaQuery('c', client, 2, 'A/Book');
+    expect(plain.queryKey).toEqual(qk.bookMeta('c', 2, 'A/Book'));
+    expect(plain).toMatchObject({ staleTime: META_STALE_MS, retry: false });
+    const hidden = bookMetaQuery('c', client, 2, 'A/Book', { hideSpoilers: true });
+    expect(hidden.queryKey).toEqual(qk.bookMeta('c', 2, 'A/Book', { hideSpoilers: true }));
+    expect(hidden.staleTime).toBeUndefined();
+    expect(bookMetaQuery('c', null, 2, 'A/Book').queryFn).toBe(skipToken);
+    expect(bookMetaQuery('c', client, 2, '').queryFn).toBe(skipToken);
+  });
+
+  it('reads one meta work on its key, never without a client or an id', () => {
+    expect(metaWorkQuery('c', client, 'w1')).toMatchObject({
+      queryKey: qk.metaWork('c', 'w1'),
+      staleTime: META_STALE_MS,
+      retry: false,
+    });
+    expect(metaWorkQuery('c', null, 'w1').queryFn).toBe(skipToken);
+    expect(metaWorkQuery('c', client, '').queryFn).toBe(skipToken);
   });
 });
 

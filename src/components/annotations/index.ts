@@ -24,7 +24,6 @@ export {
 } from './editor-model';
 export { labelText, toggleLabel } from './labels';
 export { NoteMarkdown, NoteRow, type NoteRowProps } from './note-row';
-export { byPosition } from './order';
 export { AddBookmarkAction, AddNoteAction, JournalLink } from './section-actions';
 export {
   restoreBookmark,

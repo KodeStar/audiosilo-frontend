@@ -8,12 +8,12 @@ import {
   AddBookmarkAction,
   type AnnotationTarget,
   BookmarkRow,
-  byPosition,
   JournalLink,
   useChapterNamer,
 } from '@/components/annotations';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
+import { byPosition } from '@/lib/by-position';
 
 /**
  * A book's bookmarks (the book page's Bookmarks tab, the player companion's): "Bookmark

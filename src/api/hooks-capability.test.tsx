@@ -1308,6 +1308,25 @@ describe('Phase 4 across-books lists', () => {
     },
   );
 
+  // A list read deep would refetch every page it holds, one after another, on a revisit.
+  it.each(pagedCases)(
+    '$name keeps only its first page once nothing reads it, and its date',
+    async ({ useHook, method }) => {
+      const { result, unmount, qc } = await mountAnnotations({ annotations: true }, useHook);
+      await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+      await act(async () => {
+        await result.current.m.fetchNextPage();
+      });
+      const key = method === 'myBookmarks' ? qk.myBookmarks('c1') : qk.myNotes('c1');
+      const before = qc.getQueryState(key)!.dataUpdatedAt;
+      await act(async () => unmount());
+      const kept = qc.getQueryData<InfiniteData<unknown>>(key)!;
+      expect(kept.pages).toHaveLength(1);
+      expect(kept.pageParams).toEqual([undefined]);
+      expect(qc.getQueryState(key)!.dataUpdatedAt).toBe(before);
+    },
+  );
+
   it("asks the given connection's server, gated on that server's flag", async () => {
     const { result } = await mount({ c1: {}, c2: { annotations: true } }, () => ({
       c2: [useMyBookmarks('c2'), useMyNotes('c2')],

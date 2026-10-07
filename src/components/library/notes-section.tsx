@@ -7,13 +7,13 @@ import { useCid } from '@/api/provider';
 import {
   AddNoteAction,
   type AnnotationTarget,
-  byPosition,
   JournalLink,
   NoteRow,
   useChapterNamer,
 } from '@/components/annotations';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
+import { byPosition } from '@/lib/by-position';
 
 /**
  * A book's notes (the book page's Notes tab, the player companion's): "Note at 17:26:50"
