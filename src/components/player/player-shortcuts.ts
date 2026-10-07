@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { addBookmark } from '@/api/hooks';
+import { addBookmark, cachedCapability } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
@@ -93,7 +93,9 @@ let adding: Promise<void> | null = null;
 
 /**
  * Add a bookmark at the playing book's current position, on its own server, and say so
- * ("Bookmark added", the clock). Framework-free (the shortcut can fire from any page),
+ * ("Bookmark added", the clock). Adding stays one tap; where the server takes edits
+ * (`annotations`), the toast's action "Add note" opens the bookmark editor on the new
+ * bookmark (note and label). Framework-free (the shortcut can fire from any page),
  * through the PLAYING book's connection. One at a time: a double tap on the companion's
  * button, or B held down, while one is on its way adds nothing more (the caller gets the
  * one in flight).
@@ -113,9 +115,29 @@ async function addNow(t: TFunction): Promise<void> {
   // it, whichever surface made it (a pill, the B key, the companion).
   noteInteraction();
   const position = Math.round(selectBookPosition(player));
+  const { connectionId, libraryId, path } = np;
   try {
-    await addBookmark(np.connectionId, np.libraryId, np.path, position);
-    toast({ title: t('player.bookmarks.added'), description: formatClock(position) });
+    const made = await addBookmark(connectionId, libraryId, path, position);
+    // An edit needs `annotations`; an older server can't add a note to a bookmark it has.
+    const editable = !!made?.id && cachedCapability(connectionId, 'annotations') === true;
+    toast({
+      title: t('player.bookmarks.added'),
+      description: formatClock(position),
+      ...(editable
+        ? {
+            action: {
+              label: t('annotations.bookmark.addNote'),
+              onPress: () =>
+                usePlayerSheets.getState().openEditor({
+                  kind: 'bookmark',
+                  target: { connectionId, libraryId, path },
+                  position: made.position,
+                  bookmark: made,
+                }),
+            },
+          }
+        : {}),
+    });
   } catch (err) {
     console.warn('[shortcuts] bookmark failed', err);
     toast({ title: t('player.bookmarks.addFailed') });

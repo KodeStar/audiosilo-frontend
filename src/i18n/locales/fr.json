@@ -151,6 +151,67 @@
       "downloadsWarning_other": "La déconnexion supprimera aussi {{count}} livres téléchargés depuis ce serveur sur cet appareil."
     }
   },
+  "annotations": {
+    "labels": {
+      "quote": "Citation",
+      "favourite": "Favori",
+      "relisten": "À réécouter",
+      "funny": "Drôle",
+      "question": "Question",
+      "fell_asleep": "Endormi"
+    },
+    "labelGroup": "Étiquette",
+    "labelClearHint": "Touchez à nouveau pour retirer l'étiquette",
+    "quoted": "« {{text}} »",
+    "jumpTo": "Aller à {{time}}",
+    "jumpFailed": "Impossible de lancer le livre à cet endroit",
+    "undo": "Annuler",
+    "seeAll": "Tout voir dans votre journal",
+    "editUnsupported": "La modification nécessite un serveur AudioSilo plus récent.",
+    "drift": {
+      "marker": "Vous vous êtes endormi vers ce moment"
+    },
+    "bookmark": {
+      "title": "Signet",
+      "editTitle": "Modifier le signet",
+      "noteLabel": "Note",
+      "notePlaceholder": "Que s'est-il passé ici ? Une citation, une pensée, un rappel.",
+      "save": "Enregistrer le signet",
+      "addAt": "Signet à {{time}}",
+      "saved": "Signet enregistré",
+      "saveFailed": "Impossible d'enregistrer le signet",
+      "deleted": "Signet supprimé",
+      "deleteFailed": "Impossible de supprimer le signet",
+      "restoreFailed": "Impossible de rétablir le signet",
+      "edit": "Modifier le signet à {{time}}",
+      "delete": "Supprimer le signet à {{time}}",
+      "noNote": "Aucune note",
+      "addNote": "Ajouter une note",
+      "loadFailed": "Impossible de charger vos signets",
+      "emptyHintWeb": "Appuyez sur B pendant l'écoute, ou touchez le signet dans le lecteur.",
+      "emptyHintNative": "Touchez le signet dans le lecteur pendant l'écoute."
+    },
+    "note": {
+      "title": "Note",
+      "editTitle": "Modifier la note",
+      "bodyLabel": "Note",
+      "placeholder": "Le markdown fonctionne : **gras**, *italique*, listes.",
+      "pin": "Épingler la note",
+      "save": "Enregistrer la note",
+      "addAt": "Note à {{time}}",
+      "pinned": "Note épinglée à {{time}}",
+      "saved": "Note enregistrée",
+      "saveFailed": "Impossible d'enregistrer la note",
+      "deleted": "Note supprimée",
+      "deleteFailed": "Impossible de supprimer la note",
+      "restoreFailed": "Impossible de rétablir la note",
+      "edit": "Modifier la note à {{time}}",
+      "delete": "Supprimer la note à {{time}}",
+      "loadFailed": "Impossible de charger vos notes",
+      "empty": "Aucune note pour l'instant.",
+      "emptyHint": "Épinglez une pensée, une théorie ou un rappel à un moment du livre."
+    }
+  },
   "connect": {
     "server": {
       "subtitle": "Connectez-vous à votre serveur de livres audio",
@@ -332,18 +393,13 @@
       "markFinished": "Marquer comme terminé"
     },
     "notes": {
-      "title": "Notes",
-      "placeholder": "Ajouter une note (markdown pris en charge)…",
-      "add": "Ajouter une note",
-      "delete": "Supprimer la note"
+      "title": "Notes"
     },
     "history": {
       "title": "Historique"
     },
     "bookmarks": {
-      "title": "Signets",
-      "add": "Ajouter un signet",
-      "delete": "Supprimer le signet"
+      "title": "Signets"
     },
     "versions": {
       "choose": "Choisir une version",
@@ -802,7 +858,6 @@
     "bookmarks": {
       "label": "Signets",
       "empty": "Aucun signet pour l'instant.",
-      "addAt": "Ajouter un signet à {{time}}",
       "added": "Signet ajouté",
       "addFailed": "Impossible d'ajouter le signet"
     },
