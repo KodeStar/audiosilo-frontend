@@ -3,7 +3,14 @@ import { Platform } from 'react-native';
 
 import type { Book, ChaptersResponse } from '@/api/types';
 
+let mockCanTranscode: boolean | undefined = true;
+jest.mock('@/api/hooks', () => ({
+  useCapability: (flag: string) => (flag === 'transcode' ? mockCanTranscode : undefined),
+}));
+
+/* eslint-disable import/first */
 import { TranscodeNote } from './transcode-note';
+/* eslint-enable import/first */
 
 const book = (p: Partial<Book> = {}) =>
   ({ title: 'B', rel_path: 'A/B.m4b', direct_playable: false, codec: 'ac3', ...p }) as Book;
@@ -12,23 +19,24 @@ describe('TranscodeNote', () => {
   const prevOS = Platform.OS;
   beforeEach(() => {
     Platform.OS = 'web';
+    mockCanTranscode = true;
   });
   afterEach(() => {
     Platform.OS = prevOS;
   });
 
   it('says the codec is converted for this browser on web', async () => {
-    await render(<TranscodeNote book={book()} canTranscode downloaded={false} />);
+    await render(<TranscodeNote book={book()} connectionId="c1" downloaded={false} />);
     expect(screen.getByText('AC-3 audio is converted to MP3 for this browser')).toBeTruthy();
   });
 
   it('prefers the chapters codec and falls back to generic copy without one', async () => {
     const chapters = { codec: 'alac' } as ChaptersResponse;
     await render(
-      <TranscodeNote book={book()} chapterData={chapters} canTranscode downloaded={false} />,
+      <TranscodeNote book={book()} chapterData={chapters} connectionId="c1" downloaded={false} />,
     );
     expect(screen.getByText('ALAC audio is converted to MP3 for this browser')).toBeTruthy();
-    await render(<TranscodeNote book={book({ codec: '' })} canTranscode downloaded={false} />);
+    await render(<TranscodeNote book={book({ codec: '' })} connectionId="c1" downloaded={false} />);
     expect(screen.getByText('This audio is converted to MP3 for this browser')).toBeTruthy();
   });
 
@@ -40,7 +48,8 @@ describe('TranscodeNote', () => {
     ['for a downloaded book', 'web', book(), true, true],
   ] as const)('renders nothing %s', async (_label, os, b, canTranscode, downloaded) => {
     Platform.OS = os;
-    await render(<TranscodeNote book={b} canTranscode={canTranscode} downloaded={downloaded} />);
+    mockCanTranscode = canTranscode;
+    await render(<TranscodeNote book={b} connectionId="c1" downloaded={downloaded} />);
     expect(screen.queryByText(/converted to MP3/)).toBeNull();
   });
 });

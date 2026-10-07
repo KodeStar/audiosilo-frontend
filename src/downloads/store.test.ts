@@ -52,6 +52,11 @@ jest.mock('@/api/provider', () => ({
 }));
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
+  cachedCapability: (cid: string, flag: string) => {
+    const info = mockGetQueryData(['server', cid]) as
+      { capabilities: Record<string, boolean> } | undefined;
+    return info ? !!info.capabilities[flag] : undefined;
+  },
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],

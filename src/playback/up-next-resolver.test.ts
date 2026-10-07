@@ -1,12 +1,7 @@
 import type { Book, Capabilities, FsEntry, NextBook, QueueEntry } from '@/api/types';
+import { contentKey } from '@/lib/content-key';
 
-import {
-  entryHolds,
-  finishedKey,
-  pickQueueHead,
-  resolveUpNext,
-  type UpNextSources,
-} from './up-next-resolver';
+import { entryHolds, pickQueueHead, resolveUpNext, type UpNextSources } from './up-next-resolver';
 
 // --- Fixtures --------------------------------------------------------------
 
@@ -102,13 +97,13 @@ describe('pickQueueHead', () => {
       entry('X/Done'),
       entry('X/Next'),
     ];
-    const head = pickQueueHead(q, FINISHED, new Set([finishedKey(1, 'X/Done')]));
+    const head = pickQueueHead(q, FINISHED, new Set([contentKey('c1', 1, 'X/Done')]));
     expect(head?.path).toBe('X/Next');
   });
 
   it('skips the entry that holds the finished part path', () => {
     const q = [entry('Series/Book 1'), entry('X/Next')];
-    const head = pickQueueHead(q, { libraryId: 1, path: 'Series/Book 1/CD2' }, new Set());
+    const head = pickQueueHead(q, { ...FINISHED, path: 'Series/Book 1/CD2' }, new Set());
     expect(head?.path).toBe('X/Next');
   });
 
@@ -164,7 +159,7 @@ describe('resolveUpNext', () => {
   it('(b) skips a queue head the listener already finished', async () => {
     const s = sources({
       queue: jest.fn(async () => [entry('X/Done')]),
-      finished: jest.fn(async () => new Set([finishedKey(1, 'X/Done')])),
+      finished: jest.fn(async () => new Set([contentKey('c1', 1, 'X/Done')])),
       nextBook: jest.fn(async () => seriesNext),
     });
     expect((await resolveUpNext(s, FINISHED)).next?.source).toBe('series');

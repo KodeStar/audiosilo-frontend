@@ -227,7 +227,7 @@ function BookDetailContent() {
     <TranscodeNote
       book={book}
       chapterData={chapterData}
-      canTranscode={server?.capabilities.transcode}
+      connectionId={cid}
       downloaded={downloaded}
     />
   );

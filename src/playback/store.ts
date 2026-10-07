@@ -23,7 +23,8 @@ import {
   saveProgress,
 } from './progress-sync';
 import { createPlaybackService } from './service';
-import { mayNeedWebTranscode, resolveWebTranscode } from './transcode-capability';
+import { mayNeedWebTranscode } from './transcode';
+import { resolveWebTranscode } from './transcode-capability';
 import {
   AutoplayBlockedError,
   clampVolume,

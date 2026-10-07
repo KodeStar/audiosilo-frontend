@@ -3,21 +3,20 @@ import { create } from 'zustand';
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import {
-  allProgressQuery,
   chaptersQuery,
+  fetchCapabilities,
   isQueueKey,
   itemQuery,
   nextBookQuery,
   queueQuery,
-  serverInfoQuery,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import type { Capabilities, Progress } from '@/api/types';
 import { contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload, onNetworkChange } from '@/lib/network';
 import { bookTitle } from '@/lib/paths';
 import { resolveNextBook } from '@/playback/next-book';
 import { usePlayer } from '@/playback/store';
+import { finishedKeys } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
 
 import { statusSignature } from './downloads-view';
@@ -67,10 +66,6 @@ export const useKeepAhead = create<KeepAheadView>()(() => ({ status: 'off', slot
 export const SETTLE_MS = 4000;
 
 type Current = { connectionId: string; libraryId: number; path: string };
-
-async function capabilities(client: ApiClient, cid: string): Promise<Capabilities> {
-  return (await queryClient.fetchQuery(serverInfoQuery(cid, client))).capabilities;
-}
 
 /** The queue as `AheadBook`s (entries the server didn't index, with no `book`, can't be
  * downloaded and are skipped). */
@@ -142,17 +137,6 @@ async function seriesAhead(
   return out;
 }
 
-async function finishedKeys(client: ApiClient, cid: string): Promise<Set<string>> {
-  const rows = await queryClient.fetchQuery({
-    ...allProgressQuery(cid, client),
-    staleTime: 60_000,
-  });
-  return new Set(
-    rows.filter((p) => p.finished).map((p) => contentKeyOf({ connectionId: cid, ...pathOf(p) })),
-  );
-}
-const pathOf = (p: Progress) => ({ libraryId: p.library_id, path: p.path });
-
 async function networkGate(): Promise<NetworkGate> {
   const mode = useSettings.getState().autoDownloadNext;
   if (mode === 'never') return 'never';
@@ -196,7 +180,7 @@ export async function runKeepAhead(): Promise<void> {
   const client = resolveClient(current.connectionId);
   if (!client) return publish('idle');
   try {
-    const caps = await capabilities(client, current.connectionId);
+    const caps = await fetchCapabilities(current.connectionId, client);
     const [queue, finished] = await Promise.all([
       caps.queue ? queueAhead(client, current.connectionId) : [],
       finishedKeys(client, current.connectionId),

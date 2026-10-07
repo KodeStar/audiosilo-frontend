@@ -34,6 +34,7 @@ import type {
   ProgressEdit,
   Rating,
   RatingValue,
+  ServerInfo,
   StatsRange,
 } from './types';
 
@@ -122,6 +123,20 @@ export function serverInfoQuery(cid: string, client: MaybeClient) {
     staleTime: 5 * 60_000,
     gcTime: Infinity,
   });
+}
+
+/** A connection's server flags through the shared `/server` entry (normally cached, so
+ * no request): for the framework-free readers (the end-of-book flow, keep-ahead, the
+ * transcode decision). Rejects when the server can't be read. */
+export async function fetchCapabilities(cid: string, client: ApiClient): Promise<Capabilities> {
+  return (await queryClient.fetchQuery(serverInfoQuery(cid, client))).capabilities;
+}
+
+/** One flag of a connection's server as the cache holds it, without asking: `undefined`
+ * while its `/server` has not been read (like `useCapability`). */
+export function cachedCapability(cid: string, flag: keyof Capabilities): boolean | undefined {
+  const caps = queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities;
+  return caps ? !!caps[flag] : undefined;
 }
 
 /** How long a `/next` answer stays fresh where it is only a suggestion (Home's Next in
