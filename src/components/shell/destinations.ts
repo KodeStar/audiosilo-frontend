@@ -170,15 +170,18 @@ export function useActiveTab(): TabName | null {
  * Tab presses from OUR chrome (the web tab bar, the tablet/desktop top bar - all outside
  * the tab navigator). Another tab: dispatch JUMP_TO, which restores that tab's stack. A
  * href can't do it: `router.navigate('/(home)')` resolves to `/` and pops Home to its
- * root. The active tab again: navigate to its root, i.e. pop to top.
+ * root. The active tab again: pop its stack to the root, which keeps the root's own params
+ * (Library's mode, the You hub's section). Not a navigate to the root's href: a navigate
+ * is a push in this router, so it stacked a second copy of the root over the pages.
  */
 export function useTabPress() {
   const ref = useNavigationContainerRef();
   const active = useActiveTab();
   const press = useCallback(
     (name: TabName) => {
-      if (active === name) router.navigate(destination(name).root);
-      else ref.dispatch({ type: 'JUMP_TO', payload: { name } });
+      if (active === name) {
+        if (router.canDismiss()) router.dismissAll();
+      } else ref.dispatch({ type: 'JUMP_TO', payload: { name } });
     },
     [active, ref],
   );

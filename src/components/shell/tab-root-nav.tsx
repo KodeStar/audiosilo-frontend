@@ -8,7 +8,7 @@ import type { TabName } from './destinations';
 import { usePublish, useSubNav } from './sub-nav-store';
 
 /**
- * A tab root's sections (Library: Books / Authors / ... / Folders; You, Phase 5): ONE
+ * A tab root's sections (Library: Books / Authors / ... / Folders; You: Stats / Year in listening / Journal): ONE
  * segmented control that sits where the form factor puts it.
  * - Tablet/desktop: published to the sub-nav row beside the title (renders nothing here).
  * - Phone: rendered right here, scrolling horizontally - put it under the large title.

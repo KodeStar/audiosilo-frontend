@@ -6,7 +6,14 @@ import type { StoreApi, UseBoundStore } from 'zustand';
 let mockSegments: string[] = ['(app)', '(home)'];
 let mockPathname = '/';
 const mockDispatch = jest.fn();
-const mockRouter = { navigate: jest.fn(), push: jest.fn(), back: jest.fn(), canGoBack: () => true };
+const mockRouter = {
+  navigate: jest.fn(),
+  push: jest.fn(),
+  back: jest.fn(),
+  canGoBack: () => true,
+  canDismiss: jest.fn(() => true),
+  dismissAll: jest.fn(),
+};
 jest.mock('expo-router', () => ({
   useSegments: () => mockSegments,
   usePathname: () => mockPathname,
@@ -150,8 +157,14 @@ describe('PhoneTabBar', () => {
       type: 'JUMP_TO',
       payload: { name: '(search)' },
     });
+    // Home is the active tab: pressing it pops its stack to the root.
     await fireEvent.press(screen.getByLabelText('Home'));
-    expect(mockRouter.navigate).toHaveBeenCalledWith('/');
+    expect(mockRouter.dismissAll).toHaveBeenCalledTimes(1);
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
+    // Already on the root: nothing to pop.
+    mockRouter.canDismiss.mockReturnValueOnce(false);
+    await fireEvent.press(screen.getByLabelText('Home'));
+    expect(mockRouter.dismissAll).toHaveBeenCalledTimes(1);
   });
 });
 

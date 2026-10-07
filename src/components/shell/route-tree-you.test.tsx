@@ -58,6 +58,17 @@ it("pops the Me tab's pages when opened from another tab too", async () => {
   expect(tabStack('(me)')).toEqual(['you']);
 });
 
+it("pops the hub's stack to the root on a second press of its tab, keeping the section", async () => {
+  // What `useTabPress` does for the active tab (a navigate to the root's href pushed a
+  // second hub over the pages).
+  await mount('/you?section=year');
+  await nav(() => router.push('/account?connection=c'));
+  expect(router.canDismiss()).toBe(true);
+  await nav(() => router.dismissAll());
+  expect(tabStack('(me)')).toEqual(['you']);
+  expect(routeInfo().params).toEqual({ section: 'year' });
+});
+
 it('opens the hub from over the full player in the one shell underneath', async () => {
   await mount('/library');
   await nav(() => router.push(playerHref('c', 1, 'x')));

@@ -20,7 +20,7 @@ import { type Connection, useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** The user's initial, in a round monogram (household avatars come in Phase 5). */
+/** The user's initial, in a round monogram (household avatars come with profiles, Phase 8). */
 function Monogram({ name }: { name: string }) {
   return (
     <View className="h-[30px] w-[30px] items-center justify-center rounded-full bg-secondary">

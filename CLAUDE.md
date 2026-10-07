@@ -784,11 +784,12 @@ src/app/(app)/(home)/index.tsx                  /
 src/app/(app)/(library)/library/index.tsx       /library
 src/app/(app)/(search)/search.tsx               /search
 src/app/(app)/(offline)/downloads.tsx           /downloads
-src/app/(app)/(me)/settings.tsx                 /settings   (the "Me" tab; the Me hub is Phase 5)
+src/app/(app)/(me)/you.tsx                      /you        (the "Me" tab: the You hub, `?section=`)
 src/app/(app)/(home,library,search,offline,me)/_layout.tsx    one Stack per tab (array group)
 src/app/(app)/(home,library,search,offline,me)/{book/[libraryId],library/[libraryId],library/favourites,account,browse}.tsx
 src/app/(app)/(home,library,search,offline,me)/{series,author,narrator,collection}.tsx   Phase 2 detail pages
-src/app/(app)/(home,library,search,offline,me)/journal.tsx    /journal (Phase 4)
+src/app/(app)/(home,library,search,offline,me)/journal.tsx    /journal (Phase 4; older links, the hub has the Journal)
+src/app/(app)/(home,library,search,offline,me)/settings.tsx   /settings (pushed on the current tab by the gear)
 ```
 Groups are invisible in URLs, so every URL is unchanged. The destinations (labels, icons,
 SF Symbols / Material names, tab roots) are one table, `src/components/shell/destinations.ts`.
@@ -815,6 +816,21 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   connect layout, whose `useGlobalSearchParams` misses a warm link's params on first render.
 - Regression net: `src/components/shell/route-tree*.test.tsx` drive expo-router's
   `renderRouter` over the REAL `src/app` file list (`src/testing/route-tree.tsx`).
+- **The You hub is the Me tab's ROOT** (`/you?section=stats|year|journal|settings|account`,
+  `src/components/you/you-hub.tsx`, rules in `you-model.ts`; `section` and the Journal's `tab` are
+  its `rootParams`). Open it only through `openYou(section)` / `openJournal(tab)` (`src/lib/open.ts`,
+  also on `useOpen`), or `pushInShell` with `youHref`/`journalHref`, which routes there: they close a
+  root modal, pop the Me stack to its root (`POP_TO_TOP` on that stack's key) and `navigate`, so the
+  hub never gets a second copy pushed over it (a navigate is a push in this router) and is never
+  looked for in another tab. Inside the hub, sections switch with `setParams` (`youSectionParams`).
+  The phone hub sets its large title per section (`navigation.setOptions`); the wide sub-nav keeps
+  "You". The tab bar says "Me" (`labelKey`), the top bar "You" (`wideLabelKey`).
+- **Settings is a page of the array group** (`/settings?section=`, `settingsHref`), pushed on the
+  current tab by the top bar's gear, the profile menu and the palette through `openSettings(section)`
+  (on the Settings page already it only moves the pane), so back returns where the listener was and a
+  cold link lands in Home. `SettingsContent({ section, onSectionChange, embedded })`
+  (`src/components/settings/`, rules in `settings-model.ts`) is also the phone hub's Settings
+  segment.
 
 **The Library tab root is the browse modes** (`src/components/library/library-screen.tsx`):
 `/library?mode=books|authors|series|narrators|collections|folders` (absent = books; pure rules in
@@ -918,10 +934,11 @@ older bookmark) the sleep timer's note in ANY of the six locales, read from the 
 locale's quote marks (`annotations.quoted`; Fraunces is not bundled). Small row actions and chips
 take `touchTarget` (below).
 
-**The Journal** (`/journal?tab=diary|bookmarks|notes`, the array-group route `journal.tsx` names
-`JournalScreen`, `src/components/journal/`; `parseJournalTab` in `journal-model.ts`). Entry
-points go through `journalHref(tab?)` (`src/lib/paths.ts`) or `useOpen().openJournal`: the Me
-screen's `JournalEntryRow`, the profile menu, the palette's Go to, and each book section's
+**The Journal** (the You hub's Journal section, `/you?section=journal&tab=diary|bookmarks|notes`;
+`JournalScreen` with `embedded` under the phone hub's title; the array-group route `journal.tsx`
+still names it for older `/journal?tab=` links; `src/components/journal/`; `parseJournalTab` in
+`journal-model.ts`). Entry points go through `journalHref(tab?)` (`src/lib/paths.ts`) or
+`openJournal`: the hub's segment, the profile menu, the palette's Go to, and each book section's
 `JournalLink`. It lists EVERY signed-in server's lists, each through its own connection and gated
 on its own flag (`useJournalSources`): one infinite query per server and list through
 `useInfiniteQueries` (`src/lib/use-infinite-queries.ts`, TanStack has nothing for a growing list of
@@ -1020,7 +1037,7 @@ NativeTabs (never per tab stack: NativeTabs keeps visited tabs alive, so a card 
 five times), absolutely positioned on the native bar's measured `bar` edge, so it sits on the bar on
 every tab and over pushed pages and a tab switch never remounts it; web puts its card on its own tab
 bar. Tablet/desktop (web and native):
-`TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch, settings, `ProfileMenu`),
+`TopBar` (64; mark + server line, Home/Library/Downloads/You, omnisearch, the Settings gear, `ProfileMenu`),
 `SubNav` (50; title on a tab root, Back on a pushed page; tab roots leave their title to the
 chrome; a tab root fills the rest with `SubNavSections` (its segmented sections) and `SubNavActions`
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
@@ -1112,11 +1129,12 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   `palette-model.ts`; the Actions list is its `buildActionItems`. Content is only what exists: Actions
   (pause / "Resume <chapter>", sleep in 30 minutes, sleep at end of chapter - only with real
   chapters -, open the full player, Open Up next with the queued count - only where the queue's
-  server has `queue`, through `openUpNext()` -, go to settings, switch light/dark), Books from
+  server has `queue`, through `openUpNext()` -, switch light/dark), Books from
   `useSearchAll` (debounced, `useDebouncedValue`; sources
   from `useSourceLabeller`; empty query: Continue listening from the cached `useAllProgressAll` with
   `refetchOnMount: false`, disabled while a query is typed, `isInProgress` shared with Home), Go to (the
-  top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do). A book opens
+  top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do, then Your
+  listening, Year in listening, the Journal and Settings: `buildGoToItems`). A book opens
   with a plain push, so it lands in the current tab. With a query it also lists Series, Authors,
   Narrators and Characters (three each) from the Search screen's model (below), and counts the
   characters not met yet in a note row that is not an option.
@@ -1152,8 +1170,8 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
   saved-locally line: needs signing in again > offline > signed in as), opening its account screen;
-  Add a server (`/connect?add=1`); the account on the default server; a light/dark switch. Phone
-  keeps these in the Me tab.
+  Add a server (`/connect?add=1`); the Journal; Settings; the account on the default server; a
+  light/dark switch. Phone keeps these in the Me tab's You hub.
 - **Toasts** clear the bottom chrome: each piece publishes its measured TOP edge (distance from the
   window's bottom) into `useShellMetrics` with `useChromeEdge` - `bar` (the web tab bar by layout; the
   native bar from the tab stacks' layout: iOS's bottom inset there, Android's gap between the page's
@@ -1175,7 +1193,7 @@ src/app/            Expo Router routes ((app) tab groups, connect/, player + fin
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
-src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
+src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, you/ (the You hub), settings/ (Settings panes), library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider
