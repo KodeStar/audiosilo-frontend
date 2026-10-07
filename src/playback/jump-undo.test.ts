@@ -431,6 +431,20 @@ describe('the heartbeat runs only away from the foreground', () => {
     stop();
   });
 
+  it('a suspension excuses only what the engine reports on return, not a later seek', () => {
+    const { report, jump, stop, go } = withAppState('active');
+    report('paused', 1003);
+    go('background');
+    // Paused and locked for an hour (JS suspended), then back in the app.
+    jest.setSystemTime(Date.now() + SUSPENSION_GAP_MS + 3600_000);
+    go('active');
+    // Nothing to report (still paused). A minute later, a drag 25 minutes ahead by mistake.
+    jest.setSystemTime(Date.now() + 60_000);
+    report('paused', 1003 + 1500);
+    expect(jump()?.from).toBe(1003);
+    stop();
+  });
+
   it('keeps seeing a lock-screen seek in the background while JS runs', () => {
     const { report, jump, stop, go } = withAppState('active');
     report('paused', 1003);
