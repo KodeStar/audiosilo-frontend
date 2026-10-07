@@ -44,8 +44,6 @@ export function BookEndedListener() {
     // `ended` and the mini-player would remain docked showing the just-finished book.
     const info = usePlayer.getState().finishBook();
     if (!info) return;
-    // A finished book is no longer "up next".
-    void dropFromQueue([{ library_id: info.libraryId, path: info.path }]);
     handleBookEnded(info, pathname, dropFromQueue);
   }, [isEnded, nowPlaying, pathname, dropFromQueue]);
 
@@ -58,9 +56,17 @@ function handleBookEnded(
   pathname: string,
   dropFromQueue: ReturnType<typeof useQueueDrop>,
 ): void {
+  // A finished book is no longer "up next". The credits opened by the end (`auto=1`)
+  // take it off the queue themselves (so does "Mark as finished", which opens them the
+  // same way); the two paths that don't open them do it here.
+  const finished = { library_id: info.libraryId, path: info.path };
+
   // Already showing the end-credits screen: it drives its own countdown + Play now from
   // here, so don't navigate again (that would stack a duplicate /finished).
-  if (pathname === '/finished') return;
+  if (pathname === '/finished') {
+    void dropFromQueue([finished]);
+    return;
+  }
 
   // Locked / backgrounded with auto-play on: iOS may suspend JS soon after audio stops,
   // so don't gamble on a visible countdown - resolve the next book (the same answer the
@@ -79,7 +85,7 @@ function handleBookEnded(
         if (pathname === '/player') router.replace(href);
         else router.push(href);
         // It is the book you're on now, no longer up next.
-        if (next.queueEntry) void dropFromQueue([next.queueEntry]);
+        void dropFromQueue(next.queueEntry ? [finished, next.queueEntry] : [finished]);
       } else goToFinished(info, pathname);
     })();
     return;

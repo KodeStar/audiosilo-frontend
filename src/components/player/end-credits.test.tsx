@@ -62,6 +62,8 @@ jest.mock('@/api/provider', () => {
 });
 
 let mockCaps: Record<string, boolean | undefined> = {};
+let mockEnded = true;
+let mockSavedFinished = false;
 let mockStats: UserStats | undefined;
 let mockRating: { rating: number; note: string } | null = null;
 const mockSetRating = jest.fn();
@@ -86,7 +88,7 @@ jest.mock('@/api/hooks', () => {
       },
     }),
     useBookMeta: () => ({ data: undefined }),
-    useBookProgress: () => ({ data: { playback_speed: 1.25 } }),
+    useBookProgress: () => ({ data: { playback_speed: 1.25, finished: mockSavedFinished } }),
     useMyStats: () => ({ data: mockStats, isLoading: false }),
     useAllProgressAll: () => ({ progress: [] }),
     useRating: () => ({ data: mockRating }),
@@ -171,7 +173,7 @@ function stats(finished: { path: string; title: string }[], total: number): User
 async function mount() {
   const view = await mountWithPortal(
     <QueryClientProvider client={queryClient as QueryClient}>
-      <EndCredits connectionId="c1" libraryId={1} path={PATH} />
+      <EndCredits connectionId="c1" libraryId={1} path={PATH} ended={mockEnded} />
     </QueryClientProvider>,
   );
   // Let the next book and the history settle.
@@ -186,6 +188,8 @@ beforeEach(() => {
   ] satisfies QueueEntry[]);
   mockCaps = { queue: true, next_book: true, ratings: true, user_stats: true };
   mockStats = undefined;
+  mockEnded = true;
+  mockSavedFinished = false;
   mockRating = null;
   mockEntry = undefined;
   mockLayout = 'desktop';
@@ -278,6 +282,24 @@ describe('EndCredits', () => {
     expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
   });
 
+  it('takes the book off Up next when opened by its end', async () => {
+    queryClient.setQueryData(['queue', 'c1'], [
+      { library_id: 1, path: 'Weir/Project Hail Mary', added_at: '' },
+      { library_id: 1, path: PATH, added_at: '' },
+    ] satisfies QueueEntry[]);
+    await mount();
+    expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: PATH }]]);
+  });
+
+  it('leaves the queue alone when opened for a book that has not ended', async () => {
+    mockEnded = false;
+    queryClient.setQueryData(['queue', 'c1'], [
+      { library_id: 1, path: PATH, added_at: '' },
+    ] satisfies QueueEntry[]);
+    await mount();
+    expect(mockRemove).not.toHaveBeenCalled();
+  });
+
   it('names the series place of a series next and where it plays from', async () => {
     mockResolve.mockResolvedValue(seriesNext);
     mockEntry = { status: 'downloading', progress: 0.52 };
@@ -351,6 +373,27 @@ describe('EndCredits', () => {
     await mount();
     expect(screen.getByText('Book 3 this year · you finished')).toBeTruthy();
     expect(screen.getByLabelText('3 books finished this year')).toBeTruthy();
+  });
+
+  it('numbers only a finished book: reopened later, the saved progress decides', async () => {
+    mockStats = stats([{ path: 'A/One', title: 'One' }], 1);
+    mockEnded = false;
+    await mount();
+    expect(screen.queryByText(/this year · you finished/)).toBeNull();
+  });
+
+  it('numbers a book reopened later whose saved progress is finished', async () => {
+    mockStats = stats(
+      [
+        { path: PATH, title: 'The Way of Kings' },
+        { path: 'A/One', title: 'One' },
+      ],
+      2,
+    );
+    mockEnded = false;
+    mockSavedFinished = true;
+    await mount();
+    expect(screen.getByText('Book 2 this year · you finished')).toBeTruthy();
   });
 
   it('shows no year number without the stats capability', async () => {

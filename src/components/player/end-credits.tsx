@@ -70,15 +70,18 @@ export function EndCredits({
   connectionId,
   libraryId,
   path,
+  ended = false,
 }: {
   connectionId: string;
   libraryId: number;
   path: string;
+  /** Opened by the book's natural end (`auto=1`), so it is finished. */
+  ended?: boolean;
 }) {
   const cid = useCid(connectionId);
   return (
     <ConnectionScope connectionId={cid}>
-      <EndCreditsBody cid={cid} libraryId={libraryId} path={path} />
+      <EndCreditsBody cid={cid} libraryId={libraryId} path={path} ended={ended} />
     </ConnectionScope>
   );
 }
@@ -87,10 +90,12 @@ function EndCreditsBody({
   cid,
   libraryId,
   path,
+  ended,
 }: {
   cid: string;
   libraryId: number;
   path: string;
+  ended: boolean;
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -190,6 +195,14 @@ function EndCreditsBody({
     if (decision.fireNext) playNext();
   }, [decision.fireNext, playNext]);
 
+  // Opened by the book's end (or "Mark as finished"): it is no longer up next. Once.
+  const dropped = useRef(false);
+  useEffect(() => {
+    if (!ended || dropped.current) return;
+    dropped.current = true;
+    void dropFromQueue([{ library_id: libraryId, path }]);
+  }, [ended, dropFromQueue, libraryId, path]);
+
   const onClose = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace(libraryHref(cid, libraryId, parentPath(path)));
@@ -210,6 +223,9 @@ function EndCreditsBody({
   const listened = history.data ? listeningSummary(history.data) : null;
   const { data: saved } = useBookProgress(libraryId, path, true, cid);
   const speed = isThisLoaded ? rate : saved?.playback_speed || rate;
+  // Finished: it ended here, or its saved progress says so (the credits can also be
+  // opened for a book still playing, or reopened later without it loaded).
+  const finished = !stillPlaying && (ended || !!saved?.finished);
 
   const statsCap = useCapability('user_stats', cid);
   const stats = useMyStats('year', cid);
@@ -219,7 +235,7 @@ function EndCreditsBody({
     const { others, bookNumber } = yearShelf(
       stats.data,
       { libraryId, path },
-      !stillPlaying,
+      finished,
       phone ? SHELF_MAX.phone : SHELF_MAX.wide,
     );
     const seconds = new Map(
@@ -234,7 +250,7 @@ function EndCreditsBody({
       seconds: seconds.get(`${b.library_id}:${b.path}`),
     }));
     return { books, bookNumber, count: bookNumber ?? stats.data.totals.finished };
-  }, [stats.data, libraryId, path, stillPlaying, phone, allProgress, cid]);
+  }, [stats.data, libraryId, path, finished, phone, allProgress, cid]);
 
   const ratingsCap = useCapability('ratings', cid) === true;
   const rating = useRating(libraryId, path, cid);
@@ -368,7 +384,7 @@ function EndCreditsBody({
         </View>
 
         {tiles.length > 0 ? (
-          <View className="w-full max-w-[720px] flex-row gap-3">
+          <View className="w-full max-w-[720px] flex-row justify-center gap-3">
             {tiles.map(([label, value]) => (
               <StatTile key={label} label={label} value={value} phone={phone} />
             ))}

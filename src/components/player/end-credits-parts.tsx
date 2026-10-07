@@ -163,7 +163,7 @@ export function StatTile({
   phone: boolean;
 }) {
   return (
-    <Card className={cn('min-w-0 flex-1 gap-1', phone ? 'p-3' : 'p-4')}>
+    <Card className={cn('min-w-0 max-w-[232px] flex-1 gap-1', phone ? 'p-3' : 'p-4')}>
       <Text variant="caption" numberOfLines={1}>
         {label}
       </Text>

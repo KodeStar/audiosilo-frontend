@@ -124,17 +124,17 @@ beforeEach(() => {
 });
 
 describe('BookEndedListener', () => {
-  it('finishes the book, takes it off Up next and opens the end credits', async () => {
+  it('finishes the book and opens the end credits, which take it off Up next', async () => {
     await playThenEnd();
     expect(mockFinishBook).toHaveBeenCalledTimes(1);
-    expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: FINISHED.path });
-    expect(mockRemove).toHaveBeenCalledTimes(1);
+    expect(mockRemove).not.toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
     // In the foreground the credits screen decides what plays.
     expect(mockResolve).not.toHaveBeenCalled();
   });
 
   it('reads the queue when it is not cached, on a server known to have one', async () => {
+    mockPathname = '/finished';
     queryClient.clear();
     queryClient.setQueryData(qk.server('c1'), { capabilities: { queue: true } });
     await playThenEnd();
@@ -145,20 +145,22 @@ describe('BookEndedListener', () => {
   });
 
   it('sends nothing on a server without a queue', async () => {
+    mockPathname = '/finished';
     queryClient.clear();
     queryClient.setQueryData(qk.server('c1'), { capabilities: { queue: false } });
     await playThenEnd();
     expect(mockQueueRead).not.toHaveBeenCalled();
     expect(mockRemove).not.toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
   });
 
-  it('does not navigate again when the credits are already showing', async () => {
+  it('does not navigate again when the credits are already showing, and drops the book', async () => {
     mockPathname = '/finished';
     await playThenEnd();
     expect(mockFinishBook).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockReplace).not.toHaveBeenCalled();
+    // Credits opened early do not drop it themselves (they were not opened by the end).
+    expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: FINISHED.path }]]);
   });
 
   it('in the background plays the queue head and takes it off Up next', async () => {
@@ -167,9 +169,10 @@ describe('BookEndedListener', () => {
     await playThenEnd();
     expect(mockResolve).toHaveBeenCalledWith({}, FINISHED);
     expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Other/Queued'));
+    // Both leave the queue (in queue order): the one now playing and the finished one.
     expect(mockRemove.mock.calls).toEqual([
-      [{ libraryId: 1, path: FINISHED.path }],
       [{ libraryId: 1, path: 'Other/Queued' }],
+      [{ libraryId: 1, path: FINISHED.path }],
     ]);
   });
 
@@ -178,6 +181,8 @@ describe('BookEndedListener', () => {
     mockResolve.mockResolvedValue({ next: null });
     await playThenEnd();
     expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
+    // The credits it opens drop the finished book.
+    expect(mockRemove).not.toHaveBeenCalled();
   });
 
   it('in the background with auto-play off opens the end credits without resolving', async () => {
