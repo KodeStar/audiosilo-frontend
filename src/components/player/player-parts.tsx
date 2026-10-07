@@ -17,6 +17,7 @@ import { Text } from '@/components/ui/text';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { formatCount, formatSpeed } from '@/lib/format';
+import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
@@ -69,7 +70,9 @@ export function PlayerHeader({
   if (!np) return null;
   const { connectionId, libraryId, path } = np;
 
-  // These replace the player with where they go; playback runs on for the first two.
+  // The credits replace the player (a root route of their own); playback runs on for
+  // View credits. The book's page opens in the shell underneath (`pushInShell`): a
+  // replace from here stacked a second app shell.
   const goTo = (href: Parameters<typeof router.replace>[0]) => router.replace(href);
   const onMarkFinished = () => {
     // finishBook persists finished, tears down the engine and clears nowPlaying; it
@@ -113,7 +116,7 @@ export function PlayerHeader({
         <DropdownMenuContent align="end" className="w-[240px]">
           <DropdownMenuItem
             icon="book-open"
-            onPress={() => goTo(bookHref(connectionId, libraryId, path))}
+            onPress={() => pushInShell(bookHref(connectionId, libraryId, path))}
           >
             <Text>{t('player.finished.viewDetails')}</Text>
           </DropdownMenuItem>

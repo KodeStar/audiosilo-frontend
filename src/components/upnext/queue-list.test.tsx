@@ -64,6 +64,7 @@ describe('QueueList', () => {
     const onMove = jest.fn().mockResolvedValue(true);
     const onRemove = jest.fn();
     const onPlay = jest.fn();
+    const onNavigate = jest.fn();
     await render(
       <QueueList
         entries={entries}
@@ -72,9 +73,10 @@ describe('QueueList', () => {
         onMove={onMove}
         onRemove={onRemove}
         onPlay={onPlay}
+        onNavigate={onNavigate}
       />,
     );
-    return { onMove, onRemove, onPlay };
+    return { onMove, onRemove, onPlay, onNavigate };
   };
   const titles = () => screen.getAllByText(/^(Alpha|Beta|Gamma)$/).map((n) => n.props.children);
   const os = Platform.OS;
@@ -82,8 +84,8 @@ describe('QueueList', () => {
     Platform.OS = os;
   });
 
-  it('plays, removes and opens a row', async () => {
-    const { onRemove, onPlay } = await setup();
+  it('plays, removes and opens a row (closing the sheet first)', async () => {
+    const { onRemove, onPlay, onNavigate } = await setup();
     await fireEvent.press(screen.getByLabelText('Play Beta now'));
     expect(onPlay).toHaveBeenCalledWith(entries[1]);
     await fireEvent.press(screen.getByLabelText('Remove Gamma from Up next'));
@@ -93,6 +95,7 @@ describe('QueueList', () => {
       pathname: '/book/[libraryId]',
       params: { libraryId: '1', connection: 'c', path: 'Dir/A' },
     });
+    expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 
   it('moves a row with the arrow keys on its grip (web), showing the new order at once', async () => {

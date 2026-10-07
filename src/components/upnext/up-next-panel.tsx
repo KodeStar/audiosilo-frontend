@@ -114,6 +114,7 @@ export function UpNextPanel({
           onMove={data.move}
           onRemove={(e: QueueEntry) => void actions.unqueue(e.library_id, e.path)}
           onPlay={(e: QueueEntry) => void playNow(e, entryTitle(e))}
+          onNavigate={onNavigate}
         />
       ) : desktopWeb ? null : (
         <EmptyQueue />
