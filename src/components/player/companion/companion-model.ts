@@ -40,15 +40,17 @@ export function whoOrder(characters: readonly BookMetaCharacter[]): BookMetaChar
     .map((e) => e.c);
 }
 
-/** The characters `to` reveals that `from` did not (the book page's own visibility rule,
- * applied at both places). A finished book has no one new to meet. */
+/** The characters reaching chapter `to` reveals that chapter `from` did not (the book
+ * page's own visibility rule, applied at both places, in an unfinished book). */
 export function newlyMet(
   characters: readonly BookMetaCharacter[],
-  from: ListeningProgress,
-  to: ListeningProgress,
+  from: number,
+  to: number,
 ): BookMetaCharacter[] {
-  if (to.finished || from.finished) return [];
-  return characters.filter((c) => characterIsVisible(c, to) && !characterIsVisible(c, from));
+  const at = (chapter: number): ListeningProgress => ({ chapter, finished: false });
+  return characters.filter(
+    (c) => characterIsVisible(c, at(to)) && !characterIsVisible(c, at(from)),
+  );
 }
 
 /** One look at the playing book: where it is (whole-book seconds), whether it is
@@ -94,11 +96,7 @@ export function revealOnCrossing(
   if (finished || !isNaturalCrossing(prev, next)) return [];
   const from = Math.max(prev.chapter, reached);
   if (next.chapter <= from) return [];
-  return newlyMet(
-    characters,
-    { chapter: from, finished: false },
-    { chapter: next.chapter, finished: false },
-  );
+  return newlyMet(characters, from, next.chapter);
 }
 
 /** Story so far: the recaps written up to where the listener is, in order, the chapter

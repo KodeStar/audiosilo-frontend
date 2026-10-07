@@ -375,3 +375,69 @@ describe('startJumpUndo', () => {
     stop();
   });
 });
+
+describe('the heartbeat runs only away from the foreground', () => {
+  /** A fresh registry whose AppState reads `state` and hands its listener back. */
+  function withAppState(state: string) {
+    const env = load();
+    /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+    const { AppState } = require('react-native') as typeof import('react-native');
+    let current = state;
+    Object.defineProperty(AppState, 'currentState', { get: () => current, configurable: true });
+    let onChange: (s: string) => void = () => {};
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+      _: string,
+      l: (s: string) => void,
+    ) => {
+      onChange = l;
+      return { remove: jest.fn() };
+    }) as unknown as typeof AppState.addEventListener);
+    const stop = env.undo.startJumpUndo();
+    env.loadBook(BOOK);
+    env.report('loading', 0);
+    env.report('playing', 1000);
+    env.settled();
+    env.report('playing', 1003);
+    const go = (s: string) => {
+      current = s;
+      onChange(s);
+    };
+    return { ...env, stop, go };
+  }
+  afterEach(() => jest.restoreAllMocks());
+
+  it('wakes nothing in the foreground, where JS always runs, and still sees a paused seek', () => {
+    const { report, jump, stop } = withAppState('active');
+    expect(jest.getTimerCount()).toBe(0);
+    report('paused', 1003);
+    jest.setSystemTime(Date.now() + 10 * 60_000); // no heartbeat ran, none was needed
+    report('paused', 1003 + 600);
+    expect(jump()?.from).toBe(1003);
+    stop();
+  });
+
+  it('beats in the background, and a stall there reads as a suspension on return', () => {
+    const { report, jump, stop, go } = withAppState('active');
+    report('paused', 1003);
+    go('background');
+    expect(jest.getTimerCount()).toBe(1);
+    // iOS suspends JS: no timer runs while the clock moves on.
+    jest.setSystemTime(Date.now() + SUSPENSION_GAP_MS + 1800_000);
+    go('active');
+    expect(jest.getTimerCount()).toBe(0);
+    // Played from the lock screen meanwhile: not a jump.
+    report('playing', 1003 + 1800);
+    expect(jump()).toBeNull();
+    stop();
+  });
+
+  it('keeps seeing a lock-screen seek in the background while JS runs', () => {
+    const { report, jump, stop, go } = withAppState('active');
+    report('paused', 1003);
+    go('background');
+    jest.advanceTimersByTime(10 * 60_000); // JS alive: the heartbeat keeps beating
+    report('paused', 1003 + 600);
+    expect(jump()?.from).toBe(1003);
+    stop();
+  });
+});

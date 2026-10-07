@@ -27,7 +27,7 @@ export type StopAfterRow = {
 };
 
 /**
- * The "Or stop after" rows: this chapter and the next ones, at most `max`, and only as
+ * The "Or stop after" rows: this chapter and the next ones, at most `STOP_AFTER_ROWS`, and only as
  * many as the book has left. Only for a book with REAL chapters: the 30-minute markers
  * synthesized for a chapterless single file (`syntheticChapters`) are wall-clock slices,
  * and "stop after 3 chapters" over them would name an invented boundary.
@@ -36,7 +36,6 @@ export function stopAfterRows(
   queue: { chapters: Chapter[]; total: number; syntheticChapters?: boolean },
   position: number,
   rate: number,
-  max: number = STOP_AFTER_ROWS,
 ): StopAfterRow[] {
   if (queue.syntheticChapters || queue.chapters.length === 0) return [];
   return chapterCountdowns(queue.chapters, position, undefined, rate)
@@ -44,7 +43,7 @@ export function stopAfterRows(
       (c) =>
         c.endPosition > position + EPS && (queue.total <= 0 || c.endPosition <= queue.total + EPS),
     )
-    .slice(0, max)
+    .slice(0, STOP_AFTER_ROWS)
     .map((c, i) => ({ ...c, count: i + 1 }));
 }
 

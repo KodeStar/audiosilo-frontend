@@ -1,3 +1,4 @@
+import { isJump } from './jump-undo';
 import { selectBookKey, selectBookPosition, selectIsTransportLive, usePlayer } from './store';
 
 /**
@@ -42,8 +43,9 @@ export type Interaction = {
 const MAX_BOOKS = 20;
 
 /** A position change this much bigger (content seconds) than playback could have made
- * since the last write is a jump, not playback. Under the smallest skip the UI offers
- * (5 s), well over a progress tick's drift. */
+ * since the last move is a jump, not playback (`isJump`, the Undo chip's rule, with this
+ * finer threshold). Under the smallest skip the UI offers (5 s), well over a progress
+ * tick's drift. */
 const JUMP_SECONDS = 4;
 
 const last = new Map<string, Interaction>();
@@ -90,6 +92,9 @@ export function startInteractionWatch(): () => void {
     const key = selectBookKey(state);
     const live = selectIsTransportLive(state);
     const position = selectBookPosition(state);
+    // Nothing this watches moved (a write of something else): nothing to read, and the
+    // flow allowance keeps counting from the last move.
+    if (key === prevKey && live === prevLive && position === prevPosition) return;
     const now = Date.now();
     if (key !== null) {
       if (key !== prevKey) {
@@ -97,14 +102,20 @@ export function startInteractionWatch(): () => void {
         if (live) remember(key, { at: now, position });
       } else if (live !== prevLive) {
         remember(key, { at: now, position });
-      } else {
-        // Playback moves the position by at most the elapsed time times the speed
-        // (2x is the most the app plays at); anything beyond that, either way, was moved.
-        const flowed = ((now - prevAt) / 1000) * Math.max(1, state.rate);
-        const moved = position - prevPosition;
-        if (moved < -JUMP_SECONDS || moved > flowed + JUMP_SECONDS) {
-          remember(key, { at: now, position });
-        }
+      } else if (
+        // Playback moves the position by at most the elapsed time times the speed (never
+        // less than 1x here), and only while it is live; anything beyond that, either
+        // way, was moved.
+        isJump(
+          { position: prevPosition, playing: prevLive },
+          { position, playing: live },
+          (now - prevAt) / 1000,
+          Math.max(1, state.rate),
+          false,
+          JUMP_SECONDS,
+        )
+      ) {
+        remember(key, { at: now, position });
       }
     }
     prevKey = key;
