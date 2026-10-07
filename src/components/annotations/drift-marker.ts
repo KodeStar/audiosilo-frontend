@@ -1,11 +1,6 @@
 import { FELL_ASLEEP_LABEL } from '@/api/bookmark-labels';
 import type { Bookmark } from '@/api/types';
-import de from '@/i18n/locales/de.json';
-import en from '@/i18n/locales/en.json';
-import es from '@/i18n/locales/es.json';
-import fr from '@/i18n/locales/fr.json';
-import it from '@/i18n/locales/it.json';
-import pt from '@/i18n/locales/pt.json';
+import { resources, SUPPORTED_CODES } from '@/i18n';
 
 /**
  * The sleep timer's automatic note in every language the app speaks. The note is
@@ -13,7 +8,9 @@ import pt from '@/i18n/locales/pt.json';
  * bookmark made in German reads "Eingeschlafen" whatever the language is today.
  */
 const FELL_ASLEEP_NOTES: ReadonlySet<string> = new Set(
-  [en, de, es, fr, it, pt].map((l) => l.player.sleepTimer.fellAsleepNote.trim()),
+  SUPPORTED_CODES.map((code) =>
+    resources[code].translation.player.sleepTimer.fellAsleepNote.trim(),
+  ),
 );
 
 /** Whether `note` is the sleep timer's automatic "Fell asleep" note, in any of the six
