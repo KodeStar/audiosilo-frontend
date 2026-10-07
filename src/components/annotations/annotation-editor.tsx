@@ -89,7 +89,7 @@ export function AnnotationEditor({
       />
     );
   }
-  // The sheet itself rises above the iOS keyboard (`Sheet`, `useKeyboardAvoidance`).
+  // The sheet itself rises above the keyboard (`Sheet`, `useKeyboardAvoidance`).
   return request.kind === 'bookmark' ? (
     <BookmarkEditor request={request} annotations={annotations} onDone={onDone} />
   ) : (

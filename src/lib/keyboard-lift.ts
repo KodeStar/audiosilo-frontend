@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Keyboard, type KeyboardEvent, Platform, useWindowDimensions } from 'react-native';
 
 /**
- * Keeping a bottom-anchored overlay (a `Sheet`, a phone dialog) above the iOS software
- * keyboard. iOS lays the keyboard over the window and does not resize it, and a
- * `KeyboardAvoidingView` inside an overlay that is absolutely positioned in a portal or a
- * `FullWindowOverlay` measures nothing useful, so the overlay lifts itself by the
- * keyboard's frame. Android resizes the window for the keyboard (`adjustResize`), so it
- * gets no lift (lifting there too would lift twice).
+ * Keeping a bottom-anchored overlay (a `Sheet`, a phone dialog) above the software
+ * keyboard. A `KeyboardAvoidingView` inside an overlay that is absolutely positioned in a
+ * portal or a `FullWindowOverlay` measures nothing useful, so the overlay lifts itself by
+ * how much of the WINDOW the keyboard covers: the keyboard's top edge in screen
+ * coordinates against the window's height, on every platform. iOS lays the keyboard over
+ * the window, so that is the keyboard. Android resizes the window for it only when the app
+ * is not edge to edge (`adjustResize`); edge to edge (SDK 56, Android 15+) the window
+ * keeps its height and the keyboard lies over it like iOS. A window that did resize ends
+ * at the keyboard's top, so the same sum gives about 0 there and nothing lifts twice.
  */
 
 /** The smallest gap kept between a capped panel and the top safe edge, in points. */
@@ -44,43 +47,62 @@ export function keyboardCap(opts: {
 }
 
 /** The keyboard as an overlay sees it: how much of the window it covers, and how long
- * iOS animates it in or out (ms, to move with it). */
+ * it animates in or out (ms, to move with it; 0 on Android, which says so after). */
 export type KeyboardFrame = { overlap: number; duration: number };
 
-const HIDDEN: KeyboardFrame = { overlap: 0, duration: 0 };
+/** The keyboard's top edge in screen coordinates (null: none up), and its animation. */
+type KeyboardTop = { top: number | null; duration: number };
+
+const HIDDEN: KeyboardTop = { top: null, duration: 0 };
+
+/** The keyboard events each platform sends: iOS says what is about to happen (so an
+ * overlay moves with it), Android what did. */
+const EVENTS = {
+  ios: {
+    show: ['keyboardWillShow', 'keyboardWillChangeFrame'],
+    hide: 'keyboardWillHide',
+  },
+  android: { show: ['keyboardDidShow'], hide: 'keyboardDidHide' },
+} as const;
 
 /**
- * The iOS keyboard's overlap with the window while `active` (an overlay that is open),
- * from its will-show / will-change / will-hide events (so an overlay moves with it), seeded
- * from the keyboard already up when it becomes active. A closed overlay listens to
- * nothing, and an event that leaves the overlap as it was (will-show and will-change both
- * fire for one rise) changes nothing. Always 0 on Android and the web: Android resizes
- * the window instead, and the web's keyboard is the browser's business.
+ * The keyboard's overlap with the window while `active` (an overlay that is open), on iOS
+ * and Android (`EVENTS`), seeded from a keyboard already up when it becomes active. The
+ * keyboard's top edge is kept and set against the window's height as it is at each
+ * render, so a window that resizes for the keyboard after the event (Android without edge
+ * to edge) reads as covered by nothing. A closed overlay listens to nothing, and an event
+ * that leaves the top as it was (will-show and will-change both fire for one rise)
+ * changes nothing. Always 0 on the web, whose keyboard is the browser's business.
  */
 export function useKeyboardFrame(active = true): KeyboardFrame {
   const { height } = useWindowDimensions();
-  const [frame, setFrame] = useState<KeyboardFrame>(HIDDEN);
+  const [frame, setFrame] = useState<KeyboardTop>(HIDDEN);
   useEffect(() => {
-    if (Platform.OS !== 'ios' || !active) return;
-    const set = (overlap: number, duration: number) =>
-      setFrame((prev) => (prev.overlap === overlap ? prev : { overlap, duration }));
+    const events = Platform.OS === 'ios' || Platform.OS === 'android' ? EVENTS[Platform.OS] : null;
+    if (!events || !active) return;
+    const set = (top: number | null, duration: number) =>
+      setFrame((prev) => (prev.top === top ? prev : { top, duration }));
     const up = Keyboard.metrics();
-    if (up) set(keyboardOverlap(height, up.screenY), 0);
-    const onChange = (e: KeyboardEvent) =>
-      set(keyboardOverlap(height, e.endCoordinates.screenY), e.duration ?? 0);
-    const onHide = (e: KeyboardEvent) => set(0, e.duration ?? 0);
+    if (up) set(up.screenY, 0);
+    const onShow = (e: KeyboardEvent) => set(e.endCoordinates.screenY, e.duration ?? 0);
+    const onHide = (e: KeyboardEvent) => set(null, e.duration ?? 0);
     const subs = [
-      Keyboard.addListener('keyboardWillShow', onChange),
-      Keyboard.addListener('keyboardWillChangeFrame', onChange),
-      Keyboard.addListener('keyboardWillHide', onHide),
+      ...events.show.map((name) => Keyboard.addListener(name, onShow)),
+      Keyboard.addListener(events.hide, onHide),
     ];
     return () => {
       subs.forEach((s) => s.remove());
       // Closed: the next open starts from the keyboard as it is then.
       setFrame(HIDDEN);
     };
-  }, [height, active]);
-  return frame;
+  }, [active]);
+  return useMemo(
+    () => ({
+      overlap: frame.top === null ? 0 : keyboardOverlap(height, frame.top),
+      duration: frame.duration,
+    }),
+    [frame, height],
+  );
 }
 
 /** What a bottom-anchored panel does about the keyboard (`useKeyboardAvoidance`). */
@@ -95,9 +117,10 @@ export type KeyboardAvoidance = {
 
 /**
  * The keyboard as a bottom-anchored panel (a `Sheet`, a phone dialog) answers it while
- * `active` (open): it rises above the iOS keyboard (`lift`), and its height is capped to
- * its usual `fraction` of the window and to what the keyboard leaves under the top safe
- * edge (`cap`), so its title stays on screen. No lift and the usual cap elsewhere.
+ * `active` (open): it rises above a keyboard lying over the window (`lift`), and its
+ * height is capped to its usual `fraction` of the window and to what the keyboard leaves
+ * under the top safe edge (`cap`), so its title stays on screen. No lift and the usual
+ * cap where the keyboard covers nothing (a window resized for it, the web).
  */
 export function useKeyboardAvoidance(opts: {
   active: boolean;

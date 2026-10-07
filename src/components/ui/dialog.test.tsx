@@ -109,45 +109,51 @@ describe('useDialogFrame', () => {
     expect(frame.contentStyle).toEqual({ paddingBottom: 50 });
   });
 
-  it('rises above the iOS keyboard on a phone and fits under the top edge', async () => {
-    Platform.OS = 'ios';
-    await act(async () => {
-      Dimensions.set({ window: { width: 390, height: 844, scale: 3, fontScale: 1 } });
-    });
-    const handlers: Record<string, (e: KeyboardEvent) => void> = {};
-    const spy = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
-      name: string,
-      cb: (e: KeyboardEvent) => void,
-    ) => {
-      handlers[name] = cb;
-      return { remove: jest.fn() };
-    }) as never);
-    try {
-      const { result } = await renderHook(() => useDialogFrame(), {
-        wrapper: ({ children }) => (
-          <SafeAreaProvider
-            initialMetrics={{
-              frame: { x: 0, y: 0, width: 390, height: 844 },
-              insets: { top: 47, left: 0, right: 0, bottom: 34 },
-            }}
-          >
-            {children}
-          </SafeAreaProvider>
-        ),
+  it.each([
+    ['ios', 'keyboardWillShow'],
+    ['android', 'keyboardDidShow'],
+  ] as const)(
+    'rises above the keyboard on a %s phone and fits under the top edge',
+    async (os, show) => {
+      Platform.OS = os;
+      await act(async () => {
+        Dimensions.set({ window: { width: 390, height: 844, scale: 3, fontScale: 1 } });
       });
-      await act(() =>
-        handlers.keyboardWillShow({
-          duration: 250,
-          endCoordinates: { screenY: 844 - 336, height: 336, screenX: 0, width: 390 },
-        } as KeyboardEvent),
-      );
-      expect(result.current.contentStyle).toEqual({
-        paddingBottom: 50,
-        marginBottom: 336 - 34,
-        maxHeight: 844 - 336 - 47 - 8,
-      });
-    } finally {
-      spy.mockRestore();
-    }
-  });
+      const handlers: Record<string, (e: KeyboardEvent) => void> = {};
+      const spy = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+        name: string,
+        cb: (e: KeyboardEvent) => void,
+      ) => {
+        handlers[name] = cb;
+        return { remove: jest.fn() };
+      }) as never);
+      try {
+        const { result } = await renderHook(() => useDialogFrame(), {
+          wrapper: ({ children }) => (
+            <SafeAreaProvider
+              initialMetrics={{
+                frame: { x: 0, y: 0, width: 390, height: 844 },
+                insets: { top: 47, left: 0, right: 0, bottom: 34 },
+              }}
+            >
+              {children}
+            </SafeAreaProvider>
+          ),
+        });
+        await act(() =>
+          handlers[show]({
+            duration: 250,
+            endCoordinates: { screenY: 844 - 336, height: 336, screenX: 0, width: 390 },
+          } as KeyboardEvent),
+        );
+        expect(result.current.contentStyle).toEqual({
+          paddingBottom: 50,
+          marginBottom: 336 - 34,
+          maxHeight: 844 - 336 - 47 - 8,
+        });
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 });

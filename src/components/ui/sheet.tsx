@@ -128,8 +128,8 @@ export function Sheet({
   // Measured panel height, in px; seeded with the window height so the closed
   // position is offscreen before the first layout pass.
   const panelHeight = useSharedValue(height);
-  // iOS: the keyboard lies over the window, so the open panel rises above it (and caps
-  // its height to what is left, its body scrolling); 0 elsewhere.
+  // A keyboard lying over the window (iOS, edge-to-edge Android) lifts the open panel
+  // above it and caps its height to what is left, its body scrolling (`keyboard-lift`).
   const keyboard = useKeyboardAvoidance({
     active: mounted,
     fraction: maxHeightFraction,

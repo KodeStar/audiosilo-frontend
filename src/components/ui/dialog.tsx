@@ -37,9 +37,9 @@ export function useDialogFrame() {
   const insets = useRootInsets();
   // A phone presents a dialog as a bottom sheet.
   const compact = useLayout() === 'phone';
-  // iOS lays the keyboard over the window: the phone sheet rises above it (a field in it,
-  // like a collection's name, stays in view) and fits under the top safe edge. Nothing
-  // elsewhere, and nothing listened to on a tablet or desktop.
+  // A keyboard lying over the window (iOS, edge-to-edge Android): the phone sheet rises
+  // above it (a field in it, like a collection's name, stays in view) and fits under the
+  // top safe edge. Nothing listened to on a tablet or desktop.
   const keyboard = useKeyboardAvoidance({
     active: compact,
     fraction: 1,

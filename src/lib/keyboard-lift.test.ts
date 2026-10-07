@@ -20,6 +20,13 @@ describe('keyboard maths', () => {
     expect(keyboardOverlap(912, 1200)).toBe(0);
   });
 
+  it('gives a window resized for the keyboard no overlap, one edge to edge all of it', () => {
+    // Pixel 6a edge to edge: 915 dp tall, the keyboard's top at 590 dp.
+    expect(keyboardOverlap(915, 590)).toBe(325);
+    // The same keyboard over a window resized to end at it (adjustResize, not edge to edge).
+    expect(keyboardOverlap(590, 590)).toBe(0);
+  });
+
   it('lifts a panel that pads for the home indicator by the rest of the keyboard', () => {
     expect(keyboardLift(336, 34)).toBe(302);
     expect(keyboardLift(0, 34)).toBe(0);
@@ -124,13 +131,53 @@ describe('useKeyboardFrame', () => {
     });
   });
 
-  // Android resizes the window for the keyboard: lifting too would lift twice.
-  it('never lifts on Android', async () => {
+  // Edge to edge (SDK 56, Android 15+) the window keeps its height for the keyboard, so
+  // Android lifts like iOS (the Pixel's editor sheet sat behind the keyboard without it).
+  it('follows the Android keyboard in and out, on what did happen', async () => {
     Platform.OS = 'android';
     const handlers = listen();
     const { result } = await renderHook(() => useKeyboardFrame());
     expect(handlers.keyboardWillShow).toBeUndefined();
-    expect(handlers.keyboardDidShow).toBeUndefined();
+    const { height } = Dimensions.get('window');
+    await act(() => handlers.keyboardDidShow(event(height - 320, 0)));
+    expect(result.current).toEqual({ overlap: 320, duration: 0 });
+    await act(() => handlers.keyboardDidHide(event(height, 0)));
+    expect(result.current.overlap).toBe(0);
+  });
+
+  // A window that resizes for the keyboard ends at its top: nothing lifts twice, whether
+  // it resized before the keyboard said so or after.
+  it.each(['android', 'ios'] as const)(
+    'reads a window already resized for the keyboard as covered by nothing (%s)',
+    async (os) => {
+      Platform.OS = os;
+      const handlers = listen();
+      const window = Dimensions.get('window');
+      const top = window.height - 320;
+      const { result } = await renderHook(() => useKeyboardFrame());
+      const show = os === 'ios' ? handlers.keyboardWillShow : handlers.keyboardDidShow;
+      try {
+        await act(() => show(event(top)));
+        expect(result.current.overlap).toBe(320);
+        await act(async () => {
+          Dimensions.set({ window: { ...window, height: top } });
+        });
+        expect(result.current.overlap).toBe(0);
+        await act(() => show(event(top)));
+        expect(result.current.overlap).toBe(0);
+      } finally {
+        await act(async () => {
+          Dimensions.set({ window });
+        });
+      }
+    },
+  );
+
+  it('listens to nothing on the web', async () => {
+    Platform.OS = 'web';
+    const handlers = listen();
+    const { result } = await renderHook(() => useKeyboardFrame());
+    expect(Object.keys(handlers)).toEqual([]);
     expect(result.current.overlap).toBe(0);
   });
 });
