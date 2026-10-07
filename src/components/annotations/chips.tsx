@@ -64,22 +64,36 @@ export function TimeChip({
       </View>
     );
   }
+  const a11y = {
+    accessibilityRole: 'button' as const,
+    accessibilityLabel: t('annotations.jumpTo', { time }),
+    onPress,
+  };
+  if (Platform.OS !== 'web') {
+    // A real 44 pt frame around the small chip (a slop alone left the control's own
+    // frame at 24 pt), pulled back by negative margins so the row keeps its rhythm.
+    return (
+      <AnimatedPressable {...a11y} className={NATIVE_CHIP_FRAME}>
+        <View className={box}>{label}</View>
+      </AnimatedPressable>
+    );
+  }
   const slop = slopTo44(CHIP_REM);
   return (
     <AnimatedPressable
-      accessibilityRole="button"
-      accessibilityLabel={t('annotations.jumpTo', { time })}
-      onPress={onPress}
+      {...a11y}
       hitSlop={{ top: slop, bottom: slop, left: 4, right: 4 }}
-      className={cn(
-        box,
-        Platform.select({ web: `cursor-pointer hover:opacity-80 ${FOCUS_RING_OFFSET_CLASS}` }),
-      )}
+      className={cn(box, `cursor-pointer hover:opacity-80 ${FOCUS_RING_OFFSET_CLASS}`)}
     >
       {label}
     </AnimatedPressable>
   );
 }
+
+/** A small chip's touch frame on iOS and Android: 44 pt each way around the chip, which
+ * sits at its start, with the extra height taken back by negative margins (the chip is
+ * 24.5 pt: 44 - 24.5 is ~10 a side). */
+const NATIVE_CHIP_FRAME = 'min-h-[44px] min-w-[44px] -my-[10px] items-start justify-center';
 
 /**
  * A bookmark's label as a quiet kicker ("QUOTE", "RE-LISTEN"), with a moon for the sleep
@@ -119,46 +133,65 @@ export function LabelPicker({
   onChange: (label: string) => void;
 }) {
   const { t } = useTranslation();
+  const web = Platform.OS === 'web';
   const slop = slopTo44(PICK_REM);
   return (
     <View
       role="radiogroup"
       accessibilityLabel={t('annotations.labelGroup')}
-      className="flex-row flex-wrap gap-2"
+      // Native chips carry their own 44 pt frame, which is the rows' spacing.
+      className={cn('flex-row flex-wrap', web ? 'gap-2' : 'gap-x-2')}
     >
       {PICKABLE_BOOKMARK_LABELS.map((label) => {
         const selected = value === label;
         const name = labelText(t, label) ?? label;
+        const chip = (pressed: boolean) =>
+          cn(
+            'h-8 flex-row items-center rounded-full border px-3',
+            selected
+              ? 'border-primary bg-primary'
+              : cn('border-border-strong bg-card', pressed && 'bg-accent'),
+          );
+        const text = (
+          <Text
+            className={cn(
+              'font-sans-semibold text-[13px]',
+              selected ? 'text-primary-foreground' : 'text-foreground',
+            )}
+            numberOfLines={1}
+          >
+            {name}
+          </Text>
+        );
+        const radio = {
+          role: 'radio' as const,
+          'aria-checked': selected,
+          accessibilityState: { checked: selected },
+          accessibilityLabel: name,
+          accessibilityHint: selected ? t('annotations.labelClearHint') : undefined,
+          onPress: () => onChange(toggleLabel(value, label)),
+          testID: `label-${label}`,
+        };
+        if (!web) {
+          // A real 44 pt frame around the 28 pt chip (not just a slop).
+          return (
+            <Pressable key={label} {...radio} className="min-h-[44px] justify-center">
+              {({ pressed }) => <View className={chip(pressed)}>{text}</View>}
+            </Pressable>
+          );
+        }
         return (
           <Pressable
             key={label}
-            role="radio"
-            aria-checked={selected}
-            accessibilityState={{ checked: selected }}
-            accessibilityLabel={name}
-            accessibilityHint={selected ? t('annotations.labelClearHint') : undefined}
-            onPress={() => onChange(toggleLabel(value, label))}
+            {...radio}
             hitSlop={{ top: slop, bottom: slop }}
-            testID={`label-${label}`}
             className={cn(
-              'h-8 flex-row items-center rounded-full border px-3',
-              selected
-                ? 'border-primary bg-primary'
-                : 'border-border-strong bg-card active:bg-accent hover:bg-accent',
-              Platform.select({
-                web: `cursor-pointer select-none transition-colors ${FOCUS_RING_OFFSET_CLASS}`,
-              }),
+              chip(false),
+              !selected && 'active:bg-accent hover:bg-accent',
+              `cursor-pointer select-none transition-colors ${FOCUS_RING_OFFSET_CLASS}`,
             )}
           >
-            <Text
-              className={cn(
-                'font-sans-semibold text-[13px]',
-                selected ? 'text-primary-foreground' : 'text-foreground',
-              )}
-              numberOfLines={1}
-            >
-              {name}
-            </Text>
+            {text}
           </Pressable>
         );
       })}

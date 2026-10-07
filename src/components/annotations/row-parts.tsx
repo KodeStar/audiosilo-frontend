@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import type { Book } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
@@ -35,9 +35,11 @@ export function RowAction({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      hitSlop={slopTo44(ACTION_REM)}
+      // Native: a real 44 pt frame (a slop alone left the control's own frame at 32 pt);
+      // the web keeps its 36 px button and a slop.
+      hitSlop={Platform.OS === 'web' ? slopTo44(ACTION_REM) : undefined}
       testID={testID}
-      className={pillClass('ghost', 'h-9 w-9')}
+      className={pillClass('ghost', Platform.OS === 'web' ? 'h-9 w-9' : 'h-[44px] w-[44px]')}
     >
       <Icon name={icon} size={15} color={themed.mutedForeground} />
     </AnimatedPressable>
@@ -95,7 +97,9 @@ export function AnnotationRowFrame({
     >
       {lead}
       <View className="min-w-0 flex-1 gap-1">{children}</View>
-      <View className="-my-1 flex-row items-center">{actions}</View>
+      <View className={cn('flex-row items-center', Platform.OS === 'web' ? '-my-1' : '-my-2.5')}>
+        {actions}
+      </View>
     </View>
   );
 }

@@ -307,12 +307,20 @@ describe('BookmarkRow', () => {
     expect(screen.queryByTestId('row-server')).toBeNull();
   });
 
-  it('gives every control a 44 pt touch on native', async () => {
+  // WDA measured the edit and delete icons at 32 x 32 pt on an iPhone: a slop grows the
+  // touch but not the control's own frame, so on native the frame itself is 44 pt.
+  it('gives every control a real 44 pt frame on native, not just a slop', async () => {
     Platform.OS = 'ios';
     await render(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
-    expectNativeTarget(screen.getByRole('button', { name: 'Jump to 17:26:50' }));
-    expectNativeTarget(screen.getByRole('button', { name: 'Edit bookmark at 17:26:50' }));
-    expectNativeTarget(screen.getByRole('button', { name: 'Delete bookmark at 17:26:50' }));
+    for (const name of [
+      'Jump to 17:26:50',
+      'Edit bookmark at 17:26:50',
+      'Delete bookmark at 17:26:50',
+    ]) {
+      const control = screen.getByRole('button', { name });
+      expect(control.props.hitSlop).toBeUndefined();
+      expectNativeTarget(control);
+    }
   });
 });
 
@@ -321,7 +329,7 @@ describe('NoteRow', () => {
     await render(<NoteRow note={note()} connectionId="c" chapter="23. Bridge Four" />);
     const chip = screen.getByRole('button', { name: 'Jump to 10:20:00' });
     expect(chip).toBeTruthy();
-    expect(String(chip.props.className)).toContain('bg-community-soft');
+    expect(String(screen.getByText('10:20:00').props.className)).toContain('text-community');
     expect(screen.getByText(/Syl is not a windspren/)).toBeTruthy();
   });
 
@@ -385,9 +393,12 @@ describe('LabelPicker', () => {
     expect(onChange).toHaveBeenLastCalledWith('');
   });
 
-  it('gives each chip a 44 pt touch on native', async () => {
+  it('gives each chip a real 44 pt frame on native', async () => {
     Platform.OS = 'android';
     await render(<LabelPicker value="" onChange={() => {}} />);
-    for (const radio of screen.getAllByRole('radio')) expectNativeTarget(radio);
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio.props.hitSlop).toBeUndefined();
+      expectNativeTarget(radio);
+    }
   });
 });
