@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -18,8 +18,9 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { nextGoal, suggestedGoal } from './stats-model';
 
-/** A stat value's figure and unit ("23" "days"), the unit set small. */
-export type ValuePart = { n: string; unit?: string };
+/** A stat value's figure and unit ("23" "days"), the unit set small: right after the
+ * figure ("11h"), or after a space when it is a word (`spaced`: "23 days", "19 of 30"). */
+export type ValuePart = { n: string; unit?: string; spaced?: boolean };
 
 /** The stat value (STYLEGUIDE section 4 "Stat": Bricolage 32, 25 on a phone), figures big
  * and units small and muted. */
@@ -33,8 +34,10 @@ export function StatValue({ parts, compact }: { parts: readonly ValuePart[]; com
       )}
       style={tabularNums}
     >
+      {/* Figures are plain strings, so they keep the outer text's style (a nested themed
+          Text would reset them to its body variant). */}
       {parts.map((p, i) => (
-        <Text key={i}>
+        <Fragment key={i}>
           {i > 0 ? ' ' : ''}
           {p.n}
           {p.unit ? (
@@ -44,10 +47,10 @@ export function StatValue({ parts, compact }: { parts: readonly ValuePart[]; com
                 compact ? 'text-sm' : 'text-base',
               )}
             >
-              {p.unit}
+              {p.spaced ? ` ${p.unit}` : p.unit}
             </Text>
           ) : null}
-        </Text>
+        </Fragment>
       ))}
     </Text>
   );
@@ -216,7 +219,11 @@ export function GoalTile({
             <TileLabel icon="circle-check" label={t('stats.goal.label')} />
             <StatValue
               parts={[
-                { n: String(progress.finished), unit: t('stats.goal.of', { goal: progress.goal }) },
+                {
+                  n: String(progress.finished),
+                  unit: t('stats.goal.of', { goal: progress.goal }),
+                  spaced: true,
+                },
               ]}
               compact={small}
             />

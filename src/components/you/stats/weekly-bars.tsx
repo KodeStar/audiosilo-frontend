@@ -5,6 +5,7 @@ import Svg, { Line, Path } from 'react-native-svg';
 
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatDurationOrZero } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -84,8 +85,16 @@ export function WeeklyBars({ weeks, width }: { weeks: readonly number[]; width: 
             key={i}
             pointerEvents="none"
             numberOfLines={1}
-            className="absolute text-center font-sans text-[11px] text-muted-foreground"
-            style={{ left: centre(i) - 32, width: 64, top: height - bottom + 5 }}
+            className={cn(
+              'absolute font-sans text-[11px] text-muted-foreground',
+              ago(i) === 0 ? 'text-right' : 'text-center',
+            )}
+            // This week's label ends at the chart's edge rather than past it.
+            style={{
+              left: ago(i) === 0 ? width - 72 : centre(i) - 36,
+              width: 72,
+              top: height - bottom + 5,
+            }}
           >
             {ago(i) === 0
               ? t('stats.weeks.thisWeekShort')

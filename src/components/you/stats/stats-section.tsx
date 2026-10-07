@@ -305,7 +305,9 @@ function StatsContent({
         <StatTile
           icon="history"
           label={t('stats.tiles.streak')}
-          parts={[{ n: String(streak), unit: t('stats.tiles.days', { count: streak }) }]}
+          parts={[
+            { n: String(streak), unit: t('stats.tiles.days', { count: streak }), spaced: true },
+          ]}
           compact={compact}
           width={tileW}
           accessibilityLabel={`${t('stats.tiles.streak')}, ${t('stats.tiles.streakValue', { count: streak })}, ${t('stats.tiles.longest', { count: longest })}`}
@@ -373,8 +375,20 @@ function StatsContent({
 
       {shownRanks.length ? (
         <View className="flex-row flex-wrap" style={{ gap: GAP }}>
-          {shownRanks.map((r) => (
-            <Card key={r.kind} className="gap-1.5" style={{ width: rankW }}>
+          {shownRanks.map((r, i) => (
+            <Card
+              key={r.kind}
+              className="gap-1.5"
+              // A last card alone on its row takes the whole row.
+              style={{
+                width:
+                  i === shownRanks.length - 1 &&
+                  cols.ranks > 1 &&
+                  shownRanks.length % cols.ranks === 1
+                    ? width
+                    : rankW,
+              }}
+            >
               <SectionTitle title={r.title} sub={r.sub} small />
               <RankList rows={r.rows} kind={r.kind} onOpen={openRank(r.kind)} />
             </Card>
@@ -392,12 +406,11 @@ function StatsContent({
                 : t('stats.finished.none')
             }
           />
-          <Button
-            variant="link"
-            size="sm"
-            title={t('stats.finished.journal')}
-            onPress={() => open.openJournal()}
-          />
+          {/* Ink, not a pink link: the page's pink is the clock and this week's bar. */}
+          <Button variant="ghost" size="sm" onPress={() => open.openJournal()}>
+            <Text>{t('stats.finished.journal')}</Text>
+            <Icon name="chevron-right" size={14} color={themed.foreground} />
+          </Button>
         </View>
         {stats.finished_books.length ? (
           <FinishedShelf

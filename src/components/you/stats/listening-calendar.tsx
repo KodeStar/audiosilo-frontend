@@ -24,7 +24,7 @@ const SEQ = ['bg-seq-0', 'bg-seq-1', 'bg-seq-2', 'bg-seq-3', 'bg-seq-4', 'bg-seq
 
 const GAP = 3;
 const MIN_CELL = 11;
-const MAX_CELL = 15;
+const MAX_CELL = 16;
 /** The weekday labels' column and its gap to the grid. */
 const DAYS_COLUMN = 30;
 const MONTHS_ROW = 18;
