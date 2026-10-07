@@ -32,20 +32,25 @@ export function useApiKeysManager(connectionId: string, enabled: boolean) {
     setCreateError(null);
   }, []);
 
-  const create = useCallback(async () => {
+  /** Mints a key from the typed name; resolves true once it exists (the secret is then
+   * in `created`), false when nothing was made (no name, one already in flight, or a
+   * failure, which `createError` explains). */
+  const create = useCallback(async (): Promise<boolean> => {
     const name = label.trim();
     // Guard an empty label (server 400s) AND an in-flight create: the Create button is
     // disabled while pending, but the keyboard-submit path (onSubmitEditing) is not, so
     // without the isPending check a second Return before the round-trip resolves would
     // mint a duplicate key.
-    if (!name || createMut.isPending) return;
+    if (!name || createMut.isPending) return false;
     setCreateError(null);
     try {
       const res = await createMut.mutateAsync(name);
       setCreated(res); // reveal the one-time secret; the list refresh happens onSuccess
       setLabelState('');
+      return true;
     } catch (e) {
       setCreateError(e instanceof ApiError ? e.message : i18n.t('settings.apiKeys.createError'));
+      return false;
     }
   }, [label, createMut]);
 

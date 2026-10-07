@@ -89,16 +89,11 @@
       "signOut": "Se déconnecter"
     },
     "devices": {
-      "label": "Appareils",
-      "intro": "Associez un autre téléphone, une tablette ou un navigateur à ce compte.",
-      "scanHint": "Sur l'autre appareil, ouvrez AudioSilo et scannez ce code, ou ouvrez le lien ci-dessous.",
-      "add": "Ajouter un appareil",
       "share": "Partager le lien",
-      "done": "Terminé",
-      "reachError": "Impossible de joindre le serveur."
+      "done": "Terminé"
     },
     "apiKeys": {
-      "label": "Clés d'API",
+      "label": "Clés API personnelles",
       "hint": "Des clés nommées qui permettent aux scripts et aux tableaux de bord d'accéder à ce serveur en votre nom. Chaque clé agit en votre nom et peut être révoquée à tout moment.",
       "nameLabel": "Nom de la clé",
       "namePlaceholder": "p. ex. Tableau de bord maison",
@@ -112,15 +107,22 @@
       "createError": "Impossible de créer la clé d'API.",
       "revokeError": "Impossible de révoquer la clé d'API.",
       "createdModal": {
-        "title": "Clé d'API créée",
-        "description": "Copiez cette clé maintenant : elle ne sera plus affichée. Conservez-la en lieu sûr.",
+        "title": "Votre nouvelle clé API",
+        "description": "Copiez-la maintenant. Elle ne sera plus affichée.",
         "copy": "Copier la clé"
       },
       "revokeConfirm": {
         "title": "Révoquer {{name}} ?",
         "message": "Tout ce qui utilise cette clé perdra immédiatement l'accès. Cette action est irréversible.",
         "confirm": "Révoquer la clé"
-      }
+      },
+      "sub": "Pour Home Assistant, les tableaux de bord et les scripts",
+      "unavailable": {
+        "title": "Non disponible sur {{server}}",
+        "body": "La version d'AudioSilo de ce serveur ne propose pas encore de clés API. Tout le reste fonctionne normalement."
+      },
+      "dialogTitle": "Créer une clé API",
+      "revokeShort": "Révoquer"
     },
     "support": {
       "label": "Soutenir",
@@ -149,6 +151,79 @@
       "confirm": "Se déconnecter quand même",
       "downloadsWarning_one": "La déconnexion supprimera aussi {{count}} livre téléchargé depuis ce serveur sur cet appareil.",
       "downloadsWarning_other": "La déconnexion supprimera aussi {{count}} livres téléchargés depuis ce serveur sur cet appareil."
+    },
+    "switcher": "Serveur",
+    "none": "Connectez-vous à un serveur pour voir son compte.",
+    "identity": {
+      "line": "@{{user}} · {{role}} sur {{server}}",
+      "devices_one": "connecté sur {{count}} appareil",
+      "devices_other": "connecté sur {{count}} appareils",
+      "demo": "Démo"
+    },
+    "password": {
+      "bodySet": "Utilisez-le pour vous connecter sur un nouvel appareil ou dans un navigateur.",
+      "bodyNotSet": "Vous vous êtes connecté avec un code d'invitation et n'avez pas encore de mot de passe. Définissez-en un pour pouvoir vous connecter sur un nouvel appareil.",
+      "dialogSet": "Au moins {{count}} caractères. Vos autres appareils restent connectés.",
+      "dialogChange": "Saisissez votre mot de passe actuel, puis le nouveau. Vos autres appareils restent connectés.",
+      "doneSet": "Mot de passe défini",
+      "doneChanged": "Mot de passe modifié",
+      "doneBody": "Vos autres appareils restent connectés."
+    },
+    "pair": {
+      "title": "Associer un autre appareil",
+      "body": "Scannez le code avec l'app AudioSilo sur un téléphone, ou ouvrez le lien. Il expire dans 10 minutes.",
+      "show": "Afficher un code d'association",
+      "expiresIn": "Expire dans {{time}}",
+      "expired": "Ce code a expiré. Créez-en un nouveau pour associer un appareil.",
+      "renew": "Créer un nouveau code",
+      "copy": "Copier le lien",
+      "qr": "Code d'association pour {{server}}",
+      "error": "Impossible de joindre {{server}}. Aucun code n'a été créé, réessayez."
+    },
+    "devices": {
+      "title": "Appareils connectés",
+      "sub": "Déconnectez un appareil perdu ou vendu",
+      "thisDevice": "Cet appareil",
+      "activeNow": "actif maintenant",
+      "never": "pas vu depuis sa connexion",
+      "onlyThis": "Seul cet appareil est connecté.",
+      "unknownApp": "App pas encore connue",
+      "unnamed": "Appareil sans nom",
+      "platform": {
+        "ios": "iOS",
+        "android": "Android",
+        "web": "Navigateur"
+      },
+      "seen": {
+        "minute_one": "vu il y a {{count}} minute",
+        "minute_other": "vu il y a {{count}} minutes",
+        "hour_one": "vu il y a {{count}} heure",
+        "hour_other": "vu il y a {{count}} heures",
+        "day_one": "vu il y a {{count}} jour",
+        "day_other": "vu il y a {{count}} jours",
+        "month_one": "vu il y a {{count}} mois",
+        "month_other": "vu il y a {{count}} mois",
+        "year_one": "vu il y a {{count}} an",
+        "year_other": "vu il y a {{count}} ans"
+      },
+      "signOut": "Déconnecter",
+      "signOutLabel": "Déconnecter {{name}}",
+      "confirm": {
+        "title": "Déconnecter {{name}} ?",
+        "message": "{{name}} perd aussitôt l'accès à {{server}} et devra se reconnecter.",
+        "confirm": "Déconnecter l'appareil"
+      },
+      "done": "{{name}} déconnecté",
+      "doneBody": "Il devra se reconnecter pour joindre {{server}}.",
+      "failed": "Impossible de déconnecter {{name}}",
+      "failedBody": "{{server}} n'a pas répondu. Rien n'a changé, réessayez.",
+      "gone": "{{name}} était déjà déconnecté",
+      "goneBody": "La liste est à jour.",
+      "loadError": "Impossible de charger vos appareils depuis {{server}}."
+    },
+    "danger": {
+      "title": "Se déconnecter de {{server}}",
+      "body": "Supprime les téléchargements de ce serveur sur cet appareil. Votre progression reste sur le serveur."
     }
   },
   "annotations": {

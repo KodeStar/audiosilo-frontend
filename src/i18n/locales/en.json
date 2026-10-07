@@ -89,16 +89,11 @@
       "signOut": "Sign out"
     },
     "devices": {
-      "label": "Devices",
-      "intro": "Pair another phone, tablet, or browser to this account.",
-      "scanHint": "On the other device, open AudioSilo and scan this code - or open the link below.",
-      "add": "Add a device",
       "share": "Share link",
-      "done": "Done",
-      "reachError": "Could not reach the server."
+      "done": "Done"
     },
     "apiKeys": {
-      "label": "API keys",
+      "label": "Personal API keys",
       "hint": "Named keys that let scripts and dashboards reach this server on your behalf. Each key acts as you and can be revoked at any time.",
       "nameLabel": "Key name",
       "namePlaceholder": "e.g. Home dashboard",
@@ -112,15 +107,22 @@
       "createError": "Could not create the API key.",
       "revokeError": "Could not revoke the API key.",
       "createdModal": {
-        "title": "API key created",
-        "description": "Copy this key now - it won't be shown again. Store it somewhere safe.",
+        "title": "Your new API key",
+        "description": "Copy it now. You won't be able to see it again.",
         "copy": "Copy key"
       },
       "revokeConfirm": {
         "title": "Revoke {{name}}?",
         "message": "Anything using this key will immediately lose access. This can't be undone.",
         "confirm": "Revoke key"
-      }
+      },
+      "sub": "For Home Assistant, dashboards and scripts",
+      "unavailable": {
+        "title": "Not available on {{server}}",
+        "body": "This server's version of AudioSilo doesn't offer API keys yet. Everything else works as usual."
+      },
+      "dialogTitle": "Create an API key",
+      "revokeShort": "Revoke"
     },
     "support": {
       "label": "Support",
@@ -149,6 +151,79 @@
       "confirm": "Sign out anyway",
       "downloadsWarning_one": "Signing out also deletes {{count}} book downloaded from this server on this device.",
       "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device."
+    },
+    "switcher": "Server",
+    "none": "Sign in to a server to see its account.",
+    "identity": {
+      "line": "@{{user}} · {{role}} on {{server}}",
+      "devices_one": "signed in on {{count}} device",
+      "devices_other": "signed in on {{count}} devices",
+      "demo": "Demo"
+    },
+    "password": {
+      "bodySet": "Sign in with it on a new device or in a browser.",
+      "bodyNotSet": "You signed in with an invite code and haven't set a password. Set one so you can sign in on a new device.",
+      "dialogSet": "At least {{count}} characters. Your other devices stay signed in.",
+      "dialogChange": "Enter your current password, then the new one. Your other devices stay signed in.",
+      "doneSet": "Password set",
+      "doneChanged": "Password changed",
+      "doneBody": "Your other devices stay signed in."
+    },
+    "pair": {
+      "title": "Pair another device",
+      "body": "Scan the code with the AudioSilo app on a phone, or open the link. It expires in 10 minutes.",
+      "show": "Show a pairing code",
+      "expiresIn": "Expires in {{time}}",
+      "expired": "This code has expired. Make a new one to pair a device.",
+      "renew": "Make a new code",
+      "copy": "Copy link",
+      "qr": "Pairing code for {{server}}",
+      "error": "Couldn't reach {{server}}. No code was made, so try again."
+    },
+    "devices": {
+      "title": "Signed-in devices",
+      "sub": "Sign out a device you've lost or sold",
+      "thisDevice": "This device",
+      "activeNow": "active now",
+      "never": "not seen since it signed in",
+      "onlyThis": "Only this device is signed in.",
+      "unknownApp": "App not reported yet",
+      "unnamed": "Unnamed device",
+      "platform": {
+        "ios": "iOS",
+        "android": "Android",
+        "web": "Browser"
+      },
+      "seen": {
+        "minute_one": "last seen {{count}} minute ago",
+        "minute_other": "last seen {{count}} minutes ago",
+        "hour_one": "last seen {{count}} hour ago",
+        "hour_other": "last seen {{count}} hours ago",
+        "day_one": "last seen {{count}} day ago",
+        "day_other": "last seen {{count}} days ago",
+        "month_one": "last seen {{count}} month ago",
+        "month_other": "last seen {{count}} months ago",
+        "year_one": "last seen {{count}} year ago",
+        "year_other": "last seen {{count}} years ago"
+      },
+      "signOut": "Sign out",
+      "signOutLabel": "Sign out {{name}}",
+      "confirm": {
+        "title": "Sign out {{name}}?",
+        "message": "{{name}} loses access to {{server}} straight away and will need to sign in again.",
+        "confirm": "Sign out device"
+      },
+      "done": "Signed out {{name}}",
+      "doneBody": "It needs to sign in again to reach {{server}}.",
+      "failed": "Couldn't sign out {{name}}",
+      "failedBody": "{{server}} didn't answer. Nothing changed, so try again.",
+      "gone": "{{name}} was already signed out",
+      "goneBody": "The list is up to date now.",
+      "loadError": "Couldn't load your devices from {{server}}."
+    },
+    "danger": {
+      "title": "Sign out of {{server}}",
+      "body": "Removes this server's downloads from this device. Your progress stays on the server."
     }
   },
   "annotations": {
