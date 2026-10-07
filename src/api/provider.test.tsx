@@ -1,5 +1,4 @@
 import { act, render } from '@testing-library/react-native';
-import { useState } from 'react';
 
 import { useSession } from '@/stores/session';
 
@@ -11,14 +10,17 @@ jest.mock('./reachability', () => ({
 }));
 
 const seen: ApiConnection[][] = [];
-let rerender: () => void = () => {};
 
-function Reader() {
-  const [, setTick] = useState(0);
-  rerender = () => setTick((n) => n + 1);
-  seen.push(useApis());
+/** Hands every render's `useApis()` to `onApis`; `tick` only re-renders it. */
+function Reader({ onApis }: { tick: number; onApis: (apis: ApiConnection[]) => void }) {
+  onApis(useApis());
   return null;
 }
+const ui = (tick: number) => (
+  <ApiProvider>
+    <Reader tick={tick} onApis={(apis) => seen.push(apis)} />
+  </ApiProvider>
+);
 
 describe('useApis', () => {
   // Callers memoise on it (the Journal's per-server queries, their merge): a new array on
@@ -27,12 +29,8 @@ describe('useApis', () => {
     useSession.setState({
       connections: [{ id: 'c1', name: 'Hearthside', serverUrl: 'https://h', token: 't' }],
     } as never);
-    await render(
-      <ApiProvider>
-        <Reader />
-      </ApiProvider>,
-    );
-    await act(async () => rerender());
+    const view = await render(ui(0));
+    await view.rerender(ui(1));
     expect(seen.length).toBeGreaterThan(1);
     expect(seen.at(-1)).toBe(seen[0]);
     expect(seen[0].map((a) => a.connection.id)).toEqual(['c1']);
