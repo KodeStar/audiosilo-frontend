@@ -4,7 +4,8 @@ import type { View } from 'react-native';
 
 import { toast } from '@/components/ui/toast';
 
-import { captureCard, type CapturedCard, deliverCard, type ShareCardOptions } from './share-card';
+import { captureCard, deliverCard } from './share-card';
+import type { CapturedCard, ShareCardOptions } from './share-types';
 
 /** Waits for React to commit a state change and the platform to lay it out (two frames),
  * before a second capture reads the card again. */

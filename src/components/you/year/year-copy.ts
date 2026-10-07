@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { formatCount, formatDuration, formatTimeOfDay } from '@/lib/format';
+import { formatCount, formatDurationOrZero, formatTimeOfDay } from '@/lib/format';
 
 import { roundHours, type YearCard } from './year-model';
 
@@ -41,7 +41,7 @@ export type CardCopy = {
 /** "36 hours", or "1h 20m" under two hours (a rounded "1 hour" would overstate it). */
 export function listenTime(seconds: number, t: TFunction): string {
   if (seconds >= 7200) return t('year.hoursLong', { count: roundHours(seconds) });
-  return formatDuration(seconds) || formatDuration(60);
+  return formatDurationOrZero(seconds);
 }
 
 /** "22:00" / "10:00 PM": an hour of the day in the reader's clock. */

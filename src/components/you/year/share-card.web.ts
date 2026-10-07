@@ -2,16 +2,14 @@ import type { View } from 'react-native';
 
 import { downloadBlob } from '@/lib/download-blob';
 
+import { loadRasteriser } from './load-rasteriser';
 import {
   type CapturedCard,
   SHARE_HEIGHT,
   SHARE_WIDTH,
   type ShareCardOptions,
   type ShareOutcome,
-} from './share-card';
-
-export { SHARE_HEIGHT, SHARE_WIDTH };
-export type { CapturedCard, ShareCardOptions, ShareOutcome };
+} from './share-types';
 
 /**
  * Web: rasterise the rendered card's DOM node (the same component the story shows) to a
@@ -59,7 +57,7 @@ export async function deliverCard(
 }
 
 async function renderPng(node: HTMLElement): Promise<Blob> {
-  const { default: html2canvas } = await import('html2canvas');
+  const html2canvas = await loadRasteriser();
   const box = node.getBoundingClientRect();
   if (box.width <= 0 || box.height <= 0) throw new Error('The card is not on screen');
   const drawn = await html2canvas(node, {
