@@ -91,16 +91,11 @@
       "signOut": "Cerrar sesión"
     },
     "devices": {
-      "label": "Dispositivos",
-      "intro": "Vincula otro teléfono, tableta o navegador a esta cuenta.",
-      "scanHint": "En el otro dispositivo, abre AudioSilo y escanea este código, o abre el enlace de abajo.",
-      "add": "Añadir un dispositivo",
       "share": "Compartir enlace",
-      "done": "Listo",
-      "reachError": "No se pudo conectar con el servidor."
+      "done": "Listo"
     },
     "apiKeys": {
-      "label": "Claves de API",
+      "label": "Claves API personales",
       "hint": "Claves con nombre que permiten a scripts y paneles acceder a este servidor en tu nombre. Cada clave actúa como tú y se puede revocar en cualquier momento.",
       "nameLabel": "Nombre de la clave",
       "namePlaceholder": "p. ej. Panel de inicio",
@@ -114,15 +109,22 @@
       "createError": "No se pudo crear la clave de API.",
       "revokeError": "No se pudo revocar la clave de API.",
       "createdModal": {
-        "title": "Clave de API creada",
-        "description": "Copia esta clave ahora: no se volverá a mostrar. Guárdala en un lugar seguro.",
+        "title": "Tu nueva clave API",
+        "description": "Cópiala ahora. No se volverá a mostrar.",
         "copy": "Copiar clave"
       },
       "revokeConfirm": {
         "title": "¿Revocar {{name}}?",
         "message": "Todo lo que use esta clave perderá el acceso de inmediato. Esto no se puede deshacer.",
         "confirm": "Revocar clave"
-      }
+      },
+      "sub": "Para Home Assistant, paneles y scripts",
+      "unavailable": {
+        "title": "No disponible en {{server}}",
+        "body": "La versión de AudioSilo de este servidor aún no ofrece claves API. Todo lo demás funciona como siempre."
+      },
+      "dialogTitle": "Crear una clave API",
+      "revokeShort": "Revocar"
     },
     "support": {
       "label": "Apoyar",
@@ -179,6 +181,81 @@
       "confirm": "Cerrar sesión de todas formas",
       "downloadsWarning_one": "Cerrar sesión también eliminará {{count}} libro descargado de este servidor en este dispositivo.",
       "downloadsWarning_other": "Cerrar sesión también eliminará {{count}} libros descargados de este servidor en este dispositivo."
+    },
+    "switcher": "Servidor",
+    "none": "Inicia sesión en un servidor para ver su cuenta.",
+    "identity": {
+      "line": "@{{user}} · {{role}} en {{server}}",
+      "devices_one": "con sesión en {{count}} dispositivo",
+      "devices_other": "con sesión en {{count}} dispositivos",
+      "demo": "Demo",
+      "devicesLine_one": "Con sesión en {{count}} dispositivo",
+      "devicesLine_other": "Con sesión en {{count}} dispositivos"
+    },
+    "password": {
+      "bodySet": "Úsala para iniciar sesión en un dispositivo nuevo o en un navegador.",
+      "bodyNotSet": "Iniciaste sesión con un código de invitación y aún no tienes contraseña. Crea una para poder iniciar sesión en un dispositivo nuevo.",
+      "dialogSet": "Al menos {{count}} caracteres. Tus otros dispositivos siguen con la sesión iniciada.",
+      "dialogChange": "Escribe tu contraseña actual y luego la nueva. Tus otros dispositivos siguen con la sesión iniciada.",
+      "doneSet": "Contraseña creada",
+      "doneChanged": "Contraseña cambiada",
+      "doneBody": "Tus otros dispositivos siguen con la sesión iniciada."
+    },
+    "pair": {
+      "title": "Vincular otro dispositivo",
+      "body": "Escanea el código con la app AudioSilo en un teléfono o abre el enlace. Caduca en 10 minutos.",
+      "show": "Mostrar un código de vinculación",
+      "expiresIn": "Caduca en {{time}}",
+      "expired": "Este código ha caducado. Crea uno nuevo para vincular un dispositivo.",
+      "renew": "Crear un código nuevo",
+      "copy": "Copiar enlace",
+      "qr": "Código de vinculación de {{server}}",
+      "error": "No se pudo contactar con {{server}}. No se creó ningún código; inténtalo de nuevo."
+    },
+    "devices": {
+      "title": "Dispositivos con sesión iniciada",
+      "sub": "Cierra la sesión de un dispositivo perdido o vendido",
+      "thisDevice": "Este dispositivo",
+      "activeNow": "activo ahora",
+      "never": "sin actividad desde que inició sesión",
+      "onlyThis": "Solo este dispositivo tiene la sesión iniciada.",
+      "unknownApp": "App aún desconocida",
+      "unnamed": "Dispositivo sin nombre",
+      "platform": {
+        "ios": "iOS",
+        "android": "Android",
+        "web": "Navegador"
+      },
+      "seen": {
+        "minute_one": "visto hace {{count}} minuto",
+        "minute_other": "visto hace {{count}} minutos",
+        "hour_one": "visto hace {{count}} hora",
+        "hour_other": "visto hace {{count}} horas",
+        "day_one": "visto hace {{count}} día",
+        "day_other": "visto hace {{count}} días",
+        "month_one": "visto hace {{count}} mes",
+        "month_other": "visto hace {{count}} meses",
+        "year_one": "visto hace {{count}} año",
+        "year_other": "visto hace {{count}} años"
+      },
+      "signOut": "Cerrar sesión",
+      "signOutLabel": "Cerrar la sesión de {{name}}",
+      "confirm": {
+        "title": "¿Cerrar la sesión de {{name}}?",
+        "message": "{{name}} pierde el acceso a {{server}} al instante y tendrá que volver a iniciar sesión.",
+        "confirm": "Cerrar sesión del dispositivo"
+      },
+      "done": "Sesión cerrada en {{name}}",
+      "doneBody": "Tendrá que volver a iniciar sesión para acceder a {{server}}.",
+      "failed": "No se pudo cerrar la sesión de {{name}}",
+      "failedBody": "{{server}} no respondió. No ha cambiado nada; inténtalo de nuevo.",
+      "gone": "{{name}} ya no tenía la sesión iniciada",
+      "goneBody": "La lista está actualizada.",
+      "loadError": "No se pudieron cargar tus dispositivos de {{server}}."
+    },
+    "danger": {
+      "title": "Cerrar sesión en {{server}}",
+      "body": "Elimina de este dispositivo las descargas de este servidor. Tu progreso se queda en el servidor."
     }
   },
   "annotations": {

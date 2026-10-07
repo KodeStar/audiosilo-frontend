@@ -91,16 +91,11 @@
       "signOut": "Esci"
     },
     "devices": {
-      "label": "Dispositivi",
-      "intro": "Associa un altro telefono, tablet o browser a questo account.",
-      "scanHint": "Sull'altro dispositivo, apri AudioSilo e scansiona questo codice, oppure apri il link qui sotto.",
-      "add": "Aggiungi un dispositivo",
       "share": "Condividi link",
-      "done": "Fatto",
-      "reachError": "Impossibile raggiungere il server."
+      "done": "Fatto"
     },
     "apiKeys": {
-      "label": "Chiavi API",
+      "label": "Chiavi API personali",
       "hint": "Chiavi denominate che consentono a script e dashboard di accedere a questo server per tuo conto. Ogni chiave agisce come te e può essere revocata in qualsiasi momento.",
       "nameLabel": "Nome della chiave",
       "namePlaceholder": "es. Dashboard di casa",
@@ -114,15 +109,22 @@
       "createError": "Impossibile creare la chiave API.",
       "revokeError": "Impossibile revocare la chiave API.",
       "createdModal": {
-        "title": "Chiave API creata",
-        "description": "Copia questa chiave ora: non verrà più mostrata. Conservala in un luogo sicuro.",
+        "title": "La tua nuova chiave API",
+        "description": "Copiala ora. Non verrà più mostrata.",
         "copy": "Copia chiave"
       },
       "revokeConfirm": {
         "title": "Revocare {{name}}?",
         "message": "Tutto ciò che usa questa chiave perderà immediatamente l'accesso. L'operazione non può essere annullata.",
         "confirm": "Revoca chiave"
-      }
+      },
+      "sub": "Per Home Assistant, dashboard e script",
+      "unavailable": {
+        "title": "Non disponibile su {{server}}",
+        "body": "La versione di AudioSilo di questo server non offre ancora le chiavi API. Tutto il resto funziona come sempre."
+      },
+      "dialogTitle": "Crea una chiave API",
+      "revokeShort": "Revoca"
     },
     "support": {
       "label": "Sostieni",
@@ -179,6 +181,81 @@
       "confirm": "Disconnetti comunque",
       "downloadsWarning_one": "Disconnettendoti verrà eliminato anche {{count}} libro scaricato da questo server su questo dispositivo.",
       "downloadsWarning_other": "Disconnettendoti verranno eliminati anche {{count}} libri scaricati da questo server su questo dispositivo."
+    },
+    "switcher": "Server",
+    "none": "Accedi a un server per vederne l'account.",
+    "identity": {
+      "line": "@{{user}} · {{role}} su {{server}}",
+      "devices_one": "connesso su {{count}} dispositivo",
+      "devices_other": "connesso su {{count}} dispositivi",
+      "demo": "Demo",
+      "devicesLine_one": "Connesso su {{count}} dispositivo",
+      "devicesLine_other": "Connesso su {{count}} dispositivi"
+    },
+    "password": {
+      "bodySet": "Usala per accedere da un nuovo dispositivo o da un browser.",
+      "bodyNotSet": "Hai effettuato l'accesso con un codice di invito e non hai ancora una password. Impostane una per poter accedere da un nuovo dispositivo.",
+      "dialogSet": "Almeno {{count}} caratteri. Gli altri tuoi dispositivi restano connessi.",
+      "dialogChange": "Inserisci la password attuale, poi quella nuova. Gli altri tuoi dispositivi restano connessi.",
+      "doneSet": "Password impostata",
+      "doneChanged": "Password cambiata",
+      "doneBody": "Gli altri tuoi dispositivi restano connessi."
+    },
+    "pair": {
+      "title": "Associa un altro dispositivo",
+      "body": "Scansiona il codice con l'app AudioSilo su un telefono, oppure apri il link. Scade tra 10 minuti.",
+      "show": "Mostra un codice di associazione",
+      "expiresIn": "Scade tra {{time}}",
+      "expired": "Questo codice è scaduto. Creane uno nuovo per associare un dispositivo.",
+      "renew": "Crea un nuovo codice",
+      "copy": "Copia link",
+      "qr": "Codice di associazione per {{server}}",
+      "error": "Impossibile raggiungere {{server}}. Nessun codice creato, riprova."
+    },
+    "devices": {
+      "title": "Dispositivi connessi",
+      "sub": "Disconnetti un dispositivo perso o venduto",
+      "thisDevice": "Questo dispositivo",
+      "activeNow": "attivo ora",
+      "never": "mai visto dall'accesso",
+      "onlyThis": "È connesso solo questo dispositivo.",
+      "unknownApp": "App non ancora nota",
+      "unnamed": "Dispositivo senza nome",
+      "platform": {
+        "ios": "iOS",
+        "android": "Android",
+        "web": "Browser"
+      },
+      "seen": {
+        "minute_one": "visto {{count}} minuto fa",
+        "minute_other": "visto {{count}} minuti fa",
+        "hour_one": "visto {{count}} ora fa",
+        "hour_other": "visto {{count}} ore fa",
+        "day_one": "visto {{count}} giorno fa",
+        "day_other": "visto {{count}} giorni fa",
+        "month_one": "visto {{count}} mese fa",
+        "month_other": "visto {{count}} mesi fa",
+        "year_one": "visto {{count}} anno fa",
+        "year_other": "visto {{count}} anni fa"
+      },
+      "signOut": "Disconnetti",
+      "signOutLabel": "Disconnetti {{name}}",
+      "confirm": {
+        "title": "Disconnettere {{name}}?",
+        "message": "{{name}} perde subito l'accesso a {{server}} e dovrà accedere di nuovo.",
+        "confirm": "Disconnetti dispositivo"
+      },
+      "done": "{{name}} disconnesso",
+      "doneBody": "Dovrà accedere di nuovo per raggiungere {{server}}.",
+      "failed": "Impossibile disconnettere {{name}}",
+      "failedBody": "{{server}} non ha risposto. Non è cambiato nulla, riprova.",
+      "gone": "{{name}} era già disconnesso",
+      "goneBody": "L'elenco è aggiornato.",
+      "loadError": "Impossibile caricare i tuoi dispositivi da {{server}}."
+    },
+    "danger": {
+      "title": "Esci da {{server}}",
+      "body": "Rimuove da questo dispositivo i download di questo server. I tuoi progressi restano sul server."
     }
   },
   "annotations": {

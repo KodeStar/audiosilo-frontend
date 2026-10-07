@@ -64,9 +64,11 @@ describe('useApiKeysManager', () => {
       hook().setLabel('   ');
     });
     expect(hook().canCreate).toBe(false);
+    let made: boolean | undefined;
     await act(async () => {
-      await hook().create();
+      made = await hook().create();
     });
+    expect(made).toBe(false);
     expect(mockCreate.mutateAsync).not.toHaveBeenCalled();
     expect(hook().created).toBeNull();
   });
@@ -79,9 +81,12 @@ describe('useApiKeysManager', () => {
       hook().setLabel('  Dashboard  ');
     });
     expect(hook().canCreate).toBe(true);
+    // Resolves true once the key exists, so the naming dialog can close.
+    let made: boolean | undefined;
     await act(async () => {
-      await hook().create();
+      made = await hook().create();
     });
+    expect(made).toBe(true);
 
     // Label is trimmed before sending.
     expect(mockCreate.mutateAsync).toHaveBeenCalledWith('Dashboard');
@@ -101,10 +106,13 @@ describe('useApiKeysManager', () => {
     await act(async () => {
       hook().setLabel('Key');
     });
+    let made: boolean | undefined;
     await act(async () => {
-      await hook().create();
+      made = await hook().create();
     });
 
+    // False keeps the naming dialog open, with the error under the field.
+    expect(made).toBe(false);
     expect(hook().createError).toBe('demo accounts cannot mint keys');
     expect(hook().created).toBeNull();
   });

@@ -91,16 +91,11 @@
       "signOut": "Terminar sessão"
     },
     "devices": {
-      "label": "Dispositivos",
-      "intro": "Associe outro telemóvel, tablet ou navegador a esta conta.",
-      "scanHint": "No outro dispositivo, abra o AudioSilo e leia este código - ou abra a ligação abaixo.",
-      "add": "Adicionar um dispositivo",
       "share": "Partilhar ligação",
-      "done": "Concluído",
-      "reachError": "Não foi possível contactar o servidor."
+      "done": "Concluído"
     },
     "apiKeys": {
-      "label": "Chaves de API",
+      "label": "Chaves de API pessoais",
       "hint": "Chaves com nome que permitem que scripts e painéis acedam a este servidor em seu nome. Cada chave age como você e pode ser revogada a qualquer momento.",
       "nameLabel": "Nome da chave",
       "namePlaceholder": "ex.: Painel de casa",
@@ -114,15 +109,22 @@
       "createError": "Não foi possível criar a chave de API.",
       "revokeError": "Não foi possível revogar a chave de API.",
       "createdModal": {
-        "title": "Chave de API criada",
-        "description": "Copie esta chave agora: não será mostrada novamente. Guarde-a num local seguro.",
+        "title": "A sua nova chave de API",
+        "description": "Copie-a agora. Não será mostrada novamente.",
         "copy": "Copiar chave"
       },
       "revokeConfirm": {
         "title": "Revogar {{name}}?",
         "message": "Tudo o que usa esta chave perderá o acesso imediatamente. Isto não pode ser desfeito.",
         "confirm": "Revogar chave"
-      }
+      },
+      "sub": "Para Home Assistant, painéis e scripts",
+      "unavailable": {
+        "title": "Não disponível em {{server}}",
+        "body": "A versão do AudioSilo deste servidor ainda não oferece chaves de API. Tudo o resto funciona como habitualmente."
+      },
+      "dialogTitle": "Criar uma chave de API",
+      "revokeShort": "Revogar"
     },
     "support": {
       "label": "Apoiar",
@@ -179,6 +181,81 @@
       "confirm": "Terminar sessão mesmo assim",
       "downloadsWarning_one": "Terminar sessão também elimina {{count}} livro descarregado deste servidor neste dispositivo.",
       "downloadsWarning_other": "Terminar sessão também elimina {{count}} livros descarregados deste servidor neste dispositivo."
+    },
+    "switcher": "Servidor",
+    "none": "Inicie sessão num servidor para ver a sua conta.",
+    "identity": {
+      "line": "@{{user}} · {{role}} em {{server}}",
+      "devices_one": "com sessão iniciada em {{count}} dispositivo",
+      "devices_other": "com sessão iniciada em {{count}} dispositivos",
+      "demo": "Demonstração",
+      "devicesLine_one": "Com sessão iniciada em {{count}} dispositivo",
+      "devicesLine_other": "Com sessão iniciada em {{count}} dispositivos"
+    },
+    "password": {
+      "bodySet": "Use-a para iniciar sessão num novo dispositivo ou num navegador.",
+      "bodyNotSet": "Iniciou sessão com um código de convite e ainda não definiu uma palavra-passe. Defina uma para poder iniciar sessão num novo dispositivo.",
+      "dialogSet": "Pelo menos {{count}} caracteres. Os seus outros dispositivos mantêm a sessão iniciada.",
+      "dialogChange": "Introduza a palavra-passe atual e depois a nova. Os seus outros dispositivos mantêm a sessão iniciada.",
+      "doneSet": "Palavra-passe definida",
+      "doneChanged": "Palavra-passe alterada",
+      "doneBody": "Os seus outros dispositivos mantêm a sessão iniciada."
+    },
+    "pair": {
+      "title": "Associar outro dispositivo",
+      "body": "Leia o código com a app AudioSilo num telemóvel ou abra a ligação. Expira em 10 minutos.",
+      "show": "Mostrar um código de associação",
+      "expiresIn": "Expira em {{time}}",
+      "expired": "Este código expirou. Crie um novo para associar um dispositivo.",
+      "renew": "Criar um novo código",
+      "copy": "Copiar ligação",
+      "qr": "Código de associação para {{server}}",
+      "error": "Não foi possível contactar {{server}}. Nenhum código foi criado, tente novamente."
+    },
+    "devices": {
+      "title": "Dispositivos com sessão iniciada",
+      "sub": "Termine a sessão de um dispositivo perdido ou vendido",
+      "thisDevice": "Este dispositivo",
+      "activeNow": "ativo agora",
+      "never": "sem atividade desde que iniciou sessão",
+      "onlyThis": "Só este dispositivo tem sessão iniciada.",
+      "unknownApp": "App ainda desconhecida",
+      "unnamed": "Dispositivo sem nome",
+      "platform": {
+        "ios": "iOS",
+        "android": "Android",
+        "web": "Navegador"
+      },
+      "seen": {
+        "minute_one": "visto há {{count}} minuto",
+        "minute_other": "visto há {{count}} minutos",
+        "hour_one": "visto há {{count}} hora",
+        "hour_other": "visto há {{count}} horas",
+        "day_one": "visto há {{count}} dia",
+        "day_other": "visto há {{count}} dias",
+        "month_one": "visto há {{count}} mês",
+        "month_other": "visto há {{count}} meses",
+        "year_one": "visto há {{count}} ano",
+        "year_other": "visto há {{count}} anos"
+      },
+      "signOut": "Terminar sessão",
+      "signOutLabel": "Terminar a sessão de {{name}}",
+      "confirm": {
+        "title": "Terminar a sessão de {{name}}?",
+        "message": "{{name}} perde de imediato o acesso a {{server}} e terá de iniciar sessão novamente.",
+        "confirm": "Terminar sessão do dispositivo"
+      },
+      "done": "Sessão terminada em {{name}}",
+      "doneBody": "Terá de iniciar sessão novamente para aceder a {{server}}.",
+      "failed": "Não foi possível terminar a sessão de {{name}}",
+      "failedBody": "{{server}} não respondeu. Nada mudou, tente novamente.",
+      "gone": "{{name}} já não tinha sessão iniciada",
+      "goneBody": "A lista está atualizada.",
+      "loadError": "Não foi possível carregar os seus dispositivos de {{server}}."
+    },
+    "danger": {
+      "title": "Terminar sessão em {{server}}",
+      "body": "Remove deste dispositivo os livros descarregados deste servidor. O seu progresso fica no servidor."
     }
   },
   "annotations": {
