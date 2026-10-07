@@ -9,19 +9,13 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { useNow } from '@/lib/use-now';
+import { groupSessions, type ListeningSpan, toSpan } from '@/lib/listening-sessions';
+import { useToday } from '@/lib/use-day-label';
 import { cn } from '@/lib/utils';
 
 import { AnnotationsTab } from './annotations-tab';
 import { DiaryDayCard, DiarySkeleton } from './diary';
-import {
-  type DiarySpan,
-  driftStrip,
-  groupByDay,
-  groupSessions,
-  matchDrifts,
-  toSpan,
-} from './diary-model';
+import { groupByDay, matchDrifts } from './diary-model';
 import { ExportActions } from './export-actions';
 import { type JournalTab, parseJournalTab } from './journal-model';
 import { mergeNewestFirst, overallStatus } from './merge-model';
@@ -161,7 +155,7 @@ function DiaryTab({
   const records = useDriftRecords();
   const merged = useMemo(() => mergeNewestFirst(history, (r) => r.ended_at), [history]);
   const spans = useMemo(
-    () => merged.rows.map(toSpan).filter((s): s is DiarySpan => s !== null),
+    () => merged.rows.map(toSpan).filter((s): s is ListeningSpan => s !== null),
     [merged.rows],
   );
   // One row per listening session (the server records a span per pause).
@@ -173,7 +167,7 @@ function DiaryTab({
     const all = mergeNewestFirst(bookmarks, (b) => b.created_at).rows;
     return matchDrifts(sessions, all.filter(isDriftBookmark));
   }, [bookmarks, sessions]);
-  const now = useNow(60_000);
+  const today = useToday();
   const status = overallStatus(history);
 
   return (
@@ -190,13 +184,7 @@ function DiaryTab({
       }
       ItemSeparatorComponent={() => <View className="h-4" />}
       renderItem={({ item }) => (
-        <DiaryDayCard
-          day={item}
-          now={now}
-          wide={wide}
-          drifts={drifts}
-          driftStripFor={(bm) => driftStrip(bm, records, now)}
-        />
+        <DiaryDayCard day={item} today={today} wide={wide} drifts={drifts} records={records} />
       )}
       ListEmptyComponent={
         status === 'loading' ? (

@@ -4,21 +4,20 @@ import { View } from 'react-native';
 import { useHistory } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
-import { chapterNamer, useJumpTo } from '@/components/annotations';
-import {
-  type DiarySpan,
-  dayName,
-  localDayStart,
-  groupSessions,
-  sessionMinutes,
-  toSpan,
-} from '@/components/journal/diary-model';
+import { useChapterNamer, useJumpTo } from '@/components/annotations';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatShortDay, formatWallClock } from '@/lib/format';
-import { useNow } from '@/lib/use-now';
+import {
+  groupSessions,
+  type ListeningSpan,
+  localDayStart,
+  sessionMinutes,
+  toSpan,
+} from '@/lib/listening-sessions';
+import { useDayLabel, useToday } from '@/lib/use-day-label';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -27,9 +26,10 @@ import { tabularNums } from '@/theme/tabular-nums';
  * the book page's History tab and the player companion's;
  * Stacks prototype `HistoryPanel`), newest first, one row each: the day and the time it
  * started, where it went in the book ("17:00:00 to 17:25:42 · Bridge Four", the chapter
- * at its end, when `chapters` with whole-book offsets are given), the minutes listened, and
- * Jump to where it ended. The rows read the Journal's diary model, so the two agree. No
- * speed or device: a history row carries neither.
+ * at its end, once the book's chapters are known: `useChapterNamer`, the read the book
+ * page and the player share), the minutes listened, and Jump to where it ended. The rows
+ * read the sessions the Journal's Diary reads (`@/lib/listening-sessions`), so the two
+ * agree. No speed or device: a history row carries neither.
  *
  * Inline on the book screen it renders nothing when empty; a caller that passes
  * `emptyLabel` (the tabs, the companion) gets an empty state, a loading skeleton and a
@@ -40,7 +40,6 @@ export function HistorySection({
   path,
   connectionId,
   emptyLabel,
-  chapters,
   onJump,
 }: {
   libraryId: number;
@@ -49,6 +48,7 @@ export function HistorySection({
    * book's connection so history addresses the right server. */
   connectionId?: string;
   emptyLabel?: string;
+  /** Unused: the chapters come from the book's own read (`useChapterNamer`). */
   chapters?: Chapter[];
   /** Where a tap on Jump goes (the companion seeks the playing book in place); without
    * it, the shared jump (`useJumpTo`: the player on a phone, in place elsewhere). */
@@ -59,7 +59,9 @@ export function HistorySection({
   // The book's own connection: passed in (player sheet) or the route scope (book
   // screen). The player carries it as a param.
   const cid = useCid(connectionId);
-  const now = useNow(60_000);
+  const today = useToday();
+  const dayLabel = useDayLabel(formatShortDay);
+  const nameAt = useChapterNamer({ connectionId: cid, libraryId, path });
   const jumpTo = useJumpTo();
 
   if (!history || history.length === 0) {
@@ -81,20 +83,12 @@ export function HistorySection({
 
   const jump = (position: number) =>
     onJump ? onJump(position) : jumpTo({ connectionId: cid, libraryId, path }, position);
-  const nameAt = chapterNamer(chapters, undefined, t);
   // One row per listening session (the server records a span per pause), as the Diary.
   const sessions = groupSessions(
     history
       .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
-      .filter((s): s is DiarySpan => s !== null),
+      .filter((s): s is ListeningSpan => s !== null),
   );
-
-  const day = (s: DiarySpan) => {
-    const name = dayName(localDayStart(s.start), now);
-    if (name === 'today') return t('journal.diary.today');
-    if (name === 'yesterday') return t('journal.diary.yesterday');
-    return formatShortDay(new Date(s.start));
-  };
 
   return (
     <View className="overflow-hidden rounded-card border border-border bg-card">
@@ -115,7 +109,7 @@ export function HistorySection({
           >
             <View className="w-[84px] gap-0.5">
               <Text variant="label" numberOfLines={1}>
-                {day(s)}
+                {dayLabel(localDayStart(s.start), today)}
               </Text>
               <Text variant="caption" style={tabularNums}>
                 {formatWallClock(new Date(s.start))}
