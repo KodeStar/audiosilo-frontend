@@ -74,14 +74,10 @@ jest.mock('@/api/reachability', () => ({
 /* eslint-disable import/first */
 import { useBook, useBookMeta, useMetaWork, useServerInfo } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import {
-  BookMetaAbout,
-  BookMetaCharactersTab,
-  matchedMeta,
-  previousWorks,
-  seriesRails,
-} from '@/components/library/book-meta';
+import { BookAbout } from '@/components/book/book-about';
+import { BookMetaCharactersTab, matchedMeta } from '@/components/library/book-meta';
 import { metaEnabledFor } from '@/components/library/meta-gating';
+import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { useBookCommunity } from '@/components/library/use-book-community';
 import { useCompanionData } from '@/components/player/companion/use-companion-data';
 import { WhoPanel } from '@/components/player/companion/who-panel';
@@ -228,23 +224,18 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 /** The book page's own chain (`components/book/book-page.tsx`): `/server`, the book, the
- * gate, the one `useBookMeta`, then the blocks it places (the aside's About card, fed as
- * `BookAside` feeds it, and the Characters tab). */
+ * gate, the one `useBookMeta`, then the blocks it places (the aside's About card, as
+ * `BookAside` places it, and the Characters tab). */
 function BookPageCommunity() {
   const { data: book } = useBook(2, PATH);
   const { data: info } = useServerInfo();
   const enabled = metaEnabledFor(!!info?.capabilities.metadata, book);
   const { data } = useBookMeta(2, PATH, enabled);
   const matched = matchedMeta(data, enabled);
-  if (!matched) return null;
+  if (!book || !matched) return null;
   return (
     <>
-      <BookMetaAbout
-        meta={matched}
-        description={book?.description}
-        published={book?.published}
-        fallback="No description"
-      />
+      <BookAbout book={book} meta={matched} />
       <BookMetaCharactersTab
         characters={matched.work.characters ?? []}
         progress={{ chapter: 0, finished: false }}

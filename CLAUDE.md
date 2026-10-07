@@ -288,9 +288,9 @@ own `nextSegmentStart`/`previousSegmentStart`) then the rows (`chapterList`: the
 long chapterless file's 30-minute parts as the player makes them, else the files). Details
 (`book-details-tab.tsx`): direct play / converted for this browser (web, `useNeedsWebTranscode`)
 / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
-and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookMetaAbout`:
-`community_description` with the server's attribution and "Improve this", else the server's
-`description`, else a sentence naming the author and narrator), Other versions
+and the path progress keys on. The **aside** (`book-aside.tsx`): About (`book-about.tsx`, its words
+from the pure `aboutContent`: `community_description` with the server's attribution and "Improve
+this", else the server's `description`, else a sentence naming the author and narrator), Other versions
 (`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
 listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
 vertical scroller). Which tabs exist: chapters when there's a list, the three community-metadata
@@ -303,9 +303,9 @@ falls back to the first existing tab when data changes under it. Labels come fro
 
 **Enriched book metadata.** One `useBookMeta` fetch at the screen level feeds
 `matchedMeta()` and the placeable blocks exported from
-`src/components/library/book-meta.tsx`: `BookMetaAbout` (the aside's About card, above),
+`src/components/library/book-meta.tsx` (and the book page's About card, above):
 `BookMetaRecapsTab`, `BookMetaCharactersTab`,
-`BookMetaSeriesTab`. Those take **plain data, not a query**, so a sibling block can be
+`BookMetaSeriesTab` (the rails' pure rules are `series-rails.ts`). Those take **plain data, not a query**, so a sibling block can be
 appended without another restructure - which is how the **"catch up on previous books"**
 block lands: `previousWorks(rails)` (pure, tested - earlier positions only, from each
 rail's shown reading order, deduped, position-DESCENDING, unparsable positions dropped)

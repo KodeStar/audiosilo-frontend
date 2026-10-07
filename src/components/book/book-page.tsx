@@ -20,8 +20,6 @@ import {
   BookMetaRecapsTab,
   BookMetaSeriesTab,
   matchedMeta,
-  previousWorks,
-  seriesRails,
   summaryIsVisible,
 } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
@@ -37,6 +35,7 @@ import {
   splitCharacters,
 } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
+import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { TranscodeNote } from '@/components/library/transcode-note';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
