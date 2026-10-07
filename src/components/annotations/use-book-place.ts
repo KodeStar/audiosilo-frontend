@@ -7,11 +7,11 @@ import { useOptionalApi } from '@/api/provider';
 import type { BookFile, Chapter } from '@/api/types';
 import { chapterStartsOf } from '@/components/library/meta-gating';
 import { selectPlacedBookKey } from '@/components/player/use-listening-position';
+import type { AnnotationTarget } from '@/lib/annotation-request';
 import { chapterLabel } from '@/lib/chapter-label';
 import { contentKeyOf } from '@/lib/content-key';
 import { chapterAt } from '@/playback/book-queue';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-import type { AnnotationTarget } from '@/lib/annotation-request';
 
 type PlacedFiles = Pick<BookFile, 'rel_path' | 'duration'>[] | undefined;
 

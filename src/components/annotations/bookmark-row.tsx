@@ -5,10 +5,10 @@ import { useCapability } from '@/api/hooks';
 import type { Book, Bookmark } from '@/api/types';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { Text } from '@/components/ui/text';
+import { type AnnotationTarget, editBookmarkRequest } from '@/lib/annotation-request';
 import { formatClock, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
-import { type AnnotationTarget, editBookmarkRequest } from '@/lib/annotation-request';
 
 import { LabelChip, TimeChip } from './chips';
 import { isDriftBookmark, shownNote } from './drift-marker';

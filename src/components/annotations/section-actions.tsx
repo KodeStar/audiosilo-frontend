@@ -5,11 +5,11 @@ import { journalHref, type JournalTab } from '@/components/journal/journal-model
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { Button } from '@/components/ui/button';
+import type { AnnotationTarget } from '@/lib/annotation-request';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { selectBookKey, usePlayer } from '@/playback/store';
-import type { AnnotationTarget } from '@/lib/annotation-request';
 
 import { usePlaceIn } from './use-book-place';
 

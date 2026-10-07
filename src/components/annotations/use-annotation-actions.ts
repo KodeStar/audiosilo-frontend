@@ -7,12 +7,12 @@ import { addBookmark, addNote, useDeleteBookmark, useDeleteNote } from '@/api/ho
 import type { Bookmark, Note } from '@/api/types';
 import { startBookInPlace } from '@/components/player/start-book';
 import { toast } from '@/components/ui/toast';
+import type { AnnotationTarget } from '@/lib/annotation-request';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { selectBookKey, usePlayer } from '@/playback/store';
-import type { AnnotationTarget } from '@/lib/annotation-request';
 
 /**
  * Jump to a place in a book (a bookmark's or a note's time chip), through the player's

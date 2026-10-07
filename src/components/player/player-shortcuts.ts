@@ -2,12 +2,12 @@ import type { TFunction } from 'i18next';
 
 import { addBookmark, cachedCapability } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
+import { editBookmarkRequest } from '@/lib/annotation-request';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
 import { noteInteraction } from '@/playback/last-interaction';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
-import { editBookmarkRequest } from '@/lib/annotation-request';
 
 import { usePlayerSheets } from './player-sheets';
 import { steppedRate } from './speed-model';

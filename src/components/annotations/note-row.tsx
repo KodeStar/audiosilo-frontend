@@ -6,11 +6,11 @@ import { useMarkdown } from 'react-native-marked';
 import { useCapability } from '@/api/hooks';
 import type { Book, Note } from '@/api/types';
 import { usePlayerSheets } from '@/components/player/player-sheets';
+import { type AnnotationTarget, editNoteRequest } from '@/lib/annotation-request';
 import { formatClock, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { useTheme } from '@/theme/theme-provider';
-import { type AnnotationTarget, editNoteRequest } from '@/lib/annotation-request';
 
 import { TimeChip } from './chips';
 import { AnnotationRowFrame, RowAction, RowCover, RowMeta } from './row-parts';
