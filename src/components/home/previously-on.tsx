@@ -192,7 +192,12 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
             <Text variant="display" className="text-[22px] leading-[26px] md:text-[24px]">
               {left}
             </Text>
-            <Text variant="body" className="text-[14.5px] leading-6 text-muted-foreground">
+            <Text
+              variant="body"
+              className="text-[14.5px] leading-6 text-muted-foreground"
+              // One paragraph, kept short: the whole of it is a tap away (Read the full recap).
+              numberOfLines={phone ? 6 : 4}
+            >
               {card.recap.text}
             </Text>
             <View className="mt-1 flex-row flex-wrap gap-2">
