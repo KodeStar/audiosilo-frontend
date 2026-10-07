@@ -21,7 +21,7 @@ import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
-import { SeekBar } from '@/components/player/seek-bar';
+import { PlayerSeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
@@ -33,10 +33,9 @@ import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock, formatSpeed } from '@/lib/format';
+import { formatClock } from '@/lib/format';
 import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { wallClockSeconds } from '@/playback/rate';
 import { selectSleepPhase, useSleepTimer } from '@/playback/sleep-timer';
 import {
   selectBookPosition,
@@ -44,6 +43,7 @@ import {
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
+import { formatTimeLeft, timeLeft } from '@/playback/time-left';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
@@ -163,7 +163,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const toggle = usePlayer((s) => s.toggle);
   const retry = usePlayer((s) => s.retry);
   const seekBook = usePlayer((s) => s.seekBook);
-  const seekInTrack = usePlayer((s) => s.seekInTrack);
   const goToTrack = usePlayer((s) => s.goToTrack);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
@@ -260,7 +259,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
     if (!info) return;
     goTo(finishedHref(info.connectionId, info.libraryId, info.path, true));
   };
-  const rateLabel = formatSpeed(rate);
   // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
   // playback). Surface it with a retry rather than silently sitting on a dead
   // stream where the play button does nothing. While buffering ('loading') show a
@@ -273,7 +271,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // and navigate per-file instead.
   const {
     perTrack,
-    start: segStart,
     length: segLength,
     elapsed: segElapsedRaw,
   } = currentSegment({
@@ -286,11 +283,9 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // While scrubbing, the labels preview the drag position.
   const segElapsed = scrubPreview ?? segElapsedRaw;
   const segRemaining = Math.max(0, segLength - segElapsed);
-  const bookLeft = wallClockSeconds(total - bookPosition, rate);
   const centerLabel = perTrack
     ? t('player.controls.fileOf', { current: trackIndex + 1, total: queue.tracks.length })
-    : t('player.controls.timeLeft', { time: formatClock(bookLeft), rate: rateLabel });
-  const onSeek = (p: number) => (perTrack ? void seekInTrack(p) : void seekBook(segStart + p));
+    : formatTimeLeft(t, timeLeft(bookPosition, total, rate));
 
   // Title line: the current chapter, else the current file's name.
   const track = queue.tracks[trackIndex];
@@ -441,12 +436,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         {/* Transport */}
         <Animated.View style={[{ width: '100%', alignItems: 'center' }, transportStyle]}>
           <View className="w-full max-w-[420px] gap-1">
-            <SeekBar
-              position={segElapsed}
-              duration={segLength}
-              onSeek={onSeek}
-              onScrub={setScrubPreview}
-            />
+            <PlayerSeekBar onScrub={setScrubPreview} />
             <View className="flex-row items-center justify-between">
               <Text variant="caption" style={tabularNums}>
                 {formatClock(segElapsed)}

@@ -6,16 +6,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApi } from '@/api/provider';
 import { serverStatus, useReachability } from '@/api/reachability';
-import { BookProgressLine, useBookTimeLeft } from '@/components/player/book-progress';
-import { SeekBar } from '@/components/player/seek-bar';
+import { BookProgressLine } from '@/components/player/book-progress';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
 import { currentSegment, stepSegment } from '@/components/player/transport';
+import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
+import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
@@ -53,7 +54,7 @@ function ChapterScrubber({ total }: { total: number }) {
       }).elapsed,
     ),
   );
-  const left = useBookTimeLeft(total);
+  const left = usePlayingTimeLeft();
   const seekBook = usePlayer((s) => s.seekBook);
   const seekInTrack = usePlayer((s) => s.seekInTrack);
   const [scrub, setScrub] = useState<number | null>(null);
@@ -69,16 +70,24 @@ function ChapterScrubber({ total }: { total: number }) {
         {formatClock(scrub ?? segment.elapsed)}
       </Text>
       <View className="flex-1">
-        <SeekBar
-          position={segment.elapsed}
-          duration={segment.length}
-          onSeek={onSeek}
-          onScrub={setScrub}
+        <Slider
+          value={segment.elapsed}
+          max={Math.max(0, segment.length)}
+          step={15}
           tone="ink"
+          onValueCommit={onSeek}
+          onPreview={setScrub}
+          accessibilityLabel={t('player.seek.label')}
+          valueText={(v) =>
+            t('player.seek.value', {
+              position: formatClock(v),
+              duration: formatClock(segment.length),
+            })
+          }
         />
       </View>
       <Text variant="caption" style={tabularNums} className="min-w-[44px]" numberOfLines={1}>
-        {left ? t('shell.dock.bookLeft', { time: left }) : ''}
+        {left}
       </Text>
     </View>
   );

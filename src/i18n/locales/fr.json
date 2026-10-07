@@ -199,7 +199,7 @@
     "continueMore_other": "{{count}} autres en cours",
     "allInProgress": "Tous les livres en cours",
     "acrossServers": "Sur tous tes serveurs",
-    "progressCaption": "{{percent}} % · encore {{left}}",
+    "progressCaption": "{{percent}} % · {{left}}",
     "finishedWhen": "Terminé {{when}}",
     "servers_one": "{{count}} serveur",
     "servers_other": "{{count}} serveurs",
@@ -222,7 +222,6 @@
       "chapterShort": "Ch. {{chapter}} sur {{total}}",
       "scaleLabel": "{{percent}} % du livre écouté",
       "through": "du livre écouté",
-      "leftAt": "restant à {{speed}}",
       "finishPace": "fin à ton rythme",
       "resume": "Reprendre",
       "resumeChapter": "Reprendre le chapitre {{chapter}}",
@@ -399,7 +398,7 @@
       "matches_one": "{{shown}} sur {{total}} correspond",
       "matches_other": "{{shown}} sur {{total}} correspondent",
       "loadingMore": "Chargement de la suite...",
-      "progress": "{{percent}} % · encore {{left}}",
+      "progress": "{{percent}} % · {{left}}",
       "finishedWhen": "Terminé {{when}}",
       "rail": "Aller à une lettre",
       "sort": {
@@ -763,7 +762,6 @@
     "controls": {
       "fileOf": "Fichier {{current}} sur {{total}}",
       "fileNumber": "Fichier {{number}}",
-      "timeLeft": "{{time}} restant ({{rate}})",
       "showChapters": "Afficher les chapitres",
       "close": "Fermer",
       "previous": "Chapitre précédent",
@@ -782,7 +780,9 @@
       "label": "Signets",
       "empty": "Aucun signet pour l'instant.",
       "saved": "Signet enregistré",
-      "addAt": "Ajouter un signet à {{time}}"
+      "addAt": "Ajouter un signet à {{time}}",
+      "added": "Signet ajouté",
+      "addFailed": "Impossible d'ajouter le signet"
     },
     "history": {
       "label": "Historique d'écoute",
@@ -818,8 +818,13 @@
       "title": "Vitesse de lecture"
     },
     "seek": {
-      "label": "Position de lecture",
-      "value": "{{position}} sur {{duration}}"
+      "label": "Position dans le chapitre",
+      "value": "{{position}} sur {{duration}}",
+      "labelFile": "Position dans le fichier",
+      "inBook": "{{time}} dans le livre",
+      "clickToJump": "Cliquer pour y aller",
+      "chapterLeft": "{{time}} restantes dans le chapitre · fin à {{clock}}",
+      "fileLeft": "{{time}} restantes dans le fichier · fin à {{clock}}"
     },
     "finished": {
       "heading": "Livre terminé",
@@ -832,6 +837,34 @@
     "menu": {
       "label": "Plus",
       "viewCredits": "Voir le générique de fin"
+    },
+    "timeLeft": {
+      "left": "{{time}} restantes",
+      "leftAt": "{{time}} restantes à {{speed}}",
+      "label": "restant",
+      "labelAt": "restant à {{speed}}"
+    },
+    "timeline": {
+      "label": "Chronologie du livre entier",
+      "value": "{{percent}} %, {{position}} sur {{total}}",
+      "axis": "{{percent}} % · {{position}}"
+    },
+    "undo": {
+      "label": "Retour à {{time}}",
+      "restored": "Retour là où vous étiez"
+    },
+    "shortcuts": {
+      "title": "Raccourcis clavier",
+      "hint": "Ils fonctionnent partout dans le lecteur web, sauf pendant la saisie.",
+      "or": "ou",
+      "playPause": "Lecture ou pause",
+      "chapters": "Chapitre précédent ou suivant",
+      "speed": "Plus lent ou plus rapide (0,05×)",
+      "bookmark": "Ajouter un signet",
+      "player": "Ouvrir le lecteur complet",
+      "palette": "Recherche et commandes",
+      "help": "Cette aide",
+      "space": "Espace"
     }
   },
   "reconnect": {
@@ -882,10 +915,8 @@
     "serverMore_one": "{{name}} + {{count}} autre",
     "serverMore_other": "{{name}} + {{count}} autres",
     "openPlayer": "Ouvrir le lecteur complet pour {{title}}",
-    "titleTimeLeft": "{{title}} · {{time}} restantes",
     "dock": {
       "label": "Lecteur",
-      "bookLeft": "{{time}} restantes",
       "savedLocally": "Enregistré sur cet appareil, sera synchronisé",
       "expand": "Agrandir le lecteur"
     },
@@ -975,7 +1006,6 @@
     "queued": "{{time}} en file",
     "nothingQueued": "Rien en file",
     "nowPlaying": "En cours de lecture",
-    "leftAtSpeed": "{{time}} restantes à {{speed}}x",
     "clear": "Vider",
     "clearLabel": "Vider À suivre",
     "cleared": "À suivre vidé",

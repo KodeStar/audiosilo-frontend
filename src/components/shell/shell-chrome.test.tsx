@@ -81,7 +81,7 @@ jest.mock('@/playback/store', () => {
 });
 
 // The scrubber and the speed/sleep controls have their own suites; stub them here.
-jest.mock('@/components/player/seek-bar', () => ({ SeekBar: () => null }));
+jest.mock('@/components/ui/slider', () => ({ Slider: () => null }));
 // The Up next entry point has its own suite (upnext/up-next-button.test.tsx).
 jest.mock('@/components/upnext/up-next-button', () => {
   const { Text: RNText } = jest.requireActual('react-native');
@@ -263,9 +263,9 @@ describe('DockedPlayer', () => {
     expect(screen.getByTestId('shell-docked-player')).toBeTruthy();
     for (const label of [
       'Previous chapter',
-      'Skip back 15 seconds',
+      'Back 15 seconds',
       'Play',
-      'Skip forward 30 seconds',
+      'Forward 30 seconds',
       'Next chapter',
       'Expand player',
       'Open the full player for The Way of Kings',
@@ -274,6 +274,13 @@ describe('DockedPlayer', () => {
     }
     expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
     expect(screen.getByText('upnext-dock')).toBeTruthy();
+  });
+
+  it('says the time left in the book at the listening speed (frontend#50)', async () => {
+    player.setState({ nowPlaying: book, rate: 1.25 });
+    await render(<DockedPlayer />);
+    // (3600 - 30) / 1.25 = 2856 s.
+    expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
   });
 
   it('plays, skips by chapter and expands to the full player', async () => {
@@ -302,14 +309,14 @@ describe('AccessoryPlayer', () => {
     await render(<AccessoryPlayer />);
     expect(screen.getByTestId('accessory-player-regular')).toBeTruthy();
     expect(screen.getByLabelText('Pause')).toBeTruthy();
-    expect(screen.getByLabelText('Skip back 15 seconds')).toBeTruthy();
+    expect(screen.getByLabelText('Back 15 seconds')).toBeTruthy();
     await screen.unmount();
 
     mockPlacement = 'inline';
     await render(<AccessoryPlayer />);
     expect(screen.getByTestId('accessory-player-inline')).toBeTruthy();
     // The minimised pill keeps play/pause only.
-    expect(screen.queryByLabelText('Skip back 15 seconds')).toBeNull();
+    expect(screen.queryByLabelText('Back 15 seconds')).toBeNull();
     expect(screen.getByLabelText('Pause')).toBeTruthy();
   });
 

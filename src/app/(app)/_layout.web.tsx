@@ -2,6 +2,8 @@ import { TabList, TabSlot, TabTrigger, Tabs } from 'expo-router/ui';
 import { View } from 'react-native';
 
 import { MiniPlayer } from '@/components/player/mini-player';
+import { ShortcutsDialog } from '@/components/player/shortcuts-dialog';
+import { usePlayerShortcuts } from '@/components/player/use-player-shortcuts';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { CommandPalette, usePaletteShortcut } from '@/components/shell/command-palette';
 import { TABS, useActiveTab } from '@/components/shell/destinations';
@@ -22,7 +24,8 @@ import { useUpNextShortcut } from '@/components/upnext/use-up-next-shortcut';
  * the URL to another tab). Phone: the page (with its Stack header), the mini player and
  * our tab bar. Tablet/desktop: top bar + sub-nav + banners, the page beside the drawer
  * slot, the docked player bar. The command palette (⌘K, `/`, the omnisearch) opens over
- * any tab page, at every width; so does Up next's tablet/phone sheet (Q toggles Up next).
+ * any tab page, at every width; so does Up next's tablet/phone sheet (Q toggles Up next),
+ * and the keyboard shortcuts overlay (?).
  */
 function WebShell() {
   useShellEffects();
@@ -30,6 +33,9 @@ function WebShell() {
   const onTabPage = useActiveTab() !== null;
   usePaletteShortcut(onTabPage);
   useUpNextShortcut(onTabPage);
+  // The player's keys (Space, J/K/L, arrows, [ ], B, P, Z, ?, Esc): on every page AND over
+  // the full player, which is a root route, not a dialog.
+  usePlayerShortcuts();
   return (
     <Tabs style={{ flex: 1 }}>
       <TabList style={{ display: 'none' }}>
@@ -51,6 +57,7 @@ function WebShell() {
       </ShellFrame>
       <UpNextSheet />
       <CommandPalette />
+      <ShortcutsDialog />
     </Tabs>
   );
 }

@@ -199,7 +199,7 @@
     "continueMore_other": "{{count}} more in progress",
     "allInProgress": "All in progress",
     "acrossServers": "Across all your servers",
-    "progressCaption": "{{percent}}% · {{left}} left",
+    "progressCaption": "{{percent}}% · {{left}}",
     "finishedWhen": "Finished {{when}}",
     "servers_one": "{{count}} server",
     "servers_other": "{{count}} servers",
@@ -222,7 +222,6 @@
       "chapterShort": "Ch. {{chapter}} of {{total}}",
       "scaleLabel": "{{percent}}% through the book",
       "through": "through the book",
-      "leftAt": "left at {{speed}}",
       "finishPace": "finish at your pace",
       "resume": "Resume",
       "resumeChapter": "Resume chapter {{chapter}}",
@@ -399,7 +398,7 @@
       "matches_one": "{{shown}} of {{total}} matches",
       "matches_other": "{{shown}} of {{total}} match",
       "loadingMore": "Loading more...",
-      "progress": "{{percent}}% · {{left}} left",
+      "progress": "{{percent}}% · {{left}}",
       "finishedWhen": "Finished {{when}}",
       "rail": "Jump to letter",
       "sort": {
@@ -763,15 +762,14 @@
     "controls": {
       "fileOf": "File {{current}} of {{total}}",
       "fileNumber": "File {{number}}",
-      "timeLeft": "{{time}} left ({{rate}})",
       "showChapters": "Show chapters",
       "close": "Close",
       "previous": "Previous chapter",
       "next": "Next chapter",
       "play": "Play",
       "pause": "Pause",
-      "skipBack": "Skip back {{seconds}} seconds",
-      "skipForward": "Skip forward {{seconds}} seconds"
+      "skipBack": "Back {{seconds}} seconds",
+      "skipForward": "Forward {{seconds}} seconds"
     },
     "chapters": {
       "chaptersTitle": "Chapters",
@@ -782,7 +780,9 @@
       "label": "Bookmarks",
       "empty": "No bookmarks yet.",
       "saved": "Bookmark saved",
-      "addAt": "Add bookmark at {{time}}"
+      "addAt": "Add bookmark at {{time}}",
+      "added": "Bookmark added",
+      "addFailed": "Couldn't add the bookmark"
     },
     "history": {
       "label": "Listening history",
@@ -818,8 +818,13 @@
       "title": "Playback speed"
     },
     "seek": {
-      "label": "Playback position",
-      "value": "{{position}} of {{duration}}"
+      "label": "Position in chapter",
+      "value": "{{position}} of {{duration}}",
+      "labelFile": "Position in file",
+      "inBook": "{{time}} in the book",
+      "clickToJump": "Click to jump",
+      "chapterLeft": "{{time}} left in the chapter · ends {{clock}}",
+      "fileLeft": "{{time}} left in the file · ends {{clock}}"
     },
     "finished": {
       "heading": "Book finished",
@@ -832,6 +837,34 @@
     "menu": {
       "label": "More",
       "viewCredits": "View end credits"
+    },
+    "timeLeft": {
+      "left": "{{time}} left",
+      "leftAt": "{{time}} left at {{speed}}",
+      "label": "left",
+      "labelAt": "left at {{speed}}"
+    },
+    "timeline": {
+      "label": "Whole-book timeline",
+      "value": "{{percent}}%, {{position}} of {{total}}",
+      "axis": "{{percent}}% · {{position}}"
+    },
+    "undo": {
+      "label": "Back to {{time}}",
+      "restored": "Back where you were"
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "hint": "They work everywhere in the web player, except while you're typing.",
+      "or": "or",
+      "playPause": "Play or pause",
+      "chapters": "Previous or next chapter",
+      "speed": "Slower or faster (0.05×)",
+      "bookmark": "Add a bookmark",
+      "player": "Open the full player",
+      "palette": "Search and commands",
+      "help": "This help",
+      "space": "Space"
     }
   },
   "reconnect": {
@@ -882,10 +915,8 @@
     "serverMore_one": "{{name}} + {{count}} more",
     "serverMore_other": "{{name}} + {{count}} more",
     "openPlayer": "Open the full player for {{title}}",
-    "titleTimeLeft": "{{title}} · {{time}} left",
     "dock": {
       "label": "Player",
-      "bookLeft": "{{time}} left",
       "savedLocally": "Saved on this device, will sync",
       "expand": "Expand player"
     },
@@ -975,7 +1006,6 @@
     "queued": "{{time}} queued",
     "nothingQueued": "Nothing queued",
     "nowPlaying": "Now playing",
-    "leftAtSpeed": "{{time}} left at {{speed}}x",
     "clear": "Clear",
     "clearLabel": "Clear Up next",
     "cleared": "Up next cleared",
