@@ -1,9 +1,10 @@
-import type { BookMetaCharacter, BookMetaRecap } from '@/api/types';
+import type { BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
 import {
   characterIsVisible,
   type ListeningProgress,
   splitRecaps,
 } from '@/components/library/meta-gating';
+import { chapterEndPosition } from '@/playback/book-queue';
 import { timeLeft } from '@/playback/time-left';
 
 /**
@@ -137,24 +138,24 @@ export type ChapterRow =
   | { state: 'ahead'; until: number };
 
 /**
- * The chapter list's rows, from each chapter's whole-book start (ascending), the book's
- * length, the listener's place and speed: earlier chapters ticked, the current one with
- * the wall-clock time left in it, the later ones "in 2h 4m" (wall-clock time until they
- * start). Times go through `timeLeft`, the app's one speed rule.
+ * The chapter list's rows, from the chapters (ascending), the listener's place and speed:
+ * earlier chapters ticked, the current one with the wall-clock time left in it (to its
+ * end, `chapterEndPosition`: where the sleep sheet and the seek bar's times row put it
+ * too), the later ones "in 2h 4m" (wall-clock time until they start). Times go through
+ * `timeLeft`, the app's one speed rule.
  */
 export function chapterRows(
-  starts: readonly number[],
-  total: number,
+  chapters: readonly Chapter[],
   position: number,
   current: number,
   speed: number,
 ): ChapterRow[] {
-  return starts.map((start, i) => {
+  return chapters.map((ch, i) => {
     if (i < current) return { state: 'past' };
     if (i === current) {
-      const end = starts[i + 1] ?? total;
+      const end = chapterEndPosition(ch);
       return { state: 'current', left: timeLeft(position, end, speed)?.seconds ?? 0 };
     }
-    return { state: 'ahead', until: timeLeft(position, start, speed)?.seconds ?? 0 };
+    return { state: 'ahead', until: timeLeft(position, ch.book_offset, speed)?.seconds ?? 0 };
   });
 }

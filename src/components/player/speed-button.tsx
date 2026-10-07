@@ -35,14 +35,15 @@ export function SpeedSheet({ visible, onClose }: { visible: boolean; onClose: ()
   );
 }
 
-/** The body, in its own component so its per-tick position subscription only runs
- * while the sheet is open (`PlayerSheet` mounts children only then). */
+/** The body, in its own component so its position subscription only runs while the
+ * sheet is open (`PlayerSheet` mounts children only then). The times it shows are whole
+ * minutes ("1h 12m"), so it follows the place by the minute, not per tick. */
 function SpeedSheetBody() {
   const { t } = useTranslation();
   const rate = usePlayer((s) => s.rate);
   const setRate = usePlayer((s) => s.setRate);
   const total = usePlayer((s) => s.nowPlaying?.queue.total ?? 0);
-  const position = usePlayer(selectBookPosition);
+  const position = usePlayer((s) => Math.floor(selectBookPosition(s) / 60) * 60);
   const apply = (next: number) => void setRate(snapSpeed(next));
   const left = (speed: number) => formatDuration(timeLeftAt(total, position, speed));
 

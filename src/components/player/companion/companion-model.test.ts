@@ -1,4 +1,4 @@
-import type { BookMetaCharacter, BookMetaRecap } from '@/api/types';
+import type { BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
 
 import {
   activeCompanionTab,
@@ -131,17 +131,35 @@ describe('storySoFar', () => {
 });
 
 describe('chapterRows', () => {
-  const starts = [0, 600, 1200, 3600];
+  // Chapters starting at 0, 600, 1200 and 3600, each running to the next; the last 1200 s.
+  const chapter = (index: number, book_offset: number, length: number): Chapter => ({
+    index,
+    title: `Chapter ${index + 1}`,
+    file_index: 0,
+    file_path: 'b.m4b',
+    start: book_offset,
+    end: book_offset + length,
+    book_offset,
+  });
+  const chapters = [0, 600, 1200, 3600].map((offset, i, all) =>
+    chapter(i, offset, (all[i + 1] ?? 4800) - offset),
+  );
 
   it('ticks the chapters behind, times the current one and the ones ahead at speed', () => {
-    const rows = chapterRows(starts, 4800, 900, 1, 1.5);
+    const rows = chapterRows(chapters, 900, 1, 1.5);
     expect(rows[0]).toEqual({ state: 'past' });
     expect(rows[1]).toEqual({ state: 'current', left: 200 }); // 300 s at 1.5x
     expect(rows[2]).toEqual({ state: 'ahead', until: 200 });
     expect(rows[3]).toEqual({ state: 'ahead', until: 1800 }); // 2700 s at 1.5x
   });
 
-  it('times the last chapter to the end of the book', () => {
-    expect(chapterRows(starts, 4800, 4200, 3, 1)[3]).toEqual({ state: 'current', left: 600 });
+  it('times the last chapter to its end', () => {
+    expect(chapterRows(chapters, 4200, 3, 1)[3]).toEqual({ state: 'current', left: 600 });
+  });
+
+  it("times the current chapter to its own end, as the sleep sheet does, not the next one's start", () => {
+    // A 5-minute chapter followed by a gap before the next starts.
+    const gap = [chapter(0, 0, 300), chapter(1, 600, 300)];
+    expect(chapterRows(gap, 100, 0, 1)[0]).toEqual({ state: 'current', left: 200 });
   });
 });

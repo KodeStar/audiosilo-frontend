@@ -8,6 +8,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
+import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
@@ -21,20 +22,22 @@ const ROW_H = 52;
 type RowProps = {
   index: number;
   label: string;
-  row: ChapterRow | null;
+  state: ChapterRow['state'] | null;
   /** What the right-hand column says ("in 2h 4m", "-12:40"), already formatted. */
   side: string;
+  /** Stable across ticks (`useLatest`), so it never breaks the memo. */
   onPress: (index: number) => void;
 };
 
 /** One chapter: its number (a play glyph on the current one), title, and a tick, the
- * time left in it, or how long until it starts. Memoised on its words, so a tick only
- * redraws the rows whose text changed. */
-const Row = memo(function Row({ index, label, row, side, onPress }: RowProps) {
+ * time left in it, or how long until it starts. Memoised on primitives, so a tick only
+ * redraws the rows whose words changed (the current one each second, an ahead one when
+ * its minute turns). */
+const Row = memo(function Row({ index, label, state, side, onPress }: RowProps) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const current = row?.state === 'current';
-  const past = row?.state === 'past';
+  const current = state === 'current';
+  const past = state === 'past';
   return (
     <AnimatedPressable
       onPress={() => onPress(index)}
@@ -128,10 +131,14 @@ export function ChaptersPanel({
         )
       : queue.chapters.map((c) => chapterLabel(c, t));
   }, [queue, perTrack, title, t]);
-  const starts = useMemo(
-    () => (queue && !perTrack ? queue.chapters.map((c) => c.book_offset) : []),
-    [queue, perTrack],
-  );
+  const onPress = useLatest((i: number) => {
+    if (perTrack) void goToTrack(i);
+    else {
+      const c = queue?.chapters[i];
+      if (c) void seekBook(c.book_offset);
+    }
+    onSelected?.();
+  });
   if (!queue || labels.length === 0) return null;
 
   const current = perTrack ? trackIndex : chapterIndex;
@@ -139,7 +146,7 @@ export function ChaptersPanel({
     ? labels.map((_, i) =>
         i < current ? { state: 'past' } : i === current ? { state: 'current', left: 0 } : null,
       )
-    : chapterRows(starts, total, position, current, rate);
+    : chapterRows(queue.chapters, position, current, rate);
   const sideOf = (row: ChapterRow | null): string =>
     !row || row.state === 'past'
       ? ''
@@ -149,20 +156,12 @@ export function ChaptersPanel({
           : ''
         : t('player.companion.chapterIn', { time: formatDuration(row.until) || '0m' });
 
-  const onPress = (i: number) => {
-    if (perTrack) void goToTrack(i);
-    else {
-      const c = queue.chapters[i];
-      if (c) void seekBook(c.book_offset);
-    }
-    onSelected?.();
-  };
   const render = (i: number) => (
     <Row
       key={i}
       index={i}
       label={labels[i]}
-      row={rows[i]}
+      state={rows[i]?.state ?? null}
       side={sideOf(rows[i])}
       onPress={onPress}
     />

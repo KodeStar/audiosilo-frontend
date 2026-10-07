@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import type { Chapter } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
@@ -20,7 +21,7 @@ import {
   selectSleepPhase,
   useSleepTimer,
 } from '@/playback/sleep-timer';
-import { selectBookPosition, usePlayer } from '@/playback/store';
+import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { SHAKE_SENSITIVITIES, useSettings, type ShakeSensitivity } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -81,7 +82,12 @@ export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: ()
   );
 }
 
-/** The body, mounted only while the sheet is open (it re-renders with the position). */
+/** How finely the sleep sheet follows the place: its times are minutes ("in 12m", "ends
+ * 22:49"), and the chapter tile's 30-second rule needs no finer than this. */
+const SHEET_POSITION_STEP = 15;
+
+/** The body, mounted only while the sheet is open (it follows the position, by
+ * `SHEET_POSITION_STEP`). */
 function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const phase = useSleepTimer(selectSleepPhase);
@@ -91,7 +97,9 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const startUntilPosition = useSleepTimer((s) => s.startUntilPosition);
   const startChapterTimer = useSleepTimer((s) => s.startChapterTimer);
   const queue = usePlayer((s) => s.nowPlaying?.queue ?? null);
-  const position = usePlayer(selectBookPosition);
+  const position = usePlayer(
+    (s) => Math.floor(selectBookPosition(s) / SHEET_POSITION_STEP) * SHEET_POSITION_STEP,
+  );
   const rate = usePlayer((s) => s.rate);
 
   /** Arm (a deliberate touch, for the drift-off prompt) and close. */
@@ -191,6 +199,8 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   );
 }
 
+const NO_CHAPTERS: Chapter[] = [];
+
 /** The armed timer: what it will do, how long is left, Turn off - and Keep listening in
  * the two windows where that keeps the book going (the web has no shake). */
 function SleepNotice() {
@@ -203,10 +213,12 @@ function SleepNotice() {
   const pauseAtPosition = useSleepTimer((s) => s.pauseAtPosition);
   const keepListening = useSleepTimer((s) => s.keepListening);
   const cancel = useSleepTimer((s) => s.cancel);
-  const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters ?? []);
-  const position = usePlayer(selectBookPosition);
+  const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters ?? NO_CHAPTERS);
+  // The chapters left to the stop only change as a chapter goes by: count from the start
+  // of the one playing, not the per-tick position.
+  const chapterStart = usePlayer((s) => selectCurrentChapter(s)?.book_offset ?? 0);
 
-  const notice = sleepNotice(origin, label, pauseAtPosition, chapters, position);
+  const notice = sleepNotice(origin, label, pauseAtPosition, chapters, chapterStart);
   const headline =
     phase === 'grace'
       ? t('player.sleepTimer.grace.pausedTitle')
