@@ -159,6 +159,23 @@ describe('BookmarksSection', () => {
     expect(usePlayerSheets.getState().open).toBeNull();
   });
 
+  it('opens the editor at the shown place while the loaded book is still being placed', async () => {
+    mockSaved = 37_200.4;
+    player.usePlayer.setState({
+      nowPlaying: { ...target, queue: { chapters: [], total: 1 } },
+      bookPosition: 0,
+      loadingBook: 'c:1:a/book',
+    });
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
+    // The label shows the saved place; the press must not bookmark the unplaced 0:00.
+    await fireEvent.press(screen.getByRole('button', { name: 'Bookmark 10:20:00' }));
+    expect(mockAddHere).not.toHaveBeenCalled();
+    expect(usePlayerSheets.getState()).toMatchObject({
+      open: 'editor',
+      editor: { kind: 'bookmark', target, position: 37_200 },
+    });
+  });
+
   it("opens the editor for a book that isn't playing, at the listener's place in it", async () => {
     mockSaved = 37_200.4;
     await render(<BookmarksSection libraryId={1} path="a/book" />);

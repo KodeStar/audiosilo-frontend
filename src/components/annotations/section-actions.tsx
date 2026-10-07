@@ -3,13 +3,14 @@ import { useTranslation } from 'react-i18next';
 
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
+import { selectPlacedBookKey } from '@/components/player/use-listening-position';
 import { Button } from '@/components/ui/button';
 import type { AnnotationTarget } from '@/lib/annotation-request';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { journalHref, type JournalTab } from '@/lib/paths';
-import { selectBookKey, usePlayer } from '@/playback/store';
+import { usePlayer } from '@/playback/store';
 
 import { usePlaceIn } from './use-book-place';
 
@@ -39,7 +40,10 @@ export function JournalLink({ tab }: { tab: Exclude<JournalTab, 'diary'> }) {
 export function AddBookmarkAction({ target }: { target: AnnotationTarget }) {
   const { t } = useTranslation();
   const key = contentKeyOf(target);
-  const loaded = usePlayer((s) => selectBookKey(s) === key);
+  // Placed, as `usePlaceIn` reads it: while the loaded book is still being placed the
+  // label shows the saved place, so the press opens the editor there rather than
+  // bookmarking a live position that hasn't arrived yet.
+  const loaded = usePlayer((s) => selectPlacedBookKey(s) === key);
   const at = usePlaceIn(target);
   const [adding, setAdding] = useState(false);
   const press = () => {
