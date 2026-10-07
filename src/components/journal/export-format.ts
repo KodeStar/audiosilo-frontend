@@ -11,7 +11,7 @@ import { type Sourced, timeOfRow } from './merge-model';
  * translated (`ExportWords`), so the formatters are tested without i18n.
  */
 
-export type ExportKind = 'bookmark' | 'note';
+type ExportKind = 'bookmark' | 'note';
 
 /** One exported bookmark or note. */
 export type ExportRow = {

@@ -180,7 +180,7 @@ export function matchDrifts<B extends Sourced<Bookmark>>(
 /** What a drift-off's strip offers. With this device's drift record still kept (the
  * book has not played since): "Jump back N minutes" to the last moment the listener was
  * provably awake. Without it: play from the bookmark, where the timer stopped. */
-export type DriftStrip =
+type DriftStrip =
   | { kind: 'jumpBack'; minutes: number; position: number; at: number }
   | { kind: 'resume'; position: number; at: number };
 

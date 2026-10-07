@@ -26,7 +26,7 @@ type Choice = {
 
 /** The choices on this platform: native shares a file; the web copies Markdown or
  * downloads either file. */
-export function exportChoices(
+function exportChoices(
   platform: string,
   t: TFunction,
 ): { primary: Choice | null; more: Choice[] } {
