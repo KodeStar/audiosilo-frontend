@@ -604,7 +604,8 @@
         "waiting": "In attesa del Wi-Fi.",
         "noSpace": "In pausa: non c’è abbastanza spazio libero. I download automatici lasciano sempre almeno 1 GB libero.",
         "failed": "Il download di uno dei prossimi libri si è interrotto. Riprova in Download.",
-        "declined": "I prossimi libri restano come sono: li hai rimossi."
+        "declined": "I prossimi libri restano come sono: li hai rimossi.",
+        "unavailable": "Questo browser non può tenere offline i prossimi libri."
       },
       "autoDelete": "Rimuovi un download quando finisci il libro"
     },
@@ -642,6 +643,7 @@
       "removed": "Non hai più accesso a questo server.",
       "interrupted": "L’app si è chiusa prima che finisse.",
       "unknown": "Il download si è interrotto.",
+      "notInBrowser": "Questo browser non può riprodurre questo libro offline. Rimuovilo per liberare spazio.",
       "kept": "Il tuo {{percent}}% è conservato.",
       "restart": "Riprovando ricomincia da capo."
     },

@@ -75,6 +75,15 @@ describe('dropFromQueue', () => {
     expect(mockRemove).not.toHaveBeenCalled();
   });
 
+  it('takes a removed entry out of the cached queue, so a second drop sends nothing', async () => {
+    queryClient.setQueryData(qk.queue('c1'), [entry('Other/Queued'), entry('Series/Book 1')]);
+    await dropFromQueue('c1', [finished]);
+    expect(queryClient.getQueryData(qk.queue('c1'))).toEqual([entry('Other/Queued')]);
+    // The credits opened on return drop the same finished book again.
+    await dropFromQueue('c1', [finished]);
+    expect(mockRemove).toHaveBeenCalledTimes(1);
+  });
+
   it('is quiet about a refused remove', async () => {
     queryClient.setQueryData(qk.queue('c1'), [entry('Series/Book 1')]);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -89,21 +98,21 @@ describe('dropFromQueue', () => {
 });
 
 describe('advanceTo', () => {
-  it('starts the next book in place, then takes it and the finished book off Up next', async () => {
+  it('starts the next book in place, then takes it off Up next', async () => {
     queryClient.setQueryData(qk.queue('c1'), [entry('Other/Queued'), entry('Series/Book 1')]);
-    await expect(advanceTo(next, finished)).resolves.toBe(true);
+    await expect(advanceTo(next)).resolves.toBe(true);
     expect(mockStart).toHaveBeenCalledWith(next);
     await new Promise((r) => setTimeout(r, 0));
-    expect(mockRemove).toHaveBeenCalledTimes(2);
+    expect(mockRemove.mock.calls).toEqual([['c1', { libraryId: 1, path: 'Other/Queued' }]]);
   });
 
   it('leaves Up next alone when the book does not start', async () => {
     queryClient.setQueryData(qk.queue('c1'), [entry('Other/Queued'), entry('Series/Book 1')]);
     mockStart.mockResolvedValueOnce(false);
-    await expect(advanceTo(next, finished)).resolves.toBe(false);
+    await expect(advanceTo(next)).resolves.toBe(false);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockStart.mockRejectedValueOnce(new Error('offline'));
-    await expect(advanceTo(next, finished)).resolves.toBe(false);
+    await expect(advanceTo(next)).resolves.toBe(false);
     warn.mockRestore();
     await new Promise((r) => setTimeout(r, 0));
     expect(mockRemove).not.toHaveBeenCalled();

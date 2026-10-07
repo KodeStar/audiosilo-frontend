@@ -14,6 +14,7 @@ import { queryClient } from '@/api/provider';
 import { toast } from '@/components/ui/toast';
 import i18n from '@/i18n';
 import { ownsArrows, ownsSpace } from '@/lib/keyboard';
+import { lastInteraction, resetInteractions } from '@/playback/last-interaction';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
 
@@ -289,6 +290,15 @@ describe('addBookmarkHere', () => {
     // Once it has landed, the next tap adds another.
     await addBookmarkHere(t);
     expect(addBookmark).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts as a touch, whichever surface asked (the drift prompt measures from it)', async () => {
+    resetInteractions();
+    (resolveClient as jest.Mock).mockReturnValue({ addBookmark: () => Promise.resolve({}) });
+    jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    await addBookmarkHere(t);
+    expect(lastInteraction('srv:1:a/book')).toEqual({ at: 1_000_000, position: 62_810.4 });
+    jest.restoreAllMocks();
   });
 
   it('says when it could not', async () => {

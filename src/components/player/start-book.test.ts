@@ -47,15 +47,26 @@ describe('startBookInPlace', () => {
       { rel_path: target.path },
       { chapters: [], files: [] },
       undefined,
+      undefined,
+      undefined,
     );
     // The resume lookup restores the saved speed itself.
     expect(mockSetRate).not.toHaveBeenCalled();
   });
 
-  it('starts at a given place, at the speed the caller passes', async () => {
+  it('starts at a given place, at the speed the caller passes, from the start', async () => {
     await expect(startBookInPlace(target, { position: 1234, speed: 1.25 })).resolves.toBe(true);
-    expect(mockPlayBook).toHaveBeenCalledWith('c1', 2, expect.anything(), expect.anything(), 1234);
-    expect(mockSetRate).toHaveBeenCalledWith(1.25);
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c1',
+      2,
+      expect.anything(),
+      expect.anything(),
+      1234,
+      undefined,
+      1.25,
+    );
+    // Not a second speed change once the book is already playing (an audible flip).
+    expect(mockSetRate).not.toHaveBeenCalled();
   });
 
   it('does nothing when the connection is gone', async () => {

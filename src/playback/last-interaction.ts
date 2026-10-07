@@ -87,15 +87,38 @@ export function startInteractionWatch(): () => void {
   let prevLive = selectIsTransportLive(usePlayer.getState());
   let prevKey = selectBookKey(usePlayer.getState());
   let prevPosition = selectBookPosition(usePlayer.getState());
+  let prevTrack = usePlayer.getState().snapshot.trackIndex;
   let prevAt = Date.now();
   return usePlayer.subscribe((state) => {
     const key = selectBookKey(state);
     const live = selectIsTransportLive(state);
-    const position = selectBookPosition(state);
+    const track = state.snapshot.trackIndex;
+    let position = selectBookPosition(state);
+    const now = Date.now();
+    const rate = Math.max(1, state.rate);
+    // A multi-file book playing on into its next file is playback, not a touch. The
+    // native engine reports the new file before its position (the track change, then a
+    // progress tick about a second later), so for that moment the position reads about a
+    // file further on: when the new file's start is where playback would be, take that.
+    if (key === prevKey && live && prevLive && track === prevTrack + 1) {
+      const fileStart = state.nowPlaying?.queue.offsets?.[track];
+      if (
+        fileStart !== undefined &&
+        !isJump(
+          { position: prevPosition, playing: true },
+          { position: fileStart, playing: true },
+          (now - prevAt) / 1000,
+          rate,
+          false,
+          JUMP_SECONDS,
+        )
+      )
+        position = fileStart;
+    }
     // Nothing this watches moved (a write of something else): nothing to read, and the
     // flow allowance keeps counting from the last move.
-    if (key === prevKey && live === prevLive && position === prevPosition) return;
-    const now = Date.now();
+    if (key === prevKey && live === prevLive && position === prevPosition && track === prevTrack)
+      return;
     if (key !== null) {
       if (key !== prevKey) {
         // A book was started: that is a touch in itself.
@@ -110,7 +133,7 @@ export function startInteractionWatch(): () => void {
           { position: prevPosition, playing: prevLive },
           { position, playing: live },
           (now - prevAt) / 1000,
-          Math.max(1, state.rate),
+          rate,
           false,
           JUMP_SECONDS,
         )
@@ -121,6 +144,7 @@ export function startInteractionWatch(): () => void {
     prevKey = key;
     prevLive = live;
     prevPosition = position;
+    prevTrack = track;
     prevAt = now;
   });
 }

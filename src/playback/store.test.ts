@@ -10,7 +10,12 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 // state-transition logic (save-loop start/stop, persist-on-stop) directly.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
+/** The seek the store handed the engine for the OS media controls (`onRemoteSeek`). */
+let remoteSeek: ((positionInTrack: number) => void) | null = null;
 const mockSvc = {
+  onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
+    remoteSeek = handler;
+  }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
   load: jest.fn(async () => {}),
@@ -46,12 +51,14 @@ const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
 const mockLoadInitialProgress = jest.fn(async (..._args: unknown[]): Promise<ResumeLookup> => ({
   kind: 'empty',
 }));
+const mockReadMirror = jest.fn(async (..._args: unknown[]): Promise<unknown> => null);
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
+  readMirror: (...args: unknown[]) => mockReadMirror(...args),
 }));
 
 // Keep React Query out of the unit test.
@@ -175,6 +182,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
   mockCanAutoDownload.mockResolvedValue(true);
+  mockReadMirror.mockResolvedValue(null);
   // Default the start-of-book auto-download OFF so the many startBook() calls below don't
   // fire the real downloads pipeline; the dedicated describe opts each of its cases in.
   useSettings.setState({ autoDownloadNext: 'never' });
@@ -754,6 +762,77 @@ describe('resume never restarts an in-progress book from 0', () => {
   });
 });
 
+describe('the speed a book starts at', () => {
+  const mirror = (playback_speed: number, updated_at: string) => ({
+    connectionId: 'c1',
+    libraryId: 2,
+    path: 'A/Book.m4b',
+    position: 40,
+    duration: 100,
+    finished: false,
+    playback_speed,
+    device_id: 'dev-1',
+    updated_at,
+  });
+
+  it("at an explicit place, is the book's saved speed, not the default", async () => {
+    useSettings.setState({ defaultRate: 1 });
+    mockReadMirror.mockResolvedValueOnce(mirror(1.4, '2026-10-01T00:00:00Z'));
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30); // a chapter tap
+    expect(usePlayer.getState().rate).toBe(1.4);
+    expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1.4]]);
+    // The resume lookup (a network round trip) is still skipped.
+    expect(mockLoadInitialProgress).not.toHaveBeenCalled();
+  });
+
+  it('takes the newer of the cached server progress and the local mirror', async () => {
+    mockReadMirror.mockResolvedValueOnce(mirror(1.4, '2026-10-01T00:00:00Z'));
+    (queryClient.getQueryData as jest.Mock).mockReturnValueOnce(
+      makeProgress({ playback_speed: 1.8, updated_at: '2026-10-02T00:00:00Z' }),
+    );
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30);
+    expect(usePlayer.getState().rate).toBe(1.8);
+  });
+
+  it('is the asked-for speed, set before the engine starts, over a saved one', async () => {
+    mockReadMirror.mockResolvedValue(mirror(1.4, '2026-10-01T00:00:00Z'));
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 30, playback_speed: 1.4 }),
+    });
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30, undefined, 1.25);
+    expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1.25]]);
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, undefined, undefined, 1.25);
+    expect(usePlayer.getState().rate).toBe(1.25);
+  });
+});
+
+describe('a seek from the OS media controls (web Media Session)', () => {
+  it('lowers the resume floor and saves, like a seek in the app', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 300, duration: 1000 }),
+    });
+    await usePlayer.getState().playBook('c1', 2, makeBook({ duration: 1000 }), undefined);
+    pushSnapshot(snap('playing', 300, { duration: 1000 }));
+    // Both engines report the new position as soon as they seek.
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(async (p: number) =>
+      pushSnapshot(snap('playing', p, { duration: 1000 })),
+    );
+    mockSaveProgress.mockClear();
+
+    // The lock screen's scrubber, dragged back from 300 to 20.
+    expect(remoteSeek).not.toBeNull();
+    remoteSeek!(20);
+    await flushMicrotasks();
+    expect(mockSvc.seekTo).toHaveBeenCalledWith(20);
+    pushSnapshot(snap('paused', 20, { duration: 1000 }));
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalled();
+    expect(mockSaveProgress.mock.calls.at(-1)![1]).toMatchObject({ position: 20 });
+  });
+});
+
 describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
   it('stops playback when the playing book came from that connection', async () => {
     await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0);
@@ -1091,7 +1170,7 @@ describe('auto-download on start', () => {
     mockCanAutoDownload.mockResolvedValue(true);
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     // A path no earlier test removed (the session decline mark is module state).
     const book = makeBook({ rel_path: 'A/Fresh.m4b' });
@@ -1107,7 +1186,7 @@ describe('auto-download on start', () => {
     useSettings.setState({ autoDownloadNext: 'never' });
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     await startBook(makeBook(), 0);
     await Promise.resolve();
@@ -1142,7 +1221,7 @@ describe('auto-download on start', () => {
     useDownloads.setState({ entries: { [`c1:2:${book.rel_path}`]: entry } });
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     await startBook(book, 0);
     await Promise.resolve();

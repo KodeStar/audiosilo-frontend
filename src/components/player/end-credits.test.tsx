@@ -434,13 +434,36 @@ describe('EndCredits', () => {
       position: 865,
     });
     await mount();
-    expect(screen.getByText('Starting in 2m 15s')).toBeTruthy();
+    // 135 s of audio at 1.5x end in 90 s.
+    expect(screen.getByText('Starting in 1m 30s')).toBeTruthy();
     // No ring: nothing starts before the book ends.
     expect(screen.queryByLabelText(/Starts in/)).toBeNull();
     expect(screen.getByText('1.5×')).toBeTruthy();
     await fireEvent.press(screen.getByText('Play now'));
     expect(mockFinishBook).toHaveBeenCalledTimes(1);
     expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
+  });
+
+  it('Play now on a book still playing takes it off Up next even when the next fails to start', async () => {
+    mockEnded = false;
+    queryClient.setQueryData(['queue', 'c1'], [
+      { library_id: 1, path: 'Weir/Project Hail Mary', added_at: '' },
+      { library_id: 1, path: PATH, added_at: '' },
+    ] satisfies QueueEntry[]);
+    setPlayer({
+      nowPlaying: { connectionId: 'c1', libraryId: 1, path: PATH, queue: { total: 1000 } },
+      snapshot: { state: 'playing' },
+      position: 500,
+    });
+    mockStart.mockRejectedValueOnce(new Error('offline'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await mount();
+    await fireEvent.press(screen.getByText('Play now'));
+    await act(async () => {});
+    expect(mockFinishBook).toHaveBeenCalledTimes(1);
+    // It is finished: it leaves Up next; the next book, which did not start, stays.
+    expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: PATH }]]);
+    warn.mockRestore();
   });
 
   it('takes the book off Up next when opened by its end', async () => {

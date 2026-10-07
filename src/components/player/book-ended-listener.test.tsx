@@ -204,11 +204,11 @@ describe('BookEndedListener', () => {
     // Presenting the player modal from the background left iOS on a black screen.
     expect(mockReplace).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
-    // Both leave the queue (in queue order): the one now playing and the finished one.
+    // Both leave the queue: the finished one at once, then the one now playing.
     await waitFor(() =>
       expect(mockRemove.mock.calls).toEqual([
-        [{ libraryId: 1, path: 'Other/Queued' }],
         [{ libraryId: 1, path: FINISHED.path }],
+        [{ libraryId: 1, path: 'Other/Queued' }],
       ]),
     );
     // Back in the foreground the mini player shows the new book: nothing opens.
@@ -227,11 +227,13 @@ describe('BookEndedListener', () => {
     await waitFor(() => expect(appStateListeners).toHaveLength(1));
     expect(mockStart).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
+    // The finished book left Up next at the end, not when the credits open.
+    await waitFor(() =>
+      expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: FINISHED.path }]]),
+    );
     await becomeActive();
     expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
     expect(mockPush).toHaveBeenCalledTimes(1);
-    // The credits it opens drop the finished book.
-    expect(mockRemove).not.toHaveBeenCalled();
   });
 
   it('in the background with auto-play off opens the end credits once back, without resolving', async () => {
@@ -241,6 +243,10 @@ describe('BookEndedListener', () => {
     await waitFor(() => expect(appStateListeners).toHaveLength(1));
     expect(mockResolve).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
+    // Off Up next already: the deferred credits may never open (the app ended overnight).
+    await waitFor(() =>
+      expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: FINISHED.path }]]),
+    );
     await becomeActive();
     expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
   });
@@ -252,7 +258,8 @@ describe('BookEndedListener', () => {
     await playThenEnd();
     await waitFor(() => expect(appStateListeners).toHaveLength(1));
     expect(mockPush).not.toHaveBeenCalled();
-    expect(mockRemove).not.toHaveBeenCalled();
+    // The finished book leaves Up next; the one that did not start stays.
+    expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: FINISHED.path }]]);
     await becomeActive();
     expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
     warn.mockRestore();
@@ -294,6 +301,8 @@ describe('BookEndedListener', () => {
     });
     await becomeActive();
     expect(mockPush).not.toHaveBeenCalled();
+    // No credits to take it off Up next: the end already did.
+    expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: FINISHED.path }]]);
   });
 
   it('a series next that was not queued leaves the queue alone', async () => {

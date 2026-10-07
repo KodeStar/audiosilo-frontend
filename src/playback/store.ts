@@ -5,7 +5,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
-import type { Book, Chapter, ChaptersResponse } from '@/api/types';
+import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
 import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
 import { contentKey } from '@/lib/content-key';
@@ -18,8 +18,10 @@ import {
   flushQueue,
   getDeviceId,
   loadInitialProgress,
+  readMirror,
   saveProgress,
 } from './progress-sync';
+import { clampRate } from './rate';
 import { createPlaybackService } from './service';
 import { mayNeedWebTranscode } from './transcode';
 import { resolveWebTranscode } from './transcode-capability';
@@ -143,10 +145,6 @@ function lowerFloorTo(bookPosition: number) {
   if (Number.isFinite(bookPosition)) resumeFloor = Math.min(resumeFloor, Math.max(0, bookPosition));
 }
 
-const MIN_RATE = 0.5;
-const MAX_RATE = 2; // engines support more; the product caps speed at 2x
-const clampRate = (r: number) => Math.max(MIN_RATE, Math.min(MAX_RATE, r));
-
 /** Engine tunables derived from the settings store. */
 function currentConfig() {
   const s = useSettings.getState();
@@ -200,7 +198,9 @@ type PlayerState = {
   /** Start a book. Omit startBookPosition to resume from saved progress; pass
    * startTrack to begin at a specific file (used when file durations are
    * unknown, so a whole-book position can't address a track). `connectionId` is the
-   * server this book is loaded through - it scopes saves, downloads and invalidations. */
+   * server this book is loaded through - it scopes saves, downloads and invalidations.
+   * `startSpeed` plays it at that speed; without it the book plays at its saved speed
+   * (else the default), also when it starts at an explicit place. */
   playBook: (
     connectionId: string,
     libraryId: number,
@@ -208,6 +208,7 @@ type PlayerState = {
     chapterData?: ChaptersResponse,
     startBookPosition?: number,
     startTrack?: number,
+    startSpeed?: number,
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
@@ -325,6 +326,23 @@ async function maybeAutoDownloadCurrent(
   } catch (err) {
     console.warn('[auto-download] failed to download the current book', err);
   }
+}
+
+/** The speed this device knows `path` was last played at, without the network (an
+ * explicit start must not wait on it): the newer of the server's progress the app has
+ * cached (the book page reads it) and the local mirror of the last save. 0 when neither
+ * has one. */
+async function knownSpeed(connectionId: string, libraryId: number, path: string): Promise<number> {
+  const cached =
+    queryClient.getQueryData<Progress | null>(qk.progress(connectionId, libraryId, path)) ?? null;
+  const mirror = await readMirror(connectionId, libraryId, path).catch(() => null);
+  const newest =
+    cached && mirror
+      ? Date.parse(mirror.updated_at) >= Date.parse(cached.updated_at)
+        ? mirror
+        : cached
+      : (cached ?? mirror);
+  return newest?.playback_speed ?? 0;
 }
 
 function startSaveLoop() {
@@ -536,6 +554,9 @@ async function ensureService(): Promise<PlaybackService> {
       }
     }
   });
+  // The OS media controls' seeks (web Media Session) go through the store's own seek,
+  // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
+  svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
   service = svc;
   // Expose whether this platform/engine can show an audio-route picker so the player
   // can decide whether to render the cast button (web: only where the APIs exist).
@@ -550,7 +571,15 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   loadingBook: null,
   canRoutePick: false,
 
-  playBook: async (connectionId, libraryId, book, chapterData, startBookPosition, startTrack) => {
+  playBook: async (
+    connectionId,
+    libraryId,
+    book,
+    chapterData,
+    startBookPosition,
+    startTrack,
+    startSpeed,
+  ) => {
     // Resolve the client from the connection id (single source of truth), mirroring the
     // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
     const api = resolveClient(connectionId);
@@ -631,7 +660,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     };
 
     let startAt = startBookPosition ?? 0;
-    let speed = clampRate(useSettings.getState().defaultRate);
+    const askedSpeed = startSpeed !== undefined && startSpeed > 0;
+    let speed = clampRate(askedSpeed ? startSpeed : useSettings.getState().defaultRate);
     if (startBookPosition === undefined && startTrack === undefined) {
       const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
       if (r.kind === 'progress') {
@@ -646,7 +676,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         // startAt below, so it stays 0 and the slip guard won't block the restart's early
         // low-position saves. Only an unfinished book resumes at its saved position.
         if (!p.finished && p.position > 0) startAt = p.position;
-        if (p.playback_speed > 0) speed = clampRate(p.playback_speed);
+        if (p.playback_speed > 0 && !askedSpeed) speed = clampRate(p.playback_speed);
       } else if (r.kind === 'failed' && dl?.status !== 'downloaded') {
         // Streaming book whose resume position couldn't be confirmed (server unreachable,
         // no local record). Starting at 0 here would restart an in-progress book AND a
@@ -669,6 +699,12 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       }
       // kind 'empty' (server reachable, genuinely new) or 'failed' for a downloaded book
       // (offline-first, never started) → startAt stays 0, which is correct.
+    } else if (!askedSpeed) {
+      // An explicit place (a chapter tap, a bookmark, a deep link) skips the resume lookup,
+      // which is where the saved speed comes from. Starting at the default instead would
+      // then save the default over the book's own speed.
+      const saved = await knownSpeed(connectionId, libraryId, book.rel_path);
+      if (saved > 0) speed = clampRate(saved);
     }
 
     const { index, positionInTrack } =

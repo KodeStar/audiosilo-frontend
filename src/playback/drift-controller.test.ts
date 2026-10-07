@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 
 import { playerStoreMock } from '@/testing/player-store-mock';
 
@@ -21,6 +22,16 @@ import { GRACE_SECONDS, useSleepTimer } from '@/playback/sleep-timer';
 /* eslint-enable import/first */
 
 const player = playerStoreMock();
+
+/** The app's foreground state, and the listeners waiting for it to change. */
+let appState = 'active';
+let appStateListeners: ((s: string) => void)[] = [];
+async function becomeActive() {
+  appState = 'active';
+  for (const l of [...appStateListeners]) l('active');
+  await settle();
+}
+
 const NOW = new Date(2026, 9, 7, 23, 41, 0).getTime();
 
 /** Let storage's promise chains settle. */
@@ -55,6 +66,20 @@ describe('drift controller', () => {
   beforeEach(async () => {
     jest.useFakeTimers();
     jest.setSystemTime(NOW);
+    appState = 'active';
+    appStateListeners = [];
+    Object.defineProperty(AppState, 'currentState', { get: () => appState, configurable: true });
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+      _: string,
+      l: (s: string) => void,
+    ) => {
+      appStateListeners.push(l);
+      return {
+        remove: () => {
+          appStateListeners = appStateListeners.filter((x) => x !== l);
+        },
+      };
+    }) as unknown as typeof AppState.addEventListener);
     player.reset();
     player.clearSpies();
     resetInteractions();
@@ -81,6 +106,7 @@ describe('drift controller', () => {
     useSleepTimer.getState().cancel();
     jest.clearAllTimers();
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   it('bookmarks the spot and offers the jump back on the next play, once', async () => {
@@ -184,5 +210,72 @@ describe('drift controller', () => {
     });
     await settle();
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('holds the offer for the foreground when the book plays in the background, once', async () => {
+    await fallAsleep();
+    jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+    await settle();
+    // The next morning, played from the lock screen.
+    appState = 'background';
+    jest.setSystemTime(NOW + 9 * 3600_000);
+    player.setPlayState('playing');
+    await settle();
+    expect(mockToast).not.toHaveBeenCalled(); // nobody would see it
+    await becomeActive();
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(lastToast().description).toBe('Jump back 5 minutes?');
+    appState = 'background';
+    await becomeActive();
+    expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the held offer when the book played on far past where it stopped', async () => {
+    await fallAsleep();
+    jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+    await settle();
+    appState = 'background';
+    player.setPlayState('playing');
+    await settle();
+    player.patch({ bookPosition: 1300 + 3600 }); // an hour listened to on the lock screen
+    await becomeActive();
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("does not spend the offer on the old book's snapshot when a book starts", async () => {
+    // Book B fell asleep last night; book A is playing now.
+    await fallAsleep();
+    jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+    await settle();
+    player.patch({
+      nowPlaying: {
+        connectionId: 'srv-1',
+        libraryId: 1,
+        path: 'other.m4b',
+        queue: { chapters: [], total: 36_000 },
+      },
+      bookPosition: 20_000,
+    });
+    player.setPlayState('playing');
+    await settle();
+    // playBook shows a.m4b first, still with other.m4b's playing snapshot (and position).
+    player.usePlayer.setState({
+      nowPlaying: {
+        connectionId: 'srv-1',
+        libraryId: 1,
+        path: 'a.m4b',
+        queue: { chapters: [], total: 36_000 },
+      },
+    });
+    await settle();
+    expect(mockToast).not.toHaveBeenCalled();
+    // Its engine then loads it where it stopped and plays.
+    player.usePlayer.setState({
+      bookPosition: 1300,
+      snapshot: { ...player.usePlayer.getState().snapshot, state: 'loading' },
+    });
+    player.setPlayState('playing');
+    await settle();
+    expect(mockToast).toHaveBeenCalledTimes(1);
   });
 });

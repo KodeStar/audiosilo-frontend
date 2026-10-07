@@ -22,6 +22,7 @@ import { contentKeyOf } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
+import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { loadInitialProgress } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
@@ -32,6 +33,9 @@ import type { BookAt } from './home-model';
 import { overlapStart, previouslyOn } from './previously-on-model';
 
 /** The cards closed this session (memory only: the next launch may show it again). */
+/** How often the card re-reads the clock while Home stays open (the gap is in days). */
+const HOUR_MS = 3_600_000;
+
 const useDismissed = create<{ keys: string[]; dismiss: (key: string) => void }>()((set) => ({
   keys: [],
   dismiss: (key) => set((s) => ({ keys: [...s.keys, key] })),
@@ -119,7 +123,9 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
   const { openBook } = useOpen();
   const resume = useResumeWithOverlap();
   const [busy, setBusy] = useState(false);
-  const [now] = useState(Date.now);
+  // Home keeps this card alive across a warm resume: the gap is measured from the clock
+  // now, not the one it first mounted with.
+  const now = useNow(HOUR_MS);
 
   const dismissed = useDismissed((s) => s.keys.includes(key));
   const dismiss = useDismissed((s) => s.dismiss);

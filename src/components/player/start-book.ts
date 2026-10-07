@@ -10,8 +10,8 @@ export type StartOptions = {
   /** Whole-book seconds to start at (lowers the resume floor there, so the start's own
    * saves are not refused as a slip). */
   position?: number;
-  /** The speed to play at: an explicit `position` skips the resume lookup, which is
-   * what restores a book's saved speed, so a caller that has it passes it. */
+  /** The speed to play at, from the start (else the book's saved speed, which the store
+   * restores at an explicit `position` too, from what this device knows). */
   speed?: number;
 };
 
@@ -43,7 +43,9 @@ export async function startBookInPlace(
       staleTime: 30_000,
     }),
   ]);
-  await usePlayer.getState().playBook(connectionId, libraryId, book, chapters, opts.position);
-  if (opts.speed && opts.speed > 0) await usePlayer.getState().setRate(opts.speed);
+  // The speed goes in with the start: set after it, the book audibly began at another.
+  await usePlayer
+    .getState()
+    .playBook(connectionId, libraryId, book, chapters, opts.position, undefined, opts.speed);
   return true;
 }

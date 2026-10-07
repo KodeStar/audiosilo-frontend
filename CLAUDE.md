@@ -520,7 +520,8 @@ media GETs only.
   that playback drives (`BookEndedListener`, the end-credits Play now and countdown)
   moves on with `advanceTo` (`src/components/player/end-of-book.ts`: start the next book
   in place with `startBookInPlace`, item + chapters through the query cache then
-  `playBook`, and take it and the finished book off Up next with `dropFromQueue`) and
+  `playBook`, and take it off Up next with `dropFromQueue`; the finished book leaves Up next
+  where it is finished, whether or not the next one starts) and
   defers any screen with `whenActive` / `navigateWhenActive` (`src/lib/when-active.ts`).
   The `/player` route only shows a book started that way; it never starts it. A book that ends
   while a sleep timer runs for it does not move on by itself (`useAutoPlayHold` in
@@ -842,6 +843,10 @@ so.
 - **One choke point**: `useDownloads.download(..., origin)` applies the automatic rules itself for
   the `auto` (the book you start) and `keep-ahead` origins: the decline mark and the reserve
   (`roomLeft`). Callers just ask with their origin; the listener's own download is never held back.
+  It resolves what it did (`DownloadOutcome`). The book you start outranks keep-ahead's books still
+  waiting (they step aside, unmarked, and it goes next); keep-ahead plans again at once around a
+  book the store turned away (`unavailable`: web transcode; `tooBig`: no room until the registry
+  changes).
 - **Kept files**: a failed download keeps the files that finished (classified cause in
   `failure.ts`, `failure.kept`), and a retry fetches only the rest. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download

@@ -25,9 +25,11 @@ export const useAutoPlayHold = create<{ key: string | null }>(() => ({ key: null
  * next's own Play now does). Each goes by the stored entry's own path (removes are
  * exact; the entry may be the book folder above a part path), looked up in the queue at
  * call time (the cached one, else read once), so a book that isn't queued sends
- * nothing. Only on a server the cache knows has `queue`. Quiet: it is housekeeping, so
- * a failure is never shown and never reaches the reachability tracker. Framework-free:
- * the end of a book can run with no screen mounted.
+ * nothing. A removed entry also leaves the cached queue at once, so a later call for the
+ * same book (the credits opened on return, after the end already dropped it) sends
+ * nothing again. Only on a server the cache knows has `queue`. Quiet: it is
+ * housekeeping, so a failure is never shown and never reaches the reachability tracker.
+ * Framework-free: the end of a book can run with no screen mounted.
  */
 export async function dropFromQueue(
   connectionId: string,
@@ -43,6 +45,9 @@ export async function dropFromQueue(
   for (const e of held) {
     try {
       await removeFromQueue(connectionId, client, { libraryId: e.library_id, path: e.path });
+      queryClient.setQueryData<QueueEntry[]>(qk.queue(connectionId), (cached) =>
+        cached?.filter((c) => c.library_id !== e.library_id || c.path !== e.path),
+      );
     } catch (err) {
       if (!(err instanceof CapabilityError))
         console.warn('[up-next] could not take a played book off the queue', err);
@@ -53,19 +58,20 @@ export async function dropFromQueue(
 /**
  * Play `next` after a book ended, the one way the end of a book moves on (the credits'
  * Play now and countdown, the background auto-play): start it in place
- * (`startBookInPlace`, no screen involved), then take it, and `finished` when given,
- * off Up next. Resolves `true` once it is on its way; `false` when it could not start
- * (its connection gone, or its book could not be fetched), and then nothing leaves Up
- * next. Showing the player is the caller's choice (`navigateWhenActive`).
+ * (`startBookInPlace`, no screen involved), then take it off Up next. Resolves `true`
+ * once it is on its way; `false` when it could not start (its connection gone, or its
+ * book could not be fetched), and then it stays on Up next. The finished book is not
+ * this function's business: it leaves Up next where it is finished, whether or not the
+ * next one starts (`BookEndedListener`, the credits). Showing the player is the caller's
+ * choice (`navigateWhenActive`).
  */
-export async function advanceTo(next: UpNextBook, finished: BookRef | null): Promise<boolean> {
+export async function advanceTo(next: UpNextBook): Promise<boolean> {
   try {
     if (!(await startBookInPlace(next))) return false;
   } catch (err) {
     console.warn('[end-of-book] could not start the next book', err);
     return false;
   }
-  const leaving = [...(next.queueEntry ? [next.queueEntry] : []), ...(finished ? [finished] : [])];
-  void dropFromQueue(next.connectionId, leaving);
+  if (next.queueEntry) void dropFromQueue(next.connectionId, [next.queueEntry]);
   return true;
 }

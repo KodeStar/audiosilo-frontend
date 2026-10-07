@@ -112,6 +112,8 @@ describe('usePlayBook', () => {
       { rel_path: 'Book' },
       { files: [] },
       undefined,
+      undefined,
+      undefined,
     );
     expect(mockPush).not.toHaveBeenCalled();
   });
@@ -158,6 +160,8 @@ describe('usePlayBook', () => {
       1,
       { rel_path: 'Book' },
       { files: [] },
+      undefined,
+      undefined,
       undefined,
     );
     expect(mockPush).not.toHaveBeenCalled();

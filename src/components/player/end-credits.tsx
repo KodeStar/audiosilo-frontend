@@ -34,6 +34,7 @@ import { useLayout } from '@/lib/layout';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
+import { wallClockSeconds } from '@/playback/rate';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { resolveUpNext, type UpNextAnswer, type UpNextBook } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
@@ -180,12 +181,14 @@ function EndCreditsBody({
     setStarting(true);
     // If the finished book is still loaded (early arrival), finish it first: finishBook
     // persists finished, tears down the engine, clears nowPlaying and (when enabled)
-    // deletes the downloaded copy; it leaves Up next with the next one (a natural end
-    // already took it off).
+    // deletes the downloaded copy. Finished, it leaves Up next now, whether or not the
+    // next one starts (a natural end already took it off).
     const { nowPlaying: np, finishBook } = usePlayer.getState();
-    const finishing = np?.connectionId === cid && np.libraryId === libraryId && np.path === path;
-    if (finishing) finishBook();
-    void advanceTo(next, finishing ? { library_id: libraryId, path } : null).then((ok) => {
+    if (np?.connectionId === cid && np.libraryId === libraryId && np.path === path) {
+      finishBook();
+      void dropFromQueue(cid, [{ library_id: libraryId, path }]);
+    }
+    void advanceTo(next).then((ok) => {
       if (ok) {
         if (!closed.current)
           navigateWhenActive(playerHref(next.connectionId, next.libraryId, next.path), {
@@ -477,9 +480,11 @@ function NextUp({
   onPlay: () => void;
   onNotNow: () => void;
 }) {
+  // Wall-clock time at the playing speed (frontend#50's one speed rule): the book ends
+  // in 90 s at 1.5x when 135 s of audio are left.
   const remainingSeconds = usePlayer((s) =>
     selectIsLoaded(finished)(s) && s.nowPlaying
-      ? Math.ceil(Math.max(0, s.nowPlaying.queue.total - selectBookPosition(s)))
+      ? Math.ceil(wallClockSeconds(s.nowPlaying.queue.total - selectBookPosition(s), s.rate))
       : 0,
   );
   // The grace countdown runs only once the book is over (not stillPlaying). The interval

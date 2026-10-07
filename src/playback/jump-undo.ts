@@ -32,7 +32,9 @@ import { selectBookKey, selectBookPosition, usePlayer } from './store';
  *   anything up to (elapsed wall time x rate) is natural, so an hour of background
  *   listening is an hour of allowance. If JS was not running at all (the heartbeat below
  *   stalled), forward movement up to that allowance is accepted even from a paused sample
- *   (a lock-screen play while suspended). Backward movement is never natural. JS can only
+ *   (a lock-screen play while suspended), by the first sample within `RESUME_GRACE_MS` of
+ *   the return (not whatever sample comes next, an hour later when the book stayed paused:
+ *   that is a seek made in the foreground). Backward movement is never natural. JS can only
  *   be suspended away from the foreground, so the heartbeat runs only while the app is
  *   not active and a book is loaded; in the foreground nothing wakes up once a second, and
  *   a stalled heartbeat is noticed as the app comes back.
@@ -61,6 +63,10 @@ export const COALESCE_MS = 1_500;
 const HEARTBEAT_MS = 1_000;
 /** A heartbeat gap longer than this means JS was not running (suspended). */
 export const SUSPENSION_GAP_MS = 5_000;
+/** After the app comes back from a suspension, how long the engine has to report what
+ * happened meanwhile (its queued events arrive as JS resumes). A sample later than this
+ * is something done in the foreground, judged as usual. */
+export const RESUME_GRACE_MS = 3_000;
 /** How close a landing must be to the undo target to be the undo's own seek. */
 const UNDO_LANDING_TOLERANCE_S = 5;
 /** How long an undo's landing is waited for. */
@@ -201,8 +207,9 @@ export function startJumpUndo(): () => void {
   /** When JS last ran, by the heartbeat or a sample (or the foreground, where it always
    * runs). */
   let lastAlive = Date.now();
-  /** JS stalled away from the foreground since the last sample (noticed on return). */
-  let suspended = false;
+  /** Until when a sample may account for a suspension: JS stalled away from the
+   * foreground (noticed on return), 0 when not. */
+  let suspendedUntil = 0;
   const heartbeat = ticker(() => {
     lastAlive = Date.now();
   }, HEARTBEAT_MS);
@@ -213,7 +220,7 @@ export function startJumpUndo(): () => void {
     const now = Date.now();
     if (state === 'active') {
       heartbeat.stop();
-      if (bookKey && stalled(now)) suspended = true;
+      if (bookKey && stalled(now)) suspendedUntil = now + RESUME_GRACE_MS;
     } else if (bookKey) heartbeat.start();
     lastAlive = now;
   });
@@ -227,7 +234,7 @@ export function startJumpUndo(): () => void {
       settling = true;
       undoLanding = null;
       if (useJumpUndo.getState().jump) clearJumpUndo();
-      suspended = false;
+      suspendedUntil = 0;
       lastAlive = Date.now();
       if (key && !foreground()) heartbeat.start();
       else heartbeat.stop();
@@ -244,8 +251,8 @@ export function startJumpUndo(): () => void {
     if (state !== 'playing' && state !== 'paused') return; // keep the last settled sample
 
     const now = Date.now();
-    const unobserved = suspended || (!foreground() && stalled(now));
-    suspended = false;
+    const unobserved = now <= suspendedUntil || (!foreground() && stalled(now));
+    suspendedUntil = 0;
     lastAlive = now;
     const sample = {
       position: selectBookPosition(s),

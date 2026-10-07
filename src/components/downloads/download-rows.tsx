@@ -16,6 +16,7 @@ import type { DownloadEntry, DownloadFailure } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
+import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -130,6 +131,15 @@ export function ActiveRow({
   const total = entry.totalBytes > 0 ? entry.totalBytes : entry.manifest.book.size;
   const toGo = bytesToGo(entry);
   const failed = entry.status === 'error';
+  // Web: a failed download of a book this browser now plays through the server's
+  // transcoder can't be retried (its raw files would not play offline, so the downloads
+  // store refuses it): say so, and leave only the way to clear it.
+  const transcoded = useNeedsWebTranscode(
+    entry.manifest.book,
+    entry.manifest.chapters ?? undefined,
+    entry.connectionId,
+  );
+  const retryable = failed && !transcoded;
 
   const status = failed ? (
     <>
@@ -139,7 +149,9 @@ export function ActiveRow({
           {t('downloads.row.stoppedAt', { percent: percent(entry.progress) })}
         </Text>
       </View>
-      <Text variant="caption">{failureText(t, entry, server, scope)}</Text>
+      <Text variant="caption">
+        {transcoded ? t('downloads.failure.notInBrowser') : failureText(t, entry, server, scope)}
+      </Text>
     </>
   ) : entry.status === 'queued' ? (
     <Text variant="caption">{t('downloads.row.queued')}</Text>
@@ -175,7 +187,7 @@ export function ActiveRow({
       status={status}
       actions={
         <>
-          {failed ? (
+          {retryable ? (
             <RowAction
               variant="outline"
               icon="rotate"
@@ -189,7 +201,7 @@ export function ActiveRow({
           <RowAction
             variant="ghost"
             icon="close"
-            iconOnly={phone || failed}
+            iconOnly={phone || retryable}
             title={t('downloads.row.cancel')}
             accessibilityLabel={t('downloads.row.cancelLabel', { title: entry.title })}
             onPress={onCancel}

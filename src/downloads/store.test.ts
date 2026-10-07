@@ -503,10 +503,11 @@ describe('download() refuses a book this browser plays transcoded', () => {
   });
   const ac3 = () => makeBook({ direct_playable: false, codec: 'ac3' });
 
-  it('is a no-op on web when the server transcodes it (its raw files would not play offline)', () => {
+  it('is a no-op on web when the server transcodes it (its raw files would not play offline)', async () => {
     Platform.OS = 'web';
     mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
-    useDownloads.getState().download('c1', 2, ac3());
+    // Said, not silent: keep-ahead plans around a book it can't keep.
+    await expect(useDownloads.getState().download('c1', 2, ac3())).resolves.toBe('transcoded');
     expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeUndefined();
     expect(mockGetQueryData).toHaveBeenCalledWith(['server', 'c1']);
   });
@@ -788,6 +789,50 @@ describe('download() keeps the reserve free for automatic downloads', () => {
       );
     await settle();
     expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Small')]?.origin).toBe('auto');
+  });
+
+  it('says why it turned an automatic download away', async () => {
+    const big = makeBook({ rel_path: 'R/Big2', size: 2 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, big, undefined, 'keep-ahead'),
+    ).resolves.toBe('no-space');
+  });
+
+  it("lets the book you start past keep-ahead's books still waiting, which step aside", async () => {
+    // 4 GB of room after the reserve. Keep-ahead queued a 3 GB next book first.
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 10.4 * GB,
+    });
+    const ahead = makeBook({ rel_path: 'K/Next', size: 3 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, ahead, undefined, 'keep-ahead'),
+    ).resolves.toBe('queued');
+    // The book the listener starts (2 GB) only fits without it.
+    const started = makeBook({ rel_path: 'K/Started', size: 2 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, started, undefined, 'auto'),
+    ).resolves.toBe('queued');
+    const entries = useDownloads.getState().entries;
+    expect(entries[downloadKey('c1', 2, 'K/Started')]?.origin).toBe('auto');
+    expect(entries[downloadKey('c1', 2, 'K/Next')]).toBeUndefined();
+    // Not declined: keep-ahead may plan it again around the book you started.
+    expect(isDeclined('c1', 2, 'K/Next')).toBe(false);
+  });
+
+  it("does not push a listener's own download aside", async () => {
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 10.4 * GB,
+    });
+    useDownloads.getState().download('c1', 2, makeBook({ rel_path: 'L/Mine', size: 3 * GB }));
+    const started = makeBook({ rel_path: 'L/Started', size: 2 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, started, undefined, 'auto'),
+    ).resolves.toBe('no-space');
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'L/Mine')]).toBeDefined();
   });
 
   it('starts one when the room is not knowable', async () => {

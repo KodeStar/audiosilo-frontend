@@ -604,7 +604,8 @@
         "waiting": "Aguardando o Wi-Fi.",
         "noSpace": "Em pausa: não há espaço livre suficiente. Os downloads automáticos sempre deixam pelo menos 1 GB livre.",
         "failed": "O download de um dos próximos livros parou. Tente de novo em Transferências.",
-        "declined": "Os próximos livros ficam como estão: você os removeu."
+        "declined": "Os próximos livros ficam como estão: você os removeu.",
+        "unavailable": "Este navegador não consegue manter os próximos livros offline."
       },
       "autoDelete": "Remover um download quando terminares o livro"
     },
@@ -642,6 +643,7 @@
       "removed": "Você não está mais conectado a este servidor.",
       "interrupted": "A app fechou antes de terminar.",
       "unknown": "O download parou.",
+      "notInBrowser": "Este navegador não consegue reproduzir este livro offline. Remova-o para liberar o espaço.",
       "kept": "Seus {{percent}}% estão guardados.",
       "restart": "Tentar de novo recomeça do início."
     },

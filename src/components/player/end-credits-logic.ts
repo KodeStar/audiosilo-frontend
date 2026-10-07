@@ -24,7 +24,7 @@ export type EndCreditsInput = {
   hasNext: boolean;
   /** The finished book's audio is still running (arrived before its natural end). */
   stillPlaying: boolean;
-  /** Live remaining audio time (whole-book total minus current position), when playing. */
+  /** Live remaining wall-clock time (the audio left at the playing speed), when playing. */
   remainingSeconds: number;
   /** The user cancelled auto-play for this visit. */
   cancelled: boolean;

@@ -240,6 +240,30 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(a.plays).toBe(plays + 1);
   });
 
+  it('a seek during a network stall keeps playing', async () => {
+    await startPlaying(100);
+    const a = el();
+    a.emit('waiting'); // the stream stalls: `loading`, but the element is not paused
+    expect(svc.getSnapshot().state).toBe('loading');
+    const plays = a.plays;
+    await svc.seekTo(600); // a skip while it buffers
+    a.emit('loadedmetadata');
+    expect(a.src).toBe(`${STREAM}&t=600`);
+    expect(a.plays).toBe(plays + 1); // not left paused for the stall watchdog to error
+  });
+
+  it('a new load forgets the pause before it: no early start, no extra request', async () => {
+    await svc.configure({ autoRewindMax: 30, jumpForward: 30, jumpBackward: 15 });
+    await startPlaying(200);
+    await svc.pause();
+    now += 10 * 60_000; // long enough to read as a stale transcode
+    await svc.load(transcodedTracks, 1, 50); // another chapter or book, from 50 s
+    el().emit('loadedmetadata');
+    await svc.play();
+    expect(el().src).toBe(`${STREAM2}&t=50`); // not re-requested 30 s early
+    expect(el().paused).toBe(false);
+  });
+
   it('clamps a seek into the file, short of its very end', async () => {
     await startPlaying(0);
     await svc.seekTo(5000);
@@ -567,6 +591,22 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
     const seekto = handlers.get('seekto') as (d: { seekTime?: number }) => void;
     seekto({ seekTime: 700 });
     expect(el().src).toBe(`${STREAM}&t=700`);
+  });
+
+  it('sends the OS seeks through the store when it listens', async () => {
+    const svc = createPlaybackService();
+    const storeSeek = jest.fn();
+    svc.onRemoteSeek!(storeSeek);
+    await svc.configure({ autoRewindMax: 0, jumpForward: 30, jumpBackward: 15 });
+    await svc.load(transcodedTracks, 0, 250);
+    const src = el().src;
+    (handlers.get('seekto') as (d: { seekTime?: number }) => void)({ seekTime: 20 });
+    (handlers.get('seekbackward') as () => void)();
+    (handlers.get('seekforward') as () => void)();
+    // The store's seek lowers the resume floor and saves; the engine is not seeked behind
+    // its back.
+    expect(storeSeek.mock.calls).toEqual([[20], [235], [280]]);
+    expect(el().src).toBe(src);
   });
 
   it('hands the position back to the browser for a direct stream', async () => {
