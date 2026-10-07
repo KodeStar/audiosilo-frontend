@@ -1061,7 +1061,11 @@
     "dock": {
       "label": "Lettore",
       "savedLocally": "Salvato su questo dispositivo, verrà sincronizzato",
-      "expand": "Espandi il lettore"
+      "expand": "Espandi il lettore",
+      "synced": "Sincronizzato",
+      "syncedNow": "Sincronizzato ora",
+      "signInToSync": "Salvato su questo dispositivo, accedi di nuovo per sincronizzare",
+      "speed": "Velocità di riproduzione, {{speed}}"
     },
     "profile": {
       "label": "Server e account, {{name}}",

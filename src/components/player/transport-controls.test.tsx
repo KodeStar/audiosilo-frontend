@@ -25,7 +25,7 @@ jest.mock('@/playback/store', () => {
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { TransportControls } from './transport-controls';
+import { PlayButton, TransportControls } from './transport-controls';
 /* eslint-enable import/first */
 
 const player = usePlayer as unknown as UseBoundStore<StoreApi<MockPlayer>>;
@@ -110,5 +110,25 @@ describe('TransportControls', () => {
     player.setState({ nowPlaying: null });
     await render(<TransportControls />);
     expect(screen.toJSON()).toBeNull();
+  });
+});
+
+describe('PlayButton plain', () => {
+  it('draws no ink circle, keeps a 44 pt target, and still retries after an error', async () => {
+    await render(<PlayButton size="sm" plain />);
+    const button = screen.getByRole('button', { name: 'Play' });
+    expect(button.props.className).not.toContain('bg-primary');
+    // A 40 pt glyph box with 2 pt of slop on every side.
+    expect(button).toHaveProp('hitSlop', 2);
+    await act(async () =>
+      player.setState({ snapshot: { state: 'error', trackIndex: 0, position: 0 } }),
+    );
+    await press('Retry');
+    expect(player.getState().retry).toHaveBeenCalled();
+  });
+
+  it('is the ink circle by default', async () => {
+    await render(<PlayButton size="sm" />);
+    expect(screen.getByRole('button', { name: 'Play' }).props.className).toContain('bg-primary');
   });
 });

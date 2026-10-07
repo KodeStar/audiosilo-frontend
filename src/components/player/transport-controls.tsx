@@ -85,8 +85,16 @@ function PlayPauseGlyph({
 /**
  * The big play button: an ink circle (Stacks moves it from pink to ink), a spinner while
  * the book is loading, and Retry when playback failed (`error`). Bound to the player.
+ * `plain` draws the glyph alone in the foreground colour, with no circle (the phone mini
+ * player and the iOS accessory pill, STYLEGUIDE "Mini player"); it keeps a 44 pt target.
  */
-export function PlayButton({ size = 'md' }: { size?: TransportSize }) {
+export function PlayButton({
+  size = 'md',
+  plain = false,
+}: {
+  size?: TransportSize;
+  plain?: boolean;
+}) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const state = usePlayer((s) => s.snapshot.state);
@@ -100,25 +108,35 @@ export function PlayButton({ size = 'md' }: { size?: TransportSize }) {
     : playing
       ? t('player.controls.pause')
       : t('player.controls.play');
+  const color = plain ? themed.foreground : themed.primaryForeground;
+  const box = plain ? d.button : d.play;
   return (
     <AnimatedPressable
       onPress={() => void (isError ? retry() : toggle())}
+      hitSlop={Math.max(0, (44 - box) / 2)}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: state === 'loading' }}
       className={cn(
-        'items-center justify-center rounded-full bg-primary',
-        size !== 'sm' && 'shadow-overlay',
-        Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
+        'items-center justify-center rounded-full',
+        plain ? 'active:bg-accent' : 'bg-primary',
+        !plain && size !== 'sm' && 'shadow-overlay',
+        Platform.select({
+          web: cn('cursor-pointer', plain && 'hover:bg-accent', FOCUS_RING_CLASS),
+        }),
       )}
-      style={{ width: d.play, height: d.play }}
+      style={{ width: box, height: box }}
     >
       {state === 'loading' ? (
-        <Spinner size={size === 'sm' ? 'small' : 'large'} color={themed.primaryForeground} />
+        <Spinner size={size === 'sm' ? 'small' : 'large'} color={color} />
       ) : isError ? (
-        <Icon name="rotate" size={d.playIcon} color={themed.primaryForeground} />
+        <Icon name="rotate" size={d.playIcon} color={color} />
       ) : (
-        <PlayPauseGlyph playing={playing} size={d.playIcon} color={themed.primaryForeground} />
+        <PlayPauseGlyph
+          playing={playing}
+          size={plain ? d.playIcon + 4 : d.playIcon}
+          color={color}
+        />
       )}
     </AnimatedPressable>
   );
