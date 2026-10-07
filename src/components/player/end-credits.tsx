@@ -31,6 +31,7 @@ import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { pushInShell } from '@/lib/open';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
@@ -427,11 +428,13 @@ function EndCreditsBody({
           <UpNextSkeleton />
         )}
 
+        {/* The book's page opens in the shell underneath the credits (`pushInShell`): a
+            replace from this root route stacked a second app shell. */}
         <Button
           variant="outline"
           icon="book-open"
           title={t('player.finished.details')}
-          onPress={() => router.replace(bookHref(cid, libraryId, path))}
+          onPress={() => pushInShell(bookHref(cid, libraryId, path))}
         />
       </ScrollView>
 
