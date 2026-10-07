@@ -1038,6 +1038,10 @@
     "toast": {
       "dismiss": "Dispensar",
       "region": "Notificações"
+    },
+    "tabs": {
+      "more": "Mais separadores",
+      "earlier": "Separadores anteriores"
     }
   },
   "demo": {

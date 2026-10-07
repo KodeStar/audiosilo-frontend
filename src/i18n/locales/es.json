@@ -1038,6 +1038,10 @@
     "toast": {
       "dismiss": "Descartar",
       "region": "Notificaciones"
+    },
+    "tabs": {
+      "more": "Más pestañas",
+      "earlier": "Pestañas anteriores"
     }
   },
   "demo": {

@@ -1038,6 +1038,10 @@
     "toast": {
       "dismiss": "Schließen",
       "region": "Benachrichtigungen"
+    },
+    "tabs": {
+      "more": "Weitere Tabs",
+      "earlier": "Vorherige Tabs"
     }
   },
   "demo": {

@@ -1038,6 +1038,10 @@
     "toast": {
       "dismiss": "Ignorer",
       "region": "Notifications"
+    },
+    "tabs": {
+      "more": "Plus d'onglets",
+      "earlier": "Onglets précédents"
     }
   },
   "demo": {
