@@ -1,4 +1,4 @@
-import { wallClockSeconds } from './rate';
+import { clampRate, wallClockSeconds } from './rate';
 
 describe('wallClockSeconds', () => {
   it('scales content-seconds by the playback rate', () => {
@@ -15,5 +15,13 @@ describe('wallClockSeconds', () => {
 
   it('never returns a negative countdown', () => {
     expect(wallClockSeconds(-30, 2)).toBe(0);
+  });
+});
+
+describe('clampRate', () => {
+  it('keeps a speed inside 0.5x..2x', () => {
+    expect(clampRate(1.25)).toBe(1.25);
+    expect(clampRate(3)).toBe(2);
+    expect(clampRate(0.1)).toBe(0.5);
   });
 });

@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  BackHandler,
   type LayoutChangeEvent,
   Platform,
   Pressable,
@@ -39,21 +38,20 @@ export type SheetProps = {
   /** Optional header title; when set, a header row with a close button is rendered. */
   title?: string;
   children: ReactNode;
-  /** Cap the panel height at this fraction of the window height (default 0.85). */
+  /** Cap the panel height at this fraction of the window height (default 0.85); with
+   * `fill`, the panel's height. */
   maxHeightFraction?: number;
-  /**
-   * Render the overlay directly (absolute `inset-0`), owning its own Android
-   * hardware-back, instead of routing it through an `OverlayHost`. The player's
-   * sheets pass `inline` because they mount at the player-view root and manage
-   * dismissal there. Defaults to `false` (hosted mode), where the `OverlayHost`
-   * owns Escape/back. Both modes render in place, so either way the Sheet must be
-   * mounted at screen level (never inside a card/Pressable) - see `OverlayHost`.
-   */
-  inline?: boolean;
   /** The body scrolls inside the panel's height cap (its content padded by
    * `contentClassName`), so the caller needs no measured max height of its own. */
   scroll?: boolean;
+  /** The panel takes `maxHeightFraction` of the window and the body fills what the
+   * header leaves: for a body with its own scroller (a virtualized list), which needs a
+   * definite height to measure itself against. */
+  fill?: boolean;
   contentClassName?: string;
+  /** Names the layer on the web (`data-layer`), for the one shortcut that may act over
+   * it: the shortcut that toggles it (Q for Up next; `useGlobalShortcut`'s `layer`). */
+  layer?: string;
 };
 
 /**
@@ -70,19 +68,15 @@ export type SheetProps = {
  * fixed white/black panel from the OS scheme, not the app theme. The player phase that
  * redesigns these sheets is the place to move them, on a device.
  *
- * Both modes render the overlay IN PLACE (an absolute `inset-0` View) - an RN `Modal`
- * renders nothing on web in this stack, and this Sheet predates the portal primitives
- * (see `OverlayHost` for why portals looked broken here and now work). So the Sheet MUST
- * be mounted at screen level (never inside a card/Pressable/clipped container)
- * regardless of mode.
- * Two presentation modes differ only in who owns dismissal:
- * - **Hosted (default):** wraps the overlay in an `OverlayHost`, which owns Android
- *   hardware-back and web Escape - so the manual BackHandler below must NOT also run.
- * - **Inline (`inline`):** renders the overlay directly with its own Android
- *   BackHandler. The player's sheets pass `inline` and mount at the player-view root.
+ * It renders the overlay IN PLACE (an absolute `inset-0` View) - an RN `Modal` renders
+ * nothing on web in this stack, and this Sheet predates the portal primitives (see
+ * `OverlayHost` for why portals looked broken here and now work). So the Sheet MUST be
+ * mounted at screen level (never inside a card/Pressable/clipped container). An
+ * `OverlayHost` around it owns Android hardware-back and web Escape, and on the web the
+ * overlay is a modal layer (`aria-modal`), so the player's keyboard shortcuts stand back
+ * while it is open.
  *
- * On a tablet a hosted sheet floats at 560 wide; the player's inline sheets keep the full
- * width (their redesign is a later phase).
+ * On a tablet the sheet floats at 560 wide.
  *
  * Children unmount only after the exit animation finishes (the host stays mounted
  * until then, so the slide-down is seen). Reduced motion collapses to an instant
@@ -94,7 +88,7 @@ export type SheetProps = {
  * React 19's concurrent rendering the production web build REPLAYS renders and
  * DISCARDS render-phase state updates (a live trace showed the render-phase
  * `setRendered(true)` rolled back with no setter call between renders), so opening
- * a non-inline sheet mounted nothing. The mount condition now derives opening
+ * a sheet mounted nothing. The mount condition now derives opening
  * purely from the `visible` prop (`mounted = visible || exiting`), so a
  * lost/replayed state update can never suppress the open; the only state
  * (`exiting`) is written from effects, and a dropped `exiting` write degrades only
@@ -106,9 +100,10 @@ export function Sheet({
   title,
   children,
   maxHeightFraction = 0.85,
-  inline = false,
   scroll = false,
+  fill = false,
   contentClassName,
+  layer,
 }: SheetProps) {
   const themed = useThemeColors();
   const { t } = useTranslation();
@@ -116,7 +111,7 @@ export function Sheet({
   const { height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const layout = useLayout();
-  const floating = !inline && layout === 'tablet';
+  const floating = layout === 'tablet';
   const neutral = themed.foreground;
 
   // Keep the panel mounted through the exit animation. Opening depends ONLY on the
@@ -170,19 +165,6 @@ export function Sheet({
     );
   }, [visible, reduced, progress]);
 
-  // Hardware back closes the sheet (Android only fires this event); registered
-  // only while visible so it doesn't shadow other back handlers when closed. In
-  // hosted (default) mode the OverlayHost owns hardware-back, so this manual handler
-  // runs in inline mode only (otherwise it would fire twice / double-close).
-  useEffect(() => {
-    if (!inline || !visible || Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [inline, visible, onClose]);
-
   // Fades the themed `overlay` scrim in (Stacks: a translucent ink, deeper in dark).
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const panelStyle = useAnimatedStyle(() => ({
@@ -194,9 +176,23 @@ export function Sheet({
   };
 
   if (!mounted) return null;
+  const panelCap = Math.round(height * maxHeightFraction);
 
   const overlay = (
-    <View className="absolute inset-0 justify-end" pointerEvents="box-none">
+    <View
+      className="absolute inset-0 justify-end"
+      pointerEvents="box-none"
+      // Web: a modal layer (the player's keyboard shortcuts stand back while one is open,
+      // and its OverlayHost owns Escape).
+      {...(Platform.OS === 'web'
+        ? {
+            role: 'dialog' as const,
+            'aria-modal': true,
+            // react-native-web renders `dataSet` as data-* attributes.
+            ...(layer ? { dataSet: { layer } } : {}),
+          }
+        : {})}
+    >
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: themed.overlay }, backdropStyle]}
       >
@@ -217,7 +213,7 @@ export function Sheet({
         <View
           className="rounded-t-sheet border-t border-border bg-popover shadow-overlay"
           style={{
-            maxHeight: Math.round(height * maxHeightFraction),
+            ...(fill ? { height: panelCap } : { maxHeight: panelCap }),
             paddingBottom: insets.bottom,
           }}
         >
@@ -246,6 +242,8 @@ export function Sheet({
             <ScrollView style={{ flexShrink: 1 }} contentContainerClassName={contentClassName}>
               {children}
             </ScrollView>
+          ) : fill ? (
+            <View className="flex-1">{children}</View>
           ) : (
             children
           )}
@@ -254,15 +252,10 @@ export function Sheet({
     </View>
   );
 
-  // Inline mode: the caller owns dismissal (e.g. the iOS player modal, whose sheets
-  // mount at the player-view root). Render the overlay directly.
-  if (inline) return overlay;
-
-  // Hosted mode (default): wrap the overlay in an OverlayHost, which owns Android
-  // hardware-back and web Escape (an RN Modal renders nothing on web in this stack).
-  // The overlay still renders in place, so - like inline mode - the Sheet must be
-  // mounted at screen level. The host stays mounted until `mounted` flips false
-  // (after the exit animation), so the slide-down is seen.
+  // The OverlayHost owns Android hardware-back and web Escape (an RN Modal renders
+  // nothing on web in this stack). The overlay still renders in place, so the Sheet must
+  // be mounted at screen level. The host stays mounted until `mounted` flips false (after
+  // the exit animation), so the slide-down is seen.
   return (
     <OverlayHost visible={mounted} onRequestClose={onClose}>
       {overlay}

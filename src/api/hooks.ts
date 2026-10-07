@@ -1,5 +1,9 @@
 import {
+  type DefaultError,
+  type FetchQueryOptions,
+  MutationObserver,
   type QueryClient,
+  type QueryKey,
   queryOptions,
   skipToken,
   useInfiniteQuery,
@@ -15,10 +19,12 @@ import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/l
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 
 import { ApiError, type ApiClient, type BookListQuery, type BookMetaOptions } from './client';
-import { useApi, useApis, useCid, useOptionalApi } from './provider';
+import { resolveClient } from './connection-clients';
+import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteError } from './reachability';
 import type {
   Book,
+  Bookmark,
   BookRef,
   Capabilities,
   Collection,
@@ -32,6 +38,7 @@ import type {
   ProgressEdit,
   Rating,
   RatingValue,
+  ServerInfo,
   StatsRange,
 } from './types';
 
@@ -122,6 +129,53 @@ export function serverInfoQuery(cid: string, client: MaybeClient) {
   });
 }
 
+/**
+ * `queryClient.fetchQuery` for a reader outside React that waits on the answer (the play
+ * path, the end of a book, keep-ahead): it always settles, so the caller's fallback for a
+ * failed read gets to run. TanStack's default network mode holds a fetch while the browser
+ * says it is offline, and any retry waits until a hidden tab is focused again, so a book
+ * about to start, or the end-of-book chain in a background tab, waited with no error until
+ * the browser came back. This read asks whatever the online flag says (`networkMode:
+ * 'always'`), is never retried, and first drops a fetch that a mounted hook is holding for
+ * the same key: it would otherwise be joined and waited on (the hook fetches again once
+ * the browser is back online). Fresh cached data still comes back without asking.
+ */
+export async function fetchFailFast<
+  TQueryFnData,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+>(options: FetchQueryOptions<TQueryFnData, TError, TData, TQueryKey>): Promise<TData> {
+  await queryClient.cancelQueries({
+    queryKey: options.queryKey,
+    exact: true,
+    fetchStatus: 'paused',
+  });
+  return queryClient.fetchQuery({ ...options, networkMode: 'always', retry: false });
+}
+
+/** A connection's server flags through the shared `/server` entry (normally cached, so
+ * no request): for the framework-free readers (the end-of-book flow, keep-ahead, the
+ * transcode decision). Read with `fetchFailFast`; when the server can't be read, the
+ * flags the cache last held (they don't change within a session). Rejects when the
+ * server can't be read and nothing is cached. */
+export async function fetchCapabilities(cid: string, client: ApiClient): Promise<Capabilities> {
+  try {
+    return (await fetchFailFast(serverInfoQuery(cid, client))).capabilities;
+  } catch (err) {
+    const known = queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities;
+    if (known) return known;
+    throw err;
+  }
+}
+
+/** One flag of a connection's server as the cache holds it, without asking: `undefined`
+ * while its `/server` has not been read (like `useCapability`). */
+export function cachedCapability(cid: string, flag: keyof Capabilities): boolean | undefined {
+  const caps = queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities;
+  return caps ? !!caps[flag] : undefined;
+}
+
 /** How long a `/next` answer stays fresh where it is only a suggestion (Home's Next in
  * your series, keep-ahead's plan): the series doesn't move while you listen. */
 const NEXT_BOOK_STALE_MS = 10 * 60_000;
@@ -179,6 +233,59 @@ export function chaptersQuery(cid: string, client: MaybeClient, libraryId: numbe
         ? ({ signal }) => client.chapters(libraryId, path, signal)
         : skipToken,
   });
+}
+
+/** A book's bookmarks. */
+export function bookmarksQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
+  return queryOptions({
+    queryKey: qk.bookmarks(cid, libraryId, path),
+    queryFn: client && path.length > 0 ? () => client.bookmarks(libraryId, path) : skipToken,
+  });
+}
+
+/** A book's notes. */
+export function notesQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
+  return queryOptions({
+    queryKey: qk.notes(cid, libraryId, path),
+    queryFn: client && path.length > 0 ? () => client.notes(libraryId, path) : skipToken,
+  });
+}
+
+/** A book's listening history: all of it, or the newest `limit` sessions (its own entry
+ * under the full one's key, so invalidating the book's history reaches both). */
+export function historyQuery(
+  cid: string,
+  client: MaybeClient,
+  libraryId: number,
+  path: string,
+  limit?: number,
+) {
+  const key = qk.history(cid, libraryId, path);
+  return queryOptions({
+    queryKey: limit === undefined ? key : [...key, limit],
+    queryFn: client && path.length > 0 ? () => client.history(libraryId, path, limit) : skipToken,
+  });
+}
+
+/**
+ * Add a bookmark to a book on ONE connection's server and refresh that book's bookmarks
+ * (every `qk.bookmarks` reader: the book page, the companion, the scrubber pins).
+ * Framework-free, for the callers that run outside React or for a book that is not the
+ * screen's (the playing book's shortcut, the sleep timer's "Fell asleep"). Resolves the
+ * new bookmark; rejects when the connection is gone or the server refused.
+ */
+export async function addBookmark(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  position: number,
+  note = '',
+): Promise<Bookmark> {
+  const client = resolveClient(connectionId);
+  if (!client) throw new Error('connection gone');
+  const created = await client.addBookmark(libraryId, path, position, note);
+  void queryClient.invalidateQueries({ queryKey: qk.bookmarks(connectionId, libraryId, path) });
+  return created;
 }
 
 /** The scoped connection's server identity/capabilities (incl. its release version).
@@ -291,8 +398,7 @@ function useCapabilityMutation<V, T>(
   const supported = useCapability(flag, connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationKey: [flag, cid],
-    scope: { id: `${flag}:${cid}` },
+    ...mutationScope(flag, cid),
     mutationFn: async (vars: V) => {
       if (!api) throw new Error('no connection');
       if (supported !== true) throw new CapabilityError(flag, supported === undefined);
@@ -301,6 +407,12 @@ function useCapabilityMutation<V, T>(
       return answer;
     },
   });
+}
+
+/** A capability's writes on ONE connection: their key and their one-at-a-time scope
+ * (see `useCapabilityMutation`). */
+function mutationScope(flag: keyof Capabilities, cid: string) {
+  return { mutationKey: [flag, cid], scope: { id: `${flag}:${cid}` } };
 }
 
 /** Put a write's answer into the cache entry at `queryKey`. `update` gets the entry's
@@ -384,7 +496,7 @@ export function useBook(
   libraryId: number,
   path: string,
   connectionId?: string,
-  { staleTime }: { staleTime?: number } = {},
+  { staleTime, enabled }: { staleTime?: number; enabled?: boolean } = {},
 ) {
   // Optional (not throwing) client: the player modal renders these hooks OUTSIDE the
   // `(app)` ContentScope guard, so a stale/removed connection id (e.g. tapping an
@@ -392,13 +504,22 @@ export function useBook(
   return useQuery({
     ...itemQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
     ...(staleTime !== undefined ? { staleTime } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
   });
 }
 
-export function useChapters(libraryId: number, path: string, connectionId?: string) {
-  return useQuery(
-    chaptersQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
-  );
+/** A book's chapters and files; `enabled` false holds this reader back (a surface that
+ * needs them only for community metadata the book may not have). */
+export function useChapters(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  { enabled }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    ...chaptersQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId, path),
+    ...(enabled !== undefined ? { enabled } : {}),
+  });
 }
 
 /** Enriched community metadata for a book. `enabled` gates the query on the
@@ -695,24 +816,7 @@ export function useMarkFinished(connectionId?: string) {
 // server, not whatever is active. The book screen omits it (it operates on the active
 // connection). Same shape as useMarkFinished/useToggleFavourite.
 export function useBookmarks(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.bookmarks(cid, libraryId, path),
-    queryFn: () => api.bookmarks(libraryId, path),
-    enabled: path.length > 0,
-  });
-}
-
-export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: { position: number; note?: string }) =>
-      api.addBookmark(libraryId, path, vars.position, vars.note ?? ''),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(cid, libraryId, path) }),
-  });
+  return useQuery(bookmarksQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
 export function useDeleteBookmark(libraryId: number, path: string, connectionId?: string) {
@@ -727,13 +831,7 @@ export function useDeleteBookmark(libraryId: number, path: string, connectionId?
 
 // --- Notes -----------------------------------------------------------------
 export function useNotes(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.notes(cid, libraryId, path),
-    queryFn: () => api.notes(libraryId, path),
-    enabled: path.length > 0,
-  });
+  return useQuery(notesQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
 export function useAddNote(libraryId: number, path: string, connectionId?: string) {
@@ -759,13 +857,7 @@ export function useDeleteNote(libraryId: number, path: string, connectionId?: st
 
 // --- History ---------------------------------------------------------------
 export function useHistory(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.history(cid, libraryId, path),
-    queryFn: () => api.history(libraryId, path),
-    enabled: path.length > 0,
-  });
+  return useQuery(historyQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
 // --- Favourites ------------------------------------------------------------
@@ -926,6 +1018,26 @@ export function useRemoveFromQueue(connectionId?: string) {
     // Not awaited: the queue's next write (same scope) needn't wait for this read.
     ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.queue(cid) }),
   );
+}
+
+/** {@link useRemoveFromQueue} outside React (the end of a book, which may run with no
+ * screen mounted): the same request, cache refresh and per-connection write order.
+ * Rejects with a `CapabilityError`, sending nothing, unless the cached `/server` says the
+ * server has `queue`. */
+export function removeFromQueue(
+  cid: string,
+  client: ApiClient,
+  v: { libraryId: number; path: string },
+): Promise<void> {
+  return new MutationObserver(queryClient, {
+    ...mutationScope('queue', cid),
+    mutationFn: async () => {
+      const supported = cachedCapability(cid, 'queue');
+      if (supported !== true) throw new CapabilityError('queue', supported === undefined);
+      await client.removeFromQueue(v.libraryId, v.path);
+      void queryClient.invalidateQueries({ queryKey: qk.queue(cid) });
+    },
+  }).mutate();
 }
 
 /** The caller's collections: owned first, then shared with them (capability

@@ -9,6 +9,11 @@ export type PlaybackTrack = {
   artwork?: string;
   /** Track duration in seconds, if known. */
   duration?: number;
+  /** Web only: `url` is the server's transcoded stream (`?transcode=1`, see
+   * `playback/transcode.ts`). It isn't byte-seekable and the element can't know its
+   * length, so the web engine seeks by re-requesting with `&t=` and takes the duration
+   * from `duration` above. Never set on a local file or on native. */
+  transcoded?: boolean;
 };
 
 /**
@@ -26,6 +31,19 @@ export type PlaybackChapter = {
   endInFile: number;
   title: string;
 };
+
+/**
+ * The browser refused `play()` because nothing the user did allowed sound yet (its
+ * autoplay policy, `NotAllowedError`; web only, e.g. a cold `/player` deep link). Not a
+ * playback failure: the store reads it as a plain pause, so the play button comes back
+ * (a press is the gesture the browser wanted) instead of an error.
+ */
+export class AutoplayBlockedError extends Error {
+  constructor() {
+    super('The browser blocked playback until the user interacts with the page');
+    this.name = 'AutoplayBlockedError';
+  }
+}
 
 export type PlaybackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
@@ -136,6 +154,15 @@ export interface PlaybackService {
    * AirPlay). Native engines return true; web checks the available media APIs.
    */
   canShowRoutePicker?(): boolean;
+  /**
+   * Route the seeks the OS media controls make on the engine itself (web: the Media
+   * Session's seekto, seekbackward and seekforward) through `handler`, a track-absolute
+   * position, instead of seeking directly. The store passes its own seek, so such a seek
+   * lowers the resume floor and saves like any deliberate one: a lock-screen scrub back
+   * past the floor's tolerance would otherwise never be saved. Optional; the native
+   * module handles its remote commands itself.
+   */
+  onRemoteSeek?(handler: ((positionInTrack: number) => void) | null): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

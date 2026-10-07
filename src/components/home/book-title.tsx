@@ -2,12 +2,12 @@ import { useTranslation } from 'react-i18next';
 
 import { type SourcedProgress, useBook } from '@/api/hooks';
 import { CoverTile } from '@/components/library/cover-tile';
-import { formatDuration, formatRelative } from '@/lib/format';
+import { useBookTimeLeft } from '@/components/player/use-time-left';
+import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 
 import type { BookAt } from './home-model';
-import { timeLeftAtSpeed } from './now-card-model';
 
 /** A shelf's titles and covers barely change: a tile mounted again within this long
  * (Home, See all) shows what it has rather than asking again. */
@@ -31,7 +31,8 @@ export function useBookTitle(at: BookAt | null): string {
 }
 
 /** A Continue listening / Recently finished cover: progress along its foot and "40% ·
- * 1h 15m left" (at the book's own speed) or when it was finished. */
+ * 1h 15m left at 1.25×" (at the book's own speed, live while it is the loaded book) or
+ * when it was finished. */
 export function ProgressTile({
   item,
   width,
@@ -42,15 +43,10 @@ export function ProgressTile({
   server?: string;
 }) {
   const { t } = useTranslation();
-  const book = useProgressBook({
-    connectionId: item.connectionId,
-    libraryId: item.library_id,
-    path: item.path,
-  });
+  const at = { connectionId: item.connectionId, libraryId: item.library_id, path: item.path };
+  const book = useProgressBook(at);
   const percent = percentHeard(item.position, item.duration, item.finished);
-  const left = formatDuration(
-    timeLeftAtSpeed(item.position, item.duration, item.playback_speed || 1),
-  );
+  const left = useBookTimeLeft(at, item);
   const finishedWhen = formatRelative(item.finished_at ?? item.updated_at);
   const caption = item.finished
     ? finishedWhen

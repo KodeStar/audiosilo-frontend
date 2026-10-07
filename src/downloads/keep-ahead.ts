@@ -16,6 +16,10 @@ import type { DownloadStatus, StorageEstimate } from './types';
  * - a book cancelled or removed this session (`declined`) is not fetched again, and it
  *   keeps its place in the window (the planner does not reach past it for another);
  * - a failed download is left for the listener to retry, in its place too;
+ * - a book this device can't keep (`unavailable`: a web browser that plays it through
+ *   the server's transcoder) is left alone in its place, and one the downloads store
+ *   turned away for room although the plan thought it fit (`tooBig`: the full item is
+ *   bigger than the list said) reads as no room, like one the plan found too big;
  * - a finished book is not "ahead", so it neither counts nor downloads;
  * - downloads start in window order and stop at the first that would eat into the
  *   reserve of free space (`reserveBytes`); with no way to know the room, one book
@@ -49,6 +53,8 @@ export type SlotState =
   | 'start'
   /** Cancelled or removed this session: left alone. */
   | 'declined'
+  /** This device can't keep it offline (web: it plays through the server's transcoder). */
+  | 'unavailable'
   /** A download failed: the listener retries it from Downloads. */
   | 'failed'
   /** Waiting for Wi-Fi (`metered`). */
@@ -65,10 +71,20 @@ export type KeepAheadSlot = { book: AheadBook; state: SlotState };
  * - `idle`: nothing is loaded, or nothing comes after it;
  * - `waiting` (for Wi-Fi), `no-space`, `working` (something is downloading or starting);
  * - `failed`: a download of the window stopped (the listener retries it);
- * - `ready`: the rest of the window is on the device (declined books aside);
+ * - `ready`: the rest of the window is on the device (declined and unavailable books aside);
+ * - `unavailable`: no book of the window can be kept on this device (the rest declined);
  * - `declined`: every book of the window was cancelled or removed this session. */
 export type KeepAheadStatus =
-  'off' | 'never' | 'idle' | 'waiting' | 'no-space' | 'working' | 'failed' | 'declined' | 'ready';
+  | 'off'
+  | 'never'
+  | 'idle'
+  | 'waiting'
+  | 'no-space'
+  | 'working'
+  | 'failed'
+  | 'declined'
+  | 'unavailable'
+  | 'ready';
 
 export type KeepAheadPlan = {
   status: KeepAheadStatus;
@@ -93,6 +109,14 @@ export function estimateBytes(book: { size: number; duration: number }): number 
  * is more. */
 export function reserveBytes(capacity: number): number {
   return Math.max(1024 ** 3, Math.ceil(capacity * 0.1));
+}
+
+/** The bytes automatic downloads may still add (free space, minus what queued downloads
+ * will write, minus the reserve; below zero when the reserve is already eaten into), or
+ * null when the room is not knowable. Keep-ahead's plan and the playback store's download
+ * of the book you start both obey it. */
+export function roomLeft(storage: StorageEstimate | null, pending: number): number | null {
+  return storage ? storage.free - pending - reserveBytes(storage.capacity) : null;
 }
 
 /** Bytes the registry's queued and in-flight downloads still have to write. */
@@ -142,6 +166,10 @@ export type KeepAheadInput = {
   /** The registry's status per `contentKeyOf`. */
   entries: ReadonlyMap<string, DownloadStatus>;
   declined: ReadonlySet<string>;
+  /** Books this device can't keep offline (web transcode), by `contentKeyOf`. */
+  unavailable: ReadonlySet<string>;
+  /** Books the downloads store turned away for room although a plan let them start. */
+  tooBig: ReadonlySet<string>;
   /** Null when the room is not knowable. */
   storage: StorageEstimate | null;
   /** `pendingBytes` of the registry. */
@@ -155,6 +183,7 @@ const STATUS_BY_STATE: [SlotState[], KeepAheadStatus][] = [
   [['waiting'], 'waiting'],
   [['failed'], 'failed'],
   [['ready'], 'ready'],
+  [['unavailable'], 'unavailable'],
 ];
 
 function planStatus(slots: readonly KeepAheadSlot[]): KeepAheadStatus {
@@ -168,9 +197,7 @@ export function planKeepAhead(input: KeepAheadInput): KeepAheadPlan {
   if (input.network === 'never') return { status: 'never', slots: [], start: [] };
   if (input.window.length === 0) return { status: 'idle', slots: [], start: [] };
 
-  let room = input.storage
-    ? input.storage.free - input.pending - reserveBytes(input.storage.capacity)
-    : null;
+  let room = roomLeft(input.storage, input.pending);
   // Unknown room: one at a time.
   let unknownBudget = input.window.some((b) => {
     const status = input.entries.get(contentKeyOf(b));
@@ -186,14 +213,19 @@ export function planKeepAhead(input: KeepAheadInput): KeepAheadPlan {
     if (status === 'queued' || status === 'downloading') return { book, state: 'active' };
     if (status === 'error') return { book, state: 'failed' };
     if (input.declined.has(key)) return { book, state: 'declined' };
+    if (input.unavailable.has(key)) return { book, state: 'unavailable' };
     if (input.network === 'metered') return { book, state: 'waiting' };
     // In window order: once one doesn't fit, none after it starts either.
+    if (blocked) return { book, state: 'no-space' };
+    if (input.tooBig.has(key)) {
+      blocked = true;
+      return { book, state: 'no-space' };
+    }
     if (room === null) {
       if (unknownBudget === 0) return { book, state: 'later' };
       unknownBudget -= 1;
       return { book, state: 'start' };
     }
-    if (blocked) return { book, state: 'no-space' };
     const need = estimateBytes(book);
     if (need > room) {
       blocked = true;

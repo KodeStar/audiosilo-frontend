@@ -29,7 +29,9 @@ jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
 }));
 let mockProgress: unknown[] = [];
+let mockCaps: Record<string, boolean | undefined> = {};
 jest.mock('@/api/hooks', () => ({
+  useCapability: (flag: string) => mockCaps[flag],
   useSavedProgress: () => undefined,
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useAllProgressAll: () => ({ progress: mockProgress, isLoading: false, error: null }),
@@ -147,6 +149,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockLayout = 'desktop';
   mockProgress = [];
+  mockCaps = {};
   Platform.OS = 'ios';
   useDownloads.setState({ entries: {}, supported: true, hydrated: true } as never);
   useKeepAhead.setState({ status: 'idle' as KeepAheadStatus, slots: [] as KeepAheadSlot[] });
@@ -192,6 +195,22 @@ describe('DownloadsScreen', () => {
     );
     await fireEvent.press(screen.getByRole('button', { name: 'Cancel downloading Running' }));
     expect(store().cancel).toHaveBeenCalledWith('a', 1, 'Running');
+  });
+
+  it('offers no dead Retry for a book this browser now plays transcoded', async () => {
+    Platform.OS = 'web';
+    mockCaps = { transcode: true };
+    const [key, failed] = entry('Dolby', 'error', { failure: { kind: 'network', kept: 0.5 } });
+    failed.manifest.book = { ...failed.manifest.book, direct_playable: false, codec: 'ac3' };
+    setEntries([key, failed]);
+    await mount();
+    // The downloads store refuses it (its raw files would not play offline here).
+    expect(screen.queryByRole('button', { name: 'Retry downloading Dolby' })).toBeNull();
+    expect(
+      screen.getByText("This browser can't play this book offline. Remove it to free the space."),
+    ).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel downloading Dolby' }));
+    expect(store().cancel).toHaveBeenCalledWith('a', 1, 'Dolby');
   });
 
   it('says a retry starts over when nothing was kept', async () => {

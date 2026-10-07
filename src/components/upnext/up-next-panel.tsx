@@ -5,7 +5,8 @@ import { useBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
-import { useBookTimeLeft } from '@/components/player/book-progress';
+import { slopTo44 } from '@/components/player/control-pill';
+import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -114,6 +115,7 @@ export function UpNextPanel({
           onMove={data.move}
           onRemove={(e: QueueEntry) => void actions.unqueue(e.library_id, e.path)}
           onPlay={(e: QueueEntry) => void playNow(e, entryTitle(e))}
+          onNavigate={onNavigate}
         />
       ) : desktopWeb ? null : (
         <EmptyQueue />
@@ -174,19 +176,9 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
   const themed = useThemeColors();
   const chapter = usePlayer(selectCurrentChapter);
   const isPlaying = usePlayer(selectIsPlaying);
-  const rate = usePlayer((s) => s.rate);
   const toggle = usePlayer((s) => s.toggle);
-  const left = useBookTimeLeft(nowPlaying.queue.total);
-  const where = [
-    chapter ? chapterLabel(chapter, t) : '',
-    left
-      ? rate !== 1
-        ? t('upnext.leftAtSpeed', { time: left, speed: rate })
-        : t('shell.dock.bookLeft', { time: left })
-      : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const left = usePlayingTimeLeft();
+  const where = [chapter ? chapterLabel(chapter, t) : '', left].filter(Boolean).join(' · ');
   return (
     <View className="mx-1.5 mb-3 flex-row items-center gap-3 rounded-2xl bg-muted p-3">
       <BookCover
@@ -210,6 +202,7 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
       </View>
       <AnimatedPressable
         onPress={() => void toggle()}
+        hitSlop={slopTo44(2.75)}
         accessibilityRole="button"
         accessibilityLabel={isPlaying ? t('player.controls.pause') : t('player.controls.play')}
         className={cn(
@@ -347,27 +340,36 @@ function SuggestedBook({
         accessibilityLabel={t('upnext.add', { title })}
         onPress={onQueue}
         className="h-9 w-9"
+        hitSlop={slopTo44(2.25)}
       />
     </View>
   );
 }
 
-/** The existing auto-play setting, named for what it does today: the playback store
- * plays the next book in the series (or folder) when one ends; the queue is not played
- * yet. */
+/** The auto-play setting: when a book ends, the first book in Up next plays, else the
+ * next in the series (`resolveUpNext`). */
 function AutoPlaySwitch() {
   const { t } = useTranslation();
   const on = useSettings((s) => s.autoPlayNext);
   const set = useSettings((s) => s.setAutoPlayNext);
   const label = t('upnext.autoPlay');
+  const hint = t('upnext.autoPlayHint');
   return (
     <Pressable
       onPress={() => set(!on)}
       accessible={false}
       className="mt-3 flex-row items-center gap-2.5 px-2 py-2"
     >
-      <Switch checked={on} onCheckedChange={set} accessibilityLabel={label} />
-      <Text className="flex-1 text-[13px]">{label}</Text>
+      <Switch
+        checked={on}
+        onCheckedChange={set}
+        accessibilityLabel={label}
+        accessibilityHint={hint}
+      />
+      <View className="flex-1">
+        <Text className="text-[13px]">{label}</Text>
+        <Text variant="caption">{hint}</Text>
+      </View>
     </Pressable>
   );
 }

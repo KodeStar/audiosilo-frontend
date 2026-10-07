@@ -17,6 +17,12 @@ describe('bottomChromeTop', () => {
     expect(bottomChromeTop({ bar: 83, mini: 149 })).toBe(149);
     expect(bottomChromeTop({ dock: 84 })).toBe(84);
   });
+
+  it('can leave one piece out (the grace card sits on the rest)', () => {
+    expect(bottomChromeTop({ dock: 84, grace: 190 })).toBe(190);
+    expect(bottomChromeTop({ dock: 84, grace: 190 }, 'grace')).toBe(84);
+    expect(bottomChromeTop({ grace: 190 }, 'grace')).toBeUndefined();
+  });
 });
 
 describe('chrome edges', () => {

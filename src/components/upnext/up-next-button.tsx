@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import { slopTo44 } from '@/components/player/control-pill';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
@@ -39,6 +40,9 @@ export function UpNextButton({ variant }: { variant: 'bar' | 'header' | 'dock' }
     <AnimatedPressable
       testID={`upnext-button-${variant}`}
       onPress={toggleUpNext}
+      // The 38 px square still takes a 44 pt touch; so does the header's 2.75 rem circle
+      // (38.5 pt on native, a 14 pt rem).
+      hitSlop={variant === 'header' ? slopTo44(2.75) : 3}
       accessibilityRole="button"
       accessibilityLabel={label}
       // Web: the drawer's state as a toggle (aria-pressed); a sheet is a plain button.

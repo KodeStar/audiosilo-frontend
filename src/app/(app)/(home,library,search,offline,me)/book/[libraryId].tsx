@@ -31,8 +31,14 @@ import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { CoverFrame } from '@/components/library/cover-frame';
 import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
-import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
+import {
+  chapterStartsOf,
+  LIVE_POSITION_BUCKET_S,
+  listeningProgressFor,
+  metaEnabledFor,
+} from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
+import { TranscodeNote } from '@/components/library/transcode-note';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { useListeningPosition } from '@/components/player/use-listening-position';
@@ -56,14 +62,6 @@ import { useSeriesOrderings } from '@/stores/series-orderings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-// How coarsely this screen samples the player's live position (seconds). The only
-// consumer is the spoiler gate, which just needs to know which CHAPTER the listener
-// is in, so subscribing to the per-tick position would re-render a list of possibly
-// hundreds of chapter rows every second for nothing. Rounding DOWN can delay a
-// reveal by at most this many seconds at a chapter boundary - it can never reveal
-// something early, which is the direction that matters.
-const LIVE_POSITION_BUCKET_S = 15;
 
 /** Loading placeholder shaped like the final layout: a cover block, title lines,
  * a stat strip and a few chapter rows - no centered spinner. */
@@ -139,7 +137,7 @@ function BookDetailContent() {
   const metadataEnabled = !!server?.capabilities.metadata;
   // Older servers omit the capability → false; books with neither id can never
   // match, so we skip the request entirely.
-  const bookMetaEnabled = metadataEnabled && !!(book?.asin || book?.isbn);
+  const bookMetaEnabled = metaEnabledFor(metadataEnabled, book);
   const { data: meta } = useBookMeta(libraryId, path, bookMetaEnabled);
   // Where the listener has got to, for the spoiler gating below - so it rides the
   // same gate: with no metadata to gate, this authenticated GET would be waste.
@@ -225,6 +223,15 @@ function BookDetailContent() {
     nowPlaying?.path === book.rel_path;
   const activeIndex = isThisPlaying ? currentChapter?.index : undefined;
   const downloaded = downloadEntry?.status === 'downloaded';
+  // "Converted for this browser" under the stats, when web plays this book transcoded.
+  const transcodeNote = (
+    <TranscodeNote
+      book={book}
+      chapterData={chapterData}
+      connectionId={cid}
+      downloaded={downloaded}
+    />
+  );
 
   const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? t('book.libraryFallback');
   const segments = path.split('/').filter(Boolean);
@@ -507,6 +514,7 @@ function BookDetailContent() {
                 ) : null}
               </View>
               <BookStats libraryId={libraryId} path={path} book={book} />
+              {transcodeNote}
               {isThisPlaying ? (
                 <Button
                   title={t('book.openPlayer')}
@@ -569,6 +577,7 @@ function BookDetailContent() {
             ) : null}
           </View>
           <BookStats libraryId={libraryId} path={path} book={book} />
+          {transcodeNote}
         </View>
       </View>
 

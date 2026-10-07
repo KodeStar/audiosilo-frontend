@@ -29,6 +29,7 @@ export function HistorySection({
   connectionId,
   emptyLabel,
   chapters,
+  onJump,
 }: {
   libraryId: number;
   path: string;
@@ -37,6 +38,8 @@ export function HistorySection({
   connectionId?: string;
   emptyLabel?: string;
   chapters?: Chapter[];
+  /** Where a tap on a span's end goes (see `BookmarksSection`'s `onJump`). */
+  onJump?: (position: number) => void;
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
@@ -57,10 +60,17 @@ export function HistorySection({
   }
 
   const jump = (position: number) =>
-    router.push({
-      pathname: '/player',
-      params: { connection: cid, libraryId: String(libraryId), path, position: String(position) },
-    });
+    onJump
+      ? onJump(position)
+      : router.push({
+          pathname: '/player',
+          params: {
+            connection: cid,
+            libraryId: String(libraryId),
+            path,
+            position: String(position),
+          },
+        });
 
   const labelAt = (pos: number): string => {
     const c = chapters && chapters.length > 0 ? chapterAt(chapters, pos) : null;

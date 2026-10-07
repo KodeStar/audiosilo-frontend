@@ -195,6 +195,29 @@ export function formatTimeOfDay(hhmm: string, locale: string = getLocale()): str
   }
 }
 
+/**
+ * A moment as the reader's clock reads it: "22:01" (de, en-GB "22:01"), "10:01 PM"
+ * (en-US). For "ends 22:01": when a chapter or a book will end at the current speed.
+ * Falls back to a 24h "HH:MM" where the runtime can't format it.
+ *
+ * The device zone is read live, per call (`getTimezoneOffset`), and the cached formatter
+ * is pinned to UTC, for the reason `formatTimeOfDay` gives: a formatter resolves the zone
+ * once, when it is built, so after travel it would keep reading the old zone's clock.
+ */
+export function formatWallClock(date: Date, locale: string = getLocale()): string {
+  try {
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+    return dateFormatter(locale, 'wall', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'UTC',
+    }).format(local);
+  } catch {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+}
+
 /** Author / series line for a book, skipping empty parts. */
 export function bookSubtitle(opts: {
   author?: string;

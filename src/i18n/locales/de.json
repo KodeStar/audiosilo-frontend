@@ -44,13 +44,25 @@
       "type": {
         "label": "Timer-Typ",
         "chapter": "Kapitelende"
+      },
+      "shake": {
+        "label": "Schütteln zum Verlängern",
+        "description": "Schüttle dein Telefon in den letzten 30 Sekunden oder kurz nachdem der Timer gestoppt hat, um weiterzuhören.",
+        "unavailable": "Im Browser nicht verfügbar."
+      },
+      "sensitivity": {
+        "label": "Schüttelempfindlichkeit",
+        "description": "Wie kräftig du schütteln musst. Wähle Niedrig, wenn Erschütterungen im Bett das Buch weiterlaufen lassen.",
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch"
       }
     },
     "upNext": {
       "label": "Als Nächstes",
       "autoPlay": {
         "label": "Nächstes Buch automatisch abspielen",
-        "description": "Startet das nächste Buch im Ordner, sobald eines endet."
+        "description": "Wenn ein Buch endet, startet das erste Buch in Als Nächstes oder das nächste der Reihe."
       },
       "autoDelete": {
         "description": "Gibt den Platz frei, sobald du ein Buch beendet hast. Deine Stelle im Buch bleibt erhalten."
@@ -199,7 +211,7 @@
     "continueMore_other": "{{count}} weitere angefangen",
     "allInProgress": "Alle angefangenen",
     "acrossServers": "Von all deinen Servern",
-    "progressCaption": "{{percent}} % · noch {{left}}",
+    "progressCaption": "{{percent}} % · {{left}}",
     "finishedWhen": "Beendet {{when}}",
     "servers_one": "{{count}} Server",
     "servers_other": "{{count}} Server",
@@ -222,7 +234,6 @@
       "chapterShort": "Kap. {{chapter}} von {{total}}",
       "scaleLabel": "{{percent}} % des Buchs gehört",
       "through": "des Buchs gehört",
-      "leftAt": "übrig bei {{speed}}",
       "finishPace": "fertig in deinem Tempo",
       "resume": "Fortsetzen",
       "resumeChapter": "Kapitel {{chapter}} fortsetzen",
@@ -288,6 +299,18 @@
     "error": {
       "title": "Dein Fortschritt konnte nicht geladen werden",
       "body": "Nichts ist verloren: Deine Stelle ist auf jedem Server gespeichert. Prüfe die Verbindung und versuche es noch einmal."
+    },
+    "previouslyOn": {
+      "label": "Was bisher geschah",
+      "eyebrow_one": "Was bisher geschah in {{title}} · vor {{count}} Tag",
+      "eyebrow_other": "Was bisher geschah in {{title}} · vor {{count}} Tagen",
+      "left": "Du hast {{title}} bei {{chapter}} verlassen.",
+      "leftBook": "Du hast {{title}} unterbrochen.",
+      "resume": "Fortsetzen, mit 30 Sekunden Überlappung",
+      "readRecap": "Ganze Zusammenfassung lesen",
+      "dismiss": "Schließen",
+      "spoilerSafe": "Spoilerfrei: geschrieben bis Kapitel {{chapter}}.",
+      "spoilerSafeStart": "Spoilerfrei: geschrieben vor Beginn dieses Buchs."
     }
   },
   "library": {
@@ -341,6 +364,7 @@
     },
     "download": {
       "unavailable": "Downloads nicht verfügbar",
+      "notInBrowser": "In diesem Browser nicht herunterladbar",
       "remove": "Download entfernen",
       "cancel": "Download abbrechen",
       "retry": "Download wiederholen",
@@ -398,7 +422,7 @@
       "matches_one": "{{shown}} von {{total}} passt",
       "matches_other": "{{shown}} von {{total}} passen",
       "loadingMore": "Lädt weitere...",
-      "progress": "{{percent}} % · noch {{left}}",
+      "progress": "{{percent}} % · {{left}}",
       "finishedWhen": "Beendet {{when}}",
       "rail": "Zu Buchstabe springen",
       "sort": {
@@ -580,7 +604,8 @@
         "waiting": "Wartet auf WLAN.",
         "noSpace": "Pausiert: Es ist nicht genug Speicher frei. Automatische Downloads lassen immer mindestens 1 GB frei.",
         "failed": "Eines der nächsten Bücher wurde nicht fertig geladen. Versuche es unter Downloads erneut.",
-        "declined": "Die nächsten Bücher bleiben unberührt: Du hast sie entfernt."
+        "declined": "Die nächsten Bücher bleiben unberührt: Du hast sie entfernt.",
+        "unavailable": "Dieser Browser kann die nächsten Bücher nicht offline bereithalten."
       },
       "autoDelete": "Download entfernen, wenn du das Buch beendet hast"
     },
@@ -618,6 +643,7 @@
       "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
       "interrupted": "Die App wurde geschlossen, bevor der Download fertig war.",
       "unknown": "Der Download wurde angehalten.",
+      "notInBrowser": "Dieser Browser kann dieses Buch nicht offline abspielen. Entferne es, um den Platz freizugeben.",
       "kept": "Deine {{percent}} % bleiben erhalten.",
       "restart": "Ein neuer Versuch beginnt von vorn."
     },
@@ -704,6 +730,8 @@
     "bitrate": "Bitrate: {{value}}",
     "byAuthor": "Von {{author}}",
     "narratedBy": "Gesprochen von {{narrator}}",
+    "transcodeNote": "{{codec}}-Audio wird für diesen Browser in MP3 umgewandelt",
+    "transcodeNoteGeneric": "Dieses Audio wird für diesen Browser in MP3 umgewandelt",
     "listen": "Anhören",
     "tabs": {
       "recaps": "Rückblicke",
@@ -758,17 +786,13 @@
   },
   "player": {
     "controls": {
-      "fileOf": "Datei {{current}} von {{total}}",
       "fileNumber": "Datei {{number}}",
-      "timeLeft": "{{time}} übrig ({{rate}})",
-      "showChapters": "Kapitel anzeigen",
-      "close": "Schließen",
       "previous": "Vorheriges Kapitel",
       "next": "Nächstes Kapitel",
       "play": "Wiedergabe",
       "pause": "Pause",
-      "skipBack": "{{seconds}} Sekunden zurückspringen",
-      "skipForward": "{{seconds}} Sekunden vorspringen"
+      "skipBack": "{{seconds}} Sekunden zurück",
+      "skipForward": "{{seconds}} Sekunden vor"
     },
     "chapters": {
       "chaptersTitle": "Kapitel",
@@ -778,11 +802,11 @@
     "bookmarks": {
       "label": "Lesezeichen",
       "empty": "Noch keine Lesezeichen.",
-      "saved": "Lesezeichen gespeichert",
-      "addAt": "Lesezeichen bei {{time}} hinzufügen"
+      "addAt": "Lesezeichen bei {{time}} hinzufügen",
+      "added": "Lesezeichen hinzugefügt",
+      "addFailed": "Lesezeichen konnte nicht hinzugefügt werden"
     },
     "history": {
-      "label": "Wiedergabeverlauf",
       "empty": "Noch kein Verlauf."
     },
     "notes": {
@@ -793,42 +817,201 @@
     },
     "sleepTimer": {
       "title": "Sleep-Timer",
-      "running": "Timer läuft",
-      "timeSection": "Zeit",
       "minutes_one": "{{count}} Min.",
       "minutes_other": "{{count}} Min.",
-      "endOfChapterSection": "Kapitelende",
       "endOf": "Ende von {{chapter}}",
       "endOfChapterNumber": "Ende von Kapitel {{number}}",
-      "current": " (aktuell)",
       "endOfBook": "Ende des Buches",
-      "noChapters": "Keine Kapitel verfügbar.",
-      "fading": "Wird ausgeblendet",
-      "ending": "Endet gleich",
-      "grace": "Wiedergabe pausiert",
       "keepListening": "Weiterhören",
-      "shakeHint": "Schüttle dein Telefon, um weiterzuhören",
       "keepGoingShort": "Weiter",
-      "cancel": "Timer abbrechen"
+      "minutesUnit_one": "Minute",
+      "minutesUnit_other": "Minuten",
+      "afterChapters_one": "Nach {{count}} Kapitel",
+      "afterChapters_other": "Nach {{count}} Kapiteln",
+      "endOfChapter": "Kapitelende",
+      "inTime": "in {{time}}",
+      "stopAfter": "Oder anhalten nach",
+      "thisChapter": "Diesem Kapitel",
+      "nChapters_one": "{{count}} Kapitel",
+      "nChapters_other": "{{count}} Kapiteln",
+      "endsAt": "endet {{time}}",
+      "pillRunning": "Sleep-Timer, {{label}}, noch {{time}}",
+      "turnOff": "Ausschalten",
+      "notice": {
+        "on": "Sleep-Timer an",
+        "book": "Stoppt am Ende des Buches",
+        "chapters_one": "Stoppt am Ende dieses Kapitels",
+        "chapters_other": "Stoppt nach {{count}} Kapiteln",
+        "left": "Noch {{time}}",
+        "leftFades": "Noch {{time}} · wird in den letzten 30 s ausgeblendet",
+        "graceLeft": "Noch {{time}}, um weiterzuhören"
+      },
+      "grace": {
+        "fadingIn_one": "Wird in {{count}} s ausgeblendet",
+        "fadingIn_other": "Wird in {{count}} s ausgeblendet",
+        "stoppingIn_one": "Stoppt in {{count}} s",
+        "stoppingIn_other": "Stoppt in {{count}} s",
+        "pausedTitle": "Vom Sleep-Timer pausiert",
+        "stillAwakeShake": "Noch wach? Schüttle dein Telefon oder tippe, um weiterzuhören.",
+        "stillAwake": "Noch wach? Hör einfach weiter.",
+        "pausedShake": "Noch wach? Schüttle dein Telefon oder tippe, um dort weiterzumachen, wo es aufgehört hat.",
+        "paused": "Noch wach? Mach dort weiter, wo es aufgehört hat."
+      },
+      "autoChapter": "Stoppt am Kapitelende, wenn du zwischen {{from}} und {{until}} auf Wiedergabe tippst.",
+      "autoMinutes_one": "Startet einen {{count}}-Minuten-Timer, wenn du zwischen {{from}} und {{until}} auf Wiedergabe tippst.",
+      "autoMinutes_other": "Startet einen {{count}}-Minuten-Timer, wenn du zwischen {{from}} und {{until}} auf Wiedergabe tippst.",
+      "fellAsleepHint": "Wenn du einschläfst, markiert ein Lesezeichen „Eingeschlafen“ die Stelle, an der der Timer gestoppt hat, und beim nächsten Abspielen des Buches kannst du zu dem Moment zurückspringen, in dem du zuletzt wach warst.",
+      "fellAsleepNote": "Eingeschlafen"
     },
     "speed": {
-      "title": "Wiedergabegeschwindigkeit"
+      "title": "Wiedergabegeschwindigkeit",
+      "leftInBook": "Noch {{time}} im Buch bei {{speed}} · für dieses Buch gespeichert",
+      "slower": "0,05 langsamer",
+      "faster": "0,05 schneller",
+      "presets": "Geschwindigkeitsvorgaben",
+      "presetLabel": "{{speed}}, noch {{time}}"
     },
     "seek": {
-      "label": "Wiedergabeposition",
-      "value": "{{position}} von {{duration}}"
+      "label": "Position im Kapitel",
+      "value": "{{position}} von {{duration}}",
+      "labelFile": "Position in der Datei",
+      "labelBook": "Position im Buch",
+      "inBook": "{{time}} im Buch",
+      "clickToJump": "Klicken zum Springen",
+      "chapterLeft": "noch {{time}} im Kapitel · endet {{clock}}",
+      "fileLeft": "noch {{time}} in der Datei · endet {{clock}}",
+      "bookLeft": "noch {{time}} im Buch · endet {{clock}}"
     },
     "finished": {
-      "heading": "Buch beendet",
-      "upNext": "Als Nächstes",
-      "playNext": "Nächstes abspielen",
+      "eyebrow": "Ende des Buchs",
+      "credits": "Mitwirkende",
+      "writtenBy": "Geschrieben von",
+      "readBy": "Gelesen von",
+      "publisher": "Verlag",
+      "released": "Erschienen",
+      "community": "Community-Notizen",
+      "onServer": "Auf deinem Server",
+      "yearShelf_one": "{{count}} Buch dieses Jahr beendet",
+      "yearShelf_other": "{{count}} Bücher dieses Jahr beendet",
+      "bookOfYear": "Buch {{number}} in diesem Jahr · beendet",
+      "byline": "{{author}} · gelesen von {{narrator}}",
+      "readByOnly": "Gelesen von {{narrator}}",
+      "timeListened": "Gehört",
+      "across": "Verteilt auf",
+      "days_one": "{{count}} Tag",
+      "days_other": "{{count}} Tage",
+      "yourSpeed": "Dein Tempo",
+      "howWasIt": "Wie war es?",
+      "ratingLabel": "Deine Bewertung",
+      "stars_one": "{{count}} Stern",
+      "stars_other": "{{count}} Sterne",
+      "ratingSaved": "Bewertung gespeichert",
+      "ratingFailed": "Deine Bewertung wurde nicht gespeichert. Versuch es noch einmal.",
+      "fromQueue": "Als Nächstes · aus deiner Warteschlange",
+      "fromSeriesBook": "Als Nächstes · {{series}}, Buch {{position}}",
+      "fromSeries": "Als Nächstes · {{series}}",
+      "nextInSeries": "Als Nächstes · nächstes Buch der Reihe",
+      "fromFolder": "Als Nächstes · nächstes Buch in diesem Ordner",
+      "downloaded": "Heruntergeladen",
+      "downloading": "Wird heruntergeladen, {{percent}} %",
+      "streamsFrom": "Wird von {{server}} gestreamt",
+      "playNow": "Jetzt abspielen",
+      "playNowLabel": "{{title}} jetzt abspielen",
+      "notNow": "Nicht jetzt",
+      "countdown_one": "Startet in {{count}} Sekunde",
+      "countdown_other": "Startet in {{count}} Sekunden",
+      "endOfSeries": "Ende der Reihe",
+      "endOfSeriesBody": "Das sind bisher alle Bücher von {{series}} auf diesem Server.",
+      "endOfSeriesNoName": "Auf diesem Server folgt nichts auf dieses Buch.",
+      "notOnServerTitle": "Das nächste Buch ist nicht auf diesem Server",
+      "notOnServer": "Als Nächstes in der Reihe: {{title}}, das nicht auf diesem Server ist.",
+      "notOnServerBook": "Als Nächstes in der Reihe: Buch {{position}}, {{title}}, das nicht auf diesem Server ist.",
+      "details": "Details anzeigen",
       "startingIn": "Startet in {{time}}",
-      "endOfSeries": "Das Ende dieses Ordners ist erreicht.",
       "viewDetails": "Buchdetails anzeigen"
     },
     "menu": {
       "label": "Mehr",
       "viewCredits": "Abspann anzeigen"
+    },
+    "timeLeft": {
+      "left": "noch {{time}}",
+      "leftAt": "noch {{time}} bei {{speed}}",
+      "label": "übrig",
+      "labelAt": "übrig bei {{speed}}"
+    },
+    "timeline": {
+      "label": "Zeitleiste des ganzen Buchs",
+      "value": "{{percent}} %, {{position}} von {{total}}",
+      "axis": "{{percent}} % · {{position}}"
+    },
+    "undo": {
+      "label": "Zurück zu {{time}}",
+      "restored": "Zurück, wo du warst"
+    },
+    "shortcuts": {
+      "title": "Tastenkürzel",
+      "hint": "Sie funktionieren überall im Web-Player, außer während du tippst.",
+      "or": "oder",
+      "playPause": "Wiedergabe oder Pause",
+      "chapters": "Vorheriges oder nächstes Kapitel",
+      "speed": "Langsamer oder schneller (0,05×)",
+      "bookmark": "Lesezeichen hinzufügen",
+      "player": "Vollständigen Player öffnen",
+      "palette": "Suche und Befehle",
+      "help": "Diese Hilfe",
+      "space": "Leertaste"
+    },
+    "drift": {
+      "title": "Du bist gegen {{time}} eingeschlafen",
+      "description_one": "{{count}} Minute zurückspringen?",
+      "description_other": "{{count}} Minuten zurückspringen?",
+      "jumpBack": "Zurückspringen"
+    },
+    "full": {
+      "minimise": "Player minimieren",
+      "playingFrom": "Wiedergabe von {{server}}",
+      "seriesBook": "{{series}}, Band {{position}}",
+      "chapterButton": "{{chapter}}, Kapitel anzeigen",
+      "synced": "Synchronisiert",
+      "percentOfBook": "{{percent}} % des Buchs",
+      "speedLabel": "Wiedergabegeschwindigkeit, {{speed}}",
+      "sleep": "Schlaf",
+      "bookmark": "Lesezeichen",
+      "output": "Ausgabe",
+      "errorLine": "Wiedergabe gestoppt. Deine Stelle ist gespeichert."
+    },
+    "companion": {
+      "who": "Wer ist wer",
+      "history": "Verlauf",
+      "attribution": "Community-Notizen von {{credit}}",
+      "licence": "Lizenz: {{licence}}",
+      "hideAgain": "Wieder ausblenden",
+      "spoilersShown": "Spoiler sichtbar",
+      "justMet": "Gerade kennengelernt",
+      "metCount_one": "{{count}} Person, die du kennst",
+      "metCount_other": "{{count}} Personen, die du kennst",
+      "charactersHidden_one": "{{count}} Figur, die du noch nicht kennst, ist ausgeblendet",
+      "charactersHidden_other": "{{count}} Figuren, die du noch nicht kennst, sind ausgeblendet",
+      "charactersHiddenHint": "Sie erscheinen hier, sobald du ihre Kapitel erreichst.",
+      "recapsHidden_one": "{{count}} weiterer Teil der Geschichte ist ausgeblendet",
+      "recapsHidden_other": "{{count}} weitere Teile der Geschichte sind ausgeblendet",
+      "recapsHiddenHint": "Jeder Teil erscheint, sobald du sein Kapitel beendet hast.",
+      "whoEmptyTitle": "Noch keine Figurennotizen zu diesem Buch",
+      "whoEmptyHint": "Figurennotizen kommen von AudioSilo Meta, sobald jemand sie für dieses Buch geschrieben hat.",
+      "storyEmptyTitle": "Noch keine Zusammenfassung zu diesem Buch",
+      "storyEmptyHint": "Zusammenfassungen kommen aus Community-Notizen, sobald jemand eine geschrieben hat.",
+      "storyNotYet": "Noch nichts zusammenzufassen",
+      "storyNotYetHint": "Die bisherige Handlung erscheint hier, während du Kapitel beendest.",
+      "storyStops": "Geschrieben bis zu deiner Stelle. Nichts nach Kapitel {{chapter}} wird gezeigt.",
+      "chapterNow": "{{chapter}}, läuft gerade",
+      "chapterIn": "in {{time}}",
+      "revealTitle": "Neu bei Wer ist wer: {{names}}",
+      "revealBody_one": "Du hast diese Figur gerade in Kapitel {{chapter}} kennengelernt. Nichts nach dieser Stelle wird gezeigt.",
+      "revealBody_other": "Du hast sie gerade in Kapitel {{chapter}} kennengelernt. Nichts nach dieser Stelle wird gezeigt.",
+      "show": "Anzeigen",
+      "noServerTitle": "Der Server dieses Buchs ist nicht verbunden",
+      "noServerHint": "Lesezeichen, Notizen und Verlauf sind wieder da, sobald er es ist."
     }
   },
   "reconnect": {
@@ -859,6 +1042,10 @@
     "toast": {
       "dismiss": "Schließen",
       "region": "Benachrichtigungen"
+    },
+    "tabs": {
+      "more": "Weitere Tabs",
+      "earlier": "Vorherige Tabs"
     }
   },
   "demo": {
@@ -879,12 +1066,14 @@
     "serverMore_one": "{{name}} + {{count}} weiterer",
     "serverMore_other": "{{name}} + {{count}} weitere",
     "openPlayer": "Vollen Player für {{title}} öffnen",
-    "titleTimeLeft": "{{title}} · noch {{time}}",
     "dock": {
       "label": "Player",
-      "bookLeft": "Noch {{time}}",
       "savedLocally": "Auf diesem Gerät gespeichert, wird synchronisiert",
-      "expand": "Player vergrößern"
+      "expand": "Player vergrößern",
+      "synced": "Synchronisiert",
+      "syncedNow": "Gerade synchronisiert",
+      "signInToSync": "Auf diesem Gerät gespeichert, zum Synchronisieren erneut anmelden",
+      "speed": "Wiedergabegeschwindigkeit, {{speed}}"
     },
     "profile": {
       "label": "Server und Konto, {{name}}",
@@ -972,7 +1161,6 @@
     "queued": "{{time}} eingereiht",
     "nothingQueued": "Nichts eingereiht",
     "nowPlaying": "Läuft gerade",
-    "leftAtSpeed": "noch {{time}} bei {{speed}}x",
     "clear": "Leeren",
     "clearLabel": "„Als Nächstes“ leeren",
     "cleared": "„Als Nächstes“ geleert",
@@ -1005,7 +1193,8 @@
     "ghostNoServer": "{{title}} ist nicht auf diesem Server",
     "seeSeries": "Zur Reihe",
     "add": "{{title}} zu „Als Nächstes“ hinzufügen",
-    "autoPlay": "Das nächste Buch der Reihe automatisch abspielen",
+    "autoPlay": "Nächstes Buch automatisch abspielen",
+    "autoPlayHint": "Startet das erste Buch in Als Nächstes oder das nächste der Reihe.",
     "buttonLabel_one": "Als Nächstes, {{count}} Buch",
     "buttonLabel_other": "Als Nächstes, {{count}} Bücher",
     "buttonLabelEmpty": "Als Nächstes"

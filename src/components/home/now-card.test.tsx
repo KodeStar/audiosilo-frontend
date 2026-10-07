@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+jest.mock('expo-router', () => ({
+  router: { push: (h: unknown) => mockPush(h) },
+  // No full player on top (`usePlayerOnTop`, which `usePlayBook` reads).
+  useSegments: () => [],
+}));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
 jest.mock('@/lib/layout', () => ({

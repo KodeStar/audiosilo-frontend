@@ -5,7 +5,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
-import type { Book, Chapter, ChaptersResponse } from '@/api/types';
+import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
 import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
 import { contentKey } from '@/lib/content-key';
@@ -18,10 +18,15 @@ import {
   flushQueue,
   getDeviceId,
   loadInitialProgress,
+  readMirror,
   saveProgress,
 } from './progress-sync';
+import { clampRate } from './rate';
 import { createPlaybackService } from './service';
+import { mayNeedWebTranscode } from './transcode';
+import { resolveWebTranscode } from './transcode-capability';
 import {
+  AutoplayBlockedError,
   clampVolume,
   INITIAL_SNAPSHOT,
   type PlaybackService,
@@ -131,7 +136,9 @@ const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a 
 // by about the elapsed time still continues it). Changing the cadence means revisiting
 // those windows (CROSS-REPO.md section 20).
 const SAVE_INTERVAL_MS = 15_000;
-const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
+/** Treat within 5 s of the end as finished (also where the credits' Play now finishes the
+ * playing book rather than leaving it unfinished). */
+export const FINISHED_TOLERANCE = 5;
 const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect
 
 /** Lower the resume floor after a deliberate user seek/jump, so a legitimate backward
@@ -139,10 +146,6 @@ const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor i
 function lowerFloorTo(bookPosition: number) {
   if (Number.isFinite(bookPosition)) resumeFloor = Math.min(resumeFloor, Math.max(0, bookPosition));
 }
-
-const MIN_RATE = 0.5;
-const MAX_RATE = 2; // engines support more; the product caps speed at 2x
-const clampRate = (r: number) => Math.max(MIN_RATE, Math.min(MAX_RATE, r));
 
 /** Engine tunables derived from the settings store. */
 function currentConfig() {
@@ -181,6 +184,15 @@ type PlayerState = {
   nowPlaying: NowPlaying | null;
   snapshot: PlaybackSnapshot;
   rate: number;
+  /**
+   * The book (its `contentKey`) `playBook` just swapped in whose engine load has not landed
+   * yet, else null. Until it lands the snapshot still holds the PREVIOUS book's place (the
+   * native engine reports the new queue only once its load resolves, and the old book's
+   * ticks can still arrive meanwhile), so mapping it through this book's queue puts the
+   * listener somewhere they have never been. The spoiler gates wait it out
+   * (`selectPlacedBookKey`, `use-listening-position.ts`). Only set when the book changes.
+   */
+  loadingBook: string | null;
   /** Whether the engine can show an OS audio-route / casting picker on this platform
    * (set when the engine is created). Drives whether the player shows the cast button. */
   canRoutePick: boolean;
@@ -188,7 +200,9 @@ type PlayerState = {
   /** Start a book. Omit startBookPosition to resume from saved progress; pass
    * startTrack to begin at a specific file (used when file durations are
    * unknown, so a whole-book position can't address a track). `connectionId` is the
-   * server this book is loaded through - it scopes saves, downloads and invalidations. */
+   * server this book is loaded through - it scopes saves, downloads and invalidations.
+   * `startSpeed` plays it at that speed; without it the book plays at its saved speed
+   * (else the default), also when it starts at an explicit place. */
   playBook: (
     connectionId: string,
     libraryId: number,
@@ -196,6 +210,7 @@ type PlayerState = {
     chapterData?: ChaptersResponse,
     startBookPosition?: number,
     startTrack?: number,
+    startSpeed?: number,
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
@@ -288,8 +303,11 @@ function invalidateProgressLists() {
  * downloads as soon as "Play next" starts it. Honours the `autoDownloadNext` preference
  * and the network policy (`canAutoDownload`), and skips a book already downloaded or
  * queued/downloading (only an errored entry may be retried, matching the downloads store's
- * own guard). Best-effort and fully guarded: any failure is swallowed and it never touches
- * playback. */
+ * own guard). It asks as `auto`, so the downloads store applies the automatic rules (a
+ * book the listener cancelled or removed this session, or one that would eat into the
+ * reserve, is skipped); the default `listener` origin would lift that declined mark, as
+ * if the listener had asked. Best-effort and fully guarded: any failure is swallowed and
+ * it never touches playback. */
 async function maybeAutoDownloadCurrent(
   connectionId: string,
   libraryId: number,
@@ -306,10 +324,27 @@ async function maybeAutoDownloadCurrent(
     if (!(await canAutoDownload(mode))) return;
     // download() no-ops when the engine can't store offline (web without a controlling
     // service worker, etc.), so no extra support guard is needed here.
-    useDownloads.getState().download(connectionId, libraryId, book, chapterData);
+    useDownloads.getState().download(connectionId, libraryId, book, chapterData, 'auto');
   } catch (err) {
     console.warn('[auto-download] failed to download the current book', err);
   }
+}
+
+/** The speed this device knows `path` was last played at, without the network (an
+ * explicit start must not wait on it): the newer of the server's progress the app has
+ * cached (the book page reads it) and the local mirror of the last save. 0 when neither
+ * has one. */
+async function knownSpeed(connectionId: string, libraryId: number, path: string): Promise<number> {
+  const cached =
+    queryClient.getQueryData<Progress | null>(qk.progress(connectionId, libraryId, path)) ?? null;
+  const mirror = await readMirror(connectionId, libraryId, path).catch(() => null);
+  const newest =
+    cached && mirror
+      ? Date.parse(mirror.updated_at) >= Date.parse(cached.updated_at)
+        ? mirror
+        : cached
+      : (cached ?? mirror);
+  return newest?.playback_speed ?? 0;
 }
 
 function startSaveLoop() {
@@ -378,6 +413,21 @@ function clearPlaybackIntent() {
   wantsPlayback = false;
   startingPlayback = false;
   cancelStallWatchdog();
+}
+
+/** Start the engine. The browser's autoplay refusal (web, no user gesture yet: a cold
+ * `/player` deep link) is a plain pause, not a failure: drop the intent (so the stall
+ * watchdog never turns it into `error`) and settle on `paused`, so the play button comes
+ * back and a press (the gesture it wanted) plays. Every other failure propagates. */
+async function startEngine(svc: PlaybackService): Promise<void> {
+  try {
+    await svc.play();
+  } catch (err) {
+    if (!(err instanceof AutoplayBlockedError)) throw err;
+    clearPlaybackIntent();
+    const { snapshot } = usePlayer.getState();
+    usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
+  }
 }
 
 /** Mark the start of a listening span when playback begins. */
@@ -506,6 +556,9 @@ async function ensureService(): Promise<PlaybackService> {
       }
     }
   });
+  // The OS media controls' seeks (web Media Session) go through the store's own seek,
+  // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
+  svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
   service = svc;
   // Expose whether this platform/engine can show an audio-route picker so the player
   // can decide whether to render the cast button (web: only where the APIs exist).
@@ -517,9 +570,18 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   nowPlaying: null,
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
+  loadingBook: null,
   canRoutePick: false,
 
-  playBook: async (connectionId, libraryId, book, chapterData, startBookPosition, startTrack) => {
+  playBook: async (
+    connectionId,
+    libraryId,
+    book,
+    chapterData,
+    startBookPosition,
+    startTrack,
+    startSpeed,
+  ) => {
     // Resolve the client from the connection id (single source of truth), mirroring the
     // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
     const api = resolveClient(connectionId);
@@ -547,6 +609,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
     resumeLookupFailed = false;
 
+    // Web only: a book the browser can't decode streams through the server's transcoder
+    // when it has one (playback/transcode.ts). Decided once here, so every later reload
+    // (retry, seeks) reuses the queue's transcoded tracks; a downloaded book is local
+    // files and never transcodes. Every other book skips the lookup (and its await).
+    const transcode =
+      !local &&
+      mayNeedWebTranscode(book, chapterData) &&
+      (await resolveWebTranscode(connectionId, api, book, chapterData));
     const queue = buildBookQueue(
       api,
       libraryId,
@@ -554,6 +624,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       chapterData,
       local,
       useSettings.getState().virtualChapterInterval,
+      transcode,
     );
     const nowPlaying: NowPlaying = {
       connectionId,
@@ -591,7 +662,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     };
 
     let startAt = startBookPosition ?? 0;
-    let speed = clampRate(useSettings.getState().defaultRate);
+    const askedSpeed = startSpeed !== undefined && startSpeed > 0;
+    let speed = clampRate(askedSpeed ? startSpeed : useSettings.getState().defaultRate);
     if (startBookPosition === undefined && startTrack === undefined) {
       const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
       if (r.kind === 'progress') {
@@ -606,7 +678,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         // startAt below, so it stays 0 and the slip guard won't block the restart's early
         // low-position saves. Only an unfinished book resumes at its saved position.
         if (!p.finished && p.position > 0) startAt = p.position;
-        if (p.playback_speed > 0) speed = clampRate(p.playback_speed);
+        if (p.playback_speed > 0 && !askedSpeed) speed = clampRate(p.playback_speed);
       } else if (r.kind === 'failed' && dl?.status !== 'downloaded') {
         // Streaming book whose resume position couldn't be confirmed (server unreachable,
         // no local record). Starting at 0 here would restart an in-progress book AND a
@@ -629,6 +701,12 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       }
       // kind 'empty' (server reachable, genuinely new) or 'failed' for a downloaded book
       // (offline-first, never started) → startAt stays 0, which is correct.
+    } else if (!askedSpeed) {
+      // An explicit place (a chapter tap, a bookmark, a deep link) skips the resume lookup,
+      // which is where the saved speed comes from. Starting at the default instead would
+      // then save the default over the book's own speed.
+      const saved = await knownSpeed(connectionId, libraryId, book.rel_path);
+      if (saved > 0) speed = clampRate(saved);
     }
 
     const { index, positionInTrack } =
@@ -638,12 +716,17 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // The position we actually resumed from (covers resume, bookmark jump and startTrack);
     // the save guard won't let progress regress below it without a deliberate seek.
     resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
-    set({ rate: speed, nowPlaying });
+    // A different book's place is not known until its load lands (`loadingBook`).
+    const key = contentKey(connectionId, libraryId, book.rel_path);
+    const prev = get();
+    const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
+    set({ rate: speed, nowPlaying, loadingBook });
     restoreOutputGain(); // only now can the old book's fade no longer write over it
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
     await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
+    if (get().loadingBook === key) set({ loadingBook: null });
     await svc.setRate(speed);
-    await svc.play();
+    await startEngine(svc);
     // The save loop is started by the engine 'playing' transition (see subscribe).
     void flushQueue();
     // Fire-and-forget AFTER playback is initiated (never before/awaited, so it can't delay
@@ -662,7 +745,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       await svc.pause();
     } else {
       beginPlaybackAttempt();
-      await svc.play();
+      await startEngine(svc);
     }
   },
 
@@ -700,7 +783,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const { index, positionInTrack } = locate(np.queue.offsets, bookPos);
     await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips);
     await svc.setRate(get().rate);
-    await svc.play();
+    await startEngine(svc);
   },
 
   seekBook: async (bookPosition) => {

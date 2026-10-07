@@ -17,7 +17,12 @@ jest.mock('expo-router/unstable-native-tabs', () => {
   });
   return { NativeTabs };
 });
-jest.mock('@/components/shell/accessory-support', () => ({ ACCESSORY_SUPPORTED: false }));
+let mockAccessory = false;
+jest.mock('@/components/shell/accessory-support', () => ({
+  get ACCESSORY_SUPPORTED() {
+    return mockAccessory;
+  },
+}));
 jest.mock('@/components/shell/auth-gate', () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
 }));
@@ -29,6 +34,7 @@ jest.mock('@/components/shell/docked-player', () => ({ DockedPlayer: () => null 
 jest.mock('@/components/shell/drawer-slot', () => ({ DrawerSlot: () => null }));
 jest.mock('@/components/shell/wide-top', () => ({ WideTop: () => null }));
 jest.mock('@/components/upnext/up-next-sheet', () => ({ UpNextSheet: () => null }));
+jest.mock('@/components/player/player-sheet-host', () => ({ ShellPlayerOverlays: () => null }));
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return { usePlayer: create(() => ({ nowPlaying: { title: 'A Christmas Carol' } })) };
@@ -80,8 +86,13 @@ function tree() {
   return routes;
 }
 
-it('mounts ONE floating mini player across every visited tab and a pushed page', async () => {
+beforeEach(() => {
+  mockAccessory = false;
+  mockMounts.mockClear();
   useShellMetrics.setState({ edges: {} });
+});
+
+it('mounts ONE floating mini player across every visited tab and a pushed page', async () => {
   await (renderRouter(tree(), { initialUrl: '/' }) as unknown as Promise<unknown>);
   // Nothing until the native bar has been measured (a tab stack's layout publishes it).
   expect(screen.queryByTestId('mini-player', { includeHiddenElements: true })).toBeNull();
@@ -96,4 +107,14 @@ it('mounts ONE floating mini player across every visited tab and a pushed page',
   expect(screen.getByTestId('mini-player')).toHaveTextContent('bottom 80');
   // Never remounted by a tab switch (its entrance would replay).
   expect(mockMounts).toHaveBeenCalledTimes(1);
+});
+
+it('floats no card where the iOS 26 tab bar hosts the mini player in its accessory', async () => {
+  mockAccessory = true;
+  await (renderRouter(tree(), { initialUrl: '/' }) as unknown as Promise<unknown>);
+  await act(async () => useShellMetrics.setState({ edges: { bar: 80 } }));
+  await nav(() => router.navigate('/library'));
+  await nav(() => router.push('/book/1?connection=c&path=x'));
+  expect(screen.queryByTestId('mini-player', { includeHiddenElements: true })).toBeNull();
+  expect(mockMounts).not.toHaveBeenCalled();
 });

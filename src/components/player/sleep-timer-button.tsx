@@ -1,249 +1,401 @@
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, Text as RNText, View } from 'react-native';
+import { View } from 'react-native';
 
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import type { Chapter } from '@/api/types';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
-import { Sheet } from '@/components/ui/sheet';
+import { PressableRow } from '@/components/ui/row-surface';
+import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
-import { formatClock, formatCountdown } from '@/lib/format';
-import { chapterCountdowns } from '@/playback/book-queue';
+import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
-import { wallClockSeconds } from '@/playback/rate';
+import { formatClock, formatDuration, formatTimeOfDay, formatWallClock } from '@/lib/format';
+import { useNow } from '@/lib/use-now';
+import { cn } from '@/lib/utils';
+import { noteInteraction } from '@/playback/last-interaction';
 import {
-  chapterSleepLabel,
+  chapterTimerTarget,
   selectSleepExtendable,
   selectSleepPhase,
   useSleepTimer,
 } from '@/playback/sleep-timer';
-import { selectBookPosition, usePlayer } from '@/playback/store';
+import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { shakeAvailable } from '@/playback/use-shake-to-extend';
+import { SHAKE_SENSITIVITIES, useSettings, type ShakeSensitivity } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-const PRESETS = [5, 10, 15, 20, 30, 45, 60];
+import { ControlPill, slopTo44 } from './control-pill';
+import { OptionTile } from './option-tile';
+import { PlayerSheet } from './player-sheet';
+import {
+  isDurationTimer,
+  SLEEP_MINUTES,
+  sleepNotice,
+  stopAfterLabel,
+  stopAfterRows,
+  stopsAt,
+} from './sleep-sheet-model';
+import { useSleepPill } from './use-sleep-countdown';
+
+/** The pill is `h-9`: 36 px on the web, 31.5 pt on native, where this makes 44 pt. */
+const PILL_SLOP = slopTo44(2.25);
 
 /**
- * Sleep-timer trigger. Shows the current remaining time when active, and swaps to a
- * "keep going" prompt once the timer is about to stop or has just paused playback -
- * the two windows where opening the sheet still keeps the listener going. The sheet
- * itself (`SleepSheet`) is mounted at the player root so the shared bottom `Sheet`
- * presents correctly.
+ * The dock's sleep pill (`useSleepPill`): the moon alone while idle; with a timer its
+ * countdown on `brand-soft` (STYLEGUIDE section 8, the dock's sleep control), and "Keep
+ * going" once the timer has paused playback. It opens the sleep sheet through
+ * `usePlayerSheets`.
  */
 export function SleepTimerButton({ onPress }: { onPress: () => void }) {
-  const { t } = useTranslation();
   const themed = useThemeColors();
-  const phase = useSleepTimer(selectSleepPhase);
-  // The a11y label follows what the button can DO, not merely whether a timer exists:
-  // it overrides the visible children for a screen reader, and announcing "Keep
-  // listening" for a control that just opens the presets sheet (25 minutes still to
-  // run) is simply wrong. The same selector gates the shake listener, so the spoken
-  // promise and the gesture are true in exactly the same windows.
-  const extendable = useSleepTimer(selectSleepExtendable);
-  const remaining = useSleepTimer((s) => s.remaining);
-
+  const { active, text, label } = useSleepPill();
   return (
-    <AnimatedPressable
+    <ControlPill
       onPress={onPress}
-      className="flex-row items-center gap-1.5"
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={
-        extendable ? t('player.sleepTimer.keepListening') : t('player.sleepTimer.title')
-      }
+      look={active ? 'active' : 'ghost'}
+      className={cn('h-9 flex-row gap-1.5', active ? 'px-3' : 'px-2')}
+      hitSlop={PILL_SLOP}
+      label={label}
     >
-      <Icon name="sleep" size={20} color={phase === 'idle' ? themed.foreground : themed.brand} />
-      {phase === 'grace' ? (
-        <RNText className="font-sans-semibold text-sm text-brand-ink">
-          {t('player.sleepTimer.keepGoingShort')}
-        </RNText>
-      ) : phase !== 'idle' && remaining !== null ? (
-        // Ending: the same countdown, weighted up so a glance reads "about to stop".
-        <RNText
-          className={`text-sm text-brand-ink ${
-            phase === 'ending' ? 'font-sans-semibold' : 'font-sans'
-          }`}
-          style={tabularNums}
-        >
-          {formatClock(remaining)}
-        </RNText>
+      <Icon name="sleep" size={18} color={active ? themed.brandInk : themed.foreground} />
+      {text ? (
+        <Text variant="label" className="text-brand-ink" style={tabularNums}>
+          {text}
+        </Text>
       ) : null}
-    </AnimatedPressable>
+    </ControlPill>
   );
 }
 
 /**
- * The sleep-timer presets / end-of-chapter sheet, controlled by the player.
- * The body (which subscribes to the per-tick playback position and recomputes the
- * chapter countdowns) lives in a child of `Sheet`, so it only mounts while the sheet
- * is open - `Sheet` renders no children when closed, so the countdown scan and its
- * per-tick re-render don't run for the whole session behind a closed sheet.
+ * The sleep timer sheet (STYLEGUIDE section 8, "Sheets" > Sleep): the running timer's
+ * notice (with Turn off, and Keep listening in its last seconds), the minute presets and
+ * End of chapter, "Or stop after" this chapter and the next ones with their end times,
+ * then the sleep settings (auto sleep, shake to extend and its sensitivity) and the
+ * "Fell asleep" note. Picking a timer arms it and closes the sheet.
  */
 export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   return (
-    <Sheet inline visible={visible} onClose={onClose} title={t('player.sleepTimer.title')}>
+    <PlayerSheet visible={visible} onClose={onClose} title={t('player.sleepTimer.title')}>
       <SleepSheetBody onClose={onClose} />
-    </Sheet>
+    </PlayerSheet>
   );
 }
 
+/** How finely the sleep sheet follows the place: its times are minutes ("in 12m", "ends
+ * 22:49"), and the chapter tile's 30-second rule needs no finer than this. */
+const SHEET_POSITION_STEP = 15;
+
+/**
+ * The place the sheet counts from: the live whole-book position floored to
+ * `SHEET_POSITION_STEP`, but never below the start of the chapter playing. Chapter ends are
+ * rarely multiples of 15 s, so just after a boundary the floored place would still sit in
+ * the chapter that has ended: "This chapter" would be that one (a timer armed behind the
+ * playhead, which pauses the book at once) and every "N chapters" row would stop a
+ * chapter early.
+ */
+function selectSheetPosition(s: ReturnType<typeof usePlayer.getState>): number {
+  const live = selectBookPosition(s);
+  const floored = Math.floor(live / SHEET_POSITION_STEP) * SHEET_POSITION_STEP;
+  const start = selectCurrentChapter(s)?.book_offset;
+  return start !== undefined && start <= live ? Math.max(floored, start) : floored;
+}
+
+/** The body, mounted only while the sheet is open (it follows the position, by
+ * `SHEET_POSITION_STEP`). */
 function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const phase = useSleepTimer(selectSleepPhase);
-  const label = useSleepTimer((s) => s.label);
-  const remaining = useSleepTimer((s) => s.remaining);
-  // Only a duration timer fades out (see `fadesAudio` in sleep-timer.ts), so only it
-  // may say so: a chapter timer plays its last 30 seconds at full volume.
   const origin = useSleepTimer((s) => s.origin);
+  const pauseAtPosition = useSleepTimer((s) => s.pauseAtPosition);
   const startDuration = useSleepTimer((s) => s.startDuration);
   const startUntilPosition = useSleepTimer((s) => s.startUntilPosition);
-  const keepListening = useSleepTimer((s) => s.keepListening);
-  const cancel = useSleepTimer((s) => s.cancel);
-  const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const bookPosition = usePlayer(selectBookPosition);
+  const queue = usePlayer((s) => s.nowPlaying?.queue ?? null);
+  const position = usePlayer(selectSheetPosition);
   const rate = usePlayer((s) => s.rate);
 
-  const pick = (fn: () => void) => {
-    fn();
+  /** Arm (a deliberate touch, for the drift-off prompt) and close. */
+  const pick = (arm: () => void) => {
+    arm();
+    noteInteraction();
     onClose();
   };
 
-  // Show at least 5 chapters, extending until one passes the 2-hour mark. Wall-clock,
-  // so the window shrinks with speed - at 2x it spans ~2h of real time, ~4h content.
-  const countdowns = nowPlaying
-    ? chapterCountdowns(
-        nowPlaying.queue.chapters,
-        bookPosition,
-        { minCount: 5, maxSeconds: 7200 },
-        rate,
-      )
-    : [];
-  const total = nowPlaying?.queue.total ?? 0;
+  // The tile's target is the one `startChapterTimer`'s rule picks (`chapterTimerTarget`:
+  // the next chapter end at least 30 s away, else the end of the book), from the sheet's
+  // place, and the tile arms exactly that target: re-picking from the live place on the
+  // press could cross the 30 s rule and stop a chapter later than the caption said.
+  const chapterTarget = queue ? chapterTimerTarget(queue, position, rate, true) : null;
+  const rows = queue ? stopAfterRows(queue, position, rate) : [];
+  // The wall clock, every 15 s: enough for the rows' "ends 22:49".
+  const now = useNow(15_000);
 
   return (
-    <View className="gap-3 px-4 pb-4">
-      {phase === 'ending' || phase === 'grace' ? (
-        // The extendable windows. The button is mandatory, not a convenience: the web
-        // has no accelerometer, so it is the only way to keep listening there. On
-        // native it sits alongside the shake hint.
-        <View className="gap-2 rounded-lg bg-brand/10 px-3 py-3">
-          <View className="flex-row items-center justify-between">
-            <RNText className="font-sans-semibold text-base text-brand-ink">
-              {phase === 'grace'
-                ? t('player.sleepTimer.grace')
-                : origin?.kind === 'duration'
-                  ? t('player.sleepTimer.fading')
-                  : t('player.sleepTimer.ending')}
-            </RNText>
-            {remaining !== null ? (
-              <RNText className="font-sans-semibold text-base text-brand-ink" style={tabularNums}>
-                {formatClock(remaining)}
-              </RNText>
-            ) : null}
-          </View>
-          {Platform.OS === 'web' ? null : (
-            <Text variant="caption">{t('player.sleepTimer.shakeHint')}</Text>
-          )}
-          <AnimatedPressable
-            onPress={() => pick(keepListening)}
-            className="items-center rounded-lg bg-brand px-4 py-3"
-            accessibilityRole="button"
-          >
-            <RNText className="font-sans-semibold text-base text-brand-foreground">
-              {t('player.sleepTimer.keepListening')}
-            </RNText>
-          </AnimatedPressable>
-        </View>
-      ) : phase === 'running' ? (
-        <View className="flex-row items-center justify-between rounded-lg bg-brand/10 px-3 py-2">
-          <RNText className="font-sans text-base text-brand-ink">
-            {/* Rendered here, not stored: the timer keeps a translation descriptor so
-                a language switch re-renders an armed timer in the new language. */}
-            {label ? t(label.key, label.params) : t('player.sleepTimer.running')}
-          </RNText>
-          {remaining !== null ? (
-            <RNText className="font-sans-semibold text-base text-brand-ink" style={tabularNums}>
-              {formatClock(remaining)}
-            </RNText>
-          ) : null}
-        </View>
-      ) : null}
+    <View className="gap-4 pt-1">
+      {phase !== 'idle' ? <SleepNotice /> : null}
 
-      <Text variant="eyebrow">{t('player.sleepTimer.timeSection')}</Text>
-      <View className="flex-row flex-wrap gap-2">
-        {PRESETS.map((m) => (
-          <AnimatedPressable
+      <View
+        role="radiogroup"
+        accessibilityLabel={t('player.sleepTimer.title')}
+        className="flex-row flex-wrap gap-2"
+      >
+        {SLEEP_MINUTES.map((m) => (
+          <OptionTile
             key={m}
+            title={String(m)}
+            caption={t('player.sleepTimer.minutesUnit', { count: m })}
+            accessibilityLabel={t('player.sleepTimer.minutes', { count: m })}
+            selected={isDurationTimer(phase, origin, m)}
             onPress={() => pick(() => startDuration(m))}
-            className="rounded-full bg-muted px-4 py-2"
-            accessibilityRole="button"
-          >
-            <Text style={tabularNums}>{t('player.sleepTimer.minutes', { count: m })}</Text>
-          </AnimatedPressable>
+            className="grow basis-[21%]"
+          />
         ))}
+        {chapterTarget ? (
+          <OptionTile
+            title={
+              chapterTarget.label.key === 'player.sleepTimer.endOfBook'
+                ? t('player.sleepTimer.endOfBook')
+                : t('player.sleepTimer.endOfChapter')
+            }
+            caption={t('player.sleepTimer.inTime', {
+              time: formatDuration(chapterTarget.untilEnd),
+            })}
+            selected={stopsAt(phase, pauseAtPosition, chapterTarget.position)}
+            onPress={() =>
+              pick(() => startUntilPosition(chapterTarget.position, chapterTarget.label))
+            }
+            className="grow-[2] basis-[42%]"
+          />
+        ) : null}
       </View>
 
-      <Text variant="eyebrow">{t('player.sleepTimer.endOfChapterSection')}</Text>
-      {countdowns.length > 0 ? (
-        // Cap on the wrapper View (not the ScrollView) so the list scrolls
-        // instead of pushing the sheet off-screen.
-        <View className="max-h-72">
-          <ScrollView contentContainerClassName="gap-2" keyboardShouldPersistTaps="handled">
-            {countdowns.map((c, i) => (
-              <AnimatedPressable
-                key={c.chapter.index}
-                onPress={() =>
-                  pick(() => startUntilPosition(c.endPosition, chapterSleepLabel(c.chapter)))
-                }
-                className="flex-row items-center justify-between rounded-lg bg-muted px-4 py-3"
+      {rows.length > 0 ? (
+        <View className="gap-1.5">
+          <Text variant="eyebrow">{t('player.sleepTimer.stopAfter')}</Text>
+          {rows.map((row) => {
+            const name =
+              row.count === 1
+                ? t('player.sleepTimer.thisChapter')
+                : t('player.sleepTimer.nChapters', { count: row.count });
+            const chapter = chapterLabel(row.chapter, t);
+            const ends = t('player.sleepTimer.endsAt', {
+              time: formatWallClock(new Date(now + row.untilEnd * 1000)),
+            });
+            const length = formatDuration(row.untilEnd);
+            const selected = stopsAt(phase, pauseAtPosition, row.endPosition);
+            return (
+              <PressableRow
+                key={row.chapter.index}
+                onPress={() => pick(() => startUntilPosition(row.endPosition, stopAfterLabel(row)))}
                 accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${name}, ${chapter}, ${ends}, ${length}`}
+                className={cn(
+                  'min-h-[48px] flex-row items-center gap-3 px-3.5 py-2.5',
+                  selected && 'border-primary',
+                )}
               >
-                <Text numberOfLines={1} className="flex-1 pr-3">
-                  {chapterLabel(c.chapter, t)}
-                  {i === 0 ? t('player.sleepTimer.current') : ''}
+                <Text numberOfLines={1} className="flex-1">
+                  <Text variant="label">{name}</Text>
+                  <Text variant="muted">{` · ${chapter}`}</Text>
                 </Text>
                 <Text variant="caption" style={tabularNums}>
-                  {formatCountdown(c.untilEnd)}
+                  {`${ends} · ${length}`}
                 </Text>
-              </AnimatedPressable>
-            ))}
-          </ScrollView>
+              </PressableRow>
+            );
+          })}
         </View>
-      ) : nowPlaying ? (
-        <AnimatedPressable
-          onPress={() =>
-            pick(() => startUntilPosition(total, { key: 'player.sleepTimer.endOfBook' }))
-          }
-          className="flex-row items-center justify-between rounded-lg bg-muted px-4 py-3"
-          accessibilityRole="button"
-        >
-          <Text>{t('player.sleepTimer.endOfBook')}</Text>
-          <Text variant="caption" style={tabularNums}>
-            {formatCountdown(wallClockSeconds(total - bookPosition, rate))}
-          </Text>
-        </AnimatedPressable>
-      ) : (
-        <Text variant="caption">{t('player.sleepTimer.noChapters')}</Text>
-      )}
+      ) : null}
 
-      {phase !== 'idle' ? (
-        // Demoted to a neutral button while the timer is extendable, so it can't
-        // compete with the "keep listening" call to action above it.
-        <AnimatedPressable
-          onPress={() => pick(cancel)}
-          className={`mt-1 items-center rounded-lg px-4 py-3 ${
-            phase === 'running' ? 'bg-brand' : 'bg-muted'
-          }`}
-          accessibilityRole="button"
+      <SleepSettingsCard />
+
+      <Text variant="caption">{t('player.sleepTimer.fellAsleepHint')}</Text>
+    </View>
+  );
+}
+
+const NO_CHAPTERS: Chapter[] = [];
+
+/** The armed timer: what it will do, how long is left, Turn off - and Keep listening in
+ * the two windows where that keeps the book going (the web has no shake). */
+function SleepNotice() {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  const phase = useSleepTimer(selectSleepPhase);
+  const origin = useSleepTimer((s) => s.origin);
+  const label = useSleepTimer((s) => s.label);
+  const remaining = useSleepTimer((s) => s.remaining);
+  const pauseAtPosition = useSleepTimer((s) => s.pauseAtPosition);
+  const keepListening = useSleepTimer((s) => s.keepListening);
+  const cancel = useSleepTimer((s) => s.cancel);
+  const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters ?? NO_CHAPTERS);
+  // The chapters left to the stop only change as a chapter goes by: count from the start
+  // of the one playing, not the per-tick position.
+  const chapterStart = usePlayer((s) => selectCurrentChapter(s)?.book_offset ?? 0);
+
+  const notice = sleepNotice(origin, label, pauseAtPosition, chapters, chapterStart);
+  const headline =
+    phase === 'grace'
+      ? t('player.sleepTimer.grace.pausedTitle')
+      : notice.kind === 'duration'
+        ? t('player.sleepTimer.notice.on')
+        : notice.kind === 'book'
+          ? t('player.sleepTimer.notice.book')
+          : t('player.sleepTimer.notice.chapters', { count: notice.count });
+  const time = formatClock(remaining ?? 0);
+  // Only a duration timer fades out (see `fadesAudio` in sleep-timer.ts), so only it
+  // may say so: a chapter timer plays its last 30 seconds at full volume.
+  const detail =
+    phase === 'grace'
+      ? t('player.sleepTimer.notice.graceLeft', { time })
+      : origin?.kind === 'duration'
+        ? t('player.sleepTimer.notice.leftFades', { time })
+        : t('player.sleepTimer.notice.left', { time });
+  const extendable = useSleepTimer(selectSleepExtendable);
+
+  return (
+    <View className="gap-3 rounded-card border border-brand/25 bg-brand-soft px-4 py-3.5">
+      <View className="flex-row items-center gap-3">
+        <View
+          className="h-10 w-10 items-center justify-center rounded-xl bg-card"
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
         >
-          {phase === 'running' ? (
-            <RNText className="font-sans-semibold text-base text-brand-foreground">
-              {t('player.sleepTimer.cancel')}
-            </RNText>
-          ) : (
-            <Text>{t('player.sleepTimer.cancel')}</Text>
-          )}
-        </AnimatedPressable>
+          <Icon name="sleep" size={18} color={themed.brandInk} />
+        </View>
+        <View className="flex-1 gap-0.5">
+          <Text variant="label">{headline}</Text>
+          <Text variant="caption" style={tabularNums}>
+            {detail}
+          </Text>
+        </View>
+        {extendable ? null : (
+          <Button
+            variant="outline"
+            size="sm"
+            title={t('player.sleepTimer.turnOff')}
+            onPress={cancel}
+          />
+        )}
+      </View>
+      {extendable ? (
+        <View className="flex-row gap-2">
+          <Button
+            className="flex-1"
+            title={t('player.sleepTimer.keepListening')}
+            onPress={keepListening}
+          />
+          <Button variant="outline" title={t('player.sleepTimer.turnOff')} onPress={cancel} />
+        </View>
       ) : null}
     </View>
+  );
+}
+
+/** One switch row of the sleep settings card. */
+function SettingRow({
+  title,
+  description,
+  checked,
+  onChange,
+  disabled,
+  first,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  disabled?: boolean;
+  first?: boolean;
+}) {
+  return (
+    <View
+      className={cn(
+        'min-h-[56px] flex-row items-center gap-3 py-3',
+        !first && 'border-t border-border',
+      )}
+    >
+      <View className="flex-1 gap-0.5">
+        <Text variant="label">{title}</Text>
+        <Text variant="caption">{description}</Text>
+      </View>
+      <Switch
+        checked={checked}
+        onCheckedChange={onChange}
+        disabled={disabled}
+        accessibilityLabel={title}
+      />
+    </View>
+  );
+}
+
+/** The shake sensitivity choice (Low / Medium / High), shared by the sleep sheet and
+ * Settings so both name it the same way. Native only; the caller hides it on the web. */
+export function ShakeSensitivityControl() {
+  const { t } = useTranslation();
+  const value = useSettings((s) => s.shakeSensitivity);
+  const set = useSettings((s) => s.setShakeSensitivity);
+  const options = SHAKE_SENSITIVITIES.map((v) => ({
+    value: v,
+    label: t(`settings.sleep.sensitivity.${v}`),
+  }));
+  return (
+    <SegmentedControl<ShakeSensitivity>
+      options={options}
+      value={value}
+      onChange={set}
+      grow
+      accessibilityLabel={t('settings.sleep.sensitivity.label')}
+    />
+  );
+}
+
+/** Auto sleep and shake to extend, in place (the same settings as Settings > Sleep). */
+function SleepSettingsCard() {
+  const { t } = useTranslation();
+  const autoSleep = useSettings((s) => s.autoSleepTimer);
+  const setAutoSleep = useSettings((s) => s.setAutoSleepTimer);
+  const from = useSettings((s) => s.autoSleepFrom);
+  const until = useSettings((s) => s.autoSleepUntil);
+  const type = useSettings((s) => s.autoSleepType);
+  const shake = useSettings((s) => s.shakeToExtend);
+  const setShake = useSettings((s) => s.setShakeToExtend);
+  const web = !shakeAvailable();
+
+  const window = { from: formatTimeOfDay(from), until: formatTimeOfDay(until) };
+  const autoDescription =
+    type === 'chapter'
+      ? t('player.sleepTimer.autoChapter', window)
+      : t('player.sleepTimer.autoMinutes', { ...window, count: Number(type) });
+
+  return (
+    <Card className="px-4 py-0">
+      <SettingRow
+        first
+        title={t('settings.sleep.auto.label')}
+        description={autoDescription}
+        checked={autoSleep}
+        onChange={setAutoSleep}
+      />
+      <SettingRow
+        title={t('settings.sleep.shake.label')}
+        description={
+          web ? t('settings.sleep.shake.unavailable') : t('settings.sleep.shake.description')
+        }
+        checked={!web && shake}
+        onChange={setShake}
+        disabled={web}
+      />
+      {!web && shake ? (
+        <View className="gap-2 pb-3.5">
+          <Text variant="caption">{t('settings.sleep.sensitivity.label')}</Text>
+          <ShakeSensitivityControl />
+        </View>
+      ) : null}
+    </Card>
   );
 }

@@ -34,9 +34,24 @@ export function DownloadControl({
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const { connectionId, supported, status, error, progress, bytes, totalBytes, start, cancel } =
-    useDownloadControls(libraryId, path, book, chapterData);
+  const {
+    connectionId,
+    supported,
+    needsTranscode,
+    status,
+    error,
+    progress,
+    bytes,
+    totalBytes,
+    start,
+    cancel,
+  } = useDownloadControls(libraryId, path, book, chapterData);
   const [confirming, setConfirming] = useState(false);
+  // Why downloading is off: this browser plays the book through the server's
+  // transcoder (its raw files would not play offline), or offline storage is missing.
+  const unavailableLabel = needsTranscode
+    ? t('library.download.notInBrowser')
+    : t('library.download.unavailable');
   const confirm = (
     <RemoveDownloadConfirm
       target={confirming ? { connectionId, libraryId, path, title: book?.title ?? '' } : null}
@@ -54,7 +69,7 @@ export function DownloadControl({
           variant="secondary"
           size="lg"
           disabled
-          accessibilityLabel={t('library.download.unavailable')}
+          accessibilityLabel={unavailableLabel}
         />
       );
     }
@@ -100,14 +115,7 @@ export function DownloadControl({
   }
 
   if (!supported) {
-    return (
-      <Button
-        title={t('library.download.unavailable')}
-        variant="secondary"
-        icon="download"
-        disabled
-      />
-    );
+    return <Button title={unavailableLabel} variant="secondary" icon="download" disabled />;
   }
 
   if (status === 'downloaded') {

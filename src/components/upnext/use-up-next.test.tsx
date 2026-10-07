@@ -35,8 +35,19 @@ jest.mock('@/api/provider', () =>
     },
   }),
 );
+// The start resolves the book's client by its connection id (`startBookInPlace`): the
+// same fake clients.
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: (id: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('@/api/provider').useApiRegistry().clients.get(id) ?? null,
+}));
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+jest.mock('expo-router', () => ({
+  router: { push: (h: unknown) => mockPush(h) },
+  // No full player on top (`usePlayerOnTop`, which `usePlayBook` reads).
+  useSegments: () => [],
+}));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
@@ -62,7 +73,7 @@ import { CapabilityError } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { useSession } from '@/stores/session';
 
-import { useUpNext } from './up-next-store';
+import { usePlayerSheets } from '@/components/player/player-sheets';
 import { usePlayNow, useUpNextConnection, useUpNextData } from './use-up-next';
 /* eslint-enable import/first */
 
@@ -171,19 +182,27 @@ describe('usePlayNow', () => {
       await result.current(entry('B'), 'Book B');
     });
     expect(mockItem).toHaveBeenCalledWith(1, 'B', expect.anything());
-    expect(mockPlayBook).toHaveBeenCalledWith('c', 1, { rel_path: 'B' }, { files: [] });
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c',
+      1,
+      { rel_path: 'B' },
+      { files: [] },
+      undefined,
+      undefined,
+      undefined,
+    );
     expect(drop).toHaveBeenCalledWith(entry('B'));
   });
 
   it('opens the full player on a phone, closing the sheet first', async () => {
     mockLayout = 'phone';
-    useUpNext.setState({ sheetOpen: true });
+    usePlayerSheets.setState({ open: 'upnext' });
     const drop = jest.fn();
     const { result } = await renderHook(() => usePlayNow('c', drop));
     await act(async () => {
       await result.current(entry('B'), 'Book B');
     });
-    expect(useUpNext.getState().sheetOpen).toBe(false);
+    expect(usePlayerSheets.getState().open).toBeNull();
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/player',
       params: { connection: 'c', libraryId: '1', path: 'B' },

@@ -10,6 +10,7 @@ import {
 } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { toast } from '@/components/ui/toast';
+import { entryHolds } from '@/playback/up-next-resolver';
 
 /**
  * The queue entry that holds a book, if any. An add resolves a part/disc path to its
@@ -20,9 +21,7 @@ export function findQueued(
   libraryId: number,
   path: string,
 ): QueueEntry | undefined {
-  return entries?.find(
-    (e) => e.library_id === libraryId && (e.path === path || path.startsWith(`${e.path}/`)),
-  );
+  return entries?.find((e) => entryHolds(e, libraryId, path));
 }
 
 /**

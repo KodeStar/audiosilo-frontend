@@ -38,3 +38,10 @@ describe('clothColor', () => {
     );
   });
 });
+
+describe('hashString', () => {
+  it('is stable per string and tells neighbours apart', () => {
+    expect(hashString('abc')).toBe(hashString('abc'));
+    expect(hashString('abc')).not.toBe(hashString('abd'));
+  });
+});

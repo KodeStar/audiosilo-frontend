@@ -12,6 +12,9 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 
 /* eslint-disable import/first */
 import { badgeText, UpNextButton } from './up-next-button';
+import { usePlayerSheets } from '@/components/player/player-sheets';
+import { expectNativeTarget } from '@/testing/touch-target';
+
 import { useUpNext } from './up-next-store';
 /* eslint-enable import/first */
 
@@ -21,7 +24,8 @@ const setWidth = (width: number) =>
 beforeEach(() => {
   mockBadge = { supported: true, count: 4 };
   mockLayout = 'desktop';
-  useUpNext.setState({ drawerOpen: true, sheetOpen: false });
+  useUpNext.setState({ drawerOpen: true });
+  usePlayerSheets.setState({ open: null });
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -49,13 +53,22 @@ describe('UpNextButton', () => {
     mockLayout = 'phone';
     await render(<UpNextButton variant="header" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Up next, 4 books' }));
-    expect(useUpNext.getState().sheetOpen).toBe(true);
+    expect(usePlayerSheets.getState().open).toBe('upnext');
 
     await render(<UpNextButton variant="dock" />);
     expect(screen.queryByText('4', { includeHiddenElements: true })).toBeNull();
     mockBadge = { supported: true, count: 0 };
     await render(<UpNextButton variant="bar" />);
     expect(screen.getByRole('button', { name: 'Up next' })).toBeTruthy();
+  });
+
+  // The header's 2.75 rem circle is 38.5 pt on native (a 14 pt rem).
+  it('takes a 44 pt touch on native in every form', async () => {
+    for (const variant of ['header', 'bar', 'dock'] as const) {
+      const view = await render(<UpNextButton variant={variant} />);
+      expectNativeTarget(screen.getByTestId(`upnext-button-${variant}`));
+      await view.unmount();
+    }
   });
 
   it('caps the badge', () => {

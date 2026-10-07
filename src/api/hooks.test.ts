@@ -1,5 +1,7 @@
+import { focusManager, onlineManager, QueryObserver } from '@tanstack/react-query';
+
 import { ApiError, TimeoutError, type ApiClient } from '@/api/client';
-import type { Progress } from '@/api/types';
+import type { Capabilities, Progress, ServerInfo } from '@/api/types';
 
 // The fetch helper is deliberately framework-free, so the two collaborators it can reach
 // (the reachability layer and the durable progress mirror) are mocked and asserted on.
@@ -16,17 +18,40 @@ jest.mock('@/playback/progress-sync', () => ({
 }));
 
 // The provider is React-Query/session-bound; hooks.ts only needs it at hook call time,
-// and this suite exercises the pure helper.
-jest.mock('@/api/provider', () => ({
-  queryClient: { invalidateQueries: jest.fn(), setQueryData: jest.fn() },
-  useApi: jest.fn(),
-  useApis: jest.fn(),
-  useCid: jest.fn(),
-  useOptionalApi: jest.fn(),
+// and this suite exercises the pure helpers. Its query client is a real one with the
+// app's retry default (a capability read must not wait on a retry), whose invalidations
+// are only recorded.
+jest.mock('@/api/provider', () => {
+  const { QueryClient } = jest.requireActual('@tanstack/react-query');
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
+  queryClient.invalidateQueries = jest.fn();
+  return {
+    queryClient,
+    useApi: jest.fn(),
+    useApis: jest.fn(),
+    useCid: jest.fn(),
+    useOptionalApi: jest.fn(),
+  };
+});
+
+const mockResolveClient = jest.fn((_cid: string): unknown => null);
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: (cid: string) => mockResolveClient(cid),
 }));
 
 /* eslint-disable import/first */
-import { anyCapability, fetchBookProgress, isQueueKey, isSearchKey, qk } from '@/api/hooks';
+import {
+  addBookmark,
+  anyCapability,
+  fetchBookProgress,
+  fetchCapabilities,
+  historyQuery,
+  isQueueKey,
+  isSearchKey,
+  qk,
+  serverInfoQuery,
+} from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 /* eslint-enable import/first */
 
 function makeProgress(): Progress {
@@ -173,5 +198,114 @@ describe('key predicates', () => {
     expect(isSearchKey(qk.search('c', 'dun'), 'dune')).toBe(false);
     expect(qk.allProgress('c').slice(0, 2)).toEqual([...qk.allProgressAll()]);
     expect(qk.recent('c', 48).slice(0, 2)).toEqual([...qk.recentAll()]);
+  });
+});
+
+describe('addBookmark', () => {
+  it("adds on the connection's own server and refreshes that book's bookmarks", async () => {
+    const add = jest.fn(async () => ({ id: 7 }));
+    mockResolveClient.mockReturnValue({ addBookmark: add });
+    await expect(addBookmark('srv', 2, 'A/Book', 61, 'Fell asleep')).resolves.toEqual({ id: 7 });
+    expect(mockResolveClient).toHaveBeenCalledWith('srv');
+    expect(add).toHaveBeenCalledWith(2, 'A/Book', 61, 'Fell asleep');
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: qk.bookmarks('srv', 2, 'A/Book'),
+    });
+  });
+
+  it('rejects without touching the cache when the connection is gone or the add fails', async () => {
+    mockResolveClient.mockReturnValue(null);
+    await expect(addBookmark('gone', 2, 'A/Book', 61)).rejects.toThrow('connection gone');
+    mockResolveClient.mockReturnValue({ addBookmark: async () => Promise.reject(new Error('x')) });
+    await expect(addBookmark('srv', 2, 'A/Book', 61)).rejects.toThrow('x');
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('historyQuery', () => {
+  it("keeps a limited read under the book's history key", () => {
+    expect(historyQuery('srv', null, 2, 'A/Book').queryKey).toEqual(qk.history('srv', 2, 'A/Book'));
+    expect(historyQuery('srv', null, 2, 'A/Book', 20).queryKey).toEqual([
+      ...qk.history('srv', 2, 'A/Book'),
+      20,
+    ]);
+  });
+});
+
+// The play path and the end of a book await this read and fall back when it fails, so it
+// must settle: TanStack holds a fetch while the browser says it is offline, and a retry
+// until a hidden tab is focused again.
+describe('fetchCapabilities', () => {
+  /** A `/server` answer with these flags. */
+  const info = (capabilities: Partial<Capabilities>) => ({ capabilities }) as ServerInfo;
+  /** A client whose `/server` read is `read`. */
+  const serverAt = (read: () => Promise<ServerInfo>) => {
+    const serverInfo = jest.fn(read);
+    return { client: { serverInfo } as unknown as ApiClient, serverInfo };
+  };
+  /** `/server` flags read 10 minutes ago, past their 5 minutes of freshness. */
+  const cacheStale = (capabilities: Partial<Capabilities>) =>
+    queryClient.setQueryData(qk.server('c1'), info(capabilities), {
+      updatedAt: Date.now() - 10 * 60_000,
+    });
+  /** Where a read stands once everything it can do by itself has run (a retry's back-off
+   * included): its value, its error, or still `'pending'` (held, waiting on the browser). */
+  async function settle<T>(read: Promise<T>) {
+    const out: { now: { value: T } | { error: unknown } | 'pending' } = { now: 'pending' };
+    read.then(
+      (value) => (out.now = { value }),
+      (error: unknown) => (out.now = { error }),
+    );
+    await jest.advanceTimersByTimeAsync(30_000);
+    return out.now;
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    queryClient.clear();
+    onlineManager.setOnline(true);
+    focusManager.setFocused(undefined);
+    jest.useRealTimers();
+  });
+
+  it('asks while the browser says it is offline, falling back to the known flags', async () => {
+    onlineManager.setOnline(false);
+    cacheStale({ queue: true });
+    const { client, serverInfo } = serverAt(() => Promise.reject(new TypeError('offline')));
+    expect(await settle(fetchCapabilities('c1', client))).toEqual({ value: { queue: true } });
+    expect(serverInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the fresh flags when the server answers while the browser says offline', async () => {
+    onlineManager.setOnline(false);
+    cacheStale({ queue: true });
+    const { client } = serverAt(async () => info({ queue: true, transcode: true }));
+    expect(await settle(fetchCapabilities('c1', client))).toEqual({
+      value: { queue: true, transcode: true },
+    });
+  });
+
+  it('rejects at once in a hidden tab with nothing cached (a retry waits for focus)', async () => {
+    focusManager.setFocused(false);
+    const err = new TypeError('offline');
+    const { client, serverInfo } = serverAt(() => Promise.reject(err));
+    expect(await settle(fetchCapabilities('c1', client))).toEqual({ error: err });
+    expect(serverInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wait with the read a mounted hook has on hold', async () => {
+    onlineManager.setOnline(false);
+    cacheStale({ queue: true });
+    const { client } = serverAt(async () => info({ queue: true, transcode: true }));
+    // A capability hook mounted offline over the stale entry: its refetch waits for the
+    // browser to come back online, and joining it would wait too.
+    const stop = new QueryObserver(queryClient, serverInfoQuery('c1', client)).subscribe(() => {});
+    expect(queryClient.getQueryState(qk.server('c1'))?.fetchStatus).toBe('paused');
+    expect(await settle(fetchCapabilities('c1', client))).toEqual({
+      value: { queue: true, transcode: true },
+    });
+    stop();
   });
 });

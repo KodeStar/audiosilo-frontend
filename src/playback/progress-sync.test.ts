@@ -550,4 +550,21 @@ describe('pendingSaveCount', () => {
     expect(await pendingSaveCount()).toBe(2);
     expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(2);
   });
+
+  // The player's sync line is about the playing book's server: another server's backlog
+  // made it say "Saved on this device".
+  it("counts one connection's saves when asked", async () => {
+    await AsyncStorage.setItem(
+      QUEUE_KEY,
+      JSON.stringify([
+        { connectionId: 'c1', path: 'a' },
+        { connectionId: 'c2', path: 'b' },
+        { connectionId: 'c2', path: 'c' },
+      ]),
+    );
+    expect(await pendingSaveCount('c1')).toBe(1);
+    expect(await pendingSaveCount('c2')).toBe(2);
+    expect(await pendingSaveCount('c3')).toBe(0);
+    expect(await pendingSaveCount()).toBe(3);
+  });
 });

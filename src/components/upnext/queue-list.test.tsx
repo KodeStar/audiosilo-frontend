@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { Book, QueueEntry } from '@/api/types';
+import { expectNativeTarget } from '@/testing/touch-target';
 
 // The drag is gesture-handler + reanimated on the UI thread; this suite covers the
 // keyboard and screen-reader paths, so the detector just renders.
@@ -64,6 +65,7 @@ describe('QueueList', () => {
     const onMove = jest.fn().mockResolvedValue(true);
     const onRemove = jest.fn();
     const onPlay = jest.fn();
+    const onNavigate = jest.fn();
     await render(
       <QueueList
         entries={entries}
@@ -72,9 +74,10 @@ describe('QueueList', () => {
         onMove={onMove}
         onRemove={onRemove}
         onPlay={onPlay}
+        onNavigate={onNavigate}
       />,
     );
-    return { onMove, onRemove, onPlay };
+    return { onMove, onRemove, onPlay, onNavigate };
   };
   const titles = () => screen.getAllByText(/^(Alpha|Beta|Gamma)$/).map((n) => n.props.children);
   const os = Platform.OS;
@@ -82,8 +85,8 @@ describe('QueueList', () => {
     Platform.OS = os;
   });
 
-  it('plays, removes and opens a row', async () => {
-    const { onRemove, onPlay } = await setup();
+  it('plays, removes and opens a row (closing the sheet first)', async () => {
+    const { onRemove, onPlay, onNavigate } = await setup();
     await fireEvent.press(screen.getByLabelText('Play Beta now'));
     expect(onPlay).toHaveBeenCalledWith(entries[1]);
     await fireEvent.press(screen.getByLabelText('Remove Gamma from Up next'));
@@ -93,6 +96,7 @@ describe('QueueList', () => {
       pathname: '/book/[libraryId]',
       params: { libraryId: '1', connection: 'c', path: 'Dir/A' },
     });
+    expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 
   it('moves a row with the arrow keys on its grip (web), showing the new order at once', async () => {
@@ -149,5 +153,12 @@ describe('QueueList', () => {
       });
     });
     expect(titles()).toEqual(['Alpha', 'Beta', 'Gamma']);
+  });
+
+  // STYLEGUIDE section 14: the row buttons are `h-9 w-9`, 31.5 pt on native without a slop.
+  it('gives the row buttons a 44 pt target on native', async () => {
+    await setup();
+    expectNativeTarget(screen.getByLabelText('Play Beta now'));
+    expectNativeTarget(screen.getByLabelText('Remove Gamma from Up next'));
   });
 });

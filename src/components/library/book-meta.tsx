@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
@@ -14,6 +15,7 @@ import type {
   BookMetaSeriesWork,
   BookMetaWork,
 } from '@/api/types';
+import { NameToken } from '@/components/search/name-token';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
@@ -37,7 +39,14 @@ import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { type ListeningProgress, type Split, splitCharacters, splitRecaps } from './meta-gating';
+import {
+  type ListeningProgress,
+  recapDescriptor,
+  sortRecaps,
+  type Split,
+  splitCharacters,
+  splitRecaps,
+} from './meta-gating';
 
 /** Descriptions past this many characters get a collapse + "show more" toggle.
  * A deterministic length heuristic (rather than an onTextLayout measure pass) so
@@ -203,50 +212,34 @@ export function revealFromStart(reveal: BookMetaPosition): boolean {
   return reveal.chapter <= 1;
 }
 
-/** How to head a recap. A chapter-0 "series" recap is the prior-books catch-up;
- * a chapter-0 "book" recap is a pre-book note; otherwise it covers up to chapter
- * N. Returns a descriptor the component maps to a translated string. */
-export type RecapDescriptor =
-  { kind: 'seriesPrior' } | { kind: 'beforeBook' } | { kind: 'upToChapter'; chapter: number };
-export function recapDescriptor(recap: BookMetaRecap): RecapDescriptor {
-  const ch = recap.through.chapter;
-  if (ch === 0) return recap.scope === 'series' ? { kind: 'seriesPrior' } : { kind: 'beforeBook' };
-  return { kind: 'upToChapter', chapter: ch };
-}
-
-/** Recaps ordered by position (ascending) so "story so far" reads in order. The
- * server already returns them ordered; this keeps the component independent of
- * that. Returns a new array; does not mutate the input. */
-export function sortRecaps(recaps: BookMetaRecap[]): BookMetaRecap[] {
-  return [...recaps].sort((a, b) => a.through.chapter - b.through.chapter);
-}
-
-/** The tiny uppercase pill this block uses for both its markers: `neutral` for the
- * spoiler chip, `primary` for a character's role. */
-function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
-  const primary = tone === 'primary';
+/** The tiny uppercase pill this block uses for both its markers (the spoiler chip, a
+ * character's role): muted, so a card's only pink is its "Just met" state. */
+function Chip({ label }: { label: string }) {
   return (
-    <View className={`rounded-full px-2 py-0.5 ${primary ? 'bg-brand-soft' : 'bg-muted'}`}>
-      <Text
-        className={`font-sans-medium text-[10px] uppercase ${primary ? 'text-brand-ink' : 'text-muted-foreground'}`}
-      >
-        {label}
-      </Text>
+    <View className="rounded-full bg-muted px-2 py-0.5">
+      <Text className="font-sans-medium text-[10px] uppercase text-muted-foreground">{label}</Text>
     </View>
   );
 }
 
 /** A small "spoiler" chip marking an entry the listener has not reached yet
  * (only ever rendered once they have chosen to show spoilers anyway). */
-function SpoilerChip() {
+export function SpoilerChip() {
   const { t } = useTranslation();
-  return <Chip label={t('book.meta.spoiler')} tone="neutral" />;
+  return <Chip label={t('book.meta.spoiler')} />;
 }
 
-/** The open/closed marker every collapsible thing in this block shares. */
-function DisclosureChevron({ open }: { open: boolean }) {
+/** The open/closed marker every collapsible thing in this block shares: pink beside a
+ * pink link, `quiet` (muted) on a character card, whose only pink is "Just met". */
+function DisclosureChevron({ open, quiet }: { open: boolean; quiet?: boolean }) {
   const themed = useThemeColors();
-  return <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} color={themed.brand} />;
+  return (
+    <Icon
+      name={open ? 'chevron-up' : 'chevron-down'}
+      size={12}
+      color={quiet ? themed.mutedForeground : themed.brand}
+    />
+  );
 }
 
 /**
@@ -361,17 +354,21 @@ function HiddenNotice({
   );
 }
 
-/** One character card: name, optional role badge + aliases, and a "first appears"
- * line always visible; the description is a per-card accordion, closed by default
- * (spoiler-safe) and opened by tapping the card. Cards with no description are
- * static (not tappable). `spoiler` marks a card the listener has not reached
- * (shown only after they opted in). */
-function CharacterCard({
+/** One character card, the same wherever a character shows (the book page's
+ * Characters tab, the player's Who's who): their token, name, optional role badge +
+ * aliases, and a "first appears" line always visible; the description is a per-card
+ * accordion, closed by default (spoiler-safe) and opened by tapping the card. Cards
+ * with no description are static (not tappable). `spoiler` marks a card the listener
+ * has not reached (shown only after they opted in); `justMet` one a chapter crossing
+ * just revealed (Who's who: the pink outline and "Just met", the card's only pink). */
+export function CharacterCard({
   character,
   spoiler,
+  justMet,
 }: {
   character: BookMetaCharacter;
   spoiler?: boolean;
+  justMet?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -379,42 +376,66 @@ function CharacterCard({
   const roleKey = roleLabelKey(character.role);
   const hasDescription = !!character.description;
   return (
-    <RowSurface className={spoiler ? 'opacity-70' : undefined}>
+    <RowSurface
+      testID={`character-${character.id}`}
+      className={cn(spoiler && 'opacity-70', justMet && 'border-brand')}
+      style={justMet ? { borderWidth: 2 } : undefined}
+    >
       <AnimatedPressable
         onPress={hasDescription ? () => setOpen((v) => !v) : undefined}
         disabled={!hasDescription}
         accessibilityRole={hasDescription ? 'button' : undefined}
         accessibilityState={hasDescription ? { expanded: open } : undefined}
-        className="p-3"
+        className="flex-row items-start gap-3 p-3"
       >
-        <View className="flex-row items-start justify-between gap-2">
-          <View className="flex-1">
-            <Text variant="label">{character.name}</Text>
-            {character.aliases && character.aliases.length > 0 ? (
-              <Text variant="caption" className="mt-0.5">
-                {t('book.meta.alsoKnownAs', { names: character.aliases.join(', ') })}
-              </Text>
-            ) : null}
-            <Text variant="caption" className="mt-1 text-brand-ink">
-              {fromStart
-                ? t('book.meta.revealFromStart')
-                : t('book.meta.revealFromChapter', { chapter: character.reveal.chapter })}
+        <NameToken name={character.name} kind="character" size={36} />
+        <View className="min-w-0 flex-1">
+          {justMet ? (
+            <Text variant="eyebrow" className="mb-0.5 text-brand-ink">
+              {t('player.companion.justMet')}
             </Text>
+          ) : null}
+          <View className="flex-row items-start justify-between gap-2">
+            <View className="flex-1">
+              <Text variant="label">{character.name}</Text>
+              {character.aliases && character.aliases.length > 0 ? (
+                <Text variant="caption" className="mt-0.5">
+                  {t('book.meta.alsoKnownAs', { names: character.aliases.join(', ') })}
+                </Text>
+              ) : null}
+              <Text variant="caption" className="mt-1">
+                {fromStart
+                  ? t('book.meta.revealFromStart')
+                  : t('book.meta.revealFromChapter', { chapter: character.reveal.chapter })}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              {spoiler ? <SpoilerChip /> : null}
+              {roleKey ? <Chip label={t(roleKey)} /> : null}
+              {hasDescription ? <DisclosureChevron open={open} quiet /> : null}
+            </View>
           </View>
-          <View className="flex-row items-center gap-2">
-            {spoiler ? <SpoilerChip /> : null}
-            {roleKey ? <Chip label={t(roleKey)} tone="primary" /> : null}
-            {hasDescription ? <DisclosureChevron open={open} /> : null}
-          </View>
+          {open ? (
+            <Text variant="body" className="mt-2">
+              {character.description}
+            </Text>
+          ) : null}
         </View>
-        {open ? (
-          <Text variant="body" className="mt-2">
-            {character.description}
-          </Text>
-        ) : null}
       </AnimatedPressable>
     </RowSurface>
   );
+}
+
+/** The heading of a recap ("Previously, in earlier books", "Before this book", "Up to
+ * chapter 22"), from `recapDescriptor`: the book page's recap rows and the player's
+ * Story so far say it the same way. */
+export function recapHeading(t: TFunction, recap: BookMetaRecap): string {
+  const d = recapDescriptor(recap);
+  return d.kind === 'seriesPrior'
+    ? t('book.meta.recapSeriesPrior')
+    : d.kind === 'beforeBook'
+      ? t('book.meta.recapBeforeBook')
+      : t('book.meta.recapUpToChapter', { chapter: d.chapter });
 }
 
 /** One "story so far" recap: a collapsible row, closed by default (spoiler-safe)
@@ -429,13 +450,7 @@ function RecapRow({
   spoiler?: boolean;
 }) {
   const { t } = useTranslation();
-  const d = recapDescriptor(recap);
-  const heading =
-    d.kind === 'seriesPrior'
-      ? t('book.meta.recapSeriesPrior')
-      : d.kind === 'beforeBook'
-        ? t('book.meta.recapBeforeBook')
-        : t('book.meta.recapUpToChapter', { chapter: d.chapter });
+  const heading = recapHeading(t, recap);
   return (
     <Disclosure
       className={first ? '' : 'border-t border-border'}
@@ -589,7 +604,7 @@ function SpoilerAccordion({ label, text }: { label: string; text: string }) {
  * the "How it ends" spoiler row; before that, `in_short` sits behind a collapsed
  * "Whole-book summary" spoiler row and the ending is not offered at all. Null when
  * there is nothing (see `summaryIsVisible`). */
-function RecapSummaryBlock({
+export function RecapSummaryBlock({
   summary,
   finished,
 }: {

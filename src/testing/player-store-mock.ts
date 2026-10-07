@@ -31,7 +31,7 @@ export type MockNowPlaying = {
   connectionId: string;
   libraryId: number;
   path: string;
-  queue: { chapters: Chapter[]; total: number };
+  queue: { chapters: Chapter[]; total: number; syntheticChapters?: boolean };
 };
 
 export type MockSnapshot = {
@@ -45,6 +45,8 @@ export type MockSnapshot = {
 export type PlayerMockState = {
   snapshot: MockSnapshot;
   nowPlaying: MockNowPlaying | null;
+  /** The real store's `loadingBook`: a just-started book whose load has not landed. */
+  loadingBook: string | null;
   rate: number;
   /** Whole-book position, i.e. what `selectBookPosition` reads. The real store derives
    * it from the queue's offsets; here it is simply set. */
@@ -52,6 +54,8 @@ export type PlayerMockState = {
   pause: () => Promise<void>;
   toggle: () => Promise<void>;
   setOutputVolume: (volume: number) => Promise<void>;
+  seekBook: (position: number) => Promise<void>;
+  setRate: (rate: number) => Promise<void>;
 };
 
 const IDLE_SNAPSHOT: MockSnapshot = {
@@ -73,12 +77,16 @@ function buildPlayerStoreMock() {
      * would show up here as writes that production never makes.
      */
     setVolume: jest.fn((volume: number) => Promise.resolve(volume)),
+    /** Pure spies: what the drift prompt and the speed sheet ask the store to do. */
+    seekBook: jest.fn((_position: number) => Promise.resolve()),
+    setRate: jest.fn((_rate: number) => Promise.resolve()),
   };
   let outputVolume = 1;
 
   const initialState = (): PlayerMockState => ({
     snapshot: { ...IDLE_SNAPSHOT },
     nowPlaying: null,
+    loadingBook: null,
     rate: 1,
     bookPosition: 0,
     /**
@@ -105,6 +113,8 @@ function buildPlayerStoreMock() {
       void spies.setVolume(volume);
       return Promise.resolve();
     },
+    seekBook: (position: number) => spies.seekBook(position),
+    setRate: (rate: number) => spies.setRate(rate),
   });
 
   const usePlayer = create<PlayerMockState>()(() => initialState());
@@ -135,6 +145,14 @@ function buildPlayerStoreMock() {
       s.nowPlaying
         ? `${s.nowPlaying.connectionId}:${s.nowPlaying.libraryId}:${s.nowPlaying.path}`
         : null,
+    /** The chapter holding the position (the real one also maps through the queue's
+     * file offsets; here the chapters' own `book_offset`s are the timeline). */
+    selectCurrentChapter: (s: PlayerMockState): Chapter | null => {
+      const chapters = s.nowPlaying?.queue.chapters ?? [];
+      let found: Chapter | null = null;
+      for (const c of chapters) if (c.book_offset <= s.bookPosition) found = c;
+      return found;
+    },
     /** The strict reading: audio is coming out of the speaker. */
     selectIsPlaying: (s: PlayerMockState) => s.snapshot.state === 'playing',
     /** The loose reading, which counts a book buffering with playback intended. */
@@ -173,6 +191,8 @@ function buildPlayerStoreMock() {
       spies.pause.mockClear();
       spies.toggle.mockClear();
       spies.setVolume.mockClear();
+      spies.seekBook.mockClear();
+      spies.setRate.mockClear();
     },
   };
 }

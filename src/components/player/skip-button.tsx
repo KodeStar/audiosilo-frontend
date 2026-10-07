@@ -1,4 +1,4 @@
-import { Text as RNText } from 'react-native';
+import { Text as RNText, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -20,6 +20,7 @@ export function SkipButton({
   fontSize = 13,
   className = 'h-11 w-11 items-center justify-center',
   hitSlop = 8,
+  style,
   accessibilityLabel,
 }: {
   direction: 'forward' | 'back';
@@ -29,6 +30,8 @@ export function SkipButton({
   fontSize?: number;
   className?: string;
   hitSlop?: number;
+  /** Extra style for the pressable (a fixed size). */
+  style?: StyleProp<ViewStyle>;
   accessibilityLabel: string;
 }) {
   const label = `${direction === 'back' ? '-' : '+'}${seconds}s`;
@@ -37,6 +40,7 @@ export function SkipButton({
       onPress={onPress}
       hitSlop={hitSlop}
       className={className}
+      style={style}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >

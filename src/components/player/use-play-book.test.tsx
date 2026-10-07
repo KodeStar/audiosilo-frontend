@@ -12,8 +12,30 @@ jest.mock('@/api/provider', () =>
     },
   }),
 );
+// The start resolves the book's client by its connection id (`startBookInPlace`): the
+// same fake clients.
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: (id: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('@/api/provider').useApiRegistry().clients.get(id) ?? null,
+}));
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+// A subscription to the route (re-renders on every navigation): must not be used.
+const mockUseSegments = jest.fn(() => ['(app)']);
+jest.mock('expo-router', () => ({
+  router: { push: (h: unknown) => mockPush(h) },
+  useSegments: () => mockUseSegments(),
+}));
+// The root stack's top route, read at the press (`currentNavState`).
+let mockTop = '(app)';
+const mockNavReads = jest.fn();
+jest.mock('@/lib/root-stack', () => ({
+  ...jest.requireActual('@/lib/root-stack'),
+  currentNavState: () => {
+    mockNavReads();
+    return { index: 1, routes: [{ name: '(app)' }, { name: mockTop }] };
+  },
+}));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
@@ -56,6 +78,9 @@ async function play(opts?: { toggle?: boolean; viaBookPage?: boolean }) {
 beforeEach(() => {
   queryClient.clear();
   mockLayout = 'desktop';
+  mockTop = '(app)';
+  mockNavReads.mockReset();
+  mockUseSegments.mockClear();
   setPlayer({ key: null, live: false });
   mockItem.mockReset().mockResolvedValue({ rel_path: 'Book' });
   mockChapters.mockReset().mockResolvedValue({ files: [] });
@@ -65,10 +90,31 @@ beforeEach(() => {
 });
 
 describe('usePlayBook', () => {
+  // One per visible Library row: reading "player on top" through a subscription
+  // re-rendered every row on every navigation. It is read at the press instead.
+  it('reads where the player is only when pressed, never while rendering', async () => {
+    mockLayout = 'phone';
+    const { result } = await renderHook(() => usePlayBook());
+    expect(mockNavReads).not.toHaveBeenCalled();
+    expect(mockUseSegments).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current(target);
+    });
+    expect(mockNavReads).toHaveBeenCalledTimes(1);
+  });
+
   it('starts a book under the dock on tablet and desktop, through its own connection', async () => {
     await play();
     expect(mockItem).toHaveBeenCalledWith(1, 'Book', expect.anything());
-    expect(mockPlayBook).toHaveBeenCalledWith('c', 1, { rel_path: 'Book' }, { files: [] });
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c',
+      1,
+      { rel_path: 'Book' },
+      { files: [] },
+      undefined,
+      undefined,
+      undefined,
+    );
     expect(mockPush).not.toHaveBeenCalled();
   });
 
@@ -101,5 +147,36 @@ describe('usePlayBook', () => {
     await play({ toggle: true });
     expect(mockToggle).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  // Up next's sheet over the full player (Play now): pushing another player would stack
+  // a second one, and the credits of that book would close onto an empty player.
+  it('starts in place on a phone while the full player is on top, never pushing another', async () => {
+    mockLayout = 'phone';
+    mockTop = 'player';
+    await play({ viaBookPage: true });
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c',
+      1,
+      { rel_path: 'Book' },
+      { files: [] },
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('plays the loaded book on under the open player on a phone', async () => {
+    mockLayout = 'phone';
+    mockTop = 'player';
+    setPlayer({ key: 'c:1:Book', live: false });
+    await play();
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+    setPlayer({ key: 'c:1:Book', live: true });
+    await play();
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockPlayBook).not.toHaveBeenCalled();
   });
 });

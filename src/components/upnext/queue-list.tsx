@@ -14,6 +14,7 @@ import Animated, {
 
 import type { QueueEntry } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
+import { slopTo44 } from '@/components/player/control-pill';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -86,6 +87,7 @@ export function QueueList({
   onMove,
   onRemove,
   onPlay,
+  onNavigate,
 }: {
   entries: readonly QueueEntry[];
   progress: ProgressIndex;
@@ -93,6 +95,8 @@ export function QueueList({
   onMove: (entry: QueueEntry, to: number) => Promise<boolean>;
   onRemove: (entry: QueueEntry) => void;
   onPlay: (entry: QueueEntry) => void;
+  /** Runs before a row opens its book's page (the sheet closes itself then). */
+  onNavigate?: () => void;
 }) {
   // An optimistic order (the same entries, moved) until the server's queue next changes.
   const [pending, setPending] = useState<{
@@ -139,6 +143,7 @@ export function QueueList({
           onMove={move}
           onRemove={() => onRemove(e)}
           onPlay={() => onPlay(e)}
+          onNavigate={onNavigate}
         />
       ))}
     </View>
@@ -157,6 +162,7 @@ function QueueRow({
   onMove,
   onRemove,
   onPlay,
+  onNavigate,
 }: {
   entry: QueueEntry;
   index: number;
@@ -169,6 +175,7 @@ function QueueRow({
   onMove: (from: number, to: number, viaKeyboard?: boolean) => void;
   onRemove: () => void;
   onPlay: () => void;
+  onNavigate?: () => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
@@ -301,7 +308,10 @@ function QueueRow({
           </Pressable>
         </GestureDetector>
         <AnimatedPressable
-          onPress={() => openBook(connectionId, entry.library_id, entry.path)}
+          onPress={() => {
+            onNavigate?.();
+            openBook(connectionId, entry.library_id, entry.path);
+          }}
           accessibilityRole="button"
           accessibilityLabel={`${title}, ${caption}`}
           className={cn(
@@ -348,6 +358,9 @@ function QueueRow({
   );
 }
 
+/** A row button is `h-9 w-9`: 36 px on the web, 31.5 pt on native, where this makes 44 pt. */
+const ROW_BUTTON_SLOP = slopTo44(2.25);
+
 function RowButton({
   icon,
   label,
@@ -363,7 +376,7 @@ function RowButton({
   return (
     <AnimatedPressable
       onPress={onPress}
-      hitSlop={4}
+      hitSlop={ROW_BUTTON_SLOP}
       accessibilityRole="button"
       accessibilityLabel={label}
       className={cn(

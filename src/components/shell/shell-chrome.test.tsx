@@ -38,6 +38,11 @@ jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'light', pref: 'light', setPref: jest.fn() }),
 }));
 jest.mock('@/api/provider', () => ({ useApi: () => ({ authHeaders: () => ({}) }) }));
+// The cover and the bookmark ticks read the server; their own suites cover them.
+jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
+jest.mock('@/components/player/use-playing-pins', () => ({
+  usePlayingPins: () => ({ bookmarks: [], notes: [] }),
+}));
 
 // --- player ---------------------------------------------------------------------------
 type MockPlayer = {
@@ -80,8 +85,8 @@ jest.mock('@/playback/store', () => {
   };
 });
 
-// The scrubber and the speed/sleep controls have their own suites; stub them here.
-jest.mock('@/components/player/seek-bar', () => ({ SeekBar: () => null }));
+// The scrubber has its own suite; stub it here.
+jest.mock('@/components/ui/slider', () => ({ Slider: () => null }));
 // The Up next entry point has its own suite (upnext/up-next-button.test.tsx).
 jest.mock('@/components/upnext/up-next-button', () => {
   const { Text: RNText } = jest.requireActual('react-native');
@@ -89,16 +94,9 @@ jest.mock('@/components/upnext/up-next-button', () => {
     UpNextButton: ({ variant }: { variant: string }) => <RNText>{`upnext-${variant}`}</RNText>,
   };
 });
-jest.mock('@/components/player/speed-button', () => {
-  const { Text: RNText } = jest.requireActual('react-native');
-  return { SpeedButton: () => <RNText>speed</RNText>, SpeedSheet: () => null };
-});
-jest.mock('@/components/player/sleep-timer-button', () => {
-  const { Text: RNText } = jest.requireActual('react-native');
-  return { SleepTimerButton: () => <RNText>sleep</RNText>, SleepSheet: () => null };
-});
 
 /* eslint-disable import/first */
+import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
 import { useSession } from '@/stores/session';
@@ -263,9 +261,9 @@ describe('DockedPlayer', () => {
     expect(screen.getByTestId('shell-docked-player')).toBeTruthy();
     for (const label of [
       'Previous chapter',
-      'Skip back 15 seconds',
+      'Back 15 seconds',
       'Play',
-      'Skip forward 30 seconds',
+      'Forward 30 seconds',
       'Next chapter',
       'Expand player',
       'Open the full player for The Way of Kings',
@@ -274,6 +272,13 @@ describe('DockedPlayer', () => {
     }
     expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
     expect(screen.getByText('upnext-dock')).toBeTruthy();
+  });
+
+  it('says the time left in the book at the listening speed (frontend#50)', async () => {
+    player.setState({ nowPlaying: book, rate: 1.25 });
+    await render(<DockedPlayer />);
+    // (3600 - 30) / 1.25 = 2856 s.
+    expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
   });
 
   it('plays, skips by chapter and expands to the full player', async () => {
@@ -302,15 +307,51 @@ describe('AccessoryPlayer', () => {
     await render(<AccessoryPlayer />);
     expect(screen.getByTestId('accessory-player-regular')).toBeTruthy();
     expect(screen.getByLabelText('Pause')).toBeTruthy();
-    expect(screen.getByLabelText('Skip back 15 seconds')).toBeTruthy();
+    expect(screen.getByLabelText('Back 15 seconds')).toBeTruthy();
     await screen.unmount();
 
     mockPlacement = 'inline';
     await render(<AccessoryPlayer />);
     expect(screen.getByTestId('accessory-player-inline')).toBeTruthy();
     // The minimised pill keeps play/pause only.
-    expect(screen.queryByLabelText('Skip back 15 seconds')).toBeNull();
+    expect(screen.queryByLabelText('Back 15 seconds')).toBeNull();
     expect(screen.getByLabelText('Pause')).toBeTruthy();
+  });
+
+  it('puts the sleep countdown first, with the chapter line, in the regular pill only', async () => {
+    player.setState({ nowPlaying: book });
+    useSleepTimer.setState({ phase: 'running', remaining: 724 });
+    try {
+      mockPlacement = 'regular';
+      await render(<AccessoryPlayer />);
+      expect(screen.getByTestId('mini-sleep')).toHaveTextContent('12:04 ·');
+      expect(
+        screen.getByTestId('chapter-progress-fill', { includeHiddenElements: true }),
+      ).toBeTruthy();
+      await screen.unmount();
+
+      // The inline pill beside the minimised bar is narrow: cover, heading, play.
+      mockPlacement = 'inline';
+      await render(<AccessoryPlayer />);
+      expect(screen.getByText('The Way of Kings')).toBeTruthy();
+      expect(screen.queryByTestId('mini-sleep')).toBeNull();
+      expect(
+        screen.queryByTestId('chapter-progress-fill', { includeHiddenElements: true }),
+      ).toBeNull();
+    } finally {
+      useSleepTimer.setState({ phase: 'idle', remaining: null });
+    }
+  });
+
+  it('offers Retry after a playback error', async () => {
+    player.setState({
+      nowPlaying: book,
+      snapshot: { state: 'error', trackIndex: 0, position: 0, duration: 0 },
+    });
+    mockPlacement = 'inline';
+    await render(<AccessoryPlayer />);
+    await fireEvent.press(screen.getByLabelText('Retry'));
+    expect(player.getState().retry).toHaveBeenCalled();
   });
 
   it('renders nothing with no book', async () => {

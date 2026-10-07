@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book } from '@/api/types';
@@ -24,6 +24,7 @@ jest.mock('@/downloads/engine', () => ({
     fileExists: jest.fn(async (_uri: string) => true),
     removeBook: jest.fn(async (_cid: string, _libraryId: number, _path: string) => {}),
     downloadFile: jest.fn(),
+    storageEstimate: jest.fn(async () => null),
     verify: undefined,
     probe: undefined,
     totalBytesUsed: jest.fn(async () => 0),
@@ -41,15 +42,38 @@ jest.mock('@/stores/session', () => ({
 }));
 
 // Avoid pulling the real React Query client / hooks graph into the unit test.
+// `getQueryData` answers the web transcode guard's cached `/server` read.
+const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
+// The full item/chapters lookup of a list-shape book on web (by query key).
+const mockFetchQuery = jest.fn((_o: { queryKey: unknown[] }): Promise<unknown> =>
+  Promise.reject(new Error('not mocked')),
+);
 jest.mock('@/api/provider', () => ({
-  queryClient: { setQueryData: jest.fn(), invalidateQueries: jest.fn() },
+  queryClient: {
+    setQueryData: jest.fn(),
+    invalidateQueries: jest.fn(),
+    getQueryData: (...a: unknown[]) => mockGetQueryData(...a),
+    fetchQuery: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
+  },
 }));
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
+  cachedCapability: (cid: string, flag: string) => {
+    const info = mockGetQueryData(['server', cid]) as
+      { capabilities: Record<string, boolean> } | undefined;
+    return info ? !!info.capabilities[flag] : undefined;
+  },
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
+    server: (cid: string) => ['server', cid],
   },
+  itemQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
+    queryKey: ['item', cid, lib, path],
+  }),
+  chaptersQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
+    queryKey: ['chapters', cid, lib, path],
+  }),
 }));
 
 // Imported after the mocks so the store binds to the fakes above.
@@ -73,6 +97,7 @@ const mockEngine = engine as unknown as {
   fileExists: jest.Mock;
   removeBook: jest.Mock;
   downloadFile: jest.Mock;
+  storageEstimate: jest.Mock;
   verify: ((uri: string) => Promise<boolean>) | undefined;
   probe: (() => Promise<boolean>) | undefined;
 };
@@ -481,6 +506,85 @@ describe('download() per-connection routing', () => {
   });
 });
 
+describe('download() refuses a book this browser plays transcoded', () => {
+  const prevOS = Platform.OS;
+  afterEach(() => {
+    Platform.OS = prevOS;
+    mockGetQueryData.mockReset();
+  });
+  const ac3 = () => makeBook({ direct_playable: false, codec: 'ac3' });
+
+  it('is a no-op on web when the server transcodes it (its raw files would not play offline)', async () => {
+    Platform.OS = 'web';
+    mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
+    // Said, not silent: keep-ahead plans around a book it can't keep.
+    await expect(useDownloads.getState().download('c1', 2, ac3())).resolves.toBe('transcoded');
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeUndefined();
+    expect(mockGetQueryData).toHaveBeenCalledWith(['server', 'c1']);
+  });
+
+  it('downloads as before without a transcoder, or off web', () => {
+    Platform.OS = 'web';
+    mockGetQueryData.mockReturnValue({ capabilities: { transcode: false } });
+    useDownloads.getState().download('c1', 2, ac3());
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeDefined();
+
+    useDownloads.setState({ entries: {} });
+    Platform.OS = 'ios';
+    mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
+    useDownloads.getState().download('c1', 2, ac3());
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeDefined();
+  });
+
+  // A list-shape book (`/books`, `/fs`, shelves, tiles) carries no `direct_playable`: on
+  // web it is decided on its full item and chapters, else the book menu downloaded raw
+  // files this browser could not play.
+  describe('a list-shape book on web', () => {
+    const listShape = () => makeBook({ title: 'From the list' });
+    const lookup = (full: Book) =>
+      mockFetchQuery.mockImplementation(async (o) =>
+        o.queryKey[0] === 'item'
+          ? full
+          : { chapters: [], files: [], direct_playable: full.direct_playable },
+      );
+    beforeEach(() => {
+      Platform.OS = 'web';
+      mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
+      mockResolveClient.mockReturnValue({} as ApiClient);
+    });
+    afterEach(() => {
+      mockFetchQuery.mockReset();
+      mockResolveClient.mockReset().mockReturnValue(null);
+      useDownloads.setState({ entries: {} });
+    });
+
+    it('is refused as transcoded when its full item says the browser cannot play it', async () => {
+      lookup(ac3());
+      await expect(useDownloads.getState().download('c1', 2, listShape())).resolves.toBe(
+        'transcoded',
+      );
+      expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeUndefined();
+      expect(mockFetchQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['item', 'c1', 2, 'A/Book'] }),
+      );
+    });
+
+    it('downloads its full item when the browser plays it directly', async () => {
+      lookup(makeBook({ direct_playable: true, codec: 'mp3', title: 'Full item' }));
+      await expect(useDownloads.getState().download('c1', 2, listShape())).resolves.toBe('queued');
+      const entry = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+      expect(entry?.manifest.book.title).toBe('Full item');
+      expect(entry?.manifest.chapters).toEqual(expect.objectContaining({ direct_playable: true }));
+    });
+
+    it('never looks it up off web', async () => {
+      Platform.OS = 'ios';
+      await expect(useDownloads.getState().download('c1', 2, listShape())).resolves.toBe('queued');
+      expect(mockFetchQuery).not.toHaveBeenCalled();
+    });
+  });
+});
+
 describe('isAbort (observed via the download error path)', () => {
   // download() → runQueue → runOne; runOne uses the private isAbort() to decide
   // whether a thrown error is a user cancel (drop the entry quietly) or a real
@@ -662,16 +766,141 @@ describe('failures, retry and the session decline mark', () => {
     useDownloads.getState().cancel('c1', 2, 'A/Book');
     expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
 
-    // An automatic download does not lift it (the controller checks it before asking).
+    // An automatic download neither downloads it nor lifts the mark: keep-ahead...
     useDownloads.getState().download('c1', 2, book, undefined, 'keep-ahead');
     await settle();
     expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
-    expect(useDownloads.getState().entries[key]?.origin).toBe('keep-ahead');
+    expect(useDownloads.getState().entries[key]).toBeUndefined();
 
-    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    // ...nor the automatic download of the book being started.
+    useDownloads.getState().download('c1', 2, book, undefined, 'auto');
+    await settle();
+    expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
+    expect(useDownloads.getState().entries[key]).toBeUndefined();
+
+    // The listener asking lifts it.
     useDownloads.getState().download('c1', 2, book);
     expect(isDeclined('c1', 2, 'A/Book')).toBe(false);
     expect(useDownloads.getState().entries[key]?.origin).toBe('listener');
     await settle();
+
+    // Removed again: an automatic download stays away once more.
+    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    useDownloads.getState().download('c1', 2, book, undefined, 'auto');
+    await settle();
+    expect(useDownloads.getState().entries[key]).toBeUndefined();
+  });
+});
+
+describe('download() keeps the reserve free for automatic downloads', () => {
+  const GB = 1024 ** 3;
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  // Never lands: the entry stays queued/downloading, so it counts as pending.
+  beforeEach(() => {
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      streamUrl: () => 'stream',
+    } as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(() => new Promise(() => {}));
+    // 64 GB disk: the reserve is 6.4 GB.
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 8 * GB,
+    });
+  });
+  afterEach(() => mockEngine.storageEstimate.mockResolvedValue(null));
+
+  it('skips an automatic download that would leave less than the reserve free', async () => {
+    const big = makeBook({ rel_path: 'R/Big', size: 2 * GB });
+    useDownloads.getState().download('c1', 2, big, undefined, 'auto');
+    useDownloads.getState().download('c1', 2, big, undefined, 'keep-ahead');
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Big')]).toBeUndefined();
+    // The listener's own download is never held back.
+    useDownloads.getState().download('c1', 2, big);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Big')]?.origin).toBe('listener');
+  });
+
+  it('counts queued downloads and estimates a book of unknown size', async () => {
+    // 4 GB of room after the reserve; a queued 3.5 GB download leaves 0.5 GB.
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 10.4 * GB,
+    });
+    useDownloads.getState().download('c1', 2, makeBook({ rel_path: 'R/Queued', size: 3.5 * GB }));
+    // size 0, ten hours: about 576 MB at 128 kbps, more than the 0.5 GB left.
+    useDownloads
+      .getState()
+      .download('c1', 2, makeBook({ rel_path: 'R/Unknown', duration: 36_000 }), undefined, 'auto');
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Unknown')]).toBeUndefined();
+    // A small one still fits.
+    useDownloads
+      .getState()
+      .download(
+        'c1',
+        2,
+        makeBook({ rel_path: 'R/Small', size: 100 * 1024 ** 2 }),
+        undefined,
+        'auto',
+      );
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Small')]?.origin).toBe('auto');
+  });
+
+  it('says why it turned an automatic download away', async () => {
+    const big = makeBook({ rel_path: 'R/Big2', size: 2 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, big, undefined, 'keep-ahead'),
+    ).resolves.toBe('no-space');
+  });
+
+  it("lets the book you start past keep-ahead's books still waiting, which step aside", async () => {
+    // 4 GB of room after the reserve. Keep-ahead queued a 3 GB next book first.
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 10.4 * GB,
+    });
+    const ahead = makeBook({ rel_path: 'K/Next', size: 3 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, ahead, undefined, 'keep-ahead'),
+    ).resolves.toBe('queued');
+    // The book the listener starts (2 GB) only fits without it.
+    const started = makeBook({ rel_path: 'K/Started', size: 2 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, started, undefined, 'auto'),
+    ).resolves.toBe('queued');
+    const entries = useDownloads.getState().entries;
+    expect(entries[downloadKey('c1', 2, 'K/Started')]?.origin).toBe('auto');
+    expect(entries[downloadKey('c1', 2, 'K/Next')]).toBeUndefined();
+    // Not declined: keep-ahead may plan it again around the book you started.
+    expect(isDeclined('c1', 2, 'K/Next')).toBe(false);
+  });
+
+  it("does not push a listener's own download aside", async () => {
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 10.4 * GB,
+    });
+    useDownloads.getState().download('c1', 2, makeBook({ rel_path: 'L/Mine', size: 3 * GB }));
+    const started = makeBook({ rel_path: 'L/Started', size: 2 * GB });
+    await expect(
+      useDownloads.getState().download('c1', 2, started, undefined, 'auto'),
+    ).resolves.toBe('no-space');
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'L/Mine')]).toBeDefined();
+  });
+
+  it('starts one when the room is not knowable', async () => {
+    mockEngine.storageEstimate.mockRejectedValue(new Error('no estimate'));
+    const book = makeBook({ rel_path: 'R/Any', size: 50 * GB });
+    useDownloads.getState().download('c1', 2, book, undefined, 'keep-ahead');
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Any')]?.origin).toBe(
+      'keep-ahead',
+    );
   });
 });

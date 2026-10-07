@@ -265,7 +265,7 @@ the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 then the meta **About** block) and puts *everything else* behind a
 `Tabs` row (`src/components/ui/tabs.tsx`, the Stacks underline tabs with
 `scrollable`, so the row scrolls horizontally and carries tablist/tab/tabpanel
-a11y roles): **Chapters** (label
+a11y roles; when the tabs overflow, a chevron beside the tablist pages the row, `tabsScrollCue`): **Chapters** (label
 switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
 **History** · **Notes** · **Series**. Both layouts share the same tab section; tablet and
 desktop keep a right-hand cover panel (300 / 380 wide) whose button plays inline - the docked
@@ -389,7 +389,9 @@ removed.
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
 from **ONE whole-book POSITION** (`useListeningPosition`, also Search's and the series
-page's) - the player's live position when this book is loaded (never below the saved one),
+page's) - the player's live position when this book is loaded (never below the saved one;
+and only once its engine load has landed, `selectPlacedBookKey`: until then the snapshot is
+still the PREVIOUS book's place, the store's `loadingBook`),
 else `useBookProgress` (`qk.progress(cid, lib, path)`) - walked through `chapterNumberAt` against the
 screen's *corrected*, memoized chapter offsets (`chapterStarts`, recomputed from the
 cumulative file durations, not the server's `book_offset`); no position → 0. **Never
@@ -398,7 +400,8 @@ the player's chapter identity**: a chapterless single-file book gets *synthetic*
 reading them as logical chapter numbers revealed the whole cast an hour in. The
 consequence is that a chapterless book gates to 0 whether playing or not (accepted -
 "Show anyway" is the escape hatch). The live position is sampled in coarse buckets
-(`LIVE_POSITION_BUCKET_S`) so the screen re-renders at chapter-ish granularity
+(`LIVE_POSITION_BUCKET_S`, exported by `meta-gating.ts` for the book page and the player's
+companion; Previously on reads the saved place, never the live one) so the screen re-renders at chapter-ish granularity
 rather than per tick; rounding DOWN can only delay a reveal, never reveal early.
 That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
@@ -511,6 +514,23 @@ media GETs only.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.
+- **Never navigate while the app is in the background.** `/player` and `/finished` are
+  root `fullScreenModal`s and iOS cannot present one from the background (a book that
+  ended locked with auto-play on came back to a black screen until a relaunch). Code
+  that playback drives (`BookEndedListener`, the end-credits Play now and countdown)
+  moves on with `advanceTo` (`src/components/player/end-of-book.ts`: start the next book
+  in place with `startBookInPlace`, item + chapters through the query cache then
+  `playBook`, and take it off Up next with `dropFromQueue`; the finished book leaves Up next
+  where it is finished, whether or not the next one starts) and
+  defers any screen with `whenActive` / `navigateWhenActive` (`src/lib/when-active.ts`).
+  The `/player` route only shows a book started that way; it never starts it. A book that ends
+  while a sleep timer runs for it does not move on by itself (`useAutoPlayHold` in
+  `end-of-book.ts`): the background start in place is skipped and the credits hold their
+  countdown (Play now still plays), since the listener asked the timer to end the night. The
+  framework-free reads this flow (and the play path's capability read) wait on go through
+  `fetchFailFast` (`api/hooks.ts`), which TanStack can't hold for the browser's online flag or
+  a hidden tab's focus; the credits' countdown counts only the time its ticks saw, so a
+  suspended app doesn't wake to a countdown that already ran out.
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.
@@ -556,6 +576,21 @@ media GETs only.
   (the watchdog is then a backstop for a buffer that never resolves). Recovery is
   `retry()` (reloads the track - a dead source can't resume via `play()` alone). Keep this
   one place; don't re-add a native timer.
+- **A browser autoplay refusal is a pause, not an error.** A cold `/player` deep link has
+  no user gesture, so `audio.play()` rejects with `NotAllowedError`. `service.web.ts`
+  reports exactly that as `AutoplayBlockedError` (`types.ts`) with its snapshot `paused`;
+  `startEngine` in `store.ts` (the play step of `playBook`/`toggle`/`retry`) catches only
+  that, clears the intent (so the watchdog can't synthesize `error`) and settles on
+  `paused`. Every other `play()` failure still propagates.
+- **The web engine's file advance is not a pause.** The element fires `pause` just before
+  `ended` at a file's natural end; when another file follows, `service.web.ts` ignores it
+  (the store keeps its intent through the next file's load, under the same 3 s watchdog as
+  a transcoded seek), so a chapter sleep timer aimed at that boundary finds the book live and
+  pauses it. A load plays on `loadedmetadata` only if `pendingAutoplay` is still set (a
+  `pause()` inside the load, the listener's or the sleep timer's, clears it and settles the
+  snapshot on `paused`). A transcoded stream is never requested inside its last second
+  (`transcodeStartAt`): at the very end there is nothing to encode and the element errors
+  instead of ending.
 
 **Tests** - new logic ships with a unit test. Pure, framework-free modules get
 direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
@@ -789,8 +824,10 @@ offline queue length without changing progress-sync (decision 7).
 **One play path** (`src/components/player/use-play-book.ts`): `usePlayBook()` is how Home, the
 Library, the series page and Up next start a book: a phone opens the full player (over the book page
 with `viaBookPage`), a tablet or desktop plays it under the docked bar through the book's own
-connection once its chapters are in, a loaded book plays on (or toggles, with `toggle`). It rejects
-when the book can't be fetched, so the caller can say so.
+connection once its chapters are in, a loaded book plays on (or toggles, with `toggle`). With the full
+player already on top (Up next's sheet over it), every layout starts in place: pushing `/player` over
+the open one stacked a second player. It rejects when the book can't be fetched, so the caller can say
+so.
 
 **Downloads page and automatic downloads** (`src/components/downloads/`, `src/downloads/`):
 - **Keep the next books ready** (`keepAhead`: Off / 1 / 2 / 3, default Off; Downloads page, Settings
@@ -803,6 +840,13 @@ when the book can't be fetched, so the caller can say so.
   goes first; it never changes the playback store.
 - **The session decline mark**: cancelling or removing a download marks it declined until the app
   restarts (`isDeclined`, memory only); automatic downloads skip it, a listener's download lifts it.
+- **One choke point**: `useDownloads.download(..., origin)` applies the automatic rules itself for
+  the `auto` (the book you start) and `keep-ahead` origins: the decline mark and the reserve
+  (`roomLeft`). Callers just ask with their origin; the listener's own download is never held back.
+  It resolves what it did (`DownloadOutcome`). The book you start outranks keep-ahead's books still
+  waiting (they step aside, unmarked, and it goes next); keep-ahead plans again at once around a
+  book the store turned away (`unavailable`: web transcode; `tooBig`: no room until the registry
+  changes).
 - **Kept files**: a failed download keeps the files that finished (classified cause in
   `failure.ts`, `failure.kept`), and a retry fetches only the rest. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download
@@ -833,7 +877,11 @@ when the window crosses a threshold. Both platform layouts wrap their one naviga
 `header` is `PhoneHeader` (large title on a tab root, inline back named after the parent on iOS,
 banners under it), the mini player in the iOS 26 tab bar's bottom accessory (`AccessoryPlayer`,
 rendered twice by iOS - `regular` + `inline` - so it is stateless and reads the player store) or a
-floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`). On native that card is ONE
+floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`): 56 pt, inset 8 from the sides and
+`MINI_PLAYER_GAP` above the bar, `rounded-card` + hairline + `shadow-overlay` (Android elevation). Both
+show the chapter, the book with its time left (`usePlayingTimeLeft`; the sleep countdown first while a
+timer runs, `MiniPlayerSubtitle`), skip back, the `plain` `PlayButton` (spinner, Retry) and the
+`ChapterProgressLine`; the accessory's narrow `inline` placement keeps cover, chapter and play. On native that card is ONE
 `FloatingMiniPlayer`, rendered by `(app)/_layout.tsx` as the shell frame's `phoneBottom` over
 NativeTabs (never per tab stack: NativeTabs keeps visited tabs alive, so a card per stack ticked up to
 five times), absolutely positioned on the native bar's measured `bar` edge, so it sits on the bar on
@@ -845,9 +893,78 @@ chrome; a tab root fills the rest with `SubNavSections` (its segmented sections)
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
 `useSubNav` store on tablet/desktop and render in place on a phone; published nodes render in the
 sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), the `DrawerSlot` on desktop (Up next's drawer, below),
-and `DockedPlayer` (84) whenever a book is loaded (it mounts its speed/sleep sheets as
-siblings so they cover the app). Route-driven side effects (search reset on leaving the Search
-tab, browse scroll memory) are `useShellEffects`.
+and `DockedPlayer` (84) whenever a book is loaded (nothing while the full player is on top, as for
+the mini player and the accessory: `usePlayerOnTop`): the 3 px whole-book line, book + sync state
+(`usePlaceSync`, shared with the full player's status line: sign in again > saved on this device
+(offline, or saves queued) > synced / synced just now), `TransportControls size="sm"` over a chapter
+scrubber with bookmark ticks (`usePlayingSegment`; the dock's one `usePlayingPins`), then `UndoChip`,
+speed, sleep (`SleepTimerButton`, `useSleepPill`: `brand-soft` + countdown while running), bookmark
+(`addBookmarkHere`), output (`canRoutePick`), Up next and expand. The player controls share one chrome
+(`control-pill.tsx`: `pillClass` / `ControlPill`). What fits is decided by its MEASURED width
+(`dockLayout`: all actions from 1024, the tablet set below, no scrubber below 800; everything hidden is
+in the full player; while the Undo chip shows (`useUndoVisible`), its MEASURED width comes off the
+width first and the right cluster stops growing, so the book keeps its title). Speed and sleep open
+through `usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does).
+Route-driven side effects (search reset on leaving the Search tab, browse scroll memory) are
+`useShellEffects`.
+- **Full player** (`src/app/player.tsx` thin, `src/components/player/player-view.tsx`, pieces in
+  `player-parts.tsx`, rules in `player-view-model.ts`): laid out by its MEASURED width (`playerLayout`).
+  The cover washed into the background (`CoverWash` from the item's `cover_color`, else a neutral),
+  breathing to 94% while paused; header (minimise, "Playing from <server>", series line, overflow
+  `DropdownMenu`); chapter title (tap: asks for `chapters`, which the sheet host shows as the
+  companion's Chapters tab on desktop and phone, the chapter sheet on a tablet);
+  `PlayerStatusLine` (`usePlaceSync`, % of the book, time left) that becomes the `UndoChip`, gives its
+  slot to the sleep timer's `GraceCard` (`inline`: in the flow, never over the controls) and fades
+  while the seek bar's scrub/hover tip floats into it (`onTip`); seek bar (its times row hides under
+  the timeline's tip the same way), compact timeline with bookmark and note pins (a tap on a pin lands
+  on it), transport, actions (speed, sleep, bookmark, output, Up next on phone/tablet). The two
+  scrubbers share `scrub-parts.tsx` (hover, `Playhead`, `ScrubTip`) and one `usePlayingPins` call; the
+  timeline merges chapters like the Now card's `scaleRuns` but places each run by time (`runBox`, the
+  mapping the playhead, taps and pins use). A scrub never lands on the book's very end
+  (`scrubTarget`: 30 s short), which would finish the book and take the Undo chip with it.
+  The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
+  a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
+  (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover
+  slot takes what the rest leaves, `phoneCoverSize`, so the player fits without scrolling);
+  gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal
+  per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every block.
+  `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
+  only (`watchReveal` + `revealOnCrossing`: a pause, a buffer or a file change reported in two
+  writes on the way still counts; a seek never does), reading the chapter in the gate's own
+  15 s buckets so the toast and Who's who agree; Show reads whether the player is on top when
+  pressed. Unknown `metadata` counts as off for the companion, as for the phone's chips. **Sheets**: `PlayerSheetHost` renders `usePlayerSheets` (speed, sleep,
+  chapters, the companion through `openCompanion(tab)`, Up next's `upnext`; bookmark/output are
+  actions), deciding the form from its layout (the full player's MEASURED one), all through one
+  presenter, `PlayerSheet` (`body` `scroll` or `fill`); one host in the full player and one in the
+  shell (`ShellPlayerOverlays`, with the floating `GraceCard` where a toast would sit; it publishes a
+  `grace` chrome edge, so the toasts lift above it), and `hostIsActive` lets the shell's stand back
+  while the player route is on top. A book's sheet request (speed, sleep, chapters, the companion) is
+  dropped when the book unloads, so the next book never opens it by itself. Only the top app shell
+  (`useIsTopShell`) mounts these overlays, the palette, the shortcuts overlay and the keys. **Never
+  stack shells**: a page of the app shell opened from a root route (the full player, the credits)
+  goes through `pushInShell` (`src/lib/open.ts`; `useOpen` does it), never `router.push` or
+  `router.replace`, which would put a second `(app)` over the first. Code that must know where the
+  player is at a press reads `topRootRoute(currentNavState())` (`src/lib/root-stack.ts`) instead of
+  subscribing with `usePlayerOnTop`. **Touch targets**: a rem is 14 pt on native, so a rem-sized
+  control (`h-11` = 38.5 pt) takes `hitSlop={slopTo44(rem)}` (`control-pill.tsx`; zero on the web
+  for 2.75 rem); tests assert it with `expectNativeTarget` (`src/testing/touch-target.ts`). The
+  sync line (`usePlaceSync`) counts only the playing book's server's queued saves and polls while
+  playing (a 5xx save queues with the server still online). The player keys stand back over any open layer (`isModalOpen`: an
+  `aria-modal` `Sheet`, or a Radix Dialog, AlertDialog, menu or select, which say so with
+  `data-state="open"` and no `aria-modal`); Space stands aside for a focused control Space activates
+  (`ownsSpace`: a button, a tab...) and the arrows for one that moves with them (`ownsArrows`: a
+  slider...), so Space still plays and pauses over a focused scrubber. The scrubbers ignore
+  gesture-handler's keyboard pointer (`PointerType.KEY`, a press at the centre it makes up for Space
+  and Enter on the web), scrub only on a sideways drag (`activeOffsetX`/`failOffsetY`, `pan-y` on the
+  web) and never commit a cancelled drag.
+- **Previously on** (`home/previously-on.tsx`, rules in `previously-on-model.ts`): above the Now card
+  when its book was last played 12+ days ago and a community recap reaches the listener (the Story so
+  far gate); "Resume, with 30 seconds of overlap" (`resumeWithOverlap`) starts 30 s before the NEWEST
+  saved place at its speed: the resume lookup (`loadInitialProgress`: the server, the local mirror and
+  the offline queue) against Home's server row, since a start at an explicit position skips the
+  store's own reconciliation. The card is dark in both themes through `ScopedThemeColors`
+  (`use-theme-colors.tsx`), which also hands the dark colours to `useThemeColors` below it, so colour
+  props (a Button's spinner, icons) follow the scope as classes do.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
   omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:
@@ -869,16 +986,20 @@ tab, browse scroll memory) are `useShellEffects`.
   characters not met yet in a note row that is not an option.
 - **Up next** (`src/components/upnext/`, capability `queue`; nothing renders while `/server` is unknown):
   the desktop drawer in `DrawerSlot` (open by default, 300-480 wide by its left edge, both remembered
-  per device in `up-next-store.ts`) and the same `UpNextPanel` in a bottom `Sheet` on tablet/phone (mounted
-  once by each `(app)` layout). Entry points: `UpNextButton` in the top bar, the dock and the phone header
+  per device in `up-next-store.ts`) and the same `UpNextPanel` in a player sheet on tablet/phone
+  (`usePlayerSheets`' `upnext`, rendered by `PlayerSheetHost`). Entry points: `UpNextButton` in the top bar, the dock and the phone header
   on tab roots; Q on the web (`useUpNextShortcut`); `openUpNext()` / `toggleUpNext()` for anyone else. It
   shows ONE connection's queue: the loaded book's, else the default (`queueConnectionId`). Every write keeps
   hidden rows: a reorder (grip drag via gesture-handler, arrow keys on the grip or Alt+arrows, screen-reader
   Move up/down) is a positioned add with the visible index, Clear is exact-path deletes with one Undo.
   Play now goes through the shared `usePlayBook` (below). Web
   desktop covers (`CoverTile`) are HTML5 drag sources (`drag-source.web.ts`) for the drawer's drop zone,
-  which takes only a book from the queue's own server. The queue does NOT drive what plays next yet
-  (Phase 3); the footer switch is the existing `autoPlayNext`. Pure rules: `up-next-model.ts`.
+  which takes only a book from the queue's own server. The queue's head is what plays next
+  (`resolveUpNext`: the queue, then the server's `next_book`, then the folder); the footer switch is
+  `autoPlayNext`. Q closes the sheet it opened (the sheet carries `layer="upnext"`, which
+  `useGlobalShortcut` does not count as a blocking layer). A row or a suggestion opens its page
+  through `useOpen`, which from over the full player lands in the shell underneath (`pushInShell`).
+  Pure rules: `up-next-model.ts`.
 - **Search** (`src/components/search/`, the `(search)` tab): the field, then recent searches (ONE list
   with the palette, `useRecentSearches` in `stores/search.ts`, key `audiosilo.paletteRecent`) and
   Browse cards (the selected library's counts, opening the Library modes), or the grouped results
@@ -904,7 +1025,7 @@ tab, browse scroll memory) are `useShellEffects`.
   `measureInWindow` is offset by the status bar under edge-to-edge, so comparing with the window
   height made the bar a status bar too tall); each stack publishes only once it has measured),
   `mini` (the floating card: bar + its height), `accessory` (the iOS 26 pill, measured in the window),
-  `dock` - and the root `ShellToastHost` passes `<ToastHost bottomInset>` from the pure
+  `dock`, `grace` (the sleep timer's floating card, above the rest while it shows) - and the root `ShellToastHost` passes `<ToastHost bottomInset>` from the pure
   `toastBottomOffset` over `bottomChromeTop` (the highest piece; one fallback before the first layout;
   tablet/desktop with nothing loaded and over a root modal: just above the home indicator). The web mini
   player sits on its tab bar through a `100%` bottom offset, no measured height. The accessory renders

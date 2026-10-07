@@ -63,6 +63,7 @@ const STATUS_KEY = {
   'no-space': 'downloads.rules.keepAheadStatus.noSpace',
   failed: 'downloads.rules.keepAheadStatus.failed',
   declined: 'downloads.rules.keepAheadStatus.declined',
+  unavailable: 'downloads.rules.keepAheadStatus.unavailable',
 } as const satisfies Record<KeepAheadStatus, string | null>;
 
 /** One line on what "Keep the next books ready" is doing right now, from the controller

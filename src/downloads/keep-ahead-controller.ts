@@ -3,21 +3,20 @@ import { create } from 'zustand';
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import {
-  allProgressQuery,
   chaptersQuery,
+  fetchCapabilities,
   isQueueKey,
   itemQuery,
   nextBookQuery,
   queueQuery,
-  serverInfoQuery,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import type { Capabilities, Progress } from '@/api/types';
 import { contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload, onNetworkChange } from '@/lib/network';
 import { bookTitle } from '@/lib/paths';
 import { resolveNextBook } from '@/playback/next-book';
 import { usePlayer } from '@/playback/store';
+import { finishedKeys } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
 
 import { statusSignature } from './downloads-view';
@@ -32,7 +31,7 @@ import {
   type NetworkGate,
 } from './keep-ahead';
 import { isDeclined, useDownloads } from './store';
-import type { DownloadStatus } from './types';
+import type { DownloadOutcome, DownloadStatus } from './types';
 
 /**
  * "Keep the next books ready", acting on the pure plan (`keep-ahead.ts`).
@@ -40,9 +39,12 @@ import type { DownloadStatus } from './types';
  * ## How it sits beside the existing automatic download
  * The playback store already downloads the book you START (`maybeAutoDownloadCurrent`
  * in `src/playback/store.ts`, under `autoDownloadNext`), and the player switches to the
- * local copy once it lands. That stays exactly as it is (decision 7: the store is not
- * changed). This controller adds the books AFTER it: with the setting at N, the next N
- * from Up next and then the series. Both obey the same network rule, both go through the
+ * local copy once it lands. That stays in the store (decision 7); both ask as automatic
+ * origins, so the downloads store's `download()` skips a declined book and keeps the
+ * same reserve free (`roomLeft`) as this plan for either. This controller adds
+ * the books AFTER it: with the setting at N, the next N from Up next and then the
+ * series (the order the end of a book plays them in, `resolveUpNext`). Both obey the
+ * same network rule, both go through the
  * downloads store's one-at-a-time queue, and the current book always wins the queue:
  * the store enqueues it the moment playback starts, while this waits `SETTLE_MS` after
  * the book changes before planning. With the setting off (the default) nothing here
@@ -65,10 +67,6 @@ export const useKeepAhead = create<KeepAheadView>()(() => ({ status: 'off', slot
 export const SETTLE_MS = 4000;
 
 type Current = { connectionId: string; libraryId: number; path: string };
-
-async function capabilities(client: ApiClient, cid: string): Promise<Capabilities> {
-  return (await queryClient.fetchQuery(serverInfoQuery(cid, client))).capabilities;
-}
 
 /** The queue as `AheadBook`s (entries the server didn't index, with no `book`, can't be
  * downloaded and are skipped). */
@@ -140,34 +138,37 @@ async function seriesAhead(
   return out;
 }
 
-async function finishedKeys(client: ApiClient, cid: string): Promise<Set<string>> {
-  const rows = await queryClient.fetchQuery({
-    ...allProgressQuery(cid, client),
-    staleTime: 60_000,
-  });
-  return new Set(
-    rows.filter((p) => p.finished).map((p) => contentKeyOf({ connectionId: cid, ...pathOf(p) })),
-  );
-}
-const pathOf = (p: Progress) => ({ libraryId: p.library_id, path: p.path });
-
 async function networkGate(): Promise<NetworkGate> {
   const mode = useSettings.getState().autoDownloadNext;
   if (mode === 'never') return 'never';
   return (await canAutoDownload(mode)) ? 'allowed' : 'metered';
 }
 
+/** Books this device can't keep offline (the downloads store said `transcoded`: a web
+ * browser that plays them through the server's transcoder), by `contentKeyOf`. Memory
+ * only, like the decline mark: whether the server transcodes can change between runs of
+ * the app. */
+const unavailable = new Set<string>();
+
+/** Books the downloads store turned away for room although the plan let them start (its
+ * estimate came from the list shape, the store's from the full item), and the registry
+ * as it was then. While the registry stays the same, nothing freed room, so planning them
+ * again would only be turned away again; once it changes they are planned afresh. */
+let tooBig: { registry: string; keys: Set<string> } = { registry: '', keys: new Set() };
+
 /** Download one planned book with its full item and chapters (the queue and `/next`
- * give the list shape, which has no files), unless something changed while it waited. */
-async function startOne(client: ApiClient, book: AheadBook): Promise<void> {
+ * give the list shape, which has no files), unless something changed while it waited.
+ * Resolves what the downloads store did with it. */
+async function startOne(client: ApiClient, book: AheadBook): Promise<DownloadOutcome> {
   const { connectionId: cid, libraryId, path } = book;
   const [item, chapters] = await Promise.all([
     queryClient.fetchQuery(itemQuery(cid, client, libraryId, path)),
     queryClient.fetchQuery(chaptersQuery(cid, client, libraryId, path)),
   ]);
-  if (isDeclined(cid, libraryId, path)) return;
-  if (useDownloads.getState().entries[contentKeyOf(book)]) return;
-  useDownloads.getState().download(cid, libraryId, item, chapters, 'keep-ahead');
+  // Not an errored one either: keep-ahead never retries a failure on its own. The store
+  // applies the automatic rules (declined this session, the reserve).
+  if (useDownloads.getState().entries[contentKeyOf(book)]) return 'exists';
+  return useDownloads.getState().download(cid, libraryId, item, chapters, 'keep-ahead');
 }
 
 /** Plan once and act on it. Never throws: a server that can't be reached simply plans
@@ -194,7 +195,7 @@ export async function runKeepAhead(): Promise<void> {
   const client = resolveClient(current.connectionId);
   if (!client) return publish('idle');
   try {
-    const caps = await capabilities(client, current.connectionId);
+    const caps = await fetchCapabilities(current.connectionId, client);
     const [queue, finished] = await Promise.all([
       caps.queue ? queueAhead(client, current.connectionId) : [],
       finishedKeys(client, current.connectionId),
@@ -206,27 +207,45 @@ export async function runKeepAhead(): Promise<void> {
         ? await seriesAhead(client, current.connectionId, current, count, !!caps.next_book)
         : [];
     const window = aheadWindow({ count, current, queue, series, finished });
-    const entries = useDownloads.getState().entries;
-    const plan = planKeepAhead({
-      count,
-      network,
-      window,
-      entries: new Map(
-        Object.entries(entries).map(([k, e]): [string, DownloadStatus] => [k, e.status]),
-      ),
-      declined: new Set(
-        window.filter((b) => isDeclined(b.connectionId, b.libraryId, b.path)).map(contentKeyOf),
-      ),
-      storage: await engine.storageEstimate(),
-      pending: pendingBytes(Object.values(entries)),
-    });
-    publish(plan.status, plan.slots);
-    for (const book of plan.start) {
-      try {
-        await startOne(client, book);
-      } catch {
-        // This book's item didn't load: the next plan tries again.
+    const storage = await engine.storageEstimate();
+    // A book the downloads store turns away is planned again at once without it (so the
+    // status doesn't stay "working" on a book that never starts, and the room it was
+    // given goes to the next): each pass marks at least one more, so this ends.
+    for (let pass = 0; pass <= window.length; pass++) {
+      if (tooBig.registry !== registrySignature()) tooBig = { registry: '', keys: new Set() };
+      const entries = useDownloads.getState().entries;
+      const plan = planKeepAhead({
+        count,
+        network,
+        window,
+        entries: new Map(
+          Object.entries(entries).map(([k, e]): [string, DownloadStatus] => [k, e.status]),
+        ),
+        declined: new Set(
+          window.filter((b) => isDeclined(b.connectionId, b.libraryId, b.path)).map(contentKeyOf),
+        ),
+        unavailable,
+        tooBig: tooBig.keys,
+        storage,
+        pending: pendingBytes(Object.values(entries)),
+      });
+      publish(plan.status, plan.slots);
+      let turnedAway = false;
+      for (const book of plan.start) {
+        let outcome: DownloadOutcome;
+        try {
+          outcome = await startOne(client, book);
+        } catch {
+          continue; // This book's item didn't load: the next plan tries again.
+        }
+        if (outcome === 'transcoded') unavailable.add(contentKeyOf(book));
+        else if (outcome === 'no-space')
+          tooBig = { registry: registrySignature(), keys: tooBig.keys.add(contentKeyOf(book)) };
+        else continue;
+        turnedAway = true;
+        break; // the books after it were planned with its room
       }
+      if (!turnedAway) break;
     }
   } catch {
     publish('idle');

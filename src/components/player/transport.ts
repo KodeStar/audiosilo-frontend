@@ -4,6 +4,7 @@
  * Framework-free so it is unit-tested; the components feed it from the player store.
  */
 
+import { pathLeaf } from '@/lib/paths';
 import { toBookPosition } from '@/playback/book-queue';
 
 /** The slice of the current chapter this needs (`Chapter` from the playback types). */
@@ -48,6 +49,23 @@ export function currentSegment({
     length,
     elapsed: Math.max(0, Math.min(length, bookPosition - start)),
   };
+}
+
+/** How far short of the end of the book a scrub lands at the latest, seconds. */
+export const SCRUB_END_GUARD_S = 30;
+
+/**
+ * Where a scrub to `bookPosition` (a tap, a drag's release or a key on the whole-book
+ * timeline or a chapter scrubber) lands in a book `total` long: never on the very end.
+ * A seek to the end is the book's natural end: it saves as finished, the end-of-book flow
+ * clears what is playing (and with it the Undo chip) and the next play starts over at 0,
+ * so a drag released past the right edge would lose the place for good. Landing 30 s
+ * short keeps the jump undoable (the Undo chip lives 10 s, which 30 s of audio covers even
+ * at 2x), and a book only finishes by playing out or by Mark as finished. Unchanged when
+ * the length is unknown.
+ */
+export function scrubTarget(bookPosition: number, total: number): number {
+  return total > 0 ? Math.min(bookPosition, Math.max(0, total - SCRUB_END_GUARD_S)) : bookPosition;
 }
 
 /** The whole-book offsets previous/next step between: chapters, else file boundaries. */
@@ -104,4 +122,10 @@ export function stepSegment(state: StepState, dir: 1 | -1): void {
   const target =
     dir === 1 ? nextSegmentStart(starts, bookPosition) : previousSegmentStart(starts, bookPosition);
   if (target !== undefined) void state.seekBook(target);
+}
+
+/** A file's name for a book without chapters: the leaf of the track's path (its id is
+ * `<library>:<path>`), else `fallback` (the book's title). */
+export function trackLabel(track: { id: string } | undefined, fallback: string): string {
+  return (track && pathLeaf(track.id.split(':').slice(1).join(':'))) || fallback;
 }

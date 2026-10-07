@@ -3,10 +3,12 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 const mockRemove = jest.fn();
+let mockControlsOverride: Record<string, unknown> = {};
 jest.mock('@/downloads/use-download-controls', () => ({
   useDownloadControls: () => ({
     connectionId: 'c',
     supported: true,
+    needsTranscode: false,
     status: 'downloaded',
     error: null,
     progress: 1,
@@ -14,6 +16,7 @@ jest.mock('@/downloads/use-download-controls', () => ({
     totalBytes: 52_428_800,
     start: jest.fn(),
     cancel: jest.fn(),
+    ...mockControlsOverride,
   }),
 }));
 // The confirm reads the room it frees from the registry and removes through the store.
@@ -30,7 +33,10 @@ import { DownloadControl } from './download-control';
 
 const book = { title: 'Blood Rites' } as Book;
 
-beforeEach(() => mockRemove.mockReset());
+beforeEach(() => {
+  mockRemove.mockReset();
+  mockControlsOverride = {};
+});
 
 describe('DownloadControl', () => {
   it.each([false, true])(
@@ -51,6 +57,18 @@ describe('DownloadControl', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
       expect(mockRemove).toHaveBeenCalledTimes(1);
       expect(mockRemove).toHaveBeenCalledWith('c', 1, 'b');
+    },
+  );
+
+  it.each([false, true])(
+    'says why when this browser plays the book transcoded (compact %s)',
+    async (compact) => {
+      mockControlsOverride = { supported: false, needsTranscode: true, status: undefined };
+      await mountWithPortal(
+        <DownloadControl libraryId={1} path="b" book={book} compact={compact} />,
+      );
+      const button = screen.getByRole('button', { name: "Can't download in this browser" });
+      expect(button).toBeDisabled();
     },
   );
 });

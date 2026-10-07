@@ -13,6 +13,7 @@ import {
   formatDurationFull,
   formatRelative,
   formatTimeOfDay,
+  formatWallClock,
 } from '@/lib/format';
 
 describe('formatCountdown', () => {
@@ -214,6 +215,28 @@ describe('formatTimeOfDay', () => {
       expect(formatTimeOfDay('22:00', 'fr')).toBe('22:00');
     } finally {
       intl.DateTimeFormat = original;
+    }
+  });
+});
+
+describe('formatWallClock', () => {
+  const spaces = (s: string) => s.replace(/\s/g, ' ');
+  it("reads a moment on the reader's clock", () => {
+    const at = new Date(2026, 9, 7, 22, 1);
+    expect(formatWallClock(at, 'de')).toBe('22:01');
+    expect(spaces(formatWallClock(at, 'en-US'))).toBe('10:01 PM');
+  });
+
+  it('follows the device zone when it changes under a long-lived app (travel)', () => {
+    const at = new Date(Date.UTC(2026, 9, 7, 20, 1));
+    const offset = jest.spyOn(Date.prototype, 'getTimezoneOffset');
+    try {
+      offset.mockReturnValue(-120); // UTC+2
+      expect(formatWallClock(at, 'de')).toBe('22:01');
+      offset.mockReturnValue(300); // flew to UTC-5: the cached formatter must not pin UTC+2
+      expect(formatWallClock(at, 'de')).toBe('15:01');
+    } finally {
+      offset.mockRestore();
     }
   });
 });

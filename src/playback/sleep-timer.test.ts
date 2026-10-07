@@ -24,6 +24,7 @@ const BOOK_A = () => book('author/book-a.m4b', { chapters: [], total: 0 });
 
 // Imported after the mock setup (the factory closes over the mock-prefixed vars).
 /* eslint-disable import/first */
+import { noteInteraction, resetInteractions } from '@/playback/last-interaction';
 import {
   ABANDON_AFTER_PAUSE_SECONDS,
   chapterSleepLabel,
@@ -113,6 +114,7 @@ describe('sleep timer', () => {
     jest.useFakeTimers();
     jest.setSystemTime(NOW);
     player.reset();
+    resetInteractions();
     setBook(BOOK_A());
     setPlayStateSilently('playing');
     useSleepTimer.getState().cancel();
@@ -362,6 +364,51 @@ describe('sleep timer', () => {
       expect(state.phase).toBe('running');
       expect(state.pauseAtPosition).toBe(1200); // the end of chapter 2
       expect(quietestVolume()).toBe(1); // nothing to restore, because nothing dipped
+    });
+
+    it('leaves the ending window while paused by hand, and re-enters it on resume', async () => {
+      setBook(chapteredBook());
+      setPosition(580); // 20s from the end of chapter 1: inside the window
+      useSleepTimer.getState().startUntilPosition(600, endOf('Chapter 1'));
+      expect(useSleepTimer.getState().phase).toBe('ending');
+
+      // Paused by the listener, 20 seconds short: nothing is about to stop, so no
+      // accelerometer and no grace card - on the pause itself, since the app may never
+      // tick again once the audio stops.
+      setPlayState('paused');
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(false);
+      // The tick must not put it straight back.
+      jest.advanceTimersByTime(5 * 60_000);
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(false);
+
+      // A shake there does nothing: it would retarget the next chapter without resuming.
+      useSleepTimer.getState().keepListening();
+      expect(mockToggle).not.toHaveBeenCalled();
+      expect(useSleepTimer.getState().pauseAtPosition).toBe(600);
+
+      // Resumed still 20s out: back in the window on the event, still aimed at chapter 1.
+      setPlayState('playing');
+      expect(useSleepTimer.getState().phase).toBe('ending');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(true);
+      setPosition(600);
+      jest.advanceTimersByTime(1_000);
+      await flush();
+      expect(mockPause).toHaveBeenCalledTimes(1);
+      expect(selectSleepPhase(useSleepTimer.getState())).toBe('grace');
+      expect(quietestVolume()).toBe(1);
+    });
+
+    it('armed inside the window while paused, waits for the resume to be extendable', () => {
+      setBook(chapteredBook());
+      setPosition(580);
+      setPlayState('paused');
+      useSleepTimer.getState().startUntilPosition(600, endOf('Chapter 1'));
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(false);
+      setPlayState('playing');
+      expect(useSleepTimer.getState().phase).toBe('ending');
     });
 
     it('opens the same post-pause grace, where a shake resumes and retargets', async () => {
@@ -1159,7 +1206,10 @@ describe('sleep timer', () => {
       await flush();
       jest.advanceTimersByTime(GRACE_SECONDS * 1000);
       expect(selectSleepPhase(useSleepTimer.getState())).toBe('idle');
-      expect(outcomes).toEqual([{ bookKey: BOOK_A_KEY, reason: 'expired' }]);
+      // Slept through: the one ending that says so (see 'falling asleep' below).
+      expect(outcomes).toEqual([
+        { bookKey: BOOK_A_KEY, reason: 'expired', fellAsleep: { stoppedAt: 0, touch: null } },
+      ]);
     });
 
     it('reports an expiry when it fires against a book that was not playing', async () => {
@@ -1199,6 +1249,158 @@ describe('sleep timer', () => {
       useSleepTimer.getState().startDuration(30);
       useSleepTimer.getState().cancel();
       expect(outcomes).toEqual([]);
+    });
+  });
+  // --- falling asleep ----------------------------------------------------------
+  //
+  // The "Fell asleep" bookmark and the "You drifted off" prompt hang off ONE ending: the
+  // timer fired and paused a playing book, and its grace window then closed with the
+  // listener showing no sign of being awake. Every other way out must not claim it.
+
+  describe('falling asleep', () => {
+    const BOOK_A_KEY = 'srv-1:1:author/book-a.m4b';
+    let outcomes: SleepOutcome[];
+    let unsubscribe: () => void;
+
+    beforeEach(() => {
+      outcomes = [];
+      unsubscribe = onSleepTimerEnded((outcome) => outcomes.push(outcome));
+    });
+
+    afterEach(() => unsubscribe());
+
+    /** Arm a one-minute timer at `position`, let it fire, and land the pause. */
+    async function fireAt(position: number) {
+      setPosition(position);
+      useSleepTimer.getState().startDuration(1);
+      jest.advanceTimersByTime(60_000);
+      await flush();
+      expect(selectSleepPhase(useSleepTimer.getState())).toBe('grace');
+    }
+
+    it('reports where it stopped and the last touch before the timer fired', async () => {
+      setPosition(100);
+      noteInteraction(); // the listener pressed something at 100s
+      const touchedAt = Date.now();
+      jest.advanceTimersByTime(5_000);
+      await fireAt(400);
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      expect(outcomes).toEqual([
+        {
+          bookKey: BOOK_A_KEY,
+          reason: 'expired',
+          fellAsleep: { stoppedAt: 400, touch: { at: touchedAt, position: 100 } },
+        },
+      ]);
+    });
+
+    it('is not a drift-off when the listener resumed by hand during the grace', async () => {
+      await fireAt(400);
+      jest.advanceTimersByTime(5_000); // well past the pause settling
+      setPlayState('playing');
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      expect(selectSleepPhase(useSleepTimer.getState())).toBe('idle');
+      expect(outcomes).toEqual([{ bookKey: BOOK_A_KEY, reason: 'expired' }]);
+    });
+
+    it('ignores the engine still reporting playing while the pause lands', async () => {
+      await fireAt(400);
+      // A progress tick that left the engine before the pause did.
+      setPlayState('playing');
+      setPlayState('paused');
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      expect(outcomes[0].fellAsleep).toEqual({ stoppedAt: 400, touch: null });
+    });
+
+    it('is not a drift-off when the listener scrubbed during the grace', async () => {
+      await fireAt(400);
+      setPosition(385); // back 15 seconds, still paused
+      setPlayState('paused');
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      expect(outcomes).toEqual([{ bookKey: BOOK_A_KEY, reason: 'expired' }]);
+    });
+
+    it('is not a drift-off when the listener cancels inside the grace', async () => {
+      await fireAt(400);
+      useSleepTimer.getState().cancel();
+      expect(outcomes).toEqual([{ bookKey: BOOK_A_KEY, reason: 'cancelled' }]);
+    });
+
+    it('ends nothing when the listener keeps listening', async () => {
+      await fireAt(400);
+      useSleepTimer.getState().keepListening();
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(outcomes).toEqual([]);
+    });
+
+    it('is not a drift-off when the timer fired against a paused book', async () => {
+      setPosition(100);
+      useSleepTimer.getState().startUntilPosition(1800, endOf('Chapter 3'));
+      setPlayState('paused');
+      setPosition(1800);
+      jest.advanceTimersByTime(1_000);
+      await flush();
+      expect(outcomes).toEqual([{ bookKey: BOOK_A_KEY, reason: 'expired' }]);
+    });
+
+    it('is a drift-off when the morning play is what wakes the app', async () => {
+      // iOS suspends the app once the timer has paused the audio: no tick closes the
+      // grace overnight. The listener pressing play the next morning is the first thing
+      // the timer hears - and it must read as the drift-off it was, not as a listener
+      // who resumed inside the window.
+      await fireAt(400);
+      suspendFor(9 * 3600_000);
+      setPlayState('playing');
+      expect(selectSleepPhase(useSleepTimer.getState())).toBe('idle');
+      expect(outcomes).toEqual([
+        { bookKey: BOOK_A_KEY, reason: 'expired', fellAsleep: { stoppedAt: 400, touch: null } },
+      ]);
+    });
+
+    it('records a keep-listening as a touch', async () => {
+      await fireAt(400);
+      useSleepTimer.getState().keepListening();
+      expect(useSleepTimer.getState().phase).toBe('running');
+      // The next fire reports the keep-listening as the last time they were awake.
+      setPosition(1000);
+      setPlayState('playing'); // the resume lands, which thaws the re-armed countdown
+      jest.advanceTimersByTime(60_000);
+      await flush();
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      expect(outcomes[0].fellAsleep?.touch?.position).toBe(400);
+    });
+  });
+
+  // --- several chapters ---------------------------------------------------------
+
+  describe('stopping after several chapters', () => {
+    it('re-arms ONE more chapter on keep listening, not the same number again', () => {
+      setBook(
+        book('author/book-a.m4b', {
+          chapters: [
+            chapter(0, 0, 600),
+            chapter(1, 600, 600),
+            chapter(2, 1200, 600),
+            chapter(3, 1800, 600),
+            chapter(4, 2400, 600),
+          ],
+          total: 3000,
+        }),
+      );
+      setPosition(100);
+      // "Or stop after 3 chapters": the end of chapter 3.
+      useSleepTimer.getState().startUntilPosition(1800, {
+        key: 'player.sleepTimer.afterChapters',
+        params: { count: 3 },
+      });
+      setPosition(1780); // the last 20 seconds of the third chapter
+      jest.advanceTimersByTime(1_000);
+      expect(useSleepTimer.getState().phase).toBe('ending');
+
+      useSleepTimer.getState().keepListening();
+      const state = useSleepTimer.getState();
+      expect(state.pauseAtPosition).toBe(2400); // the end of chapter 4, not of chapter 6
+      expect(state.label).toEqual(endOf('Chapter 4'));
     });
   });
 });

@@ -10,7 +10,12 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 // state-transition logic (save-loop start/stop, persist-on-stop) directly.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
+/** The seek the store handed the engine for the OS media controls (`onRemoteSeek`). */
+let remoteSeek: ((positionInTrack: number) => void) | null = null;
 const mockSvc = {
+  onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
+    remoteSeek = handler;
+  }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
   load: jest.fn(async () => {}),
@@ -46,17 +51,28 @@ const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
 const mockLoadInitialProgress = jest.fn(async (..._args: unknown[]): Promise<ResumeLookup> => ({
   kind: 'empty',
 }));
+const mockReadMirror = jest.fn(async (..._args: unknown[]): Promise<unknown> => null);
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
+  readMirror: (...args: unknown[]) => mockReadMirror(...args),
 }));
 
 // Keep React Query out of the unit test.
+// `fetchQuery`/`getQueryData` answer the web transcode negotiation's `/server` read;
+// `cancelQueries` is the fail-fast read's first step (`fetchFailFast`).
+const mockFetchQuery = jest.fn(async (..._a: unknown[]): Promise<unknown> => ({}));
 jest.mock('@/api/provider', () => ({
-  queryClient: { invalidateQueries: jest.fn(), setQueryData: jest.fn() },
+  queryClient: {
+    invalidateQueries: jest.fn(),
+    setQueryData: jest.fn(),
+    fetchQuery: (...a: unknown[]) => mockFetchQuery(...a),
+    getQueryData: jest.fn(() => undefined),
+    cancelQueries: jest.fn(async () => {}),
+  },
 }));
 
 // playBook fires an auto-download of the started book through @/lib/network's policy gate;
@@ -72,7 +88,8 @@ jest.mock('@/lib/network', () => ({
 // downloaded-book case). clearAllMocks() keeps this default implementation.
 const fakeClient = {
   coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
-  streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
+  streamUrl: (lib: number, path: string, _download?: boolean, opts?: { transcode?: boolean }) =>
+    `stream:${lib}:${path}${opts?.transcode ? ':transcode' : ''}`,
   authHeaders: () => ({ Authorization: 'Bearer x' }),
   addHistory: jest.fn(async () => {}),
 };
@@ -83,13 +100,17 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 
 /* eslint-disable import/first */
+import { Platform } from 'react-native';
+
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import { useDownloads } from '@/downloads/store';
+import { engine as downloadEngine } from '@/downloads/engine';
+import { isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { useSettings } from '@/stores/settings';
 
 import { flushConnection } from './progress-sync';
+import { AutoplayBlockedError } from './types';
 import {
   selectBookKey,
   selectIsPlaying,
@@ -161,6 +182,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
   mockCanAutoDownload.mockResolvedValue(true);
+  mockReadMirror.mockResolvedValue(null);
   // Default the start-of-book auto-download OFF so the many startBook() calls below don't
   // fire the real downloads pipeline; the dedicated describe opts each of its cases in.
   useSettings.setState({ autoDownloadNext: 'never' });
@@ -495,6 +517,59 @@ describe('stall watchdog promotes a stuck loading to error', () => {
 
 // --- clampRate (reached via setRate) ---------------------------------------
 
+describe('a browser autoplay refusal reads as a plain pause', () => {
+  const blockNextPlay = () =>
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new AutoplayBlockedError());
+
+  async function expectSettledPaused() {
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+    // The engine keeps re-reporting its parked element: still a pause, never a spinner.
+    pushSnapshot(snap('loading', 0));
+    await Promise.resolve();
+    // Well past the stall grace: the watchdog was disarmed, so no synthesized error.
+    jest.advanceTimersByTime(10_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+  }
+
+  it('playBook (a cold deep link) resolves with the book loaded and paused', async () => {
+    blockNextPlay();
+    await expect(startBook(makeBook(), 0)).resolves.toBeUndefined();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('A/Book.m4b');
+    await expectSettledPaused();
+  });
+
+  it('toggle settles to paused too', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 10));
+    await Promise.resolve();
+    pushSnapshot(snap('paused', 10));
+    await Promise.resolve();
+    blockNextPlay();
+    await expect(usePlayer.getState().toggle()).resolves.toBeUndefined();
+    await expectSettledPaused();
+  });
+
+  it('retry settles to paused too', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 42));
+    await Promise.resolve();
+    pushSnapshot(snap('error', 42));
+    await Promise.resolve();
+    blockNextPlay();
+    await expect(usePlayer.getState().retry()).resolves.toBeUndefined();
+    await expectSettledPaused();
+  });
+
+  it('any other play() failure still propagates and the watchdog still errors', async () => {
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new Error('decode failed'));
+    await expect(startBook(makeBook(), 0)).rejects.toThrow('decode failed');
+    jest.advanceTimersByTime(3_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+  });
+});
+
 describe('setRate clamps the playback rate to [0.5, 2]', () => {
   it('caps above 2x', async () => {
     await usePlayer.getState().setRate(5);
@@ -687,6 +762,77 @@ describe('resume never restarts an in-progress book from 0', () => {
   });
 });
 
+describe('the speed a book starts at', () => {
+  const mirror = (playback_speed: number, updated_at: string) => ({
+    connectionId: 'c1',
+    libraryId: 2,
+    path: 'A/Book.m4b',
+    position: 40,
+    duration: 100,
+    finished: false,
+    playback_speed,
+    device_id: 'dev-1',
+    updated_at,
+  });
+
+  it("at an explicit place, is the book's saved speed, not the default", async () => {
+    useSettings.setState({ defaultRate: 1 });
+    mockReadMirror.mockResolvedValueOnce(mirror(1.4, '2026-10-01T00:00:00Z'));
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30); // a chapter tap
+    expect(usePlayer.getState().rate).toBe(1.4);
+    expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1.4]]);
+    // The resume lookup (a network round trip) is still skipped.
+    expect(mockLoadInitialProgress).not.toHaveBeenCalled();
+  });
+
+  it('takes the newer of the cached server progress and the local mirror', async () => {
+    mockReadMirror.mockResolvedValueOnce(mirror(1.4, '2026-10-01T00:00:00Z'));
+    (queryClient.getQueryData as jest.Mock).mockReturnValueOnce(
+      makeProgress({ playback_speed: 1.8, updated_at: '2026-10-02T00:00:00Z' }),
+    );
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30);
+    expect(usePlayer.getState().rate).toBe(1.8);
+  });
+
+  it('is the asked-for speed, set before the engine starts, over a saved one', async () => {
+    mockReadMirror.mockResolvedValue(mirror(1.4, '2026-10-01T00:00:00Z'));
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 30, playback_speed: 1.4 }),
+    });
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30, undefined, 1.25);
+    expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1.25]]);
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, undefined, undefined, 1.25);
+    expect(usePlayer.getState().rate).toBe(1.25);
+  });
+});
+
+describe('a seek from the OS media controls (web Media Session)', () => {
+  it('lowers the resume floor and saves, like a seek in the app', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 300, duration: 1000 }),
+    });
+    await usePlayer.getState().playBook('c1', 2, makeBook({ duration: 1000 }), undefined);
+    pushSnapshot(snap('playing', 300, { duration: 1000 }));
+    // Both engines report the new position as soon as they seek.
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(async (p: number) =>
+      pushSnapshot(snap('playing', p, { duration: 1000 })),
+    );
+    mockSaveProgress.mockClear();
+
+    // The lock screen's scrubber, dragged back from 300 to 20.
+    expect(remoteSeek).not.toBeNull();
+    remoteSeek!(20);
+    await flushMicrotasks();
+    expect(mockSvc.seekTo).toHaveBeenCalledWith(20);
+    pushSnapshot(snap('paused', 20, { duration: 1000 }));
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalled();
+    expect(mockSaveProgress.mock.calls.at(-1)![1]).toMatchObject({ position: 20 });
+  });
+});
+
 describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
   it('stops playback when the playing book came from that connection', async () => {
     await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0);
@@ -844,6 +990,67 @@ describe('plays a downloaded book whose connection is gone', () => {
   });
 });
 
+// --- web transcode negotiation (playBook decides; retry reuses the queue) ---------
+
+describe('web transcode negotiation', () => {
+  const prevOS = Platform.OS;
+  const undecodable = () => makeBook({ direct_playable: false, codec: 'ac3' });
+  const loadedTracks = () =>
+    (mockSvc.load as jest.Mock).mock.calls[0][0] as { url: string; transcoded?: boolean }[];
+
+  beforeEach(() => {
+    Platform.OS = 'web';
+    mockFetchQuery.mockResolvedValue({ capabilities: { transcode: true } });
+    (mockSvc.load as jest.Mock).mockClear();
+  });
+  afterEach(() => {
+    Platform.OS = prevOS;
+  });
+
+  it('streams an undecodable book transcoded on web when its server can', async () => {
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0]).toMatchObject({
+      url: 'stream:2:A/Book.m4b:transcode',
+      transcoded: true,
+    });
+  });
+
+  it('streams directly when the server has no transcoder, or its /server read fails', async () => {
+    mockFetchQuery.mockResolvedValueOnce({ capabilities: { transcode: false } });
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+    expect(loadedTracks()[0].transcoded).toBeUndefined();
+
+    (mockSvc.load as jest.Mock).mockClear();
+    mockFetchQuery.mockRejectedValueOnce(new Error('offline'));
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+  });
+
+  it('never asks for a direct-playable book, or off web', async () => {
+    await startBook(makeBook({ direct_playable: true }), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+    Platform.OS = 'ios';
+    (mockSvc.load as jest.Mock).mockClear();
+    await startBook(undecodable(), 0);
+    expect(loadedTracks()[0].url).toBe('stream:2:A/Book.m4b');
+    expect(mockFetchQuery).not.toHaveBeenCalled();
+  });
+
+  it('retry reloads the same transcoded tracks at the track-absolute position', async () => {
+    await startBook(undecodable(), 0);
+    pushSnapshot(snap('playing', 42));
+    await Promise.resolve();
+    pushSnapshot(snap('error', 42));
+    await Promise.resolve();
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    expect(loadedTracks()[0].transcoded).toBe(true);
+    // The engine re-requests at this position (`&t=42`, see service.web.test.ts).
+    expect((mockSvc.load as jest.Mock).mock.calls[0][2]).toBe(42);
+  });
+});
+
 // --- finishBook (mark the current book finished) -----------------------------
 
 describe('finishBook', () => {
@@ -945,20 +1152,33 @@ describe('finishBook', () => {
 // queued. The player then hot-swaps to the local copy when the download completes.
 
 describe('auto-download on start', () => {
-  it('downloads the started book when the mode allows it and it is not already downloaded', async () => {
+  const GB = 1024 ** 3;
+  // Plenty of room unless a case says otherwise (the engine's own answer depends on the
+  // test environment's file-system mock).
+  let estimateSpy: jest.SpyInstance;
+  beforeEach(() => {
+    estimateSpy = jest
+      .spyOn(downloadEngine, 'storageEstimate')
+      .mockResolvedValue({ scope: 'device', capacity: 64 * GB, free: 40 * GB });
+  });
+  afterEach(() => estimateSpy.mockRestore());
+
+  // The origin is the regression test for the bug where it asked as the listener (the
+  // default origin), which lifts a decline mark as if the listener had chosen it.
+  it('downloads the started book as an automatic download when the mode allows it', async () => {
     useSettings.setState({ autoDownloadNext: 'wifi' });
     mockCanAutoDownload.mockResolvedValue(true);
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
-    const book = makeBook();
+    // A path no earlier test removed (the session decline mark is module state).
+    const book = makeBook({ rel_path: 'A/Fresh.m4b' });
     await startBook(book, 0);
-    await Promise.resolve(); // let the fire-and-forget canAutoDownload() resolve
-    await Promise.resolve();
+    await flushMicrotasks(); // let the fire-and-forget network and room checks resolve
 
     expect(mockCanAutoDownload).toHaveBeenCalledWith('wifi');
-    expect(downloadSpy).toHaveBeenCalledWith('c1', 2, book, undefined);
+    expect(downloadSpy).toHaveBeenCalledWith('c1', 2, book, undefined, 'auto');
     downloadSpy.mockRestore();
   });
 
@@ -966,7 +1186,7 @@ describe('auto-download on start', () => {
     useSettings.setState({ autoDownloadNext: 'never' });
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     await startBook(makeBook(), 0);
     await Promise.resolve();
@@ -1001,7 +1221,7 @@ describe('auto-download on start', () => {
     useDownloads.setState({ entries: { [`c1:2:${book.rel_path}`]: entry } });
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     await startBook(book, 0);
     await Promise.resolve();
@@ -1009,6 +1229,65 @@ describe('auto-download on start', () => {
 
     expect(downloadSpy).not.toHaveBeenCalled();
     downloadSpy.mockRestore();
+  });
+
+  // Phase 3 (decision 7: each store change has its own regression test). The rules live
+  // in the downloads store's `download()` (automatic origins); these prove the book you
+  // start goes through them, against the real downloads store.
+  describe('respects the session decline mark and the keep-ahead reserve', () => {
+    let fileSpy: jest.SpyInstance;
+    beforeEach(() => {
+      useSettings.setState({ autoDownloadNext: 'always' });
+      // The queue may run; no file is fetched.
+      fileSpy = jest
+        .spyOn(downloadEngine, 'downloadFile')
+        .mockRejectedValue(new Error('offline in tests'));
+    });
+    afterEach(() => fileSpy.mockRestore());
+
+    const entryOf = (book: Book) => useDownloads.getState().entries[`c1:2:${book.rel_path}`];
+    async function startAndSettle(book: Book) {
+      await startBook(book, 0);
+      await flushMicrotasks(12);
+    }
+
+    it('skips a book the listener removed this session, and leaves the mark in place', async () => {
+      const book = makeBook();
+      await useDownloads.getState().remove('c1', 2, book.rel_path);
+      expect(isDeclined('c1', 2, book.rel_path)).toBe(true);
+      await startAndSettle(book);
+      // Declined: no download, and the mark stays (an `auto` ask never lifts it).
+      expect(entryOf(book)).toBeUndefined();
+      expect(isDeclined('c1', 2, book.rel_path)).toBe(true);
+    });
+
+    it('skips a book whose download the listener cancelled this session', async () => {
+      const book = makeBook({ rel_path: 'A/Cancelled.m4b' });
+      useDownloads.getState().cancel('c1', 2, book.rel_path);
+      await startAndSettle(book);
+      expect(entryOf(book)).toBeUndefined();
+    });
+
+    it('skips a book that would leave less than the reserve free', async () => {
+      // 64 GB disk: the reserve is 6.4 GB; 8 GB free leaves 1.6 GB of room.
+      estimateSpy.mockResolvedValue({ scope: 'device', capacity: 64 * GB, free: 8 * GB });
+      const book = makeBook({ rel_path: 'A/Big.m4b', size: 2 * GB });
+      await startAndSettle(book);
+      expect(entryOf(book)).toBeUndefined();
+
+      // The same book fits once there is room for it.
+      estimateSpy.mockResolvedValue({ scope: 'device', capacity: 64 * GB, free: 9 * GB });
+      await usePlayer.getState().stop();
+      await startAndSettle(book);
+      expect(entryOf(book)?.origin).toBe('auto');
+    });
+
+    it('downloads when the room is not knowable, as keep-ahead starts one', async () => {
+      estimateSpy.mockResolvedValue(null);
+      const book = makeBook({ rel_path: 'A/Any.m4b', size: 50 * GB });
+      await startAndSettle(book);
+      expect(entryOf(book)?.origin).toBe('auto');
+    });
   });
 });
 
@@ -1120,5 +1399,46 @@ describe('selectBookKey', () => {
     const onC1 = selectBookKey(usePlayer.getState());
     await startBook(makeBook(), 0, 'c2');
     expect(selectBookKey(usePlayer.getState())).not.toBe(onC1);
+  });
+});
+
+// --- a new book's place is unknown until its load lands --------------------
+
+describe('loadingBook', () => {
+  it("names a new book until its engine load lands, while the snapshot still holds the old book's place", async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 90));
+    expect(usePlayer.getState().loadingBook).toBeNull();
+
+    // The native engine answers the new queue only once its load resolves.
+    let land: () => void = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const started = usePlayer
+      .getState()
+      .playBook('c1', 2, makeBook({ rel_path: 'A/Other.m4b' }), undefined, 0);
+    await flushMicrotasks(20);
+    const s = usePlayer.getState();
+    expect(selectBookKey(s)).toBe('c1:2:A/Other.m4b');
+    expect(s.snapshot.position).toBe(90); // the OLD book's place
+    expect(s.loadingBook).toBe('c1:2:A/Other.m4b');
+
+    land();
+    await started;
+    expect(usePlayer.getState().loadingBook).toBeNull();
+  });
+
+  it('stays null when the same book is started again (its place is still its own)', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    let land: () => void = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const started = usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 40);
+    await flushMicrotasks(20);
+    expect(usePlayer.getState().loadingBook).toBeNull();
+    land();
+    await started;
   });
 });

@@ -8,11 +8,12 @@ import { FloatingMiniPlayer } from '@/components/player/mini-player';
 
 import { AccessoryPlayer } from '@/components/shell/accessory-player';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
+import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { TABS } from '@/components/shell/destinations';
 import { ShellFrame } from '@/components/shell/shell-frame';
+import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
-import { UpNextSheet } from '@/components/upnext/up-next-sheet';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
@@ -36,6 +37,7 @@ function NativeShell() {
   const themed = useThemeColors();
   const wide = useLayout() !== 'phone';
   const loaded = usePlayer((s) => s.nowPlaying != null);
+  const top = useIsTopShell();
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
   // it (on iOS 26 a missing theme shows default-white artifacts in tab transitions).
@@ -56,7 +58,7 @@ function NativeShell() {
 
   return (
     <ThemeProvider value={navTheme}>
-      {/* Up next's tablet/phone sheet renders in place, so it sits over the whole shell. */}
+      {/* The player's overlays (its sheets, Up next's) render in place, over the whole shell. */}
       <View style={{ flex: 1 }}>
         <ShellFrame
           // Absolutely positioned in the frame, which spans the window: its bottom offset is
@@ -91,7 +93,8 @@ function NativeShell() {
             ) : null}
           </NativeTabs>
         </ShellFrame>
-        <UpNextSheet />
+        {/* In the top shell only, should a second one ever be stacked over this one. */}
+        {top ? <ShellPlayerOverlays /> : null}
       </View>
     </ThemeProvider>
   );

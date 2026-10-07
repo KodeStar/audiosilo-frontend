@@ -1,9 +1,10 @@
-import { chaptersQuery, itemQuery } from '@/api/hooks';
-import { queryClient, useApiRegistry } from '@/api/provider';
 import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
+
+import { startBookInPlace } from './start-book';
 
 /** A book to start: on which connection, library and path. */
 export type PlayTarget = { connectionId: string; libraryId: number; path: string };
@@ -20,16 +21,17 @@ export type PlayOptions = {
 /**
  * THE way a browse surface starts a book (Home, the Library, the series page, Up next):
  * - a phone opens the full player (which resumes from the saved place);
- * - a tablet or desktop plays it in place under the docked player bar, once its
- *   chapters are in (the player never starts before them), through the book's own
- *   connection; a book already loaded just plays on (or toggles, with `toggle`).
+ * - a tablet or desktop plays it in place under the docked player bar
+ *   (`startBookInPlace`: once its chapters are in, through the book's own connection);
+ *   a book already loaded just plays on (or toggles, with `toggle`);
+ * - with the full player already on top (Up next's sheet over it), every layout starts
+ *   in place like a tablet: the open player shows the new book.
  * Resolves once the book is on its way; rejects when it couldn't be fetched, so the
  * caller can say so.
  */
 export function usePlayBook() {
   const phone = useLayout() === 'phone';
   const { openBook, openPlayer } = useOpen();
-  const { clients } = useApiRegistry();
   return async (target: PlayTarget, opts: PlayOptions = {}) => {
     const { connectionId, libraryId, path } = target;
     const store = usePlayer.getState();
@@ -38,7 +40,14 @@ export function usePlayBook() {
       await store.toggle();
       return;
     }
-    if (phone) {
+    // Pushing the player over the open one would stack a second full player: minimised
+    // twice, and when that book ends the credits replace only the top one, so closing
+    // them lands on the lower player with nothing loaded (a bare spinner with no close
+    // button, which an iOS full-screen modal can't be swiped away from).
+    // Read at the press, not subscribed: every Library row holds this hook, and a
+    // subscription re-rendered them all on every navigation.
+    const playerOnTop = topRootRoute(currentNavState()) === 'player';
+    if (phone && !playerOnTop) {
       if (opts.viaBookPage) openBook(connectionId, libraryId, path);
       openPlayer(connectionId, libraryId, path);
       return;
@@ -47,19 +56,6 @@ export function usePlayBook() {
       if (!selectIsTransportLive(store)) await store.toggle();
       return;
     }
-    const api = clients.get(connectionId);
-    if (!api) return;
-    // Through the cache, so a book whose page is open starts without asking again.
-    const [book, chapters] = await Promise.all([
-      queryClient.fetchQuery({
-        ...itemQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-      queryClient.fetchQuery({
-        ...chaptersQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-    ]);
-    await usePlayer.getState().playBook(connectionId, libraryId, book, chapters);
+    await startBookInPlace(target);
   };
 }
