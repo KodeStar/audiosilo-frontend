@@ -19,6 +19,7 @@ import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { formatCount, formatSpeed } from '@/lib/format';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
+import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
 import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
 import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -366,10 +367,22 @@ export function PlayerErrorLine() {
   );
 }
 
-/** Children laid out as the main column of the player (centred, capped). */
-export function PlayerColumn({ children, maxWidth }: { children: ReactNode; maxWidth: number }) {
+/** Children laid out as the main column of the player (centred, capped); `fill` grows it
+ * to the height it is given (a phone's column, whose cover takes what is left). */
+export function PlayerColumn({
+  children,
+  maxWidth,
+  fill = false,
+}: {
+  children: ReactNode;
+  maxWidth: number;
+  fill?: boolean;
+}) {
   return (
-    <View className="w-full items-center gap-4 self-center" style={{ maxWidth }}>
+    <View
+      className={cn('w-full items-center gap-4 self-center', fill && 'flex-1')}
+      style={{ maxWidth }}
+    >
       {children}
     </View>
   );

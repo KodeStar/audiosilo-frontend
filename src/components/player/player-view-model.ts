@@ -25,27 +25,20 @@ export function playerCoverSize(layout: LayoutClass, width: number, height: numb
 
 /** The smallest cover a phone shrinks to; below it the player scrolls instead. */
 export const PHONE_COVER_MIN = 120;
-/** What sits around the cover in a phone's column: its own vertical padding, the
- * column's gap and the scroll content's top padding. */
-const PHONE_COVER_CHROME = 16 + 16 + 4;
+/** The cover's breathing room in its slot, above and below together. */
+export const PHONE_COVER_ROOM = 16;
 
 /**
- * A phone's cover edge: as wide as the width allows (`playerCoverSize`), but no taller
- * than the MEASURED scroll viewport leaves once everything under the cover (`rest`, which
- * does not depend on the cover) and the bottom padding are placed, so the whole player
- * fits a typical phone without scrolling. Never under `PHONE_COVER_MIN`. Before both
- * heights are measured (0), the width alone decides.
+ * A phone's cover edge in its slot: the phone's column is a flex column whose cover slot
+ * takes whatever height the rest leaves (`slotHeight`, measured; never under
+ * `PHONE_COVER_MIN` plus its room, below which the player scrolls), so the cover is as
+ * wide as the width allows (`playerCoverSize`) but no taller than its slot. 0 until the
+ * slot has been measured.
  */
-export function phoneCoverSize(
-  width: number,
-  viewport: number,
-  rest: number,
-  bottomPad: number,
-): number {
+export function phoneCoverSize(width: number, slotHeight: number): number {
+  if (!(slotHeight > 0)) return 0;
   const byWidth = playerCoverSize('phone', width, 0);
-  if (viewport <= 0 || rest <= 0) return byWidth;
-  const fit = Math.floor(viewport - rest - bottomPad - PHONE_COVER_CHROME);
-  return Math.max(PHONE_COVER_MIN, Math.min(byWidth, fit));
+  return Math.max(PHONE_COVER_MIN, Math.min(byWidth, Math.floor(slotHeight - PHONE_COVER_ROOM)));
 }
 
 /** The line under "Playing from <server>": the book's place in its series, else its

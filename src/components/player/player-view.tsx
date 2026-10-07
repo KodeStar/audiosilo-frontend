@@ -41,6 +41,8 @@ import { PlayerSheetHost } from './player-sheet-host';
 import { usePlayerSheets } from './player-sheets';
 import {
   COMPANION_WIDTH,
+  PHONE_COVER_MIN,
+  PHONE_COVER_ROOM,
   phoneCoverSize,
   playerCoverSize,
   playerLayout,
@@ -157,10 +159,10 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const [timelineTip, setTimelineTip] = useState(false);
   // The playing book's bookmarks and notes, once for both scrubbers.
   const pins = usePlayingPins();
-  // A phone's cover takes what the rest leaves of the MEASURED scroll viewport, so the
-  // player fits a phone without scrolling (the rest does not depend on the cover).
-  const [viewportHeight, setViewportHeight] = useState(0);
-  const [restHeight, setRestHeight] = useState(0);
+  // A phone's column is a flex column filling the viewport: the cover's slot takes what
+  // the rest leaves (measured), so the player fits a phone without scrolling; the column
+  // scrolls only once the slot is at its minimum.
+  const [coverSlot, setCoverSlot] = useState(0);
 
   // Entrance: the cover scales up and fades in, the titles and the controls rise after
   // it, once per open (the view stays mounted as chapters change). Reduced motion
@@ -197,21 +199,28 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const onChapters = () => usePlayerSheets.getState().openSheet('chapters');
   const w = width || windowWidth;
   const bottomPad = insets.bottom + (phone ? 12 : 24);
-  const coverSize = phone
-    ? phoneCoverSize(w, viewportHeight, restHeight, bottomPad)
-    : playerCoverSize(layout, w, height);
+  const coverSize = phone ? phoneCoverSize(w, coverSlot) : playerCoverSize(layout, w, height);
   const wash = playerWash(book?.cover_color, themed.mutedForeground, themed.brand);
 
   const main = (
-    <PlayerColumn maxWidth={desktop ? 640 : 560}>
-      <Animated.View style={coverStyle} className="py-2">
-        <BreathingCover size={coverSize} coverVersion={book?.cover_version} />
-      </Animated.View>
-      <Animated.View
-        style={restStyle}
-        className="w-full items-center gap-3"
-        onLayout={phone ? (e) => setRestHeight(e.nativeEvent.layout.height) : undefined}
-      >
+    <PlayerColumn maxWidth={desktop ? 640 : 560} fill={phone}>
+      {phone ? (
+        <Animated.View
+          testID="player-cover-slot"
+          style={[coverStyle, { minHeight: PHONE_COVER_MIN + PHONE_COVER_ROOM }]}
+          className="w-full flex-1 items-center justify-center"
+          onLayout={(e) => setCoverSlot(e.nativeEvent.layout.height)}
+        >
+          {coverSize > 0 ? (
+            <BreathingCover size={coverSize} coverVersion={book?.cover_version} />
+          ) : null}
+        </Animated.View>
+      ) : (
+        <Animated.View style={coverStyle} className="py-2">
+          <BreathingCover size={coverSize} coverVersion={book?.cover_version} />
+        </Animated.View>
+      )}
+      <Animated.View style={restStyle} className="w-full items-center gap-3">
         <PlayerTitles phone={phone} onChapters={onChapters} />
         {/* The sleep timer's last seconds take the status line's place: in the flow, so
             the card never covers the transport or the actions. */}
@@ -270,9 +279,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
       ) : (
         <ScrollView
           className="flex-1"
-          contentContainerClassName={phone ? 'px-5 pt-1' : 'px-12 pt-2'}
+          contentContainerClassName={phone ? 'grow px-5 pt-1' : 'px-12 pt-2'}
           contentContainerStyle={{ paddingBottom: bottomPad }}
-          onLayout={phone ? (e) => setViewportHeight(e.nativeEvent.layout.height) : undefined}
         >
           {main}
           {!phone ? (
