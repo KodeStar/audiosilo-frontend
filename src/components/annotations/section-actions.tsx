@@ -1,7 +1,7 @@
-import type { Href } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { journalHref, type JournalTab } from '@/components/journal/journal-model';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { Button } from '@/components/ui/button';
@@ -12,14 +12,6 @@ import { selectBookKey, usePlayer } from '@/playback/store';
 
 import type { AnnotationTarget } from './editor-model';
 import { usePlaceIn } from './use-book-place';
-
-/** The Journal's tabs a link can open (`/journal?tab=`, the Journal route's contract). */
-export type JournalTab = 'diary' | 'bookmarks' | 'notes';
-
-/** The Journal on `tab`. */
-export function journalHref(tab: JournalTab): Href {
-  return { pathname: '/journal', params: { tab } } as unknown as Href;
-}
 
 /** "See all in your journal": the listener's bookmarks or notes across every book. From
  * over the full player it lands in the shell underneath (`pushInShell`). */

@@ -15,6 +15,7 @@ import {
 
 import { type MergedBook, useAllProgressAll, useSourceLabeller } from '@/api/hooks';
 import { useApi, useApis } from '@/api/provider';
+import { journalHref } from '@/components/journal/journal-model';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { Highlighted } from '@/components/search/highlighted';
 import { NameToken } from '@/components/search/name-token';
@@ -46,6 +47,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { TOP_BAR_TABS, useTabPress } from './destinations';
 import {
   buildActionItems,
+  buildGoToItems,
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
@@ -136,18 +138,18 @@ function useActionItems(): PaletteItem[] {
   ]);
 }
 
-/** Go to: the top bar's destinations (Downloads only where this browser can keep books). */
+/** Go to: the top bar's destinations (Downloads only where this browser can keep books),
+ * then the Journal (`buildGoToItems`). */
 function useGoToItems(): PaletteItem[] {
   const { t } = useTranslation();
   const { press } = useTabPress();
   return useMemo(
     () =>
-      TOP_BAR_TABS.map((d) => ({
-        id: `go:${d.name}`,
-        title: t(d.labelKey),
-        icon: d.icon,
-        run: () => press(d.name),
-      })),
+      buildGoToItems(
+        TOP_BAR_TABS.map((d) => ({ name: d.name, title: t(d.labelKey), icon: d.icon })),
+        { tab: press, journal: () => router.push(journalHref()) },
+        t,
+      ),
     [t, press],
   );
 }

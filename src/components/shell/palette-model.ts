@@ -130,6 +130,33 @@ export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction):
   return items;
 }
 
+/** A destination the Go to group offers (the top bar's, `TOP_BAR_TABS`). */
+export type GoToDestination<N extends string = string> = {
+  name: N;
+  title: string;
+  icon: IconName;
+};
+
+/**
+ * Go to: the top bar's destinations (already filtered to what this browser can do),
+ * then the Journal, a page of its own until the You destination arrives (Phase 5).
+ */
+export function buildGoToItems<N extends string>(
+  destinations: readonly GoToDestination<N>[],
+  run: { tab: (name: N) => void; journal: () => void },
+  t: TFunction,
+): PaletteItem[] {
+  return [
+    ...destinations.map((d) => ({
+      id: `go:${d.name}`,
+      title: d.title,
+      icon: d.icon,
+      run: () => run.tab(d.name),
+    })),
+    { id: 'go:journal', title: t('journal.title'), icon: 'history', run: run.journal },
+  ];
+}
+
 /** At most this many book results, and Continue listening rows on an empty query. */
 export const MAX_BOOKS = 8;
 export const MAX_CONTINUE = 4;

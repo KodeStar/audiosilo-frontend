@@ -71,6 +71,12 @@ describe('ProfileMenu', () => {
     expect(screen.getByText('Dark appearance')).toBeTruthy();
   });
 
+  it('opens the Journal', async () => {
+    await open();
+    await fireEvent.press(screen.getByText('Journal'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/journal');
+  });
+
   it("opens a server's account screen", async () => {
     await open();
     await fireEvent.press(screen.getByText("Maya's Shelf"));

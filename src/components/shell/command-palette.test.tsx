@@ -227,8 +227,9 @@ describe('CommandPalette', () => {
     expect(screen.getByText('Alice')).toBeTruthy();
     expect(screen.getByText('25% listened')).toBeTruthy();
     expect(screen.getByLabelText('Go to')).toBeTruthy();
-    // Six actions, one book in progress, three destinations.
-    expect(screen.getByText('10 results · Hearthside')).toBeTruthy();
+    expect(screen.getByText('Journal')).toBeTruthy();
+    // Six actions, one book in progress, three destinations and the Journal.
+    expect(screen.getByText('11 results · Hearthside')).toBeTruthy();
   });
 
   it('searches books, moves with the arrows and opens the active one with Enter', async () => {

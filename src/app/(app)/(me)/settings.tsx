@@ -9,6 +9,7 @@ import {
   useAutoDownloadModes,
 } from '@/components/downloads/rules-card';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { JournalEntryRow } from '@/components/journal/journal-entry';
 import { ShakeSensitivityControl } from '@/components/player/sleep-timer-button';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -174,6 +175,8 @@ export default function SettingsScreen() {
         contentContainerClassName="gap-6 p-4 lg:px-8"
         contentContainerStyle={{ paddingBottom }}
       >
+        <JournalEntryRow />
+
         <ConnectionsSection onRemove={connectionRemoval.onRemove} />
 
         <Section title={t('settings.appearance.label')}>

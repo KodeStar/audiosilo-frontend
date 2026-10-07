@@ -15,18 +15,18 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 const ACTION_REM = 2.25;
 
 /** A row's icon action (edit, delete), named for what it acts on ("Delete bookmark at
- * 17:26:50"), with a 44 pt touch on native. */
+ * 17:26:50"), with a 44 pt touch on native. Always a quiet muted glyph, delete too (as the
+ * prototype): a list must not be a column of red; the destructive colour belongs inside
+ * a confirmation, and a row's delete offers Undo instead. */
 export function RowAction({
   icon,
   label,
   onPress,
-  tone = 'muted',
   testID,
 }: {
   icon: IconName;
   label: string;
   onPress: () => void;
-  tone?: 'muted' | 'destructive';
   testID?: string;
 }) {
   const themed = useThemeColors();
@@ -39,11 +39,7 @@ export function RowAction({
       testID={testID}
       className={pillClass('ghost', 'h-9 w-9')}
     >
-      <Icon
-        name={icon}
-        size={15}
-        color={tone === 'destructive' ? themed.destructive : themed.mutedForeground}
-      />
+      <Icon name={icon} size={15} color={themed.mutedForeground} />
     </AnimatedPressable>
   );
 }
@@ -104,12 +100,34 @@ export function AnnotationRowFrame({
   );
 }
 
-/** A row's meta line: "Chapter · title · 3 days ago", whichever parts it has. */
-export function RowMeta({ parts }: { parts: (string | null | undefined)[] }) {
+/** A row's meta line: "Chapter · title · 3 days ago", whichever parts it has, and the
+ * server it is on (`server`, a list across servers only: the Diary's server flag look, a
+ * server glyph and the name in `info`). */
+export function RowMeta({
+  parts,
+  server,
+}: {
+  parts: (string | null | undefined)[];
+  server?: string;
+}) {
+  const themed = useThemeColors();
   const text = parts.filter((p): p is string => !!p).join(' · ');
-  return text ? (
-    <Text variant="caption" className="text-subtle-foreground" numberOfLines={1}>
-      {text}
-    </Text>
-  ) : null;
+  if (!text && !server) return null;
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-2 gap-y-0.5">
+      {text ? (
+        <Text variant="caption" className="shrink text-subtle-foreground" numberOfLines={1}>
+          {text}
+        </Text>
+      ) : null}
+      {server ? (
+        <View className="shrink flex-row items-center gap-1" testID="row-server">
+          <Icon name="server" size={11} color={themed.info} />
+          <Text variant="caption" className="text-info" numberOfLines={1}>
+            {server}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }

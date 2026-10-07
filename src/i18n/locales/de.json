@@ -1366,5 +1366,123 @@
     "pageError": "Diese Bücher konnten nicht geladen werden",
     "narratorUnsupported": "Dieser Server kann Bücher noch nicht nach Sprecher auflisten",
     "narratorUnsupportedHint": "Ein neuerer AudioSilo-Server kann es."
+  },
+  "journal": {
+    "title": "Journal",
+    "heading": "Alles, was du markiert hast",
+    "entryHint": "Dein Hörtagebuch, deine Lesezeichen und Notizen",
+    "tabs": {
+      "label": "Bereiche des Journals",
+      "diary": "Tagebuch",
+      "bookmarks": "Lesezeichen",
+      "notes": "Notizen"
+    },
+    "search": {
+      "placeholder": "Lesezeichen und Notizen durchsuchen",
+      "label": "Das Journal durchsuchen"
+    },
+    "minutes_one": "{{count}} Min.",
+    "minutes_other": "{{count}} Min.",
+    "openBook": "{{title}} öffnen",
+    "openLibrary": "Zur Bibliothek",
+    "jumpFailed": "{{title}} konnte nicht gestartet werden",
+    "diary": {
+      "today": "Heute",
+      "yesterday": "Gestern",
+      "when": "{{time}}, {{minutes}}",
+      "range": "{{from}} bis {{to}}",
+      "barLabel": "Hören über den Tag: {{spans}}",
+      "finished": "Buch beendet",
+      "empty": {
+        "title": "Noch nichts gehört",
+        "hint": "Jeder Tag, an dem du hörst, erscheint hier, mit den Büchern und Kapiteln, die du gehört hast."
+      },
+      "error": {
+        "title": "Dein Hörverlauf konnte nicht geladen werden",
+        "hint": "Es ist nichts verloren. Prüfe die Verbindung zu deinem Server und versuche es erneut."
+      },
+      "drift": {
+        "jumpBack_one": "Du bist gegen {{time}} eingeschlafen. {{count}} Minute zurückspringen?",
+        "jumpBack_other": "Du bist gegen {{time}} eingeschlafen. {{count}} Minuten zurückspringen?",
+        "jumpBackAction": "Zurückspringen",
+        "resume": "Der Sleep-Timer hat die Wiedergabe um {{time}} angehalten.",
+        "resumeAction": "Ab dem Einschlafen abspielen"
+      }
+    },
+    "bookmarks": {
+      "labels": "Labels",
+      "allLabels": "Alle Labels",
+      "noMatch": "Keine passenden Lesezeichen",
+      "error": "Deine Lesezeichen konnten nicht geladen werden",
+      "empty": {
+        "title": "Noch keine Lesezeichen",
+        "hint": "Setze beim Hören im Player eines. Hier sammeln sich die Lesezeichen aller Bücher."
+      },
+      "unsupported": {
+        "title": "Dieser Server kann noch nicht alle deine Lesezeichen auflisten",
+        "hint": "Die Seite jedes Buchs zeigt weiterhin seine Lesezeichen. Ein neuerer AudioSilo-Server listet sie hier alle auf."
+      }
+    },
+    "notes": {
+      "noMatch": "Keine passenden Notizen",
+      "error": "Deine Notizen konnten nicht geladen werden",
+      "empty": {
+        "title": "Noch keine Notizen",
+        "hint": "Schreib beim Hören im Player eine Notiz. Hier sammeln sich die Notizen aller Bücher."
+      },
+      "unsupported": {
+        "title": "Dieser Server kann noch nicht alle deine Notizen auflisten",
+        "hint": "Die Seite jedes Buchs zeigt weiterhin seine Notizen. Ein neuerer AudioSilo-Server listet sie hier alle auf."
+      }
+    },
+    "servers": {
+      "failed": {
+        "history": "{{server}} ist nicht erreichbar, daher fehlt sein Hörverlauf.",
+        "bookmarks": "{{server}} ist nicht erreichbar, daher fehlen seine Lesezeichen.",
+        "notes": "{{server}} ist nicht erreichbar, daher fehlen seine Notizen."
+      },
+      "unsupported": {
+        "bookmarks": "{{server}} kann seine Lesezeichen hier noch nicht auflisten. Du findest sie auf der Seite jedes Buchs.",
+        "notes": "{{server}} kann seine Notizen hier noch nicht auflisten. Du findest sie auf der Seite jedes Buchs."
+      }
+    },
+    "export": {
+      "label": "Exportieren",
+      "menu": "Das Journal exportieren",
+      "download": "Herunterladen",
+      "copyMarkdown": "Als Markdown kopieren",
+      "downloadMarkdown": "Markdown herunterladen",
+      "downloadCsv": "CSV herunterladen",
+      "shareMarkdown": "Als Markdown teilen",
+      "shareCsv": "Als CSV teilen",
+      "preparing_one": "{{n}} Eintrag wird gesammelt",
+      "preparing_other": "{{n}} Einträge werden gesammelt",
+      "copied": "Journal als Markdown kopiert",
+      "nothing": "Noch keine Lesezeichen oder Notizen zum Exportieren",
+      "failed": "Das Journal konnte nicht exportiert werden",
+      "failedServers": "{{servers}} konnte nicht einbezogen werden",
+      "truncated_one": "Nur der neueste {{max}} Eintrag einer Liste wurde exportiert",
+      "truncated_other": "Nur die neuesten {{max}} Einträge einer Liste wurden exportiert",
+      "dialogTitle": "Das Journal exportieren",
+      "exported": "Exportiert am {{date}}",
+      "bookmark": "Lesezeichen",
+      "note": "Notiz",
+      "columns": {
+        "server": "Server",
+        "kind": "Typ",
+        "book": "Buch",
+        "author": "Autor",
+        "position": "Position",
+        "chapter": "Kapitel",
+        "label": "Label",
+        "text": "Text",
+        "created": "Erstellt"
+      }
+    },
+    "history": {
+      "jump": "Springen",
+      "jumpLabel": "Zu {{time}} springen",
+      "span": "{{from}} bis {{to}}"
+    }
   }
 }
