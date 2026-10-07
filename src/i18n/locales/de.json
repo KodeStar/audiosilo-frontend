@@ -1009,7 +1009,11 @@
     "dock": {
       "label": "Player",
       "savedLocally": "Auf diesem Gerät gespeichert, wird synchronisiert",
-      "expand": "Player vergrößern"
+      "expand": "Player vergrößern",
+      "synced": "Synchronisiert",
+      "syncedNow": "Gerade synchronisiert",
+      "signInToSync": "Auf diesem Gerät gespeichert, zum Synchronisieren erneut anmelden",
+      "speed": "Wiedergabegeschwindigkeit, {{speed}}"
     },
     "profile": {
       "label": "Server und Konto, {{name}}",

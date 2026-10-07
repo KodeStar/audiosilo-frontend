@@ -1009,7 +1009,11 @@
     "dock": {
       "label": "Reproductor",
       "savedLocally": "Guardado en este dispositivo, se sincronizará",
-      "expand": "Ampliar el reproductor"
+      "expand": "Ampliar el reproductor",
+      "synced": "Sincronizado",
+      "syncedNow": "Sincronizado ahora mismo",
+      "signInToSync": "Guardado en este dispositivo, vuelve a iniciar sesión para sincronizar",
+      "speed": "Velocidad de reproducción, {{speed}}"
     },
     "profile": {
       "label": "Servidores y cuenta, {{name}}",

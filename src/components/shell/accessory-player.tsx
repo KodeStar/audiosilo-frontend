@@ -4,52 +4,39 @@ import { useTranslation } from 'react-i18next';
 import { useRef, useState } from 'react';
 import { Dimensions, View } from 'react-native';
 
-import { useApi } from '@/api/provider';
+import { BookCover } from '@/components/library/book-cover';
+import { ChapterProgressLine } from '@/components/player/chapter-progress';
+import { MiniPlayerSubtitle, useMiniHeading } from '@/components/player/mini-player';
 import { SkipButton } from '@/components/player/skip-button';
-import { usePlayingTimeLeft } from '@/components/player/use-time-left';
+import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Cover } from '@/components/ui/cover';
-import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
-import { chapterLabel } from '@/lib/chapter-label';
-import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
+import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { useChromeEdge } from './shell-metrics';
 
-/** "Title · 5h 27m left at 1.25×" (`usePlayingTimeLeft`). A leaf, so only this line
- * re-renders, and only when its text changes. */
-function BookLine({ title }: { title: string }) {
-  const left = usePlayingTimeLeft();
-  return (
-    <Text variant="caption" numberOfLines={1}>
-      {left ? `${title} · ${left}` : title}
-    </Text>
-  );
-}
-
 /**
  * The phone mini player in the iOS 26 tab bar's bottom accessory (a Liquid Glass pill
- * the system sizes, about 48 pt). iOS renders the accessory TWICE - `regular` above the
- * bar and `inline` beside the minimised bar - so this holds no state of its own: every
- * value comes from the player store, and each copy is a pure function of it and the
- * placement. Text and glyphs use the themed tokens (the glass follows the app theme,
- * which Uniwind applies to the native appearance).
+ * the system sizes, about 48 pt; STYLEGUIDE "Mini player"). iOS renders the accessory
+ * TWICE - `regular` above the bar and `inline` beside the minimised bar - so this holds
+ * no state of its own: every value comes from the player and sleep-timer stores, and each
+ * copy is a pure function of them and the placement. `regular` has the mini card's
+ * content (round cover, chapter, book with its time left or the sleep countdown first,
+ * skip back, play/pause, the chapter progress line); the narrow `inline` keeps the cover,
+ * the chapter and play/pause. Text and glyphs use the themed tokens (the glass follows
+ * the app theme, which Uniwind applies to the native appearance).
  */
 export function AccessoryPlayer() {
   const placement = NativeTabs.BottomAccessory.usePlacement();
   const { t } = useTranslation();
   const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const isPlaying = usePlayer(selectIsPlaying);
-  const chapter = usePlayer(selectCurrentChapter);
-  const toggle = usePlayer((s) => s.toggle);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const skipBackward = useSettings((s) => s.skipBackward);
-  // The cover URL embeds the playing book's own server auth; match its headers to it.
-  const api = useApi(nowPlaying?.connectionId);
+  const { heading, isChapter } = useMiniHeading();
   // The tab bar (and so the accessory) is hidden on tablet/desktop, but iOS still renders
   // both placements: render nothing there, so no per-tick leaf runs behind it.
   const phone = useLayout() === 'phone';
@@ -71,32 +58,32 @@ export function AccessoryPlayer() {
 
   if (!shown) return null;
 
-  const heading = chapter ? chapterLabel(chapter, t) : nowPlaying.title;
-
   return (
     <View
       ref={pill}
       onLayout={regular ? measure : undefined}
       testID={`accessory-player-${placement}`}
-      className="flex-1 flex-row items-center gap-1 pl-2 pr-1.5"
+      className="flex-1 flex-row items-center gap-1 pl-1.5 pr-1"
     >
       <AnimatedPressable
         onPress={() => router.push('/player')}
         accessibilityRole="button"
         accessibilityLabel={t('shell.openPlayer', { title: nowPlaying.title })}
-        className="flex-1 flex-row items-center gap-2.5"
+        className="min-w-0 flex-1 flex-row items-center gap-2.5 self-stretch"
       >
-        <Cover
-          source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
-          label={nowPlaying.title}
-          rounded="rounded-full"
-          size={regular ? 34 : 28}
+        <BookCover
+          connectionId={nowPlaying.connectionId}
+          libraryId={nowPlaying.libraryId}
+          path={nowPlaying.path}
+          width={regular ? 36 : 28}
+          title={nowPlaying.title}
+          className="rounded-full"
         />
-        <View className="flex-1">
-          <Text variant="label" numberOfLines={1}>
+        <View className="min-w-0 flex-1">
+          <Text variant="label" className="text-[13.5px] leading-[17px]" numberOfLines={1}>
             {heading}
           </Text>
-          {regular ? <BookLine title={nowPlaying.title} /> : null}
+          {regular ? <MiniPlayerSubtitle title={nowPlaying.title} showTitle={isChapter} /> : null}
         </View>
       </AnimatedPressable>
       {regular ? (
@@ -106,23 +93,15 @@ export function AccessoryPlayer() {
           onPress={() => void skipSeconds(-skipBackward)}
           color={themed.foreground}
           fontSize={12}
+          hitSlop={2}
           className="h-10 w-10 items-center justify-center rounded-full"
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />
       ) : null}
-      <AnimatedPressable
-        onPress={() => void toggle()}
-        hitSlop={6}
-        accessibilityRole="button"
-        accessibilityLabel={isPlaying ? t('player.controls.pause') : t('player.controls.play')}
-        className="h-10 w-10 items-center justify-center rounded-full"
-      >
-        <Icon
-          name={isPlaying ? 'pause' : 'play'}
-          size={regular ? 20 : 18}
-          color={themed.foreground}
-        />
-      </AnimatedPressable>
+      <PlayButton size="sm" plain />
+      {regular ? (
+        <ChapterProgressLine className="absolute bottom-[3px] left-5 right-5 h-[2px]" />
+      ) : null}
     </View>
   );
 }
