@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book } from '@/api/types';
@@ -41,14 +41,21 @@ jest.mock('@/stores/session', () => ({
 }));
 
 // Avoid pulling the real React Query client / hooks graph into the unit test.
+// `getQueryData` answers the web transcode guard's cached `/server` read.
+const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
 jest.mock('@/api/provider', () => ({
-  queryClient: { setQueryData: jest.fn(), invalidateQueries: jest.fn() },
+  queryClient: {
+    setQueryData: jest.fn(),
+    invalidateQueries: jest.fn(),
+    getQueryData: (...a: unknown[]) => mockGetQueryData(...a),
+  },
 }));
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
+    server: (cid: string) => ['server', cid],
   },
 }));
 
@@ -478,6 +485,36 @@ describe('download() per-connection routing', () => {
     expect(useDownloads.getState().entries[downloadKey('c2', 2, 'A/Two')]?.status).toBe(
       'downloaded',
     );
+  });
+});
+
+describe('download() refuses a book this browser plays transcoded', () => {
+  const prevOS = Platform.OS;
+  afterEach(() => {
+    Platform.OS = prevOS;
+    mockGetQueryData.mockReset();
+  });
+  const ac3 = () => makeBook({ direct_playable: false, codec: 'ac3' });
+
+  it('is a no-op on web when the server transcodes it (its raw files would not play offline)', () => {
+    Platform.OS = 'web';
+    mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
+    useDownloads.getState().download('c1', 2, ac3());
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeUndefined();
+    expect(mockGetQueryData).toHaveBeenCalledWith(['server', 'c1']);
+  });
+
+  it('downloads as before without a transcoder, or off web', () => {
+    Platform.OS = 'web';
+    mockGetQueryData.mockReturnValue({ capabilities: { transcode: false } });
+    useDownloads.getState().download('c1', 2, ac3());
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeDefined();
+
+    useDownloads.setState({ entries: {} });
+    Platform.OS = 'ios';
+    mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
+    useDownloads.getState().download('c1', 2, ac3());
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeDefined();
   });
 });
 

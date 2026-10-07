@@ -33,6 +33,7 @@ import { DownloadControl, DownloadProgress } from '@/components/library/download
 import { HistorySection } from '@/components/library/history-section';
 import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
+import { TranscodeNote } from '@/components/library/transcode-note';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { useListeningPosition } from '@/components/player/use-listening-position';
@@ -225,6 +226,15 @@ function BookDetailContent() {
     nowPlaying?.path === book.rel_path;
   const activeIndex = isThisPlaying ? currentChapter?.index : undefined;
   const downloaded = downloadEntry?.status === 'downloaded';
+  // "Converted for this browser" under the stats, when web plays this book transcoded.
+  const transcodeNote = (
+    <TranscodeNote
+      book={book}
+      chapterData={chapterData}
+      canTranscode={server?.capabilities.transcode}
+      downloaded={downloaded}
+    />
+  );
 
   const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? t('book.libraryFallback');
   const segments = path.split('/').filter(Boolean);
@@ -507,6 +517,7 @@ function BookDetailContent() {
                 ) : null}
               </View>
               <BookStats libraryId={libraryId} path={path} book={book} />
+              {transcodeNote}
               {isThisPlaying ? (
                 <Button
                   title={t('book.openPlayer')}
@@ -569,6 +580,7 @@ function BookDetailContent() {
             ) : null}
           </View>
           <BookStats libraryId={libraryId} path={path} book={book} />
+          {transcodeNote}
         </View>
       </View>
 

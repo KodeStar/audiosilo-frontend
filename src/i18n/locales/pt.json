@@ -341,6 +341,7 @@
     },
     "download": {
       "unavailable": "Transferências indisponíveis",
+      "notInBrowser": "Não é possível transferir neste navegador",
       "remove": "Remover download",
       "cancel": "Cancelar transferência",
       "retry": "Repetir transferência",
@@ -704,6 +705,8 @@
     "bitrate": "Taxa de bits: {{value}}",
     "byAuthor": "De {{author}}",
     "narratedBy": "Narrado por {{narrator}}",
+    "transcodeNote": "O áudio {{codec}} é convertido para MP3 neste navegador",
+    "transcodeNoteGeneric": "Este áudio é convertido para MP3 neste navegador",
     "listen": "Ouvir",
     "tabs": {
       "recaps": "Resumos",
