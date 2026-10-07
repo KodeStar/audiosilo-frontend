@@ -1,6 +1,5 @@
 import { act, fireEvent, renderHook, screen } from '@testing-library/react-native';
-import { Text } from 'react-native';
-import { Platform } from 'react-native';
+import { Platform, Text } from 'react-native';
 
 import type { Book, Progress } from '@/api/types';
 
