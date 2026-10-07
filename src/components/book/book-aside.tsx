@@ -9,14 +9,7 @@ import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
-/** Your listening's figures, already in words; a figure the page doesn't know honestly
- * is absent (never made up). */
-export type ListeningFigures = {
-  started?: string;
-  finished?: string;
-  speed?: string;
-  listened?: string;
-};
+import type { ListeningFigures } from './book-page-model';
 
 /**
  * The book page's aside (the prototype's right column; between the hero and the tabs on

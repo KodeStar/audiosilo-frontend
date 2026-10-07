@@ -43,32 +43,32 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { selectIsLoaded } from '@/components/player/playing-target';
 import { useListeningPosition } from '@/components/player/use-listening-position';
 import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
-import { pinsOf, useBookAnnotations } from '@/components/player/use-playing-pins';
+import { useBookAnnotations } from '@/components/player/use-playing-pins';
 import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left';
 import { ErrorNote } from '@/components/ui/query-state';
+import { pathCrumbs } from '@/components/ui/breadcrumbs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useDownloadEntry } from '@/downloads/store';
-import { formatDuration, formatSpeed } from '@/lib/format';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { type BookTab, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
-import { percentHeard } from '@/lib/progress-view';
+import { type BookTab, libraryHref, segmentsToPath } from '@/lib/paths';
+import { percentHeard, progressFractionRemaining } from '@/lib/progress-view';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { codecLabel } from '@/playback/transcode';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useSeriesOrderings } from '@/stores/series-orderings';
-import { useSession } from '@/stores/session';
+import { useConnectionName } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 
-import { type ListeningFigures, BookAside } from './book-aside';
+import { BookAside } from './book-aside';
 import { BookChaptersTab } from './book-chapters-tab';
-import { type BookCrumb, BookCrumbs } from './book-crumbs';
+import { BookCrumbs } from './book-crumbs';
 import { fileRows, playbackMode } from './book-details-model';
 import { BookDetailsTab } from './book-details-tab';
 import { BookHero } from './book-hero';
@@ -77,14 +77,12 @@ import {
   bookPageLayout,
   type ChapterList,
   chapterList,
-  currentRow,
-  formatRecordDate,
   heroEyebrow,
   type Jump,
-  listenedSeconds,
+  listeningFigures,
   placeLine,
   primaryAction,
-  startedAt,
+  rowAt,
 } from './book-page-model';
 import { BookSkeleton } from './book-skeleton';
 import { HeroActions } from './hero-actions';
@@ -93,8 +91,9 @@ import { HeroActions } from './hero-actions';
  * every write invalidates them, so this only bounds another device's new ones. */
 const ANNOTATIONS_STALE_MS = 60_000;
 
-/** The listened figure shows from a minute up (a few seconds of history is noise). */
-const LISTENED_MIN_S = 60;
+/** How long the page trusts the book's history (Your listening): a span this device
+ * records refreshes it at once. */
+const HISTORY_STALE_MS = 10 * 60_000;
 
 const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 
@@ -151,7 +150,7 @@ function BookPage() {
   // Where the listener is: the hero's place, the primary action, the spoiler gate.
   const progressQuery = useBookProgress(libraryId, path, true);
   const progress = progressQuery.data ?? undefined;
-  const serverName = useSession((s) => s.connections.find((c) => c.id === cid)?.name ?? '');
+  const serverName = useConnectionName(cid);
   const interval = useSettings((s) => s.virtualChapterInterval);
   const relPath = book?.rel_path ?? path;
   const target = useMemo(
@@ -170,10 +169,6 @@ function BookPage() {
   const downloaded = useDownloadEntry(cid, libraryId, path)?.status === 'downloaded';
   const transcoded = useNeedsWebTranscode(book, chapterData, cid);
   const annotations = useBookAnnotations(book ? target : null, ANNOTATIONS_STALE_MS);
-  const pins = useMemo(
-    () => pinsOf(annotations.bookmarks ?? [], annotations.notes ?? []),
-    [annotations.bookmarks, annotations.notes],
-  );
   const speed = useBookSpeed(target, progress?.playback_speed);
   // The primary toggles the loaded book in place (never restarting it); a chapter row, a
   // timeline tap or a pin jumps there (`usePlayBook`: a phone opens the player there).
@@ -224,28 +219,24 @@ function BookPage() {
   const finished = status === 'finished' && !loaded;
   const started = loaded || status === 'progress' || (listeningPosition ?? 0) > 0;
   const position = finished ? total : (listeningPosition ?? 0);
-  const current = currentRow(list.rows, position, started && !finished);
+  // The row the listener is in (none marked before the start or once finished).
+  const current = started && !finished ? rowAt(list.rows, position) : -1;
   const timeLeft = useBookTimeLeft(book ? target : null, progress, total);
 
-  // Your listening: what this book's own records say, nothing estimated.
-  const history = useQuery(historyQuery(cid, api, libraryId, started || finished ? path : '')).data;
-  const now = new Date();
-  const listenedS = history ? listenedSeconds(history) : 0;
-  const startDate = startedAt(progress?.started_at, history);
-  const finishedAt = finished && progress?.finished_at ? new Date(progress.finished_at) : null;
-  const finishedDate =
-    finishedAt && Number.isFinite(finishedAt.getTime())
-      ? formatRecordDate(finishedAt, now)
-      : undefined;
-  const listening: ListeningFigures | null =
-    started || finished
-      ? {
-          started: startDate ? formatRecordDate(startDate, now) : undefined,
-          finished: finishedDate,
-          speed: formatSpeed(speed),
-          listened: listenedS >= LISTENED_MIN_S ? formatDuration(listenedS) : undefined,
-        }
-      : null;
+  // Your listening: what this book's own records say. A recorded span refreshes the
+  // history (`qk.historyAll`), so it is trusted long: only another device's spans wait.
+  const history = useQuery({
+    ...historyQuery(cid, api, libraryId, started || finished ? path : ''),
+    staleTime: HISTORY_STALE_MS,
+  }).data;
+  const listening = listeningFigures({
+    started,
+    finished,
+    progress,
+    history,
+    speed,
+    now: new Date(),
+  });
 
   if (isLoading) {
     return (
@@ -265,16 +256,10 @@ function BookPage() {
   }
 
   const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? t('book.libraryFallback');
-  const segments = path.split('/').filter(Boolean);
-  const crumbs: BookCrumb[] = [
-    { label: libraryName, onPress: () => router.push(libraryHref(cid, libraryId)) },
-    ...segments.slice(0, -1).map((seg, i) => ({
-      label: seg,
-      onPress: () => router.push(libraryHref(cid, libraryId, segments.slice(0, i + 1).join('/'))),
-    })),
-    // The last crumb is the on-disk folder or file name (the hero shows the title).
-    { label: pathLeaf(path) || book.title },
-  ];
+  // The last crumb is the on-disk folder or file name (the hero shows the title).
+  const crumbs = pathCrumbs(libraryName, path, (sub) =>
+    router.push(libraryHref(cid, libraryId, sub)),
+  );
 
   // --- Community metadata and the spoiler gate -----------------------------------------
   const metaCharacters = metaMatched?.work.characters ?? [];
@@ -333,10 +318,10 @@ function BookPage() {
             list={list}
             total={total}
             position={position}
-            started={started}
+            current={current}
             finished={finished}
             loaded={loaded}
-            pins={pins}
+            pins={annotations.pins}
             roomy={layout.roomy}
             interval={interval}
             onJump={onJump}
@@ -474,13 +459,13 @@ function BookPage() {
           showPlace
             ? {
                 percent,
-                fraction: total > 0 ? Math.min(1, position / total) : 0,
+                fraction: progressFractionRemaining(position, total).fraction,
                 line: placeLine(t, list.kind, current, list.rows.length),
                 timeLeft,
               }
             : null
         }
-        finished={finished ? { date: finishedDate } : null}
+        finished={finished ? { date: listening?.finished } : null}
         ratings={ratings}
         onOpenSeries={
           book.series ? () => openSeries(cid, libraryId, { name: book.series }) : undefined
@@ -518,7 +503,7 @@ function BookPage() {
             <TranscodeNote
               book={book}
               chapterData={chapterData}
-              connectionId={cid}
+              transcoded={transcoded}
               downloaded={downloaded}
             />
           </>

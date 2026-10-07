@@ -1,12 +1,14 @@
 import type { TFunction } from 'i18next';
 
-import type { Book, BookFile, Chapter, History } from '@/api/types';
-import { getLocale } from '@/i18n/locale';
+import type { Book, BookFile, Chapter, History, Progress } from '@/api/types';
+import { chapterIndexAt } from '@/components/home/now-card-model';
 import type { BookStatus } from '@/components/library/books/books-view';
+import { listeningSummary } from '@/components/player/end-credits-logic';
 import type { IconName } from '@/components/ui/icon';
-import { formatBytes, formatDuration } from '@/lib/format';
+import { formatBytes, formatDuration, formatRecordDate, formatSpeed } from '@/lib/format';
 import type { LayoutClass } from '@/lib/layout';
 import { type BookPlace, pathLeaf } from '@/lib/paths';
+import { yearOf } from '@/lib/published';
 import { synthesizeChapters } from '@/playback/book-queue';
 import { codecLabel } from '@/playback/transcode';
 
@@ -249,35 +251,16 @@ export function timelineStarts(rows: readonly ListRow[]): number[] {
   return rows.every((r) => Number.isFinite(r.start)) ? rows.map((r) => r.start) : [];
 }
 
-/** The row the listener is in at `position`, or -1 for a book not started (nothing is
- * marked yet). */
-export function currentRow(rows: readonly ListRow[], position: number, started: boolean): number {
-  if (!started || rows.length === 0) return -1;
-  let current = 0;
-  for (let i = 1; i < rows.length; i++) {
-    if (!(position >= rows[i].start)) break;
-    current = i;
-  }
-  return current;
-}
-
-/** The indexes of the rows holding at least one of `positions` (the bookmark glyph). */
-export function rowsHolding(
-  rows: readonly ListRow[],
-  positions: readonly number[],
-  total: number,
-): Set<number> {
-  const out = new Set<number>();
-  for (const p of positions) {
-    if (!(p >= 0) || (total > 0 && p > total)) continue;
-    let hit = -1;
-    for (let i = 0; i < rows.length; i++) {
-      if (!(p >= rows[i].start)) break;
-      hit = i;
-    }
-    if (hit >= 0) out.add(hit);
-  }
-  return out;
+/** The row holding `position` (the chapter it is in; the first row before any start),
+ * or -1 when there are no rows. A start after a file of unknown length (NaN) is never
+ * reached. */
+export function rowAt(rows: readonly ListRow[], position: number): number {
+  return rows.length === 0
+    ? -1
+    : chapterIndexAt(
+        rows.map((r) => r.start),
+        position,
+      );
 }
 
 /** "Chapter 23 of 81" / "Part 3 of 12", or '' for files or a book not started. */
@@ -310,12 +293,6 @@ export function heroEyebrow(
 }
 
 export type Fact = { key: string; icon: IconName; text: string };
-
-/** The year of a `published` date ("YYYY", "YYYY-MM" or "YYYY-MM-DD"), or ''. */
-export function publishedYear(published?: string): string {
-  const m = /^(\d{4})/.exec(published ?? '');
-  return m ? m[1] : '';
-}
 
 /**
  * The hero's facts row: length, chapters (or parts), what the files are (codec, format,
@@ -367,7 +344,7 @@ export function bookFacts(
   const size = book.size > 0 ? formatBytes(book.size) : '';
   const audio = [codec, files, size].filter(Boolean).join(' · ');
   if (audio) out.push({ key: 'audio', icon: 'hard-drive', text: audio });
-  const year = [publishedYear(book.published), publisher].filter(Boolean).join(' · ');
+  const year = [yearOf(book.published), publisher].filter(Boolean).join(' · ');
   if (year) out.push({ key: 'published', icon: 'book', text: year });
   const where = [serverName, libraryName].filter(Boolean).join(' › ');
   if (where) out.push({ key: 'where', icon: 'server', text: where });
@@ -375,21 +352,6 @@ export function bookFacts(
 }
 
 // --- Your listening --------------------------------------------------------------
-
-/**
- * Wall-clock time spent listening to the book, from its history spans (each one a
- * session, `started_at` to `ended_at`), seconds. Spans whose times don't parse, or run
- * backwards, count nothing. 0 when there is no history.
- */
-export function listenedSeconds(history: readonly Pick<History, 'started_at' | 'ended_at'>[]) {
-  let total = 0;
-  for (const h of history) {
-    const from = Date.parse(h.started_at);
-    const to = Date.parse(h.ended_at);
-    if (Number.isFinite(from) && Number.isFinite(to) && to > from) total += (to - from) / 1000;
-  }
-  return total;
-}
 
 /** When the listener started the book: the server's `started_at` when it has one (a
  * `progress_edit` server), else the earliest history span. */
@@ -407,17 +369,43 @@ export function startedAt(
   return Number.isFinite(first) ? new Date(first) : null;
 }
 
-/** A date as a record ("14 Sep", "14 Sep 2024" from another year). Falls back to the
- * ISO day where the runtime can't format it. */
-export function formatRecordDate(date: Date, now: Date, locale: string = getLocale()): string {
-  const sameYear = date.getFullYear() === now.getFullYear();
-  try {
-    return new Intl.DateTimeFormat(locale, {
-      day: 'numeric',
-      month: 'short',
-      ...(sameYear ? {} : { year: 'numeric' }),
-    }).format(date);
-  } catch {
-    return date.toISOString().slice(0, 10);
-  }
+/** Your listening's figures, already in words; a figure the page doesn't know honestly
+ * is absent (never made up). */
+export type ListeningFigures = {
+  started?: string;
+  finished?: string;
+  speed?: string;
+  listened?: string;
+};
+
+/** The listened figure shows from a minute up (a few seconds of history is noise). */
+const LISTENED_MIN_S = 60;
+
+/**
+ * Your listening, from what this book's own records say, nothing estimated: when it was
+ * started (`startedAt`) and finished, at what speed, and how long was spent listening
+ * (the history's wall-clock time, `listeningSummary`). Null for a book not started.
+ */
+export function listeningFigures(input: {
+  started: boolean;
+  finished: boolean;
+  progress?: Pick<Progress, 'started_at' | 'finished_at'>;
+  history?: readonly Pick<History, 'started_at' | 'ended_at'>[];
+  speed: number;
+  now: Date;
+}): ListeningFigures | null {
+  const { started, finished, progress, history, speed, now } = input;
+  if (!started && !finished) return null;
+  const startDate = startedAt(progress?.started_at, history);
+  const finishedAt = finished && progress?.finished_at ? new Date(progress.finished_at) : null;
+  const listened = history ? listeningSummary(history).seconds : 0;
+  return {
+    started: startDate ? formatRecordDate(startDate, now) : undefined,
+    finished:
+      finishedAt && Number.isFinite(finishedAt.getTime())
+        ? formatRecordDate(finishedAt, now)
+        : undefined,
+    speed: formatSpeed(speed),
+    listened: listened >= LISTENED_MIN_S ? formatDuration(listened) : undefined,
+  };
 }

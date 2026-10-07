@@ -1,4 +1,5 @@
 import type { Book, BookFile, ChaptersResponse } from '@/api/types';
+import { bitrateKbps } from '@/lib/format';
 import { codecLabel } from '@/playback/transcode';
 
 import { fileName } from './book-page-model';
@@ -16,19 +17,11 @@ export type FileRow = {
   /** The file's path inside the book's folder (a disc folder stays). */
   name: string;
   codec: string;
-  /** Average kilobits a second, `size * 8 / duration` as the server's admin derives it,
-   * or null when either is unknown. */
+  /** Average kilobits a second (`bitrateKbps`), or null when not derivable. */
   kbps: number | null;
   /** Seconds (0 when unknown). */
   duration: number;
 };
-
-/** Average kbps of `size` bytes over `duration` seconds, or null when not derivable. */
-export function averageKbps(size: number | undefined, duration: number | undefined) {
-  if (!size || !duration || size <= 0 || duration <= 0) return null;
-  const kbps = Math.round((size * 8) / duration / 1000);
-  return kbps > 0 ? kbps : null;
-}
 
 /**
  * The book's files: the chapters response's (the full list), else the item's, else the
@@ -49,7 +42,7 @@ export function fileRows(
     key: f.rel_path,
     name: fileName(f.rel_path, book.rel_path),
     codec,
-    kbps: averageKbps(f.size, f.duration),
+    kbps: bitrateKbps(f.size, f.duration),
     duration: Math.max(0, f.duration || 0),
   }));
 }

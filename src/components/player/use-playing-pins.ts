@@ -16,9 +16,9 @@ const EMPTY: BookPins = { bookmarks: [], notes: [] };
 /** Long: every write to a bookmark or note invalidates the keys read here. */
 const PINS_STALE_MS = 10 * 60_000;
 
-/** A book's bookmarks and notes as the pins and counts read them (undefined while
- * unknown). */
-export type BookAnnotations = { bookmarks?: Bookmark[]; notes?: Note[] };
+/** A book's bookmarks and notes as the counts read them (undefined while unknown), and
+ * their pins (`pinsOf`; none while unknown) for its whole-book timeline. */
+export type BookAnnotations = { bookmarks?: Bookmark[]; notes?: Note[]; pins: BookPins };
 
 /**
  * ANY book's bookmarks and notes, through the book's own connection, on the same cache
@@ -39,16 +39,11 @@ export function useBookAnnotations(
   const path = api && target ? target.path : '';
   const bookmarks = useQuery({ ...bookmarksQuery(cid, api, lib, path), staleTime }).data;
   const notes = useQuery({ ...notesQuery(cid, api, lib, path), staleTime }).data;
-  return path ? { bookmarks, notes } : {};
-}
-
-/** The pins of `target`'s bookmarks and notes (`pinsOf`), for its whole-book timeline. */
-export function useBookPins(target: PlayTarget | null, staleTime?: number): BookPins {
-  const { bookmarks, notes } = useBookAnnotations(target, staleTime);
-  return useMemo(
-    () => (bookmarks || notes ? pinsOf(bookmarks ?? [], notes ?? []) : EMPTY),
-    [bookmarks, notes],
+  const pins = useMemo(
+    () => (path && (bookmarks || notes) ? pinsOf(bookmarks ?? [], notes ?? []) : EMPTY),
+    [path, bookmarks, notes],
   );
+  return path ? { bookmarks, notes, pins } : { pins };
 }
 
 /**
@@ -58,7 +53,7 @@ export function useBookPins(target: PlayTarget | null, staleTime?: number): Book
  * no refetch on mount: the dock and the full player each read them once.
  */
 export function usePlayingPins(): BookPins {
-  return useBookPins(usePlayingTarget());
+  return useBookAnnotations(usePlayingTarget()).pins;
 }
 
 /**

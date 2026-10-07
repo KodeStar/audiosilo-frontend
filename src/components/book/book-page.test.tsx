@@ -68,10 +68,17 @@ jest.mock('@/components/player/use-play-book', () => ({
 }));
 
 let mockBookmarks: Bookmark[] = [];
-jest.mock('@/components/player/use-playing-pins', () => ({
-  ...jest.requireActual('@/components/player/use-playing-pins'),
-  useBookAnnotations: () => ({ bookmarks: mockBookmarks, notes: [] }),
-}));
+jest.mock('@/components/player/use-playing-pins', () => {
+  const actual = jest.requireActual('@/components/player/use-playing-pins');
+  return {
+    ...actual,
+    useBookAnnotations: () => ({
+      bookmarks: mockBookmarks,
+      notes: [],
+      pins: actual.pinsOf(mockBookmarks, []),
+    }),
+  };
+});
 
 // Sections with their own data and tests.
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));

@@ -282,16 +282,17 @@ desktop jumps the loaded book there and plays on, or starts this one there. **Ta
 Chapters (label Chapters / Parts / Files; the default tab) · Recaps · Characters · Bookmarks ·
 History · Notes · Series · **Details**, with counts where already in hand (chapters, bookmarks,
 notes, characters met). Chapters (`book-chapters-tab.tsx`) is "The whole book" (the player's
-`BookTimeline` for ANY book, pins from `useBookAnnotations`, the generalised
-`usePlayingPins`) then the rows (`chapterList`: the real chapters at their corrected starts, a
+`BookTimeline` for ANY book, pins from `useBookAnnotations`, which `usePlayingPins` reads for
+the playing book; the rows' place is `rowAt`, previous/next for a book not playing the player's
+own `nextSegmentStart`/`previousSegmentStart`) then the rows (`chapterList`: the real chapters at their corrected starts, a
 long chapterless file's 30-minute parts as the player makes them, else the files). Details
 (`book-details-tab.tsx`): direct play / converted for this browser (web, `useNeedsWebTranscode`)
 / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
 and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookMetaAbout`:
 `community_description` with the server's attribution and "Improve this", else the server's
 `description`, else a sentence naming the author and narrator), Other versions
-(`BookVersions`), Your listening (started, finished, speed, and the time listened summed from
-this book's history spans). The panels render inside the page's own ScrollView (never a nested
+(`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
+listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
 vertical scroller). Which tabs exist: chapters when there's a list, the three community-metadata
 tabs only when that data is non-empty (so nothing regresses on an older server or an unmatched
 book), bookmarks/history/notes always (they're user-creatable, so they must be reachable from

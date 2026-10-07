@@ -1,5 +1,7 @@
 import {
+  bitrateKbps,
   formatDayMonth,
+  formatRecordDate,
   formatDurationOrZero,
   formatServerDay,
   formatSpeed,
@@ -133,6 +135,22 @@ describe('formatBitrate', () => {
     expect(formatBitrate(undefined, 100)).toBe('');
     expect(formatBitrate(0, 100)).toBe('');
     expect(formatBitrate(10, 100)).toBe(''); // rounds to 0 kbps → empty
+  });
+});
+
+describe('bitrateKbps', () => {
+  it("is size * 8 / duration, the server admin's figure", () => {
+    // 1.3 GB over 45.5 h is about 64 kbps.
+    expect(bitrateKbps(1_310_000_000, 45.5 * 3600)).toBe(64);
+    expect(bitrateKbps(16_000, 1)).toBe(128);
+  });
+
+  it('is unknown without a size or a length, or under 1 kbps', () => {
+    expect(bitrateKbps(0, 100)).toBeNull();
+    expect(bitrateKbps(1000, 0)).toBeNull();
+    expect(bitrateKbps(-1000, 10)).toBeNull();
+    expect(bitrateKbps(undefined, undefined)).toBeNull();
+    expect(bitrateKbps(10, 3600)).toBeNull();
   });
 });
 
@@ -291,5 +309,11 @@ describe('date formatters', () => {
   it('reads a server day as that calendar day', () => {
     expect(formatServerDay('2026-10-20', 'en-GB')).toBe('20 Oct');
     expect(formatDayMonth(new Date(2026, 9, 20, 12), 'en-GB')).toBe('20 Oct');
+  });
+
+  it('writes a record date, with the year only when it is another', () => {
+    const now = new Date(2026, 9, 7);
+    expect(formatRecordDate(new Date(2026, 8, 14), now, 'en-GB')).toBe('14 Sept');
+    expect(formatRecordDate(new Date(2024, 8, 14), now, 'en-GB')).toBe('14 Sept 2024');
   });
 });

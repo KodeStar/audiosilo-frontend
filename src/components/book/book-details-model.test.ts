@@ -1,25 +1,4 @@
-import {
-  averageKbps,
-  fileRows,
-  FILES_SHOWN,
-  playbackMode,
-  visibleFiles,
-} from './book-details-model';
-
-describe('averageKbps', () => {
-  it("is size * 8 / duration, the server admin's figure", () => {
-    // 1.3 GB over 45.5 h is about 64 kbps.
-    expect(averageKbps(1_310_000_000, 45.5 * 3600)).toBe(64);
-    expect(averageKbps(16_000, 1)).toBe(128);
-  });
-
-  it('is unknown without a size or a length', () => {
-    expect(averageKbps(0, 100)).toBeNull();
-    expect(averageKbps(1000, 0)).toBeNull();
-    expect(averageKbps(undefined, undefined)).toBeNull();
-    expect(averageKbps(10, 3600)).toBeNull();
-  });
-});
+import { fileRows, FILES_SHOWN, playbackMode, visibleFiles } from './book-details-model';
 
 describe('fileRows', () => {
   const book = {

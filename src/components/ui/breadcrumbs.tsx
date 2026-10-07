@@ -5,6 +5,27 @@ import { Text } from './text';
 
 export type Crumb = { label: string; onPress?: () => void; active?: boolean };
 
+/**
+ * The crumbs of a place in a library: the library (`root`), then each folder of `path`,
+ * the last one (where the reader is) active and not a link. `open` goes to a folder by
+ * its library-relative path ('' for the library itself).
+ */
+export function pathCrumbs(root: string, path: string, open: (sub: string) => void): Crumb[] {
+  const segments = path.split('/').filter(Boolean);
+  return [
+    {
+      label: root,
+      active: segments.length === 0,
+      onPress: segments.length === 0 ? undefined : () => open(''),
+    },
+    ...segments.map((seg, i) => {
+      const isLast = i === segments.length - 1;
+      const sub = segments.slice(0, i + 1).join('/');
+      return { label: seg, active: isLast, onPress: isLast ? undefined : () => open(sub) };
+    }),
+  ];
+}
+
 /** Contiguous breadcrumb pills with hairline separators; the active (last) crumb
  * is pink. Ported from the old client's `.breadcrumbs`. */
 export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
