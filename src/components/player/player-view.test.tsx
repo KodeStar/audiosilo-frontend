@@ -153,6 +153,12 @@ describe('PlayerView', () => {
     expect(screen.getByText('actions+upnext')).toBeTruthy();
   });
 
+  it("tablet: a tap in the inline companion acts with the keyboard up (the Notes composer's Add)", async () => {
+    mockLayout = 'tablet';
+    await mount(<PlayerView onClose={jest.fn()} />);
+    expect(screen.getByTestId('player-page').props.keyboardShouldPersistTaps).toBe('handled');
+  });
+
   it('desktop: a companion column, and Up next stays in the drawer', async () => {
     mockLayout = 'desktop';
     await mount(<PlayerView onClose={jest.fn()} />);

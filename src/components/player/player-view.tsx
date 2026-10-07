@@ -278,9 +278,13 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         </View>
       ) : (
         <ScrollView
+          testID="player-page"
           className="flex-1"
           contentContainerClassName={phone ? 'grow px-5 pt-1' : 'px-12 pt-2'}
           contentContainerStyle={{ paddingBottom: bottomPad }}
+          // The tablet's inline companion holds the Notes composer: with the keyboard up,
+          // a tap on "Add note" must add it, not only dismiss the keyboard.
+          keyboardShouldPersistTaps="handled"
         >
           {main}
           {!phone ? (
