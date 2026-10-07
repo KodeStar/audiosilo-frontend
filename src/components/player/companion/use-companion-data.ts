@@ -14,9 +14,9 @@ import { contentKey } from '@/lib/content-key';
 import { useListeningChapter } from '../use-listening-position';
 import type { PlayTarget } from '../use-play-book';
 
-/** Where the companion's community data stands: `off` (the server has no `metadata`),
- * `loading` (nothing renders yet), `none` (unmatched, or the lookup failed: the panels
- * say so kindly) or `ready`. */
+/** Where the companion's community data stands: `off` (the server has no `metadata`, or
+ * has not said yet), `loading` (nothing renders yet), `none` (unmatched, or the lookup
+ * failed: the panels say so kindly) or `ready`. */
 export type CompanionStatus = 'off' | 'loading' | 'none' | 'ready';
 
 export type CompanionData = {
@@ -51,8 +51,11 @@ export function useCompanionData(target: PlayTarget): CompanionData {
   const finished = !!progress?.finished;
   const listening = useMemo(() => ({ chapter, finished }), [chapter, finished]);
 
+  // `metadata` still unknown counts as off (the phone's chips read it the same way): an
+  // offline cold start or an unreachable server may never answer, and the community tabs
+  // would sit blank, loading, for good.
   const status: CompanionStatus =
-    metadata === false ? 'off' : loading ? 'loading' : work ? 'ready' : 'none';
+    metadata !== true ? 'off' : loading ? 'loading' : work ? 'ready' : 'none';
 
   return {
     target,
