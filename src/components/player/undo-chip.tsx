@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -23,6 +23,13 @@ export function undoJumpWithToast(t: (key: 'player.undo.restored') => string): b
   return true;
 }
 
+/** Whether the Undo chip shows (a jump in the PLAYING book can still be undone): for a
+ * surface that makes room for it. */
+export function useUndoVisible(): boolean {
+  const bookKey = usePlayer(selectBookKey);
+  return useJumpUndo(selectUndoFor(bookKey)) !== null;
+}
+
 /**
  * The Undo jump chip (STYLEGUIDE section 8): an ink pill, the undo glyph, "Back to
  * 17:26:50" (where the listener was in the book) and a ring that empties over its
@@ -31,7 +38,14 @@ export function undoJumpWithToast(t: (key: 'player.undo.restored') => string): b
  * can always mount it where the chip belongs (the full player's status line, the dock's
  * right cluster). A press goes back and toasts "Back where you were".
  */
-export function UndoChip({ className }: { className?: string }) {
+export function UndoChip({
+  className,
+  onLayout,
+}: {
+  className?: string;
+  /** Its laid-out size (the dock makes room for its measured width). */
+  onLayout?: (e: LayoutChangeEvent) => void;
+}) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const bookKey = usePlayer(selectBookKey);
@@ -42,6 +56,8 @@ export function UndoChip({ className }: { className?: string }) {
   return (
     <Animated.View
       key={jump.at}
+      testID="undo-chip"
+      onLayout={onLayout}
       entering={FadeIn.duration(320).reduceMotion(ReduceMotion.System)}
       exiting={FadeOut.duration(200).reduceMotion(ReduceMotion.System)}
     >

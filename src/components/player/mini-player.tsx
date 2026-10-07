@@ -12,6 +12,7 @@ import Animated, {
 
 import { BookCover } from '@/components/library/book-cover';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
+import { usePlayerOnTop } from '@/components/player/player-sheets';
 import { pillClass } from '@/components/player/control-pill';
 import { SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
@@ -144,6 +145,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
   // mid-session. Instead reset to 0 and animate to 1 only when `nowPlaying` goes from
   // falsy to truthy - not on track/progress changes.
   const visible = nowPlaying != null;
+  const onTop = usePlayerOnTop();
   const bar = useShellMetrics((s) => s.edges.bar);
   const [height, setHeight] = useState<number>();
   useChromeEdge(
@@ -166,7 +168,9 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
     transform: reduced ? [] : [{ translateY: (1 - enter.value) * 16 }],
   }));
 
-  if (!nowPlaying) return null;
+  // Nothing under the full player (its per-tick leaves would only redraw behind it). The
+  // card itself stays mounted, so coming back does not replay the entrance.
+  if (!nowPlaying || onTop) return null;
 
   return (
     <Animated.View

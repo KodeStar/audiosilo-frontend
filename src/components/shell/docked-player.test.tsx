@@ -3,7 +3,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { PlayerStoreMock } from '@/testing/player-store-mock';
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(...a) } }));
+let mockSegments = ['(app)'];
+jest.mock('expo-router', () => ({
+  router: { push: (...a: unknown[]) => mockPush(...a) },
+  useSegments: () => mockSegments,
+}));
 
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
 jest.mock('@/lib/layout', () => ({ useLayout: () => mockLayout }));
@@ -63,6 +67,7 @@ const showRoutePicker = jest.fn(() => Promise.resolve());
 beforeEach(() => {
   jest.clearAllMocks();
   mockLayout = 'desktop';
+  mockSegments = ['(app)'];
   mockBookmarks = [];
   player = playerStoreMock();
   player.reset();
@@ -102,14 +107,17 @@ describe('dockLayout', () => {
     expect(dockLayout(700)).toEqual({ allActions: false, scrubber: false });
   });
 
-  it('makes room for the Undo chip from the scrubber row first, then the secondary actions', () => {
+  it("makes room for the Undo chip's measured width: the scrubber row first, then the secondary actions", () => {
     // A tablet (834): the scrubber row goes while the chip shows, so the book keeps its title.
-    expect(dockLayout(834, true)).toEqual({ allActions: false, scrubber: false });
-    expect(dockLayout(834, false)).toEqual({ allActions: false, scrubber: true });
+    expect(dockLayout(834, 150)).toEqual({ allActions: false, scrubber: false });
+    expect(dockLayout(834, 0)).toEqual({ allActions: false, scrubber: true });
     // A small desktop window: the secondary actions make way, the scrubber stays.
-    expect(dockLayout(1024, true)).toEqual({ allActions: false, scrubber: true });
+    expect(dockLayout(1024, 150)).toEqual({ allActions: false, scrubber: true });
+    // A short chip in a wide enough window leaves everything; a long one does not.
+    expect(dockLayout(1180, 150)).toEqual({ allActions: true, scrubber: true });
+    expect(dockLayout(1180, 190)).toEqual({ allActions: false, scrubber: true });
     // A wide window has room for everything.
-    expect(dockLayout(1440, true)).toEqual({ allActions: true, scrubber: true });
+    expect(dockLayout(1440, 190)).toEqual({ allActions: true, scrubber: true });
   });
 });
 
@@ -230,6 +238,10 @@ describe('DockedPlayer', () => {
       }),
     );
     expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
+    // Once it has laid out, its measured width comes off the bar's.
+    await fireEvent(screen.getByTestId('undo-chip'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 170, height: 34 } },
+    });
     expect(screen.queryByText('47m left at 1.25×')).toBeNull();
     expect(screen.getByLabelText('Play')).toBeTruthy();
     // ...and the right cluster stops sharing the slack, which goes to the book.
@@ -237,6 +249,12 @@ describe('DockedPlayer', () => {
     // The chip's ten seconds are up: the scrubber row comes back.
     await act(async () => useJumpUndo.setState({ jump: null }));
     expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
+  });
+
+  it('renders nothing under the full player (its leaves would redraw behind it)', async () => {
+    mockSegments = ['player'];
+    await render(<DockedPlayer />);
+    expect(screen.queryByTestId('shell-docked-player')).toBeNull();
   });
 
   it('ticks the bookmarks in the current segment over the scrubber', async () => {

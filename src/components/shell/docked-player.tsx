@@ -9,11 +9,11 @@ import { BookProgressLine } from '@/components/player/book-progress';
 import { ControlPill } from '@/components/player/control-pill';
 import { useMiniHeading } from '@/components/player/mini-player';
 import { usePlaceSync } from '@/components/player/place-sync';
-import { usePlayerSheets } from '@/components/player/player-sheets';
+import { usePlayerOnTop, usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { TransportControls } from '@/components/player/transport-controls';
-import { UndoChip } from '@/components/player/undo-chip';
+import { UndoChip, useUndoVisible } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
 import { usePlayingSegment } from '@/components/player/use-playing-segment';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
@@ -25,8 +25,7 @@ import { UpNextButton } from '@/components/upnext/up-next-button';
 import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
-import { selectBookKey, selectIsPlaying, usePlayer } from '@/playback/store';
+import { selectIsPlaying, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -35,25 +34,22 @@ import { useChromeEdge } from './shell-metrics';
 /** The bar's height above the safe area (STYLEGUIDE "Docked player bar"). */
 const DOCK_HEIGHT = 84;
 
-/** The room the Undo chip takes in the right cluster ("Back to 17:26:50", its ring and
- * margin), which comes out of the room the rest of the dock is laid out in. */
-export const UNDO_CHIP_ROOM = 180;
-
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
  * the desktop drawer; a tablet, a split view or a narrow browser window is less): from
  * 1024 every action (speed, bookmark, output); below it the tablet set, whose hidden
  * actions are all in the full player; below 800 the chapter scrubber row goes too (the
- * transport alone fits between the book and the actions). While the Undo chip shows
- * (`undo`, ten seconds after a jump) its room is taken off the width first, so the
- * scrubber row and then the secondary actions make way for it and the book keeps its
- * title (at 834 the chip used to crush it to "C...").
+ * transport alone fits between the book and the actions). While the Undo chip shows (ten
+ * seconds after a jump) its MEASURED width (`undoWidth`: "Back to 17:26:50" is wider
+ * than "Back to 2:00") comes off the width first, so the scrubber row and then the
+ * secondary actions make way for it and the book keeps its title (at 834 the chip used
+ * to crush it to "C...").
  */
 export function dockLayout(
   width: number,
-  undo = false,
+  undoWidth = 0,
 ): { allActions: boolean; scrubber: boolean } {
-  const room = undo ? width - UNDO_CHIP_ROOM : width;
+  const room = width - undoWidth;
   return { allActions: room >= 1024, scrubber: room >= 800 };
 }
 
@@ -176,17 +172,26 @@ export function DockedPlayer() {
   const isPlaying = usePlayer(selectIsPlaying);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
-  const undo = useJumpUndo(selectUndoFor(usePlayer(selectBookKey))) !== null;
+  const undo = useUndoVisible();
+  const onTop = usePlayerOnTop();
+  // The chip's width as it last laid out (it keeps it between jumps, so a chip that
+  // reappears makes room at once); none while it is not showing.
+  const [chipWidth, setChipWidth] = useState(0);
   // The playing book's bookmarks, once for the bar.
   const pins = usePlayingPins();
   // The bar sits on the window's bottom edge, so its height is its top edge (published
   // for the root toasts). Its width picks what fits.
   const [size, setSize] = useState<{ width: number; height: number }>();
   useChromeEdge('dock', nowPlaying ? size?.height : undefined);
-  if (!nowPlaying) return null;
+  // Nothing under the full player: the bar is hidden there, and its per-tick leaves
+  // would only redraw behind it.
+  if (!nowPlaying || onTop) return null;
 
   // Before the first layout: the form factor's guess.
-  const { allActions, scrubber } = dockLayout(size?.width ?? (desktop ? 1280 : 800), undo);
+  const { allActions, scrubber } = dockLayout(
+    size?.width ?? (desktop ? 1280 : 800),
+    undo ? chipWidth : 0,
+  );
   const { queue, title, author } = nowPlaying;
   const bookLine = author ? `${title} · ${author}` : title;
   const openPlayer = () => router.push('/player');
@@ -256,7 +261,13 @@ export function DockedPlayer() {
               undo ? 'grow-0' : 'grow',
             )}
           >
-            <UndoChip className="mr-1" />
+            <UndoChip
+              className="mr-1"
+              onLayout={(e) => {
+                const w = e.nativeEvent.layout.width;
+                if (w > 0) setChipWidth(w);
+              }}
+            />
             {allActions ? <SpeedPill /> : null}
             <View testID="dock-sleep">
               <SleepTimerButton onPress={() => usePlayerSheets.getState().openSheet('sleep')} />

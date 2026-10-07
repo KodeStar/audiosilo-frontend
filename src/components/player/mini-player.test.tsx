@@ -3,7 +3,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { PlayerStoreMock } from '@/testing/player-store-mock';
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(...a) } }));
+let mockSegments = ['(app)'];
+jest.mock('expo-router', () => ({
+  router: { push: (...a: unknown[]) => mockPush(...a) },
+  useSegments: () => mockSegments,
+}));
 jest.mock('@/lib/layout', () => ({ useLayout: () => 'phone' }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/components/shell/accessory-support', () => ({ ACCESSORY_SUPPORTED: false }));
@@ -47,6 +51,7 @@ const skipSeconds = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSegments = ['(app)'];
   player = playerStoreMock();
   player.reset();
   player.usePlayer.setState({
@@ -132,6 +137,17 @@ describe('MiniPlayer', () => {
     expect(screen.queryByTestId('mini-player-card')).toBeNull();
     await act(async () => useShellMetrics.setState({ edges: { bar: 64 } }));
     expect(screen.getByTestId('mini-player-card')).toBeTruthy();
+  });
+
+  it('stands down under the full player, and comes back after it', async () => {
+    const view = await render(<MiniPlayer />);
+    expect(screen.getByTestId('mini-player')).toBeTruthy();
+    mockSegments = ['player'];
+    await view.rerender(<MiniPlayer />);
+    expect(screen.queryByTestId('mini-player')).toBeNull();
+    mockSegments = ['(app)'];
+    await view.rerender(<MiniPlayer />);
+    expect(screen.getByTestId('mini-player')).toBeTruthy();
   });
 
   it('renders nothing with no book', async () => {

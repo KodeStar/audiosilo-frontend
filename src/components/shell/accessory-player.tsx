@@ -7,6 +7,7 @@ import { Dimensions, View } from 'react-native';
 import { BookCover } from '@/components/library/book-cover';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
 import { MiniPlayerSubtitle, useMiniHeading } from '@/components/player/mini-player';
+import { usePlayerOnTop } from '@/components/player/player-sheets';
 import { SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -38,9 +39,11 @@ export function AccessoryPlayer() {
   const skipBackward = useSettings((s) => s.skipBackward);
   const { heading, isChapter } = useMiniHeading();
   // The tab bar (and so the accessory) is hidden on tablet/desktop, but iOS still renders
-  // both placements: render nothing there, so no per-tick leaf runs behind it.
+  // both placements: render nothing there, so no per-tick leaf runs behind it. Nor under
+  // the full player (a root modal over the tabs).
   const phone = useLayout() === 'phone';
-  const shown = nowPlaying != null && phone;
+  const onTop = usePlayerOnTop();
+  const shown = nowPlaying != null && phone && !onTop;
   const regular = placement === 'regular';
 
   // The pill above the bar (`regular`) publishes its top edge for the root toasts. It is
