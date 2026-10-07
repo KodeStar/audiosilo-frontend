@@ -120,6 +120,44 @@ describe('last interaction', () => {
     expect(lastInteraction('srv-1:1:b.m4b')).toEqual({ at: NOW + 1_000, position: 50 });
   });
 
+  it('does not count playing on into the next file (native: the file first, its position later)', () => {
+    // Two files of an hour each.
+    player.patch({
+      nowPlaying: {
+        ...book('a.m4b'),
+        queue: { chapters: [], total: 7_200, offsets: [0, 3_600] },
+      } as MockNowPlaying,
+      bookPosition: 3_590,
+    });
+    write(3_590, 'playing');
+    const touched = lastInteraction(KEY_A);
+    jest.setSystemTime(NOW + 10_000);
+    // The track change lands with the old file's position: a file further on, for now.
+    player.usePlayer.setState({
+      bookPosition: 3_600 + 3_600,
+      snapshot: { ...player.usePlayer.getState().snapshot, trackIndex: 1 },
+    });
+    jest.setSystemTime(NOW + 11_000);
+    write(3_600 + 1); // the progress tick catches up
+    expect(lastInteraction(KEY_A)).toEqual(touched);
+  });
+
+  it('still counts a skip into another file as a touch', () => {
+    player.patch({
+      nowPlaying: {
+        ...book('a.m4b'),
+        queue: { chapters: [], total: 7_200, offsets: [0, 3_600] },
+      } as MockNowPlaying,
+    });
+    write(100, 'playing');
+    jest.setSystemTime(NOW + 1_000);
+    player.usePlayer.setState({
+      bookPosition: 5_000,
+      snapshot: { ...player.usePlayer.getState().snapshot, trackIndex: 1 },
+    });
+    expect(lastInteraction(KEY_A)).toEqual({ at: NOW + 1_000, position: 5_000 });
+  });
+
   it('ignores writes with nothing loaded', () => {
     player.usePlayer.setState({ nowPlaying: null });
     noteInteraction();
