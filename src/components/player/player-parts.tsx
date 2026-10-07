@@ -20,7 +20,6 @@ import { formatCount, formatSpeed } from '@/lib/format';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { noteInteraction } from '@/playback/last-interaction';
 import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
 import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
@@ -276,10 +275,7 @@ export function PlayerActions({ wide, upNext }: { wide: boolean; upNext: boolean
         icon="bookmark"
         text={wide ? t('player.full.bookmark') : undefined}
         label={t('player.shortcuts.bookmark')}
-        onPress={() => {
-          noteInteraction();
-          void addBookmarkHere(t);
-        }}
+        onPress={() => void addBookmarkHere(t)}
         testID="player-bookmark"
       />
       {canRoutePick ? (

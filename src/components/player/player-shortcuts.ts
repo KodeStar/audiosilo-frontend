@@ -4,6 +4,7 @@ import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
+import { noteInteraction } from '@/playback/last-interaction';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
@@ -92,6 +93,9 @@ export async function addBookmarkHere(t: TFunction): Promise<void> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
+  // A bookmark is a deliberate touch the store can't see: the drift prompt measures from
+  // it, whichever surface made it (a pill, the B key, the companion).
+  noteInteraction();
   const position = Math.round(selectBookPosition(player));
   try {
     await addBookmark(np.connectionId, np.libraryId, np.path, position);
