@@ -657,7 +657,7 @@ a bottom sheet on a phone, `useLayout()`), `alert-dialog` (+ the `confirm-dialog
 skeleton) and `kbd` (a key hint). Hand-built on primitives:
 `slider`, `toast` (`toast({ title, description, action })`; the root `ShellToastHost` renders `<ToastHost>`
 lifted clear of the measured bottom chrome: the tab bar and mini player on a phone, or the docked player bar) and `row-surface`
-(`RowSurface` / `PressableRow`, the quiet list row: the book page's chapter rows use it too). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
+(`RowSurface` / `PressableRow`, the quiet list row). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
 through `TextClassContext`; a primitive that renders its own text node reuses `EYEBROW_CLASS`. Overlays portal into the root `<PortalHost />` (`src/app/_layout.tsx`) and wrap in
 `FullWindowOverlay` on iOS (`overlay.tsx`); they read the window's safe-area insets from `RootInsetsProvider`
 (`useRootInsets` / `useOverlayInsets`), wherever they are opened from, and every Content part goes through

@@ -260,35 +260,50 @@ returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated
 the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 `settings.apiKeys.*`.
 
-**The book screen is tabbed.** `src/app/(app)/(home,library,search,offline,me)/book/[libraryId].tsx` shows an
-**overview** (breadcrumbs, `BookVersions`, cover hero/stats/listen/`DownloadControl`,
-then the meta **About** block) and puts *everything else* behind a
-`Tabs` row (`src/components/ui/tabs.tsx`, the Stacks underline tabs with
-`scrollable`, so the row scrolls horizontally and carries tablist/tab/tabpanel
-a11y roles; when the tabs overflow, a chevron beside the tablist pages the row, `tabsScrollCue`): **Chapters** (label
-switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
-**History** · **Notes** · **Series**. Both layouts share the same tab section; tablet and
-desktop keep a right-hand cover panel (300 / 380 wide) whose button plays inline - the docked
-player bar is the transport there, so the panel never carries one (while this book plays its
-button opens the full player instead). A long chapter list used to bury the
-sections below it - with tabs each is one tap away, and the active panel renders
-inside the page's existing ScrollView (never a nested vertical scroller). Which tabs
-exist is the pure, tested `bookTabs()` (`src/components/library/book-tabs.ts`):
-chapters when there's a list, the three community-metadata tabs only when that data
-is non-empty (so nothing regresses on an older server or an unmatched book),
-bookmarks/history/notes always (they're user-creatable, so they must be reachable
-from empty - hence the `emptyLabel`; those sections render no heading of their own,
-the tab label is the heading). `tab` is held as an *intent*; render falls back to
-the first existing tab when data changes under it. Labels come from
+**The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
+`BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
+Stacks book page, laid out by its MEASURED width (`bookPageLayout`: the cover beside the text
+from 600, the aside as a right-hand column from 900, between the hero and the tabs below it;
+the Up next drawer can leave a desktop page phone-narrow). **Hero** (`book-hero.tsx`):
+`CoverWash` from `cover_color` (a neutral wash without one), quiet folder crumbs, the eyebrow
+(series + "Book N", opening the series page; else library and server), the title (one size
+smaller past 48 characters), the byline (author and narrator pages; the narrator is plain text
+where `browse_people` is off), the facts (`bookFacts`), then the place of a book in progress
+(percent, "Chapter N of M", time left at the book's own speed, the progress bar: the page's one
+pink thing) or the finished badge (`finished_at`) and the stars (`ratings`, `useBookRating`
+keeps the note). **Actions** (`hero-actions.tsx`): the primary (`primaryAction`: Pause while
+this book plays, Resume chapter N, Start listening, Listen again; through `usePlayBook` with
+`toggle`, so it never restarts the loaded book), `DownloadControl`'s full form, Up next (Play
+next / Add to the end, `queue`), favourite (ink, never pink), Add to collection
+(`collections`) and `BookActionsMenu` with `omit` (the items the hero already has).
+`DownloadProgress` and the transcode note sit under them. Chapter rows, timeline taps and pins
+go through `usePlayAt`: a phone opens the player on the place, a tablet or desktop seeks the
+loaded book or starts this one there. **Tabs** (`bookTabs()`, `src/components/library/book-tabs.ts`):
+Chapters (label Chapters / Parts / Files; the default tab) · Recaps · Characters · Bookmarks ·
+History · Notes · Series · **Details**, with counts where already in hand (chapters, bookmarks,
+notes, characters met). Chapters (`book-chapters-tab.tsx`) is "The whole book" (the player's
+`BookTimeline` for ANY book, pins from `useBookAnnotations`, the generalised
+`usePlayingPins`) then the rows (`chapterList`: the real chapters at their corrected starts, a
+long chapterless file's 30-minute parts as the player makes them, else the files). Details
+(`book-details-tab.tsx`): direct play / converted for this browser (web, `useNeedsWebTranscode`)
+/ plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
+and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookMetaAbout`:
+`community_description` with the server's attribution and "Improve this", else the server's
+`description`, else a sentence naming the author and narrator), Other versions
+(`BookVersions`), Your listening (started, finished, speed, and the time listened summed from
+this book's history spans). The panels render inside the page's own ScrollView (never a nested
+vertical scroller). Which tabs exist: chapters when there's a list, the three community-metadata
+tabs only when that data is non-empty (so nothing regresses on an older server or an unmatched
+book), bookmarks/history/notes always (they're user-creatable, so they must be reachable from
+empty - hence the `emptyLabel`), Details always. `tab` is held as an *intent* (`?tab=`); render
+falls back to the first existing tab when data changes under it. Labels come from
 `TAB_LABEL_KEY` (same module), which deliberately **reuses** the existing strings
-(`library.{bookmarks,history,notes}.title`, `book.meta.characters`) - only
-`book.tabs.{recaps,series}` are tab-only keys.
+(`library.{bookmarks,history,notes}.title`, `book.meta.characters`).
 
 **Enriched book metadata.** One `useBookMeta` fetch at the screen level feeds
 `matchedMeta()` and the placeable blocks exported from
-`src/components/library/book-meta.tsx`: `BookMetaAbout` (description with the
-6-line collapse, production details, abridged badge, "View on AudioSilo Meta" link -
-in the overview, above the tabs), `BookMetaRecapsTab`, `BookMetaCharactersTab`,
+`src/components/library/book-meta.tsx`: `BookMetaAbout` (the aside's About card, above),
+`BookMetaRecapsTab`, `BookMetaCharactersTab`,
 `BookMetaSeriesTab`. Those take **plain data, not a query**, so a sibling block can be
 appended without another restructure - which is how the **"catch up on previous books"**
 block lands: `previousWorks(rails)` (pure, tested - earlier positions only, from each

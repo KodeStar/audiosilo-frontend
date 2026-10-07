@@ -3,8 +3,8 @@ import { type BookTab, firstParam } from '@/lib/paths';
 /** The i18n key labelling each tab. Deliberately REUSES the existing section /
  * heading strings rather than minting tab-only duplicates (the bookmarks/history/
  * notes tabs are those sections; the characters tab is the meta block's own
- * heading). Chapters is absent: its label flips between "Chapters" and "Files"
- * depending on the book, so the screen supplies it. */
+ * heading). Chapters is absent: its label flips between "Chapters", "Parts" and
+ * "Files" depending on the book, so the screen supplies it. */
 export const TAB_LABEL_KEY = {
   recaps: 'book.tabs.recaps',
   characters: 'book.meta.characters',
@@ -12,6 +12,7 @@ export const TAB_LABEL_KEY = {
   history: 'library.history.title',
   notes: 'library.notes.title',
   series: 'book.tabs.series',
+  details: 'book.details.title',
   // `as const` (not a plain `Record<_, string>` annotation) so each value keeps its
   // literal type - `t()` is typed against the locale keys and rejects a bare string.
 } as const satisfies Record<Exclude<BookTab, 'chapters'>, string>;
@@ -45,7 +46,8 @@ export type BookTabInput = {
  * Which tabs exist for a book, in order. Chapters leads (and is the default);
  * the community-metadata tabs are progressive enhancement and simply do not
  * exist when that data is absent, while the user-creatable state (bookmarks /
- * history / notes) is always offered so it can be created from empty.
+ * history / notes) is always offered so it can be created from empty. Details (the
+ * files and how this device plays them) closes the row on every book.
  *
  * The flags are about the RAW data, not the spoiler-gated subset: a tab whose
  * entries are all still ahead of the listener exists and shows the "hidden to avoid
@@ -58,6 +60,7 @@ export function bookTabs(input: BookTabInput): BookTab[] {
   if (input.hasCharacters || input.hasPreviousBooks) tabs.push('characters');
   tabs.push('bookmarks', 'history', 'notes');
   if (input.hasSeries) tabs.push('series');
+  tabs.push('details');
   return tabs;
 }
 
@@ -69,6 +72,7 @@ const BOOK_TABS: readonly BookTab[] = [
   'history',
   'notes',
   'series',
+  'details',
 ];
 
 /** The tab a book link's `?tab=` asks to open on (Expo Router may hand back `string[]`),

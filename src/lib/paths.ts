@@ -66,7 +66,7 @@ export function libraryHref(connectionId: string, libraryId: number, relPath = '
 
 /** The book screen's tabs, in display order (the rules are `book-tabs.ts`). */
 export type BookTab =
-  'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series';
+  'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series' | 'details';
 
 /** A book page; `tab` opens it on that tab (`parseBookTab`) instead of the first. */
 export function bookHref(

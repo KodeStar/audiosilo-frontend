@@ -1,0 +1,351 @@
+import type { Chapter } from '@/api/types';
+import i18n from '@/i18n';
+
+import {
+  bookFacts,
+  bookPageLayout,
+  chapterList,
+  currentRow,
+  fileName,
+  formatRecordDate,
+  heroEyebrow,
+  listenedSeconds,
+  placeLine,
+  primaryAction,
+  primaryLabel,
+  publishedYear,
+  rowsHolding,
+  startedAt,
+  timelineStarts,
+  titleScale,
+} from './book-page-model';
+
+const t = i18n.t.bind(i18n);
+
+const chapter = (index: number, start: number, end: number, title = ''): Chapter => ({
+  index,
+  title,
+  file_index: 0,
+  file_path: 'A/B/book.m4b',
+  start,
+  end,
+  book_offset: start,
+});
+
+describe('bookPageLayout', () => {
+  it('stacks on a phone, the cover at most 230 and 64% of the page', () => {
+    expect(bookPageLayout('phone', 0)).toMatchObject({ heroSide: false, cover: 230, columns: 1 });
+    expect(bookPageLayout('phone', 400).cover).toBe(230);
+    expect(bookPageLayout('phone', 320).cover).toBe(205);
+    expect(bookPageLayout('phone', 400)).toMatchObject({ title: 'sm', roomy: false });
+  });
+
+  it('lays a desktop out by its MEASURED width (the Up next drawer takes up to 480)', () => {
+    // 1024 less a 480 drawer: phone-narrow.
+    expect(bookPageLayout('desktop', 544)).toMatchObject({ heroSide: false, columns: 1 });
+    // 1024 less a 360 drawer: the cover beside the text, the aside under the hero.
+    expect(bookPageLayout('desktop', 664)).toMatchObject({
+      heroSide: true,
+      cover: 220,
+      title: 'md',
+      columns: 1,
+      roomy: true,
+    });
+    expect(bookPageLayout('desktop', 1376)).toMatchObject({
+      heroSide: true,
+      cover: 300,
+      title: 'lg',
+      columns: 2,
+      aside: 340,
+    });
+    expect(bookPageLayout('desktop', 960)).toMatchObject({ columns: 2, aside: 300 });
+  });
+
+  it('trusts the class before the first measure', () => {
+    expect(bookPageLayout('desktop', 0)).toMatchObject({ heroSide: true, columns: 2 });
+    expect(bookPageLayout('tablet', 0)).toMatchObject({ heroSide: true, columns: 1 });
+    expect(bookPageLayout('tablet', 834)).toMatchObject({ cover: 220, columns: 1 });
+  });
+});
+
+describe('titleScale', () => {
+  it('steps a long title down one size, CJK counted by character', () => {
+    expect(titleScale('lg', 'The Way of Kings')).toBe('lg');
+    const long = 'The Extraordinarily Long Title of a Book That Never Seems to End';
+    expect(titleScale('lg', long)).toBe('md');
+    expect(titleScale('sm', long)).toBe('xs');
+    expect(titleScale('md', '三体')).toBe('md');
+  });
+});
+
+describe('primaryAction', () => {
+  it('pauses while this book plays, whatever its progress', () => {
+    const a = primaryAction({ status: 'progress', loaded: true, live: true, chapter: 3 });
+    expect(a).toEqual({ kind: 'pause' });
+    expect(primaryLabel(t, a)).toBe('Pause');
+  });
+
+  it('resumes a book in progress at its chapter: "Resume chapter N", not Listen', () => {
+    const a = primaryAction({ status: 'progress', loaded: false, live: false, chapter: 23 });
+    expect(primaryLabel(t, a)).toBe('Resume chapter 23');
+    // A chapterless book (or the place before chapter 1) just resumes.
+    expect(primaryLabel(t, primaryAction({ status: 'progress', loaded: false, live: false }))).toBe(
+      'Resume',
+    );
+  });
+
+  it('resumes the loaded book while it is paused, even one the server calls finished', () => {
+    const a = primaryAction({ status: 'finished', loaded: true, live: false, chapter: 2 });
+    expect(primaryLabel(t, a)).toBe('Resume chapter 2');
+  });
+
+  it('starts a new book, offers a finished one again, and waits for an unknown one', () => {
+    expect(primaryLabel(t, primaryAction({ status: 'new', loaded: false, live: false }))).toBe(
+      'Start listening',
+    );
+    expect(primaryLabel(t, primaryAction({ status: 'finished', loaded: false, live: false }))).toBe(
+      'Listen again',
+    );
+    expect(primaryLabel(t, primaryAction({ status: undefined, loaded: false, live: false }))).toBe(
+      'Listen',
+    );
+  });
+});
+
+describe('chapterList', () => {
+  const base = { chapterStarts: [], total: 0, interval: 1800, bookPath: 'A/B' };
+
+  it('lists the real chapters at their corrected starts', () => {
+    const chapters = [chapter(0, 0, 600, 'Prelude'), chapter(1, 600, 1500)];
+    const list = chapterList({
+      ...base,
+      chapters,
+      files: [{ rel_path: 'A/B/book.m4b', duration: 1500 }],
+      chapterStarts: [0, 610],
+      total: 1500,
+    });
+    expect(list.kind).toBe('chapters');
+    expect(list.rows.map((r) => [r.title, r.start, r.length, r.jump])).toEqual([
+      ['Prelude', 0, 600, { position: 0 }],
+      ['', 610, 900, { position: 610 }],
+    ]);
+  });
+
+  it("splits one long chapterless file into the player's parts", () => {
+    const list = chapterList({
+      ...base,
+      chapters: [],
+      files: [{ rel_path: 'A/B/book.mp3', duration: 4 * 3600 }],
+      total: 4 * 3600,
+    });
+    expect(list.kind).toBe('parts');
+    expect(list.rows).toHaveLength(8);
+    expect(list.rows[1]).toMatchObject({ start: 1800, length: 1800, jump: { position: 1800 } });
+    // A lone whole-book chapter is no chapters at all (as the player sees it).
+    const lone = chapterList({
+      ...base,
+      chapters: [chapter(0, 0, 4 * 3600, 'Book')],
+      files: [{ rel_path: 'A/B/book.mp3', duration: 4 * 3600 }],
+      total: 4 * 3600,
+    });
+    expect(lone.kind).toBe('parts');
+  });
+
+  it('lists a short single file and a multi-file book by file, disc folders kept', () => {
+    const short = chapterList({
+      ...base,
+      chapters: [],
+      files: [{ rel_path: 'A/B/book.mp3', duration: 1200 }],
+      total: 1200,
+    });
+    expect(short).toMatchObject({
+      kind: 'files',
+      rows: [{ title: 'book.mp3', jump: { track: 0 } }],
+    });
+    const discs = chapterList({
+      ...base,
+      chapters: [],
+      files: [
+        { rel_path: 'A/B/Disc 1/01.mp3', duration: 100 },
+        { rel_path: 'A/B/Disc 2/01.mp3', duration: 200 },
+      ],
+      total: 300,
+    });
+    expect(discs.rows.map((r) => [r.title, r.start, r.jump])).toEqual([
+      ['Disc 1/01.mp3', 0, { track: 0 }],
+      ['Disc 2/01.mp3', 100, { track: 1 }],
+    ]);
+  });
+
+  it('has no timeline past a file of unknown length', () => {
+    const list = chapterList({
+      ...base,
+      chapters: [],
+      files: [
+        { rel_path: 'A/B/1.mp3', duration: 0 },
+        { rel_path: 'A/B/2.mp3', duration: 100 },
+      ],
+    });
+    expect(timelineStarts(list.rows)).toEqual([]);
+  });
+});
+
+describe('fileName', () => {
+  it('names a file inside the book folder by its path there, else by its leaf', () => {
+    expect(fileName('A/B/Disc 1/01.mp3', 'A/B')).toBe('Disc 1/01.mp3');
+    expect(fileName('A/B.m4b', 'A/B.m4b')).toBe('B.m4b');
+    expect(fileName('X/y.mp3', 'A/B')).toBe('y.mp3');
+  });
+});
+
+describe('the place in the list', () => {
+  const rows = chapterList({
+    chapters: [chapter(0, 0, 100), chapter(1, 100, 200), chapter(2, 200, 300)],
+    files: [{ rel_path: 'A/B/book.m4b', duration: 300 }],
+    chapterStarts: [0, 100, 200],
+    total: 300,
+    interval: 1800,
+    bookPath: 'A/B',
+  }).rows;
+
+  it('marks the chapter the listener is in, and nothing before they start', () => {
+    expect(currentRow(rows, 150, true)).toBe(1);
+    expect(currentRow(rows, 0, true)).toBe(0);
+    expect(currentRow(rows, 299, true)).toBe(2);
+    expect(currentRow(rows, 150, false)).toBe(-1);
+  });
+
+  it('says "Chapter 2 of 3", or "Part 2 of 3" for parts, and nothing for files', () => {
+    expect(placeLine(t, 'chapters', 1, 3)).toBe('Chapter 2 of 3');
+    expect(placeLine(t, 'parts', 1, 3)).toBe('Part 2 of 3');
+    expect(placeLine(t, 'files', 1, 3)).toBe('');
+    expect(placeLine(t, 'chapters', -1, 3)).toBe('');
+  });
+
+  it('finds the chapters holding a bookmark', () => {
+    expect([...rowsHolding(rows, [5, 150, 160, 299, 400], 300)].sort()).toEqual([0, 1, 2]);
+    expect(rowsHolding(rows, [250], 300).has(2)).toBe(true);
+  });
+});
+
+describe('heroEyebrow', () => {
+  it('names the series and the book in it, which opens the series', () => {
+    expect(heroEyebrow(t, { series: 'Stormlight', series_index: 1 }, 'Fiction', 'Home')).toEqual({
+      text: 'Stormlight · Book 1',
+      series: 'Stormlight',
+    });
+    expect(heroEyebrow(t, { series: 'Stormlight', series_index: 0 }, 'Fiction', 'Home').text).toBe(
+      'Stormlight',
+    );
+  });
+
+  it('else says where the book lives', () => {
+    expect(heroEyebrow(t, { series: '', series_index: 0 }, 'Fiction', 'Home')).toEqual({
+      text: 'Fiction · Home',
+    });
+  });
+});
+
+describe('bookFacts', () => {
+  const list = (n: number) => ({
+    kind: 'chapters' as const,
+    rows: Array.from({ length: n }, (_, i) => ({
+      key: `${i}`,
+      index: i,
+      title: '',
+      start: i,
+      length: 1,
+      jump: {},
+    })),
+  });
+  const book = {
+    duration: 45.5 * 3600,
+    format: 'm4b',
+    size: 1.3 * 1024 ** 3,
+    codec: 'aac',
+    published: '2010-08-31',
+  };
+
+  it('says the length, chapters, files, year and where, as the prototype does', () => {
+    const facts = bookFacts(t, {
+      book,
+      list: list(81),
+      interval: 1800,
+      fileCount: 1,
+      publisher: 'Macmillan Audio',
+      serverName: 'Hearthside',
+      libraryName: 'Fiction',
+    });
+    expect(facts.map((f) => f.text)).toEqual([
+      '45h 30m',
+      '81 chapters',
+      'AAC · M4B · 1.3 GB',
+      '2010 · Macmillan Audio',
+      'Hearthside › Fiction',
+    ]);
+  });
+
+  it('counts parts and files, and leaves out what is unknown', () => {
+    const facts = bookFacts(t, {
+      book: { ...book, format: 'mp3', codec: 'mp3', published: undefined, size: 0 },
+      list: { kind: 'parts', rows: list(12).rows },
+      interval: 1800,
+      fileCount: 24,
+      serverName: 'Home',
+      libraryName: '',
+    });
+    expect(facts.map((f) => f.text)).toEqual([
+      '45h 30m',
+      '12 parts of 30 min',
+      'MP3 · 24 MP3 files',
+      'Home',
+    ]);
+    // One chapter is no chapter list worth counting.
+    expect(
+      bookFacts(t, {
+        book,
+        list: list(1),
+        interval: 1800,
+        fileCount: 1,
+        serverName: '',
+        libraryName: '',
+      }).map((f) => f.key),
+    ).not.toContain('chapters');
+  });
+
+  it('reads the year from any published form', () => {
+    expect(publishedYear('2010')).toBe('2010');
+    expect(publishedYear('2010-08')).toBe('2010');
+    expect(publishedYear('')).toBe('');
+    expect(publishedYear(undefined)).toBe('');
+  });
+});
+
+describe('Your listening', () => {
+  it('adds up the history spans, ignoring broken ones', () => {
+    expect(
+      listenedSeconds([
+        { started_at: '2026-10-01T20:00:00Z', ended_at: '2026-10-01T21:30:00Z' },
+        { started_at: '2026-10-02T20:00:00Z', ended_at: '2026-10-02T20:10:00Z' },
+        { started_at: 'nonsense', ended_at: '2026-10-02T20:10:00Z' },
+        { started_at: '2026-10-03T20:10:00Z', ended_at: '2026-10-03T20:00:00Z' },
+      ]),
+    ).toBe(100 * 60);
+    expect(listenedSeconds([])).toBe(0);
+  });
+
+  it("takes the server's start date, else the earliest span", () => {
+    const spans = [{ started_at: '2026-09-20T10:00:00Z' }, { started_at: '2026-09-14T10:00:00Z' }];
+    expect(startedAt('2026-09-01T00:00:00Z', spans)?.toISOString()).toBe(
+      '2026-09-01T00:00:00.000Z',
+    );
+    expect(startedAt(undefined, spans)?.toISOString()).toBe('2026-09-14T10:00:00.000Z');
+    expect(startedAt(undefined, [])).toBeNull();
+  });
+
+  it('writes a record date, with the year only when it is another', () => {
+    const now = new Date(2026, 9, 7);
+    expect(formatRecordDate(new Date(2026, 8, 14), now, 'en-GB')).toBe('14 Sept');
+    expect(formatRecordDate(new Date(2024, 8, 14), now, 'en-GB')).toBe('14 Sept 2024');
+  });
+});

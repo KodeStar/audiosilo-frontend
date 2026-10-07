@@ -1,0 +1,409 @@
+import type { TFunction } from 'i18next';
+
+import type { Book, BookFile, Chapter, History } from '@/api/types';
+import { getLocale } from '@/i18n/locale';
+import type { BookStatus } from '@/components/library/books/books-view';
+import type { IconName } from '@/components/ui/icon';
+import { formatBytes, formatDuration } from '@/lib/format';
+import type { LayoutClass } from '@/lib/layout';
+import { pathLeaf } from '@/lib/paths';
+import { synthesizeChapters } from '@/playback/book-queue';
+import { codecLabel } from '@/playback/transcode';
+
+/**
+ * The book page's rules (STYLEGUIDE section 8 and the Stacks prototype's `Book()`), pure
+ * so the screen only draws: the layout by the page's MEASURED width, the primary action,
+ * the hero's eyebrow and facts, the chapter list (real chapters, the player's 30-minute
+ * parts for a chapterless file, or the files), and the Your listening figures.
+ */
+
+// --- Layout ----------------------------------------------------------------------
+
+/** The narrowest page whose hero puts the cover beside the text (else stacked). */
+export const HERO_SIDE_MIN = 600;
+/** The narrowest page whose body takes the aside as a right-hand column. */
+export const BODY_COLUMNS_MIN = 900;
+/** The narrowest page that takes the desktop's 300 cover and 52 title. */
+const HERO_LARGE_MIN = 1100;
+/** The narrowest page whose aside is 340 wide (else 300). */
+const ASIDE_WIDE_MIN = 1200;
+
+export type TitleScale = 'lg' | 'md' | 'sm' | 'xs';
+
+export type BookPageLayout = {
+  /** The cover beside the hero's text (tablet and desktop), else above it (phone). */
+  heroSide: boolean;
+  /** The hero cover's width, points. */
+  cover: number;
+  /** The title's size step (see `TITLE_CLASS` in the hero). */
+  title: TitleScale;
+  /** The aside as a right-hand column (`aside` wide), else between hero and tabs. */
+  columns: 1 | 2;
+  aside: 300 | 340;
+  /** Wide enough for the chapter rows' start times and the files table's columns. */
+  roomy: boolean;
+};
+
+/**
+ * The page's layout for the window's class and the page's MEASURED width (0: not
+ * measured yet, which trusts the class). The Up next drawer takes 300-480 of a desktop,
+ * so a 1024 window can leave the page phone-narrow; a phone is always the phone's.
+ */
+export function bookPageLayout(layout: LayoutClass, width: number): BookPageLayout {
+  const w = width > 0 ? width : layout === 'desktop' ? 1280 : layout === 'tablet' ? 768 : 0;
+  const phone = layout === 'phone' || w < HERO_SIDE_MIN;
+  if (phone) {
+    return {
+      heroSide: false,
+      cover: w > 0 ? Math.min(230, Math.round(w * 0.64)) : 230,
+      title: 'sm',
+      columns: 1,
+      aside: 300,
+      roomy: false,
+    };
+  }
+  const large = w >= HERO_LARGE_MIN;
+  return {
+    heroSide: true,
+    cover: large ? 300 : 220,
+    title: large ? 'lg' : 'md',
+    columns: w >= BODY_COLUMNS_MIN ? 2 : 1,
+    aside: w >= ASIDE_WIDE_MIN ? 340 : 300,
+    roomy: true,
+  };
+}
+
+/** A title this long steps the display size down one, so it doesn't fill the hero. */
+const LONG_TITLE = 48;
+
+/** The title's size step: the layout's, one smaller for a long title. */
+export function titleScale(scale: TitleScale, title: string): TitleScale {
+  if ([...title].length <= LONG_TITLE) return scale;
+  return scale === 'lg' ? 'md' : scale === 'md' ? 'sm' : 'xs';
+}
+
+// --- Primary action --------------------------------------------------------------
+
+export type PrimaryAction =
+  | { kind: 'pause' }
+  | { kind: 'resume'; chapter?: number }
+  | { kind: 'start' }
+  | { kind: 'again' }
+  /** The listener's progress is not known yet: a neutral word, no promise. */
+  | { kind: 'listen' };
+
+/**
+ * The hero's primary button: Pause while this book plays, Resume chapter N for a book in
+ * progress (or loaded and paused), Listen again once finished, Start listening for a
+ * new one; "Listen" while the saved progress is still unknown. `chapter` is the real
+ * chapter the listener is in (undefined for a chapterless book or one before chapter 1).
+ */
+export function primaryAction(input: {
+  status: BookStatus | undefined;
+  loaded: boolean;
+  live: boolean;
+  chapter?: number;
+}): PrimaryAction {
+  const { status, loaded, live, chapter } = input;
+  if (loaded && live) return { kind: 'pause' };
+  if (loaded || status === 'progress') return { kind: 'resume', chapter };
+  if (status === 'finished') return { kind: 'again' };
+  if (status === 'new') return { kind: 'start' };
+  return { kind: 'listen' };
+}
+
+/** The primary button's words. */
+export function primaryLabel(t: TFunction, action: PrimaryAction): string {
+  switch (action.kind) {
+    case 'pause':
+      return t('book.hero.pause');
+    case 'resume':
+      return action.chapter
+        ? t('book.hero.resumeChapter', { chapter: action.chapter })
+        : t('book.hero.resume');
+    case 'again':
+      return t('book.hero.again');
+    case 'start':
+      return t('book.hero.start');
+    case 'listen':
+      return t('book.listen');
+  }
+}
+
+// --- Chapter list ----------------------------------------------------------------
+
+export type ListKind = 'chapters' | 'parts' | 'files';
+
+/** Where a row (or a tap on the timeline) starts the book: a whole-book position, or
+ * a file by index (its durations may be unknown, so a position can't address it). */
+export type Jump = { position?: number; track?: number };
+
+export type ListRow = {
+  key: string;
+  /** 0-based; the row's number is `index + 1`. */
+  index: number;
+  /** The chapter's own title ('' for a part, the file's name for a file). */
+  title: string;
+  /** Whole-book start, seconds (NaN for a file after one of unknown length). */
+  start: number;
+  /** Seconds (0 when unknown). */
+  length: number;
+  jump: Jump;
+};
+
+export type ChapterList = { kind: ListKind; rows: ListRow[] };
+
+/** A file's name as the book shows it: its path inside the book's folder (a disc
+ * folder stays), else its leaf. */
+export function fileName(relPath: string, bookPath: string): string {
+  const prefix = bookPath ? `${bookPath.replace(/\/+$/, '')}/` : '';
+  return prefix && relPath.startsWith(prefix) ? relPath.slice(prefix.length) : pathLeaf(relPath);
+}
+
+/**
+ * The Chapters tab's rows, the same units the player navigates (book-queue):
+ * - the real chapters, at their CORRECTED whole-book starts (`chapterStarts`, recomputed
+ *   from the file durations);
+ * - for one long file with no real chapters (none, or a lone whole-book one), the
+ *   player's evenly spaced parts (`synthesizeChapters`, the listener's part length);
+ * - else the files, each starting its track.
+ */
+export function chapterList(input: {
+  chapters: readonly Chapter[];
+  files: readonly Pick<BookFile, 'rel_path' | 'duration'>[];
+  chapterStarts: readonly number[];
+  /** The book's length, seconds. */
+  total: number;
+  /** The part length setting (`virtualChapterInterval`), seconds. */
+  interval: number;
+  bookPath: string;
+}): ChapterList {
+  const { chapters, files, chapterStarts, total, interval, bookPath } = input;
+  if (files.length <= 1 && chapters.length <= 1 && total > 0) {
+    const parts = synthesizeChapters(files[0]?.rel_path ?? bookPath, total, interval);
+    if (parts.length > 0) {
+      return {
+        kind: 'parts',
+        rows: parts.map((p) => ({
+          key: `p${p.index}`,
+          index: p.index,
+          title: '',
+          start: p.start,
+          length: p.end - p.start,
+          jump: { position: p.start },
+        })),
+      };
+    }
+  }
+  if (chapters.length > 0) {
+    return {
+      kind: 'chapters',
+      rows: chapters.map((c, i) => {
+        const start = chapterStarts[i] ?? c.book_offset;
+        return {
+          key: `c${c.index}`,
+          index: i,
+          title: c.title,
+          start,
+          length: Math.max(0, c.end - c.start),
+          jump: { position: start },
+        };
+      }),
+    };
+  }
+  let at = 0;
+  return {
+    kind: 'files',
+    rows: files.map((f, i) => {
+      const start = at;
+      at = f.duration > 0 ? at + f.duration : NaN;
+      return {
+        key: f.rel_path,
+        index: i,
+        title: fileName(f.rel_path, bookPath),
+        start,
+        length: Math.max(0, f.duration),
+        jump: { track: i },
+      };
+    }),
+  };
+}
+
+/** The rows' starts for the whole-book timeline, or none when one is unknown (a file of
+ * unknown length): the timeline can't place what comes after it. */
+export function timelineStarts(rows: readonly ListRow[]): number[] {
+  return rows.every((r) => Number.isFinite(r.start)) ? rows.map((r) => r.start) : [];
+}
+
+/** The row the listener is in at `position`, or -1 for a book not started (nothing is
+ * marked yet). */
+export function currentRow(rows: readonly ListRow[], position: number, started: boolean): number {
+  if (!started || rows.length === 0) return -1;
+  let current = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (!(position >= rows[i].start)) break;
+    current = i;
+  }
+  return current;
+}
+
+/** The indexes of the rows holding at least one of `positions` (the bookmark glyph). */
+export function rowsHolding(
+  rows: readonly ListRow[],
+  positions: readonly number[],
+  total: number,
+): Set<number> {
+  const out = new Set<number>();
+  for (const p of positions) {
+    if (!(p >= 0) || (total > 0 && p > total)) continue;
+    let hit = -1;
+    for (let i = 0; i < rows.length; i++) {
+      if (!(p >= rows[i].start)) break;
+      hit = i;
+    }
+    if (hit >= 0) out.add(hit);
+  }
+  return out;
+}
+
+/** "Chapter 23 of 81" / "Part 3 of 12", or '' for files or a book not started. */
+export function placeLine(t: TFunction, kind: ListKind, current: number, count: number): string {
+  if (current < 0 || count < 2) return '';
+  if (kind === 'chapters') return t('book.hero.chapterOf', { chapter: current + 1, total: count });
+  if (kind === 'parts') return t('book.hero.partOf', { part: current + 1, total: count });
+  return '';
+}
+
+// --- Hero text -------------------------------------------------------------------
+
+/** The hero's eyebrow: the series and the book's number in it (a link to the series
+ * page), else where the book lives. */
+export function heroEyebrow(
+  t: TFunction,
+  book: Pick<Book, 'series' | 'series_index'>,
+  libraryName: string,
+  serverName: string,
+): { text: string; series?: string } {
+  if (book.series) {
+    return {
+      text: book.series_index
+        ? t('book.hero.seriesBook', { series: book.series, position: book.series_index })
+        : book.series,
+      series: book.series,
+    };
+  }
+  return { text: [libraryName, serverName].filter(Boolean).join(' · ') };
+}
+
+export type Fact = { key: string; icon: IconName; text: string };
+
+/** The year of a `published` date ("YYYY", "YYYY-MM" or "YYYY-MM-DD"), or ''. */
+export function publishedYear(published?: string): string {
+  const m = /^(\d{4})/.exec(published ?? '');
+  return m ? m[1] : '';
+}
+
+/**
+ * The hero's facts row: length, chapters (or parts), what the files are (codec, format,
+ * how many, size), when it was published (and by whom, when the community knows), and
+ * where it lives. A fact the book doesn't know is left out, never shown as "unknown".
+ */
+export function bookFacts(
+  t: TFunction,
+  input: {
+    book: Pick<Book, 'duration' | 'format' | 'size' | 'codec' | 'published'>;
+    list: ChapterList;
+    /** The part length, seconds (for "12 parts of 30 min"). */
+    interval: number;
+    fileCount: number;
+    codec?: string;
+    publisher?: string;
+    serverName: string;
+    libraryName: string;
+  },
+): Fact[] {
+  const { book, list, interval, fileCount, publisher, serverName, libraryName } = input;
+  const out: Fact[] = [];
+  const length = formatDuration(book.duration);
+  if (length) out.push({ key: 'length', icon: 'clock', text: length });
+  if (list.kind === 'chapters' && list.rows.length > 1) {
+    out.push({
+      key: 'chapters',
+      icon: 'list',
+      text: t('book.hero.chapters', { count: list.rows.length }),
+    });
+  } else if (list.kind === 'parts') {
+    out.push({
+      key: 'chapters',
+      icon: 'list',
+      text: t('book.hero.parts', {
+        count: list.rows.length,
+        minutes: Math.round(interval / 60),
+      }),
+    });
+  }
+  const codec = codecLabel(input.codec || book.codec);
+  const format = (book.format ?? '').trim().toUpperCase();
+  const files =
+    fileCount > 1
+      ? t('book.hero.files', { count: fileCount, format: format || codec })
+      : format && format !== codec
+        ? format
+        : '';
+  const size = book.size > 0 ? formatBytes(book.size) : '';
+  const audio = [codec, files, size].filter(Boolean).join(' · ');
+  if (audio) out.push({ key: 'audio', icon: 'hard-drive', text: audio });
+  const year = [publishedYear(book.published), publisher].filter(Boolean).join(' · ');
+  if (year) out.push({ key: 'published', icon: 'book', text: year });
+  const where = [serverName, libraryName].filter(Boolean).join(' › ');
+  if (where) out.push({ key: 'where', icon: 'server', text: where });
+  return out;
+}
+
+// --- Your listening --------------------------------------------------------------
+
+/**
+ * Wall-clock time spent listening to the book, from its history spans (each one a
+ * session, `started_at` to `ended_at`), seconds. Spans whose times don't parse, or run
+ * backwards, count nothing. 0 when there is no history.
+ */
+export function listenedSeconds(history: readonly Pick<History, 'started_at' | 'ended_at'>[]) {
+  let total = 0;
+  for (const h of history) {
+    const from = Date.parse(h.started_at);
+    const to = Date.parse(h.ended_at);
+    if (Number.isFinite(from) && Number.isFinite(to) && to > from) total += (to - from) / 1000;
+  }
+  return total;
+}
+
+/** When the listener started the book: the server's `started_at` when it has one (a
+ * `progress_edit` server), else the earliest history span. */
+export function startedAt(
+  progressStarted: string | undefined,
+  history: readonly Pick<History, 'started_at'>[] | undefined,
+): Date | null {
+  const own = progressStarted ? Date.parse(progressStarted) : NaN;
+  if (Number.isFinite(own)) return new Date(own);
+  let first = Infinity;
+  for (const h of history ?? []) {
+    const at = Date.parse(h.started_at);
+    if (Number.isFinite(at) && at < first) first = at;
+  }
+  return Number.isFinite(first) ? new Date(first) : null;
+}
+
+/** A date as a record ("14 Sep", "14 Sep 2024" from another year). Falls back to the
+ * ISO day where the runtime can't format it. */
+export function formatRecordDate(date: Date, now: Date, locale: string = getLocale()): string {
+  const sameYear = date.getFullYear() === now.getFullYear();
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      day: 'numeric',
+      month: 'short',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
