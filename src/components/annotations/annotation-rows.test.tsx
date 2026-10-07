@@ -12,20 +12,13 @@ let mockAnnotations: boolean | undefined = true;
 const mockDeleteBookmark = jest.fn();
 const mockDeleteNote = jest.fn();
 const mockAddBookmark = jest.fn((..._a: unknown[]) => Promise.resolve({}));
+const mockAddNote = jest.fn((..._a: unknown[]) => Promise.resolve({}));
 jest.mock('@/api/hooks', () => ({
   useCapability: () => mockAnnotations,
   useDeleteBookmark: () => ({ mutate: mockDeleteBookmark }),
   useDeleteNote: () => ({ mutate: mockDeleteNote }),
   addBookmark: (...a: unknown[]) => mockAddBookmark(...a),
-  qk: {
-    notes: (c: string, l: number, p: string) => ['notes', c, l, p],
-    myNotes: (c: string) => ['myNotes', c],
-  },
-}));
-jest.mock('@/api/provider', () => ({ queryClient: { invalidateQueries: jest.fn() } }));
-const mockAddNote = jest.fn((..._a: unknown[]) => Promise.resolve({}));
-jest.mock('@/api/connection-clients', () => ({
-  resolveClient: () => ({ addNote: (...a: unknown[]) => mockAddNote(...a) }),
+  addNote: (...a: unknown[]) => mockAddNote(...a),
 }));
 const mockStartInPlace = jest.fn((..._a: unknown[]) => Promise.resolve(true));
 jest.mock('@/components/player/start-book', () => ({
@@ -357,6 +350,7 @@ describe('NoteRow', () => {
     mockDeleteNote.mock.calls[0][1].onSuccess();
     (toast as jest.Mock).mock.calls[0][0].action.onPress();
     expect(mockAddNote).toHaveBeenCalledWith(
+      'c',
       1,
       'a/book',
       'Theory: Syl is not a windspren.',

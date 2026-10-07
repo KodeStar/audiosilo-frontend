@@ -13,7 +13,7 @@ import { LabelChip, TimeChip } from './chips';
 import { isDriftBookmark, shownNote } from './drift-marker';
 import { type AnnotationTarget, editBookmarkRequest } from './editor-model';
 import { AnnotationRowFrame, RowAction, RowCover, RowMeta } from './row-parts';
-import { useDeleteBookmarkWithUndo, useJumpTo } from './use-annotation-actions';
+import { useDeleteWithUndo, useJumpTo } from './use-annotation-actions';
 
 export type BookmarkRowProps = {
   bookmark: Bookmark;
@@ -61,7 +61,7 @@ export function BookmarkRow({
     libraryId: bookmark.library_id,
     path: bookmark.path,
   };
-  const remove = useDeleteBookmarkWithUndo(connectionId, target.libraryId, target.path);
+  const remove = useDeleteWithUndo('bookmark', connectionId, target.libraryId, target.path);
   const time = formatClock(bookmark.position);
   const drift = isDriftBookmark(bookmark);
   const note = shownNote(bookmark);

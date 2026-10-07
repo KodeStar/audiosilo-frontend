@@ -39,13 +39,19 @@ describe('bookmarkSave: a new bookmark', () => {
     ).toEqual({ kind: 'add', vars: { position: 62_810, note: 'A quote', label: 'quote' } });
   });
 
-  it('never sends a label to a server without annotations, or one not known yet', () => {
+  // The add hook is the one owner of the label's gate (`useAddBookmark`, tested in
+  // hooks-capability: no label to a server without annotations, or one not known yet).
+  it('leaves the label to the add hook, whatever the server; never one it does not offer', () => {
     for (const annotations of [false, undefined]) {
       expect(bookmarkSave({ position: 5 }, { note: 'x', label: 'quote' }, annotations)).toEqual({
         kind: 'add',
-        vars: { position: 5, note: 'x' },
+        vars: { position: 5, note: 'x', label: 'quote' },
       });
     }
+    expect(bookmarkSave({ position: 5 }, { note: 'x', label: 'shiny' }, true)).toEqual({
+      kind: 'add',
+      vars: { position: 5, note: 'x' },
+    });
   });
 
   it('sends no label when none is picked', () => {

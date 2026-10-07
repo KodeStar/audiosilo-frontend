@@ -1,10 +1,9 @@
 import { router } from 'expo-router';
+import type { ParseKeys } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import type { BookmarkLabel } from '@/api/bookmark-labels';
-import { resolveClient } from '@/api/connection-clients';
-import { addBookmark, qk, useDeleteBookmark, useDeleteNote } from '@/api/hooks';
-import { queryClient } from '@/api/provider';
+import { addBookmark, addNote, useDeleteBookmark, useDeleteNote } from '@/api/hooks';
 import type { Bookmark, Note } from '@/api/types';
 import { startBookInPlace } from '@/components/player/start-book';
 import { toast } from '@/components/ui/toast';
@@ -72,66 +71,71 @@ export function restoreBookmark(connectionId: string, bookmark: Bookmark): Promi
 }
 
 /** Put a deleted note back (the delete toast's Undo): the same body at the same place,
- * through the book's own connection, then refresh the book's notes and the across-books
- * list. New id and dates, like `restoreBookmark`. */
-export async function restoreNote(connectionId: string, note: Note): Promise<Note> {
-  const client = resolveClient(connectionId);
-  if (!client) throw new Error('connection gone');
-  const made = await client.addNote(note.library_id, note.path, note.body, note.position);
-  void queryClient.invalidateQueries({ queryKey: qk.myNotes(connectionId) });
-  void queryClient.invalidateQueries({
-    queryKey: qk.notes(connectionId, note.library_id, note.path),
-  });
-  return made;
+ * through the book's own connection. New id and dates, like `restoreBookmark`. */
+export function restoreNote(connectionId: string, note: Note): Promise<Note> {
+  return addNote(connectionId, note.library_id, note.path, note.body, note.position);
 }
+
+/** The row a delete with Undo takes, by kind. */
+type UndoRow = { bookmark: Bookmark; note: Note };
+
+/** What a delete with Undo needs per kind: its delete hook, its restore, its copy. */
+const UNDO: {
+  [K in keyof UndoRow]: {
+    useDelete: typeof useDeleteBookmark;
+    restore: (connectionId: string, row: UndoRow[K]) => Promise<unknown>;
+    copy: Record<'deleted' | 'deleteFailed' | 'restoreFailed', ParseKeys>;
+  };
+} = {
+  bookmark: {
+    useDelete: useDeleteBookmark,
+    restore: restoreBookmark,
+    copy: {
+      deleted: 'annotations.bookmark.deleted',
+      deleteFailed: 'annotations.bookmark.deleteFailed',
+      restoreFailed: 'annotations.bookmark.restoreFailed',
+    },
+  },
+  note: {
+    useDelete: useDeleteNote,
+    restore: restoreNote,
+    copy: {
+      deleted: 'annotations.note.deleted',
+      deleteFailed: 'annotations.note.deleteFailed',
+      restoreFailed: 'annotations.note.restoreFailed',
+    },
+  },
+};
 
 /**
- * Delete a bookmark at once, with an Undo toast that puts it back (`restoreBookmark`).
- * Deleting is immediate rather than held for the toast, so another device (and the pins)
- * agree straight away and nothing waits on a timer an app suspend could stop; the cost
- * of Undo is a new date on the bookmark.
+ * Delete a bookmark or a note at once, with an Undo toast that puts it back
+ * (`restoreBookmark`, `restoreNote`). Deleting is immediate rather than held for the
+ * toast, so another device (and the pins) agree straight away and nothing waits on a
+ * timer an app suspend could stop; the cost of Undo is a new date on the row. `kind` is
+ * fixed for a caller (it picks the delete hook).
  */
-export function useDeleteBookmarkWithUndo(connectionId: string, libraryId: number, path: string) {
+export function useDeleteWithUndo<K extends keyof UndoRow>(
+  kind: K,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): (row: UndoRow[K]) => void {
   const { t } = useTranslation();
-  const del = useDeleteBookmark(libraryId, path, connectionId);
-  return (bookmark: Bookmark) =>
-    del.mutate(bookmark.id, {
+  const { useDelete, restore, copy } = UNDO[kind];
+  const del = useDelete(libraryId, path, connectionId);
+  return (row) =>
+    del.mutate(row.id, {
       onSuccess: () =>
         toast({
-          title: t('annotations.bookmark.deleted'),
-          description: formatClock(bookmark.position),
+          title: t(copy.deleted),
+          description: formatClock(row.position),
           action: {
             label: t('annotations.undo'),
             onPress: () => {
-              restoreBookmark(connectionId, bookmark).catch(() =>
-                toast({ title: t('annotations.bookmark.restoreFailed') }),
-              );
+              restore(connectionId, row).catch(() => toast({ title: t(copy.restoreFailed) }));
             },
           },
         }),
-      onError: () => toast({ title: t('annotations.bookmark.deleteFailed') }),
-    });
-}
-
-/** `useDeleteBookmarkWithUndo` for a note. */
-export function useDeleteNoteWithUndo(connectionId: string, libraryId: number, path: string) {
-  const { t } = useTranslation();
-  const del = useDeleteNote(libraryId, path, connectionId);
-  return (note: Note) =>
-    del.mutate(note.id, {
-      onSuccess: () =>
-        toast({
-          title: t('annotations.note.deleted'),
-          description: formatClock(note.position),
-          action: {
-            label: t('annotations.undo'),
-            onPress: () => {
-              restoreNote(connectionId, note).catch(() =>
-                toast({ title: t('annotations.note.restoreFailed') }),
-              );
-            },
-          },
-        }),
-      onError: () => toast({ title: t('annotations.note.deleteFailed') }),
+      onError: () => toast({ title: t(copy.deleteFailed) }),
     });
 }

@@ -327,15 +327,50 @@ export function historyQuery(
   });
 }
 
+/** What a bookmark add sends: `label` only reaches a server with `annotations`. */
+export type AddBookmarkVars = { position: number; note?: string; label?: BookmarkLabel };
+
+/** The add request, with the one rule for its label (`addBookmark` and `useAddBookmark`
+ * both send through it): `label` goes only to a server known to have `annotations` (not
+ * known yet counts as no, since an older server rejects the unknown field); otherwise it
+ * is dropped and the bookmark is still made. */
+function postBookmark(
+  client: ApiClient,
+  annotations: boolean | undefined,
+  libraryId: number,
+  path: string,
+  { position, note = '', label }: AddBookmarkVars,
+): Promise<Bookmark> {
+  return label !== undefined && annotations === true
+    ? client.addBookmark(libraryId, path, position, note, label)
+    : client.addBookmark(libraryId, path, position, note);
+}
+
+/** After an add: the book's bookmarks or notes (every reader: the book page, the
+ * companion, the scrubber pins) and the connection's across-books list. */
+function refreshAfterAdd(
+  qc: QueryClient,
+  kind: 'bookmarks' | 'notes',
+  cid: string,
+  libraryId: number,
+  path: string,
+) {
+  void qc.invalidateQueries({
+    queryKey: kind === 'bookmarks' ? qk.myBookmarks(cid) : qk.myNotes(cid),
+  });
+  return qc.invalidateQueries({
+    queryKey:
+      kind === 'bookmarks' ? qk.bookmarks(cid, libraryId, path) : qk.notes(cid, libraryId, path),
+  });
+}
+
 /**
- * Add a bookmark to a book on ONE connection's server and refresh that book's bookmarks
- * (every `qk.bookmarks` reader: the book page, the companion, the scrubber pins) and the
- * connection's across-books list. Framework-free, for the callers that run outside React
- * or for a book that is not the screen's (the playing book's shortcut, the sleep timer's
- * "Fell asleep"). `label` is sent only when the cached `/server` answer says the server
- * has `annotations` (not known yet counts as no); otherwise it is dropped and the
- * bookmark is still made. Resolves the new bookmark; rejects when the connection is gone
- * or the server refused.
+ * Add a bookmark to a book on ONE connection's server, then refresh its lists
+ * (`refreshAfterAdd`). Framework-free, for the callers that run outside React or for a
+ * book that is not the screen's (the playing book's shortcut, the sleep timer's "Fell
+ * asleep", a delete's Undo). `label` follows `postBookmark`'s rule, on the cached
+ * `/server` answer. Resolves the new bookmark; rejects when the connection is gone or the
+ * server refused.
  */
 export async function addBookmark(
   connectionId: string,
@@ -347,12 +382,31 @@ export async function addBookmark(
 ): Promise<Bookmark> {
   const client = resolveClient(connectionId);
   if (!client) throw new Error('connection gone');
-  const created =
-    label !== undefined && cachedCapability(connectionId, 'annotations') === true
-      ? await client.addBookmark(libraryId, path, position, note, label)
-      : await client.addBookmark(libraryId, path, position, note);
-  void queryClient.invalidateQueries({ queryKey: qk.bookmarks(connectionId, libraryId, path) });
-  void queryClient.invalidateQueries({ queryKey: qk.myBookmarks(connectionId) });
+  const created = await postBookmark(
+    client,
+    cachedCapability(connectionId, 'annotations'),
+    libraryId,
+    path,
+    { position, note, label },
+  );
+  void refreshAfterAdd(queryClient, 'bookmarks', connectionId, libraryId, path);
+  return created;
+}
+
+/** `addBookmark` for a note: pin `body` at `position` of a book on ONE connection's
+ * server (every server takes a place), then refresh its lists. Framework-free (a
+ * delete's Undo). */
+export async function addNote(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  body: string,
+  position: number,
+): Promise<Note> {
+  const client = resolveClient(connectionId);
+  if (!client) throw new Error('connection gone');
+  const created = await client.addNote(libraryId, path, body, position);
+  void refreshAfterAdd(queryClient, 'notes', connectionId, libraryId, path);
   return created;
 }
 
@@ -875,28 +929,19 @@ export function useBookmarks(libraryId: number, path: string, connectionId?: str
 }
 
 /** Bookmark a book at `position`, with an optional `note` and `label`, then refresh the
- * book's bookmarks and the across-books list. Works on every server: `label` is sent
- * only when the server advertises `annotations` (not known yet counts as no) and is
- * otherwise dropped, the bookmark still made. Resolves the new bookmark. */
+ * book's bookmarks and the across-books list. Works on every server: `label` follows
+ * `postBookmark`'s rule, on this connection's `useCapability`. Resolves the new
+ * bookmark. */
 export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
-  const labels = useCapability('annotations', connectionId) === true;
+  const annotations = useCapability('annotations', connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ position, note = '', label }: AddBookmarkVars) =>
-      label !== undefined && labels
-        ? api.addBookmark(libraryId, path, position, note, label)
-        : api.addBookmark(libraryId, path, position, note),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: qk.myBookmarks(cid) });
-      return qc.invalidateQueries({ queryKey: qk.bookmarks(cid, libraryId, path) });
-    },
+    mutationFn: (vars: AddBookmarkVars) => postBookmark(api, annotations, libraryId, path, vars),
+    onSuccess: () => refreshAfterAdd(qc, 'bookmarks', cid, libraryId, path),
   });
 }
-
-/** What `useAddBookmark` sends: `label` only reaches a server with `annotations`. */
-export type AddBookmarkVars = { position: number; note?: string; label?: BookmarkLabel };
 
 /** Delete one of a book's bookmarks, then refresh the book's bookmarks; the row leaves
  * the across-books list at once (which is read again). */
@@ -947,10 +992,7 @@ export function useAddNote(libraryId: number, path: string, connectionId?: strin
   return useMutation({
     mutationFn: (vars: { body: string; position?: number }) =>
       api.addNote(libraryId, path, vars.body, vars.position ?? 0),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: qk.myNotes(cid) });
-      return qc.invalidateQueries({ queryKey: qk.notes(cid, libraryId, path) });
-    },
+    onSuccess: () => refreshAfterAdd(qc, 'notes', cid, libraryId, path),
   });
 }
 

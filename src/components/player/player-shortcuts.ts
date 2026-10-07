@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import { addBookmark, cachedCapability } from '@/api/hooks';
+import { editBookmarkRequest } from '@/components/annotations/editor-model';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
@@ -128,12 +129,9 @@ async function addNow(t: TFunction): Promise<void> {
             action: {
               label: t('annotations.bookmark.addNote'),
               onPress: () =>
-                usePlayerSheets.getState().openEditor({
-                  kind: 'bookmark',
-                  target: { connectionId, libraryId, path },
-                  position: made.position,
-                  bookmark: made,
-                }),
+                usePlayerSheets
+                  .getState()
+                  .openEditor(editBookmarkRequest({ connectionId, libraryId, path }, made)),
             },
           }
         : {}),

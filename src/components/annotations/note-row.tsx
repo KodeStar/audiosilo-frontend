@@ -14,7 +14,7 @@ import { useTheme } from '@/theme/theme-provider';
 import { TimeChip } from './chips';
 import { type AnnotationTarget, editNoteRequest } from './editor-model';
 import { AnnotationRowFrame, RowAction, RowCover, RowMeta } from './row-parts';
-import { useDeleteNoteWithUndo, useJumpTo } from './use-annotation-actions';
+import { useDeleteWithUndo, useJumpTo } from './use-annotation-actions';
 
 /** A note's markdown body. `useMarkdown` is a hook, so each note renders its own. */
 export function NoteMarkdown({ body }: { body: string }) {
@@ -66,7 +66,7 @@ export function NoteRow({
   const jumpTo = useJumpTo();
   const { openBook } = useOpen();
   const target: AnnotationTarget = { connectionId, libraryId: note.library_id, path: note.path };
-  const remove = useDeleteNoteWithUndo(connectionId, target.libraryId, target.path);
+  const remove = useDeleteWithUndo('note', connectionId, target.libraryId, target.path);
   const time = formatClock(note.position);
   const jump = () => (onJump ? onJump(note.position) : jumpTo(target, note.position));
   const chip = <TimeChip position={note.position} tone="note" onPress={jump} />;

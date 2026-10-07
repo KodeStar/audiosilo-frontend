@@ -1,4 +1,4 @@
-import { focusManager, onlineManager, QueryObserver , skipToken } from '@tanstack/react-query';
+import { focusManager, onlineManager, QueryObserver, skipToken } from '@tanstack/react-query';
 
 import { ApiError, TimeoutError, type ApiClient } from '@/api/client';
 import type { Capabilities, Progress, ServerInfo } from '@/api/types';
@@ -42,6 +42,7 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import {
   addBookmark,
+  addNote,
   anyCapability,
   bookMetaQuery,
   chaptersQuery,
@@ -263,6 +264,25 @@ describe('addBookmark', () => {
     await expect(addBookmark('gone', 2, 'A/Book', 61)).rejects.toThrow('connection gone');
     mockResolveClient.mockReturnValue({ addBookmark: async () => Promise.reject(new Error('x')) });
     await expect(addBookmark('srv', 2, 'A/Book', 61)).rejects.toThrow('x');
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('addNote', () => {
+  it("pins the note on the connection's own server and refreshes both its lists", async () => {
+    const add = jest.fn(async () => ({ id: 9 }));
+    mockResolveClient.mockReturnValue({ addNote: add });
+    await expect(addNote('srv', 2, 'A/Book', 'Theory', 61)).resolves.toEqual({ id: 9 });
+    expect(add).toHaveBeenCalledWith(2, 'A/Book', 'Theory', 61);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: qk.notes('srv', 2, 'A/Book'),
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: qk.myNotes('srv') });
+  });
+
+  it('rejects without touching the cache when the connection is gone', async () => {
+    mockResolveClient.mockReturnValue(null);
+    await expect(addNote('gone', 2, 'A/Book', 'x', 0)).rejects.toThrow('connection gone');
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
   });
 });

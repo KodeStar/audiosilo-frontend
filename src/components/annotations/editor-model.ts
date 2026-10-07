@@ -51,7 +51,8 @@ export function initialBookmarkDraft(bookmark?: Bookmark): BookmarkDraft {
 
 /** What Save does with a bookmark draft. */
 export type BookmarkSave =
-  /** Make it (`useAddBookmark`; a label only on a server with `annotations`). */
+  /** Make it (`useAddBookmark`, which sends the label only to a server with
+   * `annotations`). */
   | { kind: 'add'; vars: AddBookmarkVars }
   /** Send only what changed (`useUpdateBookmark`). */
   | { kind: 'update'; patch: BookmarkPatch & { id: number } }
@@ -61,11 +62,11 @@ export type BookmarkSave =
   | { kind: 'unsupported' };
 
 /**
- * Save for a bookmark draft. A new bookmark works on every server, with its note; its
- * label goes only to a server known to have `annotations` (an older one rejects the
- * unknown field), never a label this player doesn't offer. An edit needs `annotations`
- * and sends only the fields that changed: the note (trimmed) and the label (`''` clears
- * it).
+ * Save for a bookmark draft. A new bookmark works on every server, with its note and the
+ * label picked (never one this player doesn't offer); the add hook alone decides whether
+ * the label reaches the server (`useAddBookmark`: only one with `annotations`). An edit
+ * needs `annotations` and sends only the fields that changed: the note (trimmed) and the
+ * label (`''` clears it).
  */
 export function bookmarkSave(
   request: { position: number; bookmark?: Bookmark },
@@ -75,7 +76,7 @@ export function bookmarkSave(
   const note = draft.note.trim();
   const { bookmark } = request;
   if (!bookmark) {
-    const label = annotations === true && isBookmarkLabel(draft.label) ? draft.label : undefined;
+    const label = isBookmarkLabel(draft.label) ? draft.label : undefined;
     return {
       kind: 'add',
       vars: { position: Math.round(request.position), note, ...(label ? { label } : {}) },

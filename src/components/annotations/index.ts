@@ -28,8 +28,7 @@ export { AddBookmarkAction, AddNoteAction, JournalLink } from './section-actions
 export {
   restoreBookmark,
   restoreNote,
-  useDeleteBookmarkWithUndo,
-  useDeleteNoteWithUndo,
+  useDeleteWithUndo,
   useJumpTo,
 } from './use-annotation-actions';
 export { chapterNamer, useChapterNamer, usePlaceIn } from './use-book-place';
