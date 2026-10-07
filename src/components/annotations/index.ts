@@ -5,6 +5,7 @@
  * hooks.
  */
 export { AnnotationEditor, AnnotationEditorSheet } from './annotation-editor';
+export { AnnotationSection, type AnnotationSectionProps } from './annotation-section';
 export { BookmarkRow, type BookmarkRowProps } from './bookmark-row';
 export { LabelChip, LabelPicker, TimeChip, type TimeChipTone } from './chips';
 export { isDriftBookmark, isFellAsleepNote, shownNote } from './drift-marker';

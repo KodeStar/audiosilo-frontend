@@ -371,13 +371,7 @@ function BookPage() {
           </View>
         );
       case 'bookmarks':
-        return (
-          <BookmarksSection
-            libraryId={libraryId}
-            path={path}
-            emptyLabel={t('player.bookmarks.empty')}
-          />
-        );
+        return <BookmarksSection libraryId={libraryId} path={path} />;
       case 'history':
         return (
           <HistorySection

@@ -66,7 +66,6 @@ function OwnSection({
         libraryId={libraryId}
         path={path}
         connectionId={connectionId}
-        emptyLabel={t('player.bookmarks.empty')}
         onJump={onJump}
       />
     );

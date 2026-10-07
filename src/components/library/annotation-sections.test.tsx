@@ -102,14 +102,14 @@ afterAll(() => {
 describe('BookmarksSection', () => {
   it('lists the bookmarks in book order', async () => {
     mockBookmarks = query([bookmark(1, 900), bookmark(2, 30), bookmark(3, 400)]);
-    await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="No bookmarks yet." />);
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
     const notes = screen.getAllByText(/^note \d$/).map((n) => n.props.children);
     expect(notes).toEqual(['note 2', 'note 3', 'note 1']);
   });
 
   it('teaches the way in when empty: B on the web, the player’s button on a phone', async () => {
     Platform.OS = 'web';
-    await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="No bookmarks yet." />);
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
     expect(screen.getByText('No bookmarks yet.')).toBeTruthy();
     expect(
       screen.getByText('Press B while listening, or tap the bookmark in the player.'),
@@ -118,23 +118,23 @@ describe('BookmarksSection', () => {
 
   it('has no B key on native', async () => {
     Platform.OS = 'ios';
-    await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="No bookmarks yet." />);
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
     expect(screen.getByText('Tap the bookmark in the player while listening.')).toBeTruthy();
   });
 
   it('shows a loading shape, then a failure with Retry', async () => {
     mockBookmarks = query<Bookmark[]>(undefined, 'pending');
-    const view = await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="x" />);
-    expect(screen.queryByText('x')).toBeNull();
+    const view = await render(<BookmarksSection libraryId={1} path="a/book" />);
+    expect(screen.queryByText('No bookmarks yet.')).toBeNull();
     mockBookmarks = query<Bookmark[]>(undefined, 'error');
-    await view.rerender(<BookmarksSection libraryId={1} path="a/book" emptyLabel="x" />);
+    await view.rerender(<BookmarksSection libraryId={1} path="a/book" />);
     expect(screen.getByText("Couldn't load your bookmarks")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockBookmarks.refetch).toHaveBeenCalled();
   });
 
   it('links to the journal where the server lists bookmarks across books', async () => {
-    await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="x" />);
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
     await fireEvent.press(screen.getByRole('button', { name: 'See all in your journal' }));
     expect(mockPushInShell).toHaveBeenCalledWith({
       pathname: '/journal',
@@ -144,7 +144,7 @@ describe('BookmarksSection', () => {
 
   it('has no journal link on a server without annotations', async () => {
     mockAnnotations = false;
-    await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="x" />);
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
     expect(screen.queryByRole('button', { name: 'See all in your journal' })).toBeNull();
   });
 
@@ -153,7 +153,7 @@ describe('BookmarksSection', () => {
       nowPlaying: { ...target, queue: { chapters: [], total: 1 } },
       bookPosition: 62_810.6,
     });
-    await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="x" />);
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Bookmark 17:26:50' }));
     expect(mockAddHere).toHaveBeenCalledTimes(1);
     expect(usePlayerSheets.getState().open).toBeNull();
@@ -161,18 +161,13 @@ describe('BookmarksSection', () => {
 
   it("opens the editor for a book that isn't playing, at the listener's place in it", async () => {
     mockSaved = 37_200.4;
-    await render(<BookmarksSection libraryId={1} path="a/book" emptyLabel="x" />);
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Bookmark 10:20:00' }));
     expect(mockAddHere).not.toHaveBeenCalled();
     expect(usePlayerSheets.getState()).toMatchObject({
       open: 'editor',
       editor: { kind: 'bookmark', target, position: 37_200 },
     });
-  });
-
-  it('keeps an inline list that only lists them empty (no add, no label)', async () => {
-    const view = await render(<BookmarksSection libraryId={1} path="a/book" />);
-    expect(view.toJSON()).toBeNull();
   });
 });
 
