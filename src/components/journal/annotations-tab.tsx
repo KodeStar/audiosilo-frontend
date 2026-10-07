@@ -11,6 +11,7 @@ import {
   NoteRow,
   useChapterNamer,
 } from '@/components/annotations';
+import { useServerFlag } from '@/components/library/cover-tile';
 import { useTabPress } from '@/components/shell/destinations';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
@@ -68,6 +69,7 @@ function useRowChapter(row: Sourced<MyBookmark> | Sourced<MyNote>): string | nul
 }
 
 function JournalBookmark({ row, first }: { row: Sourced<MyBookmark>; first: boolean }) {
+  const serverFlag = useServerFlag();
   return (
     <BookmarkRow
       bookmark={row}
@@ -75,11 +77,13 @@ function JournalBookmark({ row, first }: { row: Sourced<MyBookmark>; first: bool
       book={row.book}
       chapter={useRowChapter(row)}
       first={first}
+      server={serverFlag(row.connectionId)}
     />
   );
 }
 
 function JournalNote({ row, first }: { row: Sourced<MyNote>; first: boolean }) {
+  const serverFlag = useServerFlag();
   return (
     <NoteRow
       note={row}
@@ -87,6 +91,7 @@ function JournalNote({ row, first }: { row: Sourced<MyNote>; first: boolean }) {
       book={row.book}
       chapter={useRowChapter(row)}
       first={first}
+      server={serverFlag(row.connectionId)}
     />
   );
 }

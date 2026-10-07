@@ -30,6 +30,9 @@ export type BookmarkRowProps = {
   onJump?: (position: number) => void;
   /** The list's first row: no hairline above it. */
   first?: boolean;
+  /** The server's name, in a list across servers when there is more than one (the
+   * Journal passes `useServerFlag`'s); the book's own page and the companion leave it out. */
+  server?: string;
 };
 
 /**
@@ -47,6 +50,7 @@ export function BookmarkRow({
   book,
   onJump,
   first,
+  server,
 }: BookmarkRowProps) {
   const { t } = useTranslation();
   const editable = useCapability('annotations', connectionId) === true;
@@ -94,7 +98,6 @@ export function BookmarkRow({
           ) : null}
           <RowAction
             icon="trash"
-            tone="destructive"
             label={t('annotations.bookmark.delete', { time })}
             onPress={() => remove(bookmark)}
             testID="bookmark-delete"
@@ -111,7 +114,7 @@ export function BookmarkRow({
         <LabelChip label={bookmark.label} drift={drift} />
       )}
       <BookmarkNote label={bookmark.label} note={note} drift={drift} />
-      <RowMeta parts={[title, chapter, formatRelative(bookmark.created_at)]} />
+      <RowMeta parts={[title, chapter, formatRelative(bookmark.created_at)]} server={server} />
     </AnnotationRowFrame>
   );
 }

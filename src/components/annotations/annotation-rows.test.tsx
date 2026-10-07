@@ -60,6 +60,7 @@ import { usePlayerSheets } from '@/components/player/player-sheets';
 import { toast } from '@/components/ui/toast';
 import { playerStoreMock } from '@/testing/player-store-mock';
 import { expectNativeTarget } from '@/testing/touch-target';
+import { colors } from '@/theme/tokens';
 
 import { BookmarkRow } from './bookmark-row';
 import { LabelPicker } from './chips';
@@ -89,6 +90,40 @@ const note = (over: Partial<Note> = {}): Note => ({
   updated_at: MADE,
   ...over,
 });
+
+/** react-native-svg's processed colour: ARGB as one number (`#123456` -> 0xff123456). */
+const argb = (hex: string) => parseInt(`ff${hex.slice(1)}`, 16);
+
+/** Every glyph colour drawn inside the element with `testID`, as `#rrggbb`. */
+function tintsIn(testID: string): string[] {
+  type Node = { props?: Record<string, unknown>; children?: (Node | string)[] | null };
+  const find = (n: Node | string | null): Node | null => {
+    if (!n || typeof n === 'string') return null;
+    if (n.props?.testID === testID) return n;
+    for (const c of n.children ?? []) {
+      const hit = find(c);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const fills: number[] = [];
+  const walk = (n: Node | string) => {
+    if (typeof n === 'string') return;
+    const fill = n.props?.fill as { payload?: number } | undefined;
+    if (n.props?.d && typeof fill?.payload === 'number') fills.push(fill.payload);
+    (n.children ?? []).forEach(walk);
+  };
+  const root = screen.toJSON() as Node | Node[] | null;
+  const hit = Array.isArray(root) ? root.map(find).find(Boolean) : find(root);
+  if (hit) walk(hit);
+  const known = [
+    colors.light.mutedForeground,
+    colors.dark.mutedForeground,
+    colors.light.destructive,
+    colors.dark.destructive,
+  ];
+  return fills.map((f) => known.find((c) => argb(c) === f) ?? `other:${f}`);
+}
 
 const OS = Platform.OS;
 const player = playerStoreMock();
@@ -251,6 +286,27 @@ describe('BookmarkRow', () => {
     expect(mockOpenBook).toHaveBeenCalledWith('c', 1, 'a/book', 'bookmarks');
   });
 
+  it('keeps Edit and Delete quiet: muted glyphs, never the destructive colour on a row', async () => {
+    await render(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
+    for (const id of ['bookmark-edit', 'bookmark-delete']) {
+      const tints = tintsIn(id);
+      expect(tints.length).toBeGreaterThan(0);
+      expect([colors.light.mutedForeground, colors.dark.mutedForeground]).toContain(tints[0]);
+      expect(tints).not.toContain(colors.light.destructive);
+      expect(tints).not.toContain(colors.dark.destructive);
+    }
+  });
+
+  it('names its server in a list across several servers, and not otherwise', async () => {
+    const view = await render(
+      <BookmarkRow bookmark={bookmark()} connectionId="c" server="Maya's Shelf" />,
+    );
+    expect(screen.getByTestId('row-server')).toBeTruthy();
+    expect(screen.getByText("Maya's Shelf")).toBeTruthy();
+    await view.rerender(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
+    expect(screen.queryByTestId('row-server')).toBeNull();
+  });
+
   it('gives every control a 44 pt touch on native', async () => {
     Platform.OS = 'ios';
     await render(<BookmarkRow bookmark={bookmark()} connectionId="c" />);
@@ -267,6 +323,14 @@ describe('NoteRow', () => {
     expect(chip).toBeTruthy();
     expect(String(chip.props.className)).toContain('bg-community-soft');
     expect(screen.getByText(/Syl is not a windspren/)).toBeTruthy();
+  });
+
+  it('keeps Delete quiet and names its server when given one', async () => {
+    await render(<NoteRow note={note()} connectionId="c" server="Maya's Shelf" />);
+    const tints = tintsIn('note-delete');
+    expect(tints).not.toContain(colors.light.destructive);
+    expect(tints).not.toContain(colors.dark.destructive);
+    expect(screen.getByText("Maya's Shelf")).toBeTruthy();
   });
 
   it('shows a note made before notes had places at 0:00', async () => {

@@ -41,6 +41,9 @@ export type NoteRowProps = {
   onJump?: (position: number) => void;
   /** The list's first row: no hairline above it. */
   first?: boolean;
+  /** The server's name, in a list across servers when there is more than one (the
+   * Journal passes `useServerFlag`'s); the book's own page and the companion leave it out. */
+  server?: string;
 };
 
 /**
@@ -49,7 +52,15 @@ export type NoteRowProps = {
  * the chapter and how long ago, then Edit (where the server takes edits,
  * `annotations`) and Delete (with Undo). Self-contained like `BookmarkRow`.
  */
-export function NoteRow({ note, connectionId, chapter, book, onJump, first }: NoteRowProps) {
+export function NoteRow({
+  note,
+  connectionId,
+  chapter,
+  book,
+  onJump,
+  first,
+  server,
+}: NoteRowProps) {
   const { t } = useTranslation();
   const editable = useCapability('annotations', connectionId) === true;
   const jumpTo = useJumpTo();
@@ -88,7 +99,6 @@ export function NoteRow({ note, connectionId, chapter, book, onJump, first }: No
           ) : null}
           <RowAction
             icon="trash"
-            tone="destructive"
             label={t('annotations.note.delete', { time })}
             onPress={() => remove(note)}
             testID="note-delete"
@@ -98,7 +108,7 @@ export function NoteRow({ note, connectionId, chapter, book, onJump, first }: No
     >
       {book ? <View className="flex-row">{chip}</View> : null}
       <NoteMarkdown body={note.body} />
-      <RowMeta parts={[title, chapter, formatRelative(note.created_at)]} />
+      <RowMeta parts={[title, chapter, formatRelative(note.created_at)]} server={server} />
     </AnnotationRowFrame>
   );
 }
