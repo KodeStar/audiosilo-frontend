@@ -182,6 +182,10 @@ describe('JournalScreen: the Diary', () => {
         3360,
       ),
     );
+    // The record is spent: the strip no longer offers to jump back to the old place (a
+    // second press would rewind the listener again), only the bookmark.
+    expect(screen.queryByText('Jump back')).toBeNull();
+    expect(screen.getByText('Play from where you drifted off')).toBeTruthy();
   });
 
   it('without the record, offers to play from the drift-off bookmark', async () => {

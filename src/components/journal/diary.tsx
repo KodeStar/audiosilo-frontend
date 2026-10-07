@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -78,6 +79,8 @@ function DayBarView({ day }: { day: DiaryDay }) {
   );
 }
 
+const NO_RECORDS: DriftRecords = {};
+
 /** Spend a book's drift record as of now (never fails: a record that can't be taken just
  * stays until it goes stale). */
 const spendDrift = (bookKey: string) => takeDrift(bookKey, Date.now()).catch(() => null);
@@ -99,7 +102,10 @@ function DriftStripView({
   const themed = useThemeColors();
   const jumpTo = useJumpTo();
   const now = useNow(60_000);
-  const strip = driftStrip(bookmark, records, now);
+  // `records` is read once per Diary: once this strip spends its record it offers the
+  // bookmark instead, so a second press can't jump back to the old place again.
+  const [spent, setSpent] = useState(false);
+  const strip = driftStrip(bookmark, spent ? NO_RECORDS : records, now);
   const time = formatWallClock(new Date(strip.at));
   const go = () => {
     const target = { connectionId: span.connectionId, libraryId: span.libraryId, path: span.path };
@@ -109,6 +115,7 @@ function DriftStripView({
     }
     // The record is spent by this jump, as by the player's own prompt: the book must not
     // ask "Jump back?" again once it starts there.
+    setSpent(true);
     void spendDrift(span.bookKey).then(() => jumpTo(target, strip.position));
   };
   return (
