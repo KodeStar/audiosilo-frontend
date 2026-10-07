@@ -1,8 +1,10 @@
 import { t } from 'i18next';
+import { AppState } from 'react-native';
 
 import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatWallClock } from '@/lib/format';
+import { whenActive } from '@/lib/when-active';
 
 import { driftOffer, saveDrift, takeDrift, type DriftRecord } from './drift';
 import { startInteractionWatch } from './last-interaction';
@@ -43,12 +45,28 @@ export function startDriftWatch(): () => void {
     if (outcome.fellAsleep) fellAsleep(outcome.bookKey, outcome.fellAsleep);
   });
 
-  // The play edge: playback starting, or a different book playing.
+  // The play edge: playback starting, or a different book playing. `offeredFor` is the
+  // book whose current run of playing was already looked at (null while not playing).
+  const initial = usePlayer.getState();
+  let offeredFor = selectIsPlaying(initial) ? selectBookKey(initial) : null;
+  // A book change shows the new book with the OLD book's snapshot until the engine reports
+  // for the new one (`playBook` sets the book before it loads it): that 'playing' is not
+  // the new book's play edge. Taking the drift record on it would spend the offer on the
+  // old book's position, and the real edge would find nothing (jump-undo skips it too).
+  let staleSnapshot: unknown = null;
   const unwatchPlayer = usePlayer.subscribe((state, prev) => {
-    if (!selectIsPlaying(state)) return;
     const key = selectBookKey(state);
-    if (key === null) return;
-    if (selectIsPlaying(prev) && selectBookKey(prev) === key) return;
+    if (key !== selectBookKey(prev)) {
+      staleSnapshot = state.snapshot === prev.snapshot ? state.snapshot : null;
+    }
+    if (key === null || !selectIsPlaying(state)) {
+      offeredFor = null;
+      return;
+    }
+    if (state.snapshot === staleSnapshot) return;
+    staleSnapshot = null;
+    if (offeredFor === key) return;
+    offeredFor = key;
     void offerJumpBack(key);
   });
 
@@ -56,8 +74,12 @@ export function startDriftWatch(): () => void {
     stopInteractions();
     unsubscribeEnded();
     unwatchPlayer();
+    cancelPendingPrompt();
   };
 }
+
+/** Cancels the prompt held for the foreground, if one is (see `prompt`). */
+let cancelPendingPrompt: () => void = () => {};
 
 function fellAsleep(bookKey: string, fell: FellAsleep) {
   const player = usePlayer.getState();
@@ -102,7 +124,28 @@ async function offerJumpBack(bookKey: string) {
   if (record) prompt(bookKey, record);
 }
 
+/** Offer the jump back. A toast shown while the app is in the background (a lock-screen,
+ * headphone or CarPlay play, or the morning play that closed the grace on iOS) is seen
+ * by nobody and gone in seconds, and the record is already taken: so it waits for the
+ * app to come to the front, once, and is judged then (the same book still loaded, near
+ * where it stopped; an hour listened to in the background since means no prompt). */
 function prompt(bookKey: string, record: DriftRecord) {
+  cancelPendingPrompt();
+  if (AppState.currentState !== 'active') {
+    const cancel = whenActive(() => {
+      cancelPendingPrompt = () => {};
+      showPrompt(bookKey, record);
+    });
+    cancelPendingPrompt = () => {
+      cancel();
+      cancelPendingPrompt = () => {};
+    };
+    return;
+  }
+  showPrompt(bookKey, record);
+}
+
+function showPrompt(bookKey: string, record: DriftRecord) {
   const player = usePlayer.getState();
   if (selectBookKey(player) !== bookKey) return; // another book by the time storage answered
   const offer = driftOffer(record, Date.now(), selectBookPosition(player));
