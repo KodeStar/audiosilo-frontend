@@ -46,11 +46,7 @@ export function BookCrumbs({ crumbs }: { crumbs: BookCrumb[] }) {
               </Text>
             </Pressable>
           ) : (
-            <Text
-              numberOfLines={1}
-              className="font-sans-semibold text-sm text-foreground"
-              accessibilityRole={i === last ? 'text' : undefined}
-            >
+            <Text numberOfLines={1} className="font-sans-semibold text-sm text-foreground">
               {c.label}
             </Text>
           )}

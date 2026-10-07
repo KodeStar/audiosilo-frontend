@@ -17,6 +17,7 @@ import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
+import { useLayout } from '@/lib/layout';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -43,6 +44,8 @@ export function DownloadControl({
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
+  // A phone's row is narrow: the short word, beside the hero's icon buttons.
+  const phone = useLayout() === 'phone';
   const {
     connectionId,
     supported,
@@ -190,7 +193,13 @@ export function DownloadControl({
   return (
     <View className="gap-1.5">
       <Button
-        title={status === 'error' ? t('library.download.retry') : t('book.download.forOffline')}
+        title={
+          status === 'error'
+            ? t('library.download.retry')
+            : phone
+              ? t('library.download.download')
+              : t('book.download.forOffline')
+        }
         variant={status === 'error' ? 'destructive-outline' : 'outline'}
         size="lg"
         icon={status === 'error' ? 'rotate' : 'download'}

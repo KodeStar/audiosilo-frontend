@@ -36,7 +36,7 @@ export type HeroActionsProps = {
   progress?: Progress | null;
   primary: PrimaryAction;
   onPrimary: () => void;
-  /** Two rows on a phone: the primary and the download, then the icon buttons. */
+  /** Two rows on a phone: the primary, then the download and the icon buttons. */
   stacked: boolean;
 };
 
@@ -76,19 +76,16 @@ export function HeroActions({
       icon={primary.kind === 'pause' ? 'pause' : 'play'}
       title={primaryLabel(t, primary)}
       onPress={onPrimary}
-      className={stacked ? 'flex-1' : undefined}
     />
   );
   const download = (
-    <View className={stacked ? 'flex-1' : undefined}>
-      <DownloadControl
-        libraryId={libraryId}
-        path={path}
-        book={book}
-        chapterData={chapterData}
-        disabled={chaptersLoading}
-      />
-    </View>
+    <DownloadControl
+      libraryId={libraryId}
+      path={path}
+      book={book}
+      chapterData={chapterData}
+      disabled={chaptersLoading}
+    />
   );
   const icons = (
     <>
@@ -131,12 +128,13 @@ export function HeroActions({
   return (
     <>
       {stacked ? (
+        // A phone: the primary across the page (its words never wrap), then the rest.
         <View className="gap-2">
-          <View className="flex-row gap-2">
-            {primaryButton}
+          {primaryButton}
+          <View className="flex-row flex-wrap items-center gap-2">
             {download}
+            {icons}
           </View>
-          <View className="flex-row flex-wrap gap-2">{icons}</View>
         </View>
       ) : (
         <View className="flex-row flex-wrap items-center gap-2">

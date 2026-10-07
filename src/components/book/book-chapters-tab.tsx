@@ -84,6 +84,7 @@ export function BookChaptersTab({
           titles={list.rows.map((r) => rowLabel(r, list.kind, t))}
           total={total}
           savedPosition={finished ? total : position}
+          finished={finished}
           loaded={loaded}
           pins={pins}
           onJump={onJump}
@@ -131,6 +132,7 @@ function WholeBook({
   titles,
   total,
   savedPosition,
+  finished,
   loaded,
   pins,
   onJump,
@@ -139,6 +141,7 @@ function WholeBook({
   titles: string[];
   total: number;
   savedPosition: number;
+  finished: boolean;
   loaded: boolean;
   pins: BookPins;
   onJump: (jump: Jump) => void;
@@ -197,7 +200,7 @@ function WholeBook({
             {formatClock(0)}
           </Text>
           <Text variant="caption" className="text-subtle-foreground" style={tabularNums}>
-            {`${percentHeard(position, total, false)}% · ${formatClock(position)}`}
+            {`${percentHeard(position, total, finished)}% · ${formatClock(position)}`}
           </Text>
           <Text variant="caption" className="text-subtle-foreground" style={tabularNums}>
             {formatClock(total)}
