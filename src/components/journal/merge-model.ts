@@ -40,7 +40,8 @@ export type Merged<T> = {
   isFetchingMore: boolean;
 };
 
-const timeOfRow = (iso: string): number => {
+/** A row's ISO time as epoch ms (0 when it can't be read). */
+export const timeOfRow = (iso: string): number => {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? 0 : t;
 };

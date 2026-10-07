@@ -13,12 +13,11 @@ import {
   sessionMinutes,
   toSpan,
 } from '@/components/journal/diary-model';
-import { formatShortDay } from '@/components/journal/journal-format';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { formatClock, formatWallClock } from '@/lib/format';
+import { formatClock, formatShortDay, formatWallClock } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';

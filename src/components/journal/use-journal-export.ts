@@ -9,12 +9,11 @@ import type { ChaptersResponse, MyBookmark, MyNote, Page } from '@/api/types';
 import { chapterNamer, labelText } from '@/components/annotations';
 import { toast } from '@/components/ui/toast';
 import { copyText } from '@/lib/clipboard';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatDayDate } from '@/lib/format';
 
 import { collectPages } from './export-collect';
 import { exportFileName, exportRows, type ExportWords, toCsv, toMarkdown } from './export-format';
 import { type ExportFile, saveExport } from './export-save';
-import { formatDayDate } from './journal-format';
 import type { Sourced } from './merge-model';
 import type { Source } from './use-journal-sources';
 

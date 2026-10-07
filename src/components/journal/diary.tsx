@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { formatDurationOrZero, formatWallClock } from '@/lib/format';
+import { formatDayDate, formatDurationOrZero, formatWallClock, formatWeekday } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
@@ -34,7 +34,6 @@ import {
   sessionMinutes,
   spanRange,
 } from './diary-model';
-import { formatDayDate, formatWeekday } from './journal-format';
 import type { Sourced } from './merge-model';
 
 /** The day's name: Today, Yesterday, a weekday this week, else its date. */
