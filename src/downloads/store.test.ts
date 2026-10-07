@@ -705,6 +705,13 @@ describe('failures, retry and the session decline mark', () => {
     expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
     expect(useDownloads.getState().entries[key]?.origin).toBe('keep-ahead');
 
+    // Nor does the automatic download of the book being started.
+    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    useDownloads.getState().download('c1', 2, book, undefined, 'auto');
+    await settle();
+    expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
+    expect(useDownloads.getState().entries[key]?.origin).toBe('auto');
+
     await useDownloads.getState().remove('c1', 2, 'A/Book');
     useDownloads.getState().download('c1', 2, book);
     expect(isDeclined('c1', 2, 'A/Book')).toBe(false);

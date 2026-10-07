@@ -6,6 +6,7 @@ import {
   pendingBytes,
   planKeepAhead,
   reserveBytes,
+  roomLeft,
   type AheadBook,
   type KeepAheadInput,
 } from './keep-ahead';
@@ -57,6 +58,20 @@ describe('reserveBytes', () => {
   it('keeps 1 GB or a tenth of the room free, whichever is more', () => {
     expect(reserveBytes(4 * GB)).toBe(GB);
     expect(reserveBytes(128 * GB)).toBe(Math.ceil(12.8 * GB));
+  });
+});
+
+describe('roomLeft', () => {
+  it('is the free space less what is queued and the reserve', () => {
+    const storage = { scope: 'device' as const, capacity: 4 * GB, free: 3 * GB };
+    expect(roomLeft(storage, 0)).toBe(2 * GB);
+    expect(roomLeft(storage, 512 * MB)).toBe(1.5 * GB);
+  });
+  it('goes below zero once the reserve is eaten into', () => {
+    expect(roomLeft({ scope: 'browser', capacity: 4 * GB, free: GB / 2 }, 0)).toBe(-GB / 2);
+  });
+  it('is null when the room is not knowable', () => {
+    expect(roomLeft(null, 0)).toBeNull();
   });
 });
 

@@ -95,6 +95,14 @@ export function reserveBytes(capacity: number): number {
   return Math.max(1024 ** 3, Math.ceil(capacity * 0.1));
 }
 
+/** The bytes automatic downloads may still add (free space, minus what queued downloads
+ * will write, minus the reserve; below zero when the reserve is already eaten into), or
+ * null when the room is not knowable. Keep-ahead's plan and the playback store's download
+ * of the book you start both obey it. */
+export function roomLeft(storage: StorageEstimate | null, pending: number): number | null {
+  return storage ? storage.free - pending - reserveBytes(storage.capacity) : null;
+}
+
 /** Bytes the registry's queued and in-flight downloads still have to write. */
 export function pendingBytes(
   entries: Iterable<{
@@ -168,9 +176,7 @@ export function planKeepAhead(input: KeepAheadInput): KeepAheadPlan {
   if (input.network === 'never') return { status: 'never', slots: [], start: [] };
   if (input.window.length === 0) return { status: 'idle', slots: [], start: [] };
 
-  let room = input.storage
-    ? input.storage.free - input.pending - reserveBytes(input.storage.capacity)
-    : null;
+  let room = roomLeft(input.storage, input.pending);
   // Unknown room: one at a time.
   let unknownBudget = input.window.some((b) => {
     const status = input.entries.get(contentKeyOf(b));
