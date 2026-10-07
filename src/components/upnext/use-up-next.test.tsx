@@ -182,7 +182,15 @@ describe('usePlayNow', () => {
       await result.current(entry('B'), 'Book B');
     });
     expect(mockItem).toHaveBeenCalledWith(1, 'B', expect.anything());
-    expect(mockPlayBook).toHaveBeenCalledWith('c', 1, { rel_path: 'B' }, { files: [] }, undefined);
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c',
+      1,
+      { rel_path: 'B' },
+      { files: [] },
+      undefined,
+      undefined,
+      undefined,
+    );
     expect(drop).toHaveBeenCalledWith(entry('B'));
   });
 
