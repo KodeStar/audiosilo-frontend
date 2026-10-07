@@ -57,7 +57,6 @@ function OwnSection({
 }) {
   const { t } = useTranslation();
   const seekBook = usePlayer((s) => s.seekBook);
-  const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters);
   const onJump = (p: number) => void seekBook(p);
   const { connectionId, libraryId, path } = target;
   if (tab === 'bookmarks')
@@ -79,7 +78,6 @@ function OwnSection({
       path={path}
       connectionId={connectionId}
       emptyLabel={t('player.history.empty')}
-      chapters={chapters}
       onJump={onJump}
     />
   );

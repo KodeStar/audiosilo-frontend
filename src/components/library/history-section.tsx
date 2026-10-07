@@ -3,7 +3,6 @@ import { View } from 'react-native';
 
 import { useHistory } from '@/api/hooks';
 import { useCid } from '@/api/provider';
-import type { Chapter } from '@/api/types';
 import { useChapterNamer, useJumpTo } from '@/components/annotations';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -48,8 +47,6 @@ export function HistorySection({
    * book's connection so history addresses the right server. */
   connectionId?: string;
   emptyLabel?: string;
-  /** Unused: the chapters come from the book's own read (`useChapterNamer`). */
-  chapters?: Chapter[];
   /** Where a tap on Jump goes (the companion seeks the playing book in place); without
    * it, the shared jump (`useJumpTo`: the player on a phone, in place elsewhere). */
   onJump?: (position: number) => void;

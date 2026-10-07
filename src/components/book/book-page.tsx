@@ -183,12 +183,8 @@ function BookPage() {
   const chapters = useMemo(() => chapterData?.chapters ?? [], [chapterData]);
   const files = useMemo(() => chapterData?.files ?? [], [chapterData]);
   // The whole-book offset of every chapter, recomputed from the cumulative file durations
-  // (the server's `book_offset` is unreliable): the spoiler gate, the rows, History.
+  // (the server's `book_offset` is unreliable): the spoiler gate and the rows.
   const chapterStarts = useMemo(() => chapterStartsOf(chapters, files), [chapters, files]);
-  const historyChapters = useMemo(
-    () => chapters.map((ch, i) => ({ ...ch, book_offset: chapterStarts[i] })),
-    [chapters, chapterStarts],
-  );
   const total = chapterData?.duration || book?.duration || 0;
   // Nothing until the chapters are in: a book's parts are only known once it is known
   // to have no chapters.
@@ -324,7 +320,6 @@ function BookPage() {
             interval,
             onJump,
           }}
-          historyChapters={historyChapters}
           community={{
             meta: metaMatched,
             gate,

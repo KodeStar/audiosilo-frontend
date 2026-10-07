@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import type { Book, BookMetaSeriesWork, Chapter, ChaptersResponse } from '@/api/types';
+import type { Book, BookMetaSeriesWork, ChaptersResponse } from '@/api/types';
 import {
   BookMetaCharactersTab,
   BookMetaRecapsTab,
@@ -32,8 +32,6 @@ export type BookTabPanelProps = {
   roomy: boolean;
   /** The Chapters tab (its rows' skeleton while the list is still empty). */
   chapters: Omit<BookChaptersTabProps, 'roomy'>;
-  /** The History tab's chapters, at their corrected whole-book starts. */
-  historyChapters: Chapter[];
   /** The community tabs: the matched work, the spoiler gate (one position on the real
    * chapters) and the page's shared reveal, the series rails and the previous books. */
   community: {
@@ -59,7 +57,6 @@ export function BookTabPanel({
   chapterData,
   roomy,
   chapters,
-  historyChapters,
   community,
   details,
 }: BookTabPanelProps) {
@@ -118,7 +115,6 @@ export function BookTabPanel({
         <HistorySection
           libraryId={libraryId}
           path={path}
-          chapters={historyChapters}
           emptyLabel={t('player.history.empty')}
         />
       );
