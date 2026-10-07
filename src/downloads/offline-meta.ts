@@ -124,6 +124,24 @@ function keepForGood(key: QueryKey): void {
 }
 
 /**
+ * A removed download's book entries (its item, chapters and `/meta`, every variant: a
+ * default reaches every key it prefixes) go back to the default `gcTime` from their next
+ * build, so the session no longer keeps them for good. TanStack can't drop a registered
+ * default, only replace it, so this is an empty one. Its previous works stay kept: another
+ * downloaded book of the series can share them.
+ */
+export function releaseOfflineBook(connectionId: string, libraryId: number, path: string): void {
+  for (const key of [
+    qk.item(connectionId, libraryId, path),
+    qk.chapters(connectionId, libraryId, path),
+    qk.bookMeta(connectionId, libraryId, path),
+    qk.bookMeta(connectionId, libraryId, path, { includePrevious: true }),
+  ]) {
+    queryClient.setQueryDefaults(key, {});
+  }
+}
+
+/**
  * Put `data` in the cache under `key` unless the cache already holds an answer there (a
  * fresh one from the server always wins over a saved copy), dated `updatedAt` so it goes
  * stale on the screens' own schedule, and keep the entry for good (`keepForGood`). Used

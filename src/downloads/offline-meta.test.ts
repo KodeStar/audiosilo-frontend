@@ -63,6 +63,7 @@ import {
   parseOfflineMeta,
   readOfflineMeta,
   readServerSnapshots,
+  releaseOfflineBook,
   removeOfflineMeta,
   saveServerSnapshot,
   seedOfflineMeta,
@@ -244,6 +245,28 @@ describe('seedQuery', () => {
       queryFn: async () => ({ title: 'x' }),
     });
     expect(q?.gcTime).toBe(Infinity);
+  });
+});
+
+describe('releaseOfflineBook', () => {
+  it("lets a removed download's entries go like any other's, every /meta variant too", () => {
+    const item = qk.item('c1', 2, 'R');
+    seedQuery(item, { title: 'R' }, 1);
+    seedQuery(qk.bookMeta('c1', 2, 'R'), { matched: false }, 1);
+    seedQuery(qk.bookMeta('c1', 2, 'R', { includePrevious: true }), { matched: false }, 1);
+    releaseOfflineBook('c1', 2, 'R');
+    for (const key of [
+      item,
+      qk.chapters('c1', 2, 'R'),
+      qk.bookMeta('c1', 2, 'R', { includePrevious: true }),
+      qk.bookMeta('c1', 2, 'R', { hideSpoilers: true }),
+    ]) {
+      expect(qc.getQueryDefaults(key).gcTime).toBeUndefined();
+    }
+    // Read again later (its old entry collected): the default five minutes.
+    qc.removeQueries({ queryKey: item, exact: true });
+    qc.setQueryData(item, { title: 'again' });
+    expect(qc.getQueryCache().find({ queryKey: item, exact: true })?.gcTime).toBe(5 * 60_000);
   });
 });
 

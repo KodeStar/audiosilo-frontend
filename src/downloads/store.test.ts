@@ -49,6 +49,7 @@ const mockReadSnapshots = jest.fn(async (): Promise<Record<string, unknown>> => 
 const mockSaveSnapshot = jest.fn(async (..._a: unknown[]) => {});
 const mockForgetSnapshot = jest.fn(async (_cid: string) => {});
 const mockCurrentSnapshot = jest.fn((_cid: string): unknown => undefined);
+const mockRelease = jest.fn();
 jest.mock('@/downloads/offline-meta', () => ({
   canMatch: (e: DownloadEntry) => mockCanMatch(e),
   captureOfflineMeta: (e: DownloadEntry) => mockCapture(e),
@@ -64,6 +65,7 @@ jest.mock('@/downloads/offline-meta', () => ({
   saveServerSnapshot: (...a: unknown[]) => mockSaveSnapshot(...a),
   forgetServerSnapshot: (cid: string) => mockForgetSnapshot(cid),
   currentServerSnapshot: (cid: string) => mockCurrentSnapshot(cid),
+  releaseOfflineBook: (...a: unknown[]) => mockRelease(...a),
 }));
 
 // The launch's restore waits for the JS thread to be idle: here, the next turn.
@@ -910,6 +912,15 @@ describe('the offline companion (community metadata kept with a download)', () =
     mockCapture.mockRejectedValue(new Error('meta down'));
     await downloadOne(path);
     expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.status).toBe('downloaded');
+  });
+
+  it('a removed book stops keeping its cache entries for good', async () => {
+    const path = nextPath();
+    mockCapture.mockResolvedValue(payload());
+    await downloadOne(path);
+    expect(mockRelease).not.toHaveBeenCalled();
+    await useDownloads.getState().remove('c1', 2, path);
+    expect(mockRelease).toHaveBeenCalledWith('c1', 2, path);
   });
 
   it('a book removed while its metadata was read keeps nothing', async () => {

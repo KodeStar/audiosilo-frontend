@@ -21,6 +21,7 @@ import {
   forgetServerSnapshot,
   readOfflineMeta,
   readServerSnapshots,
+  releaseOfflineBook,
   removeOfflineMeta,
   saveServerSnapshot,
   seedOfflineMeta,
@@ -197,6 +198,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     controllers.get(key)?.abort();
     await engine.removeBook(connectionId, libraryId, path);
     removeEntry(key);
+    releaseOfflineBook(connectionId, libraryId, path);
   },
 }));
 
