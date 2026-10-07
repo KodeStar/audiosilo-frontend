@@ -45,6 +45,7 @@ import {
   anyCapability,
   fetchBookProgress,
   fetchCapabilities,
+  flattenPages,
   historyQuery,
   isQueueKey,
   isSearchKey,
@@ -213,12 +214,69 @@ describe('addBookmark', () => {
     });
   });
 
+  it('refreshes the across-books bookmarks too', async () => {
+    mockResolveClient.mockReturnValue({ addBookmark: async () => ({ id: 7 }) });
+    await addBookmark('srv', 2, 'A/Book', 61);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: qk.myBookmarks('srv'),
+    });
+  });
+
+  describe('a label', () => {
+    const caps = (annotations?: boolean) =>
+      queryClient.setQueryData(qk.server('srv'), {
+        capabilities: annotations === undefined ? {} : { annotations },
+      } as ServerInfo);
+    afterEach(() => queryClient.clear());
+
+    it('is sent to a server with annotations', async () => {
+      const add = jest.fn(async () => ({ id: 7 }));
+      mockResolveClient.mockReturnValue({ addBookmark: add });
+      caps(true);
+      await addBookmark('srv', 2, 'A/Book', 61, 'Fell asleep', 'fell_asleep');
+      expect(add).toHaveBeenCalledWith(2, 'A/Book', 61, 'Fell asleep', 'fell_asleep');
+    });
+
+    it('is dropped (the bookmark still made) without annotations, or before /server is known', async () => {
+      const add = jest.fn(async () => ({ id: 7 }));
+      mockResolveClient.mockReturnValue({ addBookmark: add });
+      caps(false);
+      await addBookmark('srv', 2, 'A/Book', 61, 'Fell asleep', 'fell_asleep');
+      caps();
+      await addBookmark('srv', 2, 'A/Book', 62, '', 'quote');
+      queryClient.clear();
+      await addBookmark('srv', 2, 'A/Book', 63, '', 'quote');
+      expect(add.mock.calls).toEqual([
+        [2, 'A/Book', 61, 'Fell asleep'],
+        [2, 'A/Book', 62, ''],
+        [2, 'A/Book', 63, ''],
+      ]);
+    });
+  });
+
   it('rejects without touching the cache when the connection is gone or the add fails', async () => {
     mockResolveClient.mockReturnValue(null);
     await expect(addBookmark('gone', 2, 'A/Book', 61)).rejects.toThrow('connection gone');
     mockResolveClient.mockReturnValue({ addBookmark: async () => Promise.reject(new Error('x')) });
     await expect(addBookmark('srv', 2, 'A/Book', 61)).rejects.toThrow('x');
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('across-books lists', () => {
+  it("keeps the across-books history under the connection's history prefix", () => {
+    // store.ts invalidates qk.historyAll after recording a span: it must reach this list.
+    expect(qk.myHistory('c').slice(0, 2)).toEqual([...qk.historyAll('c')]);
+  });
+
+  it('flattens the pages so far, in order', () => {
+    expect(flattenPages(undefined)).toEqual([]);
+    expect(
+      flattenPages({
+        pages: [{ items: [1, 2], next_cursor: 'p2' }, { items: [3] }],
+        pageParams: [undefined, 'p2'],
+      }),
+    ).toEqual([1, 2, 3]);
   });
 });
 
