@@ -1,5 +1,5 @@
 import { createPlaybackService, isSwapReady, routePickerKind, sourceFor } from './service.web';
-import type { PlaybackService, PlaybackTrack } from './types';
+import { AutoplayBlockedError, type PlaybackService, type PlaybackTrack } from './types';
 
 // HTMLMediaElement.readyState levels (numeric so the test reads like the browser).
 const HAVE_CURRENT_DATA = 2;
@@ -317,6 +317,47 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     await svc.seekTo(120);
     expect(a.loads).toBe(loads); // byte-range seek, no reload
     expect(a.currentTime).toBe(120);
+  });
+});
+
+describe('WebPlaybackService autoplay policy', () => {
+  const realAudio = (globalThis as { Audio?: unknown }).Audio;
+  let svc: PlaybackService;
+  const direct: PlaybackTrack[] = [{ id: '2:x', url: 'https://s/x.mp3?token=k', title: 'B' }];
+  const refuse = (name: string) =>
+    jest
+      .spyOn(FakeAudio.prototype, 'play')
+      .mockRejectedValueOnce(Object.assign(new Error('refused'), { name }));
+
+  beforeEach(() => {
+    FakeAudio.all = [];
+    (globalThis as { Audio?: unknown }).Audio = FakeAudio;
+    svc = createPlaybackService();
+  });
+  afterEach(() => {
+    (globalThis as { Audio?: unknown }).Audio = realAudio;
+    jest.restoreAllMocks();
+  });
+
+  it('reports a NotAllowedError (no user gesture yet) as AutoplayBlockedError, paused', async () => {
+    await svc.load(direct, 0, 70);
+    refuse('NotAllowedError');
+    await expect(svc.play()).rejects.toBeInstanceOf(AutoplayBlockedError);
+    expect(svc.getSnapshot().state).toBe('paused');
+  });
+
+  it('does the same for a transcoded track', async () => {
+    await svc.load(transcodedTracks, 0, 0);
+    refuse('NotAllowedError');
+    await expect(svc.play()).rejects.toBeInstanceOf(AutoplayBlockedError);
+    expect(svc.getSnapshot().state).toBe('paused');
+  });
+
+  it('passes any other play() failure through untouched', async () => {
+    await svc.load(direct, 0, 0);
+    refuse('NotSupportedError');
+    await expect(svc.play()).rejects.toMatchObject({ name: 'NotSupportedError' });
+    expect(svc.getSnapshot().state).not.toBe('paused');
   });
 });
 

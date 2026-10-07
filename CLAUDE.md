@@ -564,6 +564,12 @@ media GETs only.
   (the watchdog is then a backstop for a buffer that never resolves). Recovery is
   `retry()` (reloads the track - a dead source can't resume via `play()` alone). Keep this
   one place; don't re-add a native timer.
+- **A browser autoplay refusal is a pause, not an error.** A cold `/player` deep link has
+  no user gesture, so `audio.play()` rejects with `NotAllowedError`. `service.web.ts`
+  reports exactly that as `AutoplayBlockedError` (`types.ts`) with its snapshot `paused`;
+  `startEngine` in `store.ts` (the play step of `playBook`/`toggle`/`retry`) catches only
+  that, clears the intent (so the watchdog can't synthesize `error`) and settles on
+  `paused`. Every other `play()` failure still propagates.
 
 **Tests** - new logic ships with a unit test. Pure, framework-free modules get
 direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +

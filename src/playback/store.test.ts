@@ -101,6 +101,7 @@ import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { useSettings } from '@/stores/settings';
 
 import { flushConnection } from './progress-sync';
+import { AutoplayBlockedError } from './types';
 import {
   selectBookKey,
   selectIsPlaying,
@@ -505,6 +506,59 @@ describe('stall watchdog promotes a stuck loading to error', () => {
 });
 
 // --- clampRate (reached via setRate) ---------------------------------------
+
+describe('a browser autoplay refusal reads as a plain pause', () => {
+  const blockNextPlay = () =>
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new AutoplayBlockedError());
+
+  async function expectSettledPaused() {
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+    // The engine keeps re-reporting its parked element: still a pause, never a spinner.
+    pushSnapshot(snap('loading', 0));
+    await Promise.resolve();
+    // Well past the stall grace: the watchdog was disarmed, so no synthesized error.
+    jest.advanceTimersByTime(10_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+  }
+
+  it('playBook (a cold deep link) resolves with the book loaded and paused', async () => {
+    blockNextPlay();
+    await expect(startBook(makeBook(), 0)).resolves.toBeUndefined();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('A/Book.m4b');
+    await expectSettledPaused();
+  });
+
+  it('toggle settles to paused too', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 10));
+    await Promise.resolve();
+    pushSnapshot(snap('paused', 10));
+    await Promise.resolve();
+    blockNextPlay();
+    await expect(usePlayer.getState().toggle()).resolves.toBeUndefined();
+    await expectSettledPaused();
+  });
+
+  it('retry settles to paused too', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 42));
+    await Promise.resolve();
+    pushSnapshot(snap('error', 42));
+    await Promise.resolve();
+    blockNextPlay();
+    await expect(usePlayer.getState().retry()).resolves.toBeUndefined();
+    await expectSettledPaused();
+  });
+
+  it('any other play() failure still propagates and the watchdog still errors', async () => {
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new Error('decode failed'));
+    await expect(startBook(makeBook(), 0)).rejects.toThrow('decode failed');
+    jest.advanceTimersByTime(3_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+  });
+});
 
 describe('setRate clamps the playback rate to [0.5, 2]', () => {
   it('caps above 2x', async () => {

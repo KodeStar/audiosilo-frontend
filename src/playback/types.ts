@@ -32,6 +32,19 @@ export type PlaybackChapter = {
   title: string;
 };
 
+/**
+ * The browser refused `play()` because nothing the user did allowed sound yet (its
+ * autoplay policy, `NotAllowedError`; web only, e.g. a cold `/player` deep link). Not a
+ * playback failure: the store reads it as a plain pause, so the play button comes back
+ * (a press is the gesture the browser wanted) instead of an error.
+ */
+export class AutoplayBlockedError extends Error {
+  constructor() {
+    super('The browser blocked playback until the user interacts with the page');
+    this.name = 'AutoplayBlockedError';
+  }
+}
+
 export type PlaybackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 /** Engine status, expressed per-track (the store maps it to the whole-book timeline). */

@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import {
+  AutoplayBlockedError,
   INITIAL_SNAPSHOT,
   type PlaybackChapter,
   type PlaybackConfig,
@@ -379,6 +380,20 @@ class WebPlaybackService implements PlaybackService {
     return true;
   }
 
+  /** `a.play()`, with the browser's autoplay refusal (`NotAllowedError`: no user gesture
+   * yet) settled to `paused` and reported as `AutoplayBlockedError`, so the store can read
+   * it as a pause; any other failure is rethrown as is. */
+  private async playElement(a: HTMLAudioElement) {
+    try {
+      await a.play();
+    } catch (err) {
+      if ((err as { name?: unknown } | null)?.name !== 'NotAllowedError') throw err;
+      this.pendingAutoplay = false;
+      if (a === this.audio) this.update({ state: 'paused' });
+      throw new AutoplayBlockedError();
+    }
+  }
+
   async play() {
     const a = this.el();
     const pausedFor = this.pausedAt != null ? Date.now() - this.pausedAt : 0;
@@ -396,11 +411,11 @@ class WebPlaybackService implements PlaybackService {
         this.reloadTranscodedAt(Math.max(0, this.snapshot.position - rewind), true);
         return;
       }
-      await a.play();
+      await this.playElement(a);
       return;
     }
     if (rewind > 0.5) a.currentTime = Math.max(0, a.currentTime - rewind);
-    await a.play();
+    await this.playElement(a);
   }
 
   async pause() {

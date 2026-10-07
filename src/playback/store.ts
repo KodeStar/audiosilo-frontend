@@ -25,6 +25,7 @@ import {
 import { createPlaybackService } from './service';
 import { mayNeedWebTranscode, resolveWebTranscode } from './transcode-capability';
 import {
+  AutoplayBlockedError,
   clampVolume,
   INITIAL_SNAPSHOT,
   type PlaybackService,
@@ -393,6 +394,21 @@ function clearPlaybackIntent() {
   cancelStallWatchdog();
 }
 
+/** Start the engine. The browser's autoplay refusal (web, no user gesture yet: a cold
+ * `/player` deep link) is a plain pause, not a failure: drop the intent (so the stall
+ * watchdog never turns it into `error`) and settle on `paused`, so the play button comes
+ * back and a press (the gesture it wanted) plays. Every other failure propagates. */
+async function startEngine(svc: PlaybackService): Promise<void> {
+  try {
+    await svc.play();
+  } catch (err) {
+    if (!(err instanceof AutoplayBlockedError)) throw err;
+    clearPlaybackIntent();
+    const { snapshot } = usePlayer.getState();
+    usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
+  }
+}
+
 /** Mark the start of a listening span when playback begins. */
 function beginHistory() {
   if (historyStart) return;
@@ -665,7 +681,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
     await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
     await svc.setRate(speed);
-    await svc.play();
+    await startEngine(svc);
     // The save loop is started by the engine 'playing' transition (see subscribe).
     void flushQueue();
     // Fire-and-forget AFTER playback is initiated (never before/awaited, so it can't delay
@@ -684,7 +700,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       await svc.pause();
     } else {
       beginPlaybackAttempt();
-      await svc.play();
+      await startEngine(svc);
     }
   },
 
@@ -722,7 +738,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const { index, positionInTrack } = locate(np.queue.offsets, bookPos);
     await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips);
     await svc.setRate(get().rate);
-    await svc.play();
+    await startEngine(svc);
   },
 
   seekBook: async (bookPosition) => {
