@@ -20,11 +20,21 @@ jest.mock('@/api/connection-clients', () => ({
     require('@/api/provider').useApiRegistry().clients.get(id) ?? null,
 }));
 const mockPush = jest.fn();
-// The focused route's segments: `usePlayerOnTop` reads ['player'] as the full player on top.
-let mockSegments: string[] = [];
+// A subscription to the route (re-renders on every navigation): must not be used.
+const mockUseSegments = jest.fn(() => ['(app)']);
 jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h) },
-  useSegments: () => mockSegments,
+  useSegments: () => mockUseSegments(),
+}));
+// The root stack's top route, read at the press (`currentNavState`).
+let mockTop = '(app)';
+const mockNavReads = jest.fn();
+jest.mock('@/lib/root-stack', () => ({
+  ...jest.requireActual('@/lib/root-stack'),
+  currentNavState: () => {
+    mockNavReads();
+    return { index: 1, routes: [{ name: '(app)' }, { name: mockTop }] };
+  },
 }));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
 jest.mock('@/lib/layout', () => ({
@@ -68,7 +78,9 @@ async function play(opts?: { toggle?: boolean; viaBookPage?: boolean }) {
 beforeEach(() => {
   queryClient.clear();
   mockLayout = 'desktop';
-  mockSegments = ['(app)', '(home)'];
+  mockTop = '(app)';
+  mockNavReads.mockReset();
+  mockUseSegments.mockClear();
   setPlayer({ key: null, live: false });
   mockItem.mockReset().mockResolvedValue({ rel_path: 'Book' });
   mockChapters.mockReset().mockResolvedValue({ files: [] });
@@ -78,6 +90,19 @@ beforeEach(() => {
 });
 
 describe('usePlayBook', () => {
+  // One per visible Library row: reading "player on top" through a subscription
+  // re-rendered every row on every navigation. It is read at the press instead.
+  it('reads where the player is only when pressed, never while rendering', async () => {
+    mockLayout = 'phone';
+    const { result } = await renderHook(() => usePlayBook());
+    expect(mockNavReads).not.toHaveBeenCalled();
+    expect(mockUseSegments).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current(target);
+    });
+    expect(mockNavReads).toHaveBeenCalledTimes(1);
+  });
+
   it('starts a book under the dock on tablet and desktop, through its own connection', async () => {
     await play();
     expect(mockItem).toHaveBeenCalledWith(1, 'Book', expect.anything());
@@ -126,7 +151,7 @@ describe('usePlayBook', () => {
   // a second one, and the credits of that book would close onto an empty player.
   it('starts in place on a phone while the full player is on top, never pushing another', async () => {
     mockLayout = 'phone';
-    mockSegments = ['player'];
+    mockTop = 'player';
     await play({ viaBookPage: true });
     expect(mockPlayBook).toHaveBeenCalledWith(
       'c',
@@ -140,7 +165,7 @@ describe('usePlayBook', () => {
 
   it('plays the loaded book on under the open player on a phone', async () => {
     mockLayout = 'phone';
-    mockSegments = ['player'];
+    mockTop = 'player';
     setPlayer({ key: 'c:1:Book', live: false });
     await play();
     expect(mockToggle).toHaveBeenCalledTimes(1);

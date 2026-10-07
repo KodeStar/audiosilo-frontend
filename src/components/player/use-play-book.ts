@@ -1,9 +1,9 @@
 import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
 
-import { usePlayerOnTop } from './player-sheets';
 import { startBookInPlace } from './start-book';
 
 /** A book to start: on which connection, library and path. */
@@ -31,7 +31,6 @@ export type PlayOptions = {
  */
 export function usePlayBook() {
   const phone = useLayout() === 'phone';
-  const playerOnTop = usePlayerOnTop();
   const { openBook, openPlayer } = useOpen();
   return async (target: PlayTarget, opts: PlayOptions = {}) => {
     const { connectionId, libraryId, path } = target;
@@ -45,6 +44,9 @@ export function usePlayBook() {
     // twice, and when that book ends the credits replace only the top one, so closing
     // them lands on the lower player with nothing loaded (a bare spinner with no close
     // button, which an iOS full-screen modal can't be swiped away from).
+    // Read at the press, not subscribed: every Library row holds this hook, and a
+    // subscription re-rendered them all on every navigation.
+    const playerOnTop = topRootRoute(currentNavState()) === 'player';
     if (phone && !playerOnTop) {
       if (opts.viaBookPage) openBook(connectionId, libraryId, path);
       openPlayer(connectionId, libraryId, path);
