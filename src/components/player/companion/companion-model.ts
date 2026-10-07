@@ -15,6 +15,17 @@ import { timeLeft } from '@/playback/time-left';
 /** The companion's tabs, in order. */
 export type CompanionTab = 'who' | 'story' | 'chapters' | 'bookmarks' | 'notes' | 'history';
 
+/** Each tab's label (i18n keys): the companion's tabs and the phone's chips name them
+ * the same way. */
+export const COMPANION_TAB_LABEL = {
+  who: 'player.companion.who',
+  story: 'book.meta.storySoFar',
+  chapters: 'player.chapters.chaptersTitle',
+  bookmarks: 'player.bookmarks.label',
+  notes: 'player.notes.label',
+  history: 'player.companion.history',
+} as const satisfies Record<CompanionTab, string>;
+
 /** The tabs a book gets: the two community tabs only where the server has `metadata`
  * (an older server never shows them), the rest always (they are the listener's own). */
 export function companionTabs(metadata: boolean): CompanionTab[] {

@@ -4,10 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 
 import { useCapability, useLibrariesAll } from '@/api/hooks';
-import { serverStatus, useReachability } from '@/api/reachability';
 import type { Book } from '@/api/types';
-import { usePendingSaves } from '@/components/home/use-sync-pill';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,33 +13,31 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { FOCUS_RING_CLASS, FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { Text } from '@/components/ui/text';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
-import { formatClock, formatCount, formatSpeed } from '@/lib/format';
+import { formatCount, formatSpeed } from '@/lib/format';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
-import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
 import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
-import { selectSleepExtendable, selectSleepPhase, useSleepTimer } from '@/playback/sleep-timer';
-import { selectBookKey, selectBookPosition, usePlayer } from '@/playback/store';
+import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import type { CompanionTab } from './companion/companion-model';
+import { COMPANION_TAB_LABEL, type CompanionTab } from './companion/companion-model';
+import { ControlPill, type PillLook, pillClass } from './control-pill';
+import { usePlaceSync } from './place-sync';
 import { addBookmarkHere } from './player-shortcuts';
 import { usePlayerSheets } from './player-sheets';
-import { playerContext, syncState } from './player-view-model';
+import { playerContext } from './player-view-model';
 import { UndoChip } from './undo-chip';
-import { useSleepCountdown } from './use-sleep-countdown';
+import { useSleepPill } from './use-sleep-countdown';
 import { usePlayingTimeLeft } from './use-time-left';
 
-const roundIcon = cn(
-  'h-11 w-11 items-center justify-center rounded-full active:bg-accent',
-  Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
-);
+/** The header's round 44 pt buttons. */
+const ROUND = 'h-11 w-11';
 
 /**
  * The full player's top row: minimise on the left; "Playing from <server>" over the
@@ -84,14 +79,9 @@ export function PlayerHeader({
 
   return (
     <View className="h-14 flex-row items-center gap-2 px-3">
-      <AnimatedPressable
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel={t('player.full.minimise')}
-        className={roundIcon}
-      >
+      <ControlPill onPress={onClose} label={t('player.full.minimise')} className={ROUND}>
         <Icon name="chevron-down" size={22} color={themed.foreground} />
-      </AnimatedPressable>
+      </ControlPill>
       <View className="min-w-0 flex-1 items-center">
         {server ? (
           <Text variant="eyebrow" className="text-[10.5px]" numberOfLines={1}>
@@ -114,7 +104,7 @@ export function PlayerHeader({
       <DropdownMenu>
         <DropdownMenuTrigger
           accessibilityLabel={t('player.menu.label')}
-          className={roundIcon}
+          className={pillClass('ghost', ROUND)}
           testID="player-menu"
         >
           <Icon name="ellipsis" size={20} color={themed.foreground} />
@@ -160,23 +150,19 @@ function usePlayingPercent(): number {
 }
 
 /**
- * The status line under the titles: where the place is kept ("Synced", or "Saved on this
- * device, will sync" while the book's server is offline or saves wait in the queue), how
- * much of the book is heard and the time left at the book's speed. It becomes the Undo
- * chip while a jump can be undone.
+ * The status line under the titles: where the place is kept (`usePlaceSync`, the dock's
+ * words), how much of the book is heard and the time left at the book's speed. It
+ * becomes the Undo chip while a jump can be undone.
  */
 export function PlayerStatusLine() {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const cid = usePlayer((s) => s.nowPlaying?.connectionId ?? '');
   const total = usePlayer((s) => s.nowPlaying?.queue.total ?? 0);
+  const playing = usePlayer(selectIsPlaying);
   const bookKey = usePlayer(selectBookKey);
   const undo = useJumpUndo(selectUndoFor(bookKey));
-  const needsReconnect = useSession((s) => s.connections.find((c) => c.id === cid)?.needsReconnect);
-  const offline = useReachability(
-    (s) => serverStatus({ id: cid, needsReconnect }, s.online) === 'offline',
-  );
-  const pending = usePendingSaves();
+  const sync = usePlaceSync(cid, playing);
   const percent = usePlayingPercent();
   const left = usePlayingTimeLeft();
 
@@ -187,15 +173,14 @@ export function PlayerStatusLine() {
       </View>
     );
   }
-  const local = syncState(offline, pending) === 'local';
   const parts = [
-    local ? t('shell.dock.savedLocally') : t('player.full.synced'),
+    sync?.text ?? '',
     total > 0 ? t('player.full.percentOfBook', { percent }) : '',
     left,
   ].filter(Boolean);
   return (
     <View className="h-[34px] flex-row items-center justify-center gap-1.5 px-2">
-      <Icon name={local ? 'hard-drive' : 'cloud'} size={13} color={themed.mutedForeground} />
+      {sync ? <Icon name={sync.icon} size={13} color={themed.mutedForeground} /> : null}
       <Text variant="caption" numberOfLines={1} style={tabularNums} className="shrink">
         {parts.join(' · ')}
       </Text>
@@ -209,30 +194,25 @@ function Pill({
   label,
   text,
   onPress,
-  active = false,
+  look = 'outline',
   testID,
 }: {
   icon?: IconName;
   label: string;
   text?: string;
   onPress: () => void;
-  active?: boolean;
+  look?: PillLook;
   testID?: string;
 }) {
   const themed = useThemeColors();
+  const active = look === 'active';
   return (
-    <AnimatedPressable
+    <ControlPill
       onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
+      look={look}
+      label={label}
       testID={testID}
-      className={cn(
-        'h-11 min-w-[44px] flex-row items-center justify-center gap-2 rounded-full border px-3.5',
-        active ? 'border-transparent bg-brand-soft' : 'border-border bg-card active:bg-accent',
-        Platform.select({
-          web: `cursor-pointer ${active ? '' : 'hover:bg-accent'} ${FOCUS_RING_OFFSET_CLASS}`,
-        }),
-      )}
+      className="h-11 min-w-[44px] flex-row gap-2 px-3.5"
     >
       {icon ? (
         <Icon name={icon} size={17} color={active ? themed.brandInk : themed.foreground} />
@@ -247,38 +227,22 @@ function Pill({
           {text}
         </Text>
       ) : null}
-    </AnimatedPressable>
+    </ControlPill>
   );
 }
 
-/** The sleep pill: the moon alone (with "Sleep" where there is room); with a timer, its
- * countdown on brand-soft; "Keep going" once the timer has paused playback. */
+/** The sleep pill (`useSleepPill`): the moon alone (with "Sleep" where there is room);
+ * with a timer, its countdown on brand-soft; "Keep going" once the timer has paused
+ * playback. */
 function SleepPill({ wide }: { wide: boolean }) {
   const { t } = useTranslation();
-  const phase = useSleepTimer(selectSleepPhase);
-  const remaining = useSleepTimer((s) => s.remaining);
-  const label = useSleepTimer((s) => s.label);
-  const extendable = useSleepTimer(selectSleepExtendable);
-  const countdown = useSleepCountdown();
-  const active = phase !== 'idle';
-  const text =
-    phase === 'grace'
-      ? t('player.sleepTimer.keepGoingShort')
-      : (countdown ?? (wide ? t('player.full.sleep') : undefined));
-  const a11y = extendable
-    ? t('player.sleepTimer.keepListening')
-    : active && label && remaining !== null
-      ? t('player.sleepTimer.pillRunning', {
-          label: t(label.key, label.params),
-          time: formatClock(remaining),
-        })
-      : t('player.sleepTimer.title');
+  const { active, text, label } = useSleepPill();
   return (
     <Pill
       icon="sleep"
-      text={text}
-      label={a11y}
-      active={active}
+      text={text ?? (wide ? t('player.full.sleep') : undefined)}
+      label={label}
+      look={active ? 'active' : 'outline'}
       onPress={() => usePlayerSheets.getState().openSheet('sleep')}
       testID="player-sleep"
     />
@@ -339,42 +303,23 @@ export function PlayerActions({ wide, upNext }: { wide: boolean; upNext: boolean
   );
 }
 
-function Chip({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
-  const themed = useThemeColors();
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      accessibilityRole="button"
-      className={cn(
-        'h-11 flex-row items-center gap-1.5 rounded-full border border-border bg-card px-3 active:bg-accent',
-        Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}` }),
-      )}
-    >
-      <Icon name={icon} size={15} color={themed.foreground} />
-      <Text variant="label" numberOfLines={1}>
-        {label}
-      </Text>
-    </AnimatedPressable>
-  );
-}
+/** The companion chips' tabs and glyphs. */
+const CHIPS: { tab: CompanionTab; icon: IconName; community: boolean }[] = [
+  { tab: 'who', icon: 'users', community: true },
+  { tab: 'story', icon: 'book-open', community: true },
+  { tab: 'chapters', icon: 'list', community: false },
+];
 
 /** The phone's way into the companion: Who's who, Story so far (where the server has
- * community data) and Chapters, each opening the companion sheet on that tab. One row,
- * centred where it fits and scrolling sideways where it doesn't (a narrow phone, a long
- * translation), so it never wraps the player past the fold. */
+ * community data) and Chapters, each opening the companion on that tab and named as the
+ * companion names its tabs. One row, centred where it fits and scrolling sideways where
+ * it doesn't (a narrow phone, a long translation), so it never wraps the player past the
+ * fold. */
 export function CompanionChips() {
   const { t } = useTranslation();
+  const themed = useThemeColors();
   const cid = usePlayer((s) => s.nowPlaying?.connectionId);
   const metadata = useCapability('metadata', cid) === true;
-  const chips: { tab: CompanionTab; icon: IconName; label: string }[] = [
-    ...(metadata
-      ? ([
-          { tab: 'who', icon: 'users', label: t('player.companion.who') },
-          { tab: 'story', icon: 'book-open', label: t('book.meta.storySoFar') },
-        ] as const)
-      : []),
-    { tab: 'chapters', icon: 'list', label: t('player.chapters.chaptersTitle') },
-  ];
   return (
     <ScrollView
       horizontal
@@ -384,14 +329,23 @@ export function CompanionChips() {
       className="w-full"
       contentContainerClassName="grow justify-center gap-2"
     >
-      {chips.map((c) => (
-        <Chip
-          key={c.tab}
-          icon={c.icon}
-          label={c.label}
-          onPress={() => usePlayerSheets.getState().openCompanion(c.tab)}
-        />
-      ))}
+      {CHIPS.filter((c) => metadata || !c.community).map(({ tab, icon }) => {
+        const label = t(COMPANION_TAB_LABEL[tab]);
+        return (
+          <ControlPill
+            key={tab}
+            look="outline"
+            label={label}
+            onPress={() => usePlayerSheets.getState().openCompanion(tab)}
+            className="h-11 flex-row gap-1.5 px-3"
+          >
+            <Icon name={icon} size={15} color={themed.foreground} />
+            <Text variant="label" numberOfLines={1}>
+              {label}
+            </Text>
+          </ControlPill>
+        );
+      })}
     </ScrollView>
   );
 }

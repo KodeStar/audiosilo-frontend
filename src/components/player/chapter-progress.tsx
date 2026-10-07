@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { cn } from '@/lib/utils';
 import { usePlayer } from '@/playback/store';
 
@@ -30,13 +31,9 @@ export function ChapterProgressLine({ className }: { className?: string }) {
       pointerEvents="none"
       importantForAccessibility="no-hide-descendants"
       accessibilityElementsHidden
-      className={cn('h-[2.5px] overflow-hidden rounded-full bg-muted', className)}
+      className={cn('h-[2.5px]', className)}
     >
-      <View
-        testID="chapter-progress-fill"
-        className="h-full rounded-full bg-brand"
-        style={{ width: `${fraction * 100}%` }}
-      />
+      <ProgressBar fraction={fraction} className="h-full" fillTestID="chapter-progress-fill" />
     </View>
   );
 }

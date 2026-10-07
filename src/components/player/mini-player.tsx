@@ -12,6 +12,7 @@ import Animated, {
 
 import { BookCover } from '@/components/library/book-cover';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
+import { pillClass } from '@/components/player/control-pill';
 import { SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { useSleepCountdown } from '@/components/player/use-sleep-countdown';
@@ -219,10 +220,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           color={themed.foreground}
           fontSize={13}
           hitSlop={2}
-          className={cn(
-            'h-10 w-10 items-center justify-center rounded-full active:bg-accent',
-            Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
-          )}
+          className={pillClass('ghost', 'h-10 w-10')}
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />
         <PlayButton size="sm" plain />

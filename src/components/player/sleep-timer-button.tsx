@@ -1,13 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { PressableRow } from '@/components/ui/row-surface';
 import { Switch } from '@/components/ui/switch';
-import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClockTime } from '@/lib/clock-time';
@@ -26,6 +25,7 @@ import { SHAKE_SENSITIVITIES, useSettings, type ShakeSensitivity } from '@/store
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { ControlPill } from './control-pill';
 import { OptionTile } from './option-tile';
 import { PlayerSheet } from './player-sheet';
 import {
@@ -36,58 +36,32 @@ import {
   stopAfterRows,
   stopsAt,
 } from './sleep-sheet-model';
+import { useSleepPill } from './use-sleep-countdown';
 
 /**
- * The sleep timer pill: the moon alone while idle; with a timer it shows the countdown on
- * `brand-soft` (STYLEGUIDE section 8, the dock's sleep control), and "Keep going" once
- * the timer has paused playback. It opens the sleep sheet through `usePlayerSheets`.
+ * The dock's sleep pill (`useSleepPill`): the moon alone while idle; with a timer its
+ * countdown on `brand-soft` (STYLEGUIDE section 8, the dock's sleep control), and "Keep
+ * going" once the timer has paused playback. It opens the sleep sheet through
+ * `usePlayerSheets`.
  */
 export function SleepTimerButton({ onPress }: { onPress: () => void }) {
-  const { t } = useTranslation();
   const themed = useThemeColors();
-  const phase = useSleepTimer(selectSleepPhase);
-  // The a11y label follows what the button can DO, not merely whether a timer exists:
-  // it overrides the visible children for a screen reader, and announcing "Keep
-  // listening" for a control that just opens the sheet (25 minutes still to run) is
-  // simply wrong. The same selector gates the shake listener, so the spoken promise and
-  // the gesture are true in exactly the same windows.
-  const extendable = useSleepTimer(selectSleepExtendable);
-  const remaining = useSleepTimer((s) => s.remaining);
-  const label = useSleepTimer((s) => s.label);
-  const active = phase !== 'idle';
-
-  const a11y = extendable
-    ? t('player.sleepTimer.keepListening')
-    : active && label && remaining !== null
-      ? t('player.sleepTimer.pillRunning', {
-          label: t(label.key, label.params),
-          time: formatClock(remaining),
-        })
-      : t('player.sleepTimer.title');
-
+  const { active, text, label } = useSleepPill();
   return (
-    <AnimatedPressable
+    <ControlPill
       onPress={onPress}
-      className={cn(
-        'h-9 flex-row items-center gap-1.5 rounded-full',
-        active ? 'bg-brand-soft px-3' : 'px-2',
-        Platform.select({ web: `cursor-pointer ${FOCUS_RING_OFFSET_CLASS}` }),
-      )}
+      look={active ? 'active' : 'ghost'}
+      className={cn('h-9 flex-row gap-1.5', active ? 'px-3' : 'px-2')}
       hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={a11y}
+      label={label}
     >
       <Icon name="sleep" size={18} color={active ? themed.brandInk : themed.foreground} />
-      {phase === 'grace' ? (
-        <Text variant="label" className="text-brand-ink">
-          {t('player.sleepTimer.keepGoingShort')}
-        </Text>
-      ) : active && remaining !== null ? (
+      {text ? (
         <Text variant="label" className="text-brand-ink" style={tabularNums}>
-          {formatClock(remaining)}
+          {text}
         </Text>
       ) : null}
-    </AnimatedPressable>
+    </ControlPill>
   );
 }
 

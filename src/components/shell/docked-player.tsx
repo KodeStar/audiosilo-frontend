@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
-import { type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { serverStatus, useReachability } from '@/api/reachability';
 import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
+import { ControlPill } from '@/components/player/control-pill';
+import { useMiniHeading } from '@/components/player/mini-player';
+import { usePlaceSync } from '@/components/player/place-sync';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
@@ -16,17 +18,15 @@ import { usePlayingPins } from '@/components/player/use-playing-pins';
 import { usePlayingSegment } from '@/components/player/use-playing-segment';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Icon, type IconName } from '@/components/ui/icon';
+import { Icon } from '@/components/ui/icon';
 import { Slider } from '@/components/ui/slider';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
-import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
-import { selectBookKey, selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
-import { useSession } from '@/stores/session';
+import { selectBookKey, selectIsPlaying, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -113,81 +113,42 @@ function ChapterScrubber({ bookmarks }: { bookmarks: readonly number[] }) {
   );
 }
 
-/** Where the place lives (STYLEGUIDE section 9, "reliability shown"), truthfully: synced
- * to the server (the store saves every 15 s while playing, so "just now" then; "Synced"
- * once paused, which saved too), kept on this device while the server is unreachable
- * (the offline queue replays it), or kept here until the listener signs in again (the
- * server refused the token, so nothing replays until then). Nothing for a book whose
- * server was removed (a download playing on). */
+/** Where the place lives (`usePlaceSync`, the full player's status line says the same).
+ * Nothing for a book whose server was removed (a download playing on). */
 function SyncState({ connectionId, playing }: { connectionId: string; playing: boolean }) {
-  const { t } = useTranslation();
   const themed = useThemeColors();
-  const connection = useSession((s) => s.connections.find((c) => c.id === connectionId));
-  const needsReconnect = connection?.needsReconnect;
-  const status = useReachability((s) =>
-    serverStatus({ id: connectionId, needsReconnect }, s.online),
-  );
-  if (!connection) return null;
-  const [icon, text]: [IconName, string] =
-    status === 'reconnect'
-      ? ['hard-drive', t('shell.dock.signInToSync')]
-      : status === 'offline'
-        ? ['hard-drive', t('shell.dock.savedLocally')]
-        : ['cloud', playing ? t('shell.dock.syncedNow') : t('shell.dock.synced')];
+  const sync = usePlaceSync(connectionId, playing);
+  if (!sync) return null;
   return (
     <View testID="dock-sync-state" className="flex-row items-center gap-[5px]">
-      <Icon name={icon} size={12} color={themed.subtleForeground} />
+      <Icon name={sync.icon} size={12} color={themed.subtleForeground} />
       <Text variant="caption" className="text-[11px] text-subtle-foreground" numberOfLines={1}>
-        {text}
+        {sync.text}
       </Text>
     </View>
   );
 }
 
-/** One of the dock's right-hand actions: a 36 pt round pill like the sleep pill beside it
+/** The dock's right-hand actions: 36 pt round pills like the sleep pill beside them
  * (`SleepTimerButton`), with a 44 pt target. */
-function DockPill({
-  label,
-  onPress,
-  testID,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  testID?: string;
-  children: ReactNode;
-}) {
-  return (
-    <AnimatedPressable
-      testID={testID}
-      onPress={onPress}
-      hitSlop={4}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className={cn(
-        'h-9 min-w-9 flex-row items-center justify-center gap-1.5 rounded-full px-2.5 active:bg-accent',
-        Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
-      )}
-    >
-      {children}
-    </AnimatedPressable>
-  );
-}
+const DOCK_PILL = 'h-9 min-w-9 flex-row gap-1.5 px-2.5';
 
 /** The speed pill ("1.25×"), opening the speed sheet. */
 function SpeedPill() {
   const { t } = useTranslation();
   const rate = usePlayer((s) => s.rate);
   return (
-    <DockPill
+    <ControlPill
       testID="dock-speed"
+      hitSlop={4}
+      className={DOCK_PILL}
       label={t('shell.dock.speed', { speed: formatSpeed(rate) })}
       onPress={() => usePlayerSheets.getState().openSheet('speed')}
     >
       <Text className="font-sans-bold text-[12.5px] text-foreground" style={tabularNums}>
         {formatSpeed(rate)}
       </Text>
-    </DockPill>
+    </ControlPill>
   );
 }
 
@@ -211,7 +172,7 @@ export function DockedPlayer() {
   const insets = useSafeAreaInsets();
   const desktop = useLayout() === 'desktop';
   const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const chapter = usePlayer(selectCurrentChapter);
+  const { heading } = useMiniHeading();
   const isPlaying = usePlayer(selectIsPlaying);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
@@ -227,7 +188,6 @@ export function DockedPlayer() {
   // Before the first layout: the form factor's guess.
   const { allActions, scrubber } = dockLayout(size?.width ?? (desktop ? 1280 : 800), undo);
   const { queue, title, author } = nowPlaying;
-  const heading = chapter ? chapterLabel(chapter, t) : title;
   const bookLine = author ? `${title} · ${author}` : title;
   const openPlayer = () => router.push('/player');
 
@@ -302,27 +262,37 @@ export function DockedPlayer() {
               <SleepTimerButton onPress={() => usePlayerSheets.getState().openSheet('sleep')} />
             </View>
             {allActions ? (
-              <DockPill
+              <ControlPill
                 testID="dock-bookmark"
+                hitSlop={4}
+                className={DOCK_PILL}
                 label={t('player.shortcuts.bookmark')}
                 onPress={() => void addBookmarkHere(t)}
               >
                 <Icon name="bookmark" size={16} color={themed.foreground} />
-              </DockPill>
+              </ControlPill>
             ) : null}
             {allActions && canRoutePick ? (
-              <DockPill
+              <ControlPill
                 testID="dock-output"
+                hitSlop={4}
+                className={DOCK_PILL}
                 label={t('player.routePicker.label')}
                 onPress={() => void showRoutePicker()}
               >
                 <Icon name="airplay" size={16} color={themed.foreground} />
-              </DockPill>
+              </ControlPill>
             ) : null}
             <UpNextButton variant="dock" />
-            <DockPill testID="dock-expand" label={t('shell.dock.expand')} onPress={openPlayer}>
+            <ControlPill
+              testID="dock-expand"
+              hitSlop={4}
+              className={DOCK_PILL}
+              label={t('shell.dock.expand')}
+              onPress={openPlayer}
+            >
               <Icon name="chevron-up" size={16} color={themed.foreground} />
-            </DockPill>
+            </ControlPill>
           </View>
         </View>
       </View>

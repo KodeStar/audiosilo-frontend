@@ -15,21 +15,16 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { addBookmarkHere } from '../player-shortcuts';
 import type { PlayTarget } from '../use-play-book';
 import { ChaptersPanel } from './chapters-panel';
-import { activeCompanionTab, type CompanionTab, companionTabs } from './companion-model';
+import {
+  activeCompanionTab,
+  COMPANION_TAB_LABEL,
+  type CompanionTab,
+  companionTabs,
+} from './companion-model';
 import { useCompanion } from './companion-store';
 import { StoryPanel } from './story-panel';
 import { type CompanionData, useCompanionData } from './use-companion-data';
 import { WhoPanel } from './who-panel';
-
-/** Each tab's label. */
-export const COMPANION_TAB_LABEL = {
-  who: 'player.companion.who',
-  story: 'book.meta.storySoFar',
-  chapters: 'player.chapters.chaptersTitle',
-  bookmarks: 'player.bookmarks.label',
-  notes: 'player.notes.label',
-  history: 'player.companion.history',
-} as const satisfies Record<CompanionTab, string>;
 
 /** Where the companion sits: the desktop's 420 column and the phone's sheet scroll on
  * their own; the tablet's sits inline in the player's page and lets the page scroll. */

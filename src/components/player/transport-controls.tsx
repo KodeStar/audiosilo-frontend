@@ -18,6 +18,7 @@ import { selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { pillClass } from './control-pill';
 import { SkipButton } from './skip-button';
 import { stepSegment } from './transport';
 
@@ -117,14 +118,15 @@ export function PlayButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: state === 'loading' }}
-      className={cn(
-        'items-center justify-center rounded-full',
-        plain ? 'active:bg-accent' : 'bg-primary',
-        !plain && size !== 'sm' && 'shadow-overlay',
-        Platform.select({
-          web: cn('cursor-pointer', plain && 'hover:bg-accent', FOCUS_RING_CLASS),
-        }),
-      )}
+      className={
+        plain
+          ? pillClass('ghost')
+          : cn(
+              'items-center justify-center rounded-full bg-primary',
+              size !== 'sm' && 'shadow-overlay',
+              Platform.select({ web: cn('cursor-pointer', FOCUS_RING_CLASS) }),
+            )
+      }
       style={{ width: box, height: box }}
     >
       {state === 'loading' ? (
@@ -166,10 +168,7 @@ export function TransportControls({
 
   const d = SIZES[size];
   const hitSlop = Math.max(0, (44 - d.button) / 2);
-  const round = cn(
-    'items-center justify-center rounded-full active:bg-accent',
-    Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
-  );
+  const round = pillClass('ghost');
   const box = { width: d.button, height: d.button };
   const step = (dir: 1 | -1) => stepSegment(usePlayer.getState(), dir);
 
