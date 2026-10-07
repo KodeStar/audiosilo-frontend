@@ -1,8 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
-import { queryClient } from '@/api/provider';
+import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
@@ -82,22 +80,16 @@ export function playerShortcutFor(e: PlayerKey, ctx: PlayerKeyContext): PlayerSh
 
 /**
  * Add a bookmark at the playing book's current position, on its own server, and say so
- * ("Bookmark added", the clock). Framework-free (the shortcut can fire from any page):
- * the same request and cache refresh as `useAddBookmark`, through the PLAYING book's
- * connection.
+ * ("Bookmark added", the clock). Framework-free (the shortcut can fire from any page),
+ * through the PLAYING book's connection.
  */
 export async function addBookmarkHere(t: TFunction): Promise<void> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
   const position = Math.round(selectBookPosition(player));
-  const api = resolveClient(np.connectionId);
   try {
-    if (!api) throw new Error('connection gone');
-    await api.addBookmark(np.libraryId, np.path, position, '');
-    void queryClient.invalidateQueries({
-      queryKey: qk.bookmarks(np.connectionId, np.libraryId, np.path),
-    });
+    await addBookmark(np.connectionId, np.libraryId, np.path, position);
     toast({ title: t('player.bookmarks.added'), description: formatClock(position) });
   } catch (err) {
     console.warn('[shortcuts] bookmark failed', err);

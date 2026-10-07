@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
-import { qk } from '@/api/hooks';
+import { bookmarksQuery, notesQuery } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { usePlayer } from '@/playback/store';
 
@@ -25,16 +25,8 @@ export function usePlayingPins(): BookPins {
   const lib = np?.libraryId ?? -1;
   const path = np?.path ?? '';
   const enabled = !!api && !!np;
-  const bookmarks = useQuery({
-    queryKey: qk.bookmarks(cid, lib, path),
-    queryFn: () => api!.bookmarks(lib, path),
-    enabled,
-  }).data;
-  const notes = useQuery({
-    queryKey: qk.notes(cid, lib, path),
-    queryFn: () => api!.notes(lib, path),
-    enabled,
-  }).data;
+  const bookmarks = useQuery(bookmarksQuery(cid, api, lib, path)).data;
+  const notes = useQuery(notesQuery(cid, api, lib, path)).data;
   return useMemo(
     () =>
       enabled

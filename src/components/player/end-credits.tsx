@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   CapabilityError,
-  qk,
+  historyQuery,
   useAllProgressAll,
   useBook,
   useBookMeta,
@@ -228,11 +228,7 @@ function EndCreditsBody({
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const matched = matchedMeta(meta, metaEnabled);
 
-  const history = useQuery({
-    queryKey: [...qk.history(cid, libraryId, path), HISTORY_LIMIT],
-    queryFn: () => api!.history(libraryId, path, HISTORY_LIMIT),
-    enabled: !!api && path.length > 0,
-  });
+  const history = useQuery(historyQuery(cid, api, libraryId, path, HISTORY_LIMIT));
   const listened = history.data ? listeningSummary(history.data) : null;
   const { data: saved } = useBookProgress(libraryId, path, true, cid);
   const speed = isThisLoaded ? rate : saved?.playback_speed || rate;

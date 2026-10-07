@@ -73,9 +73,10 @@ let mockRating: { rating: number; note: string } | null = null;
 const mockSetRating = jest.fn();
 const mockRemove = jest.fn();
 jest.mock('@/api/hooks', () => {
-  const { CapabilityError, qk, queueQuery } = jest.requireActual('@/api/hooks');
+  const { CapabilityError, historyQuery, qk, queueQuery } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
+    historyQuery,
     qk,
     queueQuery,
     useCapability: (flag: string) => mockCaps[flag],

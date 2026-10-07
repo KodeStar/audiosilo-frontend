@@ -15,10 +15,12 @@ import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/l
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 
 import { ApiError, type ApiClient, type BookListQuery, type BookMetaOptions } from './client';
-import { useApi, useApis, useCid, useOptionalApi } from './provider';
+import { resolveClient } from './connection-clients';
+import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteError } from './reachability';
 import type {
   Book,
+  Bookmark,
   BookRef,
   Capabilities,
   Collection,
@@ -179,6 +181,59 @@ export function chaptersQuery(cid: string, client: MaybeClient, libraryId: numbe
         ? ({ signal }) => client.chapters(libraryId, path, signal)
         : skipToken,
   });
+}
+
+/** A book's bookmarks. */
+export function bookmarksQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
+  return queryOptions({
+    queryKey: qk.bookmarks(cid, libraryId, path),
+    queryFn: client && path.length > 0 ? () => client.bookmarks(libraryId, path) : skipToken,
+  });
+}
+
+/** A book's notes. */
+export function notesQuery(cid: string, client: MaybeClient, libraryId: number, path: string) {
+  return queryOptions({
+    queryKey: qk.notes(cid, libraryId, path),
+    queryFn: client && path.length > 0 ? () => client.notes(libraryId, path) : skipToken,
+  });
+}
+
+/** A book's listening history: all of it, or the newest `limit` sessions (its own entry
+ * under the full one's key, so invalidating the book's history reaches both). */
+export function historyQuery(
+  cid: string,
+  client: MaybeClient,
+  libraryId: number,
+  path: string,
+  limit?: number,
+) {
+  const key = qk.history(cid, libraryId, path);
+  return queryOptions({
+    queryKey: limit === undefined ? key : [...key, limit],
+    queryFn: client && path.length > 0 ? () => client.history(libraryId, path, limit) : skipToken,
+  });
+}
+
+/**
+ * Add a bookmark to a book on ONE connection's server and refresh that book's bookmarks
+ * (every `qk.bookmarks` reader: the book page, the companion, the scrubber pins).
+ * Framework-free, for the callers that run outside React or for a book that is not the
+ * screen's (the playing book's shortcut, the sleep timer's "Fell asleep"). Resolves the
+ * new bookmark; rejects when the connection is gone or the server refused.
+ */
+export async function addBookmark(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  position: number,
+  note = '',
+): Promise<Bookmark> {
+  const client = resolveClient(connectionId);
+  if (!client) throw new Error('connection gone');
+  const created = await client.addBookmark(libraryId, path, position, note);
+  void queryClient.invalidateQueries({ queryKey: qk.bookmarks(connectionId, libraryId, path) });
+  return created;
 }
 
 /** The scoped connection's server identity/capabilities (incl. its release version).
@@ -695,24 +750,7 @@ export function useMarkFinished(connectionId?: string) {
 // server, not whatever is active. The book screen omits it (it operates on the active
 // connection). Same shape as useMarkFinished/useToggleFavourite.
 export function useBookmarks(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.bookmarks(cid, libraryId, path),
-    queryFn: () => api.bookmarks(libraryId, path),
-    enabled: path.length > 0,
-  });
-}
-
-export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: { position: number; note?: string }) =>
-      api.addBookmark(libraryId, path, vars.position, vars.note ?? ''),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.bookmarks(cid, libraryId, path) }),
-  });
+  return useQuery(bookmarksQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
 export function useDeleteBookmark(libraryId: number, path: string, connectionId?: string) {
@@ -727,13 +765,7 @@ export function useDeleteBookmark(libraryId: number, path: string, connectionId?
 
 // --- Notes -----------------------------------------------------------------
 export function useNotes(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.notes(cid, libraryId, path),
-    queryFn: () => api.notes(libraryId, path),
-    enabled: path.length > 0,
-  });
+  return useQuery(notesQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
 export function useAddNote(libraryId: number, path: string, connectionId?: string) {
@@ -759,13 +791,7 @@ export function useDeleteNote(libraryId: number, path: string, connectionId?: st
 
 // --- History ---------------------------------------------------------------
 export function useHistory(libraryId: number, path: string, connectionId?: string) {
-  const api = useApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.history(cid, libraryId, path),
-    queryFn: () => api.history(libraryId, path),
-    enabled: path.length > 0,
-  });
+  return useQuery(historyQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
 // --- Favourites ------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { t } from 'i18next';
 
-import { resolveClient } from '@/api/connection-clients';
+import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatWallClock } from '@/lib/format';
 
@@ -83,13 +83,15 @@ function fellAsleep(bookKey: string, fell: FellAsleep) {
 
 function makeBookmark(connectionId: string, libraryId: number, path: string, position: number) {
   try {
-    const api = resolveClient(connectionId);
-    if (!api) return;
-    void api
-      .addBookmark(libraryId, path, Math.round(position), t('player.sleepTimer.fellAsleepNote'))
-      .catch(() => {
-        // offline or refused: there is simply no bookmark this time
-      });
+    void addBookmark(
+      connectionId,
+      libraryId,
+      path,
+      Math.round(position),
+      t('player.sleepTimer.fellAsleepNote'),
+    ).catch(() => {
+      // gone, offline or refused: there is simply no bookmark this time
+    });
   } catch {
     // never let a bookmark take the timer's ending path down with it
   }
