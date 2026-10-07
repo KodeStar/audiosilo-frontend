@@ -404,6 +404,124 @@
       "spoilerSafeStart": "Sem spoilers: escrito antes do início deste livro."
     }
   },
+  "stats": {
+    "server": {
+      "pick": "Servidor"
+    },
+    "unsupported": {
+      "title": "Ainda não há estatísticas de audição aqui",
+      "body": "{{server}} ainda não guarda estatísticas de audição. Chegam com uma versão mais recente do AudioSilo."
+    },
+    "error": {
+      "title": "A tua audição não carregou",
+      "body": "{{server}} não respondeu. Nada se perdeu; tenta de novo daqui a pouco."
+    },
+    "header": {
+      "eyebrow": "A tua audição · {{server}}",
+      "thisWeek": "{{duration}} esta semana",
+      "openYear": "Abrir a tua história de {{year}}"
+    },
+    "empty": {
+      "title": "Ainda não ouviste nada",
+      "body": "Reproduz um livro e a tua semana, a tua sequência e o teu ano preenchem-se aqui."
+    },
+    "tiles": {
+      "week": "Esta semana",
+      "deltaUp": "{{duration}} mais do que na semana passada",
+      "deltaDown": "{{duration}} menos do que na semana passada",
+      "deltaSame": "O mesmo que na semana passada",
+      "streak": "Sequência",
+      "days_one": "dia",
+      "days_other": "dias",
+      "streakValue_one": "{{count}} dia",
+      "streakValue_other": "{{count}} dias",
+      "longest_one": "A mais longa este ano: {{count}} dia",
+      "longest_other": "A mais longa este ano: {{count}} dias",
+      "average": "Média diária",
+      "books_one": "Em {{count}} livro este ano",
+      "books_other": "Em {{count}} livros este ano"
+    },
+    "goal": {
+      "label": "Objetivo",
+      "none_one": "{{count}} livro terminado este ano, sem objetivo",
+      "none_other": "{{count}} livros terminados este ano, sem objetivo",
+      "set": "Definir um objetivo anual",
+      "of": "de {{goal}}",
+      "percent": "{{percent}}%",
+      "a11y_one": "Objetivo: {{count}} de {{goal}} livros terminados este ano, {{percent}}%",
+      "a11y_other": "Objetivo: {{count}} de {{goal}} livros terminados este ano, {{percent}}%",
+      "lower": "Baixar o objetivo anual",
+      "raise": "Subir o objetivo anual",
+      "clear": "Remover o objetivo anual",
+      "saveFailed": "O teu objetivo não foi guardado"
+    },
+    "calendar": {
+      "title": "Calendário de audição",
+      "sub": "Cada dia em que ouviste, mais escuro quanto mais",
+      "everyDevice": "De todos os dispositivos",
+      "months": "jan,fev,mar,abr,mai,jun,jul,ago,set,out,nov,dez",
+      "weekdays": "seg,,qua,,sex,,dom",
+      "none": "Sem audição",
+      "label_one": "Calendário de audição dos últimos 12 meses: ouviste em {{count}} dia",
+      "label_other": "Calendário de audição dos últimos 12 meses: ouviste em {{count}} dias",
+      "days_one": "{{count}} dia com audição nos últimos 12 meses · hoje está contornado",
+      "days_other": "{{count}} dias com audição nos últimos 12 meses · hoje está contornado",
+      "less": "Menos",
+      "more": "Mais"
+    },
+    "clock": {
+      "title": "O teu relógio de audição",
+      "peaksOne": "Picos às {{a}}",
+      "peaksTwo": "Picos às {{a}} e às {{b}}",
+      "allDay": "o dia todo",
+      "label": "Audição por hora do dia este ano. Hora com mais audição {{hour}}. {{peaks}}",
+      "labelEmpty": "Audição por hora do dia: nada este ano ainda",
+      "none": "Ainda não ouviste nada este ano",
+      "busiest": "a tua hora com mais audição",
+      "hourTotal": "{{duration}} este ano"
+    },
+    "weeks": {
+      "title": "Horas por semana",
+      "sub": "Últimas 12 semanas · {{duration}} no total",
+      "thisWeek": "esta semana",
+      "weeksAgo_one": "há {{count}} semana",
+      "weeksAgo_other": "há {{count}} semanas",
+      "thisWeekShort": "Esta sem.",
+      "agoShort_one": "há {{count}} sem.",
+      "agoShort_other": "há {{count}} sem.",
+      "label": "Horas ouvidas por semana, últimas 12 semanas: {{weeks}}"
+    },
+    "rank": {
+      "authors": "Autores mais ouvidos",
+      "authorsSub": "Este ano, por horas",
+      "narrators": "Narradores mais ouvidos",
+      "narratorsSub": "Passaste {{duration}} com {{name}}",
+      "series": "Séries mais ouvidas",
+      "seriesSub": "Séries a que voltaste sempre",
+      "rowLabel_one": "{{rank}}. {{name}}, {{duration}}, {{count}} livro",
+      "rowLabel_other": "{{rank}}. {{name}}, {{duration}}, {{count}} livros",
+      "open": {
+        "author": "Abre a página do autor",
+        "narrator": "Abre a página do narrador",
+        "series": "Abre a série"
+      }
+    },
+    "finished": {
+      "title": "Terminados este ano",
+      "count_one": "{{count}} livro",
+      "count_other": "{{count}} livros",
+      "none": "Ainda nada terminado este ano",
+      "journal": "Vê-los no teu Diário",
+      "spineLabel": "{{title}} de {{author}}, terminado a {{date}}"
+    },
+    "year": {
+      "eyebrow": "Quando quiseres",
+      "title": "O teu {{year}} em audição",
+      "play": "Ver a história",
+      "summary_one": "{{duration}} de audição e {{count}} livro terminado até agora.",
+      "summary_other": "{{duration}} de audição e {{count}} livros terminados até agora."
+    }
+  },
   "library": {
     "browse": {
       "fallbackName": "Biblioteca",

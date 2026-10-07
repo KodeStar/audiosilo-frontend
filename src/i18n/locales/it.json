@@ -404,6 +404,124 @@
       "spoilerSafeStart": "Senza spoiler: scritto prima dell’inizio di questo libro."
     }
   },
+  "stats": {
+    "server": {
+      "pick": "Server"
+    },
+    "unsupported": {
+      "title": "Qui non ci sono ancora statistiche di ascolto",
+      "body": "{{server}} non registra ancora le statistiche di ascolto. Arriveranno con una versione più recente di AudioSilo."
+    },
+    "error": {
+      "title": "Il tuo ascolto non si è caricato",
+      "body": "{{server}} non ha risposto. Non si è perso nulla; riprova tra un momento."
+    },
+    "header": {
+      "eyebrow": "Il tuo ascolto · {{server}}",
+      "thisWeek": "{{duration}} questa settimana",
+      "openYear": "Apri la tua storia del {{year}}"
+    },
+    "empty": {
+      "title": "Ancora nessun ascolto",
+      "body": "Avvia un libro e qui si riempiranno la tua settimana, la tua serie di giorni e il tuo anno."
+    },
+    "tiles": {
+      "week": "Questa settimana",
+      "deltaUp": "{{duration}} in più della settimana scorsa",
+      "deltaDown": "{{duration}} in meno della settimana scorsa",
+      "deltaSame": "Come la settimana scorsa",
+      "streak": "Serie",
+      "days_one": "giorno",
+      "days_other": "giorni",
+      "streakValue_one": "{{count}} giorno",
+      "streakValue_other": "{{count}} giorni",
+      "longest_one": "La più lunga quest’anno: {{count}} giorno",
+      "longest_other": "La più lunga quest’anno: {{count}} giorni",
+      "average": "Media giornaliera",
+      "books_one": "Su {{count}} libro quest’anno",
+      "books_other": "Su {{count}} libri quest’anno"
+    },
+    "goal": {
+      "label": "Obiettivo",
+      "none_one": "{{count}} libro finito quest’anno, nessun obiettivo",
+      "none_other": "{{count}} libri finiti quest’anno, nessun obiettivo",
+      "set": "Imposta un obiettivo annuale",
+      "of": "su {{goal}}",
+      "percent": "{{percent}}%",
+      "a11y_one": "Obiettivo: {{count}} libro finito su {{goal}} quest’anno, {{percent}}%",
+      "a11y_other": "Obiettivo: {{count}} libri finiti su {{goal}} quest’anno, {{percent}}%",
+      "lower": "Abbassa l’obiettivo annuale",
+      "raise": "Alza l’obiettivo annuale",
+      "clear": "Rimuovi l’obiettivo annuale",
+      "saveFailed": "Il tuo obiettivo non è stato salvato"
+    },
+    "calendar": {
+      "title": "Calendario di ascolto",
+      "sub": "Ogni giorno in cui hai ascoltato, più scuro quando di più",
+      "everyDevice": "Da tutti i dispositivi",
+      "months": "gen,feb,mar,apr,mag,giu,lug,ago,set,ott,nov,dic",
+      "weekdays": "lun,,mer,,ven,,dom",
+      "none": "Nessun ascolto",
+      "label_one": "Calendario di ascolto degli ultimi 12 mesi: hai ascoltato in {{count}} giorno",
+      "label_other": "Calendario di ascolto degli ultimi 12 mesi: hai ascoltato in {{count}} giorni",
+      "days_one": "{{count}} giorno di ascolto negli ultimi 12 mesi · oggi è evidenziato",
+      "days_other": "{{count}} giorni di ascolto negli ultimi 12 mesi · oggi è evidenziato",
+      "less": "Meno",
+      "more": "Di più"
+    },
+    "clock": {
+      "title": "Il tuo orologio di ascolto",
+      "peaksOne": "Picchi alle {{a}}",
+      "peaksTwo": "Picchi alle {{a}} e alle {{b}}",
+      "allDay": "tutto il giorno",
+      "label": "Ascolto per ora del giorno quest’anno. Ora più intensa {{hour}}. {{peaks}}",
+      "labelEmpty": "Ascolto per ora del giorno: ancora nulla quest’anno",
+      "none": "Ancora nessun ascolto quest’anno",
+      "busiest": "la tua ora più intensa",
+      "hourTotal": "{{duration}} quest’anno"
+    },
+    "weeks": {
+      "title": "Ore a settimana",
+      "sub": "Ultime 12 settimane · {{duration}} in tutto",
+      "thisWeek": "questa settimana",
+      "weeksAgo_one": "{{count}} settimana fa",
+      "weeksAgo_other": "{{count}} settimane fa",
+      "thisWeekShort": "Questa sett.",
+      "agoShort_one": "{{count}} sett. fa",
+      "agoShort_other": "{{count}} sett. fa",
+      "label": "Ore ascoltate a settimana, ultime 12 settimane: {{weeks}}"
+    },
+    "rank": {
+      "authors": "Autori più ascoltati",
+      "authorsSub": "Quest’anno, per ore",
+      "narrators": "Narratori più ascoltati",
+      "narratorsSub": "Hai passato {{duration}} con {{name}}",
+      "series": "Serie più ascoltate",
+      "seriesSub": "Le serie a cui sei tornato più spesso",
+      "rowLabel_one": "{{rank}}. {{name}}, {{duration}}, {{count}} libro",
+      "rowLabel_other": "{{rank}}. {{name}}, {{duration}}, {{count}} libri",
+      "open": {
+        "author": "Apre la pagina dell’autore",
+        "narrator": "Apre la pagina del narratore",
+        "series": "Apre la serie"
+      }
+    },
+    "finished": {
+      "title": "Finiti quest’anno",
+      "count_one": "{{count}} libro",
+      "count_other": "{{count}} libri",
+      "none": "Ancora niente di finito quest’anno",
+      "journal": "Vedili nel tuo Diario",
+      "spineLabel": "{{title}} di {{author}}, finito il {{date}}"
+    },
+    "year": {
+      "eyebrow": "Quando vuoi",
+      "title": "Il tuo {{year}} in ascolto",
+      "play": "Guarda la storia",
+      "summary_one": "{{duration}} di ascolto e {{count}} libro finito finora.",
+      "summary_other": "{{duration}} di ascolto e {{count}} libri finiti finora."
+    }
+  },
   "library": {
     "browse": {
       "fallbackName": "Libreria",

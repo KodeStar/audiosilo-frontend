@@ -404,6 +404,124 @@
       "spoilerSafeStart": "Spoiler-safe: written before this book begins."
     }
   },
+  "stats": {
+    "server": {
+      "pick": "Server"
+    },
+    "unsupported": {
+      "title": "No listening stats here yet",
+      "body": "{{server}} doesn't keep listening stats yet. They arrive when it runs a newer AudioSilo."
+    },
+    "error": {
+      "title": "Your listening didn't load",
+      "body": "{{server}} didn't answer. Nothing is lost; try again in a moment."
+    },
+    "header": {
+      "eyebrow": "Your listening · {{server}}",
+      "thisWeek": "{{duration}} this week",
+      "openYear": "Open your {{year}} story"
+    },
+    "empty": {
+      "title": "No listening yet",
+      "body": "Play a book and your week, your streak and your year fill in here."
+    },
+    "tiles": {
+      "week": "This week",
+      "deltaUp": "{{duration}} more than last week",
+      "deltaDown": "{{duration}} less than last week",
+      "deltaSame": "The same as last week",
+      "streak": "Streak",
+      "days_one": "day",
+      "days_other": "days",
+      "streakValue_one": "{{count}} day",
+      "streakValue_other": "{{count}} days",
+      "longest_one": "Longest this year: {{count}} day",
+      "longest_other": "Longest this year: {{count}} days",
+      "average": "Daily average",
+      "books_one": "Across {{count}} book this year",
+      "books_other": "Across {{count}} books this year"
+    },
+    "goal": {
+      "label": "Goal",
+      "none_one": "{{count}} book finished this year, no goal set",
+      "none_other": "{{count}} books finished this year, no goal set",
+      "set": "Set a yearly goal",
+      "of": "of {{goal}}",
+      "percent": "{{percent}}%",
+      "a11y_one": "Goal: {{count}} of {{goal}} books finished this year, {{percent}}%",
+      "a11y_other": "Goal: {{count}} of {{goal}} books finished this year, {{percent}}%",
+      "lower": "Lower the yearly goal",
+      "raise": "Raise the yearly goal",
+      "clear": "Clear the yearly goal",
+      "saveFailed": "Your goal wasn't saved"
+    },
+    "calendar": {
+      "title": "Listening calendar",
+      "sub": "Every day you listened, darker for more",
+      "everyDevice": "From every device",
+      "months": "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
+      "weekdays": "Mon,,Wed,,Fri,,Sun",
+      "none": "No listening",
+      "label_one": "Listening calendar for the last 12 months: you listened on {{count}} day",
+      "label_other": "Listening calendar for the last 12 months: you listened on {{count}} days",
+      "days_one": "{{count}} day with listening in the last 12 months · today is outlined",
+      "days_other": "{{count}} days with listening in the last 12 months · today is outlined",
+      "less": "Less",
+      "more": "More"
+    },
+    "clock": {
+      "title": "Your listening clock",
+      "peaksOne": "Peaks at {{a}}",
+      "peaksTwo": "Peaks at {{a}} and {{b}}",
+      "allDay": "all day",
+      "label": "Listening by hour of day this year. Busiest hour {{hour}}. {{peaks}}",
+      "labelEmpty": "Listening by hour of day: none this year yet",
+      "none": "No listening this year yet",
+      "busiest": "your busiest hour",
+      "hourTotal": "{{duration}} this year"
+    },
+    "weeks": {
+      "title": "Hours per week",
+      "sub": "Last 12 weeks · {{duration}} in all",
+      "thisWeek": "this week",
+      "weeksAgo_one": "{{count}} week ago",
+      "weeksAgo_other": "{{count}} weeks ago",
+      "thisWeekShort": "This wk",
+      "agoShort_one": "{{count}} wk ago",
+      "agoShort_other": "{{count}} wk ago",
+      "label": "Hours listened per week, last 12 weeks: {{weeks}}"
+    },
+    "rank": {
+      "authors": "Top authors",
+      "authorsSub": "This year, by hours",
+      "narrators": "Top narrators",
+      "narratorsSub": "You spent {{duration}} with {{name}}",
+      "series": "Top series",
+      "seriesSub": "Series you kept coming back to",
+      "rowLabel_one": "{{rank}}. {{name}}, {{duration}}, {{count}} book",
+      "rowLabel_other": "{{rank}}. {{name}}, {{duration}}, {{count}} books",
+      "open": {
+        "author": "Opens the author",
+        "narrator": "Opens the narrator",
+        "series": "Opens the series"
+      }
+    },
+    "finished": {
+      "title": "Finished this year",
+      "count_one": "{{count}} book",
+      "count_other": "{{count}} books",
+      "none": "Nothing finished yet this year",
+      "journal": "See them in your Journal",
+      "spineLabel": "{{title}} by {{author}}, finished {{date}}"
+    },
+    "year": {
+      "eyebrow": "Ready when you are",
+      "title": "Your {{year}} in listening",
+      "play": "Play the story",
+      "summary_one": "{{duration}} of listening and {{count}} book finished so far.",
+      "summary_other": "{{duration}} of listening and {{count}} books finished so far."
+    }
+  },
   "library": {
     "browse": {
       "fallbackName": "Library",
