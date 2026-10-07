@@ -50,6 +50,8 @@ const SCOPED_STORAGE_KEYS = [
   'audiosilo.downloads',
   'audiosilo.progressMirror',
   'audiosilo.progressQueue',
+  // Each connection's kept `/server` answer for offline reading (`OFFLINE_SERVERS_KEY`).
+  'audiosilo.offlineServers',
 ];
 
 /** Outcome of `resetStaleStorage`: the two axes reset independently. */

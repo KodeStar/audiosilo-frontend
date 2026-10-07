@@ -174,7 +174,8 @@ export function seedServerSnapshot(connectionId: string, snapshot: ServerSnapsho
 }
 
 /** Where each connection's last `/server` answer is kept for offline use: one small
- * document, by connection id. */
+ * document, by connection id (wiped with the rest of the scoped cache on a storage
+ * reset: `SCOPED_STORAGE_KEYS` in `stores/session.ts` names it too). */
 export const OFFLINE_SERVERS_KEY = 'audiosilo.offlineServers';
 
 /** The kept `/server` answers, by connection id (none when unreadable). */
