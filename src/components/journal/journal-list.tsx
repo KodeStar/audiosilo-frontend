@@ -7,10 +7,10 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import type { Source } from './use-journal-sources';
 
 /** The page column (the prototype's `page narrow`). */
-export const JOURNAL_COLUMN = 'w-full max-w-[960px] self-center';
+const JOURNAL_COLUMN = 'w-full max-w-[960px] self-center';
 
 /** Ask each server on the merge's boundary for its next page (once at a time). */
-export function fetchMoreOf<T>(sources: Source<T>[], fetchFrom: string[]) {
+export function fetchMoreOf(sources: readonly Source<unknown>[], fetchFrom: string[]) {
   for (const s of sources) {
     if (fetchFrom.includes(s.connectionId) && !s.isFetchingNextPage) s.fetchNextPage();
   }

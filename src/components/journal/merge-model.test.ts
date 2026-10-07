@@ -84,6 +84,18 @@ describe('mergeNewestFirst', () => {
     expect(ids(m.rows)).toEqual(['a:1', 'b:2']);
     expect(m.isFetchingMore).toBe(true);
   });
+
+  it('keeps each tagged row the same object from one merge to the next', () => {
+    const a = [row(1, 50), row(2, 20)];
+    const first = mergeNewestFirst([source('a', a)], (r) => r.at);
+    const again = mergeNewestFirst([source('a', [row(0, 55), ...a])], (r) => r.at);
+    expect(again.rows[1]).toBe(first.rows[0]);
+    expect(again.rows[2]).toBe(first.rows[1]);
+    // A renamed server tags its rows afresh.
+    const renamed = mergeNewestFirst([{ ...source('a', a), connectionName: 'Home' }], (r) => r.at);
+    expect(renamed.rows[0]).not.toBe(first.rows[0]);
+    expect(renamed.rows[0].connectionName).toBe('Home');
+  });
 });
 
 describe('overallStatus', () => {

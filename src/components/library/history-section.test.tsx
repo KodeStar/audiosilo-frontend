@@ -5,22 +5,22 @@ import { formatWallClock } from '@/lib/format';
 
 jest.mock('@/api/provider', () => ({ useCid: () => 'c1' }));
 const mockJump = jest.fn();
-// The pure namer, as `@/components/annotations` has it (that module's hooks reach the
-// player store, so it is rebuilt here from the same parts).
+// The book's chapters as its own read has them (`useChapterNamer`), named by the pure
+// namer's parts (that module's hooks reach the player store, so it is rebuilt here).
+let mockChapters: Chapter[] | undefined;
 jest.mock('@/components/annotations', () => {
   const { chapterStartsOf } = jest.requireActual('@/components/library/meta-gating');
   const { chapterLabel } = jest.requireActual('@/lib/chapter-label');
   const { chapterAt } = jest.requireActual('@/playback/book-queue');
+  const { t } = jest.requireActual('@/i18n').default;
   return {
     useJumpTo: () => mockJump,
-    chapterNamer:
-      (chapters: Chapter[] | undefined, files: [] | undefined, t: (k: string) => string) =>
-      (position: number) => {
-        if (!chapters?.length) return null;
-        const starts: number[] = chapterStartsOf(chapters, files ?? []);
-        const placed = chapters.map((ch, i) => ({ ...ch, book_offset: starts[i] }));
-        return chapterLabel(chapterAt(placed, position), t);
-      },
+    useChapterNamer: () => (position: number) => {
+      if (!mockChapters?.length) return null;
+      const starts: number[] = chapterStartsOf(mockChapters, []);
+      const placed = mockChapters.map((ch, i) => ({ ...ch, book_offset: starts[i] }));
+      return chapterLabel(chapterAt(placed, position), t);
+    },
   };
 });
 
@@ -57,17 +57,13 @@ const row = (over: Partial<History> = {}): History => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockHistory = { data: [row()] };
+  mockChapters = undefined;
 });
 
 describe('HistorySection', () => {
   it('shows the day and time, where it went with the chapter it ended in, and its minutes', async () => {
-    await render(
-      <HistorySection
-        libraryId={1}
-        path="Tolkien/The Hobbit"
-        chapters={[chapter(0, '01_the_hobbit_ch1.mp3', 0), chapter(1, '', 100)]}
-      />,
-    );
+    mockChapters = [chapter(0, '01_the_hobbit_ch1.mp3', 0), chapter(1, '', 100)];
+    await render(<HistorySection libraryId={1} path="Tolkien/The Hobbit" />);
     expect(screen.getByText('Today')).toBeTruthy();
     expect(screen.getByText(formatWallClock(startedToday))).toBeTruthy();
     // The end lands in the untitled chapter; filenames never show.

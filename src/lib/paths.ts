@@ -200,6 +200,14 @@ export function collectionHref(connectionId: string, id: number): Href {
   return { pathname: '/collection', params: { connection: connectionId, id: String(id) } };
 }
 
+/** The Journal's tabs (`/journal?tab=diary|bookmarks|notes`). */
+export type JournalTab = 'diary' | 'bookmarks' | 'notes';
+
+/** The Journal, on `tab` when given (the Diary is the plain `/journal`). */
+export function journalHref(tab?: JournalTab): Href {
+  return tab && tab !== 'diary' ? { pathname: '/journal', params: { tab } } : '/journal';
+}
+
 /** A route's raw search params (Expo Router may hand back `string[]`). */
 export type RawParams = Record<string, string | string[] | undefined>;
 

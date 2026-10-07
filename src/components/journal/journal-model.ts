@@ -1,32 +1,42 @@
-import type { Href } from 'expo-router';
+import type { MyBookmark, MyNote } from '@/api/types';
+import { foldAccents } from '@/lib/names';
+import { firstParam, type JournalTab } from '@/lib/paths';
 
 /**
- * The Journal's route rules (`/journal?tab=diary|bookmarks|notes`): pure, so the tab a
- * link opens and the search filter are tested apart from the screen.
+ * The Journal's route rules (`/journal?tab=diary|bookmarks|notes`, `journalHref`): pure,
+ * so the tab a link opens and the search filter are tested apart from the screen.
  */
 
-export type JournalTab = 'diary' | 'bookmarks' | 'notes';
-
-export const JOURNAL_TABS: readonly JournalTab[] = ['diary', 'bookmarks', 'notes'];
+const JOURNAL_TABS: readonly string[] = ['diary', 'bookmarks', 'notes'] satisfies JournalTab[];
 
 /** The tab a link asks for; anything else (absent, unknown, repeated) is the Diary. */
 export function parseJournalTab(raw: string | string[] | undefined): JournalTab {
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  return JOURNAL_TABS.includes(v as JournalTab) ? (v as JournalTab) : 'diary';
+  const v = firstParam(raw);
+  return JOURNAL_TABS.includes(v) ? (v as JournalTab) : 'diary';
 }
 
-/** The Journal, on `tab` when given (the Diary is the plain `/journal`). */
-export function journalHref(tab?: JournalTab): Href {
-  return tab && tab !== 'diary' ? { pathname: '/journal', params: { tab } } : '/journal';
+/** Text as the search compares it: accents off, lower case ("Émile" reads "emile"). */
+const fold = (s: string) => foldAccents(s).toLocaleLowerCase();
+
+/** The words of a search, folded once (none for a blank one, which matches everything). */
+export function searchWords(query: string): string[] {
+  return fold(query).split(/\s+/).filter(Boolean);
 }
 
-const fold = (s: string) => s.toLocaleLowerCase();
+/** Whether every one of `words` occurs in `hay` (folded, `annotationHaystack`). */
+export const matchesWords = (words: readonly string[], hay: string): boolean =>
+  words.every((w) => hay.includes(w));
 
-/** Whether every word of `query` occurs in one of `texts` (case-insensitive). An empty
- * query matches everything. */
-export function matchesQuery(query: string, ...texts: (string | undefined)[]): boolean {
-  const words = fold(query).split(/\s+/).filter(Boolean);
-  if (words.length === 0) return true;
-  const hay = fold(texts.filter(Boolean).join('\n'));
-  return words.every((w) => hay.includes(w));
+const haystacks = new WeakMap<object, string>();
+
+/** What the search looks at in a bookmark or note (its book's title and author, the note
+ * or body), folded once per row: the rows keep their identity while unchanged. */
+export function annotationHaystack(row: MyBookmark | MyNote): string {
+  let hay = haystacks.get(row);
+  if (hay === undefined) {
+    const text = 'body' in row ? row.body : row.note;
+    hay = fold([row.book?.title, row.book?.author, text].filter(Boolean).join('\n'));
+    haystacks.set(row, hay);
+  }
+  return hay;
 }

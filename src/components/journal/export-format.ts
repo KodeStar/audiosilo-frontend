@@ -1,8 +1,9 @@
 import type { Book, MyBookmark, MyNote } from '@/api/types';
-import { formatClock } from '@/lib/format';
+import { contentKey } from '@/lib/content-key';
+import { formatClock, localIsoDay } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
 
-import type { Sourced } from './merge-model';
+import { type Sourced, timeOfRow } from './merge-model';
 
 /**
  * The Journal's export: the listener's bookmarks and notes as CSV (RFC 4180) or as
@@ -10,7 +11,7 @@ import type { Sourced } from './merge-model';
  * translated (`ExportWords`), so the formatters are tested without i18n.
  */
 
-export type ExportKind = 'bookmark' | 'note';
+type ExportKind = 'bookmark' | 'note';
 
 /** One exported bookmark or note. */
 export type ExportRow = {
@@ -55,10 +56,6 @@ export function exportRows(
   notes: readonly Sourced<MyNote>[],
   names: RowNames,
 ): ExportRow[] {
-  const created = (iso: string) => {
-    const t = Date.parse(iso);
-    return Number.isNaN(t) ? 0 : t;
-  };
   const base = (r: Sourced<MyBookmark> | Sourced<MyNote>) => ({
     connectionId: r.connectionId,
     server: r.connectionName,
@@ -68,7 +65,7 @@ export function exportRows(
     author: r.book?.author ?? '',
     position: r.position,
     chapter: names.chapterAt(r.connectionId, r.library_id, r.path, r.position),
-    created: created(r.created_at),
+    created: timeOfRow(r.created_at),
   });
   return [
     ...bookmarks.map((b): ExportRow => ({
@@ -109,7 +106,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export function localStamp(ms: number): string {
   if (!ms) return '';
   const d = new Date(ms);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${localIsoDay(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** A UTF-8 byte order mark: without it Excel reads a CSV as the system code page and
@@ -185,7 +182,7 @@ export function toMarkdown(
 ): string {
   const groups = new Map<string, ExportRow[]>();
   for (const r of rows) {
-    const key = `${r.connectionId}\n${r.libraryId}\n${r.path}`;
+    const key = contentKey(r.connectionId, r.libraryId, r.path);
     const g = groups.get(key);
     if (g) g.push(r);
     else groups.set(key, [r]);
@@ -215,5 +212,5 @@ export function toMarkdown(
 
 /** The file's name: `journal-2026-10-07.md`, in the device's date. */
 export function exportFileName(format: 'md' | 'csv', now: Date): string {
-  return `journal-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.${format}`;
+  return `journal-${localIsoDay(now)}.${format}`;
 }

@@ -6,6 +6,8 @@ import {
   type BookPlace,
   type BookTab,
   collectionHref,
+  journalHref,
+  type JournalTab,
   libraryHref,
   narratorHref,
   playerHref,
@@ -68,5 +70,7 @@ export function useOpen() {
     openNarrator: (connectionId: string, libraryId: number, name: string) =>
       go(narratorHref(connectionId, libraryId, name)),
     openCollection: (connectionId: string, id: number) => go(collectionHref(connectionId, id)),
+    /** The Journal (across every server), on `tab` when given. */
+    openJournal: (tab?: JournalTab) => go(journalHref(tab)),
   };
 }

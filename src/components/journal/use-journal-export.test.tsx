@@ -4,7 +4,7 @@ import type { MyBookmark, MyNote, Page } from '@/api/types';
 
 import type { Source } from './use-journal-sources';
 
-const mockSave = jest.fn(async (..._a: unknown[]) => 'file');
+const mockSave = jest.fn(async (..._a: unknown[]) => {});
 jest.mock('./export-save', () => ({ saveExport: (...a: unknown[]) => mockSave(...a) }));
 const mockCopy = jest.fn(async (_text: string) => true);
 jest.mock('@/lib/clipboard', () => ({ copyText: (t: string) => mockCopy(t) }));
@@ -53,11 +53,21 @@ const bm = (id: number, note: string): MyBookmark => ({
   book: { title: 'The Way of Kings', author: 'Brandon Sanderson' } as MyBookmark['book'],
 });
 
-function source<T>(connectionId: string, status: Source<T>['status']): Source<T> {
+function source<T>(
+  connectionId: string,
+  status: Source<T>['status'],
+  // As the sources say it: the flag is known once a list answered or failed.
+  supported: Source<T>['supported'] = status === 'unsupported'
+    ? false
+    : status === 'loading'
+      ? undefined
+      : true,
+): Source<T> {
   return {
     connectionId,
     connectionName: connectionId === 'c1' ? 'Hearthside' : connectionId === 'c2' ? 'Maya' : 'Old',
     status,
+    supported,
     rows: [],
     hasNextPage: false,
     isFetchingNextPage: false,
@@ -110,6 +120,20 @@ describe('useJournalExport', () => {
     expect(result.current.preparing).toBeNull();
   });
 
+  it('takes the notes the Journal has not loaded yet, from a server known to list them', async () => {
+    mockMyBookmarks.mockResolvedValue({ items: [] });
+    mockMyNotes.mockResolvedValue({ items: [] });
+    const { result } = await renderHook(() =>
+      useJournalExport({
+        bookmarks: [source('c1', 'ready')],
+        // The Notes tab was never opened: no pages, the flag on.
+        notes: [source('c1', 'loading', true)],
+      }),
+    );
+    await act(() => result.current.run('csv', 'save'));
+    expect(mockMyNotes).toHaveBeenCalledWith({ limit: 500, cursor: undefined });
+  });
+
   it('leaves out a server that fails, names it, and still exports the rest', async () => {
     mockMyBookmarks.mockResolvedValue({ items: [bm(1, 'kept')] });
     mockMyNotes.mockResolvedValue({ items: [] });
@@ -154,7 +178,6 @@ describe('useJournalExport', () => {
     mockSave.mockImplementationOnce(async (...a: unknown[]) => {
       (a[2] as () => void)(); // the file is written
       await new Promise<void>((r) => (closeSheet = r)); // the share sheet is up
-      return 'file';
     });
     const { result } = await renderHook(() =>
       useJournalExport({ bookmarks: [source('c1', 'ready')], notes: [source('c1', 'ready')] }),

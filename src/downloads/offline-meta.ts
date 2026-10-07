@@ -7,6 +7,7 @@ import { queryClient } from '@/api/provider';
 import type { Book, BookMeta, BookMetaWork, ServerInfo } from '@/api/types';
 import { metaEnabledFor } from '@/components/library/meta-gating';
 import { previousWorks, seriesRails } from '@/components/library/series-rails';
+import { getItem, setItem } from '@/lib/storage';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
 
@@ -40,7 +41,8 @@ import type { DownloadEntry } from './types';
  *   `qk.metaWork(cid, workId)`;
  * - every one of them first waits on the server's `metadata` flag, read from
  *   `qk.server(cid)`: on a cold start with no network that is never answered, so the
- *   payload keeps the `/server` answer too.
+ *   server's last `/server` answer is kept too, once per connection under its own small
+ *   storage key (`OFFLINE_SERVERS_KEY`), not in every book's file.
  * Nothing reads the `spoilers=hide` variant today (it is cut at the saved place when it is
  * fetched, so it is not stored); the `include=previous` variant is seeded when the payload
  * was fetched that way.
@@ -72,7 +74,8 @@ export type OfflineMeta = {
    * the listener picked, when the envelope's own `previous` doesn't hold it (a server
    * without `meta_bundle`, or a pick other than the main order). */
   works: BookMetaWork[];
-  /** The server's `/server` answer when this was saved. */
+  /** The server's `/server` answer, in a file written before it had its own key
+   * (`OFFLINE_SERVERS_KEY`); read only to carry it over. */
   server?: ServerSnapshot;
 };
 
@@ -80,6 +83,16 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const isWork = (v: unknown): v is BookMetaWork =>
   isObject(v) && typeof v.id === 'string' && v.id.length > 0;
+
+/** A stored `/server` snapshot, or undefined when it is not one. */
+function parseSnapshot(raw: unknown): ServerSnapshot | undefined {
+  return isObject(raw) &&
+    isObject(raw.info) &&
+    isObject(raw.info.capabilities) &&
+    typeof raw.savedAt === 'number'
+    ? (raw as ServerSnapshot)
+    : undefined;
+}
 
 /** A stored payload, or null when it is not one this version can read (corrupt, foreign
  * or from a future version): the caller then simply goes without (and fetches it again
@@ -95,13 +108,7 @@ export function parseOfflineMeta(raw: unknown): OfflineMeta | null {
     if (Array.isArray(envelope.previous)) envelope.previous = envelope.previous.filter(isWork);
     else delete envelope.previous;
   }
-  const snapshot =
-    isObject(server) &&
-    isObject(server.info) &&
-    isObject(server.info.capabilities) &&
-    typeof server.savedAt === 'number'
-      ? (server as ServerSnapshot)
-      : undefined;
+  const snapshot = parseSnapshot(server);
   return {
     v: 1,
     savedAt,
@@ -112,18 +119,24 @@ export function parseOfflineMeta(raw: unknown): OfflineMeta | null {
   };
 }
 
+/** Keep a downloaded book's cache entry for good (`gcTime: Infinity` for the key, from
+ * its next build or fetch on). Unwatched, an entry is dropped after `gcTime` (5 minutes),
+ * and a book downloaded an hour before the flight would then open offline with nothing. */
+function keepForGood(key: QueryKey): void {
+  queryClient.setQueryDefaults(key, { gcTime: Infinity });
+}
+
 /**
  * Put `data` in the cache under `key` unless the cache already holds an answer there (a
  * fresh one from the server always wins over a saved copy), dated `updatedAt` so it goes
- * stale on the screens' own schedule, and keep the entry for good. Unwatched, an entry is
- * dropped after `gcTime` (5 minutes), and a book downloaded an hour before the flight
- * would then open offline with nothing. Used for every seed of a downloaded book.
+ * stale on the screens' own schedule, and keep the entry for good (`keepForGood`). Used
+ * for every seed of a downloaded book.
  */
 export function seedQuery(key: QueryKey, data: unknown, updatedAt: number): void {
-  const query = queryClient.getQueryCache().build(queryClient, { queryKey: key, gcTime: Infinity });
-  if (query.state.data === undefined) queryClient.setQueryData(key, data, { updatedAt });
-  // An entry that already existed keeps its own options (and its data), only for good.
-  query.setOptions({ ...query.options, gcTime: Infinity });
+  keepForGood(key);
+  if (queryClient.getQueryData(key) === undefined) {
+    queryClient.setQueryData(key, data, { updatedAt });
+  }
 }
 
 /** Seed every key the payload can answer (see the module comment) for one book. The
@@ -160,17 +173,55 @@ export function seedServerSnapshot(connectionId: string, snapshot: ServerSnapsho
   seedQuery(qk.server(connectionId), snapshot.info, snapshot.savedAt);
 }
 
-/** The newest `/server` answer of each connection among `payloads`. */
-export function newestSnapshots(
-  payloads: readonly { connectionId: string; payload: OfflineMeta }[],
-): Map<string, ServerSnapshot> {
-  const newest = new Map<string, ServerSnapshot>();
-  for (const { connectionId, payload } of payloads) {
-    const s = payload.server;
-    if (s && (newest.get(connectionId)?.savedAt ?? -Infinity) < s.savedAt)
-      newest.set(connectionId, s);
+/** Where each connection's last `/server` answer is kept for offline use: one small
+ * document, by connection id. */
+export const OFFLINE_SERVERS_KEY = 'audiosilo.offlineServers';
+
+/** The kept `/server` answers, by connection id (none when unreadable). */
+export async function readServerSnapshots(): Promise<Record<string, ServerSnapshot>> {
+  const raw = await getItem<unknown>(OFFLINE_SERVERS_KEY);
+  if (!isObject(raw)) return {};
+  const out: Record<string, ServerSnapshot> = {};
+  for (const [cid, v] of Object.entries(raw)) {
+    const snapshot = parseSnapshot(v);
+    if (snapshot) out[cid] = snapshot;
   }
-  return newest;
+  return out;
+}
+
+/** Writes of the kept answers, one after another (each reads what the last wrote). */
+let snapshotWrites: Promise<void> = Promise.resolve();
+
+function updateSnapshots(change: (all: Record<string, ServerSnapshot>) => boolean): Promise<void> {
+  snapshotWrites = snapshotWrites.then(async () => {
+    const all = await readServerSnapshots();
+    if (change(all)) await setItem(OFFLINE_SERVERS_KEY, all);
+  });
+  return snapshotWrites;
+}
+
+/** The connection's `/server` answer as the cache holds it now, if any. */
+export function currentServerSnapshot(connectionId: string): ServerSnapshot | undefined {
+  const state = queryClient.getQueryState<ServerInfo>(qk.server(connectionId));
+  return state?.data ? { info: state.data, savedAt: state.dataUpdatedAt } : undefined;
+}
+
+/** Keep `snapshot` as the connection's answer, unless a newer one is kept already. */
+export function saveServerSnapshot(connectionId: string, snapshot: ServerSnapshot): Promise<void> {
+  return updateSnapshots((all) => {
+    if ((all[connectionId]?.savedAt ?? -Infinity) >= snapshot.savedAt) return false;
+    all[connectionId] = snapshot;
+    return true;
+  });
+}
+
+/** Forget a removed connection's kept answer. */
+export function forgetServerSnapshot(connectionId: string): Promise<void> {
+  return updateSnapshots((all) => {
+    if (!(connectionId in all)) return false;
+    delete all[connectionId];
+    return true;
+  });
 }
 
 /** Whether a connection's server has community metadata (its `/server` read the way the
@@ -213,6 +264,8 @@ export async function captureOfflineMeta(entry: DownloadEntry): Promise<OfflineM
     const previous = !!caps.meta_bundle;
     const opts = previous ? { includePrevious: true } : undefined;
     const key = qk.bookMeta(cid, libraryId, path, opts);
+    // Kept for good from this read on, so its answer outlives the cache's own timer.
+    keepForGood(key);
     const meta = await fetchFailFast({
       queryKey: key,
       queryFn: ({ signal }) => client.bookMeta(libraryId, path, signal, opts),
@@ -220,15 +273,7 @@ export async function captureOfflineMeta(entry: DownloadEntry): Promise<OfflineM
     });
     const savedAt = queryClient.getQueryState(key)?.dataUpdatedAt || Date.now();
     const works = meta.matched ? await nearestPreviousWork(cid, client, meta) : [];
-    const server = queryClient.getQueryState<ServerInfo>(qk.server(cid));
-    return {
-      v: 1,
-      savedAt,
-      previous,
-      meta,
-      works,
-      ...(server?.data ? { server: { info: server.data, savedAt: server.dataUpdatedAt } } : {}),
-    };
+    return { v: 1, savedAt, previous, meta, works };
   } catch {
     return null;
   }
@@ -246,6 +291,7 @@ async function nearestPreviousWork(
     const picks = useSeriesOrderings.getState().picks;
     const nearest = previousWorks(seriesRails(meta.series, meta.work.id, picks))[0];
     if (!nearest || meta.previous?.some((w) => w.id === nearest.id)) return [];
+    keepForGood(qk.metaWork(cid, nearest.id));
     const work = await fetchFailFast({
       queryKey: qk.metaWork(cid, nearest.id),
       queryFn: ({ signal }) => client.metaWork(nearest.id, signal),
@@ -257,37 +303,34 @@ async function nearestPreviousWork(
   }
 }
 
-/** Save a payload beside the book's audio; false when it could not be (or the book's
- * storage is gone). */
+/** Save a payload beside the book's audio (never throws, as the engine's file methods
+ * don't); false when it could not be (or the book's storage is gone). */
 export async function writeOfflineMeta(
   entry: DownloadEntry,
   payload: OfflineMeta,
 ): Promise<boolean> {
-  if (!engine.writeText) return false;
-  try {
-    return await engine.writeText(
+  return (
+    (await engine.writeText?.(
       entry.connectionId,
       entry.libraryId,
       entry.path,
       OFFLINE_META_FILE,
       JSON.stringify(payload),
-    );
-  } catch {
-    return false;
-  }
+    )) ?? false
+  );
 }
 
 /** A book's saved payload, or null when there is none or it can't be read. */
 export async function readOfflineMeta(entry: DownloadEntry): Promise<OfflineMeta | null> {
-  if (!engine.readText) return null;
+  const raw = await engine.readText?.(
+    entry.connectionId,
+    entry.libraryId,
+    entry.path,
+    OFFLINE_META_FILE,
+  );
+  if (!raw) return null;
   try {
-    const raw = await engine.readText(
-      entry.connectionId,
-      entry.libraryId,
-      entry.path,
-      OFFLINE_META_FILE,
-    );
-    return raw ? parseOfflineMeta(JSON.parse(raw)) : null;
+    return parseOfflineMeta(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -295,11 +338,7 @@ export async function readOfflineMeta(entry: DownloadEntry): Promise<OfflineMeta
 
 /** Delete a book's saved payload (a download removed while it was being written). */
 export async function removeOfflineMeta(entry: DownloadEntry): Promise<void> {
-  try {
-    await engine.removeFile?.(entry.connectionId, entry.libraryId, entry.path, OFFLINE_META_FILE);
-  } catch {
-    // best-effort cleanup
-  }
+  await engine.removeFile?.(entry.connectionId, entry.libraryId, entry.path, OFFLINE_META_FILE);
 }
 
 /** Resolves once the session store has hydrated (so `resolveClient` sees the real

@@ -324,6 +324,12 @@ describe('CommandPalette', () => {
     await fireEvent.changeText(screen.getByTestId('palette-input'), 'dark');
     await fireEvent.press(screen.getByText('Switch to dark appearance'));
     expect(mockSetPref).toHaveBeenCalledWith('dark');
+
+    // The Journal, a page of its own.
+    await act(async () => usePalette.getState().openPalette());
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'journal');
+    await fireEvent.press(screen.getByText('Journal'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/journal');
   });
 
   it('says so when nothing matches, and offers recent searches on an empty query', async () => {

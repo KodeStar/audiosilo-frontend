@@ -13,10 +13,6 @@ export type ExportFile = {
   uti: string;
 };
 
-/** What became of the export: shared as a file, or (no file sharing on this device)
- * handed to the share sheet as text. */
-export type SaveOutcome = 'file' | 'text';
-
 /**
  * Native: write the export to the cache directory and open the share sheet on it (Save
  * to Files, Mail, Drive...). Where the OS can't share a file, the text itself goes to the
@@ -29,16 +25,15 @@ export async function saveExport(
   /** Called once the export is ready, just before the share sheet opens (which resolves
    * only when it closes): the caller's "Gathering" state ends there. */
   onReady?: () => void,
-): Promise<SaveOutcome> {
+): Promise<void> {
   if (!(await Sharing.isAvailableAsync())) {
     onReady?.();
     await shareText(file.content);
-    return 'text';
+    return;
   }
   const out = new File(Paths.cache, file.name);
   out.create({ overwrite: true });
   out.write(file.content);
   onReady?.();
   await Sharing.shareAsync(out.uri, { mimeType: file.mimeType, UTI: file.uti, dialogTitle });
-  return 'file';
 }

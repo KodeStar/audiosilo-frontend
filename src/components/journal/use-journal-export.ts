@@ -1,25 +1,33 @@
-import type { InfiniteData } from '@tanstack/react-query';
+import type { InfiniteData, QueryKey } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import type { ApiClient } from '@/api/client';
 import { qk } from '@/api/hooks';
 import { queryClient, useApis } from '@/api/provider';
-import type { ChaptersResponse, MyBookmark, MyNote, Page } from '@/api/types';
+import type { ChaptersResponse, MyBookmark, MyNote, Page, PageQuery } from '@/api/types';
 import { chapterNamer, labelText } from '@/components/annotations';
 import { toast } from '@/components/ui/toast';
 import { copyText } from '@/lib/clipboard';
-import { formatCount } from '@/lib/format';
+import { contentKey } from '@/lib/content-key';
+import { formatCount, formatDayDate } from '@/lib/format';
 
 import { collectPages } from './export-collect';
-import { exportFileName, exportRows, type ExportWords, toCsv, toMarkdown } from './export-format';
+import {
+  exportFileName,
+  exportRows,
+  type ExportWords,
+  type RowNames,
+  toCsv,
+  toMarkdown,
+} from './export-format';
 import { type ExportFile, saveExport } from './export-save';
-import { formatDayDate } from './journal-format';
 import type { Sourced } from './merge-model';
 import type { Source } from './use-journal-sources';
 
 /** The most rows of each list taken from one server (an export stays bounded). */
-export const MAX_EXPORT_ROWS = 10_000;
+const MAX_EXPORT_ROWS = 10_000;
 /** Rows per request while the export pages through what the Journal hasn't loaded. */
 const EXPORT_PAGE = 500;
 
@@ -32,15 +40,30 @@ const FILE_TYPES: Record<ExportFormat, Pick<ExportFile, 'mimeType' | 'uti'>> = {
 };
 
 /** The chapter at a position, from chapters this device already holds (the Journal,
- * the book page or the player read them): an export never fetches chapters. */
-function cachedChapterAt(
-  t: TFunction,
-): (cid: string, lib: number, path: string, position: number) => string | undefined {
+ * the book page or the player read them): an export never fetches chapters. One namer per
+ * book for the run. */
+function cachedChapterAt(t: TFunction): RowNames['chapterAt'] {
+  const namers = new Map<string, (position: number) => string | null>();
   return (cid, lib, path, position) => {
-    const data = queryClient.getQueryData<ChaptersResponse>(qk.chapters(cid, lib, path));
-    return chapterNamer(data?.chapters, data?.files, t)(position) ?? undefined;
+    const key = contentKey(cid, lib, path);
+    let nameAt = namers.get(key);
+    if (!nameAt) {
+      const data = queryClient.getQueryData<ChaptersResponse>(qk.chapters(cid, lib, path));
+      nameAt = chapterNamer(data?.chapters, data?.files, t);
+      namers.set(key, nameAt);
+    }
+    return nameAt(position) ?? undefined;
   };
 }
+
+/** One of the lists the export takes: the servers' sources, the key of the Journal's
+ * cached pages, and the request for a page. */
+type ExportList<T> = {
+  id: string;
+  sources: readonly Source<T>[];
+  key: (cid: string) => QueryKey;
+  fetch: (client: ApiClient, page: PageQuery) => Promise<Page<T>>;
+};
 
 /**
  * The Journal's export: every bookmark and note on every server that can list them (the
@@ -89,50 +112,65 @@ export function useJournalExport(sources: {
       counts.set(id, n);
       setPreparing([...counts.values()].reduce((a, b) => a + b, 0));
     };
-    const failed = new Set<string>();
     let truncated = false;
-    const bookmarks: Sourced<MyBookmark>[] = [];
-    const notes: Sourced<MyNote>[] = [];
 
-    // Only servers whose list is known to work (their `annotations` flag on): an
-    // older server is never asked for a route it lacks.
-    const gather = async <T extends MyBookmark | MyNote>(
-      list: Source<T>[],
-      kind: 'bookmarks' | 'notes',
-      out: Sourced<T>[],
-    ) => {
-      for (const s of list) {
-        if (s.status !== 'ready' && s.status !== 'error') continue;
-        const client = apis.find((a) => a.connection.id === s.connectionId)?.client;
-        if (!client) continue;
-        const key =
-          kind === 'bookmarks' ? qk.myBookmarks(s.connectionId) : qk.myNotes(s.connectionId);
-        try {
-          const got = await collectPages<T>(
-            queryClient.getQueryData<InfiniteData<Page<T>>>(key),
-            (cursor) =>
-              (kind === 'bookmarks'
-                ? client.myBookmarks({ limit: EXPORT_PAGE, cursor })
-                : client.myNotes({ limit: EXPORT_PAGE, cursor })) as Promise<Page<T>>,
-            { maxRows: MAX_EXPORT_ROWS, onProgress: progress(`${kind}\n${s.connectionId}`) },
-          );
-          truncated ||= got.truncated;
-          for (const row of got.items) {
-            out.push({ ...row, connectionId: s.connectionId, connectionName: s.connectionName });
+    // Every server and both lists at once; only each list's pages follow one another.
+    // Only servers known to list them (their `annotations` flag on): an older server is
+    // never asked for a route it lacks. A server that fails is left out (and named).
+    const gather = <T extends MyBookmark | MyNote>({
+      id,
+      sources: list,
+      key,
+      fetch,
+    }: ExportList<T>) =>
+      Promise.all(
+        list.map(async (s): Promise<{ server: string; rows: Sourced<T>[]; failed?: true }> => {
+          const client = apis.find((a) => a.connection.id === s.connectionId)?.client;
+          const server = s.connectionName;
+          if (s.supported !== true || !client) return { server, rows: [] };
+          try {
+            const got = await collectPages<T>(
+              queryClient.getQueryData<InfiniteData<Page<T>>>(key(s.connectionId)),
+              (cursor) => fetch(client, { limit: EXPORT_PAGE, cursor }),
+              { maxRows: MAX_EXPORT_ROWS, onProgress: progress(`${id}\n${s.connectionId}`) },
+            );
+            truncated ||= got.truncated;
+            const rows = got.items.map((row): Sourced<T> => ({
+              ...row,
+              connectionId: s.connectionId,
+              connectionName: server,
+            }));
+            return { server, rows };
+          } catch {
+            return { server, rows: [], failed: true };
           }
-        } catch {
-          failed.add(s.connectionName);
-        }
-      }
-    };
+        }),
+      );
 
     try {
-      await gather(sources.bookmarks, 'bookmarks', bookmarks);
-      await gather(sources.notes, 'notes', notes);
-      const rows = exportRows(bookmarks, notes, {
-        chapterAt: cachedChapterAt(t),
-        labelName: (key) => labelText(t, key) ?? undefined,
-      });
+      const [bookmarks, notes] = await Promise.all([
+        gather<MyBookmark>({
+          id: 'bookmarks',
+          sources: sources.bookmarks,
+          key: qk.myBookmarks,
+          fetch: (c, page) => c.myBookmarks(page),
+        }),
+        gather<MyNote>({
+          id: 'notes',
+          sources: sources.notes,
+          key: qk.myNotes,
+          fetch: (c, page) => c.myNotes(page),
+        }),
+      ]);
+      const failed = new Set([...bookmarks, ...notes].filter((g) => g.failed).map((g) => g.server));
+      const rows = exportRows(
+        bookmarks.flatMap((g) => g.rows),
+        notes.flatMap((g) => g.rows),
+        {
+          chapterAt: cachedChapterAt(t),
+          labelName: (key) => labelText(t, key) ?? undefined,
+        },
+      );
       if (failed.size > 0) {
         toast({ title: t('journal.export.failedServers', { servers: [...failed].join(', ') }) });
       }

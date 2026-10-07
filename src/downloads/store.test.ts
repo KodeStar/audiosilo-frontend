@@ -45,6 +45,10 @@ const mockSeedServer = jest.fn();
 const mockSeedQuery = jest.fn();
 const mockHasMetadata = jest.fn(async (_cid: string) => true);
 const mockCanMatch = jest.fn((_e: DownloadEntry) => true);
+const mockReadSnapshots = jest.fn(async (): Promise<Record<string, unknown>> => ({}));
+const mockSaveSnapshot = jest.fn(async (..._a: unknown[]) => {});
+const mockForgetSnapshot = jest.fn(async (_cid: string) => {});
+const mockCurrentSnapshot = jest.fn((_cid: string): unknown => undefined);
 jest.mock('@/downloads/offline-meta', () => ({
   canMatch: (e: DownloadEntry) => mockCanMatch(e),
   captureOfflineMeta: (e: DownloadEntry) => mockCapture(e),
@@ -56,9 +60,15 @@ jest.mock('@/downloads/offline-meta', () => ({
   seedQuery: (...a: unknown[]) => mockSeedQuery(...a),
   serverHasMetadata: (cid: string) => mockHasMetadata(cid),
   whenSessionReady: async () => {},
-  newestSnapshots: (list: { connectionId: string; payload: { server?: unknown } }[]) =>
-    new Map(list.filter((k) => k.payload.server).map((k) => [k.connectionId, k.payload.server])),
+  readServerSnapshots: () => mockReadSnapshots(),
+  saveServerSnapshot: (...a: unknown[]) => mockSaveSnapshot(...a),
+  forgetServerSnapshot: (cid: string) => mockForgetSnapshot(cid),
+  currentServerSnapshot: (cid: string) => mockCurrentSnapshot(cid),
 }));
+
+// The launch's restore waits for the JS thread to be idle: here, the next turn.
+(globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback = (cb) =>
+  setTimeout(cb, 0);
 
 // The connection-clients seam: runOne resolves each entry's own client via resolveClient.
 jest.mock('@/api/connection-clients', () => ({
@@ -864,6 +874,9 @@ describe('the offline companion (community metadata kept with a download)', () =
     const path = nextPath();
     const p = payload();
     mockCapture.mockResolvedValue(p);
+    const snapshot = { info: { capabilities: { metadata: true } }, savedAt: 7 };
+    mockCurrentSnapshot.mockReturnValueOnce(snapshot);
+    const watch = jest.spyOn(AppState, 'addEventListener');
     await downloadOne(path);
     const key = downloadKey('c1', 2, path);
     const entry = useDownloads.getState().entries[key];
@@ -871,11 +884,16 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(mockCapture).toHaveBeenCalledTimes(1);
     expect(mockWriteMeta).toHaveBeenCalledWith(expect.objectContaining({ path }), p);
     expect(entry?.manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
-    // The marker reaches storage (the payload itself is not in the registry).
+    // The marker reaches storage within a couple of seconds, at once when the app leaves
+    // the foreground (the payload itself is not in the registry).
+    watch.mock.calls.findLast(([type]) => type === 'change')?.[1]('background');
+    await settle();
     const saved = (await readPersisted())[key];
     expect(saved?.manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
     expect(JSON.stringify(saved)).not.toContain('"works"');
     expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, p);
+    // The server's answer, kept once for the connection.
+    expect(mockSaveSnapshot).toHaveBeenCalledWith('c1', snapshot);
   });
 
   it('a book with nothing to keep downloads exactly as before, unmarked', async () => {
@@ -918,7 +936,31 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(mockRemoveMeta).toHaveBeenCalledWith(expect.objectContaining({ path }));
   });
 
-  it('on launch, seeds what each book kept and then the newest /server answer', async () => {
+  it("on launch, seeds what each book kept and then the connection's kept /server answer", async () => {
+    const path = nextPath();
+    const kept = { info: { capabilities: { metadata: true } }, savedAt: 3 };
+    mockReadSnapshots.mockResolvedValueOnce({ c1: kept });
+    await seed({
+      [downloadKey('c1', 2, path)]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    const p = { ...payload(Date.now() - 60_000), server: undefined };
+    mockReadMeta.mockResolvedValue(p);
+    await useDownloads.getState().hydrate();
+    await settle();
+    await settle();
+    expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, p);
+    expect(mockSeedServer).toHaveBeenCalledWith('c1', kept);
+    // The book page's metadata is seeded before the flag that opens its gate.
+    expect(mockSeedMeta.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSeedServer.mock.invocationCallOrder[0],
+    );
+    expect(mockSaveSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('carries over the /server answer a file kept from before it had its own key', async () => {
     const path = nextPath();
     const older = payload(Date.now() - 60_000); // this week's: not read again
     await seed({
@@ -930,13 +972,20 @@ describe('the offline companion (community metadata kept with a download)', () =
     mockReadMeta.mockResolvedValue(older);
     await useDownloads.getState().hydrate();
     await settle();
+    await settle();
     expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, older);
     expect(mockSeedServer).toHaveBeenCalledWith('c1', older.server);
-    // The book page's metadata is seeded before the flag that opens its gate.
-    expect(mockSeedMeta.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSeedServer.mock.invocationCallOrder[0],
-    );
+    // ... and keeps it under the connection's own key from now on.
+    expect(mockSaveSnapshot).toHaveBeenCalledWith('c1', older.server);
     expect(mockCapture).not.toHaveBeenCalled();
+  });
+
+  it("forgets a removed connection's /server answer with its downloads", async () => {
+    const path = nextPath();
+    await seed({ [downloadKey('c9', 2, path)]: downloadedEntry({ connectionId: 'c9', path }) });
+    await useDownloads.getState().hydrate();
+    await removalCleanup('c9');
+    expect(mockForgetSnapshot).toHaveBeenCalledWith('c9');
   });
 
   it('fills in a download made before it was kept, once per launch', async () => {

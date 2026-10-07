@@ -13,46 +13,25 @@ import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { formatDurationOrZero, formatWallClock } from '@/lib/format';
+import { getLocale } from '@/i18n/locale';
+import { formatDayDate, formatDurationOrZero, formatWallClock } from '@/lib/format';
+import {
+  type ListeningSession,
+  type ListeningSpan,
+  sessionFinished,
+  sessionMinutes,
+} from '@/lib/listening-sessions';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
+import { useDayLabel } from '@/lib/use-day-label';
+import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
-import { takeDrift } from '@/playback/drift';
+import { type DriftRecords, takeDrift } from '@/playback/drift';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import {
-  barColor,
-  type DiaryDay,
-  type DiarySession,
-  type DiarySpan,
-  dayBars,
-  dayName,
-  type DriftStrip,
-  spanBookKey,
-  sessionFinished,
-  sessionMinutes,
-  spanRange,
-} from './diary-model';
-import { formatDayDate, formatWeekday } from './journal-format';
+import { barColor, type DiaryDay, dayBars, driftStrip, spanRange } from './diary-model';
 import type { Sourced } from './merge-model';
-
-/** The day's name: Today, Yesterday, a weekday this week, else its date. */
-export function useDayLabel() {
-  const { t } = useTranslation();
-  return (dayStart: number, now: number): string => {
-    switch (dayName(dayStart, now)) {
-      case 'today':
-        return t('journal.diary.today');
-      case 'yesterday':
-        return t('journal.diary.yesterday');
-      case 'weekday':
-        return formatWeekday(new Date(dayStart));
-      default:
-        return formatDayDate(new Date(dayStart));
-    }
-  };
-}
 
 /** The day's 24 hour bar: each span by wall clock, in its book's cover colour where it
  * stands off the track in this theme (else a quiet token, `barColor`), with hairlines at 06, 12 and 18. Decorative: one summary for screen
@@ -101,12 +80,28 @@ function DayBarView({ day }: { day: DiaryDay }) {
   );
 }
 
+/** Spend a book's drift record as of now (never fails: a record that can't be taken just
+ * stays until it goes stale). */
+const spendDrift = (bookKey: string) => takeDrift(bookKey, Date.now()).catch(() => null);
+
 /** The drift-off strip under a span the sleep timer ended: "You drifted off around
- * 23:41. Jump back 4 minutes?" with this device's record, else play from the bookmark. */
-function DriftStripView({ span, strip }: { span: DiarySpan; strip: DriftStrip }) {
+ * 23:41. Jump back 4 minutes?" with this device's record, else play from the bookmark.
+ * The only part of the Diary that reads the clock (a record goes stale), so it is a
+ * leaf of its own. */
+function DriftStripView({
+  span,
+  bookmark,
+  records,
+}: {
+  span: ListeningSpan;
+  bookmark: Sourced<Bookmark>;
+  records: DriftRecords;
+}) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const jumpTo = useJumpTo();
+  const now = useNow(60_000);
+  const strip = driftStrip(bookmark, records, now);
   const time = formatWallClock(new Date(strip.at));
   const go = () => {
     const target = { connectionId: span.connectionId, libraryId: span.libraryId, path: span.path };
@@ -116,9 +111,7 @@ function DriftStripView({ span, strip }: { span: DiarySpan; strip: DriftStrip })
     }
     // The record is spent by this jump, as by the player's own prompt: the book must not
     // ask "Jump back?" again once it starts there.
-    void takeDrift(spanBookKey(span), Date.now())
-      .catch(() => null)
-      .then(() => jumpTo(target, strip.position));
+    void spendDrift(span.bookKey).then(() => jumpTo(target, strip.position));
   };
   return (
     <View className="mt-1.5 flex-row flex-wrap items-center gap-x-2.5 gap-y-2 rounded-control bg-brand-soft px-3 py-2">
@@ -150,12 +143,12 @@ function DriftStripView({ span, strip }: { span: DiarySpan; strip: DriftStrip })
 function SessionRow({
   session: span,
   drift,
-  driftStripFor,
+  records,
   serverFlag,
 }: {
-  session: DiarySession;
+  session: ListeningSession;
   drift?: Sourced<Bookmark>;
-  driftStripFor: (bookmark: Sourced<Bookmark>) => DriftStrip;
+  records: DriftRecords;
   serverFlag?: string;
 }) {
   const { t } = useTranslation();
@@ -211,7 +204,9 @@ function SessionRow({
             </Text>
           </View>
         ) : null}
-        {drift ? <DriftStripView span={{ ...span, book }} strip={driftStripFor(drift)} /> : null}
+        {drift ? (
+          <DriftStripView span={{ ...span, book }} bookmark={drift} records={records} />
+        ) : null}
         {sessionFinished(span, book) ? (
           <Badge variant="success" className="mt-1.5 self-start">
             <Icon name="circle-check" size={12} color={themed.success} />
@@ -224,24 +219,26 @@ function SessionRow({
 }
 
 /** One day of the Diary, on its own card: the name and total, the 24 hour bar, the
- * sessions. Wide (measured): the name in a column beside the rest, as the prototype. */
+ * sessions. Wide (measured): the name in a column beside the rest, as the prototype.
+ * `today` is the day boundary (`useToday`): the card re-renders when the day moves on,
+ * not every minute. */
 export function DiaryDayCard({
   day,
-  now,
+  today,
   wide,
   drifts,
-  driftStripFor,
+  records,
 }: {
   day: DiaryDay;
-  now: number;
+  today: number;
   wide: boolean;
   drifts: Map<string, Sourced<Bookmark>>;
-  driftStripFor: (bookmark: Sourced<Bookmark>) => DriftStrip;
+  records: DriftRecords;
 }) {
   const label = useDayLabel();
   const serverFlag = useServerFlag();
-  const date = formatDayDate(new Date(day.start));
-  const name = label(day.start, now);
+  const date = formatDayDate(new Date(day.start), getLocale(), new Date(today));
+  const name = label(day.start, today);
   return (
     <Card className={cn('gap-4 p-4', wide && 'flex-row gap-6 p-5')}>
       <View className={cn('gap-0.5', wide && 'w-[120px]')}>
@@ -261,7 +258,7 @@ export function DiaryDayCard({
             key={s.key}
             session={s}
             drift={drifts.get(s.key)}
-            driftStripFor={driftStripFor}
+            records={records}
             serverFlag={serverFlag(s.connectionId)}
           />
         ))}

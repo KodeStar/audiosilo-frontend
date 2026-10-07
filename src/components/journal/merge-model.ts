@@ -40,41 +40,61 @@ export type Merged<T> = {
   isFetchingMore: boolean;
 };
 
-const timeOfRow = (iso: string): number => {
+/** A row's ISO time as epoch ms (0 when it can't be read). */
+export const timeOfRow = (iso: string): number => {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? 0 : t;
 };
 
+/** Each row's tagged copy (by the server's row object, which React Query keeps while the
+ * row is unchanged), so a row keeps its identity from one merge to the next. */
+const tags = new WeakMap<object, Sourced<object>>();
+
+function tagged<T extends object>(row: T, s: SourceSnapshot<T>): Sourced<T> {
+  const hit = tags.get(row) as Sourced<T> | undefined;
+  if (hit?.connectionId === s.connectionId && hit.connectionName === s.connectionName) return hit;
+  const out = { ...row, connectionId: s.connectionId, connectionName: s.connectionName };
+  tags.set(row, out);
+  return out;
+}
+
 /**
  * The servers' rows merged newest first (by `timeOf`, ties in connection order, then
- * the server's own order), cut at the boundary described above.
+ * the server's own order), cut at the boundary described above. Each server's list is
+ * already newest first, so this is a k-way merge of their heads (no sort), stopping at the
+ * boundary.
  */
-export function mergeNewestFirst<T>(
+export function mergeNewestFirst<T extends object>(
   sources: readonly SourceSnapshot<T>[],
   timeOf: (row: T) => string,
 ): Merged<T> {
-  const tagged: { row: Sourced<T>; time: number; source: number; index: number }[] = [];
+  const ready = sources.filter((s) => s.status === 'ready');
+  const time = (s: SourceSnapshot<T>, i: number) =>
+    i < s.rows.length ? timeOfRow(timeOf(s.rows[i])) : -Infinity;
   // The frontier of each server that has more: the time of its oldest loaded row.
-  const frontiers: { cid: string; time: number }[] = [];
-  sources.forEach((s, source) => {
-    if (s.status !== 'ready') return;
-    s.rows.forEach((row, index) =>
-      tagged.push({
-        row: { ...row, connectionId: s.connectionId, connectionName: s.connectionName },
-        time: timeOfRow(timeOf(row)),
-        source,
-        index,
-      }),
-    );
-    if (s.hasNextPage) {
-      const last = s.rows[s.rows.length - 1];
-      frontiers.push({ cid: s.connectionId, time: last ? timeOfRow(timeOf(last)) : Infinity });
-    }
-  });
+  const frontiers = ready
+    .filter((s) => s.hasNextPage)
+    .map((s) => ({
+      cid: s.connectionId,
+      time: s.rows.length > 0 ? time(s, s.rows.length - 1) : Infinity,
+    }));
   const boundary = frontiers.length > 0 ? Math.max(...frontiers.map((f) => f.time)) : -Infinity;
-  tagged.sort((a, b) => b.time - a.time || a.source - b.source || a.index - b.index);
+
+  const rows: Sourced<T>[] = [];
+  const next = ready.map(() => 0);
+  const heads = ready.map((s) => time(s, 0));
+  for (;;) {
+    let pick = -1;
+    for (let i = 0; i < ready.length; i++) {
+      if (next[i] < ready[i].rows.length && (pick < 0 || heads[i] > heads[pick])) pick = i;
+    }
+    if (pick < 0 || heads[pick] < boundary) break;
+    const s = ready[pick];
+    rows.push(tagged(s.rows[next[pick]], s));
+    heads[pick] = time(s, ++next[pick]);
+  }
   return {
-    rows: tagged.filter((r) => r.time >= boundary).map((r) => r.row),
+    rows,
     hasMore: frontiers.length > 0,
     fetchFrom: frontiers.filter((f) => f.time >= boundary).map((f) => f.cid),
     isFetchingMore: sources.some((s) => s.isFetchingNextPage),

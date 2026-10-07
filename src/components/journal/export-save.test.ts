@@ -46,7 +46,7 @@ beforeEach(() => {
 
 describe('saveExport (native)', () => {
   it('writes the file to the cache and opens the share sheet on it', async () => {
-    await expect(saveExport(file, 'Export the journal')).resolves.toBe('file');
+    await saveExport(file, 'Export the journal');
     expect(mockFiles).toEqual([
       { name: file.name, created: { overwrite: true }, content: file.content },
     ]);
@@ -71,7 +71,8 @@ describe('saveExport (native)', () => {
 
   it("hands the text to the share sheet where files can't be shared", async () => {
     mockIsAvailable.mockResolvedValueOnce(false);
-    await expect(saveExport(file, 'x')).resolves.toBe('text');
+    await saveExport(file, 'x');
+    expect(mockShareAsync).not.toHaveBeenCalled();
     expect(mockShareText).toHaveBeenCalledWith(file.content);
     expect(mockFiles).toEqual([]);
   });

@@ -187,8 +187,12 @@ function downloaded(): DownloadEntry {
   };
 }
 
-/** A cold launch with no network: the registry and the kept payload come back from
- * storage, the cache starts empty. */
+// The launch's restore waits for the JS thread to be idle: here, the next turn.
+(globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback = (cb) =>
+  setTimeout(cb, 0);
+
+/** A cold launch with no network: the registry, the kept payload and the server's kept
+ * `/server` answer come back from storage, the cache starts empty. */
 async function launchOffline() {
   const savedAt = Date.parse('2026-05-01T10:00:00Z');
   mockFiles.set(
@@ -199,17 +203,20 @@ async function launchOffline() {
       previous: true,
       meta,
       works: [],
-      server: { info: server(), savedAt },
     }),
+  );
+  await AsyncStorage.setItem(
+    'audiosilo.offlineServers',
+    JSON.stringify({ c1: { info: server(), savedAt } }),
   );
   await AsyncStorage.setItem(
     'audiosilo.downloads',
     JSON.stringify({ [downloadKey('c1', 2, PATH)]: downloaded() }),
   );
   await useDownloads.getState().hydrate();
-  // The payload is read and seeded just after the registry.
+  // The payload is read and seeded once the launch is idle, after the registry.
   await act(async () => {
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 10));
   });
 }
 

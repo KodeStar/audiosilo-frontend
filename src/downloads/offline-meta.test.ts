@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient } from '@tanstack/react-query';
 
 import type { BookMeta, BookMetaSeries, BookMetaWork, ServerInfo } from '@/api/types';
@@ -54,12 +55,16 @@ import { queryClient } from '@/api/provider';
 import {
   canMatch,
   captureOfflineMeta,
-  newestSnapshots,
+  currentServerSnapshot,
+  forgetServerSnapshot,
   OFFLINE_META_FILE,
+  OFFLINE_SERVERS_KEY,
   type OfflineMeta,
   parseOfflineMeta,
   readOfflineMeta,
+  readServerSnapshots,
   removeOfflineMeta,
+  saveServerSnapshot,
   seedOfflineMeta,
   seedQuery,
   seedServerSnapshot,
@@ -155,7 +160,8 @@ function entry(over: Partial<DownloadEntry> = {}): DownloadEntry {
 
 const offline = () => new TypeError('Network request failed');
 
-beforeEach(() => {
+beforeEach(async () => {
+  await AsyncStorage.clear();
   qc.clear();
   mockFiles.clear();
   mockConnections = ['c1'];
@@ -226,11 +232,17 @@ describe('seedQuery', () => {
     expect(q?.gcTime).toBe(Infinity);
   });
 
-  it("never covers the server's own answer, but keeps that one for good too", () => {
-    qc.setQueryData(['item', 'c1', 2, 'A'], { title: 'fresh' });
-    seedQuery(['item', 'c1', 2, 'A'], { title: 'saved' }, 1234);
-    const q = qc.getQueryCache().find({ queryKey: ['item', 'c1', 2, 'A'], exact: true });
+  it("never covers the server's own answer, but keeps that one for good too", async () => {
+    qc.setQueryData(['item', 'c1', 2, 'B'], { title: 'fresh' });
+    seedQuery(['item', 'c1', 2, 'B'], { title: 'saved' }, 1234);
+    const q = qc.getQueryCache().find({ queryKey: ['item', 'c1', 2, 'B'], exact: true });
     expect(q?.state.data).toEqual({ title: 'fresh' });
+    // From its next read on (a screen's, or the next capture's).
+    expect(qc.getQueryDefaults(['item', 'c1', 2, 'B']).gcTime).toBe(Infinity);
+    await qc.fetchQuery({
+      queryKey: ['item', 'c1', 2, 'B'],
+      queryFn: async () => ({ title: 'x' }),
+    });
     expect(q?.gcTime).toBe(Infinity);
   });
 });
@@ -280,23 +292,36 @@ describe('the /server snapshot', () => {
     expect(qc.getQueryData<ServerInfo>(qk.server('c2'))?.capabilities.metadata).toBe(false);
   });
 
-  it('newestSnapshots picks the newest answer per connection', () => {
-    const p = (savedAt: number, withServer = true): OfflineMeta => ({
-      v: 1,
-      savedAt,
-      previous: false,
-      meta: { matched: false },
-      works: [],
-      ...(withServer ? { server: { info: server({ v: savedAt > 1 }), savedAt } } : {}),
-    });
-    const newest = newestSnapshots([
-      { connectionId: 'c1', payload: p(1) },
-      { connectionId: 'c1', payload: p(3) },
-      { connectionId: 'c1', payload: p(2) },
-      { connectionId: 'c2', payload: p(9, false) },
-    ]);
-    expect(newest.get('c1')?.savedAt).toBe(3);
-    expect(newest.has('c2')).toBe(false);
+  it('is kept once per connection under its own key, newer answers only', async () => {
+    const snap = (savedAt: number) => ({ info: server({ metadata: savedAt > 1 }), savedAt });
+    await saveServerSnapshot('c1', snap(2));
+    await saveServerSnapshot('c1', snap(1)); // older: kept as it was
+    await saveServerSnapshot('c2', snap(3));
+    expect(await readServerSnapshots()).toEqual({ c1: snap(2), c2: snap(3) });
+    await forgetServerSnapshot('c2');
+    expect(Object.keys(await readServerSnapshots())).toEqual(['c1']);
+  });
+
+  it('never loses a write to another one running beside it', async () => {
+    const snap = { info: server({ metadata: true }), savedAt: 5 };
+    await Promise.all([saveServerSnapshot('c1', snap), saveServerSnapshot('c2', snap)]);
+    expect(Object.keys(await readServerSnapshots()).sort()).toEqual(['c1', 'c2']);
+  });
+
+  it('reads an unreadable document as none, and skips the entries it cannot use', async () => {
+    await AsyncStorage.setItem(OFFLINE_SERVERS_KEY, '"nope"');
+    expect(await readServerSnapshots()).toEqual({});
+    await AsyncStorage.setItem(
+      OFFLINE_SERVERS_KEY,
+      JSON.stringify({ c1: { info: 'S' }, c2: { info: server({}), savedAt: 1 } }),
+    );
+    expect(Object.keys(await readServerSnapshots())).toEqual(['c2']);
+  });
+
+  it("reads the connection's answer from the cache", () => {
+    expect(currentServerSnapshot('c1')).toBeUndefined();
+    qc.setQueryData(qk.server('c1'), server({ metadata: true }), { updatedAt: 42 });
+    expect(currentServerSnapshot('c1')).toEqual({ info: server({ metadata: true }), savedAt: 42 });
   });
 });
 
@@ -310,7 +335,15 @@ describe('captureOfflineMeta', () => {
     // The nearest earlier book (2) came with it, so nothing more is asked.
     expect(mockClient.metaWork).not.toHaveBeenCalled();
     expect(payload).toMatchObject({ v: 1, previous: true, meta, works: [] });
-    expect(payload?.server?.info.capabilities.metadata).toBe(true);
+    // The /server answer is kept apart (`saveServerSnapshot`), not in every book's file.
+    expect(payload).not.toHaveProperty('server');
+    // Kept for good from the read on: the cache's own timer never drops it.
+    expect(
+      qc.getQueryCache().find({
+        queryKey: qk.bookMeta('c1', 2, 'Corey/Abaddons Gate', { includePrevious: true }),
+        exact: true,
+      })?.gcTime,
+    ).toBe(Infinity);
     expect(payload?.savedAt).toBe(
       qc.getQueryState(qk.bookMeta('c1', 2, 'Corey/Abaddons Gate', { includePrevious: true }))
         ?.dataUpdatedAt,

@@ -143,13 +143,55 @@ function dateFormatter(locale: string, use: string, opts: Intl.DateTimeFormatOpt
   return fmt;
 }
 
-/** A date with `opts`, or its ISO date where the runtime can't format it. */
-function formatDate(date: Date, use: string, opts: Intl.DateTimeFormatOptions, locale: string) {
+/** A date with `opts`, or `fallback` (its ISO date) where the runtime can't format it. */
+function formatDate(
+  date: Date,
+  use: string,
+  opts: Intl.DateTimeFormatOptions,
+  locale: string,
+  fallback: (date: Date) => string = (d) => d.toISOString().slice(0, 10),
+) {
   try {
     return dateFormatter(locale, use, opts).format(date);
   } catch {
-    return date.toISOString().slice(0, 10);
+    return fallback(date);
   }
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** The device's local date as "2026-10-03" (an ISO string would be the UTC day). */
+export function localIsoDay(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/** "Saturday" (the Journal's days this week). */
+export function formatWeekday(date: Date, locale: string = getLocale()): string {
+  return formatDate(date, 'weekday', { weekday: 'long' }, locale, (d) => formatDayDate(d, locale));
+}
+
+/** "3 October" ("October 3" in en-US), with the year when it isn't `now`'s. */
+export function formatDayDate(date: Date, locale: string = getLocale(), now = new Date()): string {
+  return date.getFullYear() === now.getFullYear()
+    ? formatDate(date, 'dayMonth', { day: 'numeric', month: 'long' }, locale, localIsoDay)
+    : formatDate(
+        date,
+        'dayMonthYear',
+        { day: 'numeric', month: 'long', year: 'numeric' },
+        locale,
+        localIsoDay,
+      );
+}
+
+/** "Sun 3 Oct": a short day (the book page's History rows). */
+export function formatShortDay(date: Date, locale: string = getLocale()): string {
+  return formatDate(
+    date,
+    'shortDay',
+    { weekday: 'short', day: 'numeric', month: 'short' },
+    locale,
+    localIsoDay,
+  );
 }
 
 /** "Monday 5 October" (the device's own date: Home's greeting is about the listener's

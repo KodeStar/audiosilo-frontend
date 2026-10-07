@@ -1,6 +1,6 @@
-import type { ExportFile, SaveOutcome } from './export-save';
+import type { ExportFile } from './export-save';
 
-export type { ExportFile, SaveOutcome };
+export type { ExportFile };
 
 /**
  * Web: download the export (a Blob behind a temporary link, named `journal-<date>.md` or
@@ -10,7 +10,7 @@ export async function saveExport(
   file: ExportFile,
   _dialogTitle: string,
   onReady?: () => void,
-): Promise<SaveOutcome> {
+): Promise<void> {
   onReady?.();
   const blob = new Blob([file.content], { type: `${file.mimeType};charset=utf-8` });
   const url = URL.createObjectURL(blob);
@@ -23,5 +23,4 @@ export async function saveExport(
   link.remove();
   // Revoked on the next turn: some browsers start the download after the click returns.
   setTimeout(() => URL.revokeObjectURL(url), 0);
-  return 'file';
 }

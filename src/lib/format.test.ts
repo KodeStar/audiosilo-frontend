@@ -1,7 +1,11 @@
 import {
   bitrateKbps,
+  formatDayDate,
   formatDayMonth,
   formatRecordDate,
+  formatShortDay,
+  formatWeekday,
+  localIsoDay,
   formatDurationOrZero,
   formatServerDay,
   formatSpeed,
@@ -315,5 +319,17 @@ describe('date formatters', () => {
     const now = new Date(2026, 9, 7);
     expect(formatRecordDate(new Date(2026, 8, 14), now, 'en-GB')).toBe('14 Sept');
     expect(formatRecordDate(new Date(2024, 8, 14), now, 'en-GB')).toBe('14 Sept 2024');
+  });
+
+  it("names the Journal's days, with the year only when it isn't this one", () => {
+    const day = new Date(2026, 9, 3, 23, 30);
+    expect(formatWeekday(day, 'en-GB')).toBe('Saturday');
+    expect(formatDayDate(day, 'en-GB', new Date(2026, 11, 31))).toBe('3 October');
+    expect(formatDayDate(day, 'en-GB', new Date(2027, 0, 1))).toBe('3 October 2026');
+    expect(formatShortDay(day, 'en-GB')).toBe('Sat 3 Oct');
+  });
+
+  it('writes the local day, never the UTC one', () => {
+    expect(localIsoDay(new Date(2026, 0, 2, 23, 59))).toBe('2026-01-02');
   });
 });
