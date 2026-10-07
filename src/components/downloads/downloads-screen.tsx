@@ -7,6 +7,7 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { useTabPress } from '@/components/shell/destinations';
 import { SubNavActions } from '@/components/shell/tab-root-nav';
 import { Card } from '@/components/ui/card';
+import { Notice } from '@/components/ui/notice';
 import { Text } from '@/components/ui/text';
 import {
   groupByServer,
@@ -30,12 +31,7 @@ import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { ActiveRow, PlannedRow, ReadyRow } from './download-rows';
-import {
-  DownloadsEmpty,
-  DownloadsSkeleton,
-  DownloadsUnsupported,
-  Notice,
-} from './downloads-states';
+import { DownloadsEmpty, DownloadsSkeleton, DownloadsUnsupported } from './downloads-states';
 import { RemoveDownloadConfirm } from './remove-download-confirm';
 import { RulesCard } from './rules-card';
 import { StorageCard } from './storage-card';

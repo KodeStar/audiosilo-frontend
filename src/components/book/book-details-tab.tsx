@@ -4,13 +4,13 @@ import { Platform, View } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
+import { Notice } from '@/components/ui/notice';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { type FileRow, type PlaybackMode, visibleFiles } from './book-details-model';
-import { BookNotice } from './book-notice';
 
 export type BookDetailsTabProps = {
   mode: PlaybackMode;
@@ -69,7 +69,7 @@ export function BookDetailsTab({
 
   return (
     <View className="gap-4">
-      <BookNotice testID={`book-playback-${mode}`} {...notice[mode]} />
+      <Notice testID={`book-playback-${mode}`} {...notice[mode]} />
 
       <Card className="overflow-hidden p-0" accessibilityRole="list">
         {roomy ? (

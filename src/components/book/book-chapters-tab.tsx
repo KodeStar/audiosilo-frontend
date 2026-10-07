@@ -15,6 +15,7 @@ import type { BookPins } from '@/components/player/use-playing-pins';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
+import { Notice } from '@/components/ui/notice';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration } from '@/lib/format';
@@ -25,7 +26,6 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { BookNotice } from './book-notice';
 import {
   type ChapterList,
   type Jump,
@@ -107,7 +107,7 @@ export function BookChaptersTab({
         />
       ) : null}
       {list.kind === 'parts' ? (
-        <BookNotice
+        <Notice
           icon="circle-info"
           tone="info"
           title={t('book.chapters.partsTitle')}
