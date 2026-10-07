@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 
 import { AnnotationsTab } from './annotations-tab';
@@ -163,7 +164,7 @@ function DiaryTab({
     const all = mergeNewestFirst(bookmarks, (b) => b.created_at).rows;
     return matchDrifts(spans, all.filter(isDriftBookmark));
   }, [bookmarks, spans]);
-  const now = Date.now();
+  const now = useNow(60_000);
   const status = overallStatus(history);
 
   return (

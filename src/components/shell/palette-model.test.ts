@@ -4,6 +4,7 @@ import {
   type ActionRuns,
   type ActionState,
   buildActionItems,
+  buildGoToItems,
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
@@ -254,5 +255,43 @@ describe('buildActionItems', () => {
     expect(playing[0].title).toBe('Pause');
     expect(playing.at(-1)?.title).toBe('Switch to light appearance');
     expect(buildActionItems(state(), runs(), i18n.t)[0].title).toBe('Resume Stave One');
+  });
+});
+
+describe('buildGoToItems', () => {
+  it("lists the top bar's destinations, then the Journal, each running its own way", () => {
+    const tab = jest.fn();
+    const journal = jest.fn();
+    const items = buildGoToItems(
+      [
+        { name: '(home)', title: 'Home', icon: 'home' },
+        { name: '(library)', title: 'Library', icon: 'library' },
+      ],
+      { tab, journal },
+      i18n.t,
+    );
+    expect(items.map((i) => [i.id, i.title])).toEqual([
+      ['go:(home)', 'Home'],
+      ['go:(library)', 'Library'],
+      ['go:journal', 'Journal'],
+    ]);
+    items[1].run();
+    expect(tab).toHaveBeenCalledWith('(library)');
+    items[2].run();
+    expect(journal).toHaveBeenCalledTimes(1);
+  });
+
+  it('finds the Journal by its title in the Go to group', () => {
+    const goToItems = buildGoToItems([], { tab: jest.fn(), journal: jest.fn() }, i18n.t);
+    const groups = buildPaletteGroups({
+      query: 'jour',
+      actions: [],
+      books: [],
+      continueListening: [],
+      goTo: goToItems,
+    });
+    expect(groups.map((g) => [g.key, g.items.map((i) => i.id)])).toEqual([
+      ['goTo', ['go:journal']],
+    ]);
   });
 });

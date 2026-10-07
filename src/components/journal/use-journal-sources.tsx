@@ -1,5 +1,5 @@
 import type { InfiniteData } from '@tanstack/react-query';
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 
 import {
   flattenPages,
@@ -137,45 +137,31 @@ export function useJournalSources(): JournalSources {
     });
   }, []);
 
-  const servers = apis.map((a) => ({ id: a.connection.id, name: a.connection.name }));
-  const serverKey = servers.map((s) => `${s.id}\t${s.name}`).join('\n');
-
-  const feeders = useMemo(
-    () =>
-      serverKey
-        .split('\n')
-        .filter(Boolean)
-        .flatMap((line) => {
-          const [connectionId, connectionName] = line.split('\t');
-          return KINDS.map((kind) => {
-            const Feeder = FEEDERS[kind];
-            const id = `${kind}\n${connectionId}`;
-            return (
-              <Feeder
-                key={id}
-                id={id}
-                connectionId={connectionId}
-                connectionName={connectionName}
-                report={report}
-              />
-            );
-          });
-        }),
-    [serverKey, report],
-  );
-
-  return useMemo(() => {
-    const list = <T,>(kind: Kind) =>
-      servers.map(
-        (s) => (reported[`${kind}\n${s.id}`] as Source<T> | undefined) ?? pending(s.id, s.name),
+  // The React Compiler memoizes these on `apis` and `reported`.
+  const feeders = apis.flatMap(({ connection }) =>
+    KINDS.map((kind) => {
+      const Feeder = FEEDERS[kind];
+      const id = `${kind}\n${connection.id}`;
+      return (
+        <Feeder
+          key={id}
+          id={id}
+          connectionId={connection.id}
+          connectionName={connection.name}
+          report={report}
+        />
       );
-    return {
-      history: list<HistoryEntry>('history'),
-      bookmarks: list<MyBookmark>('bookmarks'),
-      notes: list<MyNote>('notes'),
-      feeders,
-    };
-    // `servers` is rebuilt every render; `serverKey` is its identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reported, serverKey, feeders]);
+    }),
+  );
+  const list = <T,>(kind: Kind) =>
+    apis.map(
+      ({ connection: c }) =>
+        (reported[`${kind}\n${c.id}`] as Source<T> | undefined) ?? pending(c.id, c.name),
+    );
+  return {
+    history: list<HistoryEntry>('history'),
+    bookmarks: list<MyBookmark>('bookmarks'),
+    notes: list<MyNote>('notes'),
+    feeders,
+  };
 }

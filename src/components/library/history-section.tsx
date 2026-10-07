@@ -5,24 +5,38 @@ import { View } from 'react-native';
 import { useHistory } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import {
+  chapterIndexOf,
+  chapterName,
+  type DiarySpan,
+  dayName,
+  localDayStart,
+  spanMinutes,
+  toSpan,
+} from '@/components/journal/diary-model';
+import { formatShortDay } from '@/components/journal/journal-format';
+import { playerAt } from '@/components/journal/use-jump-to';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Icon } from '@/components/ui/icon';
-import { RowSurface } from '@/components/ui/row-surface';
+import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock, formatDuration, formatSpeed } from '@/lib/format';
-import { chapterAt } from '@/playback/book-queue';
+import { formatClock, formatWallClock } from '@/lib/format';
+import { useNow } from '@/lib/use-now';
+import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** Recent listening spans for a book. Each span shows its START (▶) and END (⏸)
- * positions, both independently tappable, so you can jump to either - the end is
- * "where I left off" (handy recovery), the start replays the span. When `chapters`
- * (carrying whole-book offsets) are supplied, each position is also labelled with
- * its chapter, which is far easier to read than a raw timestamp. The footer shows
- * how long the session ran and its effective speed (content covered / wall time).
- * Renders nothing when there's no history. */
+/**
+ * A book's listening sessions (the book page's History tab and the player companion's;
+ * Stacks prototype `HistoryPanel`), newest first, one row each: the day and the time it
+ * started, where it went in the book ("17:00:00 to 17:25:42 · Bridge Four", the chapter
+ * at its end, when `chapters` with whole-book offsets are given), how long it lasted, and
+ * Jump to where it ended. The rows read the Journal's diary model, so the two agree. No
+ * speed or device: a history row carries neither.
+ *
+ * Inline on the book screen it renders nothing when empty; a caller that passes
+ * `emptyLabel` (the tabs, the companion) gets an empty state, a loading skeleton and a
+ * failed-load note instead.
+ */
 export function HistorySection({
   libraryId,
   path,
@@ -38,89 +52,90 @@ export function HistorySection({
   connectionId?: string;
   emptyLabel?: string;
   chapters?: Chapter[];
-  /** Where a tap on a span's end goes (see `BookmarksSection`'s `onJump`). */
+  /** Where a tap on Jump goes (see `BookmarksSection`'s `onJump`); without it, the
+   * player opens there. */
   onJump?: (position: number) => void;
 }) {
-  const themed = useThemeColors();
   const { t } = useTranslation();
-  const { data: history } = useHistory(libraryId, path, connectionId);
+  const { data: history, isError, refetch } = useHistory(libraryId, path, connectionId);
   // The book's own connection: passed in (player sheet) or the route scope (book
   // screen). The player carries it as a param.
   const cid = useCid(connectionId);
+  const now = useNow(60_000);
 
   if (!history || history.length === 0) {
-    // Inline (book screen) hides entirely when empty; the player sheet passes an
-    // emptyLabel so the sheet visibly opens instead of showing a blank panel.
     if (!emptyLabel) return null;
-    return (
-      <View className="gap-2">
-        <EmptyState icon="history" title={emptyLabel} className="py-6" />
-      </View>
-    );
+    if (!history) {
+      return isError ? (
+        <EmptyState
+          icon="circle-exclamation"
+          title={t('journal.diary.error.title')}
+          action={{ label: t('common.retry'), onPress: () => void refetch() }}
+          className="py-6"
+        />
+      ) : (
+        <RowSkeletonList count={3} />
+      );
+    }
+    return <EmptyState icon="history" title={emptyLabel} className="py-6" />;
   }
 
   const jump = (position: number) =>
     onJump
       ? onJump(position)
-      : router.push({
-          pathname: '/player',
-          params: {
-            connection: cid,
-            libraryId: String(libraryId),
-            path,
-            position: String(position),
-          },
-        });
+      : router.push(playerAt({ connectionId: cid, libraryId, path }, position));
+  const index = chapterIndexOf(chapters, undefined);
+  const spans = history
+    .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
+    .filter((s): s is DiarySpan => s !== null);
 
-  const labelAt = (pos: number): string => {
-    const c = chapters && chapters.length > 0 ? chapterAt(chapters, pos) : null;
-    const name = c ? chapterLabel(c, t) : null;
-    return name ? `${formatClock(pos)} · ${name}` : formatClock(pos);
+  const day = (s: DiarySpan) => {
+    const name = dayName(localDayStart(s.start), now);
+    if (name === 'today') return t('journal.diary.today');
+    if (name === 'yesterday') return t('journal.diary.yesterday');
+    return formatShortDay(new Date(s.start));
   };
 
   return (
-    <View className="gap-2">
-      {history.map((h) => {
-        const wall = Math.max(0, (Date.parse(h.ended_at) - Date.parse(h.started_at)) / 1000);
-        const covered = Math.max(0, h.to_pos - h.from_pos);
-        const speed = wall > 0 ? covered / wall : 0;
+    <View className="overflow-hidden rounded-card border border-border bg-card">
+      {spans.map((s, i) => {
+        const range = t('journal.history.span', {
+          from: formatClock(s.from),
+          to: formatClock(s.to),
+        });
+        const where = index ? `${range} · ${chapterName(index, s.to, t)}` : range;
         return (
-          <RowSurface key={h.id} className="gap-1.5 p-3">
-            <View className="flex-row items-center gap-2">
-              <Icon name="clock" size={13} color={themed.brand} />
+          <View
+            key={s.key}
+            className={cn(
+              'flex-row items-center gap-3 px-4 py-3',
+              i > 0 && 'border-t border-border',
+            )}
+          >
+            <View className="w-[84px] gap-0.5">
+              <Text variant="label" numberOfLines={1}>
+                {day(s)}
+              </Text>
               <Text variant="caption" style={tabularNums}>
-                {new Date(h.started_at).toLocaleString()}
+                {formatWallClock(new Date(s.start))}
               </Text>
             </View>
-            {/* End (⏸, where you left off) above start (▶), so reading top-to-bottom
-                matches the most-recent-first ordering of the list itself. */}
-            <AnimatedPressable
-              onPress={() => jump(h.to_pos)}
-              className="flex-row items-center gap-2 py-0.5"
-              accessibilityRole="button"
-            >
-              <Icon name="pause" size={13} color={themed.brand} />
-              <Text variant="label" numberOfLines={1} className="flex-1" style={tabularNums}>
-                {labelAt(h.to_pos)}
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text className="text-[13px]" style={tabularNums} numberOfLines={2}>
+                {where}
               </Text>
-            </AnimatedPressable>
-            <AnimatedPressable
-              onPress={() => jump(h.from_pos)}
-              className="flex-row items-center gap-2 py-0.5"
-              accessibilityRole="button"
-            >
-              <Icon name="play" size={13} />
-              <Text variant="label" numberOfLines={1} className="flex-1" style={tabularNums}>
-                {labelAt(h.from_pos)}
-              </Text>
-            </AnimatedPressable>
-            {wall > 0 ? (
               <Text variant="caption" style={tabularNums}>
-                {t('book.duration', { value: formatDuration(wall) })}
-                {speed > 0 ? ` · ${formatSpeed(speed)}` : ''}
+                {t('journal.minutes', { count: spanMinutes(s) })}
               </Text>
-            ) : null}
-          </RowSurface>
+            </View>
+            <Button
+              variant="ghost"
+              size="sm"
+              title={t('journal.history.jump')}
+              accessibilityLabel={t('journal.history.jumpLabel', { time: formatClock(s.to) })}
+              onPress={() => jump(s.to)}
+            />
+          </View>
         );
       })}
     </View>
