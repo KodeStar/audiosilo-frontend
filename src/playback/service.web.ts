@@ -112,6 +112,8 @@ class WebPlaybackService implements PlaybackService {
   /** Whether we set an explicit Media Session position state (transcoded tracks), so a
    * later direct track can clear it back to the browser's own. */
   private positionStateSet = false;
+  /** The store's seek, for the OS media controls (see `onRemoteSeek`). */
+  private remoteSeek: ((positionInTrack: number) => void) | null = null;
   private snapshot: PlaybackSnapshot = { ...INITIAL_SNAPSHOT };
   private listeners = new Set<(s: PlaybackSnapshot) => void>();
 
@@ -138,9 +140,15 @@ class WebPlaybackService implements PlaybackService {
   }
 
   /** Is playback running or about to (see `pendingAutoplay`)? A skip while the next file
-   * loads after an advance, or while a transcoded seek reloads, keeps playing. */
+   * loads after an advance, or while a transcoded seek reloads, keeps playing. So does one
+   * during a network stall: 'waiting' reports `loading` but leaves the element unpaused,
+   * and a transcoded seek there reloads the source; reloading it paused would leave the
+   * store wanting playback that never comes, which its stall watchdog turns into an error.
+   * (A load pauses the element, so a `loading` from a load never reads as playing here.) */
   private intendsToPlay(): boolean {
-    return this.snapshot.state === 'playing' || this.pendingAutoplay;
+    if (this.pendingAutoplay) return true;
+    const { state } = this.snapshot;
+    return state === 'playing' || (state === 'loading' && !!this.audio && !this.audio.paused);
   }
 
   /** Apply the rate so it survives a source change: the media element load algorithm
@@ -288,6 +296,9 @@ class WebPlaybackService implements PlaybackService {
     _chapters?: PlaybackChapter[], // chapters are a native lock-screen concern; web ignores them
   ) {
     this.tracks = tracks;
+    // A pause belongs to what was loaded before: the first play() of a new load must not
+    // auto-rewind (or, transcoded, re-request the stream early) for it.
+    this.pausedAt = null;
     this.loadTrack(startIndex, positionInTrack, false);
     this.update({ state: 'ready' });
   }
@@ -508,6 +519,7 @@ class WebPlaybackService implements PlaybackService {
     this.tracks = [];
     this.index = 0;
     this.offset = 0;
+    this.pausedAt = null;
     this.loadSeq++;
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
@@ -549,6 +561,17 @@ class WebPlaybackService implements PlaybackService {
     }
   }
 
+  onRemoteSeek(handler: ((positionInTrack: number) => void) | null) {
+    this.remoteSeek = handler;
+  }
+
+  /** A seek from the OS media controls: through the store when it listens, so the resume
+   * floor and the save treat it like any deliberate seek. */
+  private seekFromOs(positionInTrack: number) {
+    if (this.remoteSeek) this.remoteSeek(positionInTrack);
+    else void this.seekTo(positionInTrack);
+  }
+
   getSnapshot() {
     return this.snapshot;
   }
@@ -571,20 +594,19 @@ class WebPlaybackService implements PlaybackService {
       });
       navigator.mediaSession.setActionHandler('play', () => void this.play());
       navigator.mediaSession.setActionHandler('pause', () => void this.pause());
-      navigator.mediaSession.setActionHandler(
-        'seekbackward',
-        () => void this.seekTo(Math.max(0, this.snapshot.position - this.config.jumpBackward)),
+      navigator.mediaSession.setActionHandler('seekbackward', () =>
+        this.seekFromOs(Math.max(0, this.snapshot.position - this.config.jumpBackward)),
       );
-      navigator.mediaSession.setActionHandler(
-        'seekforward',
-        () => void this.seekTo(this.snapshot.position + this.config.jumpForward),
+      navigator.mediaSession.setActionHandler('seekforward', () =>
+        this.seekFromOs(this.snapshot.position + this.config.jumpForward),
       );
       // The OS scrubber would otherwise seek the element itself, which a transcoded
-      // stream can't do (no byte ranges); route it through seekTo's re-request. A
-      // direct stream keeps the browser's default (null = no handler, as before).
+      // stream can't do (no byte ranges); route it through the store's seek, which
+      // re-requests it. A direct stream keeps the browser's default (null = no handler,
+      // as before).
       navigator.mediaSession.setActionHandler(
         'seekto',
-        track.transcoded ? (d) => void this.seekTo(d.seekTime ?? 0) : null,
+        track.transcoded ? (d) => this.seekFromOs(d.seekTime ?? 0) : null,
       );
     } catch {
       // unsupported action handlers; ignore

@@ -154,6 +154,15 @@ export interface PlaybackService {
    * AirPlay). Native engines return true; web checks the available media APIs.
    */
   canShowRoutePicker?(): boolean;
+  /**
+   * Route the seeks the OS media controls make on the engine itself (web: the Media
+   * Session's seekto, seekbackward and seekforward) through `handler`, a track-absolute
+   * position, instead of seeking directly. The store passes its own seek, so such a seek
+   * lowers the resume floor and saves like any deliberate one: a lock-screen scrub back
+   * past the floor's tolerance would otherwise never be saved. Optional; the native
+   * module handles its remote commands itself.
+   */
+  onRemoteSeek?(handler: ((positionInTrack: number) => void) | null): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

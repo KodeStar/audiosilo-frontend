@@ -10,7 +10,12 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 // state-transition logic (save-loop start/stop, persist-on-stop) directly.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
+/** The seek the store handed the engine for the OS media controls (`onRemoteSeek`). */
+let remoteSeek: ((positionInTrack: number) => void) | null = null;
 const mockSvc = {
+  onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
+    remoteSeek = handler;
+  }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
   load: jest.fn(async () => {}),
@@ -751,6 +756,32 @@ describe('resume never restarts an in-progress book from 0', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(mockSaveProgress).toHaveBeenCalled();
+  });
+});
+
+describe('a seek from the OS media controls (web Media Session)', () => {
+  it('lowers the resume floor and saves, like a seek in the app', async () => {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 300, duration: 1000 }),
+    });
+    await usePlayer.getState().playBook('c1', 2, makeBook({ duration: 1000 }), undefined);
+    pushSnapshot(snap('playing', 300, { duration: 1000 }));
+    // Both engines report the new position as soon as they seek.
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(async (p: number) =>
+      pushSnapshot(snap('playing', p, { duration: 1000 })),
+    );
+    mockSaveProgress.mockClear();
+
+    // The lock screen's scrubber, dragged back from 300 to 20.
+    expect(remoteSeek).not.toBeNull();
+    remoteSeek!(20);
+    await flushMicrotasks();
+    expect(mockSvc.seekTo).toHaveBeenCalledWith(20);
+    pushSnapshot(snap('paused', 20, { duration: 1000 }));
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalled();
+    expect(mockSaveProgress.mock.calls.at(-1)![1]).toMatchObject({ position: 20 });
   });
 });
 

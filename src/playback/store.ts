@@ -527,6 +527,9 @@ async function ensureService(): Promise<PlaybackService> {
       }
     }
   });
+  // The OS media controls' seeks (web Media Session) go through the store's own seek,
+  // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
+  svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
   service = svc;
   // Expose whether this platform/engine can show an audio-route picker so the player
   // can decide whether to render the cast button (web: only where the APIs exist).
