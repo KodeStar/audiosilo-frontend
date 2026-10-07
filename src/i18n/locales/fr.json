@@ -859,6 +859,7 @@
       "endOfSeries": "Fin de la série",
       "endOfSeriesBody": "C'est le dernier livre de {{series}} sur ce serveur pour l'instant.",
       "endOfSeriesNoName": "Aucun livre ne suit celui-ci sur ce serveur.",
+      "notOnServerTitle": "Le livre suivant n'est pas sur ce serveur",
       "notOnServer": "Suivant dans la série : {{title}}, qui n'est pas sur ce serveur.",
       "notOnServerBook": "Suivant dans la série : livre {{position}}, {{title}}, qui n'est pas sur ce serveur.",
       "details": "Voir les détails",
