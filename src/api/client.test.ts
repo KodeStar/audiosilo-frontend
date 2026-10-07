@@ -1150,6 +1150,20 @@ describe('ApiClient user state (Phase 1b)', () => {
   });
 });
 
+describe('ApiClient addresses (Phase 5)', () => {
+  it('reads GET /addresses with the token, and {} when the server has neither', async () => {
+    const both = { home: 'http://192.168.1.20:8080', away: 'https://books.example.com' };
+    let fetchMock = installFetch(() => ({ status: 200, body: both }));
+    await expect(new ApiClient('https://h', 'tok').addresses()).resolves.toEqual(both);
+    expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/addresses', method: 'GET' });
+    expect(headerValue(fetchMock.mock.calls[0][1] as RequestInit, 'Authorization')).toBe(
+      'Bearer tok',
+    );
+    fetchMock = installFetch(() => ({ status: 200, body: {} }));
+    await expect(new ApiClient('https://h', 'tok').addresses()).resolves.toEqual({});
+  });
+});
+
 describe('ApiClient annotations (Phase 4)', () => {
   const c = () => new ApiClient('https://h', 'tok');
   const bookmarkWire = {

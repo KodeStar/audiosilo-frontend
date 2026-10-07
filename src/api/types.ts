@@ -67,7 +67,19 @@ export type Capabilities = {
    * treat missing as false, never send a `label` (such a server rejects the unknown field
    * with a 400) and never call the routes it gates. */
   annotations?: boolean;
+  /** Whether the server tells the player its home and away addresses
+   * ({@link ServerAddresses}): on the pairing payload and its links, the exchange and
+   * login answers, and `GET /addresses` (player redesign Phase 5). Absent on older
+   * servers: treat missing as false and never call `/addresses`; the player then keeps
+   * the one address it was paired with. */
+  addresses?: boolean;
 };
+
+/** A server's two addresses (capability `addresses`). Either may be absent. `home` is
+ * the address on the household network (fast, often plain http, only reachable at
+ * home); `away` is the configured public address that works from anywhere. The player
+ * switches between them by itself (`src/api/address-route.ts`). */
+export type ServerAddresses = { home?: string; away?: string };
 
 export type ServerInfo = {
   name: string;
@@ -110,6 +122,9 @@ export type AuthSession = {
   token: string;
   server_id: string;
   user: User;
+  /** The server's home and away addresses (capability `addresses`; omitted when it
+   * has neither, and by older servers). */
+  addresses?: ServerAddresses;
 };
 
 /** Response of /demo/session: a session for this client plus a pairing payload
@@ -135,6 +150,10 @@ export type PairingPayload = {
   code_expires_at?: string;
   /** Devices the parent invite can still pair; absent = unlimited or not invite-derived (advisory). */
   uses_remaining?: number;
+  /** The server's home and away addresses (capability `addresses`; omitted when it has
+   * neither, and by older servers). The `uri` and `web_url` links carry them too, as
+   * `home=` and `away=` params (`parsePairingScan`). */
+  addresses?: ServerAddresses;
 };
 
 /** A user-minted, named API key for headless integrations (dashboards, cron). The
