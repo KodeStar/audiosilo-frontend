@@ -18,6 +18,7 @@ import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
 import { migrateStorage } from '@/lib/storage-migration';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
+import { startJumpUndo } from '@/playback/jump-undo';
 import '@/lib/register-sw';
 // Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
 // (which nests illegally and hits an older-Safari flex bug), and let Space activate
@@ -112,6 +113,11 @@ export default function RootLayout() {
   // "Keep the next books ready" (downloads the books after the loaded one when the
   // listener opted in). Framework-free like the auto sleep timer; see the controller.
   useEffect(() => startKeepAhead(), []);
+
+  // Undo jump: remembers where the listener was after any jump of more than a minute
+  // (scrub, chapter tap, lock-screen seek...) for the "Back to 17:26:50" chip. Watches the
+  // player's snapshots, so it must run whatever is on screen; see the module.
+  useEffect(() => startJumpUndo(), []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.
