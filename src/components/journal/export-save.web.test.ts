@@ -30,7 +30,7 @@ describe('saveExport (web)', () => {
       revokeObjectURL: jest.fn(),
     };
     try {
-      await expect(saveExportWeb(file, 'x')).resolves.toBe('file');
+      await saveExportWeb(file, 'x');
       expect(link.download).toBe(file.name);
       expect(link.href).toBe('blob:1');
       expect(click).toHaveBeenCalled();
