@@ -484,9 +484,39 @@ rounded covers. No search, settings or downloads. Leaving needs a grown-up to **
 Decision for the owner: profiles on a device marked "shared" switch without a password.
 
 ### Year in listening *custom*
-9:16 story cards with progress bars, tap right/left to move, 6 s auto-advance: 412 hours · 41 books as a growing
-tower of spines ("1.6 metres tall") · book of the year · voice of the year · your listening clock · longest streak
-· 214 characters met (and no spoilers) · the house together · a share card. Shareable as one read-only link.
+9:16 story cards with progress bars, tap right/left to move, 6 s auto-advance. Built (Phase 5,
+`src/components/you/year/`), from the listener's own stats on one server, in that server's time, real data only:
+hours (+ "that's N whole days", the sessions and books, and how much is estimated) · books finished as a growing
+tower of spines (newest on top; no physical height: that would be a guess) · book of the year (its cover) · voice
+of the year (+ the two runners up) · when you listen (a light-on-dark listening clock, the busiest hour in the
+centre) · longest streak (12 weeks of days, the streak still running this year) · author and series of the year ·
+a summary card (hours, books, streak, books listened to, six covers, the AudioSilo mark). A card without data is
+left out; "characters met" and "the house together" wait for data the wire lacks (Phase 8). A year with too
+little listening (under an hour and no book finished) is a calm empty state, never empty cards; a server without
+stats a notice.
+- **Tablet and desktop** (by the measured width): the stage (360 wide) beside a column: eyebrow, "Your 2026, as a
+  story", how it works + the privacy line, the year and server pickers, the thumbnails (the one on stage has the
+  brand border: the view's one pink thing), "Share this card". Under the stage when the width is under 720.
+- **Phone**: an intro (the year banner with "Play the story", the thumbnails) opening the full-screen story (the
+  root modal `/year?year=&connection=&card=`): the card as large as the screen allows on black, a close button,
+  "Share this card" under it, a pull down to close.
+- **Holding the story**: reduced motion shows each card still (no auto-advance, no animation, the bar full); a
+  screen reader, a share in progress, a finger or the pointer on the card and the keyboard focus in it freeze it.
+  Arrow keys on the web (Escape closes the full-screen story). A screen reader hears "Card N of M" and the card's
+  words; the previous and next zones are labelled buttons.
+- **Year picker**: shown once an earlier year has a story (`range=YYYY`, probed back year by year; two quiet years
+  in a row end the search). Server picker with more than one server that keeps stats.
+- **Grounds**: the prototype's gradients, drawn with react-native-svg on every platform. White type on the deep
+  part of each ground; the glows sit in the corners.
+- **Sharing: one card at a time, as a 1080 x 1920 PNG, captured from the same rendered card** (no second
+  renderer; the bars and tap zones are laid over it, so they stay out of the image). iOS and Android:
+  `react-native-view-shot` to a cache file, then the share sheet (`expo-sharing`, `image/png`). Web: html-to-image
+  (the browser lays the card out itself; html2canvas, view-shot's own web engine, clipped every clamped line) in its
+  own lazily loaded chunk, then the Web Share API where files can be shared, else a download. It works under the
+  served player's CSP: same-origin fetches only (the cards' covers are plain `?token=` URLs on the web, never
+  `blob:`), the PNG from `canvas.toBlob`. A capture that fails is tried once more with covers drawn as title
+  blocks. **No share link**: one would need a server endpoint; the column says instead "Made on <server> from your
+  own listening. Nothing leaves the server unless you share a card."
 
 ### Empty, skeleton, first run
 Empty states use ghost spines or ghost covers, one headline, one sentence, one action. Skeletons are exact
