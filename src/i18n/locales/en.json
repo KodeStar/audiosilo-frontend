@@ -1311,5 +1311,123 @@
     "pageError": "Couldn't load these books",
     "narratorUnsupported": "This server can't list books by narrator yet",
     "narratorUnsupportedHint": "A newer AudioSilo server adds it."
+  },
+  "journal": {
+    "title": "Journal",
+    "heading": "Everything you've marked",
+    "entryHint": "Your listening diary, bookmarks and notes",
+    "tabs": {
+      "label": "Journal sections",
+      "diary": "Diary",
+      "bookmarks": "Bookmarks",
+      "notes": "Notes"
+    },
+    "search": {
+      "placeholder": "Search your bookmarks and notes",
+      "label": "Search the journal"
+    },
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "openBook": "Open {{title}}",
+    "openLibrary": "Go to the Library",
+    "jumpFailed": "Couldn't start {{title}}",
+    "diary": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "when": "{{time}}, {{minutes}}",
+      "range": "{{from}} to {{to}}",
+      "barLabel": "Listening across the day: {{spans}}",
+      "finished": "Finished the book",
+      "empty": {
+        "title": "Nothing listened yet",
+        "hint": "Every day you listen shows here, with the books and the chapters you heard."
+      },
+      "error": {
+        "title": "Couldn't load your listening",
+        "hint": "Nothing is lost. Check the connection to your server and try again."
+      },
+      "drift": {
+        "jumpBack_one": "You drifted off around {{time}}. Jump back {{count}} minute?",
+        "jumpBack_other": "You drifted off around {{time}}. Jump back {{count}} minutes?",
+        "jumpBackAction": "Jump back",
+        "resume": "The sleep timer stopped this at {{time}}.",
+        "resumeAction": "Play from where you drifted off"
+      }
+    },
+    "bookmarks": {
+      "labels": "Labels",
+      "allLabels": "All labels",
+      "noMatch": "No bookmarks match",
+      "error": "Couldn't load your bookmarks",
+      "empty": {
+        "title": "No bookmarks yet",
+        "hint": "Add one from the player while you listen. They gather here from every book."
+      },
+      "unsupported": {
+        "title": "This server can't list all your bookmarks yet",
+        "hint": "Each book's page still shows its own bookmarks. A newer AudioSilo server lists them all here."
+      }
+    },
+    "notes": {
+      "noMatch": "No notes match",
+      "error": "Couldn't load your notes",
+      "empty": {
+        "title": "No notes yet",
+        "hint": "Add a note from the player while you listen. They gather here from every book."
+      },
+      "unsupported": {
+        "title": "This server can't list all your notes yet",
+        "hint": "Each book's page still shows its own notes. A newer AudioSilo server lists them all here."
+      }
+    },
+    "servers": {
+      "failed": {
+        "history": "Couldn't reach {{server}}, so its listening isn't shown.",
+        "bookmarks": "Couldn't reach {{server}}, so its bookmarks aren't shown.",
+        "notes": "Couldn't reach {{server}}, so its notes aren't shown."
+      },
+      "unsupported": {
+        "bookmarks": "{{server}} can't list its bookmarks here yet. Find them on each book's page.",
+        "notes": "{{server}} can't list its notes here yet. Find them on each book's page."
+      }
+    },
+    "export": {
+      "label": "Export",
+      "menu": "Export the journal",
+      "download": "Download",
+      "copyMarkdown": "Copy as Markdown",
+      "downloadMarkdown": "Download Markdown",
+      "downloadCsv": "Download CSV",
+      "shareMarkdown": "Share as Markdown",
+      "shareCsv": "Share as CSV",
+      "preparing_one": "Gathering {{n}} entry",
+      "preparing_other": "Gathering {{n}} entries",
+      "copied": "Journal copied as Markdown",
+      "nothing": "No bookmarks or notes to export yet",
+      "failed": "Couldn't export the journal",
+      "failedServers": "Couldn't include {{servers}}",
+      "truncated_one": "Only the newest {{max}} entry of a list was exported",
+      "truncated_other": "Only the newest {{max}} entries of a list were exported",
+      "dialogTitle": "Export the journal",
+      "exported": "Exported {{date}}",
+      "bookmark": "Bookmark",
+      "note": "Note",
+      "columns": {
+        "server": "Server",
+        "kind": "Type",
+        "book": "Book",
+        "author": "Author",
+        "position": "Position",
+        "chapter": "Chapter",
+        "label": "Label",
+        "text": "Text",
+        "created": "Created"
+      }
+    },
+    "history": {
+      "jump": "Jump",
+      "jumpLabel": "Jump to {{time}}",
+      "span": "{{from}} to {{to}}"
+    }
   }
 }
