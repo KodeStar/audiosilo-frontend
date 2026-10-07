@@ -11,13 +11,14 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { groupSessions, type ListeningSpan, toSpan } from '@/lib/listening-sessions';
 import { useToday } from '@/lib/use-day-label';
+import type { JournalTab } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 
 import { AnnotationsTab } from './annotations-tab';
 import { DiaryDayCard, DiarySkeleton } from './diary';
 import { groupByDay, matchDrifts } from './diary-model';
 import { ExportActions } from './export-actions';
-import { type JournalTab, parseJournalTab } from './journal-model';
+import { parseJournalTab } from './journal-model';
 import { mergeNewestFirst, overallStatus } from './merge-model';
 import { fetchMoreOf, MoreSpinner, useJournalListProps } from './journal-list';
 import { ServerNotes } from './server-notes';

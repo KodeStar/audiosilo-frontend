@@ -11,10 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { journalHref } from '@/components/journal/journal-model';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { accountHref } from '@/lib/paths';
+import { accountHref, journalHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { type Connection, useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';

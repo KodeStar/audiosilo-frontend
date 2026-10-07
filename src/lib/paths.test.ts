@@ -4,6 +4,7 @@ import {
   bookHref,
   collectionHref,
   finishedHref,
+  journalHref,
   libraryHref,
   narratorHref,
   parentPath,
@@ -156,6 +157,14 @@ describe('browse detail hrefs', () => {
       pathname: '/collection',
       params: { connection: 'c', id: '7' },
     });
+  });
+});
+
+describe('journalHref', () => {
+  it('is the plain route for the Diary and carries any other tab', () => {
+    expect(journalHref()).toBe('/journal');
+    expect(journalHref('diary')).toBe('/journal');
+    expect(journalHref('notes')).toEqual({ pathname: '/journal', params: { tab: 'notes' } });
   });
 });
 

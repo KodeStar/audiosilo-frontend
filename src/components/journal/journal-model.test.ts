@@ -1,4 +1,4 @@
-import { journalHref, matchesQuery, parseJournalTab } from './journal-model';
+import { matchesQuery, parseJournalTab } from './journal-model';
 
 describe('parseJournalTab', () => {
   it('opens the tab a link names', () => {
@@ -10,14 +10,6 @@ describe('parseJournalTab', () => {
     expect(parseJournalTab(undefined)).toBe('diary');
     expect(parseJournalTab('stats')).toBe('diary');
     expect(parseJournalTab('')).toBe('diary');
-  });
-});
-
-describe('journalHref', () => {
-  it('is the plain route for the Diary and carries any other tab', () => {
-    expect(journalHref()).toBe('/journal');
-    expect(journalHref('diary')).toBe('/journal');
-    expect(journalHref('notes')).toEqual({ pathname: '/journal', params: { tab: 'notes' } });
   });
 });
 

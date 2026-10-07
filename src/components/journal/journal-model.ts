@@ -1,23 +1,16 @@
-import type { Href } from 'expo-router';
+import { firstParam, type JournalTab } from '@/lib/paths';
 
 /**
- * The Journal's route rules (`/journal?tab=diary|bookmarks|notes`): pure, so the tab a
- * link opens and the search filter are tested apart from the screen.
+ * The Journal's route rules (`/journal?tab=diary|bookmarks|notes`, `journalHref`): pure,
+ * so the tab a link opens and the search filter are tested apart from the screen.
  */
 
-export type JournalTab = 'diary' | 'bookmarks' | 'notes';
-
-export const JOURNAL_TABS: readonly JournalTab[] = ['diary', 'bookmarks', 'notes'];
+const JOURNAL_TABS: readonly string[] = ['diary', 'bookmarks', 'notes'] satisfies JournalTab[];
 
 /** The tab a link asks for; anything else (absent, unknown, repeated) is the Diary. */
 export function parseJournalTab(raw: string | string[] | undefined): JournalTab {
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  return JOURNAL_TABS.includes(v as JournalTab) ? (v as JournalTab) : 'diary';
-}
-
-/** The Journal, on `tab` when given (the Diary is the plain `/journal`). */
-export function journalHref(tab?: JournalTab): Href {
-  return tab && tab !== 'diary' ? { pathname: '/journal', params: { tab } } : '/journal';
+  const v = firstParam(raw);
+  return JOURNAL_TABS.includes(v) ? (v as JournalTab) : 'diary';
 }
 
 const fold = (s: string) => s.toLocaleLowerCase();
