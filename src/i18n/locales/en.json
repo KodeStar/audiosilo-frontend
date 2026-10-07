@@ -299,6 +299,18 @@
     "error": {
       "title": "Couldn't load your progress",
       "body": "Nothing is lost: your place is kept on each server. Check the connection and try again."
+    },
+    "previouslyOn": {
+      "label": "Previously on",
+      "eyebrow_one": "Previously on {{title}} · {{count}} day ago",
+      "eyebrow_other": "Previously on {{title}} · {{count}} days ago",
+      "left": "You left {{title}} in {{chapter}}.",
+      "leftBook": "You left off in {{title}}.",
+      "resume": "Resume, with 30 seconds of overlap",
+      "readRecap": "Read the full recap",
+      "dismiss": "Dismiss",
+      "spoilerSafe": "Spoiler-safe: written up to chapter {{chapter}}.",
+      "spoilerSafeStart": "Spoiler-safe: written before this book begins."
     }
   },
   "library": {
@@ -772,10 +784,7 @@
   },
   "player": {
     "controls": {
-      "fileOf": "File {{current}} of {{total}}",
       "fileNumber": "File {{number}}",
-      "showChapters": "Show chapters",
-      "close": "Close",
       "previous": "Previous chapter",
       "next": "Next chapter",
       "play": "Play",
@@ -791,13 +800,11 @@
     "bookmarks": {
       "label": "Bookmarks",
       "empty": "No bookmarks yet.",
-      "saved": "Bookmark saved",
       "addAt": "Add bookmark at {{time}}",
       "added": "Bookmark added",
       "addFailed": "Couldn't add the bookmark"
     },
     "history": {
-      "label": "Listening history",
       "empty": "No history yet."
     },
     "notes": {
@@ -956,6 +963,51 @@
       "description_one": "Jump back {{count}} minute?",
       "description_other": "Jump back {{count}} minutes?",
       "jumpBack": "Jump back"
+    },
+    "full": {
+      "minimise": "Minimise player",
+      "playingFrom": "Playing from {{server}}",
+      "seriesBook": "{{series}}, book {{position}}",
+      "chapterButton": "{{chapter}}, show chapters",
+      "synced": "Synced",
+      "percentOfBook": "{{percent}}% of the book",
+      "speedLabel": "Playback speed, {{speed}}",
+      "sleep": "Sleep",
+      "bookmark": "Bookmark",
+      "output": "Output",
+      "errorLine": "Playback stopped. Your place is saved."
+    },
+    "companion": {
+      "who": "Who's who",
+      "history": "History",
+      "attribution": "Community notes from {{credit}}",
+      "licence": "Licence: {{licence}}",
+      "hideAgain": "Hide them again",
+      "spoilersShown": "Spoilers shown",
+      "justMet": "Just met",
+      "firstAppears": "First appears in chapter {{chapter}}",
+      "firstAppearsStart": "There from the start",
+      "metCount_one": "{{count}} person you've met",
+      "metCount_other": "{{count}} people you've met",
+      "charactersHidden_one": "{{count}} character you haven't met yet is hidden",
+      "charactersHidden_other": "{{count}} characters you haven't met yet are hidden",
+      "charactersHiddenHint": "They appear here as you reach their chapters.",
+      "recapsHidden_one": "{{count}} more part of the story is hidden",
+      "recapsHidden_other": "{{count}} more parts of the story are hidden",
+      "recapsHiddenHint": "Each one appears once you finish its chapter.",
+      "whoEmptyTitle": "No character notes for this book yet",
+      "whoEmptyHint": "Character notes come from AudioSilo Meta, when someone has written them for this book.",
+      "storyEmptyTitle": "No recap for this book yet",
+      "storyEmptyHint": "Recaps come from community notes when someone has written one.",
+      "storyNotYet": "Nothing to recap yet",
+      "storyNotYetHint": "The story so far appears here as you finish chapters.",
+      "storyStops": "Written to stop where you are. Nothing after chapter {{chapter}} is shown.",
+      "chapterNow": "{{chapter}}, playing now",
+      "chapterIn": "in {{time}}",
+      "revealTitle": "New in Who's who: {{names}}",
+      "revealBody_one": "You just met them in chapter {{chapter}}. Nothing past this point is shown.",
+      "revealBody_other": "You just met them in chapter {{chapter}}. Nothing past this point is shown.",
+      "show": "Show"
     }
   },
   "reconnect": {

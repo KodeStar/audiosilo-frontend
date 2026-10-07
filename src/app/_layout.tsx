@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
+import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
 import { ShellToastHost } from '@/components/shell/shell-toast-host';
 import { RootInsetsProvider } from '@/components/ui/overlay';
@@ -54,6 +55,9 @@ function RootNavigator() {
       {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
           end-of-book flow when a book reaches its natural end. */}
       <BookEndedListener />
+      {/* "New in Who's who": fires wherever the listener is when the playing book
+          crosses into a chapter that introduces someone. */}
+      <CompanionRevealListener />
       {/* A shake must keep the listener going while the phone is locked
           and no player screen is mounted. */}
       <ShakeToExtendListener />

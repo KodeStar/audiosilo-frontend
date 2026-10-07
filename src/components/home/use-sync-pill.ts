@@ -11,7 +11,7 @@ const RECHECK_MS = 20_000;
 
 /** Saves waiting in the offline queue, re-read as servers come and go and every 20 s
  * while Home is the screen in front (a tab kept alive behind another reads nothing). */
-function usePendingSaves(): number {
+export function usePendingSaves(): number {
   const online = useReachability((s) => s.online);
   const focused = useIsFocused();
   const [pending, setPending] = useState(0);

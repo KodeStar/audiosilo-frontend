@@ -62,7 +62,6 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-
 /** Loading placeholder shaped like the final layout: a cover block, title lines,
  * a stat strip and a few chapter rows - no centered spinner. */
 function BookSkeleton({ paddingBottom }: { paddingBottom: number }) {

@@ -1,0 +1,147 @@
+import { router } from 'expo-router';
+import { useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Dimensions } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
+
+import { useBook, useBookMeta, useBookProgress, useCapability, useChapters } from '@/api/hooks';
+import { ConnectionScope } from '@/api/provider';
+import type { BookMetaCharacter } from '@/api/types';
+import { matchedMeta } from '@/components/library/book-meta';
+import { chapterNumberAt, chapterStartsOf } from '@/components/library/meta-gating';
+import { toast } from '@/components/ui/toast';
+import { contentKey } from '@/lib/content-key';
+import { layoutFor } from '@/lib/layout';
+import { useLatest } from '@/lib/use-latest';
+import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
+
+import { usePlayerOnTop, usePlayerSheets } from '../player-sheets';
+import type { PlayTarget } from '../use-play-book';
+import { type RevealSample, revealOnCrossing } from './companion-model';
+import { useCompanion } from './companion-store';
+
+/** Open the full player on Who's who (the reveal toast's Show): the companion sheet on a
+ * phone, the column or the inline companion elsewhere. */
+export function showWhoIsWho(playerOnTop: boolean) {
+  useCompanion.getState().setTab('who');
+  if (layoutFor(Dimensions.get('window').width) === 'phone') {
+    usePlayerSheets.getState().openSheet('companion');
+  }
+  if (!playerOnTop) router.push('/player');
+}
+
+/**
+ * Watches the playing book cross into its next chapter and, when that reveals people the
+ * listener had not met, marks them "Just met" in Who's who and fires ONE toast ("New in
+ * Who's who: Teft, Rock"). Store-driven (`usePlayer.subscribe`), so it sees every tick
+ * without rendering; the gate is `revealOnCrossing`: only a natural crossing while
+ * playing (never a load, a resume, a seek or a skip), never anyone already met this
+ * session, never a finished book.
+ */
+function Watcher({
+  target,
+  characters,
+  starts,
+  finished,
+}: {
+  target: PlayTarget;
+  characters: BookMetaCharacter[];
+  starts: number[];
+  finished: boolean;
+}) {
+  const { t } = useTranslation();
+  const playerOnTop = usePlayerOnTop();
+  const announce = useLatest((met: BookMetaCharacter[], chapter: number) => {
+    const key = contentKey(target.connectionId, target.libraryId, target.path);
+    useCompanion.getState().markJustMet(
+      key,
+      met.map((c) => c.id),
+    );
+    toast({
+      title: t('player.companion.revealTitle', { names: met.map((c) => c.name).join(', ') }),
+      description: t('player.companion.revealBody', { count: met.length, chapter }),
+      action: { label: t('player.companion.show'), onPress: () => showWhoIsWho(playerOnTop) },
+    });
+  });
+
+  useEffect(() => {
+    if (characters.length === 0 || starts.length === 0) return;
+    const key = contentKey(target.connectionId, target.libraryId, target.path);
+    let prev: RevealSample | null = null;
+    // The furthest chapter seen this session: nobody before it is news.
+    let reached = 0;
+    const look = (s: ReturnType<typeof usePlayer.getState>) => {
+      if (selectBookKey(s) !== key) {
+        prev = null;
+        return;
+      }
+      const position = selectBookPosition(s);
+      const next: RevealSample = {
+        position,
+        playing: selectIsPlaying(s),
+        chapter: chapterNumberAt(starts, position),
+      };
+      if (prev && next.chapter !== prev.chapter) {
+        const met = revealOnCrossing(characters, prev, next, reached, finished);
+        if (met.length > 0) announce(met, next.chapter);
+      }
+      reached = Math.max(reached, next.chapter);
+      prev = next;
+    };
+    // The first look is where the book is now: a load or a resume, never a crossing.
+    look(usePlayer.getState());
+    return usePlayer.subscribe(look);
+  }, [characters, starts, finished, target, announce]);
+  return null;
+}
+
+/** The playing book's community cast and chapter starts (the book page's gate inputs),
+ * then the watcher. Renders nothing. */
+function BookWatch({ target }: { target: PlayTarget }) {
+  const { connectionId, libraryId, path } = target;
+  const metadata = useCapability('metadata', connectionId) === true;
+  const { data: book } = useBook(libraryId, path, connectionId);
+  const enabled = metadata && !!(book?.asin || book?.isbn);
+  const { data: meta } = useBookMeta(libraryId, path, enabled);
+  const { data: progress } = useBookProgress(libraryId, path, enabled, connectionId);
+  const { data: chapterData } = useChapters(libraryId, path, connectionId);
+  const starts = useMemo(
+    () => chapterStartsOf(chapterData?.chapters ?? [], chapterData?.files ?? []),
+    [chapterData],
+  );
+  const characters = matchedMeta(meta, enabled)?.work.characters;
+  if (!characters || characters.length === 0 || progress === undefined) return null;
+  return (
+    <Watcher
+      target={target}
+      characters={characters}
+      starts={starts}
+      finished={!!progress?.finished}
+    />
+  );
+}
+
+/**
+ * The reveal toast's listener (STYLEGUIDE section 8, "Companion": a character whose
+ * chapter you just crossed animates in, plus a toast), mounted ONCE at the root so it
+ * fires wherever the listener is: the full player, any page, the lock screen's return.
+ */
+export function CompanionRevealListener() {
+  const target = usePlayer(
+    useShallow((s) =>
+      s.nowPlaying
+        ? {
+            connectionId: s.nowPlaying.connectionId,
+            libraryId: s.nowPlaying.libraryId,
+            path: s.nowPlaying.path,
+          }
+        : null,
+    ),
+  );
+  if (!target) return null;
+  return (
+    <ConnectionScope connectionId={target.connectionId}>
+      <BookWatch target={target} />
+    </ConnectionScope>
+  );
+}

@@ -110,7 +110,11 @@ export function storySoFar(recaps: readonly BookMetaRecap[], p: ListeningProgres
   const ordered = [...recaps].sort((a, b) => a.through.chapter - b.through.chapter);
   const { visible, hidden } = splitRecaps(ordered, p);
   const last = visible[visible.length - 1];
-  return { parts: visible, upTo: last && last.through.chapter > 0 ? last.through.chapter : null, hidden };
+  return {
+    parts: visible,
+    upTo: last && last.through.chapter > 0 ? last.through.chapter : null,
+    hidden,
+  };
 }
 
 /** One row of the companion's chapter list. */
