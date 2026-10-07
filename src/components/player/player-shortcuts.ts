@@ -42,12 +42,16 @@ export type PlayerKey = ShortcutKey & { shiftKey: boolean };
 export type PlayerKeyContext = {
   /** The focus is in something you type into: no shortcut. */
   editable: boolean;
-  /** A dialog other than the player is open (the palette, a sheet, an alert): no
-   * shortcut, and Esc is the dialog's own. */
+  /** A dialog or a menu other than the player is open (the palette, a sheet, an alert,
+   * the overflow menu): no shortcut, and Esc is the layer's own. */
   modalOpen: boolean;
-  /** The focus is on a control that handles Space and the arrows itself (a button, a
-   * slider): those keys are left to it. */
-  focusOwnsKeys: boolean;
+  /** The focus is on a control that Space activates (a button, a link, a tab): Space is
+   * left to it. A slider is not one, so Space over a focused scrubber plays and pauses. */
+  focusOwnsSpace: boolean;
+  /** The focus is on a control that moves with the arrows (a slider, tabs, a list's
+   * options): the arrows are left to it. A button is not one, so after a click on play
+   * the arrows still skip. */
+  focusOwnsArrows: boolean;
   /** A book is loaded (every shortcut but ? needs one). */
   loaded: boolean;
 };
@@ -68,8 +72,9 @@ export function playerShortcutFor(e: PlayerKey, ctx: PlayerKeyContext): PlayerSh
   if (e.key === '?') return 'help';
   if (e.key === 'Escape') return 'close';
   if (!ctx.loaded) return null;
-  const ownKey = e.key === ' ' || e.key === 'ArrowLeft' || e.key === 'ArrowRight';
-  if (ownKey && ctx.focusOwnsKeys) return null;
+  if (e.key === ' ' && ctx.focusOwnsSpace) return null;
+  const arrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+  if (arrow && ctx.focusOwnsArrows) return null;
   if (e.key === ' ') return 'toggle';
   if (e.key === 'ArrowLeft') return e.shiftKey ? 'previousChapter' : 'back';
   if (e.key === 'ArrowRight') return e.shiftKey ? 'nextChapter' : 'forward';

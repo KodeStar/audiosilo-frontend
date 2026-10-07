@@ -61,6 +61,21 @@ describe('usePlayingSegment', () => {
     expect(player.getState().seekBook).toHaveBeenCalledWith(720);
   });
 
+  it('holds a scrub to the end of the last chapter 30 s short of the end of the book', async () => {
+    // The last chapter (3000..3600): its scrubber's right edge is the book's end, which
+    // would finish the book (saved finished, Undo gone, the next play starts over).
+    player.setState({
+      bookPosition: 3100,
+      chapter: { index: 5, title: 'Six', start: 0, end: 600, book_offset: 3000 },
+    });
+    const { result } = await renderHook(() => usePlayingSegment());
+    result.current.onSeek(600);
+    expect(player.getState().seekBook).toHaveBeenLastCalledWith(3570);
+    // Anywhere else in it lands where it is.
+    result.current.onSeek(300);
+    expect(player.getState().seekBook).toHaveBeenLastCalledWith(3300);
+  });
+
   it('moves in whole seconds for a clock, and keeps its shape while the chapter plays', async () => {
     const { result } = await renderHook(() => usePlayingSegment(undefined, { wholeSeconds: true }));
     const shape = result.current.segment;

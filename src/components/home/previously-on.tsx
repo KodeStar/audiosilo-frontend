@@ -4,6 +4,7 @@ import { Platform, View } from 'react-native';
 import { ScopedTheme } from 'uniwind';
 import { create } from 'zustand';
 
+import { resolveClient } from '@/api/connection-clients';
 import type { SourcedProgress } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
 import { BookCover } from '@/components/library/book-cover';
@@ -23,6 +24,7 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
+import { loadInitialProgress } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
 import { colors } from '@/theme/tokens';
 
@@ -35,20 +37,56 @@ const useDismissed = create<{ keys: string[]; dismiss: (key: string) => void }>(
   dismiss: (key) => set((s) => ({ keys: [...s.keys, key] })),
 }));
 
+/** A saved place: where, at what speed, and when it was saved (last write wins). */
+type SavedPlace = { position: number; playback_speed: number; updated_at: string };
+
+/** When a place was saved; one whose time doesn't parse loses to any that does. */
+function savedAt(place: { updated_at: string }): number {
+  const t = Date.parse(place.updated_at);
+  return Number.isNaN(t) ? 0 : t;
+}
+
 /**
- * Start `at` 30 seconds before its saved place, at its saved speed (`startBookInPlace`
- * with a position, which also lowers the resume floor to where it starts, so the
- * overlap's saves are not refused as a slip). A phone then opens the full player over
- * the book's page, as every Home start does.
+ * "Resume, with 30 seconds of overlap": start `at` 30 seconds before its NEWEST saved
+ * place, at that place's speed (`startBookInPlace` with a position, which also lowers the
+ * resume floor to where it starts, so the overlap's saves are not refused as a slip).
+ *
+ * `saved` is Home's copy of the server's row, and the device can hold a newer place
+ * (listening offline queues its saves). A start at an explicit position skips the store's
+ * own resume reconciliation, so it happens here: the lookup a plain resume makes (the
+ * server, the durable local mirror and the offline queue; the newest wins). Starting from
+ * the older row instead played it and saved it over the newer place. `saved` stays a
+ * candidate, since an unreachable server leaves only the local records, which can be
+ * older than the row Home already has; a lookup that fails, finds nothing or finds the
+ * book finished falls back to it. Resolves false when the book's connection is gone.
  */
+export async function resumeWithOverlap(at: BookAt, saved: SavedPlace): Promise<boolean> {
+  const { connectionId, libraryId, path } = at;
+  const lookup = await loadInitialProgress(
+    resolveClient(connectionId),
+    connectionId,
+    libraryId,
+    path,
+  );
+  const place =
+    lookup.kind === 'progress' &&
+    !lookup.progress.finished &&
+    savedAt(lookup.progress) >= savedAt(saved)
+      ? lookup.progress
+      : saved;
+  return startBookInPlace(at, {
+    position: overlapStart(place.position),
+    speed: place.playback_speed,
+  });
+}
+
+/** `resumeWithOverlap`, then a phone opens the full player over the book's page, as
+ * every Home start does. Rejects when the book could not start. */
 function useResumeWithOverlap() {
   const phone = useLayout() === 'phone';
   const { openBook, openPlayer } = useOpen();
-  return async (at: BookAt, saved: { position: number; playback_speed: number }) => {
-    const started = await startBookInPlace(at, {
-      position: overlapStart(saved.position),
-      speed: saved.playback_speed,
-    });
+  return async (at: BookAt, saved: SavedPlace) => {
+    const started = await resumeWithOverlap(at, saved);
     if (!started) throw new Error('connection gone');
     if (phone) {
       openBook(at.connectionId, at.libraryId, at.path);

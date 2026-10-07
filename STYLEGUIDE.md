@@ -402,7 +402,7 @@ the controls. Phone: chips open the companion as a 78% bottom sheet.
 ### Seek bar (waveform) and chapter timeline *custom on primitives*
 Seek bar: 96 bars (56 phone) of a deterministic speech-like envelope; played bars ink, hovered bars 55% ink,
 4 px pink playhead with a halo; bookmark glyphs above bars. Keyboard: arrows skip back/forward; `aria-valuetext`
-reads "41:12 of 1:17:48". Timeline: one segment per chapter (flex = duration, 2 px gaps), past ink 34%, current
+reads "41:12 of 1:17:48". Timeline: one segment per chapter placed by time (2 px gaps cut from each segment's end), past ink 34%, current
 pink 26% with the played part solid pink, playhead; bookmark pins (ink) and note pins (`--community`) on stems
 above; hover tooltip names the chapter; click seeks (with Undo).
 

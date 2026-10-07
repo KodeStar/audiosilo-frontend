@@ -179,6 +179,45 @@ describe('SleepSheet', () => {
     expect(state.label).toEqual({ key: 'player.sleepTimer.afterChapters', params: { count: 3 } });
   });
 
+  /** Six 607 s chapters (their ends are not multiples of the sheet's 15 s step), the
+   * listener at `position`. */
+  function loadUnevenBook(position: number) {
+    player.patch({
+      nowPlaying: {
+        connectionId: 'srv-1',
+        libraryId: 1,
+        path: 'b.m4b',
+        queue: {
+          chapters: Array.from({ length: 6 }, (_, i) => chapter(i, i * 607, 607)),
+          total: 6 * 607,
+        },
+      },
+      bookPosition: position,
+    });
+  }
+
+  it('counts the rows from the chapter now playing just after a boundary', async () => {
+    // 3 s into Part 2 (607..1214). Floored to 15 s the place (600) is still in Part 1,
+    // which would make "This chapter" a chapter that has already ended.
+    loadUnevenBook(610);
+    await open();
+    expect(screen.getByLabelText(/^2 chapters, Part 3, /)).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText(/^This chapter, Part 2, ends .+, 10m$/));
+    expect(useSleepTimer.getState().pauseAtPosition).toBe(1214);
+  });
+
+  it('arms exactly the end its End of chapter tile counts down to', async () => {
+    // 29.5 s before the end of Part 2 (1214). The sheet counts from 1170 (its 15 s step),
+    // where that end is 44 s away, past the tile's 30 s rule; picking again from the live
+    // place on the press would stop at the end of Part 3 (1821) instead.
+    loadUnevenBook(1184.5);
+    await open();
+    await fireEvent.press(screen.getByLabelText('End of chapter, in 44s'));
+    const state = useSleepTimer.getState();
+    expect(state.pauseAtPosition).toBe(1214);
+    expect(state.origin).toEqual({ kind: 'chapter' });
+  });
+
   it('measures the rows at the playback speed', async () => {
     player.patch({ rate: 2 });
     await open();

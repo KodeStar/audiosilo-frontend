@@ -37,6 +37,11 @@ jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
     selectIsEnded: (s: { snapshot: { state: string } }) => s.snapshot.state === 'ended',
+    selectBookKey: ({
+      nowPlaying: np,
+    }: {
+      nowPlaying: { connectionId: string; libraryId: number; path: string } | null;
+    }) => (np ? `${np.connectionId}:${np.libraryId}:${np.path}` : null),
     usePlayer: create(() => ({
       nowPlaying: null,
       snapshot: { state: 'playing' },
@@ -48,11 +53,14 @@ jest.mock('@/playback/store', () => {
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { contentKey } from '@/lib/content-key';
 import { finishedHref } from '@/lib/paths';
+import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
 import { BookEndedListener } from './book-ended-listener';
+import { useAutoPlayHold } from './end-of-book';
 /* eslint-enable import/first */
 
 /** The mocked store holds only what the listener reads. */
@@ -140,7 +148,12 @@ beforeEach(() => {
   Object.defineProperty(AppState, 'currentState', { get: () => appState, configurable: true });
   useSettings.setState({ autoPlayNext: true });
   setPlayer({ nowPlaying: null, snapshot: { state: 'idle' } });
+  useSleepTimer.setState({ phase: 'idle', bookKey: null });
+  useAutoPlayHold.setState({ key: null });
 });
+
+/** The finished book's identity, as the sleep timer and the hold key it. */
+const FINISHED_KEY = contentKey('c1', 1, FINISHED.path);
 
 describe('BookEndedListener', () => {
   it('finishes the book and opens the end credits, which take it off Up next', async () => {
@@ -243,6 +256,32 @@ describe('BookEndedListener', () => {
     await becomeActive();
     expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
     warn.mockRestore();
+  });
+
+  it('in the background under a sleep timer starts nothing and opens the credits on return', async () => {
+    appState = 'background';
+    // The listener set a timer for this book (End of book, or minutes still left) and slept.
+    useSleepTimer.setState({ phase: 'running', bookKey: FINISHED_KEY });
+    await playThenEnd();
+    await waitFor(() => expect(appStateListeners).toHaveLength(1));
+    // The next book would play to nobody all night, moving its saved place by hours.
+    expect(mockResolve).not.toHaveBeenCalled();
+    expect(mockStart).not.toHaveBeenCalled();
+    // The credits hold their countdown for this book.
+    expect(useAutoPlayHold.getState().key).toBe(FINISHED_KEY);
+    await becomeActive();
+    expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
+  });
+
+  it('an end without a timer plays on, and is not held by an earlier night', async () => {
+    appState = 'background';
+    useAutoPlayHold.setState({ key: FINISHED_KEY });
+    // A timer armed for another book does not stop this one.
+    useSleepTimer.setState({ phase: 'running', bookKey: contentKey('c1', 1, 'Other/Book') });
+    await playThenEnd();
+    expect(useAutoPlayHold.getState().key).toBeNull();
+    await waitFor(() => expect(mockStart).toHaveBeenCalledWith(headAnswer.next));
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it('does not open the deferred credits over a book started meanwhile', async () => {

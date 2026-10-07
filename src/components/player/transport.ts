@@ -51,6 +51,23 @@ export function currentSegment({
   };
 }
 
+/** How far short of the end of the book a scrub lands at the latest, seconds. */
+export const SCRUB_END_GUARD_S = 30;
+
+/**
+ * Where a scrub to `bookPosition` (a tap, a drag's release or a key on the whole-book
+ * timeline or a chapter scrubber) lands in a book `total` long: never on the very end.
+ * A seek to the end is the book's natural end: it saves as finished, the end-of-book flow
+ * clears what is playing (and with it the Undo chip) and the next play starts over at 0,
+ * so a drag released past the right edge would lose the place for good. Landing 30 s
+ * short keeps the jump undoable (the Undo chip lives 10 s, which 30 s of audio covers even
+ * at 2x), and a book only finishes by playing out or by Mark as finished. Unchanged when
+ * the length is unknown.
+ */
+export function scrubTarget(bookPosition: number, total: number): number {
+  return total > 0 ? Math.min(bookPosition, Math.max(0, total - SCRUB_END_GUARD_S)) : bookPosition;
+}
+
 /** The whole-book offsets previous/next step between: chapters, else file boundaries. */
 export function segmentStarts(queue: {
   chapters: readonly { book_offset: number }[];

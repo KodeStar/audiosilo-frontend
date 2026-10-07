@@ -162,7 +162,8 @@ export function SeekBar({
   const tipFrac = scrub !== null ? (length > 0 ? scrub / length : null) : hover;
 
   return (
-    <GestureDetector gesture={gesture}>
+    // pan-y: on the web a touch that starts on the bar can still scroll the player.
+    <GestureDetector gesture={gesture} touchAction="pan-y">
       <View
         {...controlProps}
         {...hoverProps}

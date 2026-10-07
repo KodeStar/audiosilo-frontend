@@ -520,7 +520,14 @@ media GETs only.
   in place with `startBookInPlace`, item + chapters through the query cache then
   `playBook`, and take it and the finished book off Up next with `dropFromQueue`) and
   defers any screen with `whenActive` / `navigateWhenActive` (`src/lib/when-active.ts`).
-  The `/player` route only shows a book started that way; it never starts it.
+  The `/player` route only shows a book started that way; it never starts it. A book that ends
+  while a sleep timer runs for it does not move on by itself (`useAutoPlayHold` in
+  `end-of-book.ts`): the background start in place is skipped and the credits hold their
+  countdown (Play now still plays), since the listener asked the timer to end the night. The
+  framework-free reads this flow (and the play path's capability read) wait on go through
+  `fetchFailFast` (`api/hooks.ts`), which TanStack can't hold for the browser's online flag or
+  a hidden tab's focus; the credits' countdown counts only the time its ticks saw, so a
+  suspended app doesn't wake to a countdown that already ran out.
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.
@@ -572,6 +579,15 @@ media GETs only.
   `startEngine` in `store.ts` (the play step of `playBook`/`toggle`/`retry`) catches only
   that, clears the intent (so the watchdog can't synthesize `error`) and settles on
   `paused`. Every other `play()` failure still propagates.
+- **The web engine's file advance is not a pause.** The element fires `pause` just before
+  `ended` at a file's natural end; when another file follows, `service.web.ts` ignores it
+  (the store keeps its intent through the next file's load, under the same 3 s watchdog as
+  a transcoded seek), so a chapter sleep timer aimed at that boundary finds the book live and
+  pauses it. A load plays on `loadedmetadata` only if `pendingAutoplay` is still set (a
+  `pause()` inside the load, the listener's or the sleep timer's, clears it and settles the
+  snapshot on `paused`). A transcoded stream is never requested inside its last second
+  (`transcodeStartAt`): at the very end there is nothing to encode and the element errors
+  instead of ending.
 
 **Tests** - new logic ships with a unit test. Pure, framework-free modules get
 direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
@@ -805,8 +821,10 @@ offline queue length without changing progress-sync (decision 7).
 **One play path** (`src/components/player/use-play-book.ts`): `usePlayBook()` is how Home, the
 Library, the series page and Up next start a book: a phone opens the full player (over the book page
 with `viaBookPage`), a tablet or desktop plays it under the docked bar through the book's own
-connection once its chapters are in, a loaded book plays on (or toggles, with `toggle`). It rejects
-when the book can't be fetched, so the caller can say so.
+connection once its chapters are in, a loaded book plays on (or toggles, with `toggle`). With the full
+player already on top (Up next's sheet over it), every layout starts in place: pushing `/player` over
+the open one stacked a second player. It rejects when the book can't be fetched, so the caller can say
+so.
 
 **Downloads page and automatic downloads** (`src/components/downloads/`, `src/downloads/`):
 - **Keep the next books ready** (`keepAhead`: Off / 1 / 2 / 3, default Off; Downloads page, Settings
@@ -894,7 +912,9 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   the timeline's tip the same way), compact timeline with bookmark and note pins (a tap on a pin lands
   on it), transport, actions (speed, sleep, bookmark, output, Up next on phone/tablet). The two
   scrubbers share `scrub-parts.tsx` (hover, `Playhead`, `ScrubTip`) and one `usePlayingPins` call; the
-  timeline draws the Now card's `scaleRuns`.
+  timeline merges chapters like the Now card's `scaleRuns` but places each run by time (`runBox`, the
+  mapping the playhead, taps and pins use). A scrub never lands on the book's very end
+  (`scrubTarget`: 30 s short), which would finish the book and take the Undo chip with it.
   The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
   a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
   (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover
@@ -908,11 +928,20 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   presenter, `PlayerSheet` (`body` `scroll` or `fill`); one host in the full player and one in the
   shell (`ShellPlayerOverlays`, with the floating `GraceCard` where a toast would sit; it publishes a
   `grace` chrome edge, so the toasts lift above it), and `hostIsActive` lets the shell's stand back
-  while the player route is on top. A `Sheet` is `aria-modal` on the web, so the player keys stand
-  back over it.
+  while the player route is on top. The player keys stand back over any open layer (`isModalOpen`: an
+  `aria-modal` `Sheet`, or a Radix Dialog, AlertDialog, menu or select, which say so with
+  `data-state="open"` and no `aria-modal`); Space stands aside for a focused control Space activates
+  (`ownsSpace`: a button, a tab...) and the arrows for one that moves with them (`ownsArrows`: a
+  slider...), so Space still plays and pauses over a focused scrubber. The scrubbers ignore
+  gesture-handler's keyboard pointer (`PointerType.KEY`, a press at the centre it makes up for Space
+  and Enter on the web), scrub only on a sideways drag (`activeOffsetX`/`failOffsetY`, `pan-y` on the
+  web) and never commit a cancelled drag.
 - **Previously on** (`home/previously-on.tsx`, rules in `previously-on-model.ts`): above the Now card
   when its book was last played 12+ days ago and a community recap reaches the listener (the Story so
-  far gate); "Resume, with 30 seconds of overlap" is `playBook(..., saved - 30)` plus the saved speed.
+  far gate); "Resume, with 30 seconds of overlap" (`resumeWithOverlap`) starts 30 s before the NEWEST
+  saved place at its speed: the resume lookup (`loadInitialProgress`: the server, the local mirror and
+  the offline queue) against Home's server row, since a start at an explicit position skips the
+  store's own reconciliation.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
   omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:

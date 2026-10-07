@@ -1,3 +1,5 @@
+import { create } from 'zustand';
+
 import { resolveClient } from '@/api/connection-clients';
 import { CapabilityError, cachedCapability, qk, queueQuery, removeFromQueue } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
@@ -5,6 +7,17 @@ import type { BookRef, QueueEntry } from '@/api/types';
 import { entryHolds, type UpNextBook } from '@/playback/up-next-resolver';
 
 import { startBookInPlace } from './start-book';
+
+/**
+ * The book that ended while the listener's sleep timer was running for it, by its
+ * `contentKey` (memory only). The listener asked the timer to stop for the night, and the
+ * end of the book is where it stopped, so nothing plays on by itself after it: the
+ * background start in place is skipped (`BookEndedListener`) and the credits hold their
+ * countdown (`EndCredits`; Play now still plays). Another book started there would play to
+ * nobody for hours and move its saved place with it. Written at every end of a book (null
+ * when no timer ran for it), so a later end is never held by an old one.
+ */
+export const useAutoPlayHold = create<{ key: string | null }>(() => ({ key: null }));
 
 /**
  * Take books off ONE connection's Up next queue at the end of a book: the book that

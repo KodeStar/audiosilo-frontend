@@ -10,7 +10,9 @@ import {
   isBrowserUndecodable,
   isEarlyTranscodeEnd,
   needsWebTranscode,
+  TRANSCODE_TAIL_S,
   transcodedTrackPosition,
+  transcodeStartAt,
   transcodeUrlAt,
 } from './transcode';
 
@@ -147,6 +149,33 @@ describe('clampTranscodedSeek', () => {
     expect(clampTranscodedSeek(40, 100)).toBe(40);
     expect(clampTranscodedSeek(140)).toBe(140);
     expect(clampTranscodedSeek(Number.NaN, 100)).toBe(0);
+  });
+});
+
+describe('transcodeStartAt', () => {
+  it('never requests the very end of a known duration, nor past it', () => {
+    // A request at t=duration has nothing left to encode (the element errors).
+    expect(transcodeStartAt(1000, 1000)).toBe(1000 - TRANSCODE_TAIL_S);
+    expect(transcodeStartAt(5000, 1000)).toBe(999);
+    expect(transcodeStartAt(999.5, 1000)).toBe(999);
+  });
+
+  it('leaves an earlier target as a clamped seek', () => {
+    expect(transcodeStartAt(600, 1000)).toBe(600);
+    expect(transcodeStartAt(999, 1000)).toBe(999);
+    expect(transcodeStartAt(-4, 1000)).toBe(0);
+    expect(transcodeStartAt(Number.NaN, 1000)).toBe(0);
+  });
+
+  it('is unchanged when the duration is unknown', () => {
+    expect(transcodeStartAt(5000)).toBe(5000);
+    expect(transcodeStartAt(5000, 0)).toBe(5000);
+    expect(transcodeStartAt(-4)).toBe(0);
+  });
+
+  it('never goes below 0 for a file shorter than the tail', () => {
+    expect(transcodeStartAt(0.4, 0.5)).toBe(0);
+    expect(transcodeStartAt(3, 0.5)).toBe(0);
   });
 });
 

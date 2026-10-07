@@ -3,6 +3,8 @@ import {
   nextSegmentStart,
   trackLabel,
   previousSegmentStart,
+  SCRUB_END_GUARD_S,
+  scrubTarget,
   segmentStarts,
   stepSegment,
 } from './transport';
@@ -47,6 +49,28 @@ describe('currentSegment', () => {
     expect(
       currentSegment({ total: 0, bookPosition: 0, chapter, trackPosition: 12, trackDuration: 0 }),
     ).toEqual({ perTrack: true, start: 0, length: 1, elapsed: 12 });
+  });
+});
+
+describe('scrubTarget', () => {
+  it('never lands a scrub on the end of the book: it stops 30 s short', () => {
+    expect(SCRUB_END_GUARD_S).toBe(30);
+    // The end itself (End key, a drag released past the right edge), past it, and the
+    // last seconds before it.
+    expect(scrubTarget(4000, 4000)).toBe(3970);
+    expect(scrubTarget(4100, 4000)).toBe(3970);
+    expect(scrubTarget(3990, 4000)).toBe(3970);
+  });
+
+  it('leaves every other place alone', () => {
+    expect(scrubTarget(3970, 4000)).toBe(3970);
+    expect(scrubTarget(1000, 4000)).toBe(1000);
+    expect(scrubTarget(0, 4000)).toBe(0);
+  });
+
+  it('keeps a book shorter than the guard at its start, and ignores an unknown length', () => {
+    expect(scrubTarget(20, 25)).toBe(0);
+    expect(scrubTarget(50, 0)).toBe(50);
   });
 });
 

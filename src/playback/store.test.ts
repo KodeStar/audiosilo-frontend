@@ -55,7 +55,8 @@ jest.mock('./progress-sync', () => ({
 }));
 
 // Keep React Query out of the unit test.
-// `fetchQuery`/`getQueryData` answer the web transcode negotiation's `/server` read.
+// `fetchQuery`/`getQueryData` answer the web transcode negotiation's `/server` read;
+// `cancelQueries` is the fail-fast read's first step (`fetchFailFast`).
 const mockFetchQuery = jest.fn(async (..._a: unknown[]): Promise<unknown> => ({}));
 jest.mock('@/api/provider', () => ({
   queryClient: {
@@ -63,6 +64,7 @@ jest.mock('@/api/provider', () => ({
     setQueryData: jest.fn(),
     fetchQuery: (...a: unknown[]) => mockFetchQuery(...a),
     getQueryData: jest.fn(() => undefined),
+    cancelQueries: jest.fn(async () => {}),
   },
 }));
 

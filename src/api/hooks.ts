@@ -1,6 +1,9 @@
 import {
+  type DefaultError,
+  type FetchQueryOptions,
   MutationObserver,
   type QueryClient,
+  type QueryKey,
   queryOptions,
   skipToken,
   useInfiniteQuery,
@@ -126,11 +129,44 @@ export function serverInfoQuery(cid: string, client: MaybeClient) {
   });
 }
 
+/**
+ * `queryClient.fetchQuery` for a reader outside React that waits on the answer (the play
+ * path, the end of a book, keep-ahead): it always settles, so the caller's fallback for a
+ * failed read gets to run. TanStack's default network mode holds a fetch while the browser
+ * says it is offline, and any retry waits until a hidden tab is focused again, so a book
+ * about to start, or the end-of-book chain in a background tab, waited with no error until
+ * the browser came back. This read asks whatever the online flag says (`networkMode:
+ * 'always'`), is never retried, and first drops a fetch that a mounted hook is holding for
+ * the same key: it would otherwise be joined and waited on (the hook fetches again once
+ * the browser is back online). Fresh cached data still comes back without asking.
+ */
+export async function fetchFailFast<
+  TQueryFnData,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+>(options: FetchQueryOptions<TQueryFnData, TError, TData, TQueryKey>): Promise<TData> {
+  await queryClient.cancelQueries({
+    queryKey: options.queryKey,
+    exact: true,
+    fetchStatus: 'paused',
+  });
+  return queryClient.fetchQuery({ ...options, networkMode: 'always', retry: false });
+}
+
 /** A connection's server flags through the shared `/server` entry (normally cached, so
  * no request): for the framework-free readers (the end-of-book flow, keep-ahead, the
- * transcode decision). Rejects when the server can't be read. */
+ * transcode decision). Read with `fetchFailFast`; when the server can't be read, the
+ * flags the cache last held (they don't change within a session). Rejects when the
+ * server can't be read and nothing is cached. */
 export async function fetchCapabilities(cid: string, client: ApiClient): Promise<Capabilities> {
-  return (await queryClient.fetchQuery(serverInfoQuery(cid, client))).capabilities;
+  try {
+    return (await fetchFailFast(serverInfoQuery(cid, client))).capabilities;
+  } catch (err) {
+    const known = queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities;
+    if (known) return known;
+    throw err;
+  }
 }
 
 /** One flag of a connection's server as the cache holds it, without asking: `undefined`

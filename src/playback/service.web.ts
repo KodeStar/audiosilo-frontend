@@ -9,10 +9,10 @@ import {
   type PlaybackTrack,
 } from './types';
 import {
-  clampTranscodedSeek,
   isEarlyTranscodeEnd,
   TRANSCODE_STALE_PAUSE_MS,
   transcodedTrackPosition,
+  transcodeStartAt,
   transcodeUrlAt,
 } from './transcode';
 
@@ -55,7 +55,8 @@ type RoutePickerEl = {
  * track-absolute time its `currentTime` 0 stands for. A direct stream is the track's
  * own url (the element seeks it by byte range, so `currentTime` is already
  * track-absolute: offset 0). A transcoded stream can't be byte-seeked, so it is
- * requested starting AT the position (`&t=`) and the offset records where it began.
+ * requested starting AT the position (`&t=`, never inside the file's last second: see
+ * `transcodeStartAt`) and the offset records where it began.
  * Pure + exported so the rule is unit-testable without the DOM.
  */
 export function sourceFor(
@@ -63,7 +64,7 @@ export function sourceFor(
   positionInTrack: number,
 ): { url: string; offset: number } {
   if (!track.transcoded) return { url: track.url, offset: 0 };
-  const t = clampTranscodedSeek(positionInTrack, track.duration);
+  const t = transcodeStartAt(positionInTrack, track.duration);
   return { url: transcodeUrlAt(track.url, t), offset: t };
 }
 
@@ -97,10 +98,13 @@ class WebPlaybackService implements PlaybackService {
    * source (a quick second seek replaces the src before the first one loads) can't seek
    * or autoplay the new one. */
   private loadSeq = 0;
-  /** A transcoded track is mid-reload with playback intended: set by `play()` and an
-   * autoplaying load, cleared on `playing`, `pause()` and `reset()`. A transcoded seek
-   * reloads the source, so the `loading` window recurs on every seek, and a second seek
-   * (or skip) inside it must keep playing. */
+  /** Playback is intended but hasn't started yet: set by an autoplaying load (the
+   * advance to the next file, a skip or a transcoded seek while playing) and by `play()`
+   * on a transcoded track; cleared on `playing`, `error`, `pause()` and `reset()`. A load
+   * plays only if this is still set when its metadata arrives, so a pause inside the
+   * window (the listener's, or the sleep timer's at a chapter end) holds. A transcoded
+   * seek reloads the source, so the window recurs on every seek, and a second seek (or a
+   * skip) inside it must keep playing. */
   private pendingAutoplay = false;
   /** The track-absolute position the last early-end reload started from (see
    * `isEarlyTranscodeEnd`), null when none is in play. */
@@ -133,12 +137,10 @@ class WebPlaybackService implements PlaybackService {
       : a.currentTime;
   }
 
-  /** Is playback running or about to (see `pendingAutoplay`)? For a direct stream this
-   * is exactly the old `state === 'playing'` test. */
+  /** Is playback running or about to (see `pendingAutoplay`)? A skip while the next file
+   * loads after an advance, or while a transcoded seek reloads, keeps playing. */
   private intendsToPlay(): boolean {
-    return (
-      this.snapshot.state === 'playing' || (!!this.current()?.transcoded && this.pendingAutoplay)
-    );
+    return this.snapshot.state === 'playing' || this.pendingAutoplay;
   }
 
   /** Apply the rate so it survives a source change: the media element load algorithm
@@ -174,11 +176,26 @@ class WebPlaybackService implements PlaybackService {
       this.update({ state: 'playing' });
     });
     a.addEventListener('pause', () => {
-      if (active() && this.snapshot.state !== 'ended') this.update({ state: 'paused' });
+      if (!active() || this.snapshot.state === 'ended') return;
+      // At a file's natural end the element pauses itself just before 'ended' (the HTML
+      // spec's order). When another file follows, handleEnded moves straight on to it, so
+      // this is not the listener pausing: reporting it would clear the store's play intent
+      // at every file boundary, and a sleep timer aimed at that boundary would find the
+      // book stopped, expire without pausing it, and let the next file play on. The last
+      // file still reports the pause, then 'ended'.
+      if (a.ended && this.index < this.tracks.length - 1) return;
+      this.update({ state: 'paused' });
     });
     a.addEventListener('waiting', () => active() && this.update({ state: 'loading' }));
     a.addEventListener('ended', () => active() && this.handleEnded());
-    a.addEventListener('error', () => active() && this.update({ state: 'error' }));
+    a.addEventListener('error', () => {
+      if (!active()) return;
+      // A source that failed will never start, so nothing is about to play: a stale
+      // intent would have a later skip, or the swap onto the downloaded copy, start the
+      // book by itself long after the error.
+      this.pendingAutoplay = false;
+      this.update({ state: 'error' });
+    });
     return a;
   }
 
@@ -195,13 +212,13 @@ class WebPlaybackService implements PlaybackService {
     const source = sourceFor(track, positionInTrack);
     this.offset = source.offset;
     this.earlyEndRetryAt = null; // handleEnded re-sets it for its own reload
-    if (track.transcoded) this.pendingAutoplay = autoplay;
+    this.pendingAutoplay = autoplay;
     const seq = ++this.loadSeq;
     a.src = source.url;
     this.applyRate(a);
     this.update({
       trackIndex: index,
-      // A transcoded stream starts at the clamped `t` it was requested at.
+      // A transcoded stream starts at the `t` it was requested at (see `sourceFor`).
       position: track.transcoded ? source.offset : positionInTrack,
       duration: track.duration ?? 0,
       state: 'loading',
@@ -218,7 +235,9 @@ class WebPlaybackService implements PlaybackService {
           // seeking before ready; timeupdate will correct
         }
       }
-      if (autoplay) {
+      // Read the intent now, not as it was when the load began: a pause inside the load
+      // (the listener's, or the sleep timer's) cleared it and must hold.
+      if (this.pendingAutoplay) {
         // A play() interrupted by the next source change rejects with AbortError;
         // that load owns playback now.
         a.play()?.catch(() => undefined);
@@ -419,17 +438,24 @@ class WebPlaybackService implements PlaybackService {
   }
 
   async pause() {
-    this.el().pause();
+    const a = this.el();
+    // Inside a load the element is already paused (the load algorithm pauses it without
+    // a 'pause' event), so no event will settle the snapshot: settle it here, or a pause
+    // during a load would leave it on 'loading', a spinner nothing comes to end.
+    const settle = a.paused && this.snapshot.state === 'loading';
+    a.pause();
     this.pausedAt = Date.now();
     this.pendingAutoplay = false;
+    if (settle) this.update({ state: 'paused' });
   }
 
   async seekTo(positionInTrack: number) {
     const track = this.current();
     if (track?.transcoded) {
-      // Not byte-seekable: re-request the stream from the target (track-absolute).
+      // Not byte-seekable: re-request the stream from the target (track-absolute),
+      // never at the very end, where there is nothing left to encode.
       this.reloadTranscodedAt(
-        clampTranscodedSeek(positionInTrack, track.duration),
+        transcodeStartAt(positionInTrack, track.duration),
         this.intendsToPlay(),
       );
       return;

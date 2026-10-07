@@ -20,9 +20,9 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { heardIn, SEGMENT_GAP, timelineRuns } from './book-timeline-model';
+import { heardIn, runBox, SEGMENT_GAP, timelineRuns } from './book-timeline-model';
 import { Playhead, ScrubTip, useWebHoverFraction } from './scrub-parts';
-import { stepSegment } from './transport';
+import { scrubTarget, stepSegment } from './transport';
 import type { BookPins } from './use-playing-pins';
 
 const TRACK_H = 14;
@@ -80,13 +80,21 @@ function Pin({
 }
 
 /** One segment (a chapter, or a run of them), memoised on its few numbers: as the
- * playhead moves only the current one redraws. */
+ * playhead moves only the current one redraws. Its box is its span of time (`runBox`);
+ * the bar inside leaves `gap` points empty at its end, so the gap comes out of the run's
+ * own span and never pushes the later segments away from their times. */
 const Segment = memo(function Segment({
-  weight,
+  left,
+  width,
+  gap,
   state,
   played,
 }: {
-  weight: number;
+  /** Where the run starts and how long it is, percent of the track. */
+  left: number;
+  width: number;
+  /** Points left empty at its end (none for the last run). */
+  gap: number;
   state: ScaleState;
   /** How much of the current segment is heard, 0..1. */
   played: number;
@@ -94,12 +102,17 @@ const Segment = memo(function Segment({
   return (
     <View
       testID={`timeline-segment-${state}`}
-      className={cn('h-full overflow-hidden rounded-[3px]', SEGMENT_CLASS[state])}
-      style={{ flexGrow: weight, flexBasis: 0 }}
+      className="absolute bottom-0 top-0"
+      style={{ left: `${left}%`, width: `${width}%` }}
     >
-      {played > 0 ? (
-        <View className="h-full rounded-[3px] bg-brand" style={{ width: `${played * 100}%` }} />
-      ) : null}
+      <View
+        className={cn('flex-1 overflow-hidden rounded-[3px]', SEGMENT_CLASS[state])}
+        style={{ marginRight: gap }}
+      >
+        {played > 0 ? (
+          <View className="h-full rounded-[3px] bg-brand" style={{ width: `${played * 100}%` }} />
+        ) : null}
+      </View>
     </View>
   );
 });
@@ -128,14 +141,15 @@ export type BookTimelineProps = {
 };
 
 /**
- * The whole-book timeline (STYLEGUIDE section 8): one segment per chapter (flex =
- * length, 2-point gaps; the Now card's `scaleRuns`), past chapters in ink, the current
- * one pink with its heard part solid, a pink playhead; bookmark pins (ink) and note pins
- * (community) on stems above. On the web a hover names the chapter and the time. A tap
- * or drag seeks (a jump, so the Undo chip offers the way back by itself); a tap on a pin
- * lands on it exactly. Accessible as an adjustable "Whole-book timeline" whose steps are
- * chapters. Chapters too narrow to see merge with their neighbours by the measured
- * width.
+ * The whole-book timeline (STYLEGUIDE section 8): one segment per chapter, placed by time
+ * like the playhead, taps, the hover tip and the pins (`runBox`), with 2-point gaps
+ * carved out of each segment's own end; past chapters in ink, the current one pink with
+ * its heard part solid, a pink playhead; bookmark pins (ink) and note pins (community) on
+ * stems above. On the web a hover names the chapter and the time. A tap or drag seeks (a
+ * jump, so the Undo chip offers the way back by itself); a tap on a pin lands on it
+ * exactly. Accessible as an adjustable "Whole-book timeline" whose steps are chapters.
+ * Chapters too narrow to see merge with their neighbours by the measured width (the Now
+ * card's `scaleRuns`).
  */
 export function BookTimeline({
   starts,
@@ -224,7 +238,9 @@ export function BookTimeline({
 
   return (
     <View className={className}>
-      <GestureDetector gesture={control.gesture}>
+      {/* `pan-y` on the web (gesture-handler's default is `none`): a touch that starts on
+          the timeline can still scroll the player's column; a sideways drag scrubs. */}
+      <GestureDetector gesture={control.gesture} touchAction="pan-y">
         <View
           {...control.controlProps}
           {...hoverProps}
@@ -238,14 +254,21 @@ export function BookTimeline({
             {pins.notes.map((f, i) => (
               <Pin key={`n${i}`} at={f} kind="note" stem={stem} />
             ))}
-            <View
-              className="absolute left-0 right-0 flex-row"
-              style={{ top, height: TRACK_H, gap: SEGMENT_GAP }}
-            >
-              {runs.map((r) => {
+            <View className="absolute left-0 right-0" style={{ top, height: TRACK_H }}>
+              {runs.map((r, i) => {
                 const state = runState(r, chapter);
                 const played = state === 'current' ? heardIn(r, at) : 0;
-                return <Segment key={r.first} weight={r.weight} state={state} played={played} />;
+                const box = runBox(r, total);
+                return (
+                  <Segment
+                    key={r.first}
+                    left={box.left}
+                    width={box.width}
+                    gap={i < runs.length - 1 ? SEGMENT_GAP : 0}
+                    state={state}
+                    played={played}
+                  />
+                );
               })}
             </View>
             <Playhead
@@ -285,9 +308,9 @@ const positionStep = (total: number) => Math.max(1, total / 2000);
 /**
  * The whole-book timeline of the PLAYING book: its chapters, place, and the pins the
  * caller fetched once (`usePlayingPins`), seeking through the store (a jump: the Undo chip
- * follows by itself) and stepping by chapter (`stepSegment`, the transport's own
- * previous/next). Renders nothing with no book or a book without a whole-book timeline
- * (per-file books).
+ * follows by itself; never onto the very end, `scrubTarget`) and stepping by chapter
+ * (`stepSegment`, the transport's own previous/next). Renders nothing with no book or a
+ * book without a whole-book timeline (per-file books).
  */
 export function PlayerBookTimeline({
   pins,
@@ -323,7 +346,7 @@ export function PlayerBookTimeline({
       titles={titles}
       bookmarks={pins?.bookmarks}
       notes={pins?.notes}
-      onSeek={(p) => void seekBook(p)}
+      onSeek={(p) => void seekBook(scrubTarget(p, total))}
       onStep={(dir) => stepSegment(usePlayer.getState(), dir)}
       onTip={onTip}
       className={className}

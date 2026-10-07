@@ -118,11 +118,13 @@ jest.mock('@/playback/up-next-sources', () => ({ upNextSources: () => ({}) }));
 
 /* eslint-disable import/first */
 import { queryClient } from '@/api/provider';
+import { contentKey } from '@/lib/content-key';
 import { playerHref } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
 import { EndCredits } from './end-credits';
+import { useAutoPlayHold } from './end-of-book';
 /* eslint-enable import/first */
 
 const PATH = 'Sanderson/The Way of Kings';
@@ -222,6 +224,7 @@ beforeEach(() => {
   ]);
   useSettings.setState({ autoPlayNext: false, defaultRate: 1 });
   setPlayer({ nowPlaying: null, snapshot: { state: 'idle' }, rate: 1, position: 0 });
+  useAutoPlayHold.setState({ key: null });
 });
 
 afterEach(() => {
@@ -339,6 +342,70 @@ describe('EndCredits', () => {
     mockAppState = 'active';
     await act(async () => onChange?.('active'));
     expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
+  });
+
+  it('counts only the time it saw: woken hours later, the countdown goes on from where it stopped', async () => {
+    jest.useFakeTimers();
+    useSettings.setState({ autoPlayNext: true });
+    await mount();
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(screen.getByLabelText('Starts in 10 seconds')).toBeTruthy();
+    // The phone locks with the credits up: the app is suspended, and no tick runs for an
+    // hour. The first tick after waking must not read that hour as countdown.
+    jest.setSystemTime(Date.now() + 3_600_000);
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Starts in 10 seconds')).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(9_000);
+    });
+    expect(mockStart).not.toHaveBeenCalled();
+    await act(async () => {
+      jest.advanceTimersByTime(1_500);
+    });
+    expect(mockStart).toHaveBeenCalledWith(queueHead.next);
+  });
+
+  it('holds the countdown for a book that ended under the sleep timer, keeping Play now', async () => {
+    jest.useFakeTimers();
+    useSettings.setState({ autoPlayNext: true });
+    useAutoPlayHold.setState({ key: contentKey('c1', 1, PATH) });
+    await mount();
+    expect(screen.queryByLabelText(/Starts in/)).toBeNull();
+    expect(screen.queryByText('Not now')).toBeNull();
+    await act(async () => {
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(mockStart).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Play now'));
+    expect(mockStart).toHaveBeenCalledWith(queueHead.next);
+  });
+
+  it('opened before the end, starts nothing when the book ends under the sleep timer', async () => {
+    jest.useFakeTimers();
+    useSettings.setState({ autoPlayNext: true });
+    mockEnded = false;
+    setPlayer({
+      nowPlaying: { connectionId: 'c1', libraryId: 1, path: PATH, queue: { total: 1000 } },
+      snapshot: { state: 'playing' },
+      position: 990,
+    });
+    await mount();
+    expect(screen.getByText('Starting in 10s')).toBeTruthy();
+    // The end, as BookEndedListener handles it: the hold for this book, then finishBook.
+    await act(async () => {
+      useAutoPlayHold.setState({ key: contentKey('c1', 1, PATH) });
+      setPlayer({ nowPlaying: null, snapshot: { state: 'idle' } });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(screen.getByText('Play now')).toBeTruthy();
   });
 
   it('Not now stops the countdown and keeps Play now', async () => {

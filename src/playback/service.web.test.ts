@@ -1,5 +1,10 @@
 import { createPlaybackService, isSwapReady, routePickerKind, sourceFor } from './service.web';
-import { AutoplayBlockedError, type PlaybackService, type PlaybackTrack } from './types';
+import {
+  AutoplayBlockedError,
+  type PlaybackService,
+  type PlaybackState,
+  type PlaybackTrack,
+} from './types';
 
 // HTMLMediaElement.readyState levels (numeric so the test reads like the browser).
 const HAVE_CURRENT_DATA = 2;
@@ -52,7 +57,9 @@ describe('routePickerKind', () => {
 // --- The engine over a fake <audio> --------------------------------------------
 // Models the parts of HTMLMediaElement the engine leans on, including the load
 // algorithm's reset of `currentTime` and of `playbackRate` to `defaultPlaybackRate`
-// (which is what a transcoded seek, a new src each time, runs into).
+// (which is what a transcoded seek, a new src each time, runs into), its silent pause
+// (no 'pause' event, so a pause() inside a load fires none either), and the natural
+// end's 'pause' before 'ended'.
 class FakeAudio {
   static all: FakeAudio[] = [];
   src = '';
@@ -61,6 +68,7 @@ class FakeAudio {
   currentTime = 0;
   duration = Number.NaN;
   paused = true;
+  ended = false;
   readyState = 0;
   playbackRate = 1;
   defaultPlaybackRate = 1;
@@ -83,6 +91,8 @@ class FakeAudio {
   load() {
     this.loads++;
     this.currentTime = 0;
+    this.ended = false;
+    this.paused = true; // silently: the load algorithm fires no 'pause'
     this.playbackRate = this.defaultPlaybackRate;
   }
   play() {
@@ -91,8 +101,18 @@ class FakeAudio {
     return Promise.resolve();
   }
   pause() {
+    if (this.paused) return; // already paused: no event
     this.paused = true;
     this.emit('pause');
+  }
+  /** Play out to the end of the resource: the element pauses itself, then ends. */
+  reachEnd() {
+    this.ended = true;
+    if (!this.paused) {
+      this.paused = true;
+      this.emit('pause');
+    }
+    this.emit('ended');
   }
   removeAttribute(name: string) {
     if (name === 'src') this.src = '';
@@ -104,6 +124,14 @@ const STREAM2 = 'https://s/api/v1/libraries/2/stream?path=A%2F02.ac3&transcode=1
 const transcodedTracks: PlaybackTrack[] = [
   { id: '2:A/01.ac3', url: STREAM, title: 'B', duration: 1000, transcoded: true },
   { id: '2:A/02.ac3', url: STREAM2, title: 'B', duration: 500, transcoded: true },
+];
+// Two ordinary files (one chapter per file, the server's default for a chapterless
+// folder of MP3s), streamed directly.
+const FILE1 = 'https://s/api/v1/libraries/2/stream?path=C%2F01.mp3&token=k';
+const FILE2 = 'https://s/api/v1/libraries/2/stream?path=C%2F02.mp3&token=k';
+const directTracks: PlaybackTrack[] = [
+  { id: '2:C/01.mp3', url: FILE1, title: 'C', duration: 600 },
+  { id: '2:C/02.mp3', url: FILE2, title: 'C', duration: 900 },
 ];
 
 /** The active element: the most recently created one the engine kept. */
@@ -195,12 +223,46 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(a.plays).toBe(plays + 1);
   });
 
-  it('clamps a seek into the known duration', async () => {
+  it('a pause inside the reload window holds: the new stream does not start', async () => {
+    await startPlaying(100);
+    const a = el();
+    const plays = a.plays;
+    await svc.seekTo(600); // reloads, meaning to play on
+    await svc.pause(); // e.g. the sleep timer firing before the new stream loaded
+    expect(svc.getSnapshot()).toMatchObject({ state: 'paused', position: 600 });
+    a.emit('loadedmetadata');
+    expect(a.plays).toBe(plays);
+    expect(a.paused).toBe(true);
+    expect(svc.getSnapshot().state).toBe('paused');
+    // The play button still starts it from there.
+    await svc.play();
+    expect(a.src).toBe(`${STREAM}&t=600`);
+    expect(a.plays).toBe(plays + 1);
+  });
+
+  it('clamps a seek into the file, short of its very end', async () => {
     await startPlaying(0);
     await svc.seekTo(5000);
-    expect(el().src).toBe(`${STREAM}&t=1000`);
+    expect(el().src).toBe(`${STREAM}&t=999`);
     await svc.seekTo(-20);
     expect(el().src).toBe(STREAM);
+  });
+
+  it('a seek to the very end requests the last second, not an empty stream', async () => {
+    await startPlaying(100);
+    const a = el();
+    await svc.seekTo(1000); // skip forward / a drag to the end of the file
+    expect(a.src).toBe(`${STREAM}&t=999`);
+    expect(svc.getSnapshot()).toMatchObject({ position: 999, state: 'loading' });
+    // That last second plays out and the file ends for real: on to the next one.
+    a.emit('loadedmetadata');
+    a.emit('playing');
+    a.currentTime = 1;
+    a.emit('timeupdate');
+    expect(svc.getSnapshot().position).toBe(1000);
+    a.reachEnd();
+    expect(a.src).toBe(STREAM2);
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0 });
   });
 
   it('skipToTrack requests the other file at its position', async () => {
@@ -320,6 +382,90 @@ describe('WebPlaybackService (transcoded tracks)', () => {
   });
 });
 
+describe('WebPlaybackService file boundaries (direct tracks)', () => {
+  const realAudio = (globalThis as { Audio?: unknown }).Audio;
+  let svc: PlaybackService;
+  /** Every state the engine reported, in order. */
+  let states: PlaybackState[];
+
+  beforeEach(() => {
+    FakeAudio.all = [];
+    (globalThis as { Audio?: unknown }).Audio = FakeAudio;
+    svc = createPlaybackService();
+    states = [];
+    svc.subscribe((s) => void states.push(s.state));
+  });
+  afterEach(() => {
+    (globalThis as { Audio?: unknown }).Audio = realAudio;
+  });
+
+  /** Load file `index` and get the engine to `playing`; `states` records from there. */
+  async function startPlaying(index: number) {
+    await svc.load(directTracks, index, 0);
+    el().emit('loadedmetadata');
+    await svc.play();
+    el().emit('playing');
+    states.length = 0;
+  }
+
+  it('moves on at the natural end of a file without ever reporting a pause', async () => {
+    await startPlaying(0);
+    const a = el();
+    const plays = a.plays;
+    a.reachEnd(); // 'pause', then 'ended'
+    expect(a.src).toBe(FILE2);
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0, state: 'loading' });
+    a.emit('loadedmetadata');
+    expect(a.plays).toBe(plays + 1); // the next file starts on its own
+    a.emit('playing');
+    // No 'paused' in between: the store keeps its play intent across the boundary.
+    expect(states).toEqual(['loading', 'playing']);
+  });
+
+  it('still reports the pause, then the end, at the end of the last file', async () => {
+    await startPlaying(1);
+    el().reachEnd();
+    expect(states).toEqual(['paused', 'ended']);
+  });
+
+  it('a pause while the next file loads holds: it does not start on its own', async () => {
+    await startPlaying(0);
+    const a = el();
+    a.reachEnd(); // on to file 2, meaning to play
+    const plays = a.plays;
+    await svc.pause(); // e.g. the sleep timer stopping the book at this chapter's end
+    a.emit('loadedmetadata');
+    expect(a.plays).toBe(plays);
+    expect(a.paused).toBe(true);
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, state: 'paused' });
+  });
+
+  it('a skip while the next file loads keeps playing', async () => {
+    await startPlaying(0);
+    const a = el();
+    a.reachEnd(); // file 2 loading, not playing yet
+    await svc.skipToTrack(0, 30); // e.g. a chapter picked before it started
+    const plays = a.plays;
+    a.emit('loadedmetadata');
+    expect(a.src).toBe(FILE1);
+    expect(a.currentTime).toBe(30);
+    expect(a.plays).toBe(plays + 1);
+  });
+
+  it('a file that fails to load leaves no intent to play behind', async () => {
+    await startPlaying(0);
+    const a = el();
+    a.reachEnd(); // file 2 loading, meaning to play...
+    a.emit('error'); // ...but it never loads
+    expect(svc.getSnapshot().state).toBe('error');
+    await svc.skipToTrack(0, 30); // a later chapter pick waits for the play button
+    const plays = a.plays;
+    a.emit('loadedmetadata');
+    expect(a.plays).toBe(plays);
+    expect(a.paused).toBe(true);
+  });
+});
+
 describe('WebPlaybackService autoplay policy', () => {
   const realAudio = (globalThis as { Audio?: unknown }).Audio;
   let svc: PlaybackService;
@@ -369,10 +515,11 @@ describe('sourceFor', () => {
     });
   });
 
-  it('starts a transcoded stream at the clamped position', () => {
+  it('starts a transcoded stream at the clamped position, short of the very end', () => {
     const track = { id: 'x', url: 'u?transcode=1', title: 'T', duration: 100, transcoded: true };
     expect(sourceFor(track, 40)).toEqual({ url: 'u?transcode=1&t=40', offset: 40 });
-    expect(sourceFor(track, 400)).toEqual({ url: 'u?transcode=1&t=100', offset: 100 });
+    expect(sourceFor(track, 100)).toEqual({ url: 'u?transcode=1&t=99', offset: 99 });
+    expect(sourceFor(track, 400)).toEqual({ url: 'u?transcode=1&t=99', offset: 99 });
   });
 });
 

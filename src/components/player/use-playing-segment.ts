@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 
-import { currentSegment, type Segment } from './transport';
+import { currentSegment, scrubTarget, type Segment } from './transport';
 
 type PlayerSlice = ReturnType<typeof usePlayer.getState>;
 
@@ -26,8 +26,9 @@ export function selectPlayingSegment(s: PlayerSlice): Segment | null {
  * The playing segment for a scrubber (the full player's seek bar, the dock's chapter
  * scrubber): its shape (stable while the chapter plays), the seconds into it (live, or in
  * whole seconds where the caller only shows a clock), the seek that commits a place in it
- * (the whole book's seek, or the file's), and which of `bookmarks` (whole-book seconds,
- * from `usePlayingPins`) fall in it, as seconds into it.
+ * (the whole book's seek, held short of the book's end by `scrubTarget` so a scrub to the
+ * end of the last chapter does not finish the book; or the file's), and which of
+ * `bookmarks` (whole-book seconds, from `usePlayingPins`) fall in it, as seconds into it.
  */
 export function usePlayingSegment(
   bookmarks: readonly number[] = NONE,
@@ -56,8 +57,8 @@ export function usePlayingSegment(
     [bookmarks, perTrack, start, length],
   );
   const onSeek = useCallback(
-    (p: number) => (perTrack ? void seekInTrack(p) : void seekBook(start + p)),
-    [perTrack, start, seekBook, seekInTrack],
+    (p: number) => (perTrack ? void seekInTrack(p) : void seekBook(scrubTarget(start + p, total))),
+    [perTrack, start, total, seekBook, seekInTrack],
   );
   return { segment, elapsed, onSeek, bookmarks: inSegment };
 }

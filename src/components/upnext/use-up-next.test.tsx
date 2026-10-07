@@ -43,7 +43,11 @@ jest.mock('@/api/connection-clients', () => ({
     require('@/api/provider').useApiRegistry().clients.get(id) ?? null,
 }));
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+jest.mock('expo-router', () => ({
+  router: { push: (h: unknown) => mockPush(h) },
+  // No full player on top (`usePlayerOnTop`, which `usePlayBook` reads).
+  useSegments: () => [],
+}));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),

@@ -1,12 +1,22 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import type { StoreApi, UseBoundStore } from 'zustand';
 
 const mockGestures: unknown[] = [];
+const mockTouchActions: unknown[] = [];
 jest.mock('react-native-gesture-handler', () => ({
   ...jest.requireActual('react-native-gesture-handler'),
-  GestureDetector: ({ children, gesture }: { children: React.ReactNode; gesture: unknown }) => {
+  GestureDetector: ({
+    children,
+    gesture,
+    touchAction,
+  }: {
+    children: React.ReactNode;
+    gesture: unknown;
+    touchAction?: string;
+  }) => {
     mockGestures.push(gesture);
+    mockTouchActions.push(touchAction);
     return children;
   },
 }));
@@ -55,6 +65,7 @@ const TITLES = ['Prelude', 'Stormblessed', 'Bridge Four', 'The Shattered Plains'
 
 beforeEach(() => {
   mockGestures.length = 0;
+  mockTouchActions.length = 0;
 });
 
 async function layout(width = 400) {
@@ -76,6 +87,33 @@ describe('BookTimeline', () => {
     expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
     expect(screen.getAllByTestId('timeline-segment-ahead')).toHaveLength(1);
+  });
+
+  it('places each segment by its time, where the playhead, taps and pins map it', async () => {
+    // Uneven chapters: 0-10%, 10-60%, 60-70% and 70-100% of the book.
+    await render(
+      <BookTimeline starts={[0, 400, 2400, 2800]} total={4000} position={2500} {...H} />,
+    );
+    await layout(400);
+    const segments = screen.getAllByTestId(/^timeline-segment-/);
+    expect(segments.map((s) => StyleSheet.flatten(s.props.style))).toEqual([
+      expect.objectContaining({ left: '0%', width: '10%' }),
+      expect.objectContaining({ left: '10%', width: '50%' }),
+      expect.objectContaining({ left: '60%', width: '10%' }),
+      expect.objectContaining({ left: '70%', width: '30%' }),
+    ]);
+    // The 2-point gap comes out of each run's own end (none after the last), so it never
+    // pushes a later segment along.
+    const gaps = segments.map(
+      (s) => StyleSheet.flatten((s.children[0] as typeof s).props.style).marginRight,
+    );
+    expect(gaps).toEqual([2, 2, 2, 0]);
+  });
+
+  it('lets a touch that starts on it scroll the page on the web', async () => {
+    await render(<BookTimeline starts={STARTS} total={4000} position={0} {...H} />);
+    // Gesture-handler's default is `none`, which keeps the page from scrolling.
+    expect(mockTouchActions.at(-1)).toBe('pan-y');
   });
 
   it('is an adjustable "Whole-book timeline" naming the chapter and the place', async () => {
@@ -183,6 +221,11 @@ describe('BookTimeline', () => {
 });
 
 describe('PlayerBookTimeline', () => {
+  const prevOS = Platform.OS;
+  afterEach(() => {
+    Platform.OS = prevOS;
+  });
+
   beforeEach(() => {
     player.setState({
       nowPlaying: {
@@ -208,6 +251,23 @@ describe('PlayerBookTimeline', () => {
     await layout(400);
     await tapAt(300);
     expect(player.getState().seekBook).toHaveBeenCalledWith(3000);
+  });
+
+  it('never lands a scrub on the very end of the book, which would finish it', async () => {
+    Platform.OS = 'web';
+    await render(<PlayerBookTimeline />);
+    await layout(400);
+    // A drag or tap released past the right edge: 30 s short of the end, so the book is
+    // not finished and the Undo chip can still take the listener back.
+    await tapAt(420);
+    expect(player.getState().seekBook).toHaveBeenLastCalledWith(3970);
+    // The End key too.
+    await fireEvent(screen.getByRole('adjustable'), 'keyDown', {
+      key: 'End',
+      preventDefault: jest.fn(),
+    });
+    expect(player.getState().seekBook).toHaveBeenCalledTimes(2);
+    expect(player.getState().seekBook).toHaveBeenLastCalledWith(3970);
   });
 
   it('steps to the next chapter like the transport', async () => {

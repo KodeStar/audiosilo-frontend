@@ -3,12 +3,23 @@ import { Platform } from 'react-native';
 import type { StoreApi, UseBoundStore } from 'zustand';
 
 // The gestures run on the UI thread (no jest runtime for that): the detector just renders
-// its child and records the gesture, so a test can call its handlers directly.
+// its child and records the gesture, so a test can call its handlers directly, and its
+// web touch-action.
 const mockGestures: unknown[] = [];
+const mockTouchActions: unknown[] = [];
 jest.mock('react-native-gesture-handler', () => ({
   ...jest.requireActual('react-native-gesture-handler'),
-  GestureDetector: ({ children, gesture }: { children: React.ReactNode; gesture: unknown }) => {
+  GestureDetector: ({
+    children,
+    gesture,
+    touchAction,
+  }: {
+    children: React.ReactNode;
+    gesture: unknown;
+    touchAction?: string;
+  }) => {
     mockGestures.push(gesture);
+    mockTouchActions.push(touchAction);
     return children;
   },
 }));
@@ -188,6 +199,14 @@ describe('SeekBar', () => {
     expect(onTip).toHaveBeenLastCalledWith(true);
     await fireEvent(slider, 'pointerLeave');
     expect(onTip).toHaveBeenLastCalledWith(false);
+  });
+
+  it('leaves a vertical touch to the scrolling player on the web (touch-action pan-y)', async () => {
+    // Gesture-handler's default is `none`: a swipe that starts on the bar could never
+    // scroll the player's column.
+    mockTouchActions.length = 0;
+    await render(<SeekBar {...bar()} />);
+    expect(mockTouchActions.at(-1)).toBe('pan-y');
   });
 
   it('uses real peaks when given (same bars, any length)', async () => {

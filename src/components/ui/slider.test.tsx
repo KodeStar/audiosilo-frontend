@@ -4,12 +4,22 @@ import { Platform } from 'react-native';
 // The gestures are gesture-handler + reanimated on the UI thread (no jest runtime for
 // that); this suite covers the a11y and keyboard paths, so the detector just renders.
 // It records the gesture it was handed, so a test can check its identity and call its
-// handlers directly.
+// handlers directly, and its web touch-action.
 const mockGestures: unknown[] = [];
+const mockTouchActions: unknown[] = [];
 jest.mock('react-native-gesture-handler', () => ({
   ...jest.requireActual('react-native-gesture-handler'),
-  GestureDetector: ({ children, gesture }: { children: React.ReactNode; gesture: unknown }) => {
+  GestureDetector: ({
+    children,
+    gesture,
+    touchAction,
+  }: {
+    children: React.ReactNode;
+    gesture: unknown;
+    touchAction?: string;
+  }) => {
     mockGestures.push(gesture);
+    mockTouchActions.push(touchAction);
     return children;
   },
 }));
@@ -74,6 +84,13 @@ describe('Slider', () => {
     p.onValueCommit.mockClear();
     await key('a');
     expect(p.onValueCommit).not.toHaveBeenCalled();
+  });
+
+  it('leaves a vertical touch to the page on the web (touch-action pan-y)', async () => {
+    // Gesture-handler's default is `none`: a swipe that starts on it could never scroll.
+    mockTouchActions.length = 0;
+    await render(<Slider {...props()} />);
+    expect(mockTouchActions.at(-1)).toBe('pan-y');
   });
 
   it('ignores input while disabled', async () => {

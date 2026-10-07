@@ -84,7 +84,8 @@ export function Slider({
   const fill = tone === 'brand' ? themed.brand : themed.primary;
 
   return (
-    <GestureDetector gesture={gesture}>
+    // pan-y: on the web a touch that starts on the slider can still scroll the page.
+    <GestureDetector gesture={gesture} touchAction="pan-y">
       <View
         style={{ height: HIT_H }}
         className={cn(

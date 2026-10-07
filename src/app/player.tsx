@@ -51,6 +51,14 @@ export default function PlayerScreen() {
   // target still starts. The end of a book is not such a target: the credits start the
   // next book in place (`advanceTo`) and only then show it here, already playing.
   const startedKeyRef = useRef<string | null>(null);
+  // The route's jump (`?position=` / `?track=`: a chapter, file, bookmark or history tap)
+  // is applied ONCE per book and params, remembered here as `${key}|position|track`. The
+  // effect below re-runs whenever `nowPlaying` is replaced, and that happens for the
+  // SAME book while the player is open: the hot-swap to the downloaded copy when the
+  // book's download lands mid-listen. Jumping again then threw the listener back to the
+  // tapped place and saved that older place over the real one. A navigation with other
+  // params is a new jump.
+  const jumpedKeyRef = useRef<string | null>(null);
   // Start playback once the book AND its chapters/files have loaded - otherwise
   // multi-file/folder books would fall back to streaming the folder path and
   // chapters would be missing. Start point priority: explicit position (bookmark
@@ -64,6 +72,7 @@ export default function PlayerScreen() {
     // Keyed on the book's canonical rel_path (playBook stores that as nowPlaying.path,
     // which can differ from the decoded route param).
     const key = `${cid}|${libraryId}|${book.rel_path}`;
+    const jumpKey = `${key}|${position ?? ''}|${track ?? ''}`;
     // Compare against the book's canonical rel_path - playBook stores that as
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
@@ -74,6 +83,8 @@ export default function PlayerScreen() {
       nowPlaying?.path === book.rel_path
     ) {
       startedKeyRef.current = key; // this target is handled; don't auto-start it again
+      if (jumpedKeyRef.current === jumpKey) return; // this jump is already done
+      jumpedKeyRef.current = jumpKey;
       if (hasPos) void seekBook(posParam);
       else if (hasTrack) void goToTrack(trackParam);
       return;
@@ -83,6 +94,9 @@ export default function PlayerScreen() {
     // matches. A new target (different key) falls through and starts.
     if (startedKeyRef.current === key) return;
     startedKeyRef.current = key;
+    // The start below lands on the jump itself, so the book showing up as `nowPlaying`
+    // must not jump there a second time.
+    jumpedKeyRef.current = jumpKey;
     const startAt = hasPos ? posParam : undefined;
     void usePlayer
       .getState()

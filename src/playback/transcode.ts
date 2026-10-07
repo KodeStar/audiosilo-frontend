@@ -87,6 +87,28 @@ export function clampTranscodedSeek(position: number, duration?: number): number
   return duration != null && duration > 0 ? Math.min(pos, duration) : pos;
 }
 
+/** How close to a file's known end a transcoded stream is ever requested (seconds). A
+ * request at the very end leaves ffmpeg nothing to encode: the response carries no audio
+ * frames, the element fires 'error' rather than 'ended', so the end-of-book flow never
+ * runs and Retry asks for the same `t` again. Starting this far back plays the last second
+ * and ends the file naturally, which the engine reads as a real end (it is well within
+ * EARLY_END_SLACK_S). */
+export const TRANSCODE_TAIL_S = 1;
+
+/**
+ * The `t` to request a transcoded stream at for a track-absolute target: clamped into the
+ * file like `clampTranscodedSeek`, and with a known duration never later than
+ * TRANSCODE_TAIL_S before its end (nor below 0 for a file shorter than that). Only the
+ * request is held back: the reported position (`transcodedTrackPosition`) still runs to
+ * the end.
+ */
+export function transcodeStartAt(position: number, duration?: number): number {
+  const t = clampTranscodedSeek(position, duration);
+  return duration != null && duration > 0
+    ? Math.min(t, Math.max(0, duration - TRANSCODE_TAIL_S))
+    : t;
+}
+
 /** How far before the known end of a file an `ended` counts as the stream dying rather
  * than the file finishing (seconds). */
 export const EARLY_END_SLACK_S = 10;

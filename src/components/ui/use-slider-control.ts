@@ -1,9 +1,21 @@
 import { useEffect, useMemo } from 'react';
 import { type LayoutChangeEvent, Platform } from 'react-native';
-import { Gesture } from 'react-native-gesture-handler';
+import { Gesture, PointerType } from 'react-native-gesture-handler';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 
 import { useLatest } from '@/lib/use-latest';
+
+/** The pointer gesture-handler makes up on the web when Space or Enter is pressed on a
+ * focused detector: a press at the view's centre. The slider's own `onKeyDown` handles
+ * its keys, and Space is play/pause there, so the gestures ignore it (else Space on the
+ * focused timeline jumps to the middle of the book). A plain number at module scope, so
+ * the worklets capture a value. */
+const KEY_POINTER = PointerType.KEY;
+
+/** How far (points) a drag must move sideways before it scrubs, and how far up or down
+ * fails it first: a vertical swipe that starts on a scrubber belongs to the scroll view
+ * around it (the full player's column), not to a seek. */
+const DRAG_SLOP = 10;
 
 function clampFrac(v: number): number {
   'worklet';
@@ -38,10 +50,11 @@ export type SliderControlOptions = {
  * The behaviour of a horizontal slider, shared by the `Slider` primitive, the seek bar
  * and the whole-book timeline, so the fixes live once:
  *
- * - Gesture-handler + reanimated: a tap jumps, a drag scrubs (previewed through
- *   `onPreview` on the JS thread) and commits on release. The gesture is built from
- *   stable stand-ins for the callbacks (`useLatest`), so a consumer that re-renders
- *   every playback tick does not reattach the handlers mid-drag.
+ * - Gesture-handler + reanimated: a tap jumps, a sideways drag scrubs (previewed through
+ *   `onPreview` on the JS thread) and commits on release; a vertical swipe, or a drag
+ *   something else took over, seeks nothing. The gesture is built from stable stand-ins
+ *   for the callbacks (`useLatest`), so a consumer that re-renders every playback tick
+ *   does not reattach the handlers mid-drag.
  * - The live value reaches the UI thread in an EFFECT (`posFrac`), never during render
  *   (Reanimated warns about a shared-value write while rendering).
  * - One accessibility element: `adjustable` with min/max/now/value text through the
@@ -52,8 +65,10 @@ export type SliderControlOptions = {
  * The caller draws: `posFrac` is where the value is (0..1), `dragFrac` where the finger
  * is while `dragging` is 1, `width` the measured track width (set by `onLayout`); `track`
  * is the four together, one stable object for a worklet to read (the player's
- * `Playhead`). Spread `controlProps` on the View that `<GestureDetector gesture={gesture}>`
- * wraps.
+ * `Playhead`). Spread `controlProps` on the View that
+ * `<GestureDetector gesture={gesture} touchAction="pan-y">` wraps: on the web the
+ * detector otherwise sets `touch-action: none`, and a touch that starts on the slider
+ * could never scroll the page.
  */
 export function useSliderControl({
   value,
@@ -95,16 +110,23 @@ export function useSliderControl({
 
     const pan = Gesture.Pan()
       .enabled(!disabled)
+      .activeOffsetX([-DRAG_SLOP, DRAG_SLOP])
+      .failOffsetY([-DRAG_SLOP, DRAG_SLOP])
       .onBegin((e) => {
+        if (e.pointerType === KEY_POINTER) return;
         dragging.set(1);
         dragFrac.set(fracAt(e.x));
         if (span > 0) runOnJS(previewValue)(min + dragFrac.get() * span);
       })
       .onUpdate((e) => {
+        if (e.pointerType === KEY_POINTER) return;
         dragFrac.set(fracAt(e.x));
         if (span > 0) runOnJS(previewValue)(min + dragFrac.get() * span);
       })
-      .onEnd((e) => {
+      .onEnd((e, success) => {
+        // A drag the scroll view or the system took over ends unsuccessfully: it never
+        // seeks. onFinalize still ends the preview.
+        if (!success || e.pointerType === KEY_POINTER) return;
         const f = fracAt(e.x);
         posFrac.set(f); // hold at release, no snap-back before the prop catches up
         runOnJS(commit)(f);
@@ -120,6 +142,7 @@ export function useSliderControl({
     const tap = Gesture.Tap()
       .enabled(!disabled)
       .onEnd((e) => {
+        if (e.pointerType === KEY_POINTER) return;
         const f = fracAt(e.x);
         posFrac.set(f);
         runOnJS(commitTap)(f);

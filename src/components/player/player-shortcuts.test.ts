@@ -13,6 +13,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
 import { toast } from '@/components/ui/toast';
 import i18n from '@/i18n';
+import { ownsArrows, ownsSpace } from '@/lib/keyboard';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
 
@@ -39,8 +40,18 @@ const key = (k: string, mods: Partial<PlayerKey> = {}): PlayerKey => ({
 const CTX: PlayerKeyContext = {
   editable: false,
   modalOpen: false,
-  focusOwnsKeys: false,
+  focusOwnsSpace: false,
+  focusOwnsArrows: false,
   loaded: true,
+};
+
+/** The context the web listener (`use-player-shortcuts.ts`) builds with this focused. */
+const focusedOn = (tagName: string, role: string | null = null): PlayerKeyContext => {
+  const el = {
+    tagName,
+    getAttribute: (n: string) => (n === 'role' ? role : null),
+  } as unknown as Element;
+  return { ...CTX, focusOwnsSpace: ownsSpace(el), focusOwnsArrows: ownsArrows(el) };
 };
 
 describe('playerShortcutFor', () => {
@@ -96,13 +107,42 @@ describe('playerShortcutFor', () => {
     expect(playerShortcutFor(key('Escape'), idle)).toBe('close');
   });
 
-  it('leaves Space and the arrows to a focused control (a button, a slider)', () => {
-    const focused = { ...CTX, focusOwnsKeys: true };
-    expect(playerShortcutFor(key(' '), focused)).toBeNull();
-    expect(playerShortcutFor(key('ArrowLeft'), focused)).toBeNull();
-    expect(playerShortcutFor(key('ArrowRight', { shiftKey: true }), focused)).toBeNull();
-    // Letters still work there.
-    expect(playerShortcutFor(key('k'), focused)).toBe('toggle');
+  it('leaves Space and the arrows each to a focused control that uses that key', () => {
+    const space = { ...CTX, focusOwnsSpace: true };
+    expect(playerShortcutFor(key(' '), space)).toBeNull();
+    expect(playerShortcutFor(key('ArrowLeft'), space)).toBe('back');
+    const arrows = { ...CTX, focusOwnsArrows: true };
+    expect(playerShortcutFor(key('ArrowLeft'), arrows)).toBeNull();
+    expect(playerShortcutFor(key('ArrowRight', { shiftKey: true }), arrows)).toBeNull();
+    expect(playerShortcutFor(key(' '), arrows)).toBe('toggle');
+  });
+
+  it('plays and pauses with Space over a focused slider, which keeps the arrows', () => {
+    // Space used to stand aside here, and gesture-handler turned it into a tap at the
+    // slider's centre: the timeline jumped to the middle of the book.
+    const slider = focusedOn('DIV', 'slider');
+    expect(playerShortcutFor(key(' '), slider)).toBe('toggle');
+    expect(playerShortcutFor(key('ArrowLeft'), slider)).toBeNull();
+    expect(playerShortcutFor(key('ArrowRight', { shiftKey: true }), slider)).toBeNull();
+  });
+
+  it('skips with the arrows over a focused button, which keeps Space', () => {
+    // After a click on the dock's play button the focus stays on it.
+    for (const button of [focusedOn('BUTTON'), focusedOn('DIV', 'button')]) {
+      expect(playerShortcutFor(key('ArrowRight'), button)).toBe('forward');
+      expect(playerShortcutFor(key('ArrowLeft', { shiftKey: true }), button)).toBe(
+        'previousChapter',
+      );
+      expect(playerShortcutFor(key(' '), button)).toBeNull();
+    }
+  });
+
+  it('leaves both to a focused tab, and the letters work over any control', () => {
+    const tab = focusedOn('DIV', 'tab');
+    expect(playerShortcutFor(key(' '), tab)).toBeNull();
+    expect(playerShortcutFor(key('ArrowRight'), tab)).toBeNull();
+    expect(playerShortcutFor(key('k'), tab)).toBe('toggle');
+    expect(playerShortcutFor(key('l'), focusedOn('DIV', 'slider'))).toBe('forward');
   });
 
   it('ignores other keys', () => {

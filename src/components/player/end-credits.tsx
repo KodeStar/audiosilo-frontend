@@ -27,6 +27,7 @@ import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { contentKey } from '@/lib/content-key';
 import { formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
@@ -55,11 +56,18 @@ import {
 import { RatingStars } from './rating-stars';
 import type { PlayTarget } from './use-play-book';
 import { useBookSpeed } from './use-time-left';
-import { advanceTo, dropFromQueue } from './end-of-book';
+import { advanceTo, dropFromQueue, useAutoPlayHold } from './end-of-book';
 import { selectIsLoaded } from './playing-target';
 
 /** Spines on the year shelf at most (the oldest go first when the row is narrower). */
 const SHELF_MAX = { phone: 9, wide: 14 };
+
+/** How often the grace countdown ticks. */
+const GRACE_TICK_MS = 500;
+/** A step between two ticks at least this long is time the countdown did not run through
+ * (the app suspended, a frozen tab), so it is not counted. A throttled background tab
+ * still ticks about once a second, well inside it, and keeps counting down. */
+const GRACE_GAP_MS = 4 * GRACE_TICK_MS;
 
 /**
  * The end-credits ("book finished") screen, the `/finished` root modal: the finished
@@ -143,6 +151,10 @@ function EndCreditsBody({
   const [cancelled, setCancelled] = useState(false);
   // Play now (or the countdown) is starting the next book.
   const [starting, setStarting] = useState(false);
+  // The book ended under the listener's sleep timer (`BookEndedListener`): that end is
+  // where the timer stopped the night, so the countdown never starts the next book for a
+  // listener who is asleep. Play now still does.
+  const sleptThrough = useAutoPlayHold((s) => s.key === contentKey(cid, libraryId, path));
 
   // Fire at most once - Play now (manual) and the countdown share this. The next book
   // starts in place (`advanceTo`, which also takes it off Up next), then the player
@@ -394,7 +406,7 @@ function EndCreditsBody({
             finished={target}
             autoPlayNext={autoPlayNext}
             stillPlaying={stillPlaying}
-            held={cancelled || starting}
+            held={cancelled || starting || sleptThrough}
             phone={phone}
             starting={starting}
             onPlay={playNext}
@@ -435,7 +447,8 @@ function EndCreditsBody({
  * The Up next card with its countdown, the one part of the credits that follows the
  * clock: the finished book's remaining audio while it still plays (whole seconds), else
  * the grace countdown once it is over (`endCreditsDecision`), firing `onPlay` when that
- * runs out. `held` (Not now, or the next book already starting) stops it.
+ * runs out. `held` (Not now, the next book already starting, or a book that ended under
+ * the sleep timer) stops it.
  */
 function NextUp({
   next,
@@ -467,12 +480,26 @@ function NextUp({
   // callback (async setState, so no synchronous setState-in-effect) advances the elapsed
   // time; it starts fresh from 0 because the grace phase activates at most once per visit
   // (auto arrival, or stillPlaying flipping false - during which the interval never ran).
+  //
+  // It counts the time the interval saw pass, not the wall clock since it started. A
+  // suspended app runs no timers (iOS stops JS once the audio stops; Android pauses JS
+  // timers in the background), so with the credits open when the book ended on a locked
+  // phone, the first tick after unlocking hours later read hours gone and started the next
+  // book out loud at once, with no countdown ever shown. A step far longer than a tick is
+  // such a gap: it is left out, and the countdown carries on from where it stopped.
   const [elapsedGrace, setElapsedGrace] = useState(0);
   const graceActive = autoPlayNext && !held && !stillPlaying;
   useEffect(() => {
     if (!graceActive) return;
-    const start = Date.now();
-    const id = setInterval(() => setElapsedGrace((Date.now() - start) / 1000), 500);
+    let counted = 0;
+    let last = Date.now();
+    const id = setInterval(() => {
+      const now = Date.now();
+      const step = now - last;
+      last = now;
+      if (step > 0 && step < GRACE_GAP_MS) counted += step;
+      setElapsedGrace(counted / 1000);
+    }, GRACE_TICK_MS);
     return () => clearInterval(id);
   }, [graceActive]);
 

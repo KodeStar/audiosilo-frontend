@@ -86,6 +86,21 @@ export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: ()
  * 22:49"), and the chapter tile's 30-second rule needs no finer than this. */
 const SHEET_POSITION_STEP = 15;
 
+/**
+ * The place the sheet counts from: the live whole-book position floored to
+ * `SHEET_POSITION_STEP`, but never below the start of the chapter playing. Chapter ends are
+ * rarely multiples of 15 s, so just after a boundary the floored place would still sit in
+ * the chapter that has ended: "This chapter" would be that one (a timer armed behind the
+ * playhead, which pauses the book at once) and every "N chapters" row would stop a
+ * chapter early.
+ */
+function selectSheetPosition(s: ReturnType<typeof usePlayer.getState>): number {
+  const live = selectBookPosition(s);
+  const floored = Math.floor(live / SHEET_POSITION_STEP) * SHEET_POSITION_STEP;
+  const start = selectCurrentChapter(s)?.book_offset;
+  return start !== undefined && start <= live ? Math.max(floored, start) : floored;
+}
+
 /** The body, mounted only while the sheet is open (it follows the position, by
  * `SHEET_POSITION_STEP`). */
 function SleepSheetBody({ onClose }: { onClose: () => void }) {
@@ -95,11 +110,8 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const pauseAtPosition = useSleepTimer((s) => s.pauseAtPosition);
   const startDuration = useSleepTimer((s) => s.startDuration);
   const startUntilPosition = useSleepTimer((s) => s.startUntilPosition);
-  const startChapterTimer = useSleepTimer((s) => s.startChapterTimer);
   const queue = usePlayer((s) => s.nowPlaying?.queue ?? null);
-  const position = usePlayer(
-    (s) => Math.floor(selectBookPosition(s) / SHEET_POSITION_STEP) * SHEET_POSITION_STEP,
-  );
+  const position = usePlayer(selectSheetPosition);
   const rate = usePlayer((s) => s.rate);
 
   /** Arm (a deliberate touch, for the drift-off prompt) and close. */
@@ -109,8 +121,10 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
-  // The tile arms exactly what `startChapterTimer` would, so it shows that target's
-  // countdown: the next chapter end at least 30 s away, else the end of the book.
+  // The tile's target is the one `startChapterTimer`'s rule picks (`chapterTimerTarget`:
+  // the next chapter end at least 30 s away, else the end of the book), from the sheet's
+  // place, and the tile arms exactly that target: re-picking from the live place on the
+  // press could cross the 30 s rule and stop a chapter later than the caption said.
   const chapterTarget = queue ? chapterTimerTarget(queue, position, rate, true) : null;
   const rows = queue ? stopAfterRows(queue, position, rate) : [];
   // The wall clock, every 15 s: enough for the rows' "ends 22:49".
@@ -147,7 +161,9 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
               time: formatDuration(chapterTarget.untilEnd),
             })}
             selected={stopsAt(phase, pauseAtPosition, chapterTarget.position)}
-            onPress={() => pick(() => startChapterTimer({ allowEndOfBook: true }))}
+            onPress={() =>
+              pick(() => startUntilPosition(chapterTarget.position, chapterTarget.label))
+            }
             className="grow-[2] basis-[42%]"
           />
         ) : null}
