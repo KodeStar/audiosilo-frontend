@@ -6,7 +6,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock, formatDuration } from '@/lib/format';
+import { formatClock, formatDurationOrZero } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
@@ -147,7 +147,7 @@ export function ChaptersPanel({
         ? row.left > 0
           ? `-${formatClock(row.left)}`
           : ''
-        : t('player.companion.chapterIn', { time: formatDuration(row.until) || '0m' });
+        : t('player.companion.chapterIn', { time: formatDurationOrZero(row.until) });
 
   const onPress = (i: number) => {
     if (perTrack) void goToTrack(i);

@@ -8,6 +8,8 @@
  * Pure, so it is unit-tested; the component only draws `barsPath`.
  */
 
+import { hashString } from '@/lib/monogram';
+
 /** Bar pitch (bar + gap) the count is derived from: 56 bars at a phone's 350 points,
  * capped at 96 (the desktop player). */
 const BAR_PITCH = 6.25;
@@ -20,16 +22,6 @@ export const BAR_GAP = 2;
 export function barCountFor(width: number): number {
   if (!(width > 0)) return 0;
   return Math.max(MIN_BARS, Math.min(MAX_BARS, Math.round(width / BAR_PITCH)));
-}
-
-/** FNV-1a, 32-bit: a stable seed from a string. */
-export function hashString(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
 }
 
 /** mulberry32: a small, good-enough deterministic PRNG over [0, 1). */
