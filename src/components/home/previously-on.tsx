@@ -10,6 +10,7 @@ import { BookCover } from '@/components/library/book-cover';
 import { CoverWash } from '@/components/library/cover-wash';
 import { useBookCommunity } from '@/components/library/use-book-community';
 import { Attribution } from '@/components/player/companion/companion-pieces';
+import { selectIsLoaded } from '@/components/player/playing-target';
 import { startBookInPlace } from '@/components/player/start-book';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
@@ -17,12 +18,12 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { chapterLabel } from '@/lib/chapter-label';
-import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { contentKeyOf } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { selectBookKey, usePlayer } from '@/playback/store';
+import { usePlayer } from '@/playback/store';
 import { colors } from '@/theme/tokens';
 
 import type { BookAt } from './home-model';
@@ -84,7 +85,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
 
   const dismissed = useDismissed((s) => s.keys.includes(key));
   const dismiss = useDismissed((s) => s.dismiss);
-  const loaded = usePlayer((s) => selectBookKey(s) === contentKey(connectionId, libraryId, path));
+  const loaded = usePlayer(selectIsLoaded(at));
   const { metadata, book, chapterData, chapterStarts, work } = useBookCommunity(at);
 
   const card = previouslyOn({

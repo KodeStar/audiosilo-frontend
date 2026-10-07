@@ -21,6 +21,7 @@ import {
   metaEnabledFor,
   splitCharacters,
 } from '@/components/library/meta-gating';
+import { selectIsLoaded } from '@/components/player/playing-target';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { useBookSpeed } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -77,12 +78,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const { data: stats } = useMyStats('30d');
 
   // Only this book's own figures follow the player; any other book reads its save.
-  const loaded = usePlayer(
-    (s) =>
-      s.nowPlaying?.connectionId === at.connectionId &&
-      s.nowPlaying.libraryId === libraryId &&
-      s.nowPlaying.path === path,
-  );
+  const loaded = usePlayer(selectIsLoaded(at));
   const livePosition = usePlayer((s) =>
     loaded ? Math.floor(selectBookPosition(s) / LIVE_STEP_S) * LIVE_STEP_S : 0,
   );

@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dimensions } from 'react-native';
-import { useShallow } from 'zustand/react/shallow';
 
 import { useBookProgress } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
@@ -16,6 +15,7 @@ import { useLatest } from '@/lib/use-latest';
 import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 
 import { usePlayerOnTop, usePlayerSheets } from '../player-sheets';
+import { usePlayingTarget } from '../playing-target';
 import type { PlayTarget } from '../use-play-book';
 import { type RevealSample, revealOnCrossing } from './companion-model';
 import { useCompanion } from './companion-store';
@@ -123,17 +123,7 @@ function BookWatch({ target }: { target: PlayTarget }) {
  * fires wherever the listener is: the full player, any page, the lock screen's return.
  */
 export function CompanionRevealListener() {
-  const target = usePlayer(
-    useShallow((s) =>
-      s.nowPlaying
-        ? {
-            connectionId: s.nowPlaying.connectionId,
-            libraryId: s.nowPlaying.libraryId,
-            path: s.nowPlaying.path,
-          }
-        : null,
-    ),
-  );
+  const target = usePlayingTarget();
   if (!target) return null;
   return (
     <ConnectionScope connectionId={target.connectionId}>

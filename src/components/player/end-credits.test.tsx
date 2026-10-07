@@ -68,6 +68,7 @@ jest.mock('@/api/provider', () => {
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockEnded = true;
 let mockSavedFinished = false;
+let mockSavedSpeed = 1.25;
 let mockStats: UserStats | undefined;
 let mockRating: { rating: number; note: string } | null = null;
 const mockSetRating = jest.fn();
@@ -95,7 +96,9 @@ jest.mock('@/api/hooks', () => {
       },
     }),
     useBookMeta: () => ({ data: undefined }),
-    useBookProgress: () => ({ data: { playback_speed: 1.25, finished: mockSavedFinished } }),
+    useBookProgress: () => ({
+      data: { playback_speed: mockSavedSpeed, finished: mockSavedFinished },
+    }),
     useMyStats: () => ({ data: mockStats, isLoading: false }),
     useAllProgressAll: () => ({ progress: [] }),
     useRating: () => ({ data: mockRating }),
@@ -200,6 +203,7 @@ beforeEach(() => {
   mockStats = undefined;
   mockEnded = true;
   mockSavedFinished = false;
+  mockSavedSpeed = 1.25;
   mockRating = null;
   mockEntry = undefined;
   mockLayout = 'desktop';
@@ -238,6 +242,14 @@ describe('EndCredits', () => {
     expect(screen.getByText('Project Hail Mary')).toBeTruthy();
     expect(screen.getByText('16h 6m · Streams from Hearthside')).toBeTruthy();
     expect(mockHistory).toHaveBeenCalledWith(1, PATH, 500);
+  });
+
+  it("says the speed the book plays at: its saved one, else the listener's default", async () => {
+    mockSavedSpeed = 0;
+    useSettings.setState({ defaultRate: 1.1 });
+    await mount();
+    expect(screen.getByText('1.1×')).toBeTruthy();
+    useSettings.setState({ defaultRate: 1 });
   });
 
   it('Play now plays the queue head and takes it off Up next', async () => {

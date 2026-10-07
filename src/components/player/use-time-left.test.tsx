@@ -22,13 +22,14 @@ jest.mock('@/playback/store', () => {
 import { usePlayer as realUsePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { type BookRef, useBookSpeed, useBookTimeLeft, usePlayingTimeLeft } from './use-time-left';
+import type { PlayTarget } from './use-play-book';
+import { useBookSpeed, useBookTimeLeft, usePlayingTimeLeft } from './use-time-left';
 /* eslint-enable import/first */
 
 const player = realUsePlayer as unknown as UseBoundStore<StoreApi<MockPlayer>>;
 
-const BOOK: BookRef = { connectionId: 'srv', libraryId: 1, path: 'a/book' };
-const OTHER: BookRef = { ...BOOK, path: 'a/other' };
+const BOOK: PlayTarget = { connectionId: 'srv', libraryId: 1, path: 'a/book' };
+const OTHER: PlayTarget = { ...BOOK, path: 'a/other' };
 const loaded = (total: number) => ({ ...BOOK, queue: { total } });
 
 const onRender = jest.fn();
@@ -37,7 +38,7 @@ function Playing() {
   onRender();
   return <Text testID="left">{usePlayingTimeLeft()}</Text>;
 }
-function AnyBook(props: { book: BookRef; position: number; duration: number; speed?: number }) {
+function AnyBook(props: { book: PlayTarget; position: number; duration: number; speed?: number }) {
   const left = useBookTimeLeft(props.book, {
     position: props.position,
     duration: props.duration,
@@ -105,6 +106,22 @@ describe('useBookTimeLeft / useBookSpeed', () => {
     await render(<AnyBook book={BOOK} position={0} duration={3600} speed={1} />);
     expect(screen.getByTestId('left')).toHaveTextContent('15m left at 2×');
     expect(screen.getByTestId('speed')).toHaveTextContent('2');
+  });
+
+  it('a row that is not the loaded book never re-renders for the player', async () => {
+    player.setState({ position: 100, nowPlaying: loaded(7300) });
+    let rowRenders = 0;
+    function Row() {
+      rowRenders++;
+      return <Text>{useBookTimeLeft(OTHER, { position: 0, duration: 3600 })}</Text>;
+    }
+    await render(<Row />);
+    const before = rowRenders;
+    for (const position of [101, 160, 900, 4000]) {
+      await act(async () => player.setState({ position }));
+    }
+    expect(rowRenders).toBe(before);
+    expect(screen.getByText('1h left')).toBeTruthy();
   });
 
   it('keeps the saved place while the loaded book still reads 0', async () => {

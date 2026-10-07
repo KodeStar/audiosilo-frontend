@@ -1,6 +1,13 @@
 import i18n from '@/i18n';
 
-import { bookSpeed, formatTimeLeft, isNormalSpeed, timeLeft, timeLeftLabel } from './time-left';
+import {
+  bookSpeed,
+  displaySeconds,
+  formatTimeLeft,
+  isNormalSpeed,
+  timeLeft,
+  timeLeftLabel,
+} from './time-left';
 
 const t = i18n.t.bind(i18n);
 
@@ -91,5 +98,19 @@ describe('timeLeftLabel', () => {
   it('labels a time-left figure with the speed, or plainly at 1x', () => {
     expect(timeLeftLabel(t, 1.25)).toBe('left at 1.25×');
     expect(timeLeftLabel(t, 1)).toBe('left');
+  });
+});
+
+describe('displaySeconds', () => {
+  it('keeps what formatDuration tells apart: minutes from a minute up, seconds below', () => {
+    expect(displaySeconds(3599.4)).toBe(3540);
+    expect(displaySeconds(3599.6)).toBe(3600);
+    expect(displaySeconds(61)).toBe(60);
+    expect(displaySeconds(59.4)).toBe(59);
+    expect(displaySeconds(0)).toBe(0);
+    for (const s of [0.3, 45, 59.6, 61, 3599.4, 3600, 80_123.7])
+      expect(formatTimeLeft(t, { seconds: displaySeconds(s), speed: 1.5 })).toBe(
+        formatTimeLeft(t, { seconds: s, speed: 1.5 }),
+      );
   });
 });

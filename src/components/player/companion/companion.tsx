@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
-import { useShallow } from 'zustand/react/shallow';
 
 import { ConnectionScope } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
@@ -14,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 
 import { addBookmarkHere } from '../player-shortcuts';
+import { usePlayingTarget } from '../playing-target';
 import type { PlayTarget } from '../use-play-book';
 import { ChaptersPanel } from './chapters-panel';
 import { activeCompanionTab, type CompanionTab, companionTabs } from './companion-model';
@@ -171,17 +171,7 @@ export function Companion({
   onChapter?: () => void;
   className?: string;
 }) {
-  const target = usePlayer(
-    useShallow((s) =>
-      s.nowPlaying
-        ? {
-            connectionId: s.nowPlaying.connectionId,
-            libraryId: s.nowPlaying.libraryId,
-            path: s.nowPlaying.path,
-          }
-        : null,
-    ),
-  );
+  const target = usePlayingTarget();
   if (!target) return null;
   return (
     <View className={cn(variant !== 'inline' && 'flex-1', className)}>
