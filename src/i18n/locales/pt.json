@@ -199,7 +199,7 @@
     "continueMore_other": "Mais {{count}} em curso",
     "allInProgress": "Todos em curso",
     "acrossServers": "De todos os teus servidores",
-    "progressCaption": "{{percent}}% · faltam {{left}}",
+    "progressCaption": "{{percent}}% · {{left}}",
     "finishedWhen": "Terminado {{when}}",
     "servers_one": "{{count}} servidor",
     "servers_other": "{{count}} servidores",
@@ -222,7 +222,6 @@
       "chapterShort": "Cap. {{chapter}} de {{total}}",
       "scaleLabel": "{{percent}}% do livro ouvido",
       "through": "do livro ouvido",
-      "leftAt": "restantes a {{speed}}",
       "finishPace": "fim ao teu ritmo",
       "resume": "Retomar",
       "resumeChapter": "Retomar o capítulo {{chapter}}",
@@ -398,7 +397,7 @@
       "matches_one": "{{shown}} de {{total}} corresponde",
       "matches_other": "{{shown}} de {{total}} correspondem",
       "loadingMore": "A carregar mais...",
-      "progress": "{{percent}} % · faltam {{left}}",
+      "progress": "{{percent}}% · {{left}}",
       "finishedWhen": "Terminado {{when}}",
       "rail": "Saltar para uma letra",
       "sort": {
@@ -760,7 +759,6 @@
     "controls": {
       "fileOf": "Ficheiro {{current}} de {{total}}",
       "fileNumber": "Ficheiro {{number}}",
-      "timeLeft": "{{time}} restante ({{rate}})",
       "showChapters": "Mostrar capítulos",
       "close": "Fechar",
       "previous": "Capítulo anterior",
@@ -779,7 +777,9 @@
       "label": "Marcadores",
       "empty": "Ainda não há marcadores.",
       "saved": "Marcador guardado",
-      "addAt": "Adicionar marcador em {{time}}"
+      "addAt": "Adicionar marcador em {{time}}",
+      "added": "Marcador adicionado",
+      "addFailed": "Não foi possível adicionar o marcador"
     },
     "history": {
       "label": "Histórico de audição",
@@ -815,8 +815,13 @@
       "title": "Velocidade de reprodução"
     },
     "seek": {
-      "label": "Posição de reprodução",
-      "value": "{{position}} de {{duration}}"
+      "label": "Posição no capítulo",
+      "value": "{{position}} de {{duration}}",
+      "labelFile": "Posição no ficheiro",
+      "inBook": "{{time}} no livro",
+      "clickToJump": "Clica para saltar",
+      "chapterLeft": "faltam {{time}} do capítulo · termina às {{clock}}",
+      "fileLeft": "faltam {{time}} do ficheiro · termina às {{clock}}"
     },
     "finished": {
       "heading": "Livro concluído",
@@ -829,6 +834,33 @@
     "menu": {
       "label": "Mais",
       "viewCredits": "Ver créditos finais"
+    },
+    "timeLeft": {
+      "left": "faltam {{time}}",
+      "leftAt": "faltam {{time}} a {{speed}}",
+      "label": "restantes",
+      "labelAt": "restantes a {{speed}}"
+    },
+    "timeline": {
+      "label": "Linha do tempo do livro inteiro",
+      "value": "{{percent}}%, {{position}} de {{total}}",
+      "axis": "{{percent}}% · {{position}}"
+    },
+    "undo": {
+      "label": "Voltar a {{time}}",
+      "restored": "De volta onde estavas"
+    },
+    "shortcuts": {
+      "title": "Atalhos de teclado",
+      "hint": "Funcionam em todo o leitor web, exceto enquanto escreves.",
+      "or": "ou",
+      "playPause": "Reproduzir ou pausar",
+      "chapters": "Capítulo anterior ou seguinte",
+      "speed": "Mais lento ou mais rápido (0,05×)",
+      "bookmark": "Adicionar um marcador",
+      "player": "Abrir o leitor completo",
+      "palette": "Pesquisa e comandos",
+      "help": "Esta ajuda"
     }
   },
   "reconnect": {
@@ -879,10 +911,8 @@
     "serverMore_one": "{{name}} + mais {{count}}",
     "serverMore_other": "{{name}} + mais {{count}}",
     "openPlayer": "Abrir o leitor completo de {{title}}",
-    "titleTimeLeft": "{{title}} · faltam {{time}}",
     "dock": {
       "label": "Leitor",
-      "bookLeft": "Faltam {{time}}",
       "savedLocally": "Guardado neste dispositivo, será sincronizado",
       "expand": "Expandir o leitor"
     },
@@ -972,7 +1002,6 @@
     "queued": "{{time}} na fila",
     "nothingQueued": "Nada na fila",
     "nowPlaying": "A tocar agora",
-    "leftAtSpeed": "faltam {{time}} a {{speed}}x",
     "clear": "Limpar",
     "clearLabel": "Limpar A seguir",
     "cleared": "A seguir limpo",

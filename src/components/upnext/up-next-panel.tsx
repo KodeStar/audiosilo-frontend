@@ -5,7 +5,7 @@ import { useBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
-import { useBookTimeLeft } from '@/components/player/book-progress';
+import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -174,19 +174,9 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
   const themed = useThemeColors();
   const chapter = usePlayer(selectCurrentChapter);
   const isPlaying = usePlayer(selectIsPlaying);
-  const rate = usePlayer((s) => s.rate);
   const toggle = usePlayer((s) => s.toggle);
-  const left = useBookTimeLeft(nowPlaying.queue.total);
-  const where = [
-    chapter ? chapterLabel(chapter, t) : '',
-    left
-      ? rate !== 1
-        ? t('upnext.leftAtSpeed', { time: left, speed: rate })
-        : t('shell.dock.bookLeft', { time: left })
-      : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const left = usePlayingTimeLeft();
+  const where = [chapter ? chapterLabel(chapter, t) : '', left].filter(Boolean).join(' · ');
   return (
     <View className="mx-1.5 mb-3 flex-row items-center gap-3 rounded-2xl bg-muted p-3">
       <BookCover

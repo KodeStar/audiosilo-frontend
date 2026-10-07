@@ -199,7 +199,7 @@
     "continueMore_other": "Altri {{count}} in corso",
     "allInProgress": "Tutti quelli in corso",
     "acrossServers": "Da tutti i tuoi server",
-    "progressCaption": "{{percent}}% · mancano {{left}}",
+    "progressCaption": "{{percent}}% · {{left}}",
     "finishedWhen": "Terminato {{when}}",
     "servers_one": "{{count}} server",
     "servers_other": "{{count}} server",
@@ -222,7 +222,6 @@
       "chapterShort": "Cap. {{chapter}} di {{total}}",
       "scaleLabel": "{{percent}}% del libro ascoltato",
       "through": "del libro ascoltato",
-      "leftAt": "rimanenti a {{speed}}",
       "finishPace": "fine al tuo ritmo",
       "resume": "Riprendi",
       "resumeChapter": "Riprendi il capitolo {{chapter}}",
@@ -398,7 +397,7 @@
       "matches_one": "{{shown}} su {{total}} corrisponde",
       "matches_other": "{{shown}} su {{total}} corrispondono",
       "loadingMore": "Caricamento di altri libri...",
-      "progress": "{{percent}} % · ne restano {{left}}",
+      "progress": "{{percent}}% · {{left}}",
       "finishedWhen": "Finito {{when}}",
       "rail": "Vai a una lettera",
       "sort": {
@@ -760,15 +759,14 @@
     "controls": {
       "fileOf": "File {{current}} di {{total}}",
       "fileNumber": "File {{number}}",
-      "timeLeft": "{{time}} rimanente ({{rate}})",
       "showChapters": "Mostra capitoli",
       "close": "Chiudi",
       "previous": "Capitolo precedente",
       "next": "Capitolo successivo",
       "play": "Riproduci",
       "pause": "Pausa",
-      "skipBack": "Torna indietro di {{seconds}} secondi",
-      "skipForward": "Avanza di {{seconds}} secondi"
+      "skipBack": "Indietro di {{seconds}} secondi",
+      "skipForward": "Avanti di {{seconds}} secondi"
     },
     "chapters": {
       "chaptersTitle": "Capitoli",
@@ -779,7 +777,9 @@
       "label": "Segnalibri",
       "empty": "Ancora nessun segnalibro.",
       "saved": "Segnalibro salvato",
-      "addAt": "Aggiungi segnalibro a {{time}}"
+      "addAt": "Aggiungi segnalibro a {{time}}",
+      "added": "Segnalibro aggiunto",
+      "addFailed": "Impossibile aggiungere il segnalibro"
     },
     "history": {
       "label": "Cronologia d'ascolto",
@@ -815,8 +815,13 @@
       "title": "Velocità di riproduzione"
     },
     "seek": {
-      "label": "Posizione di riproduzione",
-      "value": "{{position}} di {{duration}}"
+      "label": "Posizione nel capitolo",
+      "value": "{{position}} di {{duration}}",
+      "labelFile": "Posizione nel file",
+      "inBook": "{{time}} nel libro",
+      "clickToJump": "Fai clic per saltare",
+      "chapterLeft": "mancano {{time}} alla fine del capitolo · finisce alle {{clock}}",
+      "fileLeft": "mancano {{time}} alla fine del file · finisce alle {{clock}}"
     },
     "finished": {
       "heading": "Libro terminato",
@@ -829,6 +834,33 @@
     "menu": {
       "label": "Altro",
       "viewCredits": "Vedi i titoli di coda"
+    },
+    "timeLeft": {
+      "left": "mancano {{time}}",
+      "leftAt": "mancano {{time}} a {{speed}}",
+      "label": "rimanenti",
+      "labelAt": "rimanenti a {{speed}}"
+    },
+    "timeline": {
+      "label": "Cronologia dell'intero libro",
+      "value": "{{percent}}%, {{position}} di {{total}}",
+      "axis": "{{percent}}% · {{position}}"
+    },
+    "undo": {
+      "label": "Torna a {{time}}",
+      "restored": "Di nuovo dov'eri"
+    },
+    "shortcuts": {
+      "title": "Scorciatoie da tastiera",
+      "hint": "Funzionano ovunque nel player web, tranne mentre scrivi.",
+      "or": "o",
+      "playPause": "Riproduci o metti in pausa",
+      "chapters": "Capitolo precedente o successivo",
+      "speed": "Più lento o più veloce (0,05×)",
+      "bookmark": "Aggiungi un segnalibro",
+      "player": "Apri il player completo",
+      "palette": "Ricerca e comandi",
+      "help": "Questa guida"
     }
   },
   "reconnect": {
@@ -879,10 +911,8 @@
     "serverMore_one": "{{name}} + un altro",
     "serverMore_other": "{{name}} + altri {{count}}",
     "openPlayer": "Apri il lettore completo per {{title}}",
-    "titleTimeLeft": "{{title}} · mancano {{time}}",
     "dock": {
       "label": "Lettore",
-      "bookLeft": "Mancano {{time}}",
       "savedLocally": "Salvato su questo dispositivo, verrà sincronizzato",
       "expand": "Espandi il lettore"
     },
@@ -972,7 +1002,6 @@
     "queued": "{{time}} in coda",
     "nothingQueued": "Niente in coda",
     "nowPlaying": "In riproduzione",
-    "leftAtSpeed": "{{time}} rimanenti a {{speed}}x",
     "clear": "Svuota",
     "clearLabel": "Svuota Prossimo",
     "cleared": "Prossimo svuotato",

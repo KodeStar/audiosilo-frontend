@@ -199,7 +199,7 @@
     "continueMore_other": "{{count}} weitere angefangen",
     "allInProgress": "Alle angefangenen",
     "acrossServers": "Von all deinen Servern",
-    "progressCaption": "{{percent}} % · noch {{left}}",
+    "progressCaption": "{{percent}} % · {{left}}",
     "finishedWhen": "Beendet {{when}}",
     "servers_one": "{{count}} Server",
     "servers_other": "{{count}} Server",
@@ -222,7 +222,6 @@
       "chapterShort": "Kap. {{chapter}} von {{total}}",
       "scaleLabel": "{{percent}} % des Buchs gehört",
       "through": "des Buchs gehört",
-      "leftAt": "übrig bei {{speed}}",
       "finishPace": "fertig in deinem Tempo",
       "resume": "Fortsetzen",
       "resumeChapter": "Kapitel {{chapter}} fortsetzen",
@@ -398,7 +397,7 @@
       "matches_one": "{{shown}} von {{total}} passt",
       "matches_other": "{{shown}} von {{total}} passen",
       "loadingMore": "Lädt weitere...",
-      "progress": "{{percent}} % · noch {{left}}",
+      "progress": "{{percent}} % · {{left}}",
       "finishedWhen": "Beendet {{when}}",
       "rail": "Zu Buchstabe springen",
       "sort": {
@@ -760,15 +759,14 @@
     "controls": {
       "fileOf": "Datei {{current}} von {{total}}",
       "fileNumber": "Datei {{number}}",
-      "timeLeft": "{{time}} übrig ({{rate}})",
       "showChapters": "Kapitel anzeigen",
       "close": "Schließen",
       "previous": "Vorheriges Kapitel",
       "next": "Nächstes Kapitel",
       "play": "Wiedergabe",
       "pause": "Pause",
-      "skipBack": "{{seconds}} Sekunden zurückspringen",
-      "skipForward": "{{seconds}} Sekunden vorspringen"
+      "skipBack": "{{seconds}} Sekunden zurück",
+      "skipForward": "{{seconds}} Sekunden vor"
     },
     "chapters": {
       "chaptersTitle": "Kapitel",
@@ -779,7 +777,9 @@
       "label": "Lesezeichen",
       "empty": "Noch keine Lesezeichen.",
       "saved": "Lesezeichen gespeichert",
-      "addAt": "Lesezeichen bei {{time}} hinzufügen"
+      "addAt": "Lesezeichen bei {{time}} hinzufügen",
+      "added": "Lesezeichen hinzugefügt",
+      "addFailed": "Lesezeichen konnte nicht hinzugefügt werden"
     },
     "history": {
       "label": "Wiedergabeverlauf",
@@ -815,8 +815,13 @@
       "title": "Wiedergabegeschwindigkeit"
     },
     "seek": {
-      "label": "Wiedergabeposition",
-      "value": "{{position}} von {{duration}}"
+      "label": "Position im Kapitel",
+      "value": "{{position}} von {{duration}}",
+      "labelFile": "Position in der Datei",
+      "inBook": "{{time}} im Buch",
+      "clickToJump": "Klicken zum Springen",
+      "chapterLeft": "noch {{time}} im Kapitel · endet {{clock}}",
+      "fileLeft": "noch {{time}} in der Datei · endet {{clock}}"
     },
     "finished": {
       "heading": "Buch beendet",
@@ -829,6 +834,33 @@
     "menu": {
       "label": "Mehr",
       "viewCredits": "Abspann anzeigen"
+    },
+    "timeLeft": {
+      "left": "noch {{time}}",
+      "leftAt": "noch {{time}} bei {{speed}}",
+      "label": "übrig",
+      "labelAt": "übrig bei {{speed}}"
+    },
+    "timeline": {
+      "label": "Zeitleiste des ganzen Buchs",
+      "value": "{{percent}} %, {{position}} von {{total}}",
+      "axis": "{{percent}} % · {{position}}"
+    },
+    "undo": {
+      "label": "Zurück zu {{time}}",
+      "restored": "Zurück, wo du warst"
+    },
+    "shortcuts": {
+      "title": "Tastenkürzel",
+      "hint": "Sie funktionieren überall im Web-Player, außer während du tippst.",
+      "or": "oder",
+      "playPause": "Wiedergabe oder Pause",
+      "chapters": "Vorheriges oder nächstes Kapitel",
+      "speed": "Langsamer oder schneller (0,05×)",
+      "bookmark": "Lesezeichen hinzufügen",
+      "player": "Vollständigen Player öffnen",
+      "palette": "Suche und Befehle",
+      "help": "Diese Hilfe"
     }
   },
   "reconnect": {
@@ -879,10 +911,8 @@
     "serverMore_one": "{{name}} + {{count}} weiterer",
     "serverMore_other": "{{name}} + {{count}} weitere",
     "openPlayer": "Vollen Player für {{title}} öffnen",
-    "titleTimeLeft": "{{title}} · noch {{time}}",
     "dock": {
       "label": "Player",
-      "bookLeft": "Noch {{time}}",
       "savedLocally": "Auf diesem Gerät gespeichert, wird synchronisiert",
       "expand": "Player vergrößern"
     },
@@ -972,7 +1002,6 @@
     "queued": "{{time}} eingereiht",
     "nothingQueued": "Nichts eingereiht",
     "nowPlaying": "Läuft gerade",
-    "leftAtSpeed": "noch {{time}} bei {{speed}}x",
     "clear": "Leeren",
     "clearLabel": "„Als Nächstes“ leeren",
     "cleared": "„Als Nächstes“ geleert",

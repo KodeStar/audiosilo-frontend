@@ -74,8 +74,3 @@ export function chapterPlace(
   const number = Math.max(1, chapterNumberAt([...starts], position));
   return { number, count: titles.length, title: titles[number - 1] ?? '' };
 }
-
-/** Listening left in wall-clock seconds at the book's own speed. */
-export function timeLeftAtSpeed(position: number, total: number, speed: number): number {
-  return Math.max(0, total - position) / (speed > 0 ? speed : 1);
-}

@@ -33,10 +33,9 @@ import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock, formatSpeed } from '@/lib/format';
+import { formatClock } from '@/lib/format';
 import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { wallClockSeconds } from '@/playback/rate';
 import { selectSleepPhase, useSleepTimer } from '@/playback/sleep-timer';
 import {
   selectBookPosition,
@@ -44,6 +43,7 @@ import {
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
+import { formatTimeLeft, timeLeft } from '@/playback/time-left';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
@@ -260,7 +260,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
     if (!info) return;
     goTo(finishedHref(info.connectionId, info.libraryId, info.path, true));
   };
-  const rateLabel = formatSpeed(rate);
   // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
   // playback). Surface it with a retry rather than silently sitting on a dead
   // stream where the play button does nothing. While buffering ('loading') show a
@@ -286,10 +285,9 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // While scrubbing, the labels preview the drag position.
   const segElapsed = scrubPreview ?? segElapsedRaw;
   const segRemaining = Math.max(0, segLength - segElapsed);
-  const bookLeft = wallClockSeconds(total - bookPosition, rate);
   const centerLabel = perTrack
     ? t('player.controls.fileOf', { current: trackIndex + 1, total: queue.tracks.length })
-    : t('player.controls.timeLeft', { time: formatClock(bookLeft), rate: rateLabel });
+    : formatTimeLeft(t, timeLeft(bookPosition, total, rate));
   const onSeek = (p: number) => (perTrack ? void seekInTrack(p) : void seekBook(segStart + p));
 
   // Title line: the current chapter, else the current file's name.

@@ -21,30 +21,26 @@ import {
   splitCharacters,
 } from '@/components/library/meta-gating';
 import { usePlayBook } from '@/components/player/use-play-book';
+import { useBookSpeed } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatDayMonth, formatDuration, formatSpeed } from '@/lib/format';
+import { formatDayMonth, formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
+import { timeLeft, timeLeftLabel } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { BookScale } from './book-scale';
 import type { BookAt } from './home-model';
 import { dailyPace, estimatedFinish } from './listening';
-import {
-  bookmarkPins,
-  bookScale,
-  chapterPlace,
-  nowCardCompact,
-  timeLeftAtSpeed,
-} from './now-card-model';
+import { bookmarkPins, bookScale, chapterPlace, nowCardCompact } from './now-card-model';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -91,7 +87,6 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     loaded ? Math.floor(selectBookPosition(s) / LIVE_STEP_S) * LIVE_STEP_S : 0,
   );
   const playing = usePlayer((s) => loaded && selectIsPlaying(s));
-  const rate = usePlayer((s) => s.rate);
 
   // Chapter starts recomputed from the file durations, as the book page does (the
   // server's `book_offset` is unreliable on some books).
@@ -108,9 +103,10 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   // has really moved.
   const position = loaded && livePosition > 0 ? livePosition : (saved?.position ?? 0);
   const finished = !!saved?.finished && !loaded;
-  const speed = loaded ? rate : saved?.playback_speed || 1;
+  // The book's own speed: the player's while loaded, else its saved one, else the default.
+  const speed = useBookSpeed(at, saved?.playback_speed);
   const percent = percentHeard(position, total, finished);
-  const left = timeLeftAtSpeed(position, total, speed);
+  const left = timeLeft(position, total, speed)?.seconds ?? 0;
   const place = chapterPlace(titles, starts, position);
   const segments = bookScale(starts, total, position, compact ? 60 : undefined);
   const pins = bookmarkPins(
@@ -188,12 +184,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const statsRow = (
     <View className="mt-1 flex-row flex-wrap gap-x-[22px] gap-y-2">
       <Stat value={`${percent}%`} label={t('home.now.through')} />
-      {left > 0 ? (
-        <Stat
-          value={formatDuration(left)}
-          label={t('home.now.leftAt', { speed: formatSpeed(speed) })}
-        />
-      ) : null}
+      {left > 0 ? <Stat value={formatDuration(left)} label={timeLeftLabel(t, speed)} /> : null}
       {finishOn ? <Stat value={finishOn} label={t('home.now.finishPace')} /> : null}
     </View>
   );

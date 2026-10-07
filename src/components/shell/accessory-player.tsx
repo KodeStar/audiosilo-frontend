@@ -5,8 +5,8 @@ import { useRef, useState } from 'react';
 import { Dimensions, View } from 'react-native';
 
 import { useApi } from '@/api/provider';
-import { useBookTimeLeft } from '@/components/player/book-progress';
 import { SkipButton } from '@/components/player/skip-button';
+import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
@@ -19,14 +19,13 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { useChromeEdge } from './shell-metrics';
 
-/** "Title · 5h 27m left" at the current speed. A leaf, so only this line re-renders, and
- * only when its text changes. */
-function BookLine({ title, total }: { title: string; total: number }) {
-  const { t } = useTranslation();
-  const time = useBookTimeLeft(total);
+/** "Title · 5h 27m left at 1.25×" (`usePlayingTimeLeft`). A leaf, so only this line
+ * re-renders, and only when its text changes. */
+function BookLine({ title }: { title: string }) {
+  const left = usePlayingTimeLeft();
   return (
     <Text variant="caption" numberOfLines={1}>
-      {time ? t('shell.titleTimeLeft', { title, time }) : title}
+      {left ? `${title} · ${left}` : title}
     </Text>
   );
 }
@@ -97,7 +96,7 @@ export function AccessoryPlayer() {
           <Text variant="label" numberOfLines={1}>
             {heading}
           </Text>
-          {regular ? <BookLine title={nowPlaying.title} total={nowPlaying.queue.total} /> : null}
+          {regular ? <BookLine title={nowPlaying.title} /> : null}
         </View>
       </AnimatedPressable>
       {regular ? (

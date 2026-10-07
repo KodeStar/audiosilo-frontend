@@ -1,10 +1,4 @@
-import {
-  bookmarkPins,
-  bookScale,
-  chapterPlace,
-  nowCardCompact,
-  timeLeftAtSpeed,
-} from './now-card-model';
+import { bookmarkPins, bookScale, chapterPlace, nowCardCompact } from './now-card-model';
 
 describe('bookScale', () => {
   const starts = [0, 100, 300, 600];
@@ -59,14 +53,6 @@ describe('chapterPlace', () => {
   it('is chapter 1 before the first start, and nothing without chapters', () => {
     expect(chapterPlace(titles, [0, 100, 200], 0)?.number).toBe(1);
     expect(chapterPlace([], [], 50)).toBeNull();
-  });
-});
-
-describe('timeLeftAtSpeed', () => {
-  it('divides what is left by the speed', () => {
-    expect(timeLeftAtSpeed(400, 1000, 1.5)).toBe(400);
-    expect(timeLeftAtSpeed(400, 1000, 0)).toBe(600);
-    expect(timeLeftAtSpeed(1200, 1000, 1)).toBe(0);
   });
 });
 

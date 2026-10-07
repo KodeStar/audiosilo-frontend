@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import type { Book, Progress } from '@/api/types';
+import { useBookTimeLeft } from '@/components/player/use-time-left';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
@@ -61,11 +62,27 @@ export function BookTile({
   );
 }
 
-/** "Finished" / a progress bar with "40% · 3h 12m left" / "Not started". */
-function ProgressCell({ book, progress }: { book: Book; progress?: Progress }) {
+/** "Finished" / a progress bar with "40% · 3h 12m left at 1.25×" (at the book's own
+ * speed) / "Not started". */
+function ProgressCell({
+  connectionId,
+  libraryId,
+  book,
+  progress,
+}: {
+  connectionId: string;
+  libraryId: number;
+  book: Book;
+  progress?: Progress;
+}) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const status = bookStatus(progress);
+  const left = useBookTimeLeft(
+    progress ? { connectionId, libraryId, path: book.rel_path } : null,
+    progress,
+    book.duration,
+  );
   if (status === 'finished') {
     return (
       <View className="flex-row items-center gap-1.5">
@@ -83,15 +100,14 @@ function ProgressCell({ book, progress }: { book: Book; progress?: Progress }) {
       </Text>
     );
   }
-  const { fraction, remaining } = progressFractionRemaining(progress!.position, book.duration);
+  const { fraction } = progressFractionRemaining(progress!.position, book.duration);
   return (
     <View className="gap-1">
       <ProgressBar fraction={fraction} />
       <Text variant="caption" numberOfLines={1} style={tabularNums}>
-        {t('library.books.progress', {
-          percent: percentOf(fraction),
-          left: formatDuration(remaining),
-        })}
+        {left
+          ? t('library.books.progress', { percent: percentOf(fraction), left })
+          : `${percentOf(fraction)}%`}
       </Text>
     </View>
   );
@@ -202,7 +218,12 @@ export function BookListRow({
               </Text>
             ) : null}
             <View className={COL.progress}>
-              <ProgressCell book={book} progress={progress} />
+              <ProgressCell
+                connectionId={connectionId}
+                libraryId={libraryId}
+                book={book}
+                progress={progress}
+              />
             </View>
           </>
         )

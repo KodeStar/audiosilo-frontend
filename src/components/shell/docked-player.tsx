@@ -6,12 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApi } from '@/api/provider';
 import { serverStatus, useReachability } from '@/api/reachability';
-import { BookProgressLine, useBookTimeLeft } from '@/components/player/book-progress';
+import { BookProgressLine } from '@/components/player/book-progress';
 import { SeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
 import { currentSegment, stepSegment } from '@/components/player/transport';
+import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
@@ -39,7 +40,6 @@ import { useChromeEdge } from './shell-metrics';
  * the whole book at the listener's speed. A per-tick leaf that moves in whole seconds
  * (the clock's resolution), so it re-renders about once a second, not per engine tick. */
 function ChapterScrubber({ total }: { total: number }) {
-  const { t } = useTranslation();
   const chapter = usePlayer(selectCurrentChapter);
   const trackDuration = usePlayer((s) => s.snapshot.duration);
   const elapsedSecond = usePlayer((s) =>
@@ -53,7 +53,7 @@ function ChapterScrubber({ total }: { total: number }) {
       }).elapsed,
     ),
   );
-  const left = useBookTimeLeft(total);
+  const left = usePlayingTimeLeft();
   const seekBook = usePlayer((s) => s.seekBook);
   const seekInTrack = usePlayer((s) => s.seekInTrack);
   const [scrub, setScrub] = useState<number | null>(null);
@@ -78,7 +78,7 @@ function ChapterScrubber({ total }: { total: number }) {
         />
       </View>
       <Text variant="caption" style={tabularNums} className="min-w-[44px]" numberOfLines={1}>
-        {left ? t('shell.dock.bookLeft', { time: left }) : ''}
+        {left}
       </Text>
     </View>
   );

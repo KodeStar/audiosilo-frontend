@@ -11,8 +11,9 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useApi } from '@/api/provider';
-import { BookProgressLine, useBookTimeLeft } from '@/components/player/book-progress';
+import { BookProgressLine } from '@/components/player/book-progress';
 import { SkipButton } from '@/components/player/skip-button';
+import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
 import { useChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -20,7 +21,6 @@ import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -60,17 +60,14 @@ export function FloatingMiniPlayer() {
   return bar === undefined ? null : <MiniPlayer bottomOffset={bar} />;
 }
 
-/** "5h 27m left (1.4×)" - wall-clock time remaining at the current speed, with the
- * speed modifier appended. A leaf so only this line re-renders, when its text changes. */
-function TimeLeft({ total }: { total: number }) {
-  const { t } = useTranslation();
-  const time = useBookTimeLeft(total);
-  const rate = usePlayer((s) => s.rate);
-  if (!time) return null;
-  const rateLabel = formatSpeed(rate);
+/** "5h 27m left at 1.4×" (`usePlayingTimeLeft`). A leaf so only this line re-renders,
+ * when its text changes. */
+function TimeLeft() {
+  const left = usePlayingTimeLeft();
+  if (!left) return null;
   return (
     <Text variant="caption" numberOfLines={1} style={tabularNums}>
-      {t('player.controls.timeLeft', { time, rate: rateLabel })}
+      {left}
     </Text>
   );
 }
@@ -163,7 +160,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
                   {caption}
                 </Text>
               ) : null}
-              <TimeLeft total={nowPlaying.queue.total} />
+              <TimeLeft />
             </View>
             <SkipButton
               direction="back"
