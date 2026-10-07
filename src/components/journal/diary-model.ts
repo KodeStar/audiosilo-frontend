@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 
-import type { Book, Bookmark, HistoryEntry } from '@/api/types';
+import type { Book, Bookmark, CoverColor, HistoryEntry } from '@/api/types';
+import { contrast } from '@/components/series/spine-colors';
 import { contentKey } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { driftOffer, type DriftRecord, type DriftRecords } from '@/playback/drift';
@@ -205,9 +206,33 @@ export type DayBar = {
   key: string;
   left: number;
   width: number;
-  /** The book's cover accent (`cover_color.accent`, else its dominant colour). */
-  color?: string;
+  /** The book's cover colours, for `barColor` (absent: none known). */
+  cover?: CoverColor;
 };
+
+/** The least contrast a span keeps against the bar's track (WCAG's 3:1 for a graphical
+ * object). */
+export const BAR_MIN_CONTRAST = 3;
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/**
+ * A span's colour on its day's bar (pure): the book's cover accent, else its dominant
+ * colour, whichever stands off the theme's `track` (`muted`) best, but only at
+ * `BAR_MIN_CONTRAST` or more; a cover whose colours both sink into the track (a dark
+ * maroon accent on the dark theme's ink) and a book without cover colours get `fallback`
+ * (a theme token that does).
+ */
+export function barColor(cover: CoverColor | undefined, track: string, fallback: string): string {
+  const candidates = [cover?.accent, cover?.bg].filter((c): c is string => !!c && HEX.test(c));
+  let best: string | undefined;
+  let bestContrast = 0;
+  for (const c of candidates) {
+    const ratio = contrast(c, track);
+    if (ratio > bestContrast) [best, bestContrast] = [c, ratio];
+  }
+  return best && bestContrast >= BAR_MIN_CONTRAST ? best : fallback;
+}
 
 /** The narrowest a span is drawn (fraction of the day), so a 2 minute span still shows. */
 export const MIN_BAR_WIDTH = 0.012;
@@ -229,7 +254,7 @@ export function dayBars(day: Pick<DiaryDay, 'start' | 'spans'>): DayBar[] {
         key: s.key,
         left: Math.min(left, 1 - MIN_BAR_WIDTH),
         width: Math.min(width, 1 - Math.min(left, 1 - MIN_BAR_WIDTH)),
-        color: s.book?.cover_color?.accent ?? s.book?.cover_color?.bg,
+        cover: s.book?.cover_color,
       };
     })
     .sort((a, b) => a.left - b.left);

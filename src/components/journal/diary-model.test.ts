@@ -1,10 +1,12 @@
 import i18n from '@/i18n';
 
 import type { Book, Bookmark, HistoryEntry } from '@/api/types';
+import { contrast } from '@/components/series/spine-colors';
 import { contentKey } from '@/lib/content-key';
 import type { DriftRecord } from '@/playback/drift';
 
 import {
+  barColor,
   dayBars,
   dayName,
   type DiarySpan,
@@ -185,7 +187,7 @@ describe('dayBars', () => {
     const [bar] = dayBars(day);
     expect(bar.left).toBeCloseTo(0.5);
     expect(bar.width).toBeCloseTo(0.25);
-    expect(bar.color).toBe('#ff0000');
+    expect(bar.cover).toEqual({ bg: '#111111', accent: '#ff0000' });
   });
   it('cuts a span at midnight, keeps a short one visible and falls back to no colour', () => {
     const [day] = groupByDay(
@@ -193,7 +195,7 @@ describe('dayBars', () => {
     );
     const bars = dayBars(day);
     expect(bars[0].width).toBe(MIN_BAR_WIDTH);
-    expect(bars[0].color).toBeUndefined();
+    expect(bars[0].cover).toBeUndefined();
     expect(bars[1].left + bars[1].width).toBeLessThanOrEqual(1);
     expect(bars[1].width).toBeCloseTo(0.5 / 24, 3);
   });
@@ -271,5 +273,56 @@ describe('drift-offs', () => {
     expect(driftStrip(bm(), {}, ended)).toEqual(plain);
     expect(driftStrip(bm(), { [key]: { ...record, stoppedAt: 9000 } }, ended)).toEqual(plain);
     expect(driftStrip(bm(), { [key]: record }, ended + 3 * 24 * 3600_000)).toEqual(plain);
+  });
+});
+
+describe('barColor', () => {
+  const LIGHT_TRACK = '#eef1f5';
+  const DARK_TRACK = '#151d34';
+  const LIGHT_FALLBACK = '#5b6680';
+  const DARK_FALLBACK = '#8f9ab3';
+
+  it('draws a span in its cover accent where it stands off the track', () => {
+    expect(barColor({ bg: '#20304a', accent: '#e8649f' }, DARK_TRACK, DARK_FALLBACK)).toBe(
+      '#e8649f',
+    );
+    expect(barColor({ bg: '#f4e9d0', accent: '#a3195a' }, LIGHT_TRACK, LIGHT_FALLBACK)).toBe(
+      '#a3195a',
+    );
+  });
+
+  // The web pass: a dark maroon accent was near-invisible on the dark theme's track.
+  it('takes the dominant colour when the accent sinks into the track', () => {
+    expect(barColor({ bg: '#e0c48a', accent: '#4a1020' }, DARK_TRACK, DARK_FALLBACK)).toBe(
+      '#e0c48a',
+    );
+  });
+
+  it('falls back to the theme token when neither colour stands off it', () => {
+    expect(barColor({ bg: '#1a1630', accent: '#4a1020' }, DARK_TRACK, DARK_FALLBACK)).toBe(
+      DARK_FALLBACK,
+    );
+    expect(barColor({ bg: '#f0f0f0', accent: '#fde8ea' }, LIGHT_TRACK, LIGHT_FALLBACK)).toBe(
+      LIGHT_FALLBACK,
+    );
+    expect(barColor(undefined, DARK_TRACK, DARK_FALLBACK)).toBe(DARK_FALLBACK);
+    expect(barColor({ bg: 'nope' }, DARK_TRACK, DARK_FALLBACK)).toBe(DARK_FALLBACK);
+  });
+
+  it('keeps every colour it picks at 3:1 against the track, in both themes', () => {
+    const covers = [
+      { bg: '#4a1020', accent: '#7a1f3d' },
+      { bg: '#ffffff', accent: '#ffe066' },
+      { bg: '#0d1b2a', accent: '#1b263b' },
+      { bg: '#264653', accent: '#2a9d8f' },
+    ];
+    for (const [track, fallback] of [
+      [LIGHT_TRACK, LIGHT_FALLBACK],
+      [DARK_TRACK, DARK_FALLBACK],
+    ]) {
+      for (const cover of covers) {
+        expect(contrast(barColor(cover, track, fallback), track)).toBeGreaterThanOrEqual(3);
+      }
+    }
   });
 });

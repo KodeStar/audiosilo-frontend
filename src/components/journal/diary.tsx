@@ -22,6 +22,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
+  barColor,
   type DiaryDay,
   type DiarySession,
   type DiarySpan,
@@ -53,8 +54,8 @@ export function useDayLabel() {
   };
 }
 
-/** The day's 24 hour bar: each span by wall clock, in its book's cover accent (else a
- * quiet token), with hairlines at 06, 12 and 18. Decorative: one summary for screen
+/** The day's 24 hour bar: each span by wall clock, in its book's cover colour where it
+ * stands off the track in this theme (else a quiet token, `barColor`), with hairlines at 06, 12 and 18. Decorative: one summary for screen
  * readers ("Listening across the day: 21:12 to 21:33, ..."). */
 function DayBarView({ day }: { day: DiaryDay }) {
   const { t } = useTranslation();
@@ -92,7 +93,7 @@ function DayBarView({ day }: { day: DiaryDay }) {
           style={{
             left: `${b.left * 100}%`,
             width: `${b.width * 100}%`,
-            backgroundColor: b.color ?? themed.mutedForeground,
+            backgroundColor: barColor(b.cover, themed.muted, themed.mutedForeground),
           }}
         />
       ))}
