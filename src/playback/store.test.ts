@@ -69,6 +69,8 @@ jest.mock('@/api/provider', () => ({
   queryClient: {
     invalidateQueries: jest.fn(),
     setQueryData: jest.fn(),
+    // The downloads store's offline cache rules (`releaseOfflineBook` on a removal).
+    setQueryDefaults: jest.fn(),
     fetchQuery: (...a: unknown[]) => mockFetchQuery(...a),
     getQueryData: jest.fn(() => undefined),
     cancelQueries: jest.fn(async () => {}),
