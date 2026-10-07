@@ -44,13 +44,25 @@
       "type": {
         "label": "Type de minuteur",
         "chapter": "Fin du chapitre"
+      },
+      "shake": {
+        "label": "Secouer pour prolonger",
+        "description": "Secouez votre téléphone pendant les 30 dernières secondes, ou juste après l'arrêt du minuteur, pour continuer l'écoute.",
+        "unavailable": "Non disponible dans le navigateur."
+      },
+      "sensitivity": {
+        "label": "Sensibilité à la secousse",
+        "description": "La force de secousse nécessaire. Choisissez Faible si les mouvements dans le lit prolongent la lecture.",
+        "low": "Faible",
+        "medium": "Moyenne",
+        "high": "Élevée"
       }
     },
     "upNext": {
       "label": "À suivre",
       "autoPlay": {
         "label": "Lire automatiquement le livre suivant",
-        "description": "Démarre le livre suivant du dossier lorsqu'un livre se termine."
+        "description": "À la fin d'un livre, démarre le premier livre de la file À suivre, ou le suivant de la série."
       },
       "autoDelete": {
         "description": "Libère l’espace une fois le livre terminé. Votre position dans le livre est conservée."
@@ -796,26 +808,59 @@
     },
     "sleepTimer": {
       "title": "Minuteur",
-      "running": "Minuteur en cours",
-      "timeSection": "Durée",
       "minutes_one": "{{count}} min",
       "minutes_other": "{{count}} min",
-      "endOfChapterSection": "Fin du chapitre",
       "endOf": "Fin de {{chapter}}",
       "endOfChapterNumber": "Fin du chapitre {{number}}",
-      "current": " (en cours)",
       "endOfBook": "Fin du livre",
-      "noChapters": "Aucun chapitre disponible.",
-      "fading": "Le son s'estompe",
-      "ending": "Se termine bientôt",
-      "grace": "Lecture en pause",
       "keepListening": "Continuer l'écoute",
-      "shakeHint": "Secouez votre téléphone pour continuer l'écoute",
       "keepGoingShort": "Continuer",
-      "cancel": "Annuler le minuteur"
+      "minutesUnit_one": "minute",
+      "minutesUnit_other": "minutes",
+      "afterChapters_one": "Après {{count}} chapitre",
+      "afterChapters_other": "Après {{count}} chapitres",
+      "endOfChapter": "Fin du chapitre",
+      "inTime": "dans {{time}}",
+      "stopAfter": "Ou arrêter après",
+      "thisChapter": "Ce chapitre",
+      "nChapters_one": "{{count}} chapitre",
+      "nChapters_other": "{{count}} chapitres",
+      "endsAt": "fin à {{time}}",
+      "pillRunning": "Minuteur, {{label}}, il reste {{time}}",
+      "turnOff": "Désactiver",
+      "notice": {
+        "on": "Minuteur activé",
+        "book": "Arrêt à la fin du livre",
+        "chapters_one": "Arrêt à la fin de ce chapitre",
+        "chapters_other": "Arrêt après {{count}} chapitres",
+        "left": "Il reste {{time}}",
+        "leftFades": "Il reste {{time}} · le son baisse pendant les 30 dernières secondes",
+        "graceLeft": "{{time}} pour reprendre l'écoute"
+      },
+      "grace": {
+        "fadingIn_one": "Le son baisse, arrêt dans {{count}} s",
+        "fadingIn_other": "Le son baisse, arrêt dans {{count}} s",
+        "stoppingIn_one": "Arrêt dans {{count}} s",
+        "stoppingIn_other": "Arrêt dans {{count}} s",
+        "pausedTitle": "Mis en pause par le minuteur",
+        "stillAwakeShake": "Toujours éveillé ? Secouez votre téléphone ou touchez pour continuer l'écoute.",
+        "stillAwake": "Toujours éveillé ? Continuez l'écoute.",
+        "pausedShake": "Toujours éveillé ? Secouez votre téléphone ou touchez pour reprendre là où la lecture s'est arrêtée.",
+        "paused": "Toujours éveillé ? Reprenez là où la lecture s'est arrêtée."
+      },
+      "autoChapter": "S'arrête à la fin du chapitre chaque fois que vous lancez la lecture entre {{from}} et {{until}}.",
+      "autoMinutes_one": "Lance un minuteur de {{count}} minute chaque fois que vous lancez la lecture entre {{from}} et {{until}}.",
+      "autoMinutes_other": "Lance un minuteur de {{count}} minutes chaque fois que vous lancez la lecture entre {{from}} et {{until}}.",
+      "fellAsleepHint": "Si vous vous endormez, un signet « Endormi » marque l'endroit où le minuteur s'est arrêté, et la prochaine fois que vous lancerez le livre, vous pourrez revenir au dernier moment où vous étiez éveillé.",
+      "fellAsleepNote": "Endormi"
     },
     "speed": {
-      "title": "Vitesse de lecture"
+      "title": "Vitesse de lecture",
+      "leftInBook": "Il reste {{time}} dans le livre à {{speed}} · mémorisée pour ce livre",
+      "slower": "Plus lent de 0,05",
+      "faster": "Plus rapide de 0,05",
+      "presets": "Vitesses prédéfinies",
+      "presetLabel": "{{speed}}, il reste {{time}}"
     },
     "seek": {
       "label": "Position dans le chapitre",
@@ -827,11 +872,51 @@
       "fileLeft": "{{time}} restantes dans le fichier · fin à {{clock}}"
     },
     "finished": {
-      "heading": "Livre terminé",
-      "upNext": "À suivre",
-      "playNext": "Lire le suivant",
+      "eyebrow": "Fin du livre",
+      "credits": "Crédits",
+      "writtenBy": "Écrit par",
+      "readBy": "Lu par",
+      "publisher": "Éditeur",
+      "released": "Parution",
+      "community": "Notes de la communauté",
+      "onServer": "Sur votre serveur",
+      "yearShelf_one": "{{count}} livre terminé cette année",
+      "yearShelf_other": "{{count}} livres terminés cette année",
+      "bookOfYear": "Livre {{number}} de l'année · terminé",
+      "byline": "{{author}} · lu par {{narrator}}",
+      "readByOnly": "Lu par {{narrator}}",
+      "timeListened": "Temps d'écoute",
+      "across": "Sur",
+      "days_one": "{{count}} jour",
+      "days_other": "{{count}} jours",
+      "yourSpeed": "Votre vitesse",
+      "howWasIt": "Qu'en avez-vous pensé ?",
+      "ratingLabel": "Votre note",
+      "stars_one": "{{count}} étoile",
+      "stars_other": "{{count}} étoiles",
+      "ratingSaved": "Note enregistrée",
+      "ratingFailed": "Votre note n'a pas été enregistrée. Réessayez.",
+      "fromQueue": "À suivre · de votre file",
+      "fromSeriesBook": "À suivre · {{series}}, livre {{position}}",
+      "fromSeries": "À suivre · {{series}}",
+      "nextInSeries": "À suivre · suivant de la série",
+      "fromFolder": "À suivre · suivant dans ce dossier",
+      "downloaded": "Téléchargé",
+      "downloading": "Téléchargement, {{percent}} %",
+      "streamsFrom": "Diffusé depuis {{server}}",
+      "playNow": "Lire maintenant",
+      "playNowLabel": "Lire {{title}} maintenant",
+      "notNow": "Pas maintenant",
+      "countdown_one": "Démarre dans {{count}} seconde",
+      "countdown_other": "Démarre dans {{count}} secondes",
+      "endOfSeries": "Fin de la série",
+      "endOfSeriesBody": "C'est le dernier livre de {{series}} sur ce serveur pour l'instant.",
+      "endOfSeriesNoName": "Aucun livre ne suit celui-ci sur ce serveur.",
+      "notOnServerTitle": "Le livre suivant n'est pas sur ce serveur",
+      "notOnServer": "Suivant dans la série : {{title}}, qui n'est pas sur ce serveur.",
+      "notOnServerBook": "Suivant dans la série : livre {{position}}, {{title}}, qui n'est pas sur ce serveur.",
+      "details": "Voir les détails",
       "startingIn": "Démarrage dans {{time}}",
-      "endOfSeries": "Vous êtes arrivé à la fin de ce dossier.",
       "viewDetails": "Voir les détails du livre"
     },
     "menu": {
@@ -865,6 +950,12 @@
       "palette": "Recherche et commandes",
       "help": "Cette aide",
       "space": "Espace"
+    },
+    "drift": {
+      "title": "Vous vous êtes endormi vers {{time}}",
+      "description_one": "Revenir {{count}} minute en arrière ?",
+      "description_other": "Revenir {{count}} minutes en arrière ?",
+      "jumpBack": "Revenir en arrière"
     }
   },
   "reconnect": {
@@ -922,8 +1013,7 @@
       "synced": "Synchronisé",
       "syncedNow": "Synchronisé à l'instant",
       "signInToSync": "Enregistré sur cet appareil, reconnectez-vous pour synchroniser",
-      "speed": "Vitesse de lecture, {{speed}}",
-      "sleepRunning": "Minuteur, {{time}} restantes"
+      "speed": "Vitesse de lecture, {{speed}}"
     },
     "profile": {
       "label": "Serveurs et compte, {{name}}",
@@ -1043,7 +1133,8 @@
     "ghostNoServer": "{{title}} n'est pas sur ce serveur",
     "seeSeries": "Voir la série",
     "add": "Ajouter {{title}} à À suivre",
-    "autoPlay": "Lire automatiquement le livre suivant de la série",
+    "autoPlay": "Lire automatiquement le livre suivant",
+    "autoPlayHint": "Démarre le premier livre de la file À suivre, ou le suivant de la série.",
     "buttonLabel_one": "À suivre, {{count}} livre",
     "buttonLabel_other": "À suivre, {{count}} livres",
     "buttonLabelEmpty": "À suivre"

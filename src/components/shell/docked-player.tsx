@@ -7,13 +7,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { serverStatus, useReachability } from '@/api/reachability';
 import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
+import { GraceCard } from '@/components/player/grace-card';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
+import { SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { currentSegment } from '@/components/player/transport';
 import { TransportControls } from '@/components/player/transport-controls';
 import { UndoChip } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
-import { useSleepCountdown } from '@/components/player/use-sleep-countdown';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -24,7 +25,6 @@ import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-import { selectSleepExtendable, selectSleepPhase, useSleepTimer } from '@/playback/sleep-timer';
 import {
   selectBookPosition,
   selectCurrentChapter,
@@ -165,18 +165,16 @@ function SyncState({ connectionId, playing }: { connectionId: string; playing: b
   );
 }
 
-/** One of the dock's right-hand actions: a 34 pt pill (44 pt target), `brand-soft`
- * while `active`. */
+/** One of the dock's right-hand actions: a 36 pt round pill like the sleep pill beside it
+ * (`SleepTimerButton`), with a 44 pt target. */
 function DockPill({
   label,
   onPress,
-  active = false,
   testID,
   children,
 }: {
   label: string;
   onPress: () => void;
-  active?: boolean;
   testID?: string;
   children: ReactNode;
 }) {
@@ -184,15 +182,12 @@ function DockPill({
     <AnimatedPressable
       testID={testID}
       onPress={onPress}
-      hitSlop={5}
+      hitSlop={4}
       accessibilityRole="button"
       accessibilityLabel={label}
       className={cn(
-        'h-[34px] min-w-[34px] flex-row items-center justify-center gap-1.5 rounded-control px-2.5',
-        active ? 'bg-brand-soft' : 'active:bg-accent',
-        Platform.select({
-          web: cn('cursor-pointer', !active && 'hover:bg-accent', FOCUS_RING_CLASS),
-        }),
+        'h-9 min-w-9 flex-row items-center justify-center gap-1.5 rounded-full px-2.5 active:bg-accent',
+        Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
       )}
     >
       {children}
@@ -213,45 +208,6 @@ function SpeedPill() {
       <Text className="font-sans-bold text-[12.5px] text-foreground" style={tabularNums}>
         {formatSpeed(rate)}
       </Text>
-    </DockPill>
-  );
-}
-
-/** The sleep pill: the moon, plus the countdown and `brand-soft` while a timer runs
- * ("Keep going" in the post-pause grace window, when the sheet can still resume). */
-function SleepPill() {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
-  const phase = useSleepTimer(selectSleepPhase);
-  const extendable = useSleepTimer(selectSleepExtendable);
-  const countdown = useSleepCountdown();
-  const active = phase !== 'idle';
-  const text = phase === 'grace' ? t('player.sleepTimer.keepGoingShort') : countdown;
-  // The label follows what opening the sheet can do (as the full player's button).
-  const label = extendable
-    ? t('player.sleepTimer.keepListening')
-    : countdown
-      ? t('shell.dock.sleepRunning', { time: countdown })
-      : t('player.sleepTimer.title');
-  return (
-    <DockPill
-      testID="dock-sleep"
-      label={label}
-      active={active}
-      onPress={() => usePlayerSheets.getState().openSheet('sleep')}
-    >
-      <Icon name="sleep" size={16} color={active ? themed.brandInk : themed.foreground} />
-      {active && text ? (
-        <Text
-          className={cn(
-            'text-[12.5px] text-brand-ink',
-            phase === 'running' ? 'font-sans-semibold' : 'font-sans-bold',
-          )}
-          style={tabularNums}
-        >
-          {text}
-        </Text>
-      ) : null}
     </DockPill>
   );
 }
@@ -355,7 +311,9 @@ export function DockedPlayer() {
           >
             <UndoChip className="mr-1" />
             {allActions ? <SpeedPill /> : null}
-            <SleepPill />
+            <View testID="dock-sleep">
+              <SleepTimerButton onPress={() => usePlayerSheets.getState().openSheet('sleep')} />
+            </View>
             {allActions ? (
               <DockPill
                 testID="dock-bookmark"
@@ -381,6 +339,8 @@ export function DockedPlayer() {
           </View>
         </View>
       </View>
+      {/* The sleep timer's last seconds and post-pause grace, just above the bar. */}
+      <GraceCard bottom={(size?.height ?? DOCK_HEIGHT) + 12} />
       {/* PlayerSheetHost mounts in src/components/shell/docked-player.tsx (workstream E) */}
     </>
   );

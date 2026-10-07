@@ -22,6 +22,18 @@ export function toKeepAhead(value: unknown): KeepAhead {
  * keeps the value trivially persistable and every `switch` over it exhaustive. */
 export type AutoSleepType = 'chapter' | '15' | '30' | '45' | '60';
 
+/** How hard a shake has to be to keep a sleep timer going (`use-shake-to-extend.ts` maps
+ * each to its detector tuning). `medium` is the tuning the detector always had. */
+export type ShakeSensitivity = 'low' | 'medium' | 'high';
+export const SHAKE_SENSITIVITIES: readonly ShakeSensitivity[] = ['low', 'medium', 'high'];
+
+/** A stored value read back as a valid choice: anything that isn't one is `medium`. */
+export function toShakeSensitivity(value: unknown): ShakeSensitivity {
+  return SHAKE_SENSITIVITIES.includes(value as ShakeSensitivity)
+    ? (value as ShakeSensitivity)
+    : 'medium';
+}
+
 export type PlaybackSettings = {
   /** Skip-forward jump in seconds. */
   skipForward: number;
@@ -56,6 +68,11 @@ export type PlaybackSettings = {
   autoSleepUntil: string;
   /** What the auto-armed timer does: end of the current chapter, or a fixed duration. */
   autoSleepType: AutoSleepType;
+  /** A shake in a sleep timer's last seconds (or just after it paused) keeps listening.
+   * Native only: the web has no accelerometer. */
+  shakeToExtend: boolean;
+  /** How hard that shake has to be. */
+  shakeSensitivity: ShakeSensitivity;
 };
 
 const DEFAULTS: PlaybackSettings = {
@@ -72,6 +89,8 @@ const DEFAULTS: PlaybackSettings = {
   autoSleepFrom: '22:00',
   autoSleepUntil: '06:00',
   autoSleepType: 'chapter',
+  shakeToExtend: true,
+  shakeSensitivity: 'medium',
 };
 
 // A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all.
@@ -94,6 +113,8 @@ type SettingsState = PlaybackSettings & {
   setAutoSleepFrom: (hhmm: string) => void;
   setAutoSleepUntil: (hhmm: string) => void;
   setAutoSleepType: (type: AutoSleepType) => void;
+  setShakeToExtend: (on: boolean) => void;
+  setShakeSensitivity: (sensitivity: ShakeSensitivity) => void;
 };
 
 /** The persisted settings, under the shared hydration rule (`persistedDocument`): a
@@ -113,7 +134,14 @@ export const useSettings = create<SettingsState>()((set, get) => {
   return {
     ...DEFAULTS,
     hydrate: () =>
-      stored.hydrate(DEFAULTS, (doc) => set({ ...doc, keepAhead: toKeepAhead(doc.keepAhead) })),
+      stored.hydrate(DEFAULTS, (doc) =>
+        set({
+          ...doc,
+          keepAhead: toKeepAhead(doc.keepAhead),
+          shakeToExtend: doc.shakeToExtend !== false,
+          shakeSensitivity: toShakeSensitivity(doc.shakeSensitivity),
+        }),
+      ),
     setSkipForward: (skipForward) => update({ skipForward }),
     setSkipBackward: (skipBackward) => update({ skipBackward }),
     setDefaultRate: (defaultRate) => update({ defaultRate }),
@@ -127,5 +155,7 @@ export const useSettings = create<SettingsState>()((set, get) => {
     setAutoSleepFrom: (autoSleepFrom) => update({ autoSleepFrom }),
     setAutoSleepUntil: (autoSleepUntil) => update({ autoSleepUntil }),
     setAutoSleepType: (autoSleepType) => update({ autoSleepType }),
+    setShakeToExtend: (shakeToExtend) => update({ shakeToExtend }),
+    setShakeSensitivity: (shakeSensitivity) => update({ shakeSensitivity }),
   };
 });

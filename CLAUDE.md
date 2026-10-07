@@ -851,11 +851,12 @@ chrome; a tab root fills the rest with `SubNavSections` (its segmented sections)
 sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), the `DrawerSlot` on desktop (Up next's drawer, below),
 and `DockedPlayer` (84) whenever a book is loaded: the 3 px whole-book line, book + sync state
 (synced / saved on this device / sign in again), `TransportControls size="sm"` over a chapter
-scrubber with bookmark ticks, then `UndoChip`, speed, sleep (`brand-soft` + countdown while
+scrubber with bookmark ticks, then `UndoChip`, speed, sleep (C's `SleepTimerButton`: `brand-soft` + countdown while
 running), bookmark (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. What fits
 is decided by its MEASURED width (`dockLayout`: all actions from 1024, the tablet set below, no
 scrubber below 800; everything hidden is in the full player). Speed and sleep open through
-`usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does). Route-driven side effects (search reset on leaving the Search
+`usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does), only
+the sleep timer's `GraceCard` just above the bar. Route-driven side effects (search reset on leaving the Search
 tab, browse scroll memory) are `useShellEffects`.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's

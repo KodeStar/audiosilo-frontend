@@ -676,6 +676,19 @@ const ratingWire = {
   updated_at: '2026-10-02T10:00:00Z',
 };
 
+describe('ApiClient.history', () => {
+  it('asks for the server default, or up to a limit when given', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { history: null } }));
+    const c = new ApiClient('https://h', 'tok');
+    await expect(c.history(2, 'Saga/Book 1')).resolves.toEqual([]);
+    await c.history(2, 'Saga/Book 1', 500);
+    expect(sent(fetchMock, 0).url).toBe('https://h/api/v1/libraries/2/history?path=Saga%2FBook+1');
+    expect(sent(fetchMock, 1).url).toBe(
+      'https://h/api/v1/libraries/2/history?path=Saga%2FBook+1&limit=500',
+    );
+  });
+});
+
 describe('ApiClient user state (Phase 1b)', () => {
   const c = () => new ApiClient('https://h', 'tok');
 

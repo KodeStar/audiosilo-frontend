@@ -31,7 +31,7 @@ export type MockNowPlaying = {
   connectionId: string;
   libraryId: number;
   path: string;
-  queue: { chapters: Chapter[]; total: number };
+  queue: { chapters: Chapter[]; total: number; syntheticChapters?: boolean };
 };
 
 export type MockSnapshot = {
@@ -52,6 +52,8 @@ export type PlayerMockState = {
   pause: () => Promise<void>;
   toggle: () => Promise<void>;
   setOutputVolume: (volume: number) => Promise<void>;
+  seekBook: (position: number) => Promise<void>;
+  setRate: (rate: number) => Promise<void>;
 };
 
 const IDLE_SNAPSHOT: MockSnapshot = {
@@ -73,6 +75,9 @@ function buildPlayerStoreMock() {
      * would show up here as writes that production never makes.
      */
     setVolume: jest.fn((volume: number) => Promise.resolve(volume)),
+    /** Pure spies: what the drift prompt and the speed sheet ask the store to do. */
+    seekBook: jest.fn((_position: number) => Promise.resolve()),
+    setRate: jest.fn((_rate: number) => Promise.resolve()),
   };
   let outputVolume = 1;
 
@@ -105,6 +110,8 @@ function buildPlayerStoreMock() {
       void spies.setVolume(volume);
       return Promise.resolve();
     },
+    seekBook: (position: number) => spies.seekBook(position),
+    setRate: (rate: number) => spies.setRate(rate),
   });
 
   const usePlayer = create<PlayerMockState>()(() => initialState());
@@ -173,6 +180,8 @@ function buildPlayerStoreMock() {
       spies.pause.mockClear();
       spies.toggle.mockClear();
       spies.setVolume.mockClear();
+      spies.seekBook.mockClear();
+      spies.setRate.mockClear();
     },
   };
 }

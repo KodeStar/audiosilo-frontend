@@ -44,13 +44,25 @@
       "type": {
         "label": "Tipo de temporizador",
         "chapter": "Fin del capítulo"
+      },
+      "shake": {
+        "label": "Agitar para alargar",
+        "description": "Agita el teléfono en los últimos 30 segundos, o justo después de que se detenga el temporizador, para seguir escuchando.",
+        "unavailable": "No disponible en el navegador."
+      },
+      "sensitivity": {
+        "label": "Sensibilidad al agitar",
+        "description": "Con qué fuerza hay que agitar. Elige Baja si los movimientos en la cama hacen que el libro siga.",
+        "low": "Baja",
+        "medium": "Media",
+        "high": "Alta"
       }
     },
     "upNext": {
       "label": "A continuación",
       "autoPlay": {
         "label": "Reproducir automáticamente el siguiente libro",
-        "description": "Comienza el siguiente libro de la carpeta cuando uno termina."
+        "description": "Cuando termina un libro, empieza el primero de A continuación, o el siguiente de la serie."
       },
       "autoDelete": {
         "description": "Libera el espacio cuando terminas un libro. Tu punto en el libro se conserva."
@@ -796,26 +808,59 @@
     },
     "sleepTimer": {
       "title": "Temporizador",
-      "running": "Temporizador en marcha",
-      "timeSection": "Tiempo",
       "minutes_one": "{{count}} min",
       "minutes_other": "{{count}} min",
-      "endOfChapterSection": "Fin del capítulo",
       "endOf": "Fin de {{chapter}}",
       "endOfChapterNumber": "Fin del capítulo {{number}}",
-      "current": " (actual)",
       "endOfBook": "Fin del libro",
-      "noChapters": "No hay capítulos disponibles.",
-      "fading": "Bajando el volumen",
-      "ending": "Termina en breve",
-      "grace": "Reproducción en pausa",
       "keepListening": "Seguir escuchando",
-      "shakeHint": "Agita el teléfono para seguir escuchando",
       "keepGoingShort": "Seguir",
-      "cancel": "Cancelar temporizador"
+      "minutesUnit_one": "minuto",
+      "minutesUnit_other": "minutos",
+      "afterChapters_one": "Tras {{count}} capítulo",
+      "afterChapters_other": "Tras {{count}} capítulos",
+      "endOfChapter": "Fin del capítulo",
+      "inTime": "en {{time}}",
+      "stopAfter": "O parar después de",
+      "thisChapter": "Este capítulo",
+      "nChapters_one": "{{count}} capítulo",
+      "nChapters_other": "{{count}} capítulos",
+      "endsAt": "termina a las {{time}}",
+      "pillRunning": "Temporizador, {{label}}, quedan {{time}}",
+      "turnOff": "Desactivar",
+      "notice": {
+        "on": "Temporizador activado",
+        "book": "Se detendrá al final del libro",
+        "chapters_one": "Se detendrá al final de este capítulo",
+        "chapters_other": "Se detendrá tras {{count}} capítulos",
+        "left": "Quedan {{time}}",
+        "leftFades": "Quedan {{time}} · baja el volumen en los últimos 30 s",
+        "graceLeft": "Quedan {{time}} para seguir escuchando"
+      },
+      "grace": {
+        "fadingIn_one": "Bajando el volumen, se detiene en {{count}} s",
+        "fadingIn_other": "Bajando el volumen, se detiene en {{count}} s",
+        "stoppingIn_one": "Se detiene en {{count}} s",
+        "stoppingIn_other": "Se detiene en {{count}} s",
+        "pausedTitle": "En pausa por el temporizador",
+        "stillAwakeShake": "¿Sigues despierto? Agita el teléfono o toca para seguir escuchando.",
+        "stillAwake": "¿Sigues despierto? Sigue escuchando.",
+        "pausedShake": "¿Sigues despierto? Agita el teléfono o toca para continuar donde se detuvo.",
+        "paused": "¿Sigues despierto? Continúa donde se detuvo."
+      },
+      "autoChapter": "Se detiene al final del capítulo cada vez que pulsas reproducir entre las {{from}} y las {{until}}.",
+      "autoMinutes_one": "Inicia un temporizador de {{count}} minuto cada vez que pulsas reproducir entre las {{from}} y las {{until}}.",
+      "autoMinutes_other": "Inicia un temporizador de {{count}} minutos cada vez que pulsas reproducir entre las {{from}} y las {{until}}.",
+      "fellAsleepHint": "Si te duermes, un marcador «Me dormí» señala dónde se detuvo el temporizador, y la próxima vez que reproduzcas el libro podrás volver al último momento en que estabas despierto.",
+      "fellAsleepNote": "Me dormí"
     },
     "speed": {
-      "title": "Velocidad de reproducción"
+      "title": "Velocidad de reproducción",
+      "leftInBook": "Quedan {{time}} del libro a {{speed}} · se recuerda para este libro",
+      "slower": "0,05 más lento",
+      "faster": "0,05 más rápido",
+      "presets": "Velocidades predefinidas",
+      "presetLabel": "{{speed}}, quedan {{time}}"
     },
     "seek": {
       "label": "Posición en el capítulo",
@@ -827,11 +872,51 @@
       "fileLeft": "quedan {{time}} del archivo · termina a las {{clock}}"
     },
     "finished": {
-      "heading": "Libro terminado",
-      "upNext": "A continuación",
-      "playNext": "Reproducir siguiente",
+      "eyebrow": "Fin del libro",
+      "credits": "Créditos",
+      "writtenBy": "Escrito por",
+      "readBy": "Narrado por",
+      "publisher": "Editorial",
+      "released": "Publicación",
+      "community": "Notas de la comunidad",
+      "onServer": "En tu servidor",
+      "yearShelf_one": "{{count}} libro terminado este año",
+      "yearShelf_other": "{{count}} libros terminados este año",
+      "bookOfYear": "Libro {{number}} de este año · terminado",
+      "byline": "{{author}} · narrado por {{narrator}}",
+      "readByOnly": "Narrado por {{narrator}}",
+      "timeListened": "Tiempo escuchado",
+      "across": "A lo largo de",
+      "days_one": "{{count}} día",
+      "days_other": "{{count}} días",
+      "yourSpeed": "Tu velocidad",
+      "howWasIt": "¿Qué te ha parecido?",
+      "ratingLabel": "Tu valoración",
+      "stars_one": "{{count}} estrella",
+      "stars_other": "{{count}} estrellas",
+      "ratingSaved": "Valoración guardada",
+      "ratingFailed": "Tu valoración no se ha guardado. Inténtalo de nuevo.",
+      "fromQueue": "A continuación · de tu cola",
+      "fromSeriesBook": "A continuación · {{series}}, libro {{position}}",
+      "fromSeries": "A continuación · {{series}}",
+      "nextInSeries": "A continuación · el siguiente de la serie",
+      "fromFolder": "A continuación · el siguiente de esta carpeta",
+      "downloaded": "Descargado",
+      "downloading": "Descargando, {{percent}} %",
+      "streamsFrom": "Se reproduce desde {{server}}",
+      "playNow": "Reproducir ahora",
+      "playNowLabel": "Reproducir {{title}} ahora",
+      "notNow": "Ahora no",
+      "countdown_one": "Empieza en {{count}} segundo",
+      "countdown_other": "Empieza en {{count}} segundos",
+      "endOfSeries": "Fin de la serie",
+      "endOfSeriesBody": "Por ahora, ese es el último libro de {{series}} en este servidor.",
+      "endOfSeriesNoName": "No hay ningún libro después de este en este servidor.",
+      "notOnServerTitle": "El siguiente libro no está en este servidor",
+      "notOnServer": "Siguiente de la serie: {{title}}, que no está en este servidor.",
+      "notOnServerBook": "Siguiente de la serie: libro {{position}}, {{title}}, que no está en este servidor.",
+      "details": "Ver detalles",
       "startingIn": "Comienza en {{time}}",
-      "endOfSeries": "Has llegado al final de esta carpeta.",
       "viewDetails": "Ver detalles del libro"
     },
     "menu": {
@@ -865,6 +950,12 @@
       "palette": "Búsqueda y comandos",
       "help": "Esta ayuda",
       "space": "Espacio"
+    },
+    "drift": {
+      "title": "Te quedaste dormido hacia las {{time}}",
+      "description_one": "¿Volver {{count}} minuto atrás?",
+      "description_other": "¿Volver {{count}} minutos atrás?",
+      "jumpBack": "Volver atrás"
     }
   },
   "reconnect": {
@@ -922,8 +1013,7 @@
       "synced": "Sincronizado",
       "syncedNow": "Sincronizado ahora mismo",
       "signInToSync": "Guardado en este dispositivo, vuelve a iniciar sesión para sincronizar",
-      "speed": "Velocidad de reproducción, {{speed}}",
-      "sleepRunning": "Temporizador, quedan {{time}}"
+      "speed": "Velocidad de reproducción, {{speed}}"
     },
     "profile": {
       "label": "Servidores y cuenta, {{name}}",
@@ -1043,7 +1133,8 @@
     "ghostNoServer": "{{title}} no está en este servidor",
     "seeSeries": "Ver la serie",
     "add": "Añadir {{title}} a A continuación",
-    "autoPlay": "Reproducir automáticamente el siguiente libro de la serie",
+    "autoPlay": "Reproducir automáticamente el siguiente libro",
+    "autoPlayHint": "Empieza el primer libro de A continuación, o el siguiente de la serie.",
     "buttonLabel_one": "A continuación, {{count}} libro",
     "buttonLabel_other": "A continuación, {{count}} libros",
     "buttonLabelEmpty": "A continuación"

@@ -133,7 +133,7 @@ describe('UpNextPanel', () => {
   it('labels the auto-play switch for what it does today', async () => {
     useSettings.setState({ autoPlayNext: false });
     await render(<UpNextPanel cid="c" data={data()} />);
-    const sw = screen.getByLabelText('Play the next book in the series automatically');
+    const sw = screen.getByLabelText('Play the next book automatically');
     await fireEvent.press(sw);
     expect(useSettings.getState().autoPlayNext).toBe(true);
   });

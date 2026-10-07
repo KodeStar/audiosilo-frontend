@@ -77,7 +77,7 @@ beforeEach(() => {
     seekInTrack: jest.fn(),
   } as never);
   useSettings.setState({ skipForward: 30, skipBackward: 15 });
-  useSleepTimer.setState({ phase: 'idle', remaining: null });
+  useSleepTimer.setState({ phase: 'idle', remaining: null, label: null });
   useJumpUndo.setState({ jump: null });
   usePlayerSheets.setState({ open: null });
   useSession.setState({
@@ -163,7 +163,7 @@ describe('DockedPlayer', () => {
     await renderAt(1280);
     await fireEvent.press(screen.getByTestId('dock-speed'));
     expect(usePlayerSheets.getState().open).toBe('speed');
-    await fireEvent.press(screen.getByTestId('dock-sleep'));
+    await fireEvent.press(screen.getByLabelText('Sleep timer'));
     expect(usePlayerSheets.getState().open).toBe('sleep');
   });
 
@@ -181,12 +181,17 @@ describe('DockedPlayer', () => {
 
   it('turns the sleep pill brand-soft with its countdown while a timer runs', async () => {
     await renderAt(1280);
-    expect(screen.getByTestId('dock-sleep').props.className).not.toContain('bg-brand-soft');
-    await act(async () => useSleepTimer.setState({ phase: 'running', remaining: 724 }));
-    const pill = screen.getByTestId('dock-sleep');
+    expect(screen.getByLabelText('Sleep timer').props.className).not.toContain('bg-brand-soft');
+    await act(async () =>
+      useSleepTimer.setState({
+        phase: 'running',
+        remaining: 724,
+        label: { key: 'player.sleepTimer.minutes', params: { count: 15 } },
+      }),
+    );
+    const pill = screen.getByLabelText('Sleep timer, 15 min, 12:04 left');
     expect(pill.props.className).toContain('bg-brand-soft');
     expect(screen.getByText('12:04')).toBeTruthy();
-    expect(screen.getByLabelText('Sleep timer, 12:04 left')).toBeTruthy();
   });
 
   it('says "Keep going" in the grace window, labelled for what the sheet can do', async () => {

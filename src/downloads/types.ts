@@ -24,9 +24,12 @@ export type DownloadFailure = {
   kept?: number;
 };
 
-/** Who asked for a download: the listener (a button, or starting the book with automatic
- * downloads on) or "Keep the next books ready". Shown on the Downloads page. */
-export type DownloadOrigin = 'listener' | 'keep-ahead';
+/** Who asked for a download: the listener (a button), the automatic download of the
+ * book they start (`auto`, under the automatic-download rule) or "Keep the next books
+ * ready". Only a listener's download lifts a cancel/remove mark from earlier in the
+ * session (`isDeclined`); the Downloads page marks keep-ahead's ("Kept ahead") and shows
+ * `auto` like the listener's own (it is the book they chose to play). */
+export type DownloadOrigin = 'listener' | 'auto' | 'keep-ahead';
 
 /**
  * Offline source of truth for a downloaded book - everything the playback layer

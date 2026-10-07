@@ -18,6 +18,7 @@ import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
 import { migrateStorage } from '@/lib/storage-migration';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
+import { startDriftWatch } from '@/playback/drift-controller';
 import { startJumpUndo } from '@/playback/jump-undo';
 import '@/lib/register-sw';
 // Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
@@ -109,6 +110,10 @@ export default function RootLayout() {
   // the player modal is open, since the timer has to arm for a book started from the
   // mini player, the library, or a lock-screen play.
   useEffect(() => startAutoSleep(), []);
+
+  // "Fell asleep": the bookmark and the "You drifted off" prompt after a sleep timer
+  // stopped a book nobody was awake for. Framework-free like the auto sleep timer.
+  useEffect(() => startDriftWatch(), []);
 
   // "Keep the next books ready" (downloads the books after the loaded one when the
   // listener opted in). Framework-free like the auto sleep timer; see the controller.
