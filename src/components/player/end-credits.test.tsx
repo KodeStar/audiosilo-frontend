@@ -430,7 +430,8 @@ describe('EndCredits', () => {
       position: 865,
     });
     await mount();
-    expect(screen.getByText('Starting in 2m 15s')).toBeTruthy();
+    // 135 s of audio at 1.5x end in 90 s.
+    expect(screen.getByText('Starting in 1m 30s')).toBeTruthy();
     // No ring: nothing starts before the book ends.
     expect(screen.queryByLabelText(/Starts in/)).toBeNull();
     expect(screen.getByText('1.5×')).toBeTruthy();

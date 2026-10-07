@@ -33,6 +33,7 @@ import { useLayout } from '@/lib/layout';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
+import { wallClockSeconds } from '@/playback/rate';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { resolveUpNext, type UpNextAnswer, type UpNextBook } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
@@ -473,9 +474,11 @@ function NextUp({
   onPlay: () => void;
   onNotNow: () => void;
 }) {
+  // Wall-clock time at the playing speed (frontend#50's one speed rule): the book ends
+  // in 90 s at 1.5x when 135 s of audio are left.
   const remainingSeconds = usePlayer((s) =>
     selectIsLoaded(finished)(s) && s.nowPlaying
-      ? Math.ceil(Math.max(0, s.nowPlaying.queue.total - selectBookPosition(s)))
+      ? Math.ceil(wallClockSeconds(s.nowPlaying.queue.total - selectBookPosition(s), s.rate))
       : 0,
   );
   // The grace countdown runs only once the book is over (not stillPlaying). The interval
