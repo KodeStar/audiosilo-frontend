@@ -1,58 +1,108 @@
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CoverFrame } from '@/components/library/cover-frame';
-import { useBook } from '@/api/hooks';
-import { useCid, useOptionalApi } from '@/api/provider';
-import type { FsEntry } from '@/api/types';
+import {
+  CapabilityError,
+  qk,
+  useAllProgressAll,
+  useBook,
+  useBookMeta,
+  useBookProgress,
+  useCapability,
+  useMyStats,
+  useRating,
+  useSetRating,
+} from '@/api/hooks';
+import { ConnectionScope, useCid, useOptionalApi } from '@/api/provider';
+import type { RatingValue } from '@/api/types';
+import { BookCover } from '@/components/library/book-cover';
+import { matchedMeta } from '@/components/library/book-meta';
+import { CoverWash } from '@/components/library/cover-wash';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Cover } from '@/components/ui/cover';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Icon } from '@/components/ui/icon';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { formatCountdown } from '@/lib/format';
-import { bookHref, libraryHref, parentPath, pathLeaf, playerHref } from '@/lib/paths';
-import { resolveNextBook } from '@/playback/next-book';
+import { toast } from '@/components/ui/toast';
+import { formatDuration, formatSpeed } from '@/lib/format';
+import { useLayout } from '@/lib/layout';
+import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
+import { cn } from '@/lib/utils';
 import { selectBookPosition, usePlayer } from '@/playback/store';
+import { resolveUpNext, type UpNextAnswer } from '@/playback/up-next-resolver';
+import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { endCreditsDecision } from './end-credits-logic';
+import {
+  endCreditsDecision,
+  HISTORY_LIMIT,
+  listeningSummary,
+  yearShelf,
+} from './end-credits-logic';
+import {
+  CreditsDialog,
+  EndOfSeries,
+  StatTile,
+  UpNextCard,
+  UpNextSkeleton,
+  YearShelf,
+  type ShelfBook,
+} from './end-credits-parts';
+import { RatingStars } from './rating-stars';
+import { useQueueDrop } from './use-queue-drop';
+
+/** Spines on the year shelf at most (the oldest go first when the row is narrower). */
+const SHELF_MAX = { phone: 9, wide: 14 };
 
 /**
- * The end-credits ("book finished") screen: shows the book that just finished, resolves
- * the next book in the folder/series, and offers Play next - with an optional auto-play
- * countdown driven by the `autoPlayNext` setting (see end-credits-logic). Kept as a
- * component (not a route file) so the route stays thin and this stays reusable; the
- * countdown/fire decision lives in the pure, tested end-credits-logic module.
+ * The end-credits ("book finished") screen, the `/finished` root modal: the finished
+ * book on the year shelf, its listening, a rating, and the book that plays next with
+ * the auto-play countdown (`end-credits-logic`). What plays next is `resolveUpNext`, the
+ * same answer the background auto-play gives: the Up next queue first, then the series.
+ * Its hooks run against the book's own server (`ConnectionScope`).
  *
- * `auto` marks an arrival from the book's natural end. The finished book's metadata is
- * often wrong for audiobooks, so the folder name is always shown as a distinct line.
+ * The full player's "View credits" opens it for a book still playing: then the
+ * countdown follows the remaining audio and nothing starts before the book ends.
  */
 export function EndCredits({
   connectionId,
   libraryId,
   path,
+  ended = false,
 }: {
   connectionId: string;
   libraryId: number;
   path: string;
+  /** Opened by the book's natural end (`auto=1`), so it is finished. */
+  ended?: boolean;
 }) {
-  const themed = useThemeColors();
-  const { t } = useTranslation();
-  const neutral = themed.foreground;
-  const insets = useSafeAreaInsets();
-
   const cid = useCid(connectionId);
-  const api = useOptionalApi(connectionId);
-  const { data: book } = useBook(libraryId, path, connectionId);
+  return (
+    <ConnectionScope connectionId={cid}>
+      <EndCreditsBody cid={cid} libraryId={libraryId} path={path} ended={ended} />
+    </ConnectionScope>
+  );
+}
+
+function EndCreditsBody({
+  cid,
+  libraryId,
+  path,
+  ended,
+}: {
+  cid: string;
+  libraryId: number;
+  path: string;
+  ended: boolean;
+}) {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const phone = useLayout() === 'phone';
+  const api = useOptionalApi(cid);
+  const { data: book } = useBook(libraryId, path, cid);
+  const title = bookTitle(book?.title, path);
 
   const autoPlayNext = useSettings((s) => s.autoPlayNext);
 
@@ -62,6 +112,7 @@ export function EndCredits({
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const playbackState = usePlayer((s) => s.snapshot.state);
   const bookPosition = usePlayer(selectBookPosition);
+  const rate = usePlayer((s) => s.rate);
   const isThisLoaded =
     nowPlaying?.connectionId === cid &&
     nowPlaying?.libraryId === libraryId &&
@@ -76,25 +127,24 @@ export function EndCredits({
   const total = isThisLoaded ? nowPlaying.queue.total : 0;
   const remainingSeconds = Math.max(0, total - bookPosition);
 
-  // Resolve the next book in the folder once. `undefined` = still resolving; `null` = none.
-  const [nextBook, setNextBook] = useState<FsEntry | null | undefined>(undefined);
+  // What plays next, worked out once. `undefined` while resolving.
+  const [answer, setAnswer] = useState<UpNextAnswer | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (!api) {
-        setNextBook(null);
-        return;
-      }
-      const n = await resolveNextBook(api, libraryId, path);
-      if (!cancelled) setNextBook(n);
+      const a = api
+        ? await resolveUpNext(upNextSources(api, cid), { connectionId: cid, libraryId, path })
+        : { next: null };
+      if (!cancelled) setAnswer(a);
     })();
     return () => {
       cancelled = true;
     };
-  }, [api, libraryId, path]);
+  }, [api, cid, libraryId, path]);
+  const next = answer?.next ?? null;
 
   const [cancelled, setCancelled] = useState(false);
-  const hasNext = !!nextBook;
+  const hasNext = !!next;
 
   // The grace countdown runs only once the book is over (not stillPlaying). The interval
   // callback (async setState, so no synchronous setState-in-effect) advances the elapsed
@@ -118,146 +168,300 @@ export function EndCredits({
     elapsedGrace,
   });
 
-  // Fire at most once - Play next (manual) and the countdown share this.
+  // Fire at most once - Play now (manual) and the countdown share this.
+  const dropFromQueue = useQueueDrop(cid);
   const fired = useRef(false);
   const playNext = useCallback(() => {
-    if (fired.current || !nextBook) return;
+    if (fired.current || !next) return;
     fired.current = true;
-    // If the finished book is somehow still loaded (early arrival), finish it first:
-    // finishBook persists finished, tears down the engine, clears nowPlaying and (when
-    // enabled) deletes the downloaded copy. The player screen auto-plays the next book
-    // on mount once its book + chapters load.
-    if (usePlayer.getState().nowPlaying) usePlayer.getState().finishBook();
-    router.replace(playerHref(cid, libraryId, nextBook.path));
-  }, [nextBook, cid, libraryId]);
+    // If the finished book is still loaded (early arrival), finish it first: finishBook
+    // persists finished, tears down the engine, clears nowPlaying and (when enabled)
+    // deletes the downloaded copy. The player screen plays the next book on mount once
+    // its book + chapters load.
+    const { nowPlaying: np, finishBook } = usePlayer.getState();
+    const finishing = np?.connectionId === cid && np.libraryId === libraryId && np.path === path;
+    if (finishing) finishBook();
+    router.replace(playerHref(next.connectionId, next.libraryId, next.path));
+    // The queued book is now the book you're on; a book finished here leaves Up next too
+    // (a natural end already took it off).
+    const leaving = [
+      ...(next.queueEntry ? [next.queueEntry] : []),
+      ...(finishing ? [{ library_id: libraryId, path }] : []),
+    ];
+    if (leaving.length > 0) void dropFromQueue(leaving);
+  }, [next, cid, libraryId, path, dropFromQueue]);
 
   useEffect(() => {
     if (decision.fireNext) playNext();
   }, [decision.fireNext, playNext]);
+
+  // Opened by the book's end (or "Mark as finished"): it is no longer up next. Once.
+  const dropped = useRef(false);
+  useEffect(() => {
+    if (!ended || dropped.current) return;
+    dropped.current = true;
+    void dropFromQueue([{ library_id: libraryId, path }]);
+  }, [ended, dropFromQueue, libraryId, path]);
 
   const onClose = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace(libraryHref(cid, libraryId, parentPath(path)));
   }, [cid, libraryId, path]);
 
-  const folderName = pathLeaf(path);
-  const cover = book ? api?.coverUrl(libraryId, path) : undefined;
-  // Memoize the image source: api.authHeaders() returns a fresh object each call and the
-  // grace countdown re-renders this screen on every tick, so an inline source would hand
-  // expo-image a new reference each render and defeat its cache (mirrors player-view.tsx).
-  const coverSource = useMemo(
-    () => (cover ? { uri: cover, headers: api?.authHeaders() } : null),
-    [cover, api],
-  );
+  // --- What the credits show -------------------------------------------------------
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const metaEnabled =
+    useCapability('metadata', cid) === true && !!(book?.asin || book?.isbn) && creditsOpen;
+  const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
+  const matched = matchedMeta(meta, metaEnabled);
+
+  const history = useQuery({
+    queryKey: [...qk.history(cid, libraryId, path), HISTORY_LIMIT],
+    queryFn: () => api!.history(libraryId, path, HISTORY_LIMIT),
+    enabled: !!api && path.length > 0,
+  });
+  const listened = history.data ? listeningSummary(history.data) : null;
+  const { data: saved } = useBookProgress(libraryId, path, true, cid);
+  const speed = isThisLoaded ? rate : saved?.playback_speed || rate;
+  // Finished: it ended here, or its saved progress says so (the credits can also be
+  // opened for a book still playing, or reopened later without it loaded).
+  const finished = !stillPlaying && (ended || !!saved?.finished);
+
+  const statsCap = useCapability('user_stats', cid);
+  const stats = useMyStats('year', cid);
+  const { progress: allProgress } = useAllProgressAll({ refetchOnMount: false });
+  const shelf = useMemo(() => {
+    if (!stats.data) return null;
+    const { others, bookNumber } = yearShelf(
+      stats.data,
+      { libraryId, path },
+      finished,
+      phone ? SHELF_MAX.phone : SHELF_MAX.wide,
+    );
+    const seconds = new Map(
+      allProgress
+        .filter((p) => p.connectionId === cid)
+        .map((p) => [`${p.library_id}:${p.path}`, p.duration]),
+    );
+    const books: ShelfBook[] = others.map((b) => ({
+      key: `${b.library_id}:${b.path}`,
+      title: bookTitle(b.title, b.path),
+      author: b.author,
+      seconds: seconds.get(`${b.library_id}:${b.path}`),
+    }));
+    return { books, bookNumber, count: bookNumber ?? stats.data.totals.finished };
+  }, [stats.data, libraryId, path, finished, phone, allProgress, cid]);
+
+  const ratingsCap = useCapability('ratings', cid) === true;
+  const rating = useRating(libraryId, path, cid);
+  const setRating = useSetRating(cid);
+  const [picked, setPicked] = useState<RatingValue | undefined>(undefined);
+  const onRate = (value: RatingValue) => {
+    setPicked(value);
+    // A PUT replaces the whole rating: carry the saved note so rating doesn't clear it.
+    setRating.mutateAsync({ libraryId, path, rating: value, note: rating.data?.note }).then(
+      () => toast({ title: t('player.finished.ratingSaved') }),
+      (e: unknown) => {
+        setPicked(undefined);
+        if (!(e instanceof CapabilityError)) toast({ title: t('player.finished.ratingFailed') });
+      },
+    );
+  };
+
+  // --- Layout ----------------------------------------------------------------------------
+  const shelfOrCover =
+    statsCap && stats.isLoading ? (
+      // Holding the shelf's room while the year's books load, so nothing jumps.
+      <View style={{ height: phone ? 140 : 168 }} />
+    ) : shelf && shelf.books.length > 0 ? (
+      <YearShelf
+        others={shelf.books}
+        current={{
+          key: `${libraryId}:${path}`,
+          title,
+          author: book?.author,
+          seconds: book?.duration,
+          coverColor: book?.cover_color,
+        }}
+        phone={phone}
+        count={shelf.count}
+      />
+    ) : (
+      <BookCover
+        connectionId={cid}
+        libraryId={libraryId}
+        path={path}
+        coverVersion={book?.cover_version}
+        width={phone ? 160 : 200}
+        title={title}
+        author={book?.author}
+        shadow="lg"
+      />
+    );
+
+  const byline =
+    book?.author && book.narrator
+      ? t('player.finished.byline', { author: book.author, narrator: book.narrator })
+      : book?.narrator
+        ? t('player.finished.readByOnly', { narrator: book.narrator })
+        : (book?.author ?? '');
+
+  const tiles: [string, string][] = [];
+  if (listened && listened.seconds > 0)
+    tiles.push([
+      t('player.finished.timeListened'),
+      `${formatDuration(listened.seconds)}${listened.partial ? '+' : ''}`,
+    ]);
+  if (listened && listened.days > 0)
+    tiles.push([
+      t('player.finished.across'),
+      `${t('player.finished.days', { count: listened.days })}${listened.partial ? '+' : ''}`,
+    ]);
+  if (speed > 0) tiles.push([t('player.finished.yourSpeed'), formatSpeed(speed)]);
 
   return (
     <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       className="flex-1 bg-background"
     >
-      {/* Ambient backdrop from the finished book's cover - visual continuity from the
-          player through to the credits (painted under the header + hero cover). */}
-      <CoverBackdrop source={coverSource} />
+      {/* The finished book's colours behind everything (text stays on the page tokens);
+          the blurred art where the server sends no colour. */}
+      {book?.cover_color ? (
+        <CoverWash color={book.cover_color} variant="hero" />
+      ) : (
+        <FallbackBackdrop cid={cid} libraryId={libraryId} path={path} hasBook={!!book} />
+      )}
 
-      <View className="flex-row items-center px-4 py-2">
-        <AnimatedPressable
-          onPress={onClose}
-          hitSlop={12}
-          className="h-8 w-8 items-center justify-center"
-          accessibilityRole="button"
+      <View className={cn('flex-row items-center gap-2 py-2', phone ? 'px-2' : 'px-4')}>
+        <Button
+          variant="ghost"
+          size="icon"
+          icon="close"
           accessibilityLabel={t('common.close')}
-        >
-          <Icon name="chevron-down" size={26} color={neutral} />
-        </AnimatedPressable>
+          onPress={onClose}
+        />
+        <Text variant="eyebrow" className="flex-1 text-center" accessibilityRole="header">
+          {t('player.finished.eyebrow')}
+        </Text>
+        <Button
+          variant="ghost"
+          size="sm"
+          title={t('player.finished.credits')}
+          onPress={() => setCreditsOpen(true)}
+        />
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="items-center gap-6 px-6 pb-10 pt-2">
-        {/* The finished book. */}
-        <CoverFrame size="lg" className="w-40">
-          <Cover source={coverSource} label={book?.title ?? folderName} sublabel={book?.author} />
-        </CoverFrame>
-        <View className="items-center gap-1">
-          <Text variant="eyebrow" className="text-brand-ink">
-            {t('player.finished.heading')}
-          </Text>
-          <Text variant="heading" className="text-center" numberOfLines={2}>
-            {book?.title ?? folderName}
-          </Text>
-          {book?.author ? (
-            <Text variant="muted" className="text-center">
-              {t('book.byAuthor', { author: book.author })}
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName={cn(
+          'items-center gap-6',
+          phone ? 'px-5 pb-8 pt-1.5' : 'px-10 pb-10 pt-2.5',
+        )}
+      >
+        {shelfOrCover}
+
+        <View className="w-full max-w-[720px] items-center gap-1.5">
+          {shelf?.bookNumber ? (
+            <Text variant="eyebrow" className="text-center">
+              {t('player.finished.bookOfYear', { number: shelf.bookNumber })}
             </Text>
           ) : null}
-          {/* Metadata is often wrong for audiobooks, so surface the folder name plainly. */}
-          <Text variant="caption" className="text-center" numberOfLines={1}>
-            {folderName}
+          <Text
+            variant="display-xl"
+            className={cn(
+              'text-center',
+              phone ? 'text-[34px] leading-[38px]' : 'text-[50px] leading-[54px]',
+            )}
+            numberOfLines={3}
+          >
+            {title}
           </Text>
+          {byline ? (
+            <Text variant="muted" className="text-center">
+              {byline}
+            </Text>
+          ) : null}
         </View>
 
-        {/* Up next / end-of-folder / still resolving. */}
-        {nextBook ? (
-          <Card className="w-full max-w-[420px] gap-3 p-4">
-            <Text variant="eyebrow">{t('player.finished.upNext')}</Text>
-            <View className="gap-0.5">
-              <Text variant="title" numberOfLines={2}>
-                {nextBook.name}
-              </Text>
-              {nextBook.title && nextBook.title !== nextBook.name ? (
-                <Text variant="muted" numberOfLines={1}>
-                  {nextBook.title}
-                </Text>
-              ) : null}
-              {nextBook.author ? (
-                <Text variant="caption" numberOfLines={1}>
-                  {t('book.byAuthor', { author: nextBook.author })}
-                </Text>
-              ) : null}
-            </View>
-            <Button
-              size="lg"
-              title={t('player.finished.playNext')}
-              icon="play"
-              onPress={playNext}
+        {tiles.length > 0 ? (
+          <View className="w-full max-w-[720px] flex-row justify-center gap-3">
+            {tiles.map(([label, value]) => (
+              <StatTile key={label} label={label} value={value} phone={phone} />
+            ))}
+          </View>
+        ) : null}
+
+        {ratingsCap ? (
+          <View className="items-center gap-1">
+            <Text variant="label">{t('player.finished.howWasIt')}</Text>
+            <RatingStars
+              value={picked ?? rating.data?.rating}
+              onRate={onRate}
+              disabled={setRating.isPending}
             />
-            {decision.showCountdown ? (
-              <View className="flex-row items-center justify-center gap-3">
-                <Text variant="muted">
-                  {t('player.finished.startingIn', {
-                    time: formatCountdown(decision.countdownSeconds),
-                  })}
-                </Text>
-                <AnimatedPressable
-                  onPress={() => setCancelled(true)}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                >
-                  <Text className="font-sans-medium text-brand-ink">{t('common.cancel')}</Text>
-                </AnimatedPressable>
-              </View>
-            ) : null}
-          </Card>
-        ) : nextBook === null ? (
-          <EmptyState icon="check" title={t('player.finished.endOfSeries')} />
+          </View>
+        ) : null}
+
+        {next ? (
+          <UpNextCard
+            next={next}
+            decision={decision}
+            stillPlaying={stillPlaying}
+            phone={phone}
+            onPlay={playNext}
+            onNotNow={() => setCancelled(true)}
+          />
+        ) : answer ? (
+          <EndOfSeries series={book?.series || undefined} unplaced={answer.unplaced} />
         ) : (
-          // Still resolving the next book: a card-shaped placeholder in its place.
-          <Card className="w-full max-w-[420px] gap-3 p-4">
-            <Skeleton className="h-3.5 w-20 rounded-sm" />
-            <Skeleton className="h-5 w-3/4 rounded-sm" />
-            <Skeleton className="h-11 w-full rounded-lg" />
-          </Card>
+          <UpNextSkeleton />
         )}
 
-        {/* Secondary actions. */}
-        <View className="w-full max-w-[420px] gap-2">
-          <Button
-            title={t('player.finished.viewDetails')}
-            variant="secondary"
-            icon="book"
-            onPress={() => router.replace(bookHref(cid, libraryId, path))}
-          />
-          <Button title={t('common.done')} variant="ghost" onPress={onClose} />
-        </View>
+        <Button
+          variant="outline"
+          icon="book-open"
+          title={t('player.finished.details')}
+          onPress={() => router.replace(bookHref(cid, libraryId, path))}
+        />
       </ScrollView>
+
+      <CreditsDialog
+        open={creditsOpen}
+        onOpenChange={setCreditsOpen}
+        data={{
+          title,
+          author: book?.author,
+          narrator: book?.narrator,
+          recording: matched?.recording,
+          released: book?.published || matched?.recording?.release_date || undefined,
+          attribution: matched?.work.attribution,
+          path,
+        }}
+      />
     </View>
   );
+}
+
+/** The finished book's blurred art behind the screen, for a server that sends no cover
+ * colour (the look before cover colours). */
+function FallbackBackdrop({
+  cid,
+  libraryId,
+  path,
+  hasBook,
+}: {
+  cid: string;
+  libraryId: number;
+  path: string;
+  hasBook: boolean;
+}) {
+  const api = useOptionalApi(cid);
+  const cover = hasBook ? api?.coverUrl(libraryId, path) : undefined;
+  // Memoized: the countdown re-renders the screen every tick, and a new source object
+  // each time would defeat expo-image's cache.
+  const source = useMemo(
+    () => (cover ? { uri: cover, headers: api?.authHeaders() } : null),
+    [cover, api],
+  );
+  return <CoverBackdrop source={source} />;
 }

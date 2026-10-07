@@ -13,6 +13,7 @@ export default function FinishedScreen() {
     connection: connectionId,
     libraryId: libParam,
     path: pathParam,
+    auto,
   } = useLocalSearchParams<{
     connection?: string;
     libraryId?: string;
@@ -22,5 +23,12 @@ export default function FinishedScreen() {
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
 
-  return <EndCredits connectionId={connectionId ?? ''} libraryId={libraryId} path={path} />;
+  return (
+    <EndCredits
+      connectionId={connectionId ?? ''}
+      libraryId={libraryId}
+      path={path}
+      ended={auto === '1'}
+    />
+  );
 }

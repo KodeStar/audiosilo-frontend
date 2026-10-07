@@ -40,9 +40,11 @@ import type { DownloadStatus } from './types';
  * ## How it sits beside the existing automatic download
  * The playback store already downloads the book you START (`maybeAutoDownloadCurrent`
  * in `src/playback/store.ts`, under `autoDownloadNext`), and the player switches to the
- * local copy once it lands. That stays exactly as it is (decision 7: the store is not
- * changed). This controller adds the books AFTER it: with the setting at N, the next N
- * from Up next and then the series. Both obey the same network rule, both go through the
+ * local copy once it lands. That stays in the store (decision 7); it skips a declined
+ * book and keeps the same reserve free (`roomLeft`) as this plan. This controller adds
+ * the books AFTER it: with the setting at N, the next N from Up next and then the
+ * series (the order the end of a book plays them in, `resolveUpNext`). Both obey the
+ * same network rule, both go through the
  * downloads store's one-at-a-time queue, and the current book always wins the queue:
  * the store enqueues it the moment playback starts, while this waits `SETTLE_MS` after
  * the book changes before planning. With the setting off (the default) nothing here

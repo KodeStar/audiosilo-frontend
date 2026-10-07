@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApi } from '@/api/provider';
 import { serverStatus, useReachability } from '@/api/reachability';
 import { BookProgressLine } from '@/components/player/book-progress';
+import { GraceCard } from '@/components/player/grace-card';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
@@ -277,6 +278,8 @@ export function DockedPlayer() {
           </View>
         </View>
       </View>
+      {/* The sleep timer's last seconds and post-pause grace, just above the bar. */}
+      <GraceCard bottom={(height ?? 84) + 12} />
       <SpeedSheet visible={sheet === 'speed'} onClose={() => setSheet(null)} />
       <SleepSheet visible={sheet === 'sleep'} onClose={() => setSheet(null)} />
     </>

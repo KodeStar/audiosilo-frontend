@@ -1,0 +1,115 @@
+import { selectBookKey, selectBookPosition, selectIsTransportLive, usePlayer } from './store';
+
+/**
+ * The listener's LAST deliberate touch of the player, per book: when it was (wall clock)
+ * and where the book was. It answers "when did they last show they were awake?", which is
+ * what the "You drifted off around 23:41" prompt is built from (`drift-controller.ts`):
+ * everything played between that moment and the sleep timer stopping the book was most
+ * likely heard by nobody.
+ *
+ * Framework-free and memory-only (one entry per book key, the newest few kept): it only
+ * has to survive from a touch to the timer firing later that night, and the sleep timer
+ * copies what it needs at the moment it fires.
+ *
+ * ## What counts
+ *
+ * Two sources, and both are cheap:
+ *
+ * - **What the store shows** (`startInteractionWatch`): the transport starting or stopping
+ *   (play, pause, a lock-screen or headphone button), and the position JUMPING (a seek, a
+ *   skip, a chapter change) rather than flowing. That covers every surface, including the
+ *   ones that never pass through our UI (the lock screen, CarPlay), with no change to the
+ *   player store. The store's own noise is harmless here: a buffering stall stays "live"
+ *   in the loose reading used, and a misread edge only makes the listener look awake
+ *   somewhat later than they were - which shortens the prompt's "jump back", never
+ *   invents one.
+ * - **Explicit notes** (`noteInteraction`): touches the store cannot see, i.e. arming or
+ *   re-arming a sleep timer (the sheet, a shake, "Keep listening"). The player UI can call
+ *   it for anything else deliberate.
+ *
+ * The automatic sleep timer arming on a play edge is NOT a touch (the play edge is).
+ */
+
+/** Where and when the listener last touched the player for one book. */
+export type Interaction = {
+  /** Epoch ms. */
+  at: number;
+  /** Whole-book position, seconds. */
+  position: number;
+};
+
+/** More than a night's books; the oldest go first. */
+const MAX_BOOKS = 20;
+
+/** A position change this much bigger (content seconds) than playback could have made
+ * since the last write is a jump, not playback. Under the smallest skip the UI offers
+ * (5 s), well over a progress tick's drift. */
+const JUMP_SECONDS = 4;
+
+const last = new Map<string, Interaction>();
+
+function remember(bookKey: string, entry: Interaction) {
+  last.delete(bookKey); // re-insert at the end: Map order is the eviction order
+  last.set(bookKey, entry);
+  if (last.size > MAX_BOOKS) {
+    const oldest = last.keys().next().value;
+    if (oldest !== undefined) last.delete(oldest);
+  }
+}
+
+/** Record a deliberate touch of the book loaded now, at its current position. A no-op
+ * with nothing loaded. */
+export function noteInteraction(): void {
+  const player = usePlayer.getState();
+  const key = selectBookKey(player);
+  if (key === null) return;
+  remember(key, { at: Date.now(), position: selectBookPosition(player) });
+}
+
+/** The last touch recorded for a book (`contentKey`), or null when there is none. */
+export function lastInteraction(bookKey: string): Interaction | null {
+  return last.get(bookKey) ?? null;
+}
+
+/** Forget everything (tests). */
+export function resetInteractions(): void {
+  last.clear();
+}
+
+/**
+ * Watch the player store for the touches it can show: the transport going live or
+ * stopping, and the position jumping. Returns the unsubscribe. Started once, by the
+ * drift controller.
+ */
+export function startInteractionWatch(): () => void {
+  let prevLive = selectIsTransportLive(usePlayer.getState());
+  let prevKey = selectBookKey(usePlayer.getState());
+  let prevPosition = selectBookPosition(usePlayer.getState());
+  let prevAt = Date.now();
+  return usePlayer.subscribe((state) => {
+    const key = selectBookKey(state);
+    const live = selectIsTransportLive(state);
+    const position = selectBookPosition(state);
+    const now = Date.now();
+    if (key !== null) {
+      if (key !== prevKey) {
+        // A book was started: that is a touch in itself.
+        if (live) remember(key, { at: now, position });
+      } else if (live !== prevLive) {
+        remember(key, { at: now, position });
+      } else {
+        // Playback moves the position by at most the elapsed time times the speed
+        // (2x is the most the app plays at); anything beyond that, either way, was moved.
+        const flowed = ((now - prevAt) / 1000) * Math.max(1, state.rate);
+        const moved = position - prevPosition;
+        if (moved < -JUMP_SECONDS || moved > flowed + JUMP_SECONDS) {
+          remember(key, { at: now, position });
+        }
+      }
+    }
+    prevKey = key;
+    prevLive = live;
+    prevPosition = position;
+    prevAt = now;
+  });
+}

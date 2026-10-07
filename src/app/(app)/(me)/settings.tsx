@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 
 import { ConnectionsSection, useConnectionRemoval } from '@/components/account/connections-section';
 import {
@@ -9,6 +9,7 @@ import {
   useAutoDownloadModes,
 } from '@/components/downloads/rules-card';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { ShakeSensitivityControl } from '@/components/player/sleep-timer-button';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -136,6 +137,10 @@ export default function SettingsScreen() {
   const setAutoSleepFrom = useSettings((s) => s.setAutoSleepFrom);
   const setAutoSleepUntil = useSettings((s) => s.setAutoSleepUntil);
   const setAutoSleepType = useSettings((s) => s.setAutoSleepType);
+  const shakeToExtend = useSettings((s) => s.shakeToExtend);
+  const setShakeToExtend = useSettings((s) => s.setShakeToExtend);
+  // The web has no accelerometer: the row stays, saying so (STYLEGUIDE section 13).
+  const shakeAvailable = Platform.OS !== 'web';
   // Five options is too many to stay readable in a SegmentedControl on a phone, so
   // the timer type is a Select.
   const sleepTypeOptions: (SelectOption & { value: AutoSleepType })[] = [
@@ -309,6 +314,32 @@ export default function SettingsScreen() {
                   <Text variant="caption">{t('settings.sleep.sameTimes')}</Text>
                 ) : null}
               </View>
+            ) : null}
+            <ChoiceRow
+              label={t('settings.sleep.shake.label')}
+              description={
+                shakeAvailable
+                  ? t('settings.sleep.shake.description')
+                  : t('settings.sleep.shake.unavailable')
+              }
+            >
+              {shakeAvailable ? (
+                <SegmentedControl
+                  options={onOff}
+                  value={shakeToExtend ? 'on' : 'off'}
+                  onChange={(v) => setShakeToExtend(v === 'on')}
+                  grow
+                  accessibilityLabel={t('settings.sleep.shake.label')}
+                />
+              ) : null}
+            </ChoiceRow>
+            {shakeAvailable && shakeToExtend ? (
+              <ChoiceRow
+                label={t('settings.sleep.sensitivity.label')}
+                description={t('settings.sleep.sensitivity.description')}
+              >
+                <ShakeSensitivityControl />
+              </ChoiceRow>
             ) : null}
           </View>
         </Section>
