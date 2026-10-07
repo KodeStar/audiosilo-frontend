@@ -1,4 +1,4 @@
-import { normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import { cleanAddresses, normalizeUrl, parsePairingScan } from '@/lib/pairing';
 
 describe('normalizeUrl', () => {
   it('adds a default https scheme when none is given', () => {
@@ -46,5 +46,64 @@ describe('parsePairingScan', () => {
   });
   it('returns null for a custom-scheme link missing its server', () => {
     expect(parsePairingScan('audiosilo://connect?token=tok')).toBeNull();
+  });
+});
+
+describe('cleanAddresses', () => {
+  it('normalises both and drops what is not an http(s) URL', () => {
+    expect(
+      cleanAddresses({ home: ' http://192.168.1.20:8080/ ', away: 'https://books.example.com' }),
+    ).toEqual({ home: 'http://192.168.1.20:8080', away: 'https://books.example.com' });
+    expect(cleanAddresses({ home: 'ftp://nas', away: 'not a host' })).toBeUndefined();
+    expect(cleanAddresses({ home: 42, away: null })).toBeUndefined();
+    expect(cleanAddresses(null)).toBeUndefined();
+  });
+  it('drops a home that is the away address too', () => {
+    expect(cleanAddresses({ home: 'https://b.example', away: 'https://b.example/' })).toEqual({
+      away: 'https://b.example',
+    });
+  });
+});
+
+describe('parsePairingScan with home and away addresses', () => {
+  const home = encodeURIComponent('http://192.168.1.20:8080');
+  const away = encodeURIComponent('https://books.example.com');
+
+  it('reads them from the web handoff URL (the QR)', () => {
+    expect(
+      parsePairingScan(`https://books.example.com/web/connect?token=tok&home=${home}&away=${away}`),
+    ).toEqual({
+      base: 'https://books.example.com',
+      token: 'tok',
+      addresses: { home: 'http://192.168.1.20:8080', away: 'https://books.example.com' },
+    });
+  });
+
+  it('reads them from the custom-scheme deep link', () => {
+    const scan = parsePairingScan(
+      `audiosilo://connect?server=${home}&token=tok&home=${home}&away=${away}`,
+    );
+    expect(scan).toEqual({
+      base: 'http://192.168.1.20:8080',
+      token: 'tok',
+      addresses: { home: 'http://192.168.1.20:8080', away: 'https://books.example.com' },
+    });
+  });
+
+  it('keeps just the valid one, and no field at all without any', () => {
+    expect(parsePairingScan(`https://h/web/connect?token=t&home=nope%20nope&away=${away}`)).toEqual(
+      { base: 'https://h', token: 't', addresses: { away: 'https://books.example.com' } },
+    );
+    expect(parsePairingScan('https://h/web/connect?token=t&home=&away=')).not.toHaveProperty(
+      'addresses',
+    );
+    expect(parsePairingScan('https://h/web/connect?token=t')).not.toHaveProperty('addresses');
+  });
+
+  it('pairs without a malformed address param instead of failing the link', () => {
+    expect(parsePairingScan('https://h/web/connect?token=t&home=%E0%A4%A')).toEqual({
+      base: 'https://h',
+      token: 't',
+    });
   });
 });
