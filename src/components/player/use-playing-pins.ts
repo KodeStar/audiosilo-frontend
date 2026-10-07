@@ -37,13 +37,23 @@ export function usePlayingPins(): BookPins {
   }).data;
   const notes = useQuery({ ...notesQuery(cid, api, lib, path), staleTime: PINS_STALE_MS }).data;
   return useMemo(
-    () =>
-      enabled
-        ? {
-            bookmarks: (bookmarks ?? []).map((b) => b.position),
-            notes: (notes ?? []).map((n) => n.position),
-          }
-        : EMPTY,
+    () => (enabled ? pinsOf(bookmarks ?? [], notes ?? []) : EMPTY),
     [enabled, bookmarks, notes],
   );
+}
+
+/**
+ * The pins of `bookmarks` and `notes`: every bookmark at its place, and the notes that
+ * have one. A note at 0 has none: the app writes notes without a place (the server
+ * stores 0), and drawing them all at 0:00 stacked pins on the start of the book and
+ * pulled any tap near it there (a tap on a pin lands on it).
+ */
+export function pinsOf(
+  bookmarks: readonly { position: number }[],
+  notes: readonly { position: number }[],
+): BookPins {
+  return {
+    bookmarks: bookmarks.map((b) => b.position),
+    notes: notes.filter((n) => n.position > 0).map((n) => n.position),
+  };
 }
