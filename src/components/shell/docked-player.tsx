@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
-import { ControlPill } from '@/components/player/control-pill';
+import { ControlPill, slopTo44 } from '@/components/player/control-pill';
 import { useMiniHeading } from '@/components/player/mini-player';
 import { usePlaceSync } from '@/components/player/place-sync';
 import { usePlayerOnTop, usePlayerSheets } from '@/components/player/player-sheets';
@@ -125,9 +125,11 @@ function SyncState({ connectionId, playing }: { connectionId: string; playing: b
   );
 }
 
-/** The dock's right-hand actions: 36 pt round pills like the sleep pill beside them
- * (`SleepTimerButton`), with a 44 pt target. */
+/** The dock's right-hand actions: 36 px round pills like the sleep pill beside them
+ * (`SleepTimerButton`), with a 44 pt target (`DOCK_SLOP`: 4 on the web, more on native,
+ * where a rem is 14 pt). */
 const DOCK_PILL = 'h-9 min-w-9 flex-row gap-1.5 px-2.5';
+const DOCK_SLOP = slopTo44(2.25);
 
 /** The speed pill ("1.25×"), opening the speed sheet. */
 function SpeedPill() {
@@ -136,7 +138,7 @@ function SpeedPill() {
   return (
     <ControlPill
       testID="dock-speed"
-      hitSlop={4}
+      hitSlop={DOCK_SLOP}
       className={DOCK_PILL}
       label={t('shell.dock.speed', { speed: formatSpeed(rate) })}
       onPress={() => usePlayerSheets.getState().openSheet('speed')}
@@ -275,7 +277,7 @@ export function DockedPlayer() {
             {allActions ? (
               <ControlPill
                 testID="dock-bookmark"
-                hitSlop={4}
+                hitSlop={DOCK_SLOP}
                 className={DOCK_PILL}
                 label={t('player.shortcuts.bookmark')}
                 onPress={() => void addBookmarkHere(t)}
@@ -286,7 +288,7 @@ export function DockedPlayer() {
             {allActions && canRoutePick ? (
               <ControlPill
                 testID="dock-output"
-                hitSlop={4}
+                hitSlop={DOCK_SLOP}
                 className={DOCK_PILL}
                 label={t('player.routePicker.label')}
                 onPress={() => void showRoutePicker()}
@@ -297,7 +299,7 @@ export function DockedPlayer() {
             <UpNextButton variant="dock" />
             <ControlPill
               testID="dock-expand"
-              hitSlop={4}
+              hitSlop={DOCK_SLOP}
               className={DOCK_PILL}
               label={t('shell.dock.expand')}
               onPress={openPlayer}

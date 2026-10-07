@@ -6,6 +6,7 @@ import { Dimensions, View } from 'react-native';
 
 import { BookCover } from '@/components/library/book-cover';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
+import { slopTo44 } from '@/components/player/control-pill';
 import { MiniPlayerSubtitle, useMiniHeading } from '@/components/player/mini-player';
 import { usePlayerOnTop } from '@/components/player/player-sheets';
 import { SkipButton } from '@/components/player/skip-button';
@@ -96,7 +97,7 @@ export function AccessoryPlayer() {
           onPress={() => void skipSeconds(-skipBackward)}
           color={themed.foreground}
           fontSize={12}
-          hitSlop={2}
+          hitSlop={slopTo44(2.5)}
           className="h-10 w-10 items-center justify-center rounded-full"
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />

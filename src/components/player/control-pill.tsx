@@ -22,6 +22,21 @@ const LOOK: Record<PillLook, { base: string; web: string }> = {
   active: { base: 'border border-transparent bg-brand-soft', web: FOCUS_RING_OFFSET_CLASS },
 };
 
+/** Points per rem on iOS and Android: `polyfills.rem` in `uniwind.config.js` (the web
+ * uses the browser's 16 px root). */
+export const NATIVE_REM_PT = 14;
+
+/**
+ * The hit slop, on each side, that grows a control `rem` rem across (its class size:
+ * `h-11` is 2.75) to the 44 pt target (STYLEGUIDE section 14) on this platform. A rem is
+ * 16 px on the web but 14 pt on native, so `h-11`, 44 px on the web, is 38.5 pt on a
+ * phone: the slop makes up the difference there and leaves the web as it was.
+ */
+export function slopTo44(rem: number): number {
+  const pt = Platform.OS === 'web' ? 16 : NATIVE_REM_PT;
+  return Math.max(0, Math.ceil((44 - rem * pt) / 2));
+}
+
 /**
  * The round/pill chrome every player control shares (STYLEGUIDE section 8), so the press,
  * hover and focus states come from one place: a full radius, centred content, the look's

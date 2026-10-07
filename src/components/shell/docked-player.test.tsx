@@ -40,6 +40,7 @@ jest.mock('@/components/player/player-shortcuts', () => ({
 }));
 
 /* eslint-disable import/first */
+import { expectNativeTarget } from '@/testing/touch-target';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { useReachability } from '@/api/reachability';
 import { UNDO_WINDOW_MS, useJumpUndo } from '@/playback/jump-undo';
@@ -142,6 +143,14 @@ describe('DockedPlayer', () => {
     expect(screen.getByText('1.25×')).toBeTruthy();
     expect(screen.getByText('upnext-dock')).toBeTruthy();
     expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
+  });
+
+  // 2.25 rem pills are 31.5 pt on native (a 14 pt rem): their slop makes up 44.
+  it('gives its pills a 44 pt target on native', async () => {
+    await renderAt(1280);
+    for (const id of ['dock-speed', 'dock-bookmark', 'dock-output', 'dock-expand']) {
+      expectNativeTarget(screen.getByTestId(id));
+    }
   });
 
   it('shows output only where the engine can pick a route', async () => {
