@@ -151,6 +151,67 @@
       "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht."
     }
   },
+  "annotations": {
+    "labels": {
+      "quote": "Zitat",
+      "favourite": "Favorit",
+      "relisten": "Nochmal hören",
+      "funny": "Lustig",
+      "question": "Frage",
+      "fell_asleep": "Eingeschlafen"
+    },
+    "labelGroup": "Label",
+    "labelClearHint": "Erneut tippen, um das Label zu entfernen",
+    "quoted": "„{{text}}“",
+    "jumpTo": "Zu {{time}} springen",
+    "jumpFailed": "Das Buch konnte dort nicht gestartet werden",
+    "undo": "Rückgängig",
+    "seeAll": "Alle in deinem Journal ansehen",
+    "editUnsupported": "Zum Bearbeiten braucht es einen neueren AudioSilo-Server.",
+    "drift": {
+      "marker": "Ungefähr hier bist du eingeschlafen"
+    },
+    "bookmark": {
+      "title": "Lesezeichen",
+      "editTitle": "Lesezeichen bearbeiten",
+      "noteLabel": "Notiz",
+      "notePlaceholder": "Was ist hier passiert? Ein Zitat, ein Gedanke, eine Erinnerung.",
+      "save": "Lesezeichen speichern",
+      "addAt": "Lesezeichen {{time}}",
+      "saved": "Lesezeichen gespeichert",
+      "saveFailed": "Lesezeichen konnte nicht gespeichert werden",
+      "deleted": "Lesezeichen gelöscht",
+      "deleteFailed": "Lesezeichen konnte nicht gelöscht werden",
+      "restoreFailed": "Lesezeichen konnte nicht wiederhergestellt werden",
+      "edit": "Lesezeichen bei {{time}} bearbeiten",
+      "delete": "Lesezeichen bei {{time}} löschen",
+      "noNote": "Keine Notiz",
+      "addNote": "Notiz hinzufügen",
+      "loadFailed": "Deine Lesezeichen konnten nicht geladen werden",
+      "emptyHintWeb": "Drücke beim Hören B oder tippe im Player auf das Lesezeichen.",
+      "emptyHintNative": "Tippe beim Hören im Player auf das Lesezeichen."
+    },
+    "note": {
+      "title": "Notiz",
+      "editTitle": "Notiz bearbeiten",
+      "bodyLabel": "Notiz",
+      "placeholder": "Markdown geht: **fett**, *kursiv*, Listen.",
+      "pin": "Notiz anheften",
+      "save": "Notiz speichern",
+      "addAt": "Notiz bei {{time}}",
+      "pinned": "Notiz bei {{time}} angeheftet",
+      "saved": "Notiz gespeichert",
+      "saveFailed": "Notiz konnte nicht gespeichert werden",
+      "deleted": "Notiz gelöscht",
+      "deleteFailed": "Notiz konnte nicht gelöscht werden",
+      "restoreFailed": "Notiz konnte nicht wiederhergestellt werden",
+      "edit": "Notiz bei {{time}} bearbeiten",
+      "delete": "Notiz bei {{time}} löschen",
+      "loadFailed": "Deine Notizen konnten nicht geladen werden",
+      "empty": "Noch keine Notizen.",
+      "emptyHint": "Hefte einen Gedanken, eine Theorie oder eine Erinnerung an eine Stelle im Buch."
+    }
+  },
   "connect": {
     "server": {
       "subtitle": "Mit deinem Hörbuch-Server verbinden",

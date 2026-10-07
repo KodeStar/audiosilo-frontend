@@ -151,6 +151,67 @@
       "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device."
     }
   },
+  "annotations": {
+    "labels": {
+      "quote": "Quote",
+      "favourite": "Favourite",
+      "relisten": "Re-listen",
+      "funny": "Funny",
+      "question": "Question",
+      "fell_asleep": "Fell asleep"
+    },
+    "labelGroup": "Label",
+    "labelClearHint": "Tap again to clear the label",
+    "quoted": "“{{text}}”",
+    "jumpTo": "Jump to {{time}}",
+    "jumpFailed": "Couldn't start the book there",
+    "undo": "Undo",
+    "seeAll": "See all in your journal",
+    "editUnsupported": "Editing needs a newer AudioSilo server.",
+    "drift": {
+      "marker": "You drifted off around here"
+    },
+    "bookmark": {
+      "title": "Bookmark",
+      "editTitle": "Edit bookmark",
+      "noteLabel": "Note",
+      "notePlaceholder": "What happened here? A quote, a thought, a reminder.",
+      "save": "Save bookmark",
+      "addAt": "Bookmark {{time}}",
+      "saved": "Bookmark saved",
+      "saveFailed": "Couldn't save the bookmark",
+      "deleted": "Bookmark deleted",
+      "deleteFailed": "Couldn't delete the bookmark",
+      "restoreFailed": "Couldn't bring the bookmark back",
+      "edit": "Edit bookmark at {{time}}",
+      "delete": "Delete bookmark at {{time}}",
+      "noNote": "No note",
+      "addNote": "Add note",
+      "loadFailed": "Couldn't load your bookmarks",
+      "emptyHintWeb": "Press B while listening, or tap the bookmark in the player.",
+      "emptyHintNative": "Tap the bookmark in the player while listening."
+    },
+    "note": {
+      "title": "Note",
+      "editTitle": "Edit note",
+      "bodyLabel": "Note",
+      "placeholder": "Markdown works: **bold**, *italic*, lists.",
+      "pin": "Pin note",
+      "save": "Save note",
+      "addAt": "Note at {{time}}",
+      "pinned": "Note pinned at {{time}}",
+      "saved": "Note saved",
+      "saveFailed": "Couldn't save the note",
+      "deleted": "Note deleted",
+      "deleteFailed": "Couldn't delete the note",
+      "restoreFailed": "Couldn't bring the note back",
+      "edit": "Edit note at {{time}}",
+      "delete": "Delete note at {{time}}",
+      "loadFailed": "Couldn't load your notes",
+      "empty": "No notes yet.",
+      "emptyHint": "Pin a thought, a theory or a reminder to a place in the book."
+    }
+  },
   "connect": {
     "server": {
       "subtitle": "Connect to your audiobook server",
