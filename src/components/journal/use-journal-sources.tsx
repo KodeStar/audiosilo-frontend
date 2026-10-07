@@ -4,9 +4,9 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import {
   flattenPages,
   useAllHistory,
-  useCapability,
   useMyBookmarks,
   useMyNotes,
+  useServerInfo,
 } from '@/api/hooks';
 import { useApis } from '@/api/provider';
 import type { HistoryEntry, MyBookmark, MyNote, Page } from '@/api/types';
@@ -50,7 +50,9 @@ type FeederProps = {
 };
 
 /** The state of one infinite query, as a source. `supported` false: the server can't
- * list this (an older one without `annotations`); undefined: not known yet. */
+ * list this (an older one without `annotations`); 'unknown': its `/server` failed, so
+ * whether it can is not known (a failure, never an endless load); undefined: not known
+ * yet. */
 function useReport<T>(
   { id, connectionId, connectionName, report }: FeederProps,
   query: {
@@ -61,11 +63,17 @@ function useReport<T>(
     fetchNextPage: () => unknown;
     refetch: () => unknown;
   },
-  supported: boolean | undefined,
+  supported: boolean | 'unknown' | undefined,
 ) {
   const { data, isError, hasNextPage, isFetchingNextPage, fetchNextPage, refetch } = query;
   const status: SourceStatus =
-    supported === false ? 'unsupported' : data ? 'ready' : isError ? 'error' : 'loading';
+    supported === false
+      ? 'unsupported'
+      : data
+        ? 'ready'
+        : isError || supported === 'unknown'
+          ? 'error'
+          : 'loading';
   useEffect(() => {
     report(id, {
       connectionId,
@@ -97,15 +105,35 @@ function HistoryFeeder(props: FeederProps) {
   return null;
 }
 
+/** Whether the server lists bookmarks and notes (`annotations`; 'unknown' once its
+ * `/server` failed), and a retry that asks `/server` again too (a list that never ran,
+ * for want of the flag, has nothing of its own to retry). */
+function useAnnotations(connectionId: string, refetchList: () => unknown) {
+  const info = useServerInfo(connectionId);
+  const { refetch: refetchInfo } = info;
+  const supported: boolean | 'unknown' | undefined = info.data
+    ? !!info.data.capabilities.annotations
+    : info.isError
+      ? 'unknown'
+      : undefined;
+  const refetch = useCallback(() => {
+    void refetchInfo();
+    return refetchList();
+  }, [refetchInfo, refetchList]);
+  return { supported, refetch };
+}
+
 function BookmarksFeeder(props: FeederProps) {
-  const supported = useCapability('annotations', props.connectionId);
-  useReport(props, useMyBookmarks(props.connectionId), supported);
+  const query = useMyBookmarks(props.connectionId);
+  const { supported, refetch } = useAnnotations(props.connectionId, query.refetch);
+  useReport(props, { ...query, refetch }, supported);
   return null;
 }
 
 function NotesFeeder(props: FeederProps) {
-  const supported = useCapability('annotations', props.connectionId);
-  useReport(props, useMyNotes(props.connectionId), supported);
+  const query = useMyNotes(props.connectionId);
+  const { supported, refetch } = useAnnotations(props.connectionId, query.refetch);
+  useReport(props, { ...query, refetch }, supported);
   return null;
 }
 

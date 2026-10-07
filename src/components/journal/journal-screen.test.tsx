@@ -1,6 +1,4 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { Text } from 'react-native';
-
 import type { Bookmark, HistoryEntry, MyBookmark, MyNote } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { formatWallClock } from '@/lib/format';
@@ -17,6 +15,14 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
   router: { setParams: (p: unknown) => mockSetParams(p), push: jest.fn() },
 }));
+jest.mock('@/playback/store', () => {
+  const { create } = jest.requireActual('zustand');
+  return {
+    selectBookKey: () => null,
+    selectIsTransportLive: () => false,
+    usePlayer: create(() => ({ nowPlaying: null })),
+  };
+});
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/api/hooks', () => ({ useBook: () => ({ data: undefined }) }));
@@ -58,17 +64,18 @@ import { JournalScreen } from './journal-screen';
 /* eslint-enable import/first */
 
 const iso = (ms: number) => new Date(ms).toISOString();
-// Today at 21:12 and 21:41 (local), whatever the clock says.
+// A time today (local), whatever the clock says.
 const today = (h: number, m: number) => {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime();
 };
+// The same time yesterday: a drift record must lie in the past to be kept.
+const yesterday = (h: number, m: number) => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, h, m).getTime();
+};
 
-function source<T>(
-  connectionId: string,
-  rows: T[],
-  over: Partial<Source<T>> = {},
-): Source<T> {
+function source<T>(connectionId: string, rows: T[], over: Partial<Source<T>> = {}): Source<T> {
   return {
     connectionId,
     connectionName: connectionId === 'c1' ? 'Hearthside' : "Maya's Shelf",
@@ -137,26 +144,30 @@ describe('JournalScreen: the Diary', () => {
     const drift = bookmark(9, {
       label: 'fell_asleep',
       note: 'Fell asleep',
-      created_at: iso(today(21, 41) + 30_000),
+      created_at: iso(yesterday(21, 41) + 30_000),
     });
-    mockSources.history = [source('c1', [span(1, today(21, 12), today(21, 41))])];
+    mockSources.history = [source('c1', [span(1, yesterday(21, 12), yesterday(21, 41))])];
     mockSources.bookmarks = [source('c1', [drift])];
     // This device still remembers the night: the last touch at 21:37, four minutes back.
     await setItem(DRIFT_STORAGE_KEY, {
       [contentKey('c1', 1, 'Sanderson/Kings')]: {
-        touchAt: today(21, 37),
+        touchAt: yesterday(21, 37),
         touchPosition: 3360,
         stoppedAt: 3600,
-        recordedAt: today(21, 41) + 30_000,
+        recordedAt: yesterday(21, 41) + 30_000,
       },
     });
     await mount();
-    expect(screen.getByText('Everything you\'ve marked')).toBeTruthy();
-    expect(screen.getByText('Today')).toBeTruthy();
-    expect(screen.getByText(`· ${formatWallClock(new Date(today(21, 12)))}, 29 min`, { exact: false })).toBeTruthy();
+    expect(screen.getByText("Everything you've marked")).toBeTruthy();
+    expect(screen.getByText('Yesterday')).toBeTruthy();
+    expect(
+      screen.getByText(`· ${formatWallClock(new Date(yesterday(21, 12)))}, 29 min`, {
+        exact: false,
+      }),
+    ).toBeTruthy();
     expect(screen.getByText('16:40 to 1:00:00')).toBeTruthy();
     const strip = await screen.findByText(
-      `You drifted off around ${formatWallClock(new Date(today(21, 37)))}. Jump back 4 minutes?`,
+      `You drifted off around ${formatWallClock(new Date(yesterday(21, 37)))}. Jump back 4 minutes?`,
     );
     expect(strip).toBeTruthy();
     await fireEvent.press(screen.getByText('Jump back'));
@@ -195,18 +206,21 @@ describe('JournalScreen: the Diary', () => {
     expect(mockOpenBook).toHaveBeenCalledWith('c1', 1, 'Sanderson/Kings', 'history');
   });
 
-  it('loads, then says when nothing was listened to, or when the listening failed', async () => {
+  it('shows a skeleton while the listening loads', async () => {
     mockSources.history = [source('c1', [], { status: 'loading' })];
-    const view = await mount();
+    await mount();
     expect(screen.getByTestId('diary-skeleton')).toBeTruthy();
+  });
 
-    mockSources.history = [source('c1', [])];
-    await view.rerender(<JournalScreen />);
+  it('says when nothing was listened to', async () => {
+    await mount();
     expect(screen.getByText('Nothing listened yet')).toBeTruthy();
+  });
 
+  it('says when the listening failed, with a retry', async () => {
     const failed = source<HistoryEntry>('c1', [], { status: 'error' });
     mockSources.history = [failed];
-    await view.rerender(<JournalScreen />);
+    await mount();
     expect(screen.getByText("Couldn't load your listening")).toBeTruthy();
     await fireEvent.press(screen.getByText('Retry'));
     expect(failed.refetch).toHaveBeenCalled();
@@ -236,7 +250,7 @@ describe('JournalScreen: the Diary', () => {
 });
 
 describe('JournalScreen: bookmarks and notes', () => {
-  it('lists every server\'s bookmarks, filtered by label chip and search', async () => {
+  it("lists every server's bookmarks, filtered by label chip and search", async () => {
     mockParams = { tab: 'bookmarks' };
     mockSources.bookmarks = [
       source('c1', [
@@ -277,7 +291,7 @@ describe('JournalScreen: bookmarks and notes', () => {
     expect(screen.queryByText('note: Shallan')).toBeNull();
   });
 
-  it("says plainly when no server can list them, pointing to the books, with no export", async () => {
+  it('says plainly when no server can list them, pointing to the books, with no export', async () => {
     mockParams = { tab: 'bookmarks' };
     mockSources.bookmarks = [source<MyBookmark>('c1', [], { status: 'unsupported' })];
     mockSources.notes = [source<MyNote>('c1', [], { status: 'unsupported' })];
@@ -297,7 +311,9 @@ describe('JournalScreen: bookmarks and notes', () => {
     await mount();
     expect(screen.getByText('note: Kept')).toBeTruthy();
     expect(
-      screen.getByText("Maya's Shelf can't list its notes here yet. Find them on each book's page."),
+      screen.getByText(
+        "Maya's Shelf can't list its notes here yet. Find them on each book's page.",
+      ),
     ).toBeTruthy();
   });
 
@@ -311,8 +327,13 @@ describe('JournalScreen: bookmarks and notes', () => {
 describe('JournalScreen: header', () => {
   it('switches tabs through the route', async () => {
     await mount();
-    await fireEvent.press(screen.getByLabelText('Notes'));
+    await fireEvent.press(screen.getByLabelText('Notes, 0'));
     expect(mockSetParams).toHaveBeenCalledWith({ tab: 'notes' });
+  });
+
+  it('goes back to the Diary with the plain route', async () => {
+    mockParams = { tab: 'notes' };
+    await mount();
     await fireEvent.press(screen.getByLabelText('Diary'));
     expect(mockSetParams).toHaveBeenCalledWith({ tab: undefined });
   });
@@ -324,6 +345,3 @@ describe('JournalScreen: header', () => {
     expect(mockRun).toHaveBeenCalledWith('csv', 'save');
   });
 });
-
-// Keep the unused import honest for type-only helpers.
-void Text;
