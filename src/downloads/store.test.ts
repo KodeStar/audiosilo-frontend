@@ -24,6 +24,7 @@ jest.mock('@/downloads/engine', () => ({
     fileExists: jest.fn(async (_uri: string) => true),
     removeBook: jest.fn(async (_cid: string, _libraryId: number, _path: string) => {}),
     downloadFile: jest.fn(),
+    storageEstimate: jest.fn(async () => null),
     verify: undefined,
     probe: undefined,
     totalBytesUsed: jest.fn(async () => 0),
@@ -52,6 +53,11 @@ jest.mock('@/api/provider', () => ({
 }));
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
+  cachedCapability: (cid: string, flag: string) => {
+    const info = mockGetQueryData(['server', cid]) as
+      { capabilities: Record<string, boolean> } | undefined;
+    return info ? !!info.capabilities[flag] : undefined;
+  },
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
@@ -80,6 +86,7 @@ const mockEngine = engine as unknown as {
   fileExists: jest.Mock;
   removeBook: jest.Mock;
   downloadFile: jest.Mock;
+  storageEstimate: jest.Mock;
   verify: ((uri: string) => Promise<boolean>) | undefined;
   probe: (() => Promise<boolean>) | undefined;
 };
@@ -699,23 +706,97 @@ describe('failures, retry and the session decline mark', () => {
     useDownloads.getState().cancel('c1', 2, 'A/Book');
     expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
 
-    // An automatic download does not lift it (the controller checks it before asking).
+    // An automatic download neither downloads it nor lifts the mark: keep-ahead...
     useDownloads.getState().download('c1', 2, book, undefined, 'keep-ahead');
     await settle();
     expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
-    expect(useDownloads.getState().entries[key]?.origin).toBe('keep-ahead');
+    expect(useDownloads.getState().entries[key]).toBeUndefined();
 
-    // Nor does the automatic download of the book being started.
-    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    // ...nor the automatic download of the book being started.
     useDownloads.getState().download('c1', 2, book, undefined, 'auto');
     await settle();
     expect(isDeclined('c1', 2, 'A/Book')).toBe(true);
-    expect(useDownloads.getState().entries[key]?.origin).toBe('auto');
+    expect(useDownloads.getState().entries[key]).toBeUndefined();
 
-    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    // The listener asking lifts it.
     useDownloads.getState().download('c1', 2, book);
     expect(isDeclined('c1', 2, 'A/Book')).toBe(false);
     expect(useDownloads.getState().entries[key]?.origin).toBe('listener');
     await settle();
+
+    // Removed again: an automatic download stays away once more.
+    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    useDownloads.getState().download('c1', 2, book, undefined, 'auto');
+    await settle();
+    expect(useDownloads.getState().entries[key]).toBeUndefined();
+  });
+});
+
+describe('download() keeps the reserve free for automatic downloads', () => {
+  const GB = 1024 ** 3;
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  // Never lands: the entry stays queued/downloading, so it counts as pending.
+  beforeEach(() => {
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      streamUrl: () => 'stream',
+    } as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(() => new Promise(() => {}));
+    // 64 GB disk: the reserve is 6.4 GB.
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 8 * GB,
+    });
+  });
+  afterEach(() => mockEngine.storageEstimate.mockResolvedValue(null));
+
+  it('skips an automatic download that would leave less than the reserve free', async () => {
+    const big = makeBook({ rel_path: 'R/Big', size: 2 * GB });
+    useDownloads.getState().download('c1', 2, big, undefined, 'auto');
+    useDownloads.getState().download('c1', 2, big, undefined, 'keep-ahead');
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Big')]).toBeUndefined();
+    // The listener's own download is never held back.
+    useDownloads.getState().download('c1', 2, big);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Big')]?.origin).toBe('listener');
+  });
+
+  it('counts queued downloads and estimates a book of unknown size', async () => {
+    // 4 GB of room after the reserve; a queued 3.5 GB download leaves 0.5 GB.
+    mockEngine.storageEstimate.mockResolvedValue({
+      scope: 'device',
+      capacity: 64 * GB,
+      free: 10.4 * GB,
+    });
+    useDownloads.getState().download('c1', 2, makeBook({ rel_path: 'R/Queued', size: 3.5 * GB }));
+    // size 0, ten hours: about 576 MB at 128 kbps, more than the 0.5 GB left.
+    useDownloads
+      .getState()
+      .download('c1', 2, makeBook({ rel_path: 'R/Unknown', duration: 36_000 }), undefined, 'auto');
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Unknown')]).toBeUndefined();
+    // A small one still fits.
+    useDownloads
+      .getState()
+      .download(
+        'c1',
+        2,
+        makeBook({ rel_path: 'R/Small', size: 100 * 1024 ** 2 }),
+        undefined,
+        'auto',
+      );
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Small')]?.origin).toBe('auto');
+  });
+
+  it('starts one when the room is not knowable', async () => {
+    mockEngine.storageEstimate.mockRejectedValue(new Error('no estimate'));
+    const book = makeBook({ rel_path: 'R/Any', size: 50 * GB });
+    useDownloads.getState().download('c1', 2, book, undefined, 'keep-ahead');
+    await settle();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'R/Any')]?.origin).toBe(
+      'keep-ahead',
+    );
   });
 });

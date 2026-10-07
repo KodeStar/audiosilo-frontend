@@ -93,6 +93,23 @@ describe('last interaction', () => {
     expect(lastInteraction(KEY_A)).toEqual({ at: NOW, position: 100 });
   });
 
+  it('counts a seek on a paused book, however long after (nothing flows while paused)', () => {
+    write(100, 'paused');
+    jest.setSystemTime(NOW + 60 * 60_000);
+    write(130); // a lock-screen seek an hour into the pause
+    expect(lastInteraction(KEY_A)).toEqual({ at: NOW + 60 * 60_000, position: 130 });
+  });
+
+  it('reads nothing from a write that moves nothing it watches', () => {
+    write(100, 'playing');
+    jest.setSystemTime(NOW + 20_000);
+    player.patch({ rate: 1 }); // another field written, twenty seconds on
+    jest.setSystemTime(NOW + 21_000);
+    // Twenty-one seconds of playback since the last move: flowing, not a jump.
+    write(120);
+    expect(lastInteraction(KEY_A)).toEqual({ at: NOW, position: 100 });
+  });
+
   it('counts starting a book as a touch on that book', () => {
     jest.setSystemTime(NOW + 1_000);
     player.usePlayer.setState({

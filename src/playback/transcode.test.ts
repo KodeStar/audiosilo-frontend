@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import type { Book, ChaptersResponse } from '@/api/types';
 
 import {
@@ -64,26 +66,33 @@ describe('isBrowserUndecodable', () => {
 
 describe('needsWebTranscode', () => {
   const undecodable = makeBook({ direct_playable: false });
+  const prevOS = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = 'web';
+  });
+  afterEach(() => {
+    Platform.OS = prevOS;
+  });
 
   it('transcodes on web for an undecodable book when the server can', () => {
-    expect(needsWebTranscode('web', undecodable, undefined, true)).toBe(true);
+    expect(needsWebTranscode(undecodable, undefined, true)).toBe(true);
   });
 
   it('never transcodes on native', () => {
-    expect(needsWebTranscode('ios', undecodable, undefined, true)).toBe(false);
-    expect(needsWebTranscode('android', undecodable, undefined, true)).toBe(false);
+    Platform.OS = 'ios';
+    expect(needsWebTranscode(undecodable, undefined, true)).toBe(false);
+    Platform.OS = 'android';
+    expect(needsWebTranscode(undecodable, undefined, true)).toBe(false);
   });
 
   it('streams directly when the server has no transcoder or its capability is unknown', () => {
-    expect(needsWebTranscode('web', undecodable, undefined, false)).toBe(false);
-    expect(needsWebTranscode('web', undecodable, undefined, undefined)).toBe(false);
+    expect(needsWebTranscode(undecodable, undefined, false)).toBe(false);
+    expect(needsWebTranscode(undecodable, undefined, undefined)).toBe(false);
   });
 
   it('streams a direct-playable (or unflagged) book directly', () => {
-    expect(needsWebTranscode('web', makeBook({ direct_playable: true }), undefined, true)).toBe(
-      false,
-    );
-    expect(needsWebTranscode('web', makeBook(), undefined, true)).toBe(false);
+    expect(needsWebTranscode(makeBook({ direct_playable: true }), undefined, true)).toBe(false);
+    expect(needsWebTranscode(makeBook(), undefined, true)).toBe(false);
   });
 });
 

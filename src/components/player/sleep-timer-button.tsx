@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { Chapter } from '@/api/types';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClockTime } from '@/lib/clock-time';
-import { formatClock, formatDuration, formatTimeOfDay } from '@/lib/format';
+import { formatClock, formatDuration, formatTimeOfDay, formatWallClock } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
@@ -22,6 +21,7 @@ import {
   useSleepTimer,
 } from '@/playback/sleep-timer';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { shakeAvailable } from '@/playback/use-shake-to-extend';
 import { SHAKE_SENSITIVITIES, useSettings, type ShakeSensitivity } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -163,7 +163,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                 : t('player.sleepTimer.nChapters', { count: row.count });
             const chapter = chapterLabel(row.chapter, t);
             const ends = t('player.sleepTimer.endsAt', {
-              time: formatClockTime(now + row.untilEnd * 1000),
+              time: formatWallClock(new Date(now + row.untilEnd * 1000)),
             });
             const length = formatDuration(row.untilEnd);
             const selected = stopsAt(phase, pauseAtPosition, row.endPosition);
@@ -345,7 +345,7 @@ function SleepSettingsCard() {
   const type = useSettings((s) => s.autoSleepType);
   const shake = useSettings((s) => s.shakeToExtend);
   const setShake = useSettings((s) => s.setShakeToExtend);
-  const web = Platform.OS === 'web';
+  const web = !shakeAvailable();
 
   const window = { from: formatTimeOfDay(from), until: formatTimeOfDay(until) };
   const autoDescription =

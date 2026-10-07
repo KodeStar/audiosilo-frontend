@@ -1,10 +1,8 @@
 import { useCallback } from 'react';
-import { Platform } from 'react-native';
 
-import { useCapability } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
-import { needsWebTranscode } from '@/playback/transcode';
+import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 
 import { useDownloadEntry, useDownloads } from './store';
 import type { DownloadStatus } from './types';
@@ -44,11 +42,8 @@ export function useDownloadControls(
   const storeSupported = useDownloads((s) => s.supported);
   // A download already on disk stays manageable (remove), so only an absent or failed
   // one is blocked.
-  const canTranscode = useCapability('transcode', cid);
-  const needsTranscode =
-    !!book &&
-    (entry === undefined || entry.status === 'error') &&
-    needsWebTranscode(Platform.OS, book, chapterData, canTranscode);
+  const transcoded = useNeedsWebTranscode(book, chapterData, cid);
+  const needsTranscode = transcoded && (entry === undefined || entry.status === 'error');
   const supported = storeSupported && !needsTranscode;
 
   const start = useCallback(() => {

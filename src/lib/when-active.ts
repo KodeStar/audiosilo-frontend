@@ -1,3 +1,4 @@
+import { type Href, router } from 'expo-router';
 import { AppState } from 'react-native';
 
 /**
@@ -17,4 +18,10 @@ export function whenActive(fn: () => void): () => void {
     fn();
   });
   return () => sub.remove();
+}
+
+/** Go to `href` once the app is in the foreground (see `whenActive`): pushed, or in
+ * place of the current screen with `replace`. Returns a cancel function. */
+export function navigateWhenActive(href: Href, { replace = false } = {}): () => void {
+  return whenActive(() => (replace ? router.replace(href) : router.push(href)));
 }

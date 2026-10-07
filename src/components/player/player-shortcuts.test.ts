@@ -23,7 +23,6 @@ import {
   type PlayerKeyContext,
   playerShortcutFor,
   runPlayerShortcut,
-  steppedRate,
 } from './player-shortcuts';
 /* eslint-enable import/first */
 
@@ -109,16 +108,6 @@ describe('playerShortcutFor', () => {
   it('ignores other keys', () => {
     expect(playerShortcutFor(key('x'), CTX)).toBeNull();
     expect(playerShortcutFor(key('Enter'), CTX)).toBeNull();
-  });
-});
-
-describe('steppedRate', () => {
-  it('steps 0.05 on the grid, within 0.5-2x', () => {
-    expect(steppedRate(1, 1)).toBe(1.05);
-    expect(steppedRate(1.25, -1)).toBe(1.2);
-    expect(steppedRate(1.1, 1)).toBe(1.15); // not 1.1500000000000001
-    expect(steppedRate(2, 1)).toBe(2);
-    expect(steppedRate(0.5, -1)).toBe(0.5);
   });
 });
 

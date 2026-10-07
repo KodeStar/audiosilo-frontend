@@ -18,8 +18,10 @@ import { CoverWash } from '@/components/library/cover-wash';
 import {
   chapterStartsOf,
   listeningProgressFor,
+  metaEnabledFor,
   splitCharacters,
 } from '@/components/library/meta-gating';
+import { selectIsLoaded } from '@/components/player/playing-target';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { useBookSpeed } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -71,18 +73,12 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const { data: book } = useBook(libraryId, path);
   const { data: chapterData } = useChapters(libraryId, path);
   const { data: bookmarks } = useBookmarks(libraryId, path);
-  const metadata = useCapability('metadata') === true;
-  const metaEnabled = metadata && !!(book?.asin || book?.isbn);
+  const metaEnabled = metaEnabledFor(useCapability('metadata'), book);
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const { data: stats } = useMyStats('30d');
 
   // Only this book's own figures follow the player; any other book reads its save.
-  const loaded = usePlayer(
-    (s) =>
-      s.nowPlaying?.connectionId === at.connectionId &&
-      s.nowPlaying.libraryId === libraryId &&
-      s.nowPlaying.path === path,
-  );
+  const loaded = usePlayer(selectIsLoaded(at));
   const livePosition = usePlayer((s) =>
     loaded ? Math.floor(selectBookPosition(s) / LIVE_STEP_S) * LIVE_STEP_S : 0,
   );

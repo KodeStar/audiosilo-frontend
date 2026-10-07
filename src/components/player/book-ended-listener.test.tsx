@@ -6,21 +6,16 @@ import type { UpNextAnswer } from '@/playback/up-next-resolver';
 
 const mockRemove = jest.fn();
 const mockQueueRead = jest.fn();
-jest.mock('@/api/hooks', () => {
-  const { CapabilityError, qk, queueQuery } = jest.requireActual('@/api/hooks');
-  return {
-    CapabilityError,
-    qk,
-    queueQuery,
-    useRemoveFromQueue: () => ({ mutateAsync: mockRemove }),
-  };
-});
+jest.mock('@/api/hooks', () => ({
+  ...jest.requireActual('@/api/hooks'),
+  removeFromQueue: (_cid: string, _client: unknown, v: unknown) => mockRemove(v),
+}));
 jest.mock('@/api/provider', () =>
   // `require` (not an import) because a jest.mock factory is hoisted above every import.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@/testing/api-provider-mock').apiProviderMock({ c1: { queue: () => mockQueueRead() } }),
+  require('@/testing/api-provider-mock').apiProviderMock({}),
 );
-const mockClient = {};
+const mockClient = { queue: () => mockQueueRead() };
 jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }));
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -133,6 +128,7 @@ beforeEach(() => {
   queryClient.setQueryDefaults(qk.queue('c1'), { gcTime: Infinity });
   queryClient.setQueryDefaults(qk.server('c1'), { gcTime: Infinity });
   queryClient.setQueryData(qk.queue('c1'), [entry('Other/Queued'), entry(FINISHED.path)]);
+  queryClient.setQueryData(qk.server('c1'), { capabilities: { queue: true } });
   mockRemove.mockReset().mockResolvedValue(undefined);
   mockQueueRead.mockReset().mockResolvedValue([entry(FINISHED.path)]);
   mockPush.mockReset();

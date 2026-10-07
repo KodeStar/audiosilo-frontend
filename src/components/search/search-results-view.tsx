@@ -26,6 +26,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Highlighted } from './highlighted';
+import { HiddenStrip } from './hidden-strip';
 import { NameToken } from './name-token';
 import {
   alsoOnServers,
@@ -183,7 +184,9 @@ export function SearchResultsView({
               </View>
             )}
           </Preview>
-          {r.characters.hidden > 0 ? <HiddenStrip count={r.characters.hidden} /> : null}
+          {r.characters.hidden > 0 ? (
+            <HiddenStrip label={t('search.hiddenCharacters', { count: r.characters.hidden })} />
+          ) : null}
           {r.characters.attributions.map((a) => (
             <Text
               key={`${a.credit}|${a.license}`}
@@ -507,19 +510,5 @@ function CharacterRow({
       </View>
       <Icon name="chevron-right" size={16} color={themed.subtleForeground} />
     </Pressable>
-  );
-}
-
-/** The characters matching the query that the listener hasn't reached: counted, kindly,
- * never named (STYLEGUIDE section 9, spoiler safety). */
-function HiddenStrip({ count }: { count: number }) {
-  const { t } = useTranslation();
-  return (
-    <View className="max-w-[640px] flex-row items-center gap-3 rounded-menu border-[1.5px] border-dashed border-border-strong bg-muted/60 px-3.5 py-3">
-      <NameToken kind="character" size={30} hidden />
-      <Text variant="muted" className="flex-1">
-        {t('search.hiddenCharacters', { count })}
-      </Text>
-    </View>
   );
 }

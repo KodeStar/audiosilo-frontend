@@ -54,16 +54,12 @@ describe('whoOrder', () => {
 
 describe('newlyMet', () => {
   it('is who the later place reveals that the earlier did not', () => {
-    expect(newlyMet(cast, at(1), at(2)).map((c) => c.id)).toEqual(['Bobbie']);
-    expect(newlyMet(cast, at(2), at(5)).map((c) => c.id)).toEqual(['Avasarala']);
+    expect(newlyMet(cast, 1, 2).map((c) => c.id)).toEqual(['Bobbie']);
+    expect(newlyMet(cast, 2, 5).map((c) => c.id)).toEqual(['Avasarala']);
   });
 
   it('counts chapter 0 and 1 as met from the start (the book page rule)', () => {
-    expect(newlyMet(cast, at(0), at(1))).toEqual([]);
-  });
-
-  it('meets nobody new in a finished book', () => {
-    expect(newlyMet(cast, at(1), at(5, true))).toEqual([]);
+    expect(newlyMet(cast, 0, 1)).toEqual([]);
   });
 });
 

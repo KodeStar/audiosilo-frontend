@@ -68,14 +68,18 @@ jest.mock('@/api/provider', () => {
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockEnded = true;
 let mockSavedFinished = false;
+let mockSavedSpeed = 1.25;
 let mockStats: UserStats | undefined;
 let mockRating: { rating: number; note: string } | null = null;
 const mockSetRating = jest.fn();
 const mockRemove = jest.fn();
 jest.mock('@/api/hooks', () => {
-  const { CapabilityError, qk, queueQuery } = jest.requireActual('@/api/hooks');
+  const { CapabilityError, cachedCapability, historyQuery, qk, queueQuery } =
+    jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
+    cachedCapability,
+    historyQuery,
     qk,
     queueQuery,
     useCapability: (flag: string) => mockCaps[flag],
@@ -92,14 +96,18 @@ jest.mock('@/api/hooks', () => {
       },
     }),
     useBookMeta: () => ({ data: undefined }),
-    useBookProgress: () => ({ data: { playback_speed: 1.25, finished: mockSavedFinished } }),
+    useBookProgress: () => ({
+      data: { playback_speed: mockSavedSpeed, finished: mockSavedFinished },
+    }),
     useMyStats: () => ({ data: mockStats, isLoading: false }),
     useAllProgressAll: () => ({ progress: [] }),
     useRating: () => ({ data: mockRating }),
     useSetRating: () => ({ mutateAsync: mockSetRating, isPending: false }),
-    useRemoveFromQueue: () => ({ mutateAsync: mockRemove }),
+    removeFromQueue: (_cid: string, _client: unknown, v: unknown) => mockRemove(v),
   };
 });
+
+jest.mock('@/api/connection-clients', () => ({ resolveClient: () => ({}) }));
 
 const mockResolve = jest.fn();
 jest.mock('@/playback/up-next-resolver', () => ({
@@ -190,10 +198,12 @@ beforeEach(() => {
   queryClient.setQueryData(['queue', 'c1'], [
     { library_id: 1, path: 'Weir/Project Hail Mary', added_at: '' },
   ] satisfies QueueEntry[]);
+  queryClient.setQueryData(['server', 'c1'], { capabilities: { queue: true } });
   mockCaps = { queue: true, next_book: true, ratings: true, user_stats: true };
   mockStats = undefined;
   mockEnded = true;
   mockSavedFinished = false;
+  mockSavedSpeed = 1.25;
   mockRating = null;
   mockEntry = undefined;
   mockLayout = 'desktop';
@@ -210,7 +220,7 @@ beforeEach(() => {
     { started_at: '2026-10-01T20:00:00Z', ended_at: '2026-10-01T21:30:00Z' },
     { started_at: '2026-10-04T20:00:00Z', ended_at: '2026-10-04T21:00:00Z' },
   ]);
-  useSettings.setState({ autoPlayNext: false });
+  useSettings.setState({ autoPlayNext: false, defaultRate: 1 });
   setPlayer({ nowPlaying: null, snapshot: { state: 'idle' }, rate: 1, position: 0 });
 });
 
@@ -234,11 +244,58 @@ describe('EndCredits', () => {
     expect(mockHistory).toHaveBeenCalledWith(1, PATH, 500);
   });
 
+  it("says the speed the book plays at: its saved one, else the listener's default", async () => {
+    mockSavedSpeed = 0;
+    useSettings.setState({ defaultRate: 1.1 });
+    await mount();
+    expect(screen.getByText('1.1×')).toBeTruthy();
+  });
+
   it('Play now plays the queue head and takes it off Up next', async () => {
     await mount();
     await fireEvent.press(screen.getByLabelText('Play Project Hail Mary now'));
+    // Started here, in place: the player route only shows it.
+    expect(mockStart).toHaveBeenCalledWith(queueHead.next);
     expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
     expect(mockFinishBook).not.toHaveBeenCalled();
+    expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: 'Weir/Project Hail Mary' });
+  });
+
+  it('a start that fails says so, stops the countdown and leaves Play now to try again', async () => {
+    jest.useFakeTimers();
+    useSettings.setState({ autoPlayNext: true });
+    mockStart.mockRejectedValueOnce(new Error('offline'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await mount();
+    await act(async () => {
+      jest.advanceTimersByTime(15_500);
+    });
+    expect(mockStart).toHaveBeenCalledTimes(1);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: "Couldn't start Project Hail Mary. Try again.",
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+    // Nothing left the queue for a book that never started.
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/Starts in/)).toBeNull();
+    await act(async () => {
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(mockStart).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByText('Play now'));
+    expect(mockStart).toHaveBeenCalledTimes(2);
+    expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
+    warn.mockRestore();
+  });
+
+  it('closed while the next book starts, it plays on without the player taking over', async () => {
+    let started: (ok: boolean) => void = () => {};
+    mockStart.mockReturnValueOnce(new Promise<boolean>((r) => (started = r)));
+    const view = await mount();
+    await fireEvent.press(screen.getByLabelText('Play Project Hail Mary now'));
+    await view.unmount();
+    await act(async () => started(true));
+    expect(mockReplace).not.toHaveBeenCalled();
     expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: 'Weir/Project Hail Mary' });
   });
 

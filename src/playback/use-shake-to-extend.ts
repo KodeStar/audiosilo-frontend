@@ -83,6 +83,13 @@ export function createShakeDetector(tuning: ShakeTuning, onShake: () => void) {
   };
 }
 
+/** Whether this device can feel a shake at all: native only, the web has no
+ * accelerometer (there the "Keep listening" button is the way). Read at call time. The
+ * one rule for the detector, the grace card, the sleep sheet and Settings. */
+export function shakeAvailable(): boolean {
+  return Platform.OS !== 'web';
+}
+
 /**
  * While the sleep timer is extendable - during the fade-out, or the short grace
  * period after it has already paused playback - a shake keeps the listener going:
@@ -104,7 +111,7 @@ export function useShakeToExtend() {
   const sensitivity = useSettings((s) => s.shakeSensitivity);
 
   useEffect(() => {
-    if (!extendable || !enabled || Platform.OS === 'web') return;
+    if (!extendable || !enabled || !shakeAvailable()) return;
     let sub: EventSubscription | undefined;
     // Shake-to-extend is a nice-to-have: if the accelerometer native module is
     // unavailable in this build, degrade to a no-op rather than crash the player.

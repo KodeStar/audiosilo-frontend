@@ -1,36 +1,29 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { ScopedTheme } from 'uniwind';
 import { create } from 'zustand';
 
-import {
-  chaptersQuery,
-  itemQuery,
-  type SourcedProgress,
-  useBook,
-  useBookMeta,
-  useCapability,
-  useChapters,
-} from '@/api/hooks';
-import { ConnectionScope, queryClient, useApiRegistry } from '@/api/provider';
+import type { SourcedProgress } from '@/api/hooks';
+import { ConnectionScope } from '@/api/provider';
 import { BookCover } from '@/components/library/book-cover';
-import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
-import { chapterStartsOf } from '@/components/library/meta-gating';
+import { useBookCommunity } from '@/components/library/use-book-community';
 import { Attribution } from '@/components/player/companion/companion-pieces';
+import { selectIsLoaded } from '@/components/player/playing-target';
+import { startBookInPlace } from '@/components/player/start-book';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { chapterLabel } from '@/lib/chapter-label';
-import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { contentKeyOf } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { selectBookKey, usePlayer } from '@/playback/store';
+import { usePlayer } from '@/playback/store';
 import { colors } from '@/theme/tokens';
 
 import type { BookAt } from './home-model';
@@ -43,36 +36,23 @@ const useDismissed = create<{ keys: string[]; dismiss: (key: string) => void }>(
 }));
 
 /**
- * Start `at` 30 seconds before its saved place, at its saved speed: through
- * `playBook(..., startBookPosition)`, which also lowers the resume floor to where it
- * starts (so the overlap's saves are not refused as a slip). A phone then opens the full
- * player over the book's page, as every Home start does.
+ * Start `at` 30 seconds before its saved place, at its saved speed (`startBookInPlace`
+ * with a position, which also lowers the resume floor to where it starts, so the
+ * overlap's saves are not refused as a slip). A phone then opens the full player over
+ * the book's page, as every Home start does.
  */
 function useResumeWithOverlap() {
-  const { clients } = useApiRegistry();
   const phone = useLayout() === 'phone';
   const { openBook, openPlayer } = useOpen();
   return async (at: BookAt, saved: { position: number; playback_speed: number }) => {
-    const { connectionId, libraryId, path } = at;
-    const api = clients.get(connectionId);
-    if (!api) throw new Error('connection gone');
-    const [book, chapters] = await Promise.all([
-      queryClient.fetchQuery({
-        ...itemQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-      queryClient.fetchQuery({
-        ...chaptersQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-    ]);
-    const player = usePlayer.getState();
-    await player.playBook(connectionId, libraryId, book, chapters, overlapStart(saved.position));
-    // An explicit start skips the resume lookup, which is what restores the book's speed.
-    if (saved.playback_speed > 0) await usePlayer.getState().setRate(saved.playback_speed);
+    const started = await startBookInPlace(at, {
+      position: overlapStart(saved.position),
+      speed: saved.playback_speed,
+    });
+    if (!started) throw new Error('connection gone');
     if (phone) {
-      openBook(connectionId, libraryId, path);
-      openPlayer(connectionId, libraryId, path);
+      openBook(at.connectionId, at.libraryId, at.path);
+      openPlayer(at.connectionId, at.libraryId, at.path);
     }
   };
 }
@@ -105,18 +85,8 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
 
   const dismissed = useDismissed((s) => s.keys.includes(key));
   const dismiss = useDismissed((s) => s.dismiss);
-  const loaded = usePlayer((s) => selectBookKey(s) === contentKey(connectionId, libraryId, path));
-  const metadata = useCapability('metadata', connectionId);
-  const { data: book } = useBook(libraryId, path, connectionId);
-  const metaEnabled = metadata === true && !!(book?.asin || book?.isbn);
-  const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
-  const { data: chapterData } = useChapters(libraryId, path, connectionId);
-  const chapters = useMemo(() => chapterData?.chapters ?? [], [chapterData]);
-  const starts = useMemo(
-    () => chapterStartsOf(chapters, chapterData?.files ?? []),
-    [chapters, chapterData],
-  );
-  const work = matchedMeta(meta, metaEnabled)?.work;
+  const loaded = usePlayer(selectIsLoaded(at));
+  const { metadata, book, chapterData, chapterStarts, work } = useBookCommunity(at);
 
   const card = previouslyOn({
     saved,
@@ -125,12 +95,12 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
     dismissed,
     metadata,
     recaps: work?.recaps ?? [],
-    chapterStarts: starts,
+    chapterStarts,
   });
   if (!card || !saved) return null;
 
   const title = bookTitle(book?.title, path);
-  const chapter = chapters[card.chapter - 1];
+  const chapter = chapterData?.chapters[card.chapter - 1];
   const left = chapter
     ? t('home.previouslyOn.left', {
         title,

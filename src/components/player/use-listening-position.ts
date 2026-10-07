@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 
+import { chapterNumberAt, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
 import { contentKey } from '@/lib/content-key';
 import { selectBookKey, selectBookPosition, usePlayer } from '@/playback/store';
 
@@ -24,7 +25,30 @@ export function useListeningPosition(
   const live = usePlayer((s) =>
     key && selectBookKey(s) === key ? bucket(selectBookPosition(s), bucketS) : undefined,
   );
-  return live === undefined ? saved : Math.max(live, saved ?? 0);
+  return listeningPosition(live, saved);
+}
+
+/** The live position never below the saved one; the saved one when nothing is live. */
+const listeningPosition = (live: number | undefined, saved: number | undefined) =>
+  live === undefined ? saved : Math.max(live, saved ?? 0);
+
+/**
+ * The 1-based chapter the listener is in (`chapterNumberAt` on `chapterStarts`, 0 when
+ * nothing is known): `useListeningPosition` at the spoiler gate's bucket, selected as a
+ * NUMBER, so a playing book re-renders the caller only when the chapter changes.
+ */
+export function useListeningChapter(
+  target: PlayTarget,
+  saved: number | undefined,
+  chapterStarts: readonly number[],
+): number {
+  const key = contentKey(target.connectionId, target.libraryId, target.path);
+  return usePlayer((s) => {
+    const live =
+      selectBookKey(s) === key ? bucket(selectBookPosition(s), LIVE_POSITION_BUCKET_S) : undefined;
+    const position = listeningPosition(live, saved);
+    return position == null ? 0 : chapterNumberAt(chapterStarts, position);
+  });
 }
 
 /**

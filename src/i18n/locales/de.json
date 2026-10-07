@@ -985,8 +985,6 @@
       "hideAgain": "Wieder ausblenden",
       "spoilersShown": "Spoiler sichtbar",
       "justMet": "Gerade kennengelernt",
-      "firstAppears": "Erster Auftritt in Kapitel {{chapter}}",
-      "firstAppearsStart": "Von Anfang an dabei",
       "metCount_one": "{{count}} Person, die du kennst",
       "metCount_other": "{{count}} Personen, die du kennst",
       "charactersHidden_one": "{{count}} Figur, die du noch nicht kennst, ist ausgeblendet",

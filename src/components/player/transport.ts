@@ -4,6 +4,7 @@
  * Framework-free so it is unit-tested; the components feed it from the player store.
  */
 
+import { pathLeaf } from '@/lib/paths';
 import { toBookPosition } from '@/playback/book-queue';
 
 /** The slice of the current chapter this needs (`Chapter` from the playback types). */
@@ -104,4 +105,10 @@ export function stepSegment(state: StepState, dir: 1 | -1): void {
   const target =
     dir === 1 ? nextSegmentStart(starts, bookPosition) : previousSegmentStart(starts, bookPosition);
   if (target !== undefined) void state.seekBook(target);
+}
+
+/** A file's name for a book without chapters: the leaf of the track's path (its id is
+ * `<library>:<path>`), else `fallback` (the book's title). */
+export function trackLabel(track: { id: string } | undefined, fallback: string): string {
+  return (track && pathLeaf(track.id.split(':').slice(1).join(':'))) || fallback;
 }

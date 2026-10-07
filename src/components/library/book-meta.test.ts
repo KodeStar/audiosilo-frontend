@@ -14,14 +14,13 @@ import {
   lastBookRecap,
   matchedMeta,
   previousWorks,
-  recapDescriptor,
   revealFromStart,
   roleLabelKey,
   seriesPositionValue,
   seriesRails,
-  sortRecaps,
   summaryIsVisible,
 } from './book-meta';
+import { recapDescriptor, sortRecaps } from './meta-gating';
 /* eslint-enable import/first */
 
 function work(id: string, position: string) {

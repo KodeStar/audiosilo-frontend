@@ -1,9 +1,9 @@
 import { useTranslation } from 'react-i18next';
-import { Platform } from 'react-native';
 
 import type { Book, ChaptersResponse } from '@/api/types';
 import { Text } from '@/components/ui/text';
-import { codecLabel, needsWebTranscode } from '@/playback/transcode';
+import { codecLabel } from '@/playback/transcode';
+import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 
 /**
  * One muted line on the book page when this browser will play the book through the
@@ -15,17 +15,18 @@ import { codecLabel, needsWebTranscode } from '@/playback/transcode';
 export function TranscodeNote({
   book,
   chapterData,
-  canTranscode,
+  connectionId,
   downloaded,
 }: {
   book: Book;
   chapterData?: ChaptersResponse;
-  /** The book's server `transcode` capability (undefined while unknown). */
-  canTranscode: boolean | undefined;
+  /** The book's connection (its server's `transcode` flag). */
+  connectionId: string;
   downloaded: boolean;
 }) {
   const { t } = useTranslation();
-  if (downloaded || !needsWebTranscode(Platform.OS, book, chapterData, canTranscode)) return null;
+  const transcoded = useNeedsWebTranscode(book, chapterData, connectionId);
+  if (downloaded || !transcoded) return null;
   const codec = codecLabel(chapterData?.codec || book.codec);
   return (
     <Text variant="caption" className="text-center">

@@ -1,19 +1,19 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useShallow } from 'zustand/react/shallow';
 
-import { useBook, useBookMeta, useBookProgress, useCapability, useChapters } from '@/api/hooks';
+import { useBookProgress } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
 import type { BookMetaCharacter } from '@/api/types';
-import { matchedMeta } from '@/components/library/book-meta';
-import { chapterNumberAt, chapterStartsOf } from '@/components/library/meta-gating';
+import { chapterNumberAt } from '@/components/library/meta-gating';
+import { useBookCommunity } from '@/components/library/use-book-community';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
 import { useLatest } from '@/lib/use-latest';
 import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 
 import { usePlayerOnTop, usePlayerSheets } from '../player-sheets';
+import { usePlayingTarget } from '../playing-target';
 import type { PlayTarget } from '../use-play-book';
 import { type RevealSample, revealOnCrossing } from './companion-model';
 import { useCompanion } from './companion-store';
@@ -91,27 +91,23 @@ function Watcher({
   return null;
 }
 
-/** The playing book's community cast and chapter starts (the book page's gate inputs),
- * then the watcher. Renders nothing. */
+/** The playing book's community cast and chapter starts (the book page's gate inputs,
+ * `useBookCommunity`), then the watcher. Renders nothing. */
 function BookWatch({ target }: { target: PlayTarget }) {
-  const { connectionId, libraryId, path } = target;
-  const metadata = useCapability('metadata', connectionId) === true;
-  const { data: book } = useBook(libraryId, path, connectionId);
-  const enabled = metadata && !!(book?.asin || book?.isbn);
-  const { data: meta } = useBookMeta(libraryId, path, enabled);
-  const { data: progress } = useBookProgress(libraryId, path, enabled, connectionId);
-  const { data: chapterData } = useChapters(libraryId, path, connectionId);
-  const starts = useMemo(
-    () => chapterStartsOf(chapterData?.chapters ?? [], chapterData?.files ?? []),
-    [chapterData],
+  const { enabled, chapterStarts, work } = useBookCommunity(target);
+  const { data: progress } = useBookProgress(
+    target.libraryId,
+    target.path,
+    enabled,
+    target.connectionId,
   );
-  const characters = matchedMeta(meta, enabled)?.work.characters;
+  const characters = work?.characters;
   if (!characters || characters.length === 0 || progress === undefined) return null;
   return (
     <Watcher
       target={target}
       characters={characters}
-      starts={starts}
+      starts={chapterStarts}
       finished={!!progress?.finished}
     />
   );
@@ -123,17 +119,7 @@ function BookWatch({ target }: { target: PlayTarget }) {
  * fires wherever the listener is: the full player, any page, the lock screen's return.
  */
 export function CompanionRevealListener() {
-  const target = usePlayer(
-    useShallow((s) =>
-      s.nowPlaying
-        ? {
-            connectionId: s.nowPlaying.connectionId,
-            libraryId: s.nowPlaying.libraryId,
-            path: s.nowPlaying.path,
-          }
-        : null,
-    ),
-  );
+  const target = usePlayingTarget();
   if (!target) return null;
   return (
     <ConnectionScope connectionId={target.connectionId}>

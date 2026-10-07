@@ -1,5 +1,3 @@
-import { hashString } from '@/lib/monogram';
-
 import {
   BAR_GAP,
   barCountFor,
@@ -49,10 +47,8 @@ describe('seekTexture', () => {
   });
 });
 
-describe('hashString / seededRandom', () => {
-  it('are stable', () => {
-    expect(hashString('abc')).toBe(hashString('abc'));
-    expect(hashString('abc')).not.toBe(hashString('abd'));
+describe('seededRandom', () => {
+  it('is stable', () => {
     const a = seededRandom(42);
     const b = seededRandom(42);
     expect([a(), a(), a()]).toEqual([b(), b(), b()]);

@@ -515,10 +515,12 @@ media GETs only.
 - **Never navigate while the app is in the background.** `/player` and `/finished` are
   root `fullScreenModal`s and iOS cannot present one from the background (a book that
   ended locked with auto-play on came back to a black screen until a relaunch). Code
-  that playback drives (`BookEndedListener`, the end-credits countdown) starts the next
-  book in place with `startBookInPlace` (`src/components/player/start-book.ts`: item +
-  chapters through the query cache, then `playBook`) and defers any screen with
-  `whenActive` (`src/lib/when-active.ts`).
+  that playback drives (`BookEndedListener`, the end-credits Play now and countdown)
+  moves on with `advanceTo` (`src/components/player/end-of-book.ts`: start the next book
+  in place with `startBookInPlace`, item + chapters through the query cache then
+  `playBook`, and take it and the finished book off Up next with `dropFromQueue`) and
+  defers any screen with `whenActive` / `navigateWhenActive` (`src/lib/when-active.ts`).
+  The `/player` route only shows a book started that way; it never starts it.
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.
@@ -817,6 +819,9 @@ when the book can't be fetched, so the caller can say so.
   goes first; it never changes the playback store.
 - **The session decline mark**: cancelling or removing a download marks it declined until the app
   restarts (`isDeclined`, memory only); automatic downloads skip it, a listener's download lifts it.
+- **One choke point**: `useDownloads.download(..., origin)` applies the automatic rules itself for
+  the `auto` (the book you start) and `keep-ahead` origins: the decline mark and the reserve
+  (`roomLeft`). Callers just ask with their origin; the listener's own download is never held back.
 - **Kept files**: a failed download keeps the files that finished (classified cause in
   `failure.ts`, `failure.kept`), and a retry fetches only the rest. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download

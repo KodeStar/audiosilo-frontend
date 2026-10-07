@@ -35,6 +35,7 @@ import {
   chapterStartsOf,
   LIVE_POSITION_BUCKET_S,
   listeningProgressFor,
+  metaEnabledFor,
 } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import { TranscodeNote } from '@/components/library/transcode-note';
@@ -136,7 +137,7 @@ function BookDetailContent() {
   const metadataEnabled = !!server?.capabilities.metadata;
   // Older servers omit the capability → false; books with neither id can never
   // match, so we skip the request entirely.
-  const bookMetaEnabled = metadataEnabled && !!(book?.asin || book?.isbn);
+  const bookMetaEnabled = metaEnabledFor(metadataEnabled, book);
   const { data: meta } = useBookMeta(libraryId, path, bookMetaEnabled);
   // Where the listener has got to, for the spoiler gating below - so it rides the
   // same gate: with no metadata to gate, this authenticated GET would be waste.
@@ -227,7 +228,7 @@ function BookDetailContent() {
     <TranscodeNote
       book={book}
       chapterData={chapterData}
-      canTranscode={server?.capabilities.transcode}
+      connectionId={cid}
       downloaded={downloaded}
     />
   );

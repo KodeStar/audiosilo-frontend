@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import type { Book, ChaptersResponse } from '@/api/types';
 
 /**
@@ -10,7 +12,8 @@ import type { Book, ChaptersResponse } from '@/api/types';
  * position itself (`transcodedTrackPosition`).
  *
  * Native engines decode these codecs and never transcode; a downloaded (local) file is
- * never transcoded either. Everything here is framework-free so the rules are testable.
+ * never transcoded either. Everything here is framework-free so the rules are testable
+ * (the platform is read from `Platform.OS`, which a test flips).
  */
 
 /** Does the server say this book's codec won't play directly in a browser? Only an
@@ -22,6 +25,15 @@ export function isBrowserUndecodable(book: Book, chapterData?: ChaptersResponse)
 }
 
 /**
+ * Could this book need the transcoder here at all? Synchronous and cheap, so a caller
+ * can skip the capability lookup (and its await) for every ordinary book: false off
+ * web and for any book the server didn't mark undecodable.
+ */
+export function mayNeedWebTranscode(book: Book, chapterData?: ChaptersResponse): boolean {
+  return Platform.OS === 'web' && isBrowserUndecodable(book, chapterData);
+}
+
+/**
  * The one rule for whether a book streams through the server's transcoder: on web,
  * for a book the server marked undecodable, when that book's server advertises the
  * `transcode` capability. An unknown capability (`undefined`, its `/server` not loaded)
@@ -29,12 +41,11 @@ export function isBrowserUndecodable(book: Book, chapterData?: ChaptersResponse)
  * still play it, and the error/retry path surfaces it if not).
  */
 export function needsWebTranscode(
-  os: string,
   book: Book,
   chapterData: ChaptersResponse | undefined,
   canTranscode: boolean | undefined,
 ): boolean {
-  return os === 'web' && canTranscode === true && isBrowserUndecodable(book, chapterData);
+  return canTranscode === true && mayNeedWebTranscode(book, chapterData);
 }
 
 /**
@@ -66,8 +77,7 @@ export function transcodedTrackPosition(
   offset: number,
   duration?: number,
 ): number {
-  const pos = Math.max(0, (Number.isFinite(currentTime) ? currentTime : 0) + offset);
-  return duration != null && duration > 0 ? Math.min(pos, duration) : pos;
+  return clampTranscodedSeek((Number.isFinite(currentTime) ? currentTime : 0) + offset, duration);
 }
 
 /** Clamp a seek target into a transcoded track: `[0, duration]` when the duration is

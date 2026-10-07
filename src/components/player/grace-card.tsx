@@ -17,6 +17,7 @@ import {
   selectSleepPhase,
   useSleepTimer,
 } from '@/playback/sleep-timer';
+import { shakeAvailable } from '@/playback/use-shake-to-extend';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -31,7 +32,7 @@ function GraceCardBody() {
   const fades = useSleepTimer((s) => s.origin?.kind === 'duration');
   const keepListening = useSleepTimer((s) => s.keepListening);
   const shakeOn = useSettings((s) => s.shakeToExtend);
-  const shake = shakeOn && Platform.OS !== 'web';
+  const shake = shakeOn && shakeAvailable();
   const seconds = Math.max(0, Math.ceil(remaining ?? 0));
 
   const title =

@@ -985,8 +985,6 @@
       "hideAgain": "Les masquer à nouveau",
       "spoilersShown": "Spoilers affichés",
       "justMet": "Rencontré à l’instant",
-      "firstAppears": "Apparaît au chapitre {{chapter}}",
-      "firstAppearsStart": "Présent dès le début",
       "metCount_one": "{{count}} personne rencontrée",
       "metCount_other": "{{count}} personnes rencontrées",
       "charactersHidden_one": "{{count}} personnage que vous n’avez pas encore rencontré est masqué",

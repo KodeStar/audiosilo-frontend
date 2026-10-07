@@ -5,6 +5,7 @@ import {
   chapterStartsOf,
   characterIsVisible,
   listeningProgressFor,
+  metaEnabledFor,
   recapIsVisible,
   splitCharacters,
   splitRecaps,
@@ -163,5 +164,16 @@ describe('chapterStartsOf', () => {
 
   it('falls back to the server offset without a file list', () => {
     expect(chapterStartsOf([ch('x', 0, 0, 0), ch('x', 0, 30, 30)], [])).toEqual([0, 30]);
+  });
+});
+
+describe('metaEnabledFor', () => {
+  it('asks only a server with metadata, for a book with an ASIN or ISBN', () => {
+    expect(metaEnabledFor(true, { asin: 'B0', isbn: undefined })).toBe(true);
+    expect(metaEnabledFor(true, { asin: undefined, isbn: '978' })).toBe(true);
+    expect(metaEnabledFor(true, { asin: '', isbn: '' })).toBe(false);
+    expect(metaEnabledFor(true, undefined)).toBe(false);
+    expect(metaEnabledFor(false, { asin: 'B0', isbn: undefined })).toBe(false);
+    expect(metaEnabledFor(undefined, { asin: 'B0', isbn: undefined })).toBe(false);
   });
 });

@@ -1,9 +1,9 @@
-import { chaptersQuery, itemQuery } from '@/api/hooks';
-import { queryClient, useApiRegistry } from '@/api/provider';
 import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
+
+import { startBookInPlace } from './start-book';
 
 /** A book to start: on which connection, library and path. */
 export type PlayTarget = { connectionId: string; libraryId: number; path: string };
@@ -20,16 +20,15 @@ export type PlayOptions = {
 /**
  * THE way a browse surface starts a book (Home, the Library, the series page, Up next):
  * - a phone opens the full player (which resumes from the saved place);
- * - a tablet or desktop plays it in place under the docked player bar, once its
- *   chapters are in (the player never starts before them), through the book's own
- *   connection; a book already loaded just plays on (or toggles, with `toggle`).
+ * - a tablet or desktop plays it in place under the docked player bar
+ *   (`startBookInPlace`: once its chapters are in, through the book's own connection);
+ *   a book already loaded just plays on (or toggles, with `toggle`).
  * Resolves once the book is on its way; rejects when it couldn't be fetched, so the
  * caller can say so.
  */
 export function usePlayBook() {
   const phone = useLayout() === 'phone';
   const { openBook, openPlayer } = useOpen();
-  const { clients } = useApiRegistry();
   return async (target: PlayTarget, opts: PlayOptions = {}) => {
     const { connectionId, libraryId, path } = target;
     const store = usePlayer.getState();
@@ -47,19 +46,6 @@ export function usePlayBook() {
       if (!selectIsTransportLive(store)) await store.toggle();
       return;
     }
-    const api = clients.get(connectionId);
-    if (!api) return;
-    // Through the cache, so a book whose page is open starts without asking again.
-    const [book, chapters] = await Promise.all([
-      queryClient.fetchQuery({
-        ...itemQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-      queryClient.fetchQuery({
-        ...chaptersQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-    ]);
-    await usePlayer.getState().playBook(connectionId, libraryId, book, chapters);
+    await startBookInPlace(target);
   };
 }

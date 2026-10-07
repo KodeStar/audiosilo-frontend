@@ -6,9 +6,7 @@ import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
-import { engine as downloadEngine } from '@/downloads/engine';
-import { estimateBytes, pendingBytes, roomLeft } from '@/downloads/keep-ahead';
-import { downloadKey, isDeclined, useDownloads } from '@/downloads/store';
+import { downloadKey, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
 import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
@@ -23,7 +21,8 @@ import {
   saveProgress,
 } from './progress-sync';
 import { createPlaybackService } from './service';
-import { mayNeedWebTranscode, resolveWebTranscode } from './transcode-capability';
+import { mayNeedWebTranscode } from './transcode';
+import { resolveWebTranscode } from './transcode-capability';
 import {
   AutoplayBlockedError,
   clampVolume,
@@ -292,12 +291,11 @@ function invalidateProgressLists() {
  * downloads as soon as "Play next" starts it. Honours the `autoDownloadNext` preference
  * and the network policy (`canAutoDownload`), and skips a book already downloaded or
  * queued/downloading (only an errored entry may be retried, matching the downloads store's
- * own guard). Like keep-ahead's plan it also skips a book the listener cancelled or removed
- * this session (`isDeclined`) and one that would leave less than the reserve free
- * (`roomLeft`; an unknowable room lets it start, as keep-ahead starts one at a time), and
- * it asks as `auto`: the default `listener` origin would lift that declined mark, as if
- * the listener had asked. Best-effort and fully guarded: any failure is swallowed and it
- * never touches playback. */
+ * own guard). It asks as `auto`, so the downloads store applies the automatic rules (a
+ * book the listener cancelled or removed this session, or one that would eat into the
+ * reserve, is skipped); the default `listener` origin would lift that declined mark, as
+ * if the listener had asked. Best-effort and fully guarded: any failure is swallowed and
+ * it never touches playback. */
 async function maybeAutoDownloadCurrent(
   connectionId: string,
   libraryId: number,
@@ -311,13 +309,7 @@ async function maybeAutoDownloadCurrent(
     const existing =
       useDownloads.getState().entries[downloadKey(connectionId, libraryId, book.rel_path)];
     if (existing && existing.status !== 'error') return;
-    if (isDeclined(connectionId, libraryId, book.rel_path)) return;
     if (!(await canAutoDownload(mode))) return;
-    const room = roomLeft(
-      await downloadEngine.storageEstimate(),
-      pendingBytes(Object.values(useDownloads.getState().entries)),
-    );
-    if (room !== null && estimateBytes(book) > room) return;
     // download() no-ops when the engine can't store offline (web without a controlling
     // service worker, etc.), so no extra support guard is needed here.
     useDownloads.getState().download(connectionId, libraryId, book, chapterData, 'auto');

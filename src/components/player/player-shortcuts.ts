@@ -1,8 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
-import { queryClient } from '@/api/provider';
+import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
@@ -10,6 +8,7 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
 import { usePlayerSheets } from './player-sheets';
+import { steppedRate } from './speed-model';
 import { stepSegment } from './transport';
 
 /**
@@ -79,34 +78,18 @@ export function playerShortcutFor(e: PlayerKey, ctx: PlayerKeyContext): PlayerSh
   return LETTERS[e.key.toLowerCase()] ?? null;
 }
 
-/** The speed `[` / `]` step. */
-export const SPEED_STEP = 0.05;
-
-/** The next speed one step slower (-1) or faster (+1), on the 0.05 grid, within the
- * product's 0.5-2x. */
-export function steppedRate(rate: number, direction: 1 | -1): number {
-  const next = Math.round((rate + direction * SPEED_STEP) * 100) / 100;
-  return Math.max(0.5, Math.min(2, next));
-}
-
 /**
  * Add a bookmark at the playing book's current position, on its own server, and say so
- * ("Bookmark added", the clock). Framework-free (the shortcut can fire from any page):
- * the same request and cache refresh as `useAddBookmark`, through the PLAYING book's
- * connection.
+ * ("Bookmark added", the clock). Framework-free (the shortcut can fire from any page),
+ * through the PLAYING book's connection.
  */
 export async function addBookmarkHere(t: TFunction): Promise<void> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
   const position = Math.round(selectBookPosition(player));
-  const api = resolveClient(np.connectionId);
   try {
-    if (!api) throw new Error('connection gone');
-    await api.addBookmark(np.libraryId, np.path, position, '');
-    void queryClient.invalidateQueries({
-      queryKey: qk.bookmarks(np.connectionId, np.libraryId, np.path),
-    });
+    await addBookmark(np.connectionId, np.libraryId, np.path, position);
     toast({ title: t('player.bookmarks.added'), description: formatClock(position) });
   } catch (err) {
     console.warn('[shortcuts] bookmark failed', err);

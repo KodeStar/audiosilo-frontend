@@ -35,6 +35,13 @@ jest.mock('@/api/provider', () =>
     },
   }),
 );
+// The start resolves the book's client by its connection id (`startBookInPlace`): the
+// same fake clients.
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: (id: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('@/api/provider').useApiRegistry().clients.get(id) ?? null,
+}));
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
@@ -171,7 +178,7 @@ describe('usePlayNow', () => {
       await result.current(entry('B'), 'Book B');
     });
     expect(mockItem).toHaveBeenCalledWith(1, 'B', expect.anything());
-    expect(mockPlayBook).toHaveBeenCalledWith('c', 1, { rel_path: 'B' }, { files: [] });
+    expect(mockPlayBook).toHaveBeenCalledWith('c', 1, { rel_path: 'B' }, { files: [] }, undefined);
     expect(drop).toHaveBeenCalledWith(entry('B'));
   });
 

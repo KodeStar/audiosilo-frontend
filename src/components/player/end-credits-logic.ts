@@ -85,10 +85,11 @@ function localDay(iso: string): string | null {
  * days; a span across midnight counts both). `partial` when the history may be cut
  * short (`limit` spans came back).
  */
-export function listeningSummary(
-  history: readonly Span[],
-  limit: number = HISTORY_LIMIT,
-): { seconds: number; days: number; partial: boolean } {
+export function listeningSummary(history: readonly Span[]): {
+  seconds: number;
+  days: number;
+  partial: boolean;
+} {
   let seconds = 0;
   const days = new Set<string>();
   for (const h of history) {
@@ -98,7 +99,7 @@ export function listeningSummary(
     seconds += Math.max(0, end - start) / 1000;
     for (const day of [localDay(h.started_at), localDay(h.ended_at)]) if (day) days.add(day);
   }
-  return { seconds, days: days.size, partial: history.length >= limit };
+  return { seconds, days: days.size, partial: history.length >= HISTORY_LIMIT };
 }
 
 type FinishedRow = { library_id: number; path: string };

@@ -1,4 +1,5 @@
 import {
+  HISTORY_LIMIT,
   endCreditsDecision,
   GRACE_SECONDS,
   listeningSummary,
@@ -123,8 +124,8 @@ describe('listeningSummary', () => {
 
   it('is partial when the server returned as many spans as asked', () => {
     const one = span(at(1, 1), at(1, 2));
-    expect(listeningSummary([one, one], 2).partial).toBe(true);
-    expect(listeningSummary([one], 2).partial).toBe(false);
+    expect(listeningSummary(Array(HISTORY_LIMIT).fill(one)).partial).toBe(true);
+    expect(listeningSummary(Array(HISTORY_LIMIT - 1).fill(one)).partial).toBe(false);
   });
 });
 

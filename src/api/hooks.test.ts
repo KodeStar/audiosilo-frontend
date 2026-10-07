@@ -25,8 +25,22 @@ jest.mock('@/api/provider', () => ({
   useOptionalApi: jest.fn(),
 }));
 
+const mockResolveClient = jest.fn((_cid: string): unknown => null);
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: (cid: string) => mockResolveClient(cid),
+}));
+
 /* eslint-disable import/first */
-import { anyCapability, fetchBookProgress, isQueueKey, isSearchKey, qk } from '@/api/hooks';
+import {
+  addBookmark,
+  anyCapability,
+  fetchBookProgress,
+  historyQuery,
+  isQueueKey,
+  isSearchKey,
+  qk,
+} from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 /* eslint-enable import/first */
 
 function makeProgress(): Progress {
@@ -173,5 +187,36 @@ describe('key predicates', () => {
     expect(isSearchKey(qk.search('c', 'dun'), 'dune')).toBe(false);
     expect(qk.allProgress('c').slice(0, 2)).toEqual([...qk.allProgressAll()]);
     expect(qk.recent('c', 48).slice(0, 2)).toEqual([...qk.recentAll()]);
+  });
+});
+
+describe('addBookmark', () => {
+  it("adds on the connection's own server and refreshes that book's bookmarks", async () => {
+    const add = jest.fn(async () => ({ id: 7 }));
+    mockResolveClient.mockReturnValue({ addBookmark: add });
+    await expect(addBookmark('srv', 2, 'A/Book', 61, 'Fell asleep')).resolves.toEqual({ id: 7 });
+    expect(mockResolveClient).toHaveBeenCalledWith('srv');
+    expect(add).toHaveBeenCalledWith(2, 'A/Book', 61, 'Fell asleep');
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: qk.bookmarks('srv', 2, 'A/Book'),
+    });
+  });
+
+  it('rejects without touching the cache when the connection is gone or the add fails', async () => {
+    mockResolveClient.mockReturnValue(null);
+    await expect(addBookmark('gone', 2, 'A/Book', 61)).rejects.toThrow('connection gone');
+    mockResolveClient.mockReturnValue({ addBookmark: async () => Promise.reject(new Error('x')) });
+    await expect(addBookmark('srv', 2, 'A/Book', 61)).rejects.toThrow('x');
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('historyQuery', () => {
+  it("keeps a limited read under the book's history key", () => {
+    expect(historyQuery('srv', null, 2, 'A/Book').queryKey).toEqual(qk.history('srv', 2, 'A/Book'));
+    expect(historyQuery('srv', null, 2, 'A/Book', 20).queryKey).toEqual([
+      ...qk.history('srv', 2, 'A/Book'),
+      20,
+    ]);
   });
 });

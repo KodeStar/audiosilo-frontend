@@ -6,8 +6,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock, formatDuration } from '@/lib/format';
-import { pathLeaf } from '@/lib/paths';
+import { formatClock, formatDurationOrZero } from '@/lib/format';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
@@ -15,6 +14,7 @@ import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { trackLabel } from '../transport';
 import { chapterRows, type ChapterRow } from './companion-model';
 
 const ROW_H = 52;
@@ -126,7 +126,7 @@ export function ChaptersPanel({
     return perTrack
       ? queue.tracks.map(
           (tr, i) =>
-            prettifyChapterTitle(pathLeaf(tr.id.split(':').slice(1).join(':')) || title) ||
+            prettifyChapterTitle(trackLabel(tr, title)) ||
             t('player.controls.fileNumber', { number: i + 1 }),
         )
       : queue.chapters.map((c) => chapterLabel(c, t));
@@ -154,7 +154,7 @@ export function ChaptersPanel({
         ? row.left > 0
           ? `-${formatClock(row.left)}`
           : ''
-        : t('player.companion.chapterIn', { time: formatDuration(row.until) || '0m' });
+        : t('player.companion.chapterIn', { time: formatDurationOrZero(row.until) });
 
   const render = (i: number) => (
     <Row

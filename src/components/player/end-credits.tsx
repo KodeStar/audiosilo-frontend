@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppState, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   CapabilityError,
-  qk,
+  historyQuery,
   useAllProgressAll,
   useBook,
   useBookMeta,
@@ -22,6 +22,7 @@ import type { RatingValue } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
+import { metaEnabledFor } from '@/components/library/meta-gating';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -30,9 +31,9 @@ import { formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { whenActive } from '@/lib/when-active';
+import { navigateWhenActive } from '@/lib/when-active';
 import { selectBookPosition, usePlayer } from '@/playback/store';
-import { resolveUpNext, type UpNextAnswer } from '@/playback/up-next-resolver';
+import { resolveUpNext, type UpNextAnswer, type UpNextBook } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
 
@@ -52,8 +53,10 @@ import {
   type ShelfBook,
 } from './end-credits-parts';
 import { RatingStars } from './rating-stars';
-import { startBookInPlace } from './start-book';
-import { useQueueDrop } from './use-queue-drop';
+import type { PlayTarget } from './use-play-book';
+import { useBookSpeed } from './use-time-left';
+import { advanceTo, dropFromQueue } from './end-of-book';
+import { selectIsLoaded } from './playing-target';
 
 /** Spines on the year shelf at most (the oldest go first when the row is narrower). */
 const SHELF_MAX = { phone: 9, wide: 14 };
@@ -108,26 +111,18 @@ function EndCreditsBody({
 
   const autoPlayNext = useSettings((s) => s.autoPlayNext);
 
-  // Is the finished book still loaded and actually playing? (Early arrival: the credits
+  // The finished book, by identity. Is it still loaded? (Early arrival: the credits
   // audio is still running. After a natural end the listener clears nowPlaying, so this
-  // is false.) Its remaining audio time drives the "still playing" countdown regime.
-  const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const playbackState = usePlayer((s) => s.snapshot.state);
-  const bookPosition = usePlayer(selectBookPosition);
-  const rate = usePlayer((s) => s.rate);
-  const isThisLoaded =
-    nowPlaying?.connectionId === cid &&
-    nowPlaying?.libraryId === libraryId &&
-    nowPlaying?.path === path;
+  // is false.) Its remaining audio time drives the "still playing" countdown regime,
+  // which the Up next card reads itself (`NextUp`), so this screen never redraws per tick.
+  const target = useMemo(() => ({ connectionId: cid, libraryId, path }), [cid, libraryId, path]);
   // "Still here" = the finished book is still loaded and has NOT reached its natural end -
   // this covers playing, buffering, AND a paused/errored book. Only a book that is genuinely
   // over (unloaded by the natural-end teardown, or sitting in the terminal `ended` state)
   // hands over to the grace countdown. Keying this on playing/loading alone let a lock-screen
   // pause of an early-opened credits screen read as "over" and auto-advance mid-listen,
   // force-finishing the half-heard book (and deleting its download).
-  const stillPlaying = isThisLoaded && playbackState !== 'ended';
-  const total = isThisLoaded ? nowPlaying.queue.total : 0;
-  const remainingSeconds = Math.max(0, total - bookPosition);
+  const stillPlaying = usePlayer((s) => selectIsLoaded(target)(s) && s.snapshot.state !== 'ended');
 
   // What plays next, worked out once. `undefined` while resolving.
   const [answer, setAnswer] = useState<UpNextAnswer | undefined>(undefined);
@@ -146,75 +141,58 @@ function EndCreditsBody({
   const next = answer?.next ?? null;
 
   const [cancelled, setCancelled] = useState(false);
-  const hasNext = !!next;
+  // Play now (or the countdown) is starting the next book.
+  const [starting, setStarting] = useState(false);
 
-  // The grace countdown runs only once the book is over (not stillPlaying). The interval
-  // callback (async setState, so no synchronous setState-in-effect) advances the elapsed
-  // time; it starts fresh from 0 because the grace phase activates at most once per visit
-  // (auto arrival, or stillPlaying flipping false - during which the interval never ran).
-  const [elapsedGrace, setElapsedGrace] = useState(0);
-  const graceActive = autoPlayNext && hasNext && !cancelled && !stillPlaying;
-  useEffect(() => {
-    if (!graceActive) return;
-    const start = Date.now();
-    const id = setInterval(() => setElapsedGrace((Date.now() - start) / 1000), 500);
-    return () => clearInterval(id);
-  }, [graceActive]);
-
-  const decision = endCreditsDecision({
-    autoPlayNext,
-    hasNext,
-    stillPlaying,
-    remainingSeconds,
-    cancelled,
-    elapsedGrace,
-  });
-
-  // Fire at most once - Play now (manual) and the countdown share this.
-  const dropFromQueue = useQueueDrop(cid);
+  // Fire at most once - Play now (manual) and the countdown share this. The next book
+  // starts in place (`advanceTo`, which also takes it off Up next), then the player
+  // takes the credits' place once the app is in the foreground: the player route only
+  // shows it, so the countdown can run out in the background (a modal can't be
+  // presented from there; the app came back black). A start that fails says so and
+  // stops the countdown; Play now tries again.
   const fired = useRef(false);
+  // Closed while the book was starting: it plays on under the mini player, and the
+  // player does not replace whatever screen the listener went to.
+  const closed = useRef(false);
+  useEffect(
+    () => () => {
+      closed.current = true;
+    },
+    [],
+  );
   const playNext = useCallback(() => {
     if (fired.current || !next) return;
     fired.current = true;
+    setStarting(true);
     // If the finished book is still loaded (early arrival), finish it first: finishBook
     // persists finished, tears down the engine, clears nowPlaying and (when enabled)
-    // deletes the downloaded copy. The player screen plays the next book on mount once
-    // its book + chapters load.
+    // deletes the downloaded copy; it leaves Up next with the next one (a natural end
+    // already took it off).
     const { nowPlaying: np, finishBook } = usePlayer.getState();
     const finishing = np?.connectionId === cid && np.libraryId === libraryId && np.path === path;
     if (finishing) finishBook();
-    const href = playerHref(next.connectionId, next.libraryId, next.path);
-    if (AppState.currentState === 'active') router.replace(href);
-    else {
-      // The countdown ran out with the app in the background: start the book in place
-      // (a modal can't be presented from the background; the app came back black) and
-      // swap the credits for the player once the app is back (after the start settled).
-      // The player route sees the book already playing and leaves it be; if the start
-      // failed it starts the book itself.
-      void startBookInPlace(next)
-        .catch((err: unknown) => console.warn('[end-of-book] could not start the next book', err))
-        .finally(() => whenActive(() => router.replace(href)));
-    }
-    // The queued book is now the book you're on; a book finished here leaves Up next too
-    // (a natural end already took it off).
-    const leaving = [
-      ...(next.queueEntry ? [next.queueEntry] : []),
-      ...(finishing ? [{ library_id: libraryId, path }] : []),
-    ];
-    if (leaving.length > 0) void dropFromQueue(leaving);
-  }, [next, cid, libraryId, path, dropFromQueue]);
-
-  useEffect(() => {
-    if (decision.fireNext) playNext();
-  }, [decision.fireNext, playNext]);
+    void advanceTo(next, finishing ? { library_id: libraryId, path } : null).then((ok) => {
+      if (ok) {
+        if (!closed.current)
+          navigateWhenActive(playerHref(next.connectionId, next.libraryId, next.path), {
+            replace: true,
+          });
+        return;
+      }
+      fired.current = false;
+      setStarting(false);
+      setCancelled(true);
+      toast({ title: t('upnext.playFailed', { title: next.title }) });
+    });
+  }, [next, cid, libraryId, path, t]);
 
   // Opened by the book's end (or "Mark as finished"): it is no longer up next. Once.
   const dropped = useRef(false);
   useEffect(() => {
     if (!ended || dropped.current) return;
     dropped.current = true;
-    void dropFromQueue([{ library_id: libraryId, path }]);
-  }, [ended, dropFromQueue, libraryId, path]);
+    void dropFromQueue(cid, [{ library_id: libraryId, path }]);
+  }, [ended, cid, libraryId, path]);
 
   const onClose = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -223,19 +201,14 @@ function EndCreditsBody({
 
   // --- What the credits show -------------------------------------------------------
   const [creditsOpen, setCreditsOpen] = useState(false);
-  const metaEnabled =
-    useCapability('metadata', cid) === true && !!(book?.asin || book?.isbn) && creditsOpen;
+  const metaEnabled = metaEnabledFor(useCapability('metadata', cid), book) && creditsOpen;
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const matched = matchedMeta(meta, metaEnabled);
 
-  const history = useQuery({
-    queryKey: [...qk.history(cid, libraryId, path), HISTORY_LIMIT],
-    queryFn: () => api!.history(libraryId, path, HISTORY_LIMIT),
-    enabled: !!api && path.length > 0,
-  });
+  const history = useQuery(historyQuery(cid, api, libraryId, path, HISTORY_LIMIT));
   const listened = history.data ? listeningSummary(history.data) : null;
   const { data: saved } = useBookProgress(libraryId, path, true, cid);
-  const speed = isThisLoaded ? rate : saved?.playback_speed || rate;
+  const speed = useBookSpeed(target, saved?.playback_speed);
   // Finished: it ended here, or its saved progress says so (the credits can also be
   // opened for a book still playing, or reopened later without it loaded).
   const finished = !stillPlaying && (ended || !!saved?.finished);
@@ -416,11 +389,14 @@ function EndCreditsBody({
         ) : null}
 
         {next ? (
-          <UpNextCard
+          <NextUp
             next={next}
-            decision={decision}
+            finished={target}
+            autoPlayNext={autoPlayNext}
             stillPlaying={stillPlaying}
+            held={cancelled || starting}
             phone={phone}
+            starting={starting}
             onPlay={playNext}
             onNotNow={() => setCancelled(true)}
           />
@@ -455,6 +431,76 @@ function EndCreditsBody({
   );
 }
 
+/**
+ * The Up next card with its countdown, the one part of the credits that follows the
+ * clock: the finished book's remaining audio while it still plays (whole seconds), else
+ * the grace countdown once it is over (`endCreditsDecision`), firing `onPlay` when that
+ * runs out. `held` (Not now, or the next book already starting) stops it.
+ */
+function NextUp({
+  next,
+  finished,
+  autoPlayNext,
+  stillPlaying,
+  held,
+  phone,
+  starting,
+  onPlay,
+  onNotNow,
+}: {
+  next: UpNextBook;
+  finished: PlayTarget;
+  autoPlayNext: boolean;
+  stillPlaying: boolean;
+  held: boolean;
+  phone: boolean;
+  starting: boolean;
+  onPlay: () => void;
+  onNotNow: () => void;
+}) {
+  const remainingSeconds = usePlayer((s) =>
+    selectIsLoaded(finished)(s) && s.nowPlaying
+      ? Math.ceil(Math.max(0, s.nowPlaying.queue.total - selectBookPosition(s)))
+      : 0,
+  );
+  // The grace countdown runs only once the book is over (not stillPlaying). The interval
+  // callback (async setState, so no synchronous setState-in-effect) advances the elapsed
+  // time; it starts fresh from 0 because the grace phase activates at most once per visit
+  // (auto arrival, or stillPlaying flipping false - during which the interval never ran).
+  const [elapsedGrace, setElapsedGrace] = useState(0);
+  const graceActive = autoPlayNext && !held && !stillPlaying;
+  useEffect(() => {
+    if (!graceActive) return;
+    const start = Date.now();
+    const id = setInterval(() => setElapsedGrace((Date.now() - start) / 1000), 500);
+    return () => clearInterval(id);
+  }, [graceActive]);
+
+  const decision = endCreditsDecision({
+    autoPlayNext,
+    hasNext: true,
+    stillPlaying,
+    remainingSeconds,
+    cancelled: held,
+    elapsedGrace,
+  });
+  useEffect(() => {
+    if (decision.fireNext) onPlay();
+  }, [decision.fireNext, onPlay]);
+
+  return (
+    <UpNextCard
+      next={next}
+      decision={decision}
+      stillPlaying={stillPlaying}
+      phone={phone}
+      starting={starting}
+      onPlay={onPlay}
+      onNotNow={onNotNow}
+    />
+  );
+}
+
 /** The finished book's blurred art behind the screen, for a server that sends no cover
  * colour (the look before cover colours). */
 function FallbackBackdrop({
@@ -470,7 +516,7 @@ function FallbackBackdrop({
 }) {
   const api = useOptionalApi(cid);
   const cover = hasBook ? api?.coverUrl(libraryId, path) : undefined;
-  // Memoized: the countdown re-renders the screen every tick, and a new source object
+  // Memoized: the screen re-renders (a rating, the year shelf landing), and a new source object
   // each time would defeat expo-image's cache.
   const source = useMemo(
     () => (cover ? { uri: cover, headers: api?.authHeaders() } : null),

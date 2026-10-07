@@ -1,4 +1,5 @@
 import type { Book, BookRef, Capabilities, FsEntry, NextBook, QueueEntry } from '@/api/types';
+import { contentKey } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
 
 // What plays after a finished book: ONE answer for every end-of-book surface (the end
@@ -55,18 +56,13 @@ export type UpNextSources = {
   capabilities: () => Promise<Capabilities | undefined>;
   /** The Up next queue, in order. Asked only with `queue`. */
   queue: () => Promise<readonly QueueEntry[]>;
-  /** `finishedKey`s of the books the listener has finished on this server. */
+  /** `contentKey`s of the books the listener has finished on this server. */
   finished: () => Promise<ReadonlySet<string>>;
   /** `GET /libraries/{id}/next`. Asked only with `next_book`. */
   nextBook: (libraryId: number, path: string) => Promise<NextBook>;
   /** The folder's next sibling (`resolveNextBook`), null when none. */
   folderNext: (libraryId: number, path: string) => Promise<FsEntry | null>;
 };
-
-/** The key `UpNextSources.finished` holds for a book. */
-export function finishedKey(libraryId: number, path: string): string {
-  return `${libraryId}:${path}`;
-}
 
 /** Whether a stored list entry holds the book at (libraryId, path). An add resolves a
  * part/disc path to its book, so the entry may be the book folder above the path. */
@@ -89,14 +85,14 @@ function seriesOf(name: string | undefined, position: string | undefined) {
  * book, not already finished. */
 export function pickQueueHead(
   queue: readonly QueueEntry[],
-  finished: { libraryId: number; path: string },
+  finished: { connectionId: string; libraryId: number; path: string },
   finishedKeys: ReadonlySet<string>,
 ): QueueEntry | undefined {
   return queue.find(
     (e) =>
       !!e.book &&
       !entryHolds(e, finished.libraryId, finished.path) &&
-      !finishedKeys.has(finishedKey(e.library_id, e.path)),
+      !finishedKeys.has(contentKey(finished.connectionId, e.library_id, e.path)),
   );
 }
 
@@ -174,7 +170,7 @@ export async function resolveUpNext(
         sources.queue(),
         sources.finished().catch(() => new Set<string>()),
       ]);
-      const head = pickQueueHead(queue, { libraryId, path }, done);
+      const head = pickQueueHead(queue, finished, done);
       if (head) return { next: fromQueue(connectionId, head) };
     } catch {
       // The queue could not be read: the series answers instead.
