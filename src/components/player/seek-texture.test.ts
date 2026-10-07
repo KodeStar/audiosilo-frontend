@@ -1,8 +1,9 @@
+import { hashString } from '@/lib/monogram';
+
 import {
   BAR_GAP,
   barCountFor,
   barsPath,
-  hashString,
   MAX_BARS,
   resamplePeaks,
   seededRandom,

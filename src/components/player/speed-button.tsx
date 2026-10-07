@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Text as RNText, View } from 'react-native';
+import { View } from 'react-native';
 
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Text } from '@/components/ui/text';
@@ -20,28 +19,6 @@ import {
   SPEED_STEP,
   timeLeftAt,
 } from './speed-model';
-
-/**
- * Speed readout button. The sheet is mounted separately (`SpeedSheet`) at the
- * player's root so it presents over the whole screen - a sheet nested here in the
- * footer would be clipped to the footer's bounds.
- */
-export function SpeedButton({ onPress }: { onPress: () => void }) {
-  const { t } = useTranslation();
-  const rate = usePlayer((s) => s.rate);
-
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      hitSlop={8}
-      className="rounded-full px-2 py-1"
-      accessibilityRole="button"
-      accessibilityLabel={t('player.speed.title')}
-    >
-      <RNText className="font-sans-medium text-base text-foreground">{formatSpeed(rate)}</RNText>
-    </AnimatedPressable>
-  );
-}
 
 /**
  * The playback-speed sheet (STYLEGUIDE section 8, "Sheets"): the big readout, how long

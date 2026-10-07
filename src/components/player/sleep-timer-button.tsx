@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
@@ -13,6 +12,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClockTime } from '@/lib/clock-time';
 import { formatClock, formatDuration, formatTimeOfDay } from '@/lib/format';
+import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
 import {
@@ -40,8 +40,7 @@ import {
 /**
  * The sleep timer pill: the moon alone while idle; with a timer it shows the countdown on
  * `brand-soft` (STYLEGUIDE section 8, the dock's sleep control), and "Keep going" once
- * the timer has paused playback. The sheet itself (`SleepSheet`) is mounted at the
- * player root so it presents over the whole screen.
+ * the timer has paused playback. It opens the sleep sheet through `usePlayerSheets`.
  */
 export function SleepTimerButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
@@ -132,7 +131,8 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   // countdown: the next chapter end at least 30 s away, else the end of the book.
   const chapterTarget = queue ? chapterTimerTarget(queue, position, rate, true) : null;
   const rows = queue ? stopAfterRows(queue, position, rate) : [];
-  const now = useNow();
+  // The wall clock, every 15 s: enough for the rows' "ends 22:49".
+  const now = useNow(15_000);
 
   return (
     <View className="gap-4 pt-1">
@@ -217,16 +217,6 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** The wall clock, refreshed every 15 s: enough for the rows' "ends 22:49". */
-function useNow() {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 15_000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
-
 /** The armed timer: what it will do, how long is left, Turn off - and Keep listening in
  * the two windows where that keeps the book going (the web has no shake). */
 function SleepNotice() {
@@ -260,7 +250,7 @@ function SleepNotice() {
       : origin?.kind === 'duration'
         ? t('player.sleepTimer.notice.leftFades', { time })
         : t('player.sleepTimer.notice.left', { time });
-  const extendable = phase === 'ending' || phase === 'grace';
+  const extendable = useSleepTimer(selectSleepExtendable);
 
   return (
     <View className="gap-3 rounded-card border border-brand/25 bg-brand-soft px-4 py-3.5">

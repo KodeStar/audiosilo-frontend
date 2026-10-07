@@ -72,13 +72,21 @@ function ScrollingTabsList({
   const { t } = useTranslation();
   const themed = useThemeColors();
   const scroller = useRef<ScrollView>(null);
-  const [box, setBox] = useState<RowBox>({ view: 0, content: 0, x: 0 });
-  const cue = tabsScrollCue(box);
-  const page = () =>
+  // Where the row is, in refs (a scroll event must not re-render the row); only the cue
+  // it yields is state, so the row re-renders when the chevron changes, not per frame.
+  const box = useRef<RowBox>({ view: 0, content: 0, x: 0 });
+  const [cue, setCue] = useState<ReturnType<typeof tabsScrollCue>>(null);
+  const update = (patch: Partial<RowBox>) => {
+    box.current = { ...box.current, ...patch };
+    setCue(tabsScrollCue(box.current));
+  };
+  const page = () => {
+    const { view, content, x } = box.current;
     scroller.current?.scrollTo({
-      x: cue === 'forward' ? Math.min(box.content - box.view, box.x + box.view * 0.8) : 0,
+      x: cue === 'forward' ? Math.min(content - view, x + view * 0.8) : 0,
       animated: true,
     });
+  };
   return (
     // The cue sits beside the tablist, not in it (a tablist holds only tabs).
     <View className={cn('flex-row items-center border-b border-border', className)}>
@@ -91,17 +99,9 @@ function ScrollingTabsList({
           showsHorizontalScrollIndicator={false}
           contentContainerClassName={ROW}
           scrollEventThrottle={32}
-          onLayout={(e) => {
-            const view = e.nativeEvent.layout.width;
-            setBox((b) => (b.view === view ? b : { ...b, view }));
-          }}
-          onContentSizeChange={(content) =>
-            setBox((b) => (b.content === content ? b : { ...b, content }))
-          }
-          onScroll={(e) => {
-            const x = e.nativeEvent.contentOffset.x;
-            setBox((b) => (b.x === x ? b : { ...b, x }));
-          }}
+          onLayout={(e) => update({ view: e.nativeEvent.layout.width })}
+          onContentSizeChange={(content) => update({ content })}
+          onScroll={(e) => update({ x: e.nativeEvent.contentOffset.x })}
         >
           {children}
         </ScrollView>

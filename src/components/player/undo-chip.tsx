@@ -125,8 +125,8 @@ function CountdownRing({ until, color }: { until: number; color: string }) {
   );
 }
 
-/** Take the listener back and say so: the chip's press, and anything else that offers
- * the undo (a keyboard shortcut, a menu). Returns whether there was anything to undo. */
+/** Take the listener back and say so (the chip's press). Returns whether there was
+ * anything to undo. */
 export function undoJumpWithToast(t: (key: 'player.undo.restored') => string): boolean {
   const from = undoJump();
   if (from === null) return false;
