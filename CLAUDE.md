@@ -398,7 +398,8 @@ the player's chapter identity**: a chapterless single-file book gets *synthetic*
 reading them as logical chapter numbers revealed the whole cast an hour in. The
 consequence is that a chapterless book gates to 0 whether playing or not (accepted -
 "Show anyway" is the escape hatch). The live position is sampled in coarse buckets
-(`LIVE_POSITION_BUCKET_S`) so the screen re-renders at chapter-ish granularity
+(`LIVE_POSITION_BUCKET_S`, exported by `meta-gating.ts` for the book page, the player's companion
+and Previously on) so the screen re-renders at chapter-ish granularity
 rather than per tick; rounding DOWN can only delay a reveal, never reveal early.
 That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
@@ -858,6 +859,26 @@ scrubber below 800; everything hidden is in the full player). Speed and sleep op
 `usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does), only
 the sleep timer's `GraceCard` just above the bar. Route-driven side effects (search reset on leaving the Search
 tab, browse scroll memory) are `useShellEffects`.
+- **Full player** (`src/app/player.tsx` thin, `src/components/player/player-view.tsx`, pieces in
+  `player-parts.tsx`, rules in `player-view-model.ts`): laid out by its MEASURED width (`playerLayout`).
+  The cover washed into the background (`CoverWash` from the item's `cover_color`, else a neutral),
+  breathing to 94% while paused; header (minimise, "Playing from <server>", series line, overflow
+  `DropdownMenu`); chapter title (tap: the chapter sheet, or the companion's Chapters tab on desktop);
+  `PlayerStatusLine` (sync state, % of the book, time left) that becomes the `UndoChip`; seek bar,
+  compact timeline, transport, actions (speed, sleep, bookmark, output, Up next on phone/tablet).
+  The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
+  a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone;
+  gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal
+  per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every block.
+  `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
+  only (`revealOnCrossing`). **Sheets**: `PlayerSheetHost` renders `usePlayerSheets` (speed, sleep,
+  chapters, the phone companion; bookmark/output are actions); one in the full player and one in the
+  shell (`ShellPlayerOverlays`, with the phone's `GraceCard`), and `hostIsActive` lets the shell's
+  stand back while the player route is on top (Up next's sheet follows the same rule). A hosted
+  `Sheet` is `aria-modal` on the web, so the player keys stand back over it.
+- **Previously on** (`home/previously-on.tsx`, rules in `previously-on-model.ts`): above the Now card
+  when its book was last played 12+ days ago and a community recap reaches the listener (the Story so
+  far gate); "Resume, with 30 seconds of overlap" is `playBook(..., saved - 30)` plus the saved speed.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's
   omnisearch still jumps to the Search tab and focuses it), ⌘K / Ctrl+K or `/` (`usePaletteShortcut`:
