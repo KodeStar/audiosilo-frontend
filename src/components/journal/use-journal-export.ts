@@ -1,16 +1,16 @@
 import type { InfiniteData } from '@tanstack/react-query';
+import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { qk } from '@/api/hooks';
 import { queryClient, useApis } from '@/api/provider';
 import type { ChaptersResponse, MyBookmark, MyNote, Page } from '@/api/types';
+import { chapterNamer, labelText } from '@/components/annotations';
 import { toast } from '@/components/ui/toast';
 import { copyText } from '@/lib/clipboard';
 import { formatCount } from '@/lib/format';
 
-import { labelText } from './annotations-bridge';
-import { chapterIndexOf, chapterName } from './diary-model';
 import { collectPages } from './export-collect';
 import { exportFileName, exportRows, type ExportWords, toCsv, toMarkdown } from './export-format';
 import { type ExportFile, saveExport } from './export-save';
@@ -34,12 +34,11 @@ const FILE_TYPES: Record<ExportFormat, Pick<ExportFile, 'mimeType' | 'uti'>> = {
 /** The chapter at a position, from chapters this device already holds (the Journal,
  * the book page or the player read them): an export never fetches chapters. */
 function cachedChapterAt(
-  t: Parameters<typeof chapterName>[2],
+  t: TFunction,
 ): (cid: string, lib: number, path: string, position: number) => string | undefined {
   return (cid, lib, path, position) => {
     const data = queryClient.getQueryData<ChaptersResponse>(qk.chapters(cid, lib, path));
-    const index = chapterIndexOf(data?.chapters, data?.files);
-    return index ? chapterName(index, position, t) : undefined;
+    return chapterNamer(data?.chapters, data?.files, t)(position) ?? undefined;
   };
 }
 

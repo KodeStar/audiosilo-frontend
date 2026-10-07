@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
 import type { HistoryEntry, MyBookmark } from '@/api/types';
+import { isDriftBookmark } from '@/components/annotations';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
@@ -12,7 +13,6 @@ import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 
 import { AnnotationsTab } from './annotations-tab';
-import { isDriftBookmark } from './annotations-bridge';
 import { DiaryDayCard, DiarySkeleton } from './diary';
 import { type DiarySpan, driftStrip, groupByDay, matchDrifts, toSpan } from './diary-model';
 import { ExportActions } from './export-actions';

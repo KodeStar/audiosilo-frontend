@@ -3,17 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
 import { FELL_ASLEEP_LABEL, PICKABLE_BOOKMARK_LABELS } from '@/api/bookmark-labels';
-import { useChapters } from '@/api/hooks';
 import type { BookmarkLabel, MyBookmark, MyNote } from '@/api/types';
+import {
+  BookmarkRow,
+  isDriftBookmark,
+  labelText,
+  NoteRow,
+  useChapterNamer,
+} from '@/components/annotations';
 import { useTabPress } from '@/components/shell/destinations';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
-import { isDriftBookmark, labelText } from './annotations-bridge';
-import { BookmarkRow, NoteRow } from './annotations-rows';
-import { chapterIndexOf, chapterName } from './diary-model';
 import { matchesQuery } from './journal-model';
 import { fetchMoreOf, MoreSpinner, useJournalListProps } from './journal-list';
 import { mergeNewestFirst, overallStatus, type Sourced } from './merge-model';
@@ -57,10 +60,11 @@ export function filterNotes<N extends MyNote>(rows: readonly N[], query: string)
 /** The chapter at a row's place, from its book's chapters (read once per book, shared
  * through `qk.chapters`); null until they come or when the book has none. */
 function useRowChapter(row: Sourced<MyBookmark> | Sourced<MyNote>): string | null {
-  const { t } = useTranslation();
-  const data = useChapters(row.library_id, row.path, row.connectionId).data;
-  const index = useMemo(() => chapterIndexOf(data?.chapters, data?.files), [data]);
-  return index ? chapterName(index, row.position, t) : null;
+  return useChapterNamer({
+    connectionId: row.connectionId,
+    libraryId: row.library_id,
+    path: row.path,
+  })(row.position);
 }
 
 function JournalBookmark({ row, first }: { row: Sourced<MyBookmark>; first: boolean }) {

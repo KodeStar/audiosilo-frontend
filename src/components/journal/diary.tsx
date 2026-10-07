@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { useBook, useChapters } from '@/api/hooks';
+import { useBook } from '@/api/hooks';
 import type { Bookmark } from '@/api/types';
+import { useChapterNamer, useJumpTo } from '@/components/annotations';
 import { BookCover } from '@/components/library/book-cover';
 import { useServerFlag } from '@/components/library/cover-tile';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -13,7 +13,6 @@ import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
 import { formatDurationOrZero, formatWallClock } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
@@ -23,7 +22,6 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
-  chapterIndexOf,
   type DiaryDay,
   type DiarySpan,
   dayBars,
@@ -36,7 +34,6 @@ import {
 } from './diary-model';
 import { formatDayDate, formatWeekday } from './journal-format';
 import type { Sourced } from './merge-model';
-import { useJumpTo } from './use-jump-to';
 
 /** The day's name: Today, Yesterday, a weekday this week, else its date. */
 export function useDayLabel() {
@@ -108,25 +105,18 @@ function DriftStripView({ span, strip }: { span: DiarySpan; strip: DriftStrip })
   const { t } = useTranslation();
   const themed = useThemeColors();
   const jumpTo = useJumpTo();
-  const [busy, setBusy] = useState(false);
   const time = formatWallClock(new Date(strip.at));
-  const title = bookTitle(span.book?.title, span.path);
   const go = () => {
-    setBusy(true);
-    const target = {
-      connectionId: span.connectionId,
-      libraryId: span.libraryId,
-      path: span.path,
-    };
+    const target = { connectionId: span.connectionId, libraryId: span.libraryId, path: span.path };
+    if (strip.kind === 'resume') {
+      jumpTo(target, strip.position);
+      return;
+    }
     // The record is spent by this jump, as by the player's own prompt: the book must not
     // ask "Jump back?" again once it starts there.
-    const spend =
-      strip.kind === 'jumpBack' ? takeDrift(spanBookKey(span), Date.now()) : Promise.resolve();
-    void spend
+    void takeDrift(spanBookKey(span), Date.now())
       .catch(() => null)
-      .then(() => jumpTo(target, strip.position))
-      .catch(() => toast({ title: t('journal.jumpFailed', { title }) }))
-      .finally(() => setBusy(false));
+      .then(() => jumpTo(target, strip.position));
   };
   return (
     <View className="mt-1.5 flex-row flex-wrap items-center gap-x-2.5 gap-y-2 rounded-control bg-brand-soft px-3 py-2">
@@ -139,13 +129,12 @@ function DriftStripView({ span, strip }: { span: DiarySpan; strip: DriftStrip })
       <Button
         variant="outline"
         size="sm"
-        loading={busy}
         title={
           strip.kind === 'jumpBack'
             ? t('journal.diary.drift.jumpBackAction')
             : t('journal.diary.drift.resumeAction')
         }
-        accessibilityHint={title}
+        accessibilityHint={bookTitle(span.book?.title, span.path)}
         onPress={go}
       />
     </View>
@@ -177,8 +166,7 @@ function SpanRow({
   // The chapters, once per book (shared with its page and the player through
   // `qk.chapters`): rows show where the listening went, by name. Until they come (or
   // when they can't), the positions.
-  const chapters = useChapters(span.libraryId, span.path, span.connectionId).data;
-  const index = useMemo(() => chapterIndexOf(chapters?.chapters, chapters?.files), [chapters]);
+  const nameAt = useChapterNamer(span);
   const title = bookTitle(book?.title, span.path);
   const when = t('journal.diary.when', {
     time: formatWallClock(new Date(span.start)),
@@ -210,7 +198,7 @@ function SpanRow({
           </Text>
         </Text>
         <Text variant="caption" numberOfLines={1} style={tabularNums}>
-          {spanRange(span, index, t)}
+          {spanRange(span, nameAt, t)}
         </Text>
         {serverFlag ? (
           <View className="flex-row items-center gap-1">

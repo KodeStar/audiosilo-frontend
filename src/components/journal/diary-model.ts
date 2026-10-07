@@ -1,8 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import type { Book, BookFile, Bookmark, Chapter, HistoryEntry } from '@/api/types';
-import { chapterStartsOf } from '@/components/library/meta-gating';
-import { chapterLabel } from '@/lib/chapter-label';
+import type { Book, Bookmark, HistoryEntry } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { driftOffer, type DriftRecord, type DriftRecords } from '@/playback/drift';
@@ -168,49 +166,23 @@ export function dayBars(day: DiaryDay): DayBar[] {
 
 // --- Chapters ----------------------------------------------------------------------
 
-/** A book's chapters with their corrected whole-book starts (`chapterStartsOf`, as the
- * book page reads them). */
-export type ChapterIndex = { chapters: Chapter[]; starts: number[] };
-
-export function chapterIndexOf(
-  chapters: Chapter[] | undefined,
-  files: Pick<BookFile, 'rel_path' | 'duration'>[] | undefined,
-): ChapterIndex | null {
-  if (!chapters || chapters.length === 0) return null;
-  return { chapters, starts: chapterStartsOf(chapters, files ?? []) };
-}
-
-/** The chapter holding a whole-book position (the first one before its start). */
-export function chapterAtPosition(index: ChapterIndex, position: number): Chapter {
-  let i = 0;
-  for (let n = 0; n < index.starts.length; n++) {
-    if (position >= index.starts[n]) i = n;
-    else break;
-  }
-  return index.chapters[i];
-}
-
-/** The chapter's name as every surface shows it (`chapterLabel`: its title, prettified
- * when it is a filename, else "Chapter 23"). */
-export function chapterName(index: ChapterIndex, position: number, t: TFunction): string {
-  return chapterLabel(chapterAtPosition(index, position), t);
-}
+/** Names the chapter at a whole-book position, null when the book's chapters are not
+ * known (`chapterNamer` from `@/components/annotations`). */
+export type ChapterNamer = (position: number) => string | null;
 
 /**
  * Where a span went in the book: its chapters ("A Bloody, Red Sunset to Bridge Four", one
- * name when it stayed in one chapter) when the book's chapters are known, else
- * its positions ("1:02:03 to 1:23:45").
+ * name when it stayed in one chapter) when the book's chapters are known, else its
+ * positions ("1:02:03 to 1:23:45").
  */
 export function spanRange(
   span: Pick<DiarySpan, 'from' | 'to'>,
-  index: ChapterIndex | null,
+  nameAt: ChapterNamer,
   t: TFunction,
 ): string {
-  if (index) {
-    const from = chapterName(index, span.from, t);
-    const to = chapterName(index, span.to, t);
-    return from === to ? from : t('journal.diary.range', { from, to });
-  }
+  const from = nameAt(span.from);
+  const to = nameAt(span.to);
+  if (from && to) return from === to ? from : t('journal.diary.range', { from, to });
   return t('journal.diary.range', { from: formatClock(span.from), to: formatClock(span.to) });
 }
 

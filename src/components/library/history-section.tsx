@@ -1,13 +1,11 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useHistory } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { Chapter } from '@/api/types';
+import { chapterNamer, useJumpTo } from '@/components/annotations';
 import {
-  chapterIndexOf,
-  chapterName,
   type DiarySpan,
   dayName,
   localDayStart,
@@ -15,7 +13,6 @@ import {
   toSpan,
 } from '@/components/journal/diary-model';
 import { formatShortDay } from '@/components/journal/journal-format';
-import { playerAt } from '@/components/journal/use-jump-to';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
@@ -52,8 +49,8 @@ export function HistorySection({
   connectionId?: string;
   emptyLabel?: string;
   chapters?: Chapter[];
-  /** Where a tap on Jump goes (see `BookmarksSection`'s `onJump`); without it, the
-   * player opens there. */
+  /** Where a tap on Jump goes (the companion seeks the playing book in place); without
+   * it, the shared jump (`useJumpTo`: the player on a phone, in place elsewhere). */
   onJump?: (position: number) => void;
 }) {
   const { t } = useTranslation();
@@ -62,6 +59,7 @@ export function HistorySection({
   // screen). The player carries it as a param.
   const cid = useCid(connectionId);
   const now = useNow(60_000);
+  const jumpTo = useJumpTo();
 
   if (!history || history.length === 0) {
     if (!emptyLabel) return null;
@@ -81,10 +79,8 @@ export function HistorySection({
   }
 
   const jump = (position: number) =>
-    onJump
-      ? onJump(position)
-      : router.push(playerAt({ connectionId: cid, libraryId, path }, position));
-  const index = chapterIndexOf(chapters, undefined);
+    onJump ? onJump(position) : jumpTo({ connectionId: cid, libraryId, path }, position);
+  const nameAt = chapterNamer(chapters, undefined, t);
   const spans = history
     .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
     .filter((s): s is DiarySpan => s !== null);
@@ -103,7 +99,8 @@ export function HistorySection({
           from: formatClock(s.from),
           to: formatClock(s.to),
         });
-        const where = index ? `${range} · ${chapterName(index, s.to, t)}` : range;
+        const chapter = nameAt(s.to);
+        const where = chapter ? `${range} · ${chapter}` : range;
         return (
           <View
             key={s.key}
