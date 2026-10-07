@@ -110,7 +110,12 @@ const meta: BookMeta = {
     language: 'en',
     description: 'The Ring opens.',
     community_description: { text: 'A gate in the dark.' },
-    attribution: { text: 'Community content, CC BY-SA 4.0' } as never,
+    attribution: {
+      credit: 'AudioSilo Meta contributors',
+      license: 'CC BY-SA 4.0',
+      license_url: 'https://cc/by-sa',
+      source_url: 'https://meta/w3',
+    },
     characters: [
       { id: 'holden', name: 'Jim Holden', reveal: { chapter: 1 } } as never,
       { id: 'clarissa', name: 'Clarissa Mao', reveal: { chapter: 5 } } as never,
@@ -222,8 +227,9 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 );
 
-/** The book page's own chain (`book/[libraryId].tsx`): `/server`, the book, the gate,
- * the one `useBookMeta`, then the blocks it places. */
+/** The book page's own chain (`components/book/book-page.tsx`): `/server`, the book, the
+ * gate, the one `useBookMeta`, then the blocks it places (the aside's About card, fed as
+ * `BookAside` feeds it, and the Characters tab). */
 function BookPageCommunity() {
   const { data: book } = useBook(2, PATH);
   const { data: info } = useServerInfo();
@@ -233,7 +239,12 @@ function BookPageCommunity() {
   if (!matched) return null;
   return (
     <>
-      <BookMetaAbout meta={matched} />
+      <BookMetaAbout
+        meta={matched}
+        description={book?.description}
+        published={book?.published}
+        fallback="No description"
+      />
       <BookMetaCharactersTab
         characters={matched.work.characters ?? []}
         progress={{ chapter: 0, finished: false }}
@@ -261,7 +272,10 @@ describe('a downloaded book opened offline', () => {
       render(<BookPageCommunity />, { wrapper });
     });
     await settle();
-    expect(screen.getByText('The Ring opens.')).toBeTruthy();
+    // About leads with the kept community description, credited, with Improve this.
+    expect(screen.getByText('A gate in the dark.')).toBeTruthy();
+    expect(screen.getByText('CC BY-SA 4.0')).toBeTruthy();
+    expect(screen.getByText('Improve this')).toBeTruthy();
     expect(screen.getByText('Jim Holden')).toBeTruthy();
     // Not reached yet (chapter 5): the gate still holds it back.
     expect(screen.queryByText('Clarissa Mao')).toBeNull();
