@@ -23,13 +23,14 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
   type DiaryDay,
+  type DiarySession,
   type DiarySpan,
   dayBars,
   dayName,
   type DriftStrip,
-  reachedEnd,
   spanBookKey,
-  spanMinutes,
+  sessionFinished,
+  sessionMinutes,
   spanRange,
 } from './diary-model';
 import { formatDayDate, formatWeekday } from './journal-format';
@@ -60,7 +61,7 @@ function DayBarView({ day }: { day: DiaryDay }) {
   const themed = useThemeColors();
   const bars = dayBars(day);
   const summary = t('journal.diary.barLabel', {
-    spans: [...day.spans]
+    spans: [...day.sessions]
       .sort((a, b) => a.start - b.start)
       .map((s) =>
         t('journal.diary.range', {
@@ -141,16 +142,17 @@ function DriftStripView({ span, strip }: { span: DiarySpan; strip: DriftStrip })
   );
 }
 
-/** One span: cover, title, "21:12, 21 min", the chapters it went through (when this
+/** One listening session: cover, title, "21:12, 21 min" (its start and the minutes
+ * listened), the chapters it went through (when this
  * device can know them), a drift-off strip, "Finished the book". The cover opens the
  * book page on its History tab. */
-function SpanRow({
-  span,
+function SessionRow({
+  session: span,
   drift,
   driftStripFor,
   serverFlag,
 }: {
-  span: DiarySpan;
+  session: DiarySession;
   drift?: Sourced<Bookmark>;
   driftStripFor: (bookmark: Sourced<Bookmark>) => DriftStrip;
   serverFlag?: string;
@@ -170,7 +172,7 @@ function SpanRow({
   const title = bookTitle(book?.title, span.path);
   const when = t('journal.diary.when', {
     time: formatWallClock(new Date(span.start)),
-    minutes: t('journal.minutes', { count: spanMinutes(span) }),
+    minutes: t('journal.minutes', { count: sessionMinutes(span) }),
   });
   return (
     <View className="flex-row items-start gap-3">
@@ -209,7 +211,7 @@ function SpanRow({
           </View>
         ) : null}
         {drift ? <DriftStripView span={{ ...span, book }} strip={driftStripFor(drift)} /> : null}
-        {reachedEnd({ to: span.to, book }) ? (
+        {sessionFinished(span, book) ? (
           <Badge variant="success" className="mt-1.5 self-start">
             <Icon name="circle-check" size={12} color={themed.success} />
             <Text>{t('journal.diary.finished')}</Text>
@@ -221,7 +223,7 @@ function SpanRow({
 }
 
 /** One day of the Diary, on its own card: the name and total, the 24 hour bar, the
- * spans. Wide (measured): the name in a column beside the rest, as the prototype. */
+ * sessions. Wide (measured): the name in a column beside the rest, as the prototype. */
 export function DiaryDayCard({
   day,
   now,
@@ -253,10 +255,10 @@ export function DiaryDayCard({
       </View>
       <View className="min-w-0 flex-1 gap-3">
         <DayBarView day={day} />
-        {day.spans.map((s) => (
-          <SpanRow
+        {day.sessions.map((s) => (
+          <SessionRow
             key={s.key}
-            span={s}
+            session={s}
             drift={drifts.get(s.key)}
             driftStripFor={driftStripFor}
             serverFlag={serverFlag(s.connectionId)}

@@ -14,7 +14,14 @@ import { cn } from '@/lib/utils';
 
 import { AnnotationsTab } from './annotations-tab';
 import { DiaryDayCard, DiarySkeleton } from './diary';
-import { type DiarySpan, driftStrip, groupByDay, matchDrifts, toSpan } from './diary-model';
+import {
+  type DiarySpan,
+  driftStrip,
+  groupByDay,
+  groupSessions,
+  matchDrifts,
+  toSpan,
+} from './diary-model';
 import { ExportActions } from './export-actions';
 import { type JournalTab, parseJournalTab } from './journal-model';
 import { mergeNewestFirst, overallStatus } from './merge-model';
@@ -157,13 +164,15 @@ function DiaryTab({
     () => merged.rows.map(toSpan).filter((s): s is DiarySpan => s !== null),
     [merged.rows],
   );
-  const days = useMemo(() => groupByDay(spans), [spans]);
+  // One row per listening session (the server records a span per pause).
+  const sessions = useMemo(() => groupSessions(spans), [spans]);
+  const days = useMemo(() => groupByDay(sessions), [sessions]);
   // The sleep timer's bookmarks, from the bookmarks loaded so far, each on the span it
   // ended (`matchDrifts`).
   const drifts = useMemo(() => {
     const all = mergeNewestFirst(bookmarks, (b) => b.created_at).rows;
-    return matchDrifts(spans, all.filter(isDriftBookmark));
-  }, [bookmarks, spans]);
+    return matchDrifts(sessions, all.filter(isDriftBookmark));
+  }, [bookmarks, sessions]);
   const now = useNow(60_000);
   const status = overallStatus(history);
 

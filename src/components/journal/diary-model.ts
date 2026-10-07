@@ -9,7 +9,8 @@ import type { Sourced } from './merge-model';
 
 /**
  * The Journal's Diary (STYLEGUIDE section 9, "Sleep": "the next morning in the Journal")
- * and the book page's History tab: listening spans grouped by the device's local day,
+ * and the book page's History tab: listening spans joined into sessions, grouped by the
+ * device's local day,
  * placed on a 24 hour bar by wall clock, labelled with their chapters, and the "Fell
  * asleep" drift-offs. Pure: the screens only render what this decides.
  *
@@ -62,10 +63,6 @@ export const spanBookKey = (s: Pick<DiarySpan, 'connectionId' | 'libraryId' | 'p
 export const spanSeconds = (s: Pick<DiarySpan, 'start' | 'end'>) =>
   Math.max(0, (s.end - s.start) / 1000);
 
-/** The span's length in whole minutes for "21:12, 21 min" (at least 1). */
-export const spanMinutes = (s: Pick<DiarySpan, 'start' | 'end'>) =>
-  Math.max(1, Math.round(spanSeconds(s) / 60));
-
 /** A span ending this close (content seconds) to the book's end finished it. */
 export const FINISH_SLACK_S = 30;
 
@@ -89,21 +86,91 @@ function nextDayStart(dayStart: number): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
 }
 
+// --- Sessions ----------------------------------------------------------------------
+
+/** The longest pause (wall clock) inside one listening session. */
+export const SESSION_GAP_MS = 10 * 60 * 1000;
+/** How far (content seconds) the next span may start from where the last one ended and
+ * still continue it; further is a seek, which starts a new session. */
+export const SESSION_POSITION_SLACK_S = 120;
+
+/**
+ * A listening session: consecutive spans of one book on one server (the server records a
+ * span per pause, so one evening of listening is many small spans). It carries the span
+ * fields of the whole session (`start`/`from` of the first span, `end`/`to` of the last,
+ * the key of the first) so it reads like one span; `spans` keeps the parts, oldest first.
+ */
+export type DiarySession = DiarySpan & {
+  spans: DiarySpan[];
+  /** Wall-clock seconds actually listened (the spans' sum, without the pauses). */
+  listened: number;
+};
+
+/** Whether `next` continues `last` (same book and server, a pause under
+ * `SESSION_GAP_MS`, picking up within `SESSION_POSITION_SLACK_S` of where it stopped). */
+function continues(last: DiarySpan, next: DiarySpan): boolean {
+  return (
+    spanBookKey(last) === spanBookKey(next) &&
+    next.start - last.end < SESSION_GAP_MS &&
+    Math.abs(next.from - last.to) <= SESSION_POSITION_SLACK_S
+  );
+}
+
+function toSession(parts: DiarySpan[]): DiarySession {
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  return {
+    ...first,
+    book: parts.find((p) => p.book)?.book,
+    end: last.end,
+    to: last.to,
+    spans: parts,
+    listened: parts.reduce((sum, p) => sum + spanSeconds(p), 0),
+  };
+}
+
+/**
+ * The spans as sessions, newest first. Spans are walked in time order across every
+ * book and server; a span joins the session before it only when it `continues` the very
+ * span before it in time, so another book listened to in between ends the session.
+ */
+export function groupSessions(spans: readonly DiarySpan[]): DiarySession[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start || a.end - b.end);
+  const sessions: DiarySpan[][] = [];
+  for (const s of sorted) {
+    const current = sessions[sessions.length - 1];
+    if (current && continues(current[current.length - 1], s)) current.push(s);
+    else sessions.push([s]);
+  }
+  return sessions.map(toSession).sort((a, b) => b.start - a.start);
+}
+
+/** The session's listened length in whole minutes (at least 1). */
+export const sessionMinutes = (s: Pick<DiarySession, 'listened'>) =>
+  Math.max(1, Math.round(s.listened / 60));
+
+/** Whether any span of the session reached the end of the book (`book` overrides the
+ * spans' own, for an older server whose rows carry none). */
+export const sessionFinished = (s: Pick<DiarySession, 'spans' | 'book'>, book = s.book) =>
+  s.spans.some((p) => reachedEnd({ to: p.to, book }));
+
 /** One local day of listening. */
 export type DiaryDay = {
   /** Local midnight, epoch ms (also the day's identity). */
   start: number;
   /** Wall-clock seconds listened that day. */
   total: number;
-  /** The day's spans, newest first. */
+  /** The day's sessions, newest first. */
+  sessions: DiarySession[];
+  /** Every span of those sessions (the honest picture, for the 24 hour bar). */
   spans: DiarySpan[];
 };
 
-/** Spans grouped by the local day they started on, newest day first, each day's spans
- * newest first. */
-export function groupByDay(spans: readonly DiarySpan[]): DiaryDay[] {
-  const byDay = new Map<number, DiarySpan[]>();
-  for (const s of spans) {
+/** Sessions grouped by the local day they started on (a session past midnight belongs
+ * to its start day), newest day first. */
+export function groupByDay(sessions: readonly DiarySession[]): DiaryDay[] {
+  const byDay = new Map<number, DiarySession[]>();
+  for (const s of sessions) {
     const day = localDayStart(s.start);
     const list = byDay.get(day);
     if (list) list.push(s);
@@ -113,8 +180,9 @@ export function groupByDay(spans: readonly DiarySpan[]): DiaryDay[] {
     .sort(([a], [b]) => b - a)
     .map(([start, list]) => ({
       start,
-      spans: [...list].sort((a, b) => b.start - a.start),
-      total: list.reduce((sum, s) => sum + spanSeconds(s), 0),
+      sessions: [...list].sort((a, b) => b.start - a.start),
+      spans: list.flatMap((s) => s.spans),
+      total: list.reduce((sum, s) => sum + s.listened, 0),
     }));
 }
 
@@ -144,11 +212,14 @@ export type DayBar = {
 /** The narrowest a span is drawn (fraction of the day), so a 2 minute span still shows. */
 export const MIN_BAR_WIDTH = 0.012;
 
-/** The day's spans on its bar, by wall clock: a span running past midnight is cut there. */
-export function dayBars(day: DiaryDay): DayBar[] {
+/** The day's spans on its bar, by wall clock: a span running past midnight is cut there,
+ * and a span of a session that started the day before midnight but itself starts after it
+ * is not on this day's bar. */
+export function dayBars(day: Pick<DiaryDay, 'start' | 'spans'>): DayBar[] {
   const end = nextDayStart(day.start);
   const length = end - day.start;
   return day.spans
+    .filter((s) => s.start < end)
     .map((s) => {
       const from = Math.max(day.start, Math.min(s.start, end));
       const to = Math.max(from, Math.min(s.end, end));
@@ -196,9 +267,9 @@ const DRIFT_BEFORE_MS = 2 * 60 * 1000;
 const DRIFT_POSITION_SLACK_S = 5 * 60;
 
 /**
- * Pair each "Fell asleep" bookmark with the span it ended: the same book, made just
- * after that span ended, near its end position. The closest span in time wins; a span
- * gets at most one. Keyed by span key.
+ * Pair each "Fell asleep" bookmark with the span (or session: its end is its last span's)
+ * it ended: the same book, made just after it ended, near its end position. The closest
+ * in time wins; each gets at most one. Keyed by span (session) key.
  */
 export function matchDrifts<B extends Sourced<Bookmark>>(
   spans: readonly DiarySpan[],

@@ -9,7 +9,8 @@ import {
   type DiarySpan,
   dayName,
   localDayStart,
-  spanMinutes,
+  groupSessions,
+  sessionMinutes,
   toSpan,
 } from '@/components/journal/diary-model';
 import { formatShortDay } from '@/components/journal/journal-format';
@@ -23,10 +24,11 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
 /**
- * A book's listening sessions (the book page's History tab and the player companion's;
+ * A book's listening sessions (its history's spans joined across pauses, `groupSessions`;
+ * the book page's History tab and the player companion's;
  * Stacks prototype `HistoryPanel`), newest first, one row each: the day and the time it
  * started, where it went in the book ("17:00:00 to 17:25:42 · Bridge Four", the chapter
- * at its end, when `chapters` with whole-book offsets are given), how long it lasted, and
+ * at its end, when `chapters` with whole-book offsets are given), the minutes listened, and
  * Jump to where it ended. The rows read the Journal's diary model, so the two agree. No
  * speed or device: a history row carries neither.
  *
@@ -81,9 +83,12 @@ export function HistorySection({
   const jump = (position: number) =>
     onJump ? onJump(position) : jumpTo({ connectionId: cid, libraryId, path }, position);
   const nameAt = chapterNamer(chapters, undefined, t);
-  const spans = history
-    .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
-    .filter((s): s is DiarySpan => s !== null);
+  // One row per listening session (the server records a span per pause), as the Diary.
+  const sessions = groupSessions(
+    history
+      .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
+      .filter((s): s is DiarySpan => s !== null),
+  );
 
   const day = (s: DiarySpan) => {
     const name = dayName(localDayStart(s.start), now);
@@ -94,7 +99,7 @@ export function HistorySection({
 
   return (
     <View className="overflow-hidden rounded-card border border-border bg-card">
-      {spans.map((s, i) => {
+      {sessions.map((s, i) => {
         const range = t('journal.history.span', {
           from: formatClock(s.from),
           to: formatClock(s.to),
@@ -122,7 +127,7 @@ export function HistorySection({
                 {where}
               </Text>
               <Text variant="caption" style={tabularNums}>
-                {t('journal.minutes', { count: spanMinutes(s) })}
+                {t('journal.minutes', { count: sessionMinutes(s) })}
               </Text>
             </View>
             <Button

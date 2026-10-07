@@ -86,6 +86,37 @@ describe('HistorySection', () => {
     );
   });
 
+  it('shows one row per session: spans across short pauses joined, a seek starting another', async () => {
+    const t0 = startedToday.getTime();
+    const iso = (ms: number) => new Date(ms).toISOString();
+    mockHistory = {
+      data: [
+        // Newest first, as the server sends them.
+        row({
+          id: 3,
+          from_pos: 5000,
+          to_pos: 5300,
+          started_at: iso(t0 + 40 * 60_000),
+          ended_at: iso(t0 + 45 * 60_000),
+        }),
+        row({
+          id: 2,
+          from_pos: 130,
+          to_pos: 400,
+          started_at: iso(t0 + 23 * 60_000),
+          ended_at: iso(t0 + 28 * 60_000),
+        }),
+        row(),
+      ],
+    };
+    await render(<HistorySection libraryId={1} path="Tolkien/The Hobbit" />);
+    expect(screen.getAllByText('Jump')).toHaveLength(2);
+    // 21 + 5 minutes listened, from 0:30 to 6:40.
+    expect(screen.getByText('0:30 to 6:40')).toBeTruthy();
+    expect(screen.getByText('26 min')).toBeTruthy();
+    expect(screen.getByText('1:23:20 to 1:28:20')).toBeTruthy();
+  });
+
   it("hands the jump to the caller's onJump (the player seeks in place)", async () => {
     const onJump = jest.fn();
     await render(<HistorySection libraryId={1} path="x" onJump={onJump} />);
