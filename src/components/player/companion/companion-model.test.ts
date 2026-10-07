@@ -7,8 +7,12 @@ import {
   isNaturalCrossing,
   newlyMet,
   NATURAL_STEP_S,
+  REVEAL_WATCH_START,
+  type RevealSample,
+  type RevealWatch,
   revealOnCrossing,
   storySoFar,
+  watchReveal,
   whoOrder,
 } from './companion-model';
 
@@ -78,6 +82,46 @@ describe('isNaturalCrossing', () => {
     expect(isNaturalCrossing(sample(359, 1), sample(360.5, 2, false))).toBe(false);
     // Same chapter.
     expect(isNaturalCrossing(sample(100, 1), sample(101, 1))).toBe(false);
+  });
+});
+
+describe('watchReveal', () => {
+  /** Feed samples in order; the crossings seen, as [from, to] chapters. */
+  const run = (samples: (RevealSample | null)[]) => {
+    let w: RevealWatch = REVEAL_WATCH_START;
+    const crossings: [number, number][] = [];
+    for (const s of samples) {
+      const r = watchReveal(w, s);
+      w = r.watch;
+      if (r.crossing) crossings.push([r.crossing.from.chapter, r.crossing.to.chapter]);
+    }
+    return { crossings, watch: w };
+  };
+
+  it('takes the first playing sample as where the book is, never a crossing', () => {
+    expect(run([sample(360.5, 2)]).crossings).toEqual([]);
+  });
+
+  it('crosses past a pause or a buffer between two playing samples', () => {
+    const r = run([sample(359, 1), sample(359.5, 1, false), sample(360.5, 2)]);
+    expect(r.crossings).toEqual([[1, 2]]);
+  });
+
+  it('drops one write a whole file off as a glitch, either way round', () => {
+    expect(run([sample(359, 1), sample(719, 3), sample(360.4, 2)]).crossings).toEqual([[1, 2]]);
+    expect(run([sample(359, 1), sample(0.4, 1), sample(360.4, 2)]).crossings).toEqual([[1, 2]]);
+  });
+
+  it('takes a jump the book plays on from as a seek, never a crossing', () => {
+    const r = run([sample(100, 1), sample(1000, 4), sample(1001, 4)]);
+    expect(r.crossings).toEqual([]);
+    expect(r.watch.reached).toBe(4);
+  });
+
+  it('starts over after a sample it cannot place (another book, a load in flight)', () => {
+    const r = run([sample(359, 1), null, sample(360.5, 2)]);
+    expect(r.crossings).toEqual([]);
+    expect(r.watch.reached).toBe(2);
   });
 });
 

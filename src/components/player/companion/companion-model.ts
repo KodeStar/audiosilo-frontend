@@ -75,21 +75,73 @@ export type RevealSample = { position: number; playing: boolean; chapter: number
  * one-minute jump). */
 export const NATURAL_STEP_S = 10;
 
+/** Whether the book could have played from `prev` to `next` on its own: both samples
+ * playing, time moving forward by no more than a tick. */
+export function isNaturalStep(prev: RevealSample, next: RevealSample): boolean {
+  const step = next.position - prev.position;
+  return prev.playing && next.playing && step > 0 && step <= NATURAL_STEP_S;
+}
+
 /**
  * Whether going from `prev` to `next` is the book playing on into a new chapter (the
- * only moment the reveal toast fires): both samples playing, time moving forward by no
- * more than a tick, and the chapter number going up. A resume, a seek, a skip, a jump
- * back or a stall is not a crossing.
+ * only moment the reveal toast fires): a natural step (`isNaturalStep`) with the chapter
+ * number going up. A resume, a seek, a skip, a jump back or a stall is not a crossing.
  */
 export function isNaturalCrossing(prev: RevealSample, next: RevealSample): boolean {
-  const step = next.position - prev.position;
-  return (
-    prev.playing &&
-    next.playing &&
-    step > 0 &&
-    step <= NATURAL_STEP_S &&
-    next.chapter > prev.chapter
-  );
+  return isNaturalStep(prev, next) && next.chapter > prev.chapter;
+}
+
+/** What the reveal watcher remembers between looks (`watchReveal`). */
+export type RevealWatch = {
+  /** The last playing sample taken as where the book is. */
+  last: RevealSample | null;
+  /** A playing sample that jumped away from `last`, held until the next one says what it
+   * was: a seek or a skip (the book plays on from it), or one write of a file change the
+   * native engine reports in two (the track, then the place in it: for that one write the
+   * place is a whole file off). */
+  jump: RevealSample | null;
+  /** The furthest chapter taken this session: nobody before it is news. */
+  reached: number;
+};
+
+export const REVEAL_WATCH_START: RevealWatch = { last: null, jump: null, reached: 0 };
+
+/** A natural crossing to announce: the samples either side, and how far the session had
+ * reached before it (`revealOnCrossing`'s inputs). */
+export type RevealCrossing = { from: RevealSample; to: RevealSample; reached: number };
+
+/**
+ * One look of the reveal watcher at the playing book. `next` is null when it cannot be
+ * placed (another book, or this one's load has not landed): the next sample starts over,
+ * as a load. A sample that is not playing (a pause, a buffer, the moment between two
+ * files) is passed over, so a chapter that starts with a new file still crosses from the
+ * last playing sample before it. The first playing sample is where the book is (a load,
+ * a resume), never a crossing. After that a sample a natural step from `last` is taken
+ * (a crossing when the chapter went up) and drops any held jump as a glitch; one a
+ * natural step from the held jump proves the jump real (a seek): both are taken, and the
+ * jump is never a crossing; anything else is held as the jump.
+ */
+export function watchReveal(
+  w: RevealWatch,
+  next: RevealSample | null,
+): { watch: RevealWatch; crossing: RevealCrossing | null } {
+  if (!next) return { watch: { ...w, last: null, jump: null }, crossing: null };
+  if (!next.playing) return { watch: w, crossing: null };
+  const take = (reached: number, s: RevealSample): RevealWatch => ({
+    last: s,
+    jump: null,
+    reached: Math.max(reached, s.chapter),
+  });
+  const step = (from: RevealSample, reached: number) => ({
+    watch: take(reached, next),
+    crossing: isNaturalCrossing(from, next) ? { from, to: next, reached } : null,
+  });
+  if (!w.last) return { watch: take(w.reached, next), crossing: null };
+  if (isNaturalStep(w.last, next)) return step(w.last, w.reached);
+  if (w.jump && isNaturalStep(w.jump, next)) {
+    return step(w.jump, Math.max(w.reached, w.jump.chapter));
+  }
+  return { watch: { ...w, jump: next }, crossing: null };
 }
 
 /**

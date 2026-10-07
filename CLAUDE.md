@@ -389,7 +389,9 @@ removed.
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
 from **ONE whole-book POSITION** (`useListeningPosition`, also Search's and the series
-page's) - the player's live position when this book is loaded (never below the saved one),
+page's) - the player's live position when this book is loaded (never below the saved one;
+and only once its engine load has landed, `selectPlacedBookKey`: until then the snapshot is
+still the PREVIOUS book's place, the store's `loadingBook`),
 else `useBookProgress` (`qk.progress(cid, lib, path)`) - walked through `chapterNumberAt` against the
 screen's *corrected*, memoized chapter offsets (`chapterStarts`, recomputed from the
 cumulative file durations, not the server's `book_offset`); no position → 0. **Never
@@ -922,7 +924,10 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal
   per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every block.
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
-  only (`revealOnCrossing`). **Sheets**: `PlayerSheetHost` renders `usePlayerSheets` (speed, sleep,
+  only (`watchReveal` + `revealOnCrossing`: a pause, a buffer or a file change reported in two
+  writes on the way still counts; a seek never does), reading the chapter in the gate's own
+  15 s buckets so the toast and Who's who agree; Show reads whether the player is on top when
+  pressed. Unknown `metadata` counts as off for the companion, as for the phone's chips. **Sheets**: `PlayerSheetHost` renders `usePlayerSheets` (speed, sleep,
   chapters, the companion through `openCompanion(tab)`, Up next's `upnext`; bookmark/output are
   actions), deciding the form from its layout (the full player's MEASURED one), all through one
   presenter, `PlayerSheet` (`body` `scroll` or `fill`); one host in the full player and one in the
