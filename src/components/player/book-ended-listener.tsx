@@ -63,7 +63,7 @@ export function BookEndedListener() {
 function handleBookEnded(info: FinishedBook, pathname: () => string, sleptThrough: boolean): void {
   // A finished book is no longer "up next". The credits opened by the end (`auto=1`)
   // take it off the queue themselves (so does "Mark as finished", which opens them the
-  // same way); the two paths that don't open them do it here.
+  // same way); the two paths that don't open them right away do it here, at once.
   const finished: BookRef = { library_id: info.libraryId, path: info.path };
 
   // Already showing the end-credits screen: it drives its own countdown + Play now from
@@ -84,12 +84,12 @@ function handleBookEnded(info: FinishedBook, pathname: () => string, sleptThroug
   // the app is back in the foreground. So they do after an end under the sleep timer: the
   // listener is asleep, and the next book would play to nobody all night.
   if (AppState.currentState !== 'active') {
+    // Now, not when the deferred credits open: they may never (something else is loaded
+    // on return, or iOS ends the suspended app overnight), and the book is finished
+    // whether or not the next one starts.
+    void dropFromQueue(info.connectionId, [finished]);
     void (async () => {
-      if (
-        !sleptThrough &&
-        useSettings.getState().autoPlayNext &&
-        (await playNextInPlace(info, finished))
-      )
+      if (!sleptThrough && useSettings.getState().autoPlayNext && (await playNextInPlace(info)))
         return;
       whenActive(() => {
         // Something else started meanwhile (the lock screen, a widget): the credits
@@ -105,12 +105,12 @@ function handleBookEnded(info: FinishedBook, pathname: () => string, sleptThroug
 }
 
 /** Resolve the next book and start it without opening the player (`advanceTo`). True
- * once it is on its way (and off Up next with the finished book). */
-async function playNextInPlace(info: FinishedBook, finished: BookRef): Promise<boolean> {
+ * once it is on its way (and off Up next). */
+async function playNextInPlace(info: FinishedBook): Promise<boolean> {
   const client = resolveClient(info.connectionId);
   if (!client) return false;
   const { next } = await resolveUpNext(upNextSources(client, info.connectionId), info);
-  return !!next && (await advanceTo(next, finished));
+  return !!next && (await advanceTo(next));
 }
 
 /** Navigate to the end-credits screen: replace the full player (the credits page takes

@@ -178,12 +178,14 @@ function EndCreditsBody({
     setStarting(true);
     // If the finished book is still loaded (early arrival), finish it first: finishBook
     // persists finished, tears down the engine, clears nowPlaying and (when enabled)
-    // deletes the downloaded copy; it leaves Up next with the next one (a natural end
-    // already took it off).
+    // deletes the downloaded copy. Finished, it leaves Up next now, whether or not the
+    // next one starts (a natural end already took it off).
     const { nowPlaying: np, finishBook } = usePlayer.getState();
-    const finishing = np?.connectionId === cid && np.libraryId === libraryId && np.path === path;
-    if (finishing) finishBook();
-    void advanceTo(next, finishing ? { library_id: libraryId, path } : null).then((ok) => {
+    if (np?.connectionId === cid && np.libraryId === libraryId && np.path === path) {
+      finishBook();
+      void dropFromQueue(cid, [{ library_id: libraryId, path }]);
+    }
+    void advanceTo(next).then((ok) => {
       if (ok) {
         if (!closed.current)
           navigateWhenActive(playerHref(next.connectionId, next.libraryId, next.path), {
