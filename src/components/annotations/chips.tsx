@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { FELL_ASLEEP_LABEL, PICKABLE_BOOKMARK_LABELS } from '@/api/bookmark-labels';
-import { slopTo44 } from '@/components/player/control-pill';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { touchTarget } from '@/components/ui/touch-target';
 import { formatClock } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -17,7 +17,7 @@ import { labelText, toggleLabel } from './labels';
  * as the note pins on the timeline). */
 export type TimeChipTone = 'bookmark' | 'note';
 
-/** The chip's height in rem (`h-7`), for its 44 pt slop. */
+/** The chip's height in rem (`h-7`), for its 44 pt target. */
 const CHIP_REM = 1.75;
 
 /**
@@ -69,31 +69,31 @@ export function TimeChip({
     accessibilityLabel: t('annotations.jumpTo', { time }),
     onPress,
   };
-  if (Platform.OS !== 'web') {
+  const { frameClass, hitSlop } = touchTarget(CHIP_REM, CHIP_REM);
+  if (frameClass) {
     // A real 44 pt frame around the small chip (a slop alone left the control's own
-    // frame at 24 pt), pulled back by negative margins so the row keeps its rhythm.
+    // frame at 24 pt), which sits at its start, with the extra height taken back by
+    // negative margins so the row keeps its rhythm (24.5 pt: 44 - 24.5 is ~10 a side).
     return (
-      <AnimatedPressable {...a11y} className={NATIVE_CHIP_FRAME}>
+      <AnimatedPressable
+        {...a11y}
+        className={cn(frameClass, '-my-[10px] items-start justify-center')}
+      >
         <View className={box}>{label}</View>
       </AnimatedPressable>
     );
   }
-  const slop = slopTo44(CHIP_REM);
   return (
     <AnimatedPressable
       {...a11y}
-      hitSlop={{ top: slop, bottom: slop, left: 4, right: 4 }}
+      // The chip is wider than tall (its time); a little slop each side.
+      hitSlop={{ ...hitSlop, left: 4, right: 4 }}
       className={cn(box, `cursor-pointer hover:opacity-80 ${FOCUS_RING_OFFSET_CLASS}`)}
     >
       {label}
     </AnimatedPressable>
   );
 }
-
-/** A small chip's touch frame on iOS and Android: 44 pt each way around the chip, which
- * sits at its start, with the extra height taken back by negative margins (the chip is
- * 24.5 pt: 44 - 24.5 is ~10 a side). */
-const NATIVE_CHIP_FRAME = 'min-h-[44px] min-w-[44px] -my-[10px] items-start justify-center';
 
 /**
  * A bookmark's label as a quiet kicker ("QUOTE", "RE-LISTEN"), with a moon for the sleep
@@ -116,7 +116,7 @@ export function LabelChip({ label, drift = false }: { label?: string; drift?: bo
   );
 }
 
-/** The picker chip's height in rem (`h-8`). */
+/** The picker chip's height in rem (`h-8`), for its 44 pt target. */
 const PICK_REM = 2;
 
 /**
@@ -133,14 +133,13 @@ export function LabelPicker({
   onChange: (label: string) => void;
 }) {
   const { t } = useTranslation();
-  const web = Platform.OS === 'web';
-  const slop = slopTo44(PICK_REM);
+  const { frameClass, hitSlop } = touchTarget(PICK_REM);
   return (
     <View
       role="radiogroup"
       accessibilityLabel={t('annotations.labelGroup')}
       // Native chips carry their own 44 pt frame, which is the rows' spacing.
-      className={cn('flex-row flex-wrap', web ? 'gap-2' : 'gap-x-2')}
+      className={cn('flex-row flex-wrap', frameClass ? 'gap-x-2' : 'gap-2')}
     >
       {PICKABLE_BOOKMARK_LABELS.map((label) => {
         const selected = value === label;
@@ -172,10 +171,10 @@ export function LabelPicker({
           onPress: () => onChange(toggleLabel(value, label)),
           testID: `label-${label}`,
         };
-        if (!web) {
+        if (frameClass) {
           // A real 44 pt frame around the 28 pt chip (not just a slop).
           return (
-            <Pressable key={label} {...radio} className="min-h-[44px] justify-center">
+            <Pressable key={label} {...radio} className={cn(frameClass, 'justify-center')}>
               {({ pressed }) => <View className={chip(pressed)}>{text}</View>}
             </Pressable>
           );
@@ -184,7 +183,7 @@ export function LabelPicker({
           <Pressable
             key={label}
             {...radio}
-            hitSlop={{ top: slop, bottom: slop }}
+            hitSlop={hitSlop}
             className={cn(
               chip(false),
               !selected && 'active:bg-accent hover:bg-accent',

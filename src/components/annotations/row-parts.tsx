@@ -3,15 +3,16 @@ import { Platform, View } from 'react-native';
 
 import type { Book } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
-import { pillClass, slopTo44 } from '@/components/player/control-pill';
+import { pillClass } from '@/components/player/control-pill';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { touchTarget } from '@/components/ui/touch-target';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** A row action's size in rem (`h-9 w-9`), for its 44 pt slop. */
+/** A row action's drawn size in rem (`h-9 w-9`), for its 44 pt target. */
 const ACTION_REM = 2.25;
 
 /** A row's icon action (edit, delete), named for what it acts on ("Delete bookmark at
@@ -30,16 +31,17 @@ export function RowAction({
   testID?: string;
 }) {
   const themed = useThemeColors();
+  // Native: a real 44 pt frame (a slop alone left the control's own frame at 32 pt); the
+  // web keeps its 36 px button and a slop.
+  const target = touchTarget(ACTION_REM, ACTION_REM);
   return (
     <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      // Native: a real 44 pt frame (a slop alone left the control's own frame at 32 pt);
-      // the web keeps its 36 px button and a slop.
-      hitSlop={Platform.OS === 'web' ? slopTo44(ACTION_REM) : undefined}
+      hitSlop={target.hitSlop}
       testID={testID}
-      className={pillClass('ghost', Platform.OS === 'web' ? 'h-9 w-9' : 'h-[44px] w-[44px]')}
+      className={pillClass('ghost', target.frameClass ?? 'h-9 w-9')}
     >
       <Icon name={icon} size={15} color={themed.mutedForeground} />
     </AnimatedPressable>

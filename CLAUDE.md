@@ -961,8 +961,10 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   `router.replace`, which would put a second `(app)` over the first. Code that must know where the
   player is at a press reads `topRootRoute(currentNavState())` (`src/lib/root-stack.ts`) instead of
   subscribing with `usePlayerOnTop`. **Touch targets**: a rem is 14 pt on native, so a rem-sized
-  control (`h-11` = 38.5 pt) takes `hitSlop={slopTo44(rem)}` (`control-pill.tsx`; zero on the web
-  for 2.75 rem); tests assert it with `expectNativeTarget` (`src/testing/touch-target.ts`). The
+  control (`h-11` = 38.5 pt) takes `hitSlop={slopTo44(rem)}` (`src/components/ui/touch-target.ts`;
+  zero on the web for 2.75 rem), and a small one (a chip, a row's icon action) takes
+  `touchTarget(h, w?)` there instead: a real 44 pt frame on native (`frameClass`), a slop on the
+  web; tests assert both with `expectNativeTarget` (`src/testing/touch-target.ts`). The
   sync line (`usePlaceSync`) counts only the playing book's server's queued saves and polls while
   playing (a 5xx save queues with the server still online). The player keys stand back over any open layer (`isModalOpen`: an
   `aria-modal` `Sheet`, or a Radix Dialog, AlertDialog, menu or select, which say so with
