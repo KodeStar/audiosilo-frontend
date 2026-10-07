@@ -1,28 +1,30 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useApi } from '@/api/provider';
 import { serverStatus, useReachability } from '@/api/reachability';
+import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
-import { SkipButton } from '@/components/player/skip-button';
-import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
-import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
-import { currentSegment, stepSegment } from '@/components/player/transport';
+import { usePlayerSheets } from '@/components/player/player-sheets';
+import { addBookmarkHere } from '@/components/player/player-shortcuts';
+import { currentSegment } from '@/components/player/transport';
+import { TransportControls } from '@/components/player/transport-controls';
+import { UndoChip } from '@/components/player/undo-chip';
+import { usePlayingPins } from '@/components/player/use-playing-pins';
+import { useSleepCountdown } from '@/components/player/use-sleep-countdown';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Button } from '@/components/ui/button';
-import { Cover } from '@/components/ui/cover';
-import { Icon } from '@/components/ui/icon';
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Slider } from '@/components/ui/slider';
-import { Spinner } from '@/components/ui/spinner';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock } from '@/lib/format';
+import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { cn } from '@/lib/utils';
+import { selectSleepExtendable, selectSleepPhase, useSleepTimer } from '@/playback/sleep-timer';
 import {
   selectBookPosition,
   selectCurrentChapter,
@@ -30,15 +32,36 @@ import {
   usePlayer,
 } from '@/playback/store';
 import { useSession } from '@/stores/session';
-import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { useChromeEdge } from './shell-metrics';
 
-/** The chapter scrubber row: elapsed in the chapter, the scrubber, and the time left in
- * the whole book at the listener's speed. A per-tick leaf that moves in whole seconds
- * (the clock's resolution), so it re-renders about once a second, not per engine tick. */
+/** The bar's height above the safe area (STYLEGUIDE "Docked player bar"). */
+const DOCK_HEIGHT = 84;
+
+/**
+ * What the dock shows at its MEASURED width (the bar spans the window under the page and
+ * the desktop drawer; a tablet, a split view or a narrow browser window is less): from
+ * 1024 every action (speed, bookmark, output); below it the tablet set, whose hidden
+ * actions are all in the full player; below 800 the chapter scrubber row goes too (the
+ * transport alone fits between the book and the actions).
+ */
+export function dockLayout(width: number): { allActions: boolean; scrubber: boolean } {
+  return { allActions: width >= 1024, scrubber: width >= 800 };
+}
+
+/** Bookmark positions inside the current segment, as fractions of it (0..1). */
+export function segmentTicks(bookmarks: readonly number[], start: number, length: number) {
+  return bookmarks
+    .filter((p) => p >= start && p < start + length)
+    .map((p) => (p - start) / Math.max(1, length));
+}
+
+/** The chapter scrubber row: elapsed in the chapter, a thin scrubber with the chapter's
+ * bookmark ticks, and the time left in the whole book at the listener's speed. A
+ * per-tick leaf that moves in whole seconds (the clock's resolution), so it re-renders
+ * about once a second, not per engine tick. */
 function ChapterScrubber({ total }: { total: number }) {
   const { t } = useTranslation();
   const chapter = usePlayer(selectCurrentChapter);
@@ -55,6 +78,7 @@ function ChapterScrubber({ total }: { total: number }) {
     ),
   );
   const left = usePlayingTimeLeft();
+  const pins = usePlayingPins();
   const seekBook = usePlayer((s) => s.seekBook);
   const seekInTrack = usePlayer((s) => s.seekInTrack);
   const [scrub, setScrub] = useState<number | null>(null);
@@ -62,6 +86,10 @@ function ChapterScrubber({ total }: { total: number }) {
     ...currentSegment({ total, bookPosition: 0, chapter, trackPosition: 0, trackDuration }),
     elapsed: elapsedSecond,
   };
+  const ticks = useMemo(
+    () => (segment.perTrack ? [] : segmentTicks(pins.bookmarks, segment.start, segment.length)),
+    [pins.bookmarks, segment.perTrack, segment.start, segment.length],
+  );
   const onSeek = (p: number) =>
     segment.perTrack ? void seekInTrack(p) : void seekBook(segment.start + p);
   return (
@@ -69,7 +97,7 @@ function ChapterScrubber({ total }: { total: number }) {
       <Text variant="caption" style={tabularNums} className="min-w-[44px] text-right">
         {formatClock(scrub ?? segment.elapsed)}
       </Text>
-      <View className="flex-1">
+      <View className="min-w-0 flex-1">
         <Slider
           value={segment.elapsed}
           max={Math.max(0, segment.length)}
@@ -77,7 +105,7 @@ function ChapterScrubber({ total }: { total: number }) {
           tone="ink"
           onValueCommit={onSeek}
           onPreview={setScrub}
-          accessibilityLabel={t('player.seek.label')}
+          accessibilityLabel={t(segment.perTrack ? 'player.seek.labelFile' : 'player.seek.label')}
           valueText={(v) =>
             t('player.seek.value', {
               position: formatClock(v),
@@ -85,87 +113,194 @@ function ChapterScrubber({ total }: { total: number }) {
             })
           }
         />
+        {/* The chapter's bookmarks, ticks over the track (decoration: the full player's
+            bookmark list is the accessible way to them). */}
+        {ticks.map((f, i) => (
+          <View
+            key={`${i}-${f}`}
+            testID="dock-bookmark-tick"
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            className="absolute top-1/2 -mt-[5.5px] h-[11px] w-0.5 rounded-[1px] bg-foreground/55"
+            style={{ left: `${f * 100}%`, marginLeft: -1 }}
+          />
+        ))}
       </View>
-      <Text variant="caption" style={tabularNums} className="min-w-[44px]" numberOfLines={1}>
+      <Text variant="caption" style={tabularNums} numberOfLines={1}>
         {left}
       </Text>
     </View>
   );
 }
 
-/** Where progress lives, when it isn't simply syncing: the server is unreachable, so the
- * place is kept on this device (STYLEGUIDE section 9, "reliability shown"). */
-function SyncState({ connectionId }: { connectionId: string }) {
+/** Where the place lives (STYLEGUIDE section 9, "reliability shown"), truthfully: synced
+ * to the server (the store saves every 15 s while playing, so "just now" then; "Synced"
+ * once paused, which saved too), kept on this device while the server is unreachable
+ * (the offline queue replays it), or kept here until the listener signs in again (the
+ * server refused the token, so nothing replays until then). Nothing for a book whose
+ * server was removed (a download playing on). */
+function SyncState({ connectionId, playing }: { connectionId: string; playing: boolean }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const needsReconnect = useSession(
-    (s) => s.connections.find((c) => c.id === connectionId)?.needsReconnect,
+  const connection = useSession((s) => s.connections.find((c) => c.id === connectionId));
+  const needsReconnect = connection?.needsReconnect;
+  const status = useReachability((s) =>
+    serverStatus({ id: connectionId, needsReconnect }, s.online),
   );
-  const offline = useReachability(
-    (s) => serverStatus({ id: connectionId, needsReconnect }, s.online) === 'offline',
-  );
-  if (!offline) return null;
+  if (!connection) return null;
+  const [icon, text]: [IconName, string] =
+    status === 'reconnect'
+      ? ['hard-drive', t('shell.dock.signInToSync')]
+      : status === 'offline'
+        ? ['hard-drive', t('shell.dock.savedLocally')]
+        : ['cloud', playing ? t('shell.dock.syncedNow') : t('shell.dock.synced')];
   return (
-    <View className="flex-row items-center gap-1">
-      <Icon name="offline" size={11} color={themed.subtleForeground} />
+    <View testID="dock-sync-state" className="flex-row items-center gap-[5px]">
+      <Icon name={icon} size={12} color={themed.subtleForeground} />
       <Text variant="caption" className="text-[11px] text-subtle-foreground" numberOfLines={1}>
-        {t('shell.dock.savedLocally')}
+        {text}
       </Text>
     </View>
   );
 }
 
-type DockSheet = 'speed' | 'sleep' | null;
+/** One of the dock's right-hand actions: a 34 pt pill (44 pt target), `brand-soft`
+ * while `active`. */
+function DockPill({
+  label,
+  onPress,
+  active = false,
+  testID,
+  children,
+}: {
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+  testID?: string;
+  children: ReactNode;
+}) {
+  return (
+    <AnimatedPressable
+      testID={testID}
+      onPress={onPress}
+      hitSlop={5}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className={cn(
+        'h-[34px] min-w-[34px] flex-row items-center justify-center gap-1.5 rounded-control px-2.5',
+        active ? 'bg-brand-soft' : 'active:bg-accent',
+        Platform.select({
+          web: cn('cursor-pointer', !active && 'hover:bg-accent', FOCUS_RING_CLASS),
+        }),
+      )}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
+
+/** The speed pill ("1.25×"), opening the speed sheet. */
+function SpeedPill() {
+  const { t } = useTranslation();
+  const rate = usePlayer((s) => s.rate);
+  return (
+    <DockPill
+      testID="dock-speed"
+      label={t('shell.dock.speed', { speed: formatSpeed(rate) })}
+      onPress={() => usePlayerSheets.getState().openSheet('speed')}
+    >
+      <Text className="font-sans-bold text-[12.5px] text-foreground" style={tabularNums}>
+        {formatSpeed(rate)}
+      </Text>
+    </DockPill>
+  );
+}
+
+/** The sleep pill: the moon, plus the countdown and `brand-soft` while a timer runs
+ * ("Keep going" in the post-pause grace window, when the sheet can still resume). */
+function SleepPill() {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  const phase = useSleepTimer(selectSleepPhase);
+  const extendable = useSleepTimer(selectSleepExtendable);
+  const countdown = useSleepCountdown();
+  const active = phase !== 'idle';
+  const text = phase === 'grace' ? t('player.sleepTimer.keepGoingShort') : countdown;
+  // The label follows what opening the sheet can do (as the full player's button).
+  const label = extendable
+    ? t('player.sleepTimer.keepListening')
+    : countdown
+      ? t('shell.dock.sleepRunning', { time: countdown })
+      : t('player.sleepTimer.title');
+  return (
+    <DockPill
+      testID="dock-sleep"
+      label={label}
+      active={active}
+      onPress={() => usePlayerSheets.getState().openSheet('sleep')}
+    >
+      <Icon name="sleep" size={16} color={active ? themed.brandInk : themed.foreground} />
+      {active && text ? (
+        <Text
+          className={cn(
+            'text-[12.5px] text-brand-ink',
+            phase === 'running' ? 'font-sans-semibold' : 'font-sans-bold',
+          )}
+          style={tabularNums}
+        >
+          {text}
+        </Text>
+      ) : null}
+    </DockPill>
+  );
+}
 
 /**
- * The docked player bar (84, STYLEGUIDE section 8) on tablet and desktop, whenever a
- * book is loaded: a whole-book progress line on top; the cover, chapter and book on the
- * left (tap for the full player); previous chapter / back / play / forward / next
- * chapter over a chapter scrubber in the centre; speed, sleep, Up next and expand on the right.
+ * The docked player bar (84, STYLEGUIDE section 8 "Docked player bar") on tablet and
+ * desktop, whenever a book is loaded: a 3 px whole-book progress line along the top; the
+ * cover, chapter, book · author and the sync state on the left (tap for the full player);
+ * the transport over a chapter scrubber (bookmark ticks, the time left in the book at the
+ * listener's speed) in the centre; on the right the Undo chip after a jump, speed, sleep,
+ * bookmark, output (where the engine can pick one), Up next and expand. What fits is
+ * decided by the bar's measured width (`dockLayout`); everything hidden is in the full
+ * player.
  *
- * Renders a fragment: the bar, then its speed and sleep sheets, so the sheets (which
- * render in place, `absolute inset-0`) are siblings of the bar in the shell's root
- * column and cover the whole app. Mount it as a direct child of that root.
+ * Speed and sleep open through `usePlayerSheets` (the web's keys open the same sheets),
+ * rendered by the shell's one sheet host. Renders a fragment so that host can sit beside
+ * the bar in the shell's root column and cover the whole app.
  */
 export function DockedPlayer() {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const insets = useSafeAreaInsets();
   const desktop = useLayout() === 'desktop';
-  const [sheet, setSheet] = useState<DockSheet>(null);
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const chapter = usePlayer(selectCurrentChapter);
   const isPlaying = usePlayer(selectIsPlaying);
-  const state = usePlayer((s) => s.snapshot.state);
-  const toggle = usePlayer((s) => s.toggle);
-  const retry = usePlayer((s) => s.retry);
-  const skipSeconds = usePlayer((s) => s.skipSeconds);
-  const skipForward = useSettings((s) => s.skipForward);
-  const skipBackward = useSettings((s) => s.skipBackward);
-  const api = useApi(nowPlaying?.connectionId);
+  const canRoutePick = usePlayer((s) => s.canRoutePick);
+  const showRoutePicker = usePlayer((s) => s.showRoutePicker);
   // The bar sits on the window's bottom edge, so its height is its top edge (published
-  // for the root toasts).
-  const [height, setHeight] = useState<number>();
-  useChromeEdge('dock', nowPlaying ? height : undefined);
+  // for the root toasts). Its width picks what fits.
+  const [size, setSize] = useState<{ width: number; height: number }>();
+  useChromeEdge('dock', nowPlaying ? size?.height : undefined);
   if (!nowPlaying) return null;
 
+  // Before the first layout: the form factor's guess.
+  const { allActions, scrubber } = dockLayout(size?.width ?? (desktop ? 1280 : 800));
   const { queue, title, author } = nowPlaying;
   const heading = chapter ? chapterLabel(chapter, t) : title;
   const bookLine = author ? `${title} · ${author}` : title;
   const openPlayer = () => router.push('/player');
-
-  // Previous/next read the live position at press time (not per render).
-  const step = (dir: 1 | -1) => stepSegment(usePlayer.getState(), dir);
-
-  const isError = state === 'error';
-  const roundButton = 'h-10 w-10 items-center justify-center rounded-full active:bg-accent';
 
   return (
     <>
       <View
         testID="shell-docked-player"
         accessibilityLabel={t('shell.dock.label')}
-        onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
+        onLayout={(e) =>
+          setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })
+        }
         style={{
           paddingBottom: insets.bottom,
           paddingLeft: insets.left,
@@ -175,110 +310,78 @@ export function DockedPlayer() {
       >
         {/* The 3px whole-book progress line along the bar's top edge (a leaf). */}
         <BookProgressLine total={queue.total} className="absolute left-0 right-0 top-0 h-[3px]" />
-        <View className="h-[84px] flex-row items-center gap-4 pl-3.5 pr-4 lg:gap-5 lg:pr-5">
+        <View
+          style={{ height: DOCK_HEIGHT }}
+          className="flex-row items-center gap-4 pl-3.5 pr-4 lg:gap-5 lg:pr-5"
+        >
           <AnimatedPressable
             onPress={openPlayer}
             accessibilityRole="button"
             accessibilityLabel={t('shell.openPlayer', { title })}
-            className="flex-1 flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent"
+            className={cn(
+              'min-w-0 flex-1 flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent',
+              Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
+            )}
           >
-            <Cover
-              source={{ uri: nowPlaying.cover, headers: api.authHeaders() }}
-              label={title}
-              rounded="rounded-cover"
-              size={desktop ? 56 : 48}
+            <BookCover
+              connectionId={nowPlaying.connectionId}
+              libraryId={nowPlaying.libraryId}
+              path={nowPlaying.path}
+              width={desktop ? 56 : 48}
+              title={title}
             />
-            <View className="flex-1">
-              <Text className="font-sans-bold text-sm" numberOfLines={1}>
+            <View className="min-w-0 flex-1">
+              <Text variant="label" numberOfLines={1}>
                 {heading}
               </Text>
               <Text variant="caption" numberOfLines={1}>
                 {bookLine}
               </Text>
-              <SyncState connectionId={nowPlaying.connectionId} />
+              <SyncState connectionId={nowPlaying.connectionId} playing={isPlaying} />
             </View>
           </AnimatedPressable>
 
-          <View className="flex-[1.4] justify-center">
-            <View className="flex-row items-center justify-center gap-1.5">
-              <AnimatedPressable
-                onPress={() => step(-1)}
-                accessibilityRole="button"
-                accessibilityLabel={t('player.controls.previous')}
-                className={roundButton}
-              >
-                <Icon name="prev" size={16} color={themed.foreground} />
-              </AnimatedPressable>
-              <SkipButton
-                direction="back"
-                seconds={skipBackward}
-                onPress={() => void skipSeconds(-skipBackward)}
-                color={themed.foreground}
-                fontSize={13}
-                className={roundButton}
-                accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
-              />
-              <AnimatedPressable
-                onPress={() => (isError ? void retry() : void toggle())}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isError
-                    ? t('common.retry')
-                    : isPlaying
-                      ? t('player.controls.pause')
-                      : t('player.controls.play')
-                }
-                className={`h-[44px] w-[44px] items-center justify-center rounded-full bg-primary ${
-                  isPlaying ? '' : 'pl-0.5'
-                }`}
-              >
-                {state === 'loading' ? (
-                  <Spinner color={themed.primaryForeground} />
-                ) : (
-                  <Icon
-                    name={isError ? 'circle-play' : isPlaying ? 'pause' : 'play'}
-                    size={18}
-                    color={themed.primaryForeground}
-                  />
-                )}
-              </AnimatedPressable>
-              <SkipButton
-                direction="forward"
-                seconds={skipForward}
-                onPress={() => void skipSeconds(skipForward)}
-                color={themed.foreground}
-                fontSize={13}
-                className={roundButton}
-                accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
-              />
-              <AnimatedPressable
-                onPress={() => step(1)}
-                accessibilityRole="button"
-                accessibilityLabel={t('player.controls.next')}
-                className={roundButton}
-              >
-                <Icon name="next" size={16} color={themed.foreground} />
-              </AnimatedPressable>
-            </View>
-            <ChapterScrubber total={queue.total} />
+          <View
+            testID="dock-centre"
+            className={cn('justify-center', scrubber && 'min-w-[300px] flex-[1.4]')}
+          >
+            <TransportControls size="sm" />
+            {scrubber ? <ChapterScrubber total={queue.total} /> : null}
           </View>
 
-          <View className="flex-1 flex-row items-center justify-end gap-3">
-            <SpeedButton onPress={() => setSheet('speed')} />
-            <SleepTimerButton onPress={() => setSheet('sleep')} />
+          <View
+            testID="dock-actions"
+            className="shrink-0 grow basis-auto flex-row items-center justify-end gap-1"
+          >
+            <UndoChip className="mr-1" />
+            {allActions ? <SpeedPill /> : null}
+            <SleepPill />
+            {allActions ? (
+              <DockPill
+                testID="dock-bookmark"
+                label={t('player.shortcuts.bookmark')}
+                onPress={() => void addBookmarkHere(t)}
+              >
+                <Icon name="bookmark" size={16} color={themed.foreground} />
+              </DockPill>
+            ) : null}
+            {allActions && canRoutePick ? (
+              <DockPill
+                testID="dock-output"
+                label={t('player.routePicker.label')}
+                onPress={() => void showRoutePicker()}
+              >
+                <Icon name="airplay" size={16} color={themed.foreground} />
+              </DockPill>
+            ) : null}
             <UpNextButton variant="dock" />
-            <Button
-              variant="ghost"
-              size="icon"
-              icon="chevron-up"
-              onPress={openPlayer}
-              accessibilityLabel={t('shell.dock.expand')}
-            />
+            <DockPill testID="dock-expand" label={t('shell.dock.expand')} onPress={openPlayer}>
+              <Icon name="chevron-up" size={16} color={themed.foreground} />
+            </DockPill>
           </View>
         </View>
       </View>
-      <SpeedSheet visible={sheet === 'speed'} onClose={() => setSheet(null)} />
-      <SleepSheet visible={sheet === 'sleep'} onClose={() => setSheet(null)} />
+      {/* PlayerSheetHost mounts in src/components/shell/docked-player.tsx (workstream E) */}
     </>
   );
 }

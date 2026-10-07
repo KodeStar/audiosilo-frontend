@@ -833,7 +833,11 @@ when the window crosses a threshold. Both platform layouts wrap their one naviga
 `header` is `PhoneHeader` (large title on a tab root, inline back named after the parent on iOS,
 banners under it), the mini player in the iOS 26 tab bar's bottom accessory (`AccessoryPlayer`,
 rendered twice by iOS - `regular` + `inline` - so it is stateless and reads the player store) or a
-floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`). On native that card is ONE
+floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`): 56 pt, inset 8 from the sides and
+`MINI_PLAYER_GAP` above the bar, `rounded-card` + hairline + `shadow-overlay` (Android elevation). Both
+show the chapter, the book with its time left (`usePlayingTimeLeft`; the sleep countdown first while a
+timer runs, `MiniPlayerSubtitle`), skip back, the `plain` `PlayButton` (spinner, Retry) and the
+`ChapterProgressLine`; the accessory's narrow `inline` placement keeps cover, chapter and play. On native that card is ONE
 `FloatingMiniPlayer`, rendered by `(app)/_layout.tsx` as the shell frame's `phoneBottom` over
 NativeTabs (never per tab stack: NativeTabs keeps visited tabs alive, so a card per stack ticked up to
 five times), absolutely positioned on the native bar's measured `bar` edge, so it sits on the bar on
@@ -845,8 +849,13 @@ chrome; a tab root fills the rest with `SubNavSections` (its segmented sections)
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
 `useSubNav` store on tablet/desktop and render in place on a phone; published nodes render in the
 sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), the `DrawerSlot` on desktop (Up next's drawer, below),
-and `DockedPlayer` (84) whenever a book is loaded (it mounts its speed/sleep sheets as
-siblings so they cover the app). Route-driven side effects (search reset on leaving the Search
+and `DockedPlayer` (84) whenever a book is loaded: the 3 px whole-book line, book + sync state
+(synced / saved on this device / sign in again), `TransportControls size="sm"` over a chapter
+scrubber with bookmark ticks, then `UndoChip`, speed, sleep (`brand-soft` + countdown while
+running), bookmark (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. What fits
+is decided by its MEASURED width (`dockLayout`: all actions from 1024, the tablet set below, no
+scrubber below 800; everything hidden is in the full player). Speed and sleep open through
+`usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does). Route-driven side effects (search reset on leaving the Search
 tab, browse scroll memory) are `useShellEffects`.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web
   shell on the Dialog primitive, opened by the omnisearch (web tablet/desktop; a native tablet's

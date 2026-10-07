@@ -39,6 +39,8 @@ export function UpNextButton({ variant }: { variant: 'bar' | 'header' | 'dock' }
     <AnimatedPressable
       testID={`upnext-button-${variant}`}
       onPress={toggleUpNext}
+      // The 38 pt square still takes a 44 pt touch.
+      hitSlop={variant === 'header' ? undefined : 3}
       accessibilityRole="button"
       accessibilityLabel={label}
       // Web: the drawer's state as a toggle (aria-pressed); a sheet is a plain button.

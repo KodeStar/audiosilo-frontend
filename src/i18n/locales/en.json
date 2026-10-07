@@ -918,7 +918,12 @@
     "dock": {
       "label": "Player",
       "savedLocally": "Saved on this device, will sync",
-      "expand": "Expand player"
+      "expand": "Expand player",
+      "synced": "Synced",
+      "syncedNow": "Synced just now",
+      "signInToSync": "Saved on this device, sign in again to sync",
+      "speed": "Playback speed, {{speed}}",
+      "sleepRunning": "Sleep timer, {{time}} left"
     },
     "profile": {
       "label": "Servers and account, {{name}}",

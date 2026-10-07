@@ -918,7 +918,12 @@
     "dock": {
       "label": "Leitor",
       "savedLocally": "Guardado neste dispositivo, será sincronizado",
-      "expand": "Expandir o leitor"
+      "expand": "Expandir o leitor",
+      "synced": "Sincronizado",
+      "syncedNow": "Sincronizado agora mesmo",
+      "signInToSync": "Guardado neste dispositivo, inicie sessão novamente para sincronizar",
+      "speed": "Velocidade de reprodução, {{speed}}",
+      "sleepRunning": "Temporizador, faltam {{time}}"
     },
     "profile": {
       "label": "Servidores e conta, {{name}}",
