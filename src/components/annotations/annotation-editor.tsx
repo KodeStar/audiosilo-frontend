@@ -1,3 +1,4 @@
+import type { MutateOptions } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -12,9 +13,8 @@ import {
 } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { PlayerSheet } from '@/components/player/player-sheet';
-import { Button } from '@/components/ui/button';
+import { Button, type ButtonProps } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import type { IconName } from '@/components/ui/icon';
 import { Textarea } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { toast, type ToastOptions } from '@/components/ui/toast';
@@ -112,9 +112,7 @@ type Plan<A, U> =
   | { kind: 'unchanged' | 'unsupported' | 'empty' };
 
 /** A mutation as `runPlan` drives it. */
-type Mutate<V> = {
-  mutate: (vars: V, opts: { onSuccess: () => void; onError: (err: unknown) => void }) => void;
-};
+type Mutate<V> = { mutate: (vars: V, opts: MutateOptions<unknown, unknown, V>) => void };
 
 /**
  * Carry out a save plan: an add or an update (closing, then saying so), nothing for an
@@ -178,14 +176,8 @@ function EditorFrame({
   annotations: boolean | undefined;
   children: ReactNode;
   onDone: () => void;
-  save: {
-    icon: IconName;
-    title: string;
-    loading: boolean;
-    disabled?: boolean;
-    onPress: () => void;
-    testID: string;
-  };
+  /** The save button (disabled too on an edit the server can't take). */
+  save: ButtonProps;
 }) {
   const { t } = useTranslation();
   const editing = request.kind === 'bookmark' ? !!request.bookmark : !!request.note;
