@@ -51,6 +51,12 @@ export type DownloadManifest = {
   files: DownloadedFile[];
   coverUri: string | null;
   savedAt: string;
+  /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
+   * Only this marker lives here: the payload (an envelope with its characters and recaps
+   * can run to hundreds of KB) sits in its own file beside the audio, so the registry,
+   * saved every couple of seconds while a download runs, stays small. Absent on
+   * downloads made before it existed (they are filled in once, in the background). */
+  meta?: { savedAt: string };
 };
 
 export type DownloadEntry = {
@@ -132,6 +138,33 @@ export interface DownloadEngine {
    * under a new prefix, so recomputing here lets it pick up its new url.
    */
   localUri?(connectionId: string, libraryId: number, path: string, fileName: string): string;
+  /**
+   * Save a small text file (`fileName`, never an audio file's name) with a downloaded
+   * book's files, so it lives and dies with them: `removeBook` and `clearAll` delete it
+   * too. Resolves false, writing nothing, when the book has no storage any more (its
+   * download was removed meanwhile). Omitted where there is no offline storage.
+   */
+  writeText?(
+    connectionId: string,
+    libraryId: number,
+    path: string,
+    fileName: string,
+    text: string,
+  ): Promise<boolean>;
+  /** A text file `writeText` saved, or null when it is not there (or can't be read). */
+  readText?(
+    connectionId: string,
+    libraryId: number,
+    path: string,
+    fileName: string,
+  ): Promise<string | null>;
+  /** Delete one file `writeText` saved (best effort). */
+  removeFile?(
+    connectionId: string,
+    libraryId: number,
+    path: string,
+    fileName: string,
+  ): Promise<void>;
   /** Delete a book's directory and all its files. */
   removeBook(connectionId: string, libraryId: number, path: string): Promise<void>;
   /**

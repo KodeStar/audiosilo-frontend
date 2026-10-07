@@ -357,23 +357,30 @@ function EndCreditsBody({
         <FallbackBackdrop cid={cid} libraryId={libraryId} path={path} hasBook={!!book} />
       )}
 
+      {/* The eyebrow sits on the page's centre line like the title block below: the two
+          buttons differ in width, so each gets an equal flex-1 side slot (a flex-1 eyebrow
+          between them centred it on the gap, off to the left). */}
       <View className={cn('flex-row items-center gap-2 py-2', phone ? 'px-2' : 'px-4')}>
-        <Button
-          variant="ghost"
-          size="icon"
-          icon="close"
-          accessibilityLabel={t('common.close')}
-          onPress={onClose}
-        />
-        <Text variant="eyebrow" className="flex-1 text-center" accessibilityRole="header">
+        <View testID="end-credits-bar-start" className="flex-1 flex-row justify-start">
+          <Button
+            variant="ghost"
+            size="icon"
+            icon="close"
+            accessibilityLabel={t('common.close')}
+            onPress={onClose}
+          />
+        </View>
+        <Text variant="eyebrow" className="shrink text-center" accessibilityRole="header">
           {t('player.finished.eyebrow')}
         </Text>
-        <Button
-          variant="ghost"
-          size="sm"
-          title={t('player.finished.credits')}
-          onPress={() => setCreditsOpen(true)}
-        />
+        <View testID="end-credits-bar-end" className="flex-1 flex-row justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            title={t('player.finished.credits')}
+            onPress={() => setCreditsOpen(true)}
+          />
+        </View>
       </View>
 
       <ScrollView
