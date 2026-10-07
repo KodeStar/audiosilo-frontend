@@ -10,6 +10,7 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
 import { usePlayerSheets } from './player-sheets';
+import { steppedRate } from './speed-model';
 import { stepSegment } from './transport';
 
 /**
@@ -77,16 +78,6 @@ export function playerShortcutFor(e: PlayerKey, ctx: PlayerKeyContext): PlayerSh
   if (e.key === '[') return 'slower';
   if (e.key === ']') return 'faster';
   return LETTERS[e.key.toLowerCase()] ?? null;
-}
-
-/** The speed `[` / `]` step. */
-export const SPEED_STEP = 0.05;
-
-/** The next speed one step slower (-1) or faster (+1), on the 0.05 grid, within the
- * product's 0.5-2x. */
-export function steppedRate(rate: number, direction: 1 | -1): number {
-  const next = Math.round((rate + direction * SPEED_STEP) * 100) / 100;
-  return Math.max(0.5, Math.min(2, next));
 }
 
 /**

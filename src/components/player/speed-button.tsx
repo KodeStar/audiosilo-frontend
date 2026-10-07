@@ -7,6 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatSpeed } from '@/lib/format';
 import { selectBookPosition, usePlayer } from '@/playback/store';
+import { timeLeft } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { OptionTile } from './option-tile';
@@ -18,7 +19,7 @@ import {
   SPEED_MIN,
   SPEED_PRESETS,
   SPEED_STEP,
-  timeLeftAt,
+  steppedRate,
 } from './speed-model';
 
 /**
@@ -67,7 +68,7 @@ function SpeedSheetBody() {
   const total = usePlayer((s) => s.nowPlaying?.queue.total ?? 0);
   const position = usePlayer(selectBookPosition);
   const apply = (next: number) => void setRate(snapSpeed(next));
-  const left = (speed: number) => formatDuration(timeLeftAt(total, position, speed));
+  const left = (speed: number) => formatDuration(timeLeft(position, total, speed)?.seconds);
 
   return (
     <View className="gap-4 pt-1">
@@ -87,7 +88,7 @@ function SpeedSheetBody() {
           variant="outline"
           size="icon"
           icon="minus"
-          onPress={() => apply(rate - SPEED_STEP)}
+          onPress={() => void setRate(steppedRate(rate, -1))}
           disabled={rate <= SPEED_MIN}
           accessibilityLabel={t('player.speed.slower')}
           className="h-11 w-11"
@@ -108,7 +109,7 @@ function SpeedSheetBody() {
           variant="outline"
           size="icon"
           icon="plus"
-          onPress={() => apply(rate + SPEED_STEP)}
+          onPress={() => void setRate(steppedRate(rate, 1))}
           disabled={rate >= SPEED_MAX}
           accessibilityLabel={t('player.speed.faster')}
           className="h-11 w-11"

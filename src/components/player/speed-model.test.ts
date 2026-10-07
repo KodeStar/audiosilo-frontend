@@ -1,4 +1,4 @@
-import { isSpeed, snapSpeed, SPEED_PRESETS, timeLeftAt } from './speed-model';
+import { isSpeed, snapSpeed, SPEED_PRESETS, steppedRate } from './speed-model';
 
 describe('speed model', () => {
   it('snaps to the 0.05 grid without float dust', () => {
@@ -24,9 +24,13 @@ describe('speed model', () => {
     expect(isSpeed(1.2, 1.25)).toBe(false);
   });
 
-  it('measures time left in wall-clock time at the speed', () => {
-    expect(timeLeftAt(7200, 3600, 2)).toBe(1800);
-    expect(timeLeftAt(7200, 3600, 1)).toBe(3600);
-    expect(timeLeftAt(7200, 8000, 1)).toBe(0);
+  it('steps one notch on the grid, within the range', () => {
+    expect(steppedRate(1, 1)).toBe(1.05);
+    expect(steppedRate(1.25, -1)).toBe(1.2);
+    expect(steppedRate(1.1, 1)).toBe(1.15); // not 1.1500000000000001
+    expect(steppedRate(2, 1)).toBe(2);
+    expect(steppedRate(0.5, -1)).toBe(0.5);
+    // An off-grid stored speed lands back on the grid.
+    expect(steppedRate(1.27, 1)).toBe(1.3);
   });
 });

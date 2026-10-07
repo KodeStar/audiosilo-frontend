@@ -18,7 +18,7 @@ import {
   selectBookPosition,
   usePlayer,
 } from '@/playback/store';
-import { wallClockSeconds } from '@/playback/rate';
+import { timeLeft } from '@/playback/time-left';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -371,7 +371,7 @@ export function SeekTimes({
   const { t } = useTranslation();
   const now = useNow(15_000);
   const remaining = Math.max(0, length - elapsed);
-  const wall = wallClockSeconds(remaining, rate);
+  const wall = timeLeft(elapsed, length, rate)?.seconds ?? 0;
   const time = formatDuration(wall);
   const clock = formatWallClock(new Date(now + wall * 1000));
   return (

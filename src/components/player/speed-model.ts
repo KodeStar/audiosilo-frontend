@@ -1,5 +1,3 @@
-import { wallClockSeconds } from '@/playback/rate';
-
 /** The speed sheet's range and step (STYLEGUIDE section 8, "Sheets"). The store clamps
  * to the same range; this module also snaps, which the store does not. */
 export const SPEED_MIN = 0.5;
@@ -21,7 +19,8 @@ export function isSpeed(rate: number, preset: number): boolean {
   return Math.abs(rate - preset) < 0.001;
 }
 
-/** Wall-clock seconds left in the book at `rate`. */
-export function timeLeftAt(total: number, position: number, rate: number): number {
-  return wallClockSeconds(total - position, rate);
+/** The speed one step slower (-1) or faster (+1) than `rate`, on the grid (the `[` / `]`
+ * shortcuts). */
+export function steppedRate(rate: number, direction: 1 | -1): number {
+  return snapSpeed(rate + direction * SPEED_STEP);
 }
