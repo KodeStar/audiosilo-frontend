@@ -920,7 +920,7 @@ describe('the offline companion (community metadata kept with a download)', () =
 
   it('on launch, seeds what each book kept and then the newest /server answer', async () => {
     const path = nextPath();
-    const older = payload(Date.parse('2026-05-01T10:00:00Z'));
+    const older = payload(Date.now() - 60_000); // this week's: not read again
     await seed({
       [downloadKey('c1', 2, path)]: downloadedEntry({
         path,
@@ -954,6 +954,40 @@ describe('the offline companion (community metadata kept with a download)', () =
     // A second hydrate in the same launch (or a failure) asks no more.
     mockCapture.mockClear();
     await seed({ [key]: downloadedEntry({ path }) });
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockCapture).not.toHaveBeenCalled();
+  });
+
+  it('reads a copy older than a week again, keeping it when that fails', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await seed({
+      [key]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    const stale = payload(Date.now() - 8 * 24 * 60 * 60_000);
+    mockReadMeta.mockResolvedValue(stale);
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, stale);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    // The capture found nothing: the kept copy and its marker stay.
+    expect(mockWriteMeta).not.toHaveBeenCalled();
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+  });
+
+  it('leaves a copy from this week alone', async () => {
+    const path = nextPath();
+    await seed({
+      [downloadKey('c1', 2, path)]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    mockReadMeta.mockResolvedValue(payload(Date.now() - 60_000));
     await useDownloads.getState().hydrate();
     await settle();
     expect(mockCapture).not.toHaveBeenCalled();

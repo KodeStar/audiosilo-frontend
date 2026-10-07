@@ -457,11 +457,16 @@ async function keepOfflineMeta(key: string): Promise<void> {
   seedOfflineMeta(entry.connectionId, entry.libraryId, entry.path, payload);
 }
 
+/** A kept copy older than this is read again on a launch that can reach its server, so
+ * what a book carries offline follows the community's edits (new recaps, characters). */
+const KEPT_META_REFRESH_MS = 7 * 24 * 60 * 60_000;
+
 /** On launch: seed the metadata every downloaded book kept, then each connection's saved
  * `/server` answer where the cache has none (after the books, so a gate it opens finds
  * their data), then fill in, one book at a time, the downloads that kept none (made
- * before this existed, or whose file is gone or unreadable). The fill-in asks only a
- * server with `metadata`, each server's flags once. */
+ * before this existed, or whose file is gone or unreadable), then refresh the copies
+ * older than a week. That asks only a server with `metadata`, each server's flags once;
+ * a failure keeps what the book had. */
 async function restoreOfflineMeta(keys: string[]): Promise<void> {
   const downloaded = keys
     .map((key) => [key, useDownloads.getState().entries[key]] as const)
@@ -475,6 +480,7 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
   );
   const kept: { connectionId: string; payload: OfflineMeta }[] = [];
   const missing: string[] = [];
+  const old: string[] = [];
   for (const { key, entry, payload } of read) {
     if (!payload) {
       missing.push(key);
@@ -482,13 +488,14 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
     }
     seedOfflineMeta(entry.connectionId, entry.libraryId, entry.path, payload);
     kept.push({ connectionId: entry.connectionId, payload });
+    if (Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) old.push(key);
   }
   for (const [cid, snapshot] of newestSnapshots(kept)) seedServerSnapshot(cid, snapshot);
-  if (missing.length === 0) return;
+  if (missing.length === 0 && old.length === 0) return;
 
   await whenSessionReady();
   const hasMetadata = new Map<string, Promise<boolean>>();
-  for (const key of missing) {
+  for (const key of [...missing, ...old]) {
     const e = useDownloads.getState().entries[key];
     if (!e || e.status !== 'downloaded' || !canMatch(e)) continue;
     let check = hasMetadata.get(e.connectionId);
