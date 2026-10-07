@@ -12,6 +12,7 @@ import {
 import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
+import { keyboardLift, useKeyboardFrame } from '@/lib/keyboard-lift';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -36,6 +37,10 @@ export function useDialogFrame() {
   const insets = useRootInsets();
   // A phone presents a dialog as a bottom sheet.
   const compact = useLayout() === 'phone';
+  // iOS lays the keyboard over the window: the phone sheet rises above it (a field in it,
+  // like a collection's name, stays in view). 0 elsewhere.
+  const keyboard = useKeyboardFrame();
+  const lift = compact ? keyboardLift(keyboard.overlap, insets.bottom) : 0;
   const web = Platform.OS === 'web';
   return {
     compact,
@@ -59,7 +64,12 @@ export function useDialogFrame() {
         ),
     ),
     // Phone: keep the actions clear of the home indicator.
-    contentStyle: compact ? { paddingBottom: Math.max(24, insets.bottom + 16) } : undefined,
+    contentStyle: compact
+      ? {
+          paddingBottom: Math.max(24, insets.bottom + 16),
+          ...(lift > 0 ? { marginBottom: lift } : {}),
+        }
+      : undefined,
   };
 }
 

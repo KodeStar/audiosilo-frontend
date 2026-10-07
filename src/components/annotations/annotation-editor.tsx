@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import {
   CapabilityError,
@@ -87,16 +87,11 @@ export function AnnotationEditor({
       />
     );
   }
-  // iOS lays the keyboard over the sheet; the padding lifts the fields above it (Android
-  // resizes the window itself).
-  return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {request.kind === 'bookmark' ? (
-        <BookmarkEditor request={request} onDone={onDone} />
-      ) : (
-        <NoteEditor request={request} onDone={onDone} />
-      )}
-    </KeyboardAvoidingView>
+  // The sheet itself rises above the iOS keyboard (`Sheet`, `useKeyboardFrame`).
+  return request.kind === 'bookmark' ? (
+    <BookmarkEditor request={request} onDone={onDone} />
+  ) : (
+    <NoteEditor request={request} onDone={onDone} />
   );
 }
 

@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { keyboardCap, keyboardLift, useKeyboardFrame } from '@/lib/keyboard-lift';
 import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -127,6 +128,17 @@ export function Sheet({
   // Measured panel height, in px; seeded with the window height so the closed
   // position is offscreen before the first layout pass.
   const panelHeight = useSharedValue(height);
+  // iOS: the keyboard lies over the window, so the panel rises above it (and caps its
+  // height to what is left, its body scrolling); 0 elsewhere (`useKeyboardFrame`).
+  const keyboard = useKeyboardFrame();
+  const lift = useSharedValue(0);
+  useEffect(() => {
+    const to = keyboardLift(keyboard.overlap, insets.bottom);
+    lift.value =
+      reduced || keyboard.duration <= 0
+        ? to
+        : withTiming(to, { duration: keyboard.duration, easing: Easing.out(Easing.cubic) });
+  }, [keyboard, insets.bottom, reduced, lift]);
 
   // The single mount-state driver - runs in an effect (never during render) so a
   // concurrent render replay can't discard the update (see the component doc).
@@ -169,6 +181,7 @@ export function Sheet({
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const panelStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.value) * panelHeight.value }],
+    marginBottom: lift.value,
   }));
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -176,7 +189,12 @@ export function Sheet({
   };
 
   if (!mounted) return null;
-  const panelCap = Math.round(height * maxHeightFraction);
+  const panelCap = keyboardCap({
+    windowHeight: height,
+    fraction: maxHeightFraction,
+    overlap: keyboard.overlap,
+    topInset: insets.top,
+  });
 
   const overlay = (
     <View
@@ -239,7 +257,13 @@ export function Sheet({
           ) : null}
           {scroll ? (
             // Shrinks to the panel's cap and scrolls the rest.
-            <ScrollView style={{ flexShrink: 1 }} contentContainerClassName={contentClassName}>
+            // A tap on a button while the keyboard is up presses it (not just dismisses
+            // the keyboard first).
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              contentContainerClassName={contentClassName}
+              keyboardShouldPersistTaps="handled"
+            >
               {children}
             </ScrollView>
           ) : fill ? (
