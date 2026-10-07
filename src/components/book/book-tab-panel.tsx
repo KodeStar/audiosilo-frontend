@@ -112,11 +112,7 @@ export function BookTabPanel({
       return <BookmarksSection libraryId={libraryId} path={path} />;
     case 'history':
       return (
-        <HistorySection
-          libraryId={libraryId}
-          path={path}
-          emptyLabel={t('player.history.empty')}
-        />
+        <HistorySection libraryId={libraryId} path={path} emptyLabel={t('player.history.empty')} />
       );
     case 'notes':
       return <NotesSection libraryId={libraryId} path={path} />;
