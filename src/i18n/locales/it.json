@@ -299,6 +299,18 @@
     "error": {
       "title": "Impossibile caricare i tuoi progressi",
       "body": "Non è andato perso nulla: la tua posizione è salvata su ogni server. Controlla la connessione e riprova."
+    },
+    "previouslyOn": {
+      "label": "Nelle puntate precedenti",
+      "eyebrow_one": "Nelle puntate precedenti di {{title}} · {{count}} giorno fa",
+      "eyebrow_other": "Nelle puntate precedenti di {{title}} · {{count}} giorni fa",
+      "left": "Hai lasciato {{title}} a {{chapter}}.",
+      "leftBook": "Ti eri fermato in {{title}}.",
+      "resume": "Riprendi, con 30 secondi di sovrapposizione",
+      "readRecap": "Leggi il riassunto completo",
+      "dismiss": "Chiudi",
+      "spoilerSafe": "Senza spoiler: scritto fino al capitolo {{chapter}}.",
+      "spoilerSafeStart": "Senza spoiler: scritto prima dell’inizio di questo libro."
     }
   },
   "library": {
@@ -772,10 +784,7 @@
   },
   "player": {
     "controls": {
-      "fileOf": "File {{current}} di {{total}}",
       "fileNumber": "File {{number}}",
-      "showChapters": "Mostra capitoli",
-      "close": "Chiudi",
       "previous": "Capitolo precedente",
       "next": "Capitolo successivo",
       "play": "Riproduci",
@@ -791,13 +800,11 @@
     "bookmarks": {
       "label": "Segnalibri",
       "empty": "Ancora nessun segnalibro.",
-      "saved": "Segnalibro salvato",
       "addAt": "Aggiungi segnalibro a {{time}}",
       "added": "Segnalibro aggiunto",
       "addFailed": "Impossibile aggiungere il segnalibro"
     },
     "history": {
-      "label": "Cronologia d'ascolto",
       "empty": "Ancora nessuna cronologia."
     },
     "notes": {
@@ -956,6 +963,51 @@
       "description_one": "Tornare indietro di {{count}} minuto?",
       "description_other": "Tornare indietro di {{count}} minuti?",
       "jumpBack": "Torna indietro"
+    },
+    "full": {
+      "minimise": "Riduci il lettore",
+      "playingFrom": "In riproduzione da {{server}}",
+      "seriesBook": "{{series}}, libro {{position}}",
+      "chapterButton": "{{chapter}}, mostra i capitoli",
+      "synced": "Sincronizzato",
+      "percentOfBook": "{{percent}}% del libro",
+      "speedLabel": "Velocità di riproduzione, {{speed}}",
+      "sleep": "Timer",
+      "bookmark": "Segnalibro",
+      "output": "Uscita",
+      "errorLine": "Riproduzione interrotta. Il punto in cui eri è salvato."
+    },
+    "companion": {
+      "who": "Chi è chi",
+      "history": "Cronologia",
+      "attribution": "Note della community di {{credit}}",
+      "licence": "Licenza: {{licence}}",
+      "hideAgain": "Nascondili di nuovo",
+      "spoilersShown": "Spoiler visibili",
+      "justMet": "Appena incontrato",
+      "firstAppears": "Compare per la prima volta nel capitolo {{chapter}}",
+      "firstAppearsStart": "Presente fin dall’inizio",
+      "metCount_one": "{{count}} persona che hai incontrato",
+      "metCount_other": "{{count}} persone che hai incontrato",
+      "charactersHidden_one": "{{count}} personaggio che non hai ancora incontrato è nascosto",
+      "charactersHidden_other": "{{count}} personaggi che non hai ancora incontrato sono nascosti",
+      "charactersHiddenHint": "Compaiono qui quando raggiungi i loro capitoli.",
+      "recapsHidden_one": "{{count}} altra parte della storia è nascosta",
+      "recapsHidden_other": "{{count}} altre parti della storia sono nascoste",
+      "recapsHiddenHint": "Ognuna compare quando finisci il suo capitolo.",
+      "whoEmptyTitle": "Ancora nessuna nota sui personaggi di questo libro",
+      "whoEmptyHint": "Le note sui personaggi arrivano da AudioSilo Meta, quando qualcuno le ha scritte per questo libro.",
+      "storyEmptyTitle": "Ancora nessun riassunto per questo libro",
+      "storyEmptyHint": "I riassunti arrivano dalle note della community, quando qualcuno ne ha scritto uno.",
+      "storyNotYet": "Ancora niente da riassumere",
+      "storyNotYetHint": "La storia finora compare qui man mano che finisci i capitoli.",
+      "storyStops": "Scritto per fermarsi dove sei. Non viene mostrato nulla dopo il capitolo {{chapter}}.",
+      "chapterNow": "{{chapter}}, in riproduzione",
+      "chapterIn": "tra {{time}}",
+      "revealTitle": "Novità in Chi è chi: {{names}}",
+      "revealBody_one": "L’hai appena incontrato nel capitolo {{chapter}}. Non viene mostrato nulla oltre questo punto.",
+      "revealBody_other": "Li hai appena incontrati nel capitolo {{chapter}}. Non viene mostrato nulla oltre questo punto.",
+      "show": "Mostra"
     }
   },
   "reconnect": {

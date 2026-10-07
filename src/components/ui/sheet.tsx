@@ -196,7 +196,14 @@ export function Sheet({
   if (!mounted) return null;
 
   const overlay = (
-    <View className="absolute inset-0 justify-end" pointerEvents="box-none">
+    <View
+      className="absolute inset-0 justify-end"
+      pointerEvents="box-none"
+      // Web: a hosted sheet is a modal layer (the player's keyboard shortcuts stand back
+      // while one is open, and its OverlayHost owns Escape). An inline sheet is driven by
+      // its caller's state (the player's sheets: the shortcuts close those themselves).
+      {...(!inline && Platform.OS === 'web' ? { role: 'dialog' as const, 'aria-modal': true } : {})}
+    >
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: themed.overlay }, backdropStyle]}
       >

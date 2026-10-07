@@ -44,6 +44,7 @@ import { HomeSection } from './home-section';
 import { NowEmpty, NowError } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
+import { PreviouslyOnCard } from './previously-on';
 import { SmartShelves } from './smart-shelves';
 import { ThisWeekCard } from './this-week-card';
 import { useNarratorShelf } from './use-narrator-shelf';
@@ -153,6 +154,8 @@ export function HomeScreen() {
           onLayout={(e) => setColumnWidth(e.nativeEvent.layout.width)}
         >
           <Greeting name={user?.username} sync={sync} servers={connections.length} />
+          {/* Back on the Now card's book after 12+ days: where they left it. */}
+          {nowAt ? <PreviouslyOnCard at={nowAt} saved={nowSaved} /> : null}
           {beside ? (
             <View testID="home-hero-beside" className="flex-row items-stretch gap-5">
               <View className="min-w-0 flex-1">{hero}</View>

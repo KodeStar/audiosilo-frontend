@@ -38,6 +38,28 @@ describe('Sheet', () => {
     mockLayout = 'phone';
   });
 
+  it('is a modal layer on the web when hosted (the player shortcuts stand back), not inline', async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      await mount(
+        <>
+          <Sheet visible onClose={jest.fn()}>
+            <Text>Hosted</Text>
+          </Sheet>
+          <Sheet visible inline onClose={jest.fn()}>
+            <Text>Inline</Text>
+          </Sheet>
+        </>,
+      );
+      const json = JSON.stringify(screen.toJSON());
+      expect(json.match(/"aria-modal":true/g)).toHaveLength(1);
+      expect(json).toContain('"role":"dialog"');
+    } finally {
+      Platform.OS = prevOS;
+    }
+  });
+
   it('renders children while visible and closes on backdrop press', async () => {
     const onClose = jest.fn();
     await mount(

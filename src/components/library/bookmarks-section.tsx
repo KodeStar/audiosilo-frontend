@@ -29,6 +29,7 @@ export function BookmarksSection({
   onAdd,
   adding,
   addLabel,
+  onJump,
 }: {
   libraryId: number;
   path: string;
@@ -39,6 +40,9 @@ export function BookmarksSection({
   onAdd?: () => void;
   adding?: boolean;
   addLabel?: string;
+  /** Where a tap on a bookmark goes. The player's companion seeks the playing book in
+   * place (a jump, so the Undo chip follows); without it a tap opens the player there. */
+  onJump?: (position: number) => void;
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
@@ -52,6 +56,7 @@ export function BookmarksSection({
   if (empty && !onAdd && !emptyLabel) return null;
 
   const jump = (position: number) => {
+    if (onJump) return onJump(position);
     router.push({
       pathname: '/player',
       params: { connection: cid, libraryId: String(libraryId), path, position: String(position) },

@@ -34,6 +34,7 @@ jest.mock('@/components/shell/docked-player', () => ({ DockedPlayer: () => null 
 jest.mock('@/components/shell/drawer-slot', () => ({ DrawerSlot: () => null }));
 jest.mock('@/components/shell/wide-top', () => ({ WideTop: () => null }));
 jest.mock('@/components/upnext/up-next-sheet', () => ({ UpNextSheet: () => null }));
+jest.mock('@/components/player/player-sheet-host', () => ({ ShellPlayerOverlays: () => null }));
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return { usePlayer: create(() => ({ nowPlaying: { title: 'A Christmas Carol' } })) };

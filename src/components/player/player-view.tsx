@@ -1,7 +1,6 @@
-import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, Text as RNText, useWindowDimensions, View } from 'react-native';
+import { ScrollView, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,673 +10,248 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
-import { useAddBookmark } from '@/api/hooks';
-import { useApi } from '@/api/provider';
-import { BookmarksSection } from '@/components/library/bookmarks-section';
-import { CoverFrame } from '@/components/library/cover-frame';
-import { HistorySection } from '@/components/library/history-section';
-import { NotesSection } from '@/components/library/notes-section';
-import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';
-import { CoverBackdrop } from '@/components/player/cover-backdrop';
-import { GraceCard } from '@/components/player/grace-card';
-import { PlayerSeekBar } from '@/components/player/seek-bar';
-import { SkipButton } from '@/components/player/skip-button';
-import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
-import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
-import { currentSegment, stepSegment } from '@/components/player/transport';
+import { useBook } from '@/api/hooks';
+import { BookCover } from '@/components/library/book-cover';
+import { CoverWash } from '@/components/library/cover-wash';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
-import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { UpNextSheet } from '@/components/upnext/up-next-sheet';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock } from '@/lib/format';
-import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
+import { useLayout } from '@/lib/layout';
+import { pathLeaf } from '@/lib/paths';
+import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { selectSleepPhase, useSleepTimer } from '@/playback/sleep-timer';
-import {
-  selectBookPosition,
-  selectCurrentChapter,
-  selectIsPlaying,
-  usePlayer,
-} from '@/playback/store';
-import { formatTimeLeft, timeLeft } from '@/playback/time-left';
-import { useSettings } from '@/stores/settings';
-import { tabularNums } from '@/theme/tabular-nums';
-import { colors } from '@/theme/tokens';
+import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-type PlayerSheet =
-  'history' | 'notes' | 'bookmarks' | 'chapters' | 'speed' | 'sleep' | 'menu' | null;
+import { PlayerBookTimeline } from './book-timeline';
+import { Companion } from './companion/companion';
+import { useCompanion } from './companion/companion-store';
+import { GraceCard } from './grace-card';
+import {
+  CompanionChips,
+  PlayerActions,
+  PlayerColumn,
+  PlayerErrorLine,
+  PlayerHeader,
+  PlayerStatusLine,
+} from './player-parts';
+import { PlayerSheetHost } from './player-sheet-host';
+import { usePlayerSheets } from './player-sheets';
+import { COMPANION_WIDTH, playerCoverSize, playerLayout, playerWash } from './player-view-model';
+import { PlayerSeekBar } from './seek-bar';
+import { TransportControls } from './transport-controls';
 
-/** Duration of the play/pause icon morph. */
-const MORPH_MS = 140;
+/** `--dur-4` (STYLEGUIDE section 6): the cover's breathe and the player's rise. */
+const BREATHE_MS = 520;
 
 /**
- * The play/pause glyph inside the big pink button, crossfading + scaling (0.8->1)
- * between the two icons when playback flips - a small tactile "morph" rather than a
- * hard swap. Both glyphs are stacked and their opacity/scale driven by one shared
- * value (0 = play, 1 = pause). Reduced-motion collapses to an instant swap. The
- * button's loading state renders a Spinner instead of this, so that path is
- * untouched.
+ * The cover, breathing (STYLEGUIDE section 6): it settles to 94% while paused and comes
+ * back to full size when the book plays. Reduced motion keeps it still.
  */
-function PlayPauseIcon({ playing }: { playing: boolean }) {
+function BreathingCover({ size, coverVersion }: { size: number; coverVersion?: string }) {
+  const np = usePlayer((s) => s.nowPlaying);
+  const playing = usePlayer(selectIsPlaying);
   const reduced = useReducedMotion();
-  const p = useSharedValue(playing ? 1 : 0);
+  const scale = useSharedValue(1);
   useEffect(() => {
-    const to = playing ? 1 : 0;
-    p.value = reduced
+    const to = reduced || playing ? 1 : 0.94;
+    scale.value = reduced
       ? to
-      : withTiming(to, { duration: MORPH_MS, easing: Easing.out(Easing.ease) });
-  }, [playing, reduced, p]);
-
-  const playStyle = useAnimatedStyle(() => ({
-    opacity: 1 - p.value,
-    transform: [{ scale: 0.8 + 0.2 * (1 - p.value) }],
-  }));
-  const pauseStyle = useAnimatedStyle(() => ({
-    opacity: p.value,
-    transform: [{ scale: 0.8 + 0.2 * p.value }],
-  }));
-
+      : withTiming(to, { duration: BREATHE_MS, easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
+  }, [playing, reduced, scale]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  if (!np) return null;
   return (
-    <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={[{ position: 'absolute' }, playStyle]}>
-        <Icon name="play" size={28} color={colors.white} />
-      </Animated.View>
-      <Animated.View style={[{ position: 'absolute' }, pauseStyle]}>
-        <Icon name="pause" size={28} color={colors.white} />
-      </Animated.View>
+    <Animated.View style={style}>
+      <BookCover
+        connectionId={np.connectionId}
+        libraryId={np.libraryId}
+        path={np.path}
+        coverVersion={coverVersion}
+        width={size}
+        title={np.title}
+        author={np.author}
+        shadow="lg"
+      />
+    </Animated.View>
+  );
+}
+
+/** The chapter title (tap for the chapters) and "book · author". */
+function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () => void }) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  const np = usePlayer((s) => s.nowPlaying);
+  const chapter = usePlayer(selectCurrentChapter);
+  const trackIndex = usePlayer((s) => s.snapshot.trackIndex);
+  if (!np) return null;
+  const { queue, title, author } = np;
+  const track = queue.tracks[trackIndex];
+  const trackName = track ? pathLeaf(track.id.split(':').slice(1).join(':')) || title : title;
+  const heading = chapter ? chapterLabel(chapter, t) : prettifyChapterTitle(trackName);
+  const many = queue.chapters.length > 1 || queue.tracks.length > 1;
+  const titleClass = cn(
+    'text-center',
+    phone ? 'text-[23px] leading-[27px]' : 'text-[30px] leading-[34px]',
+  );
+  return (
+    <View className="w-full items-center gap-1">
+      {many ? (
+        <AnimatedPressable
+          onPress={onChapters}
+          accessibilityRole="button"
+          accessibilityLabel={t('player.full.chapterButton', { chapter: heading })}
+          className="max-w-full flex-row items-center justify-center gap-1.5 rounded-control px-2"
+        >
+          <Text variant="display" className={titleClass} numberOfLines={2}>
+            {heading}
+          </Text>
+          <Icon name="chevron-down" size={18} color={themed.mutedForeground} />
+        </AnimatedPressable>
+      ) : (
+        <Text variant="display" className={titleClass} numberOfLines={2}>
+          {heading}
+        </Text>
+      )}
+      <Text variant="muted" className="text-center" numberOfLines={1}>
+        {author ? `${title} · ${author}` : title}
+      </Text>
     </View>
   );
 }
 
-/** A single row in the overflow menu: a leading glyph and a label, with the shared
- * AnimatedPressable press feedback. */
-function MenuRow({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: 'book' | 'list' | 'check';
-  label: string;
-  onPress: () => void;
-}) {
-  const themed = useThemeColors();
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      accessibilityRole="button"
-      className="flex-row items-center gap-3 rounded-xl px-4 py-3.5"
-    >
-      <Icon name={icon} size={20} color={themed.foreground} />
-      <Text variant="title">{label}</Text>
-    </AnimatedPressable>
-  );
-}
-
 /**
- * The full transport for the currently-playing book, driven by the player store.
- * Rendered by the full-screen player modal (`src/app/player.tsx`), which supplies the
- * close button via `onClose`. (Tablet and desktop also have the docked player bar,
- * `src/components/shell/docked-player.tsx`, whose expand button opens this modal.)
- *
- * The body is an ambient "listening room": a blurred rendition of the cover fills
- * the background under a scrim, the cover floats, and the transport sits directly
- * on the atmosphere. All sheets are mounted at this view's root (the shared bottom
- * `Sheet` renders inline, so it must sit at a top-level position, not nested in a
- * footer control).
+ * The full player (STYLEGUIDE section 8, "Full player"), the root modal's view of the
+ * PLAYING book: its cover washed into the background, the cover breathing (94% when
+ * paused), the chapter title (tap for the chapters), the status line (or the Undo chip
+ * after a jump), the chapter seek bar with its times, the compact whole-book timeline,
+ * the transport and the actions. The companion (Who's who, Story so far, Chapters,
+ * Bookmarks, Notes, History) is a 420 column on a desktop, sits below the controls on a
+ * tablet and opens as a sheet from chips on a phone. The layout follows the player's
+ * MEASURED width. Its sheets render here (`PlayerSheetHost`), above the shell's.
  */
 export function PlayerView({ onClose }: { onClose: () => void }) {
   const themed = useThemeColors();
-  const { t } = useTranslation();
-  const { height } = useWindowDimensions();
-  // The player fills the screen edge-to-edge (backdrop under the status bar); the
-  // top controls + footer pad themselves clear of the notch / home indicator.
   const insets = useSafeAreaInsets();
-  const [sheet, setSheet] = useState<PlayerSheet>(null);
-  // Live scrub preview (segment-relative seconds) while dragging the seek bar; the
-  // time labels track it, and it commits on release.
-  const [scrubPreview, setScrubPreview] = useState<number | null>(null);
-  // Brief "saved" confirmation after adding a bookmark; the ref lets a rapid
-  // second add reset the timer instead of stacking timeouts.
-  const [savedBookmark, setSavedBookmark] = useState(false);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { width: windowWidth, height } = useWindowDimensions();
+  const [width, setWidth] = useState(0);
+  const layout = playerLayout(width, useLayout());
+  const phone = layout === 'phone';
+  const desktop = layout === 'desktop';
+  const np = usePlayer((s) => s.nowPlaying);
+  const { data: book } = useBook(np?.libraryId ?? -1, np?.path ?? '', np?.connectionId);
 
-  const nowPlaying = usePlayer((s) => s.nowPlaying);
-  // Resolve the PLAYING book's connection, not the active one: a book keeps playing
-  // through a connection the user has switched away from, and bookmarks/notes/history +
-  // the cover auth must address that book's own server. Falls back to the active client
-  // while nowPlaying is briefly null (loading).
-  const api = useApi(nowPlaying?.connectionId);
-  const bookPosition = usePlayer(selectBookPosition);
-  const currentChapter = usePlayer(selectCurrentChapter);
-  const isPlaying = usePlayer(selectIsPlaying);
-  const trackIndex = usePlayer((s) => s.snapshot.trackIndex);
-  const trackPos = usePlayer((s) => s.snapshot.position);
-  const trackDur = usePlayer((s) => s.snapshot.duration);
-  const rate = usePlayer((s) => s.rate);
-  const playbackState = usePlayer((s) => s.snapshot.state);
-  const toggle = usePlayer((s) => s.toggle);
-  const retry = usePlayer((s) => s.retry);
-  const seekBook = usePlayer((s) => s.seekBook);
-  const goToTrack = usePlayer((s) => s.goToTrack);
-  const skipSeconds = usePlayer((s) => s.skipSeconds);
-  const canRoutePick = usePlayer((s) => s.canRoutePick);
-  const showRoutePicker = usePlayer((s) => s.showRoutePicker);
-  const skipForward = useSettings((s) => s.skipForward);
-  const skipBackward = useSettings((s) => s.skipBackward);
-  const sleepPhase = useSleepTimer(selectSleepPhase);
-  const sleepRemaining = useSleepTimer((s) => s.remaining);
-  // Keyed to the playing book; placeholders keep hook order stable before the
-  // early return below (nowPlaying is null only briefly while loading).
-  const addBookmark = useAddBookmark(
-    nowPlaying?.libraryId ?? -1,
-    nowPlaying?.path ?? '',
-    nowPlaying?.connectionId,
-  );
-
-  const onAddBookmark = () =>
-    addBookmark.mutate(
-      { position: Math.round(bookPosition) },
-      {
-        onSuccess: () => {
-          setSavedBookmark(true);
-          if (savedTimer.current) clearTimeout(savedTimer.current);
-          savedTimer.current = setTimeout(() => setSavedBookmark(false), 1800);
-        },
-      },
-    );
-
-  // Entrance: once the view mounts with a loaded book, the cover scales up + fades
-  // in, and the title / transport rise + fade with a slight stagger. Fires a single
-  // time (guarded by `entered`), not on every track change - the view stays mounted
-  // as tracks change. Reduced-motion snaps straight to the resting state.
+  // Entrance: the cover scales up and fades in, the titles and the controls rise after
+  // it, once per open (the view stays mounted as chapters change). Reduced motion
+  // starts at rest.
   const reduced = useReducedMotion();
   const entered = useRef(false);
-  const hasBook = !!nowPlaying;
+  const hasBook = !!np;
   const coverV = useSharedValue(reduced ? 1 : 0);
-  const titleV = useSharedValue(reduced ? 1 : 0);
-  const transportV = useSharedValue(reduced ? 1 : 0);
+  const restV = useSharedValue(reduced ? 1 : 0);
   useEffect(() => {
     if (!hasBook || entered.current) return;
     entered.current = true;
     if (reduced) {
       coverV.value = 1;
-      titleV.value = 1;
-      transportV.value = 1;
+      restV.value = 1;
       return;
     }
-    const cfg = { duration: 280, easing: Easing.out(Easing.cubic) };
+    const cfg = { duration: 320, easing: Easing.bezier(0.2, 0.8, 0.2, 1) };
     coverV.value = withTiming(1, cfg);
-    titleV.value = withDelay(60, withTiming(1, cfg));
-    transportV.value = withDelay(120, withTiming(1, cfg));
-  }, [hasBook, reduced, coverV, titleV, transportV]);
-
+    restV.value = withDelay(90, withTiming(1, cfg));
+  }, [hasBook, reduced, coverV, restV]);
   const coverStyle = useAnimatedStyle(() => ({
     opacity: coverV.value,
     transform: [{ scale: 0.94 + 0.06 * coverV.value }],
   }));
-  const titleStyle = useAnimatedStyle(() => ({
-    opacity: titleV.value,
-    transform: [{ translateY: (1 - titleV.value) * 12 }],
-  }));
-  const transportStyle = useAnimatedStyle(() => ({
-    opacity: transportV.value,
-    transform: [{ translateY: (1 - transportV.value) * 12 }],
+  const restStyle = useAnimatedStyle(() => ({
+    opacity: restV.value,
+    transform: [{ translateY: (1 - restV.value) * 12 }],
   }));
 
-  // Stable cover source. api.authHeaders() returns a fresh object each call, and this
-  // view re-renders on every playback tick, so building this inline would hand expo-image
-  // a new `source` reference every tick (to both the blurred backdrop and the foreground
-  // cover), defeating source caching. Memoize on the URI + client.
-  const coverUri = nowPlaying?.cover;
-  const coverSource = useMemo(
-    () => (coverUri ? { uri: coverUri, headers: api.authHeaders() } : null),
-    [coverUri, api],
+  if (!np) return <Spinner center />;
+
+  // Chapters: the companion's tab where the column shows it, the chapter sheet elsewhere.
+  const onChapters = () => {
+    if (desktop) useCompanion.getState().setTab('chapters');
+    else usePlayerSheets.getState().openSheet('chapters');
+  };
+  const w = width || windowWidth;
+  const coverSize = playerCoverSize(layout, w, height);
+  const wash = playerWash(book?.cover_color, themed.mutedForeground, themed.brand);
+
+  const main = (
+    <PlayerColumn maxWidth={desktop ? 640 : 560}>
+      <Animated.View style={coverStyle} className="py-2">
+        <BreathingCover size={coverSize} coverVersion={book?.cover_version} />
+      </Animated.View>
+      <Animated.View style={restStyle} className="w-full items-center gap-3">
+        <PlayerTitles phone={phone} onChapters={onChapters} />
+        <PlayerStatusLine />
+        <View className="w-full gap-3">
+          <PlayerSeekBar times bars={phone ? 56 : 96} />
+          <PlayerBookTimeline variant="compact" />
+        </View>
+        <TransportControls size={phone ? 'md' : 'lg'} className="py-1" />
+        <PlayerErrorLine />
+        <PlayerActions wide={!phone} upNext={!desktop} />
+        {phone ? <CompanionChips /> : null}
+      </Animated.View>
+    </PlayerColumn>
   );
 
-  if (!nowPlaying) return <Spinner center />;
-
-  const { queue, title, author, libraryId, path, connectionId } = nowPlaying;
-  const total = queue.total;
-
-  // Overflow-menu actions replace the player modal so the target takes its place.
-  // Playback keeps running for the first two - only "mark finished" tears it down.
-  const goTo = (href: Parameters<typeof router.replace>[0]) => {
-    setSheet(null);
-    router.replace(href);
-  };
-  const onViewDetails = () => goTo(bookHref(connectionId, libraryId, path));
-  const onViewCredits = () => goTo(finishedHref(connectionId, libraryId, path));
-  const onMarkFinished = () => {
-    // finishBook persists finished, tears down the engine and clears nowPlaying (and,
-    // when enabled, deletes the local copy); it returns the finished book's identity.
-    const info = usePlayer.getState().finishBook();
-    if (!info) return;
-    goTo(finishedHref(info.connectionId, info.libraryId, info.path, true));
-  };
-  // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
-  // playback). Surface it with a retry rather than silently sitting on a dead
-  // stream where the play button does nothing. While buffering ('loading') show a
-  // spinner so a stall reads as "working", not an idle play button.
-  const isError = playbackState === 'error';
-  const isLoading = playbackState === 'loading';
-
-  // When file durations are unknown (total 0), the whole-book timeline isn't
-  // reliable - drive the UI from the engine's current-track position/duration
-  // and navigate per-file instead.
-  const {
-    perTrack,
-    length: segLength,
-    elapsed: segElapsedRaw,
-  } = currentSegment({
-    total,
-    bookPosition,
-    chapter: currentChapter,
-    trackPosition: trackPos,
-    trackDuration: trackDur,
-  });
-  // While scrubbing, the labels preview the drag position.
-  const segElapsed = scrubPreview ?? segElapsedRaw;
-  const segRemaining = Math.max(0, segLength - segElapsed);
-  const centerLabel = perTrack
-    ? t('player.controls.fileOf', { current: trackIndex + 1, total: queue.tracks.length })
-    : formatTimeLeft(t, timeLeft(bookPosition, total, rate));
-
-  // Title line: the current chapter, else the current file's name.
-  const track = queue.tracks[trackIndex];
-  const trackName = track ? pathLeaf(track.id.split(':').slice(1).join(':')) || title : title;
-  const segTitle = currentChapter
-    ? chapterLabel(currentChapter, t)
-    : prettifyChapterTitle(trackName);
-  const secondaryLine = author ? `${title} · ${author}` : title;
-
-  // Prev/next: per file when there's no timeline, else by chapter/file boundary.
-  const goNext = () => stepSegment(usePlayer.getState(), 1);
-  const goPrev = () => stepSegment(usePlayer.getState(), -1);
-
-  // Tapping the chapter title opens a list of all chapters (or files, when the
-  // book has no chapters), scrolled to the current one.
-  const chapterItems: ChapterItem[] = perTrack
-    ? queue.tracks.map((track, i) => ({
-        key: `t${i}`,
-        label:
-          pathLeaf(track.id.split(':').slice(1).join(':')) ||
-          t('player.controls.fileNumber', { number: i + 1 }),
-      }))
-    : queue.chapters.map((c) => ({
-        key: `c${c.index}`,
-        label: c.title || t('player.chapters.chapterNumber', { number: c.index + 1 }),
-        sublabel: formatClock(c.book_offset),
-      }));
-  const chapterCurrentIndex = perTrack ? trackIndex : (currentChapter?.index ?? 0);
-  const hasChapterList = chapterItems.length > 1;
-  const onSelectChapter = (i: number) => {
-    if (perTrack) return void goToTrack(i);
-    const c = queue.chapters[i];
-    if (c) void seekBook(c.book_offset);
-  };
-
-  const sheetMax = Math.round(height * 0.7);
-
   return (
-    <View className="flex-1">
-      <CoverBackdrop source={coverSource} />
-
-      {/* Header (auto height): close on the left, the action area (notes + bookmarks +
-          menu) on the right. Padded below the status-bar inset so it clears the notch
-          (the backdrop paints under it). */}
-      <View className="flex-row items-center px-4 py-2" style={{ paddingTop: insets.top + 8 }}>
-        <AnimatedPressable
-          onPress={onClose}
-          hitSlop={12}
-          className="h-9 w-9 items-center justify-center"
-          accessibilityRole="button"
-          accessibilityLabel={t('player.controls.close')}
-        >
-          <Icon name="chevron-down" size={26} color={themed.foreground} />
-        </AnimatedPressable>
-        <View className="ml-auto flex-row items-center gap-2">
-          <AnimatedPressable
-            onPress={() => setSheet('notes')}
-            hitSlop={8}
-            className="h-9 w-9 items-center justify-center"
-            accessibilityRole="button"
-            accessibilityLabel={t('player.notes.label')}
+    <View
+      testID={`player-${layout}`}
+      className="flex-1 bg-background"
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
+      <CoverWash color={wash} variant="hero" />
+      <View style={{ paddingTop: insets.top }}>
+        <PlayerHeader book={book} onClose={onClose} onChapters={onChapters} />
+      </View>
+      {desktop ? (
+        <View className="flex-1 flex-row">
+          <ScrollView
+            className="flex-1"
+            contentContainerClassName="flex-grow justify-center px-10 pb-8"
           >
-            <Icon name="notes" size={20} color={themed.foreground} />
-          </AnimatedPressable>
-          <AnimatedPressable
-            onPress={() => setSheet('bookmarks')}
-            hitSlop={8}
-            className="h-9 w-9 items-center justify-center"
-            accessibilityRole="button"
-            accessibilityLabel={t('player.bookmarks.label')}
+            {main}
+          </ScrollView>
+          <View
+            testID="player-companion-column"
+            className="border-l border-border bg-card"
+            style={{ width: COMPANION_WIDTH, paddingBottom: insets.bottom }}
           >
-            <Icon name="bookmark" size={20} color={themed.foreground} />
-          </AnimatedPressable>
-          <AnimatedPressable
-            onPress={() => setSheet('menu')}
-            hitSlop={8}
-            className="h-9 w-9 items-center justify-center"
-            accessibilityRole="button"
-            accessibilityLabel={t('player.menu.label')}
-          >
-            <Icon name="ellipsis" size={20} color={themed.foreground} />
-          </AnimatedPressable>
+            <Companion variant="column" />
+          </View>
         </View>
-      </View>
-
-      {/* Middle (flex-1, centered): the cover floats over the atmosphere, then the
-          title stack, then the transport. justify-center keeps the group tight and
-          absorbs leftover height symmetrically (web window vs tall phone). */}
-      <View className="flex-1 items-center justify-center gap-6 px-6">
-        <Animated.View style={[{ width: '100%', alignItems: 'center' }, coverStyle]}>
-          <View className="w-full max-w-[320px]">
-            <CoverFrame size="lg" className="aspect-square">
-              <Cover source={coverSource} label={title} rounded="rounded-lg" />
-            </CoverFrame>
-            {sleepPhase !== 'idle' ? (
-              // The glanceable sleep badge. It goes solid pink for the last stretch
-              // (the `ending` window) and through the post-pause grace, so "it is
-              // about to stop / it just stopped, shake to keep going" reads without
-              // opening the sheet. It says nothing about volume, so it is the same
-              // badge whether or not that window fades the audio.
-              <View
-                className={`absolute right-2 top-2 flex-row items-center gap-1 rounded-full px-2 py-1 ${
-                  sleepPhase === 'running' ? 'bg-black/60' : 'bg-brand'
-                }`}
-              >
-                <Icon name="sleep" size={12} color={colors.white} />
-                {sleepPhase === 'grace' ? (
-                  <RNText className="font-sans-medium text-xs text-white">
-                    {t('player.sleepTimer.keepGoingShort')}
-                  </RNText>
-                ) : sleepRemaining !== null ? (
-                  <RNText className="font-sans text-xs text-white" style={tabularNums}>
-                    {formatClock(sleepRemaining)}
-                  </RNText>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-        </Animated.View>
-
-        {/* Title hierarchy: prettified chapter/track title (primary), then
-            book title · author (muted secondary). */}
-        <Animated.View style={[{ width: '100%', alignItems: 'center' }, titleStyle]}>
-          <View className="w-full max-w-[420px] items-center gap-1">
-            {hasChapterList ? (
-              <AnimatedPressable
-                onPress={() => setSheet('chapters')}
-                className="flex-row items-center justify-center gap-2 px-2"
-                accessibilityRole="button"
-                accessibilityLabel={t('player.controls.showChapters')}
-              >
-                <Text variant="heading" className="text-center" numberOfLines={2}>
-                  {segTitle}
-                </Text>
-                <Icon name="list" size={14} color={themed.foreground} />
-              </AnimatedPressable>
-            ) : (
-              <Text variant="heading" className="text-center" numberOfLines={2}>
-                {segTitle}
-              </Text>
-            )}
-            <Text variant="muted" className="text-center" numberOfLines={1}>
-              {secondaryLine}
-            </Text>
-          </View>
-        </Animated.View>
-
-        {/* Transport */}
-        <Animated.View style={[{ width: '100%', alignItems: 'center' }, transportStyle]}>
-          <View className="w-full max-w-[420px] gap-1">
-            <PlayerSeekBar onScrub={setScrubPreview} />
-            <View className="flex-row items-center justify-between">
-              <Text variant="caption" style={tabularNums}>
-                {formatClock(segElapsed)}
-              </Text>
-              <Text variant="caption" className="flex-1 text-center" style={tabularNums}>
-                {centerLabel}
-              </Text>
-              <Text variant="caption" style={tabularNums}>
-                -{formatClock(segRemaining)}
-              </Text>
-            </View>
-
-            {isError ? (
-              <View className="mt-3 flex-row items-center justify-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
-                <RNText className="font-sans text-xs text-destructive">{t('ui.error')}</RNText>
-                <AnimatedPressable
-                  onPress={() => void retry()}
-                  className="rounded-lg bg-brand px-4 py-1.5"
-                  accessibilityRole="button"
-                >
-                  <RNText className="font-sans-medium text-base text-brand-foreground">
-                    {t('common.retry')}
-                  </RNText>
-                </AnimatedPressable>
-              </View>
-            ) : null}
-
-            <View className="flex-row items-center justify-between py-6">
-              <AnimatedPressable
-                onPress={goPrev}
-                hitSlop={8}
-                className="h-11 w-11 items-center justify-center rounded-full"
-                accessibilityRole="button"
-                accessibilityLabel={t('player.controls.previous')}
-              >
-                <Icon name="prev" size={22} color={themed.foreground} />
-              </AnimatedPressable>
-
-              <SkipButton
-                direction="back"
-                seconds={skipBackward}
-                onPress={() => void skipSeconds(-skipBackward)}
-                color={themed.foreground}
-                fontSize={15}
-                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
-                accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
-              />
-
-              <AnimatedPressable
-                onPress={() => (isError ? void retry() : void toggle())}
-                className="h-[112px] w-[112px] items-center justify-center rounded-full bg-brand"
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isPlaying ? t('player.controls.pause') : t('player.controls.play')
-                }
-              >
-                {/* Diagonal bevel highlight. Drawn as an SVG ring with a 135°
-                  white->transparent->white gradient stroke rather than per-side
-                  borders + rotation: iOS clips a non-uniform border on a fully
-                  rounded view, so the bevel rendered cropped there while web was
-                  fine. An SVG stroke renders identically on web/iOS/Android. */}
-                <Svg width={112} height={112} pointerEvents="none" style={{ position: 'absolute' }}>
-                  <Defs>
-                    <LinearGradient id="playBevel" x1="0" y1="0" x2="1" y2="1">
-                      <Stop offset="0" stopColor={colors.white} stopOpacity={0.4} />
-                      <Stop offset="0.5" stopColor={colors.white} stopOpacity={0} />
-                      <Stop offset="1" stopColor={colors.white} stopOpacity={0.4} />
-                    </LinearGradient>
-                  </Defs>
-                  <Circle
-                    cx={56}
-                    cy={56}
-                    r={55}
-                    fill="none"
-                    stroke="url(#playBevel)"
-                    strokeWidth={2}
-                  />
-                </Svg>
-                {isLoading ? (
-                  <Spinner size="large" color={colors.white} />
-                ) : (
-                  <PlayPauseIcon playing={isPlaying} />
-                )}
-              </AnimatedPressable>
-
-              <SkipButton
-                direction="forward"
-                seconds={skipForward}
-                onPress={() => void skipSeconds(skipForward)}
-                color={themed.foreground}
-                fontSize={15}
-                className="h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-black/5 dark:border-white/10 dark:bg-white/10"
-                accessibilityLabel={t('player.controls.skipForward', { seconds: skipForward })}
-              />
-
-              <AnimatedPressable
-                onPress={goNext}
-                hitSlop={8}
-                className="h-11 w-11 items-center justify-center rounded-full"
-                accessibilityRole="button"
-                accessibilityLabel={t('player.controls.next')}
-              >
-                <Icon name="next" size={22} color={themed.foreground} />
-              </AnimatedPressable>
-            </View>
-          </View>
-        </Animated.View>
-      </View>
-
-      {/* Footer (auto height): the secondary action row. Padded past the home
-          indicator so the controls clear it. */}
-      <View
-        className="flex-row items-center justify-between px-8 py-2"
-        style={{ paddingBottom: insets.bottom + 8 }}
-      >
-        <SpeedButton onPress={() => setSheet('speed')} />
-        <AnimatedPressable
-          onPress={() => setSheet('history')}
-          hitSlop={8}
-          className="items-center gap-0.5"
-          accessibilityRole="button"
-          accessibilityLabel={t('player.history.label')}
+      ) : (
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName={phone ? 'px-5 pt-1' : 'px-12 pt-2'}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         >
-          <Icon name="history" size={20} color={themed.foreground} />
-        </AnimatedPressable>
-        {/* AirPlay / cast: shown only where the engine can present a picker. A
-            spacer keeps the row balanced when it's hidden. */}
-        {canRoutePick ? (
-          <AnimatedPressable
-            onPress={() => void showRoutePicker()}
-            hitSlop={8}
-            className="items-center gap-0.5"
-            accessibilityRole="button"
-            accessibilityLabel={t('player.routePicker.label')}
-          >
-            <Icon name="airplay" size={20} color={themed.foreground} />
-          </AnimatedPressable>
-        ) : (
-          <View className="w-5" />
-        )}
-        <SleepTimerButton onPress={() => setSheet('sleep')} />
-      </View>
-
-      {/* The sleep timer's last seconds and post-pause grace: floats over the controls,
-          under the sheets. */}
+          {main}
+          {!phone ? (
+            <View
+              testID="player-companion-inline"
+              className="mt-8 w-full max-w-[720px] self-center rounded-card border border-border bg-card px-4"
+            >
+              <Companion variant="inline" />
+            </View>
+          ) : null}
+        </ScrollView>
+      )}
+      {/* Sleep timer's last seconds, over the controls (workstream C). */}
       <GraceCard bottom={insets.bottom + 64} />
-
-      {/* Sheets, all mounted at the root so the shared bottom Sheet presents
-          correctly (it renders inline, not as an RN Modal). */}
-      <Sheet
-        inline
-        visible={sheet === 'bookmarks'}
-        onClose={() => setSheet(null)}
-        title={t('player.bookmarks.label')}
-      >
-        <ScrollView
-          style={{ maxHeight: sheetMax }}
-          contentContainerClassName="px-4 pb-4"
-          keyboardShouldPersistTaps="handled"
-        >
-          <BookmarksSection
-            libraryId={libraryId}
-            path={path}
-            connectionId={connectionId}
-            emptyLabel={t('player.bookmarks.empty')}
-            onAdd={onAddBookmark}
-            adding={addBookmark.isPending}
-            addLabel={
-              savedBookmark
-                ? t('player.bookmarks.saved')
-                : t('player.bookmarks.addAt', { time: formatClock(bookPosition) })
-            }
-          />
-        </ScrollView>
-      </Sheet>
-
-      <Sheet
-        inline
-        visible={sheet === 'history'}
-        onClose={() => setSheet(null)}
-        title={t('player.history.label')}
-      >
-        <ScrollView
-          style={{ maxHeight: sheetMax }}
-          contentContainerClassName="px-4 pb-4"
-          keyboardShouldPersistTaps="handled"
-        >
-          <HistorySection
-            libraryId={libraryId}
-            path={path}
-            connectionId={connectionId}
-            emptyLabel={t('player.history.empty')}
-            chapters={queue.chapters}
-          />
-        </ScrollView>
-      </Sheet>
-
-      <Sheet
-        inline
-        visible={sheet === 'notes'}
-        onClose={() => setSheet(null)}
-        title={t('player.notes.label')}
-      >
-        <ScrollView
-          style={{ maxHeight: sheetMax }}
-          contentContainerClassName="px-4 pb-4"
-          keyboardShouldPersistTaps="handled"
-        >
-          <NotesSection libraryId={libraryId} path={path} connectionId={connectionId} />
-        </ScrollView>
-      </Sheet>
-
-      <ChapterListSheet
-        visible={sheet === 'chapters'}
-        title={perTrack ? t('player.chapters.filesTitle') : t('player.chapters.chaptersTitle')}
-        items={chapterItems}
-        currentIndex={chapterCurrentIndex}
-        onSelect={onSelectChapter}
-        onClose={() => setSheet(null)}
-      />
-
-      <Sheet
-        inline
-        visible={sheet === 'menu'}
-        onClose={() => setSheet(null)}
-        title={t('player.menu.label')}
-      >
-        <View className="gap-1 px-2 pb-4 pt-1">
-          <MenuRow icon="book" label={t('player.finished.viewDetails')} onPress={onViewDetails} />
-          <MenuRow icon="list" label={t('player.menu.viewCredits')} onPress={onViewCredits} />
-          <MenuRow
-            icon="check"
-            label={t('library.progressCard.markFinished')}
-            onPress={onMarkFinished}
-          />
-        </View>
-      </Sheet>
-
-      <SpeedSheet visible={sheet === 'speed'} onClose={() => setSheet(null)} />
-      <SleepSheet visible={sheet === 'sleep'} onClose={() => setSheet(null)} />
+      <PlayerSheetHost scope="player" chaptersInColumn={desktop} />
+      <UpNextSheet scope="player" />
     </View>
   );
 }

@@ -142,6 +142,14 @@ function buildPlayerStoreMock() {
       s.nowPlaying
         ? `${s.nowPlaying.connectionId}:${s.nowPlaying.libraryId}:${s.nowPlaying.path}`
         : null,
+    /** The chapter holding the position (the real one also maps through the queue's
+     * file offsets; here the chapters' own `book_offset`s are the timeline). */
+    selectCurrentChapter: (s: PlayerMockState): Chapter | null => {
+      const chapters = s.nowPlaying?.queue.chapters ?? [];
+      let found: Chapter | null = null;
+      for (const c of chapters) if (c.book_offset <= s.bookPosition) found = c;
+      return found;
+    },
     /** The strict reading: audio is coming out of the speaker. */
     selectIsPlaying: (s: PlayerMockState) => s.snapshot.state === 'playing',
     /** The loose reading, which counts a book buffering with playback intended. */

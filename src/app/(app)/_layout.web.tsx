@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { MiniPlayer } from '@/components/player/mini-player';
 import { ShortcutsDialog } from '@/components/player/shortcuts-dialog';
 import { usePlayerShortcuts } from '@/components/player/use-player-shortcuts';
+import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { CommandPalette, usePaletteShortcut } from '@/components/shell/command-palette';
 import { TABS, useActiveTab } from '@/components/shell/destinations';
@@ -56,6 +57,7 @@ function WebShell() {
         <TabSlot />
       </ShellFrame>
       <UpNextSheet />
+      <ShellPlayerOverlays />
       <CommandPalette />
       <ShortcutsDialog />
     </Tabs>

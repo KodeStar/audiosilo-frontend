@@ -31,7 +31,11 @@ import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { CoverFrame } from '@/components/library/cover-frame';
 import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
-import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
+import {
+  chapterStartsOf,
+  LIVE_POSITION_BUCKET_S,
+  listeningProgressFor,
+} from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import { TranscodeNote } from '@/components/library/transcode-note';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
@@ -57,14 +61,6 @@ import { useSeriesOrderings } from '@/stores/series-orderings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-// How coarsely this screen samples the player's live position (seconds). The only
-// consumer is the spoiler gate, which just needs to know which CHAPTER the listener
-// is in, so subscribing to the per-tick position would re-render a list of possibly
-// hundreds of chapter rows every second for nothing. Rounding DOWN can delay a
-// reveal by at most this many seconds at a chapter boundary - it can never reveal
-// something early, which is the direction that matters.
-const LIVE_POSITION_BUCKET_S = 15;
 
 /** Loading placeholder shaped like the final layout: a cover block, title lines,
  * a stat strip and a few chapter rows - no centered spinner. */

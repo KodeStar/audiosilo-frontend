@@ -8,6 +8,7 @@ import { FloatingMiniPlayer } from '@/components/player/mini-player';
 
 import { AccessoryPlayer } from '@/components/shell/accessory-player';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
+import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { TABS } from '@/components/shell/destinations';
 import { ShellFrame } from '@/components/shell/shell-frame';
@@ -92,6 +93,7 @@ function NativeShell() {
           </NativeTabs>
         </ShellFrame>
         <UpNextSheet />
+        <ShellPlayerOverlays />
       </View>
     </ThemeProvider>
   );
