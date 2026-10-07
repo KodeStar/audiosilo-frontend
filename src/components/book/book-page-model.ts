@@ -22,7 +22,7 @@ import { codecLabel } from '@/playback/transcode';
 // --- Layout ----------------------------------------------------------------------
 
 /** The narrowest page whose hero puts the cover beside the text (else stacked). */
-export const HERO_SIDE_MIN = 600;
+const HERO_SIDE_MIN = 600;
 /** The body's side padding (web `px-6`, the larger of web and native), its column gap
  * (`gap-10`), the aside's narrowest width and the narrowest tab column worth having
  * beside it (a chapter row with its start time and length). */
