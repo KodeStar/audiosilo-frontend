@@ -36,9 +36,11 @@ const mockStart = jest.fn();
 let mockAppState = 'active';
 jest.mock('./start-book', () => ({ startBookInPlace: (t: unknown) => mockStart(t) }));
 const mockFinishBook = jest.fn();
+const mockStop = jest.fn();
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
+    FINISHED_TOLERANCE: 5,
     selectBookPosition: (s: { position: number }) => s.position,
     usePlayer: create(() => ({
       nowPlaying: null,
@@ -46,6 +48,7 @@ jest.mock('@/playback/store', () => {
       rate: 1,
       position: 0,
       finishBook: () => mockFinishBook(),
+      stop: () => mockStop(),
     })),
   };
 });
@@ -216,6 +219,7 @@ beforeEach(() => {
   mockReplace.mockReset();
   mockToast.mockReset();
   mockFinishBook.mockReset();
+  mockStop.mockReset().mockResolvedValue(undefined);
   mockStart.mockReset().mockResolvedValue(true);
   mockAppState = 'active';
   Object.defineProperty(AppState, 'currentState', { get: () => mockAppState, configurable: true });
@@ -425,8 +429,13 @@ describe('EndCredits', () => {
     expect(screen.getByText('Play now')).toBeTruthy();
   });
 
-  it('a book still playing counts its remaining audio and finishes it on Play now', async () => {
+  it('a book still playing mid-way counts its remaining audio; Play now leaves it unfinished', async () => {
     useSettings.setState({ autoPlayNext: true });
+    mockEnded = false;
+    queryClient.setQueryData(['queue', 'c1'], [
+      { library_id: 1, path: 'Weir/Project Hail Mary', added_at: '' },
+      { library_id: 1, path: PATH, added_at: '' },
+    ] satisfies QueueEntry[]);
     setPlayer({
       nowPlaying: { connectionId: 'c1', libraryId: 1, path: PATH, queue: { total: 1000 } },
       snapshot: { state: 'playing' },
@@ -440,11 +449,18 @@ describe('EndCredits', () => {
     expect(screen.queryByLabelText(/Starts in/)).toBeNull();
     expect(screen.getByText('1.5×')).toBeTruthy();
     await fireEvent.press(screen.getByText('Play now'));
-    expect(mockFinishBook).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+    // Opened early from the full player: the listener only wanted what's next. The book
+    // stops with its place saved, is not finished (so its download stays) and stays on
+    // Up next; only the next book, which now plays, leaves the queue.
+    expect(mockFinishBook).not.toHaveBeenCalled();
+    expect(mockStop).toHaveBeenCalledTimes(1);
+    expect(mockStart).toHaveBeenCalledWith(queueHead.next);
+    expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: 'Weir/Project Hail Mary' }]]);
     expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
   });
 
-  it('Play now on a book still playing takes it off Up next even when the next fails to start', async () => {
+  it('Play now finishes a loaded book within the end tolerance and takes it off Up next even when the next fails to start', async () => {
     mockEnded = false;
     queryClient.setQueryData(['queue', 'c1'], [
       { library_id: 1, path: 'Weir/Project Hail Mary', added_at: '' },
@@ -453,7 +469,7 @@ describe('EndCredits', () => {
     setPlayer({
       nowPlaying: { connectionId: 'c1', libraryId: 1, path: PATH, queue: { total: 1000 } },
       snapshot: { state: 'playing' },
-      position: 500,
+      position: 997,
     });
     mockStart.mockRejectedValueOnce(new Error('offline'));
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -461,9 +477,24 @@ describe('EndCredits', () => {
     await fireEvent.press(screen.getByText('Play now'));
     await act(async () => {});
     expect(mockFinishBook).toHaveBeenCalledTimes(1);
+    expect(mockStop).not.toHaveBeenCalled();
     // It is finished: it leaves Up next; the next book, which did not start, stays.
     expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: PATH }]]);
     warn.mockRestore();
+  });
+
+  it('Play now finishes a book opened by its end that is still loaded', async () => {
+    setPlayer({
+      nowPlaying: { connectionId: 'c1', libraryId: 1, path: PATH, queue: { total: 1000 } },
+      snapshot: { state: 'ended' },
+      position: 1000,
+    });
+    await mount();
+    await fireEvent.press(screen.getByText('Play now'));
+    await act(async () => {});
+    expect(mockFinishBook).toHaveBeenCalledTimes(1);
+    expect(mockStop).not.toHaveBeenCalled();
+    expect(mockStart).toHaveBeenCalledWith(queueHead.next);
   });
 
   it('takes the book off Up next when opened by its end', async () => {

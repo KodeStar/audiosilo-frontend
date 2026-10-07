@@ -36,7 +36,7 @@ import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
 import { wallClockSeconds } from '@/playback/rate';
-import { selectBookPosition, usePlayer } from '@/playback/store';
+import { FINISHED_TOLERANCE, selectBookPosition, usePlayer } from '@/playback/store';
 import { resolveUpNext, type UpNextAnswer, type UpNextBook } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
@@ -180,29 +180,46 @@ function EndCreditsBody({
     if (fired.current || !next) return;
     fired.current = true;
     setStarting(true);
-    // If the finished book is still loaded (early arrival), finish it first: finishBook
-    // persists finished, tears down the engine, clears nowPlaying and (when enabled)
-    // deletes the downloaded copy. Finished, it leaves Up next now, whether or not the
-    // next one starts (a natural end already took it off).
-    const { nowPlaying: np, finishBook } = usePlayer.getState();
-    if (np?.connectionId === cid && np.libraryId === libraryId && np.path === path) {
-      finishBook();
+    // The book these credits are for may still be loaded. Only a book that has actually
+    // ended (opened by its end, in the `ended` state, or within the finished tolerance of
+    // its end) is finished here: finishBook persists finished, tears down the engine,
+    // clears nowPlaying and (when enabled) deletes the downloaded copy, and it leaves Up
+    // next now, whether or not the next one starts (a natural end already took it off).
+    // A book still mid-way (the full player's "View credits") is NOT finished by Play now:
+    // the listener only wanted what's next. It stops with its place saved (`stop`), stays
+    // unfinished, keeps its download and stays on Up next.
+    const player = usePlayer.getState();
+    const np = player.nowPlaying;
+    const loaded = np?.connectionId === cid && np.libraryId === libraryId && np.path === path;
+    const over =
+      ended ||
+      player.snapshot.state === 'ended' ||
+      (!!np &&
+        np.queue.total > 0 &&
+        selectBookPosition(player) >= np.queue.total - FINISHED_TOLERANCE);
+    let stopped: Promise<unknown> = Promise.resolve();
+    if (loaded && over) {
+      player.finishBook();
       void dropFromQueue(cid, [{ library_id: libraryId, path }]);
+    } else if (loaded) {
+      stopped = player.stop().catch(() => {});
     }
-    void advanceTo(next).then((ok) => {
-      if (ok) {
-        if (!closed.current)
-          navigateWhenActive(playerHref(next.connectionId, next.libraryId, next.path), {
-            replace: true,
-          });
-        return;
-      }
-      fired.current = false;
-      setStarting(false);
-      setCancelled(true);
-      toast({ title: t('upnext.playFailed', { title: next.title }) });
-    });
-  }, [next, cid, libraryId, path, t]);
+    void stopped
+      .then(() => advanceTo(next))
+      .then((ok) => {
+        if (ok) {
+          if (!closed.current)
+            navigateWhenActive(playerHref(next.connectionId, next.libraryId, next.path), {
+              replace: true,
+            });
+          return;
+        }
+        fired.current = false;
+        setStarting(false);
+        setCancelled(true);
+        toast({ title: t('upnext.playFailed', { title: next.title }) });
+      });
+  }, [next, cid, libraryId, path, ended, t]);
 
   // Opened by the book's end (or "Mark as finished"): it is no longer up next. Once.
   const dropped = useRef(false);

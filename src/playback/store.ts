@@ -136,7 +136,9 @@ const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a 
 // by about the elapsed time still continues it). Changing the cadence means revisiting
 // those windows (CROSS-REPO.md section 20).
 const SAVE_INTERVAL_MS = 15_000;
-const FINISHED_TOLERANCE = 5; // treat within 5s of the end as finished
+/** Treat within 5 s of the end as finished (also where the credits' Play now finishes the
+ * playing book rather than leaving it unfinished). */
+export const FINISHED_TOLERANCE = 5;
 const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect
 
 /** Lower the resume floor after a deliberate user seek/jump, so a legitimate backward
