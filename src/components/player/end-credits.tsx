@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { AppState, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -30,6 +30,7 @@ import { formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
+import { whenActive } from '@/lib/when-active';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { resolveUpNext, type UpNextAnswer } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
@@ -51,6 +52,7 @@ import {
   type ShelfBook,
 } from './end-credits-parts';
 import { RatingStars } from './rating-stars';
+import { startBookInPlace } from './start-book';
 import { useQueueDrop } from './use-queue-drop';
 
 /** Spines on the year shelf at most (the oldest go first when the row is narrower). */
@@ -181,7 +183,18 @@ function EndCreditsBody({
     const { nowPlaying: np, finishBook } = usePlayer.getState();
     const finishing = np?.connectionId === cid && np.libraryId === libraryId && np.path === path;
     if (finishing) finishBook();
-    router.replace(playerHref(next.connectionId, next.libraryId, next.path));
+    const href = playerHref(next.connectionId, next.libraryId, next.path);
+    if (AppState.currentState === 'active') router.replace(href);
+    else {
+      // The countdown ran out with the app in the background: start the book in place
+      // (a modal can't be presented from the background; the app came back black) and
+      // swap the credits for the player once the app is back (after the start settled).
+      // The player route sees the book already playing and leaves it be; if the start
+      // failed it starts the book itself.
+      void startBookInPlace(next)
+        .catch((err: unknown) => console.warn('[end-of-book] could not start the next book', err))
+        .finally(() => whenActive(() => router.replace(href)));
+    }
     // The queued book is now the book you're on; a book finished here leaves Up next too
     // (a natural end already took it off).
     const leaving = [

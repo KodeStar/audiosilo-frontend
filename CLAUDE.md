@@ -512,6 +512,13 @@ media GETs only.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.
+- **Never navigate while the app is in the background.** `/player` and `/finished` are
+  root `fullScreenModal`s and iOS cannot present one from the background (a book that
+  ended locked with auto-play on came back to a black screen until a relaunch). Code
+  that playback drives (`BookEndedListener`, the end-credits countdown) starts the next
+  book in place with `startBookInPlace` (`src/components/player/start-book.ts`: item +
+  chapters through the query cache, then `playBook`) and defers any screen with
+  `whenActive` (`src/lib/when-active.ts`).
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.

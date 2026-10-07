@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { AppState } from 'react-native';
 
 import type { QueueEntry, UserStats } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -31,6 +32,9 @@ jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) 
 jest.mock('@/lib/support', () => ({ openExternalUrl: jest.fn() }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 
+const mockStart = jest.fn();
+let mockAppState = 'active';
+jest.mock('./start-book', () => ({ startBookInPlace: (t: unknown) => mockStart(t) }));
 const mockFinishBook = jest.fn();
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
@@ -196,6 +200,9 @@ beforeEach(() => {
   mockReplace.mockReset();
   mockToast.mockReset();
   mockFinishBook.mockReset();
+  mockStart.mockReset().mockResolvedValue(true);
+  mockAppState = 'active';
+  Object.defineProperty(AppState, 'currentState', { get: () => mockAppState, configurable: true });
   mockRemove.mockReset().mockResolvedValue(undefined);
   mockSetRating.mockReset().mockResolvedValue({});
   mockResolve.mockReset().mockResolvedValue(queueHead);
@@ -209,6 +216,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.useRealTimers();
+  jest.restoreAllMocks();
 });
 
 describe('EndCredits', () => {
@@ -249,6 +257,31 @@ describe('EndCredits', () => {
     });
     expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
     expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: 'Weir/Project Hail Mary' });
+  });
+
+  it('a countdown that runs out in the background starts the book in place, then shows the player on return', async () => {
+    jest.useFakeTimers();
+    useSettings.setState({ autoPlayNext: true });
+    mockAppState = 'background';
+    let onChange: ((s: string) => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+      _: string,
+      l: (s: string) => void,
+    ) => {
+      onChange = l;
+      return { remove: () => (onChange = undefined) };
+    }) as unknown as typeof AppState.addEventListener);
+    await mount();
+    await act(async () => {
+      jest.advanceTimersByTime(15_500);
+    });
+    expect(mockStart).toHaveBeenCalledWith(queueHead.next);
+    // No modal from the background (iOS came back to a black screen).
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: 'Weir/Project Hail Mary' });
+    mockAppState = 'active';
+    await act(async () => onChange?.('active'));
+    expect(mockReplace).toHaveBeenCalledWith(playerHref('c1', 1, 'Weir/Project Hail Mary'));
   });
 
   it('Not now stops the countdown and keeps Play now', async () => {

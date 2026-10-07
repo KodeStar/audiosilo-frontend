@@ -3,12 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { resolveClient } from '@/api/connection-clients';
-import { finishedHref, playerHref } from '@/lib/paths';
+import { finishedHref } from '@/lib/paths';
+import { useLatestRef } from '@/lib/use-latest';
+import { whenActive } from '@/lib/when-active';
 import { selectIsEnded, usePlayer, type FinishedBook } from '@/playback/store';
 import { resolveUpNext } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
 
+import { startBookInPlace } from './start-book';
 import { useQueueDrop } from './use-queue-drop';
 
 /**
@@ -22,6 +25,8 @@ export function BookEndedListener() {
   const isEnded = usePlayer(selectIsEnded);
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const pathname = usePathname();
+  // The route at the moment the deferred credits open (the app came back), not at the end.
+  const pathnameRef = useLatestRef(pathname);
   const wasEnded = useRef(false);
 
   // The queue writes after a book ends belong to ITS connection, which must outlive
@@ -44,8 +49,8 @@ export function BookEndedListener() {
     // `ended` and the mini-player would remain docked showing the just-finished book.
     const info = usePlayer.getState().finishBook();
     if (!info) return;
-    handleBookEnded(info, pathname, dropFromQueue);
-  }, [isEnded, nowPlaying, pathname, dropFromQueue]);
+    handleBookEnded(info, () => pathnameRef.current, dropFromQueue);
+  }, [isEnded, nowPlaying, pathnameRef, dropFromQueue]);
 
   return null;
 }
@@ -53,7 +58,7 @@ export function BookEndedListener() {
 /** Decide what to do once the current book has ended, given the route we're on. */
 function handleBookEnded(
   info: FinishedBook,
-  pathname: string,
+  pathname: () => string,
   dropFromQueue: ReturnType<typeof useQueueDrop>,
 ): void {
   // A finished book is no longer "up next". The credits opened by the end (`auto=1`)
@@ -63,35 +68,58 @@ function handleBookEnded(
 
   // Already showing the end-credits screen: it drives its own countdown + Play now from
   // here, so don't navigate again (that would stack a duplicate /finished).
-  if (pathname === '/finished') {
+  if (pathname() === '/finished') {
     void dropFromQueue([finished]);
     return;
   }
 
-  // Locked / backgrounded with auto-play on: iOS may suspend JS soon after audio stops,
-  // so don't gamble on a visible countdown - resolve the next book (the same answer the
-  // credits screen would give: Up next first, then the series) and jump straight to the
-  // player. Fall back to the normal end-credits navigation if there's no next book.
-  if (AppState.currentState !== 'active' && useSettings.getState().autoPlayNext) {
+  // Locked / backgrounded: NEVER navigate. The player and the credits are root
+  // fullScreenModals, and iOS cannot present one from the background (the app came back
+  // to a black screen that never recovered). With auto-play on, iOS may also suspend JS
+  // soon after audio stops, so don't gamble on a visible countdown either: resolve the
+  // next book (the same answer the credits screen would give: Up next first, then the
+  // series) and start it in place; on return the mini player / docked bar shows it. With
+  // nothing to play (or auto-play off, or a start that failed), the credits open once
+  // the app is back in the foreground.
+  if (AppState.currentState !== 'active') {
     void (async () => {
-      const client = resolveClient(info.connectionId);
-      const { next } = client
-        ? await resolveUpNext(upNextSources(client, info.connectionId), info)
-        : { next: null };
-      if (next) {
-        // Replace only when we're already on the player; otherwise push, so we don't drop
-        // whatever route the user was on (library/downloads/...) from the back stack.
-        const href = playerHref(next.connectionId, next.libraryId, next.path);
-        if (pathname === '/player') router.replace(href);
-        else router.push(href);
-        // It is the book you're on now, no longer up next.
-        void dropFromQueue(next.queueEntry ? [finished, next.queueEntry] : [finished]);
-      } else goToFinished(info, pathname);
+      if (
+        useSettings.getState().autoPlayNext &&
+        (await playNextInPlace(info, finished, dropFromQueue))
+      )
+        return;
+      whenActive(() => {
+        // Something else started meanwhile (the lock screen, a widget): the credits
+        // would talk over it.
+        if (usePlayer.getState().nowPlaying) return;
+        goToFinished(info, pathname());
+      });
     })();
     return;
   }
 
-  goToFinished(info, pathname);
+  goToFinished(info, pathname());
+}
+
+/** Resolve and start the next book without opening the player. True once it is on its
+ * way (and off Up next with the finished book). */
+async function playNextInPlace(
+  info: FinishedBook,
+  finished: { library_id: number; path: string },
+  dropFromQueue: ReturnType<typeof useQueueDrop>,
+): Promise<boolean> {
+  const client = resolveClient(info.connectionId);
+  if (!client) return false;
+  try {
+    const { next } = await resolveUpNext(upNextSources(client, info.connectionId), info);
+    if (!next || !(await startBookInPlace(next))) return false;
+    // It is the book you're on now, no longer up next.
+    void dropFromQueue(next.queueEntry ? [finished, next.queueEntry] : [finished]);
+    return true;
+  } catch (err) {
+    console.warn('[end-of-book] could not start the next book', err);
+    return false;
+  }
 }
 
 /** Navigate to the end-credits screen: replace the full player (the credits page takes
