@@ -860,7 +860,8 @@
       "bookmark": "Aggiungi un segnalibro",
       "player": "Apri il player completo",
       "palette": "Ricerca e comandi",
-      "help": "Questa guida"
+      "help": "Questa guida",
+      "space": "Spazio"
     }
   },
   "reconnect": {

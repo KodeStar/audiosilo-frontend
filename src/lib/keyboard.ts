@@ -22,6 +22,32 @@ export function isEditable(el: Element | null): boolean {
   );
 }
 
+/** Roles whose element handles Space and the arrow keys itself. */
+const KEY_OWNING_ROLES = new Set([
+  'button',
+  'link',
+  'slider',
+  'tab',
+  'radio',
+  'switch',
+  'checkbox',
+  'option',
+  'menuitem',
+  'combobox',
+  'listbox',
+  'spinbutton',
+]);
+
+/** Whether the focus is on a control that uses Space or the arrow keys itself (a button,
+ * a slider, a tab...): a global shortcut on those keys must leave them to it. */
+export function ownsKeys(el: Element | null): boolean {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'BUTTON' || tag === 'A') return true;
+  const role = el.getAttribute?.('role');
+  return !!role && KEY_OWNING_ROLES.has(role);
+}
+
 /** Whether a modal dialog (the palette, a sheet, an alert) is open in `doc`. */
 export function isModalOpen(doc: Pick<Document, 'querySelector'>): boolean {
   return doc.querySelector('[aria-modal="true"]') !== null;

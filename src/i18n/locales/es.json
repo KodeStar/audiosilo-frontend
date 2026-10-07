@@ -860,7 +860,8 @@
       "bookmark": "Añadir un marcador",
       "player": "Abrir el reproductor completo",
       "palette": "Búsqueda y comandos",
-      "help": "Esta ayuda"
+      "help": "Esta ayuda",
+      "space": "Espacio"
     }
   },
   "reconnect": {

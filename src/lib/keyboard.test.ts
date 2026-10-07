@@ -1,4 +1,4 @@
-import { isEditable, isModalOpen } from './keyboard';
+import { isEditable, isModalOpen, ownsKeys } from './keyboard';
 
 const el = (tagName: string, isContentEditable = false) =>
   ({ tagName, isContentEditable }) as unknown as Element;
@@ -27,5 +27,25 @@ describe('isModalOpen', () => {
     expect(isModalOpen({ querySelector: () => null } as Pick<Document, 'querySelector'>)).toBe(
       false,
     );
+  });
+});
+
+describe('ownsKeys', () => {
+  const node = (tagName: string, role: string | null = null) =>
+    ({ tagName, getAttribute: (n: string) => (n === 'role' ? role : null) }) as unknown as Element;
+
+  it('is true for buttons, links and key-handling roles', () => {
+    expect(ownsKeys(node('BUTTON'))).toBe(true);
+    expect(ownsKeys(node('A'))).toBe(true);
+    expect(ownsKeys(node('DIV', 'slider'))).toBe(true);
+    expect(ownsKeys(node('DIV', 'button'))).toBe(true);
+    expect(ownsKeys(node('DIV', 'tab'))).toBe(true);
+  });
+
+  it('is false for plain elements and no focus', () => {
+    expect(ownsKeys(node('DIV'))).toBe(false);
+    expect(ownsKeys(node('BODY'))).toBe(false);
+    expect(ownsKeys(node('DIV', 'region'))).toBe(false);
+    expect(ownsKeys(null)).toBe(false);
   });
 });

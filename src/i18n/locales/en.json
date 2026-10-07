@@ -860,7 +860,8 @@
       "bookmark": "Add a bookmark",
       "player": "Open the full player",
       "palette": "Search and commands",
-      "help": "This help"
+      "help": "This help",
+      "space": "Space"
     }
   },
   "reconnect": {

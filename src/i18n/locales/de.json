@@ -860,7 +860,8 @@
       "bookmark": "Lesezeichen hinzufügen",
       "player": "Vollständigen Player öffnen",
       "palette": "Suche und Befehle",
-      "help": "Diese Hilfe"
+      "help": "Diese Hilfe",
+      "space": "Leertaste"
     }
   },
   "reconnect": {

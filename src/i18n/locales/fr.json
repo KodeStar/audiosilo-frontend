@@ -860,7 +860,8 @@
       "bookmark": "Ajouter un signet",
       "player": "Ouvrir le lecteur complet",
       "palette": "Recherche et commandes",
-      "help": "Cette aide"
+      "help": "Cette aide",
+      "space": "Espace"
     }
   },
   "reconnect": {
