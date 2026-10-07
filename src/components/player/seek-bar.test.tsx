@@ -236,7 +236,7 @@ describe('SeekTimes', () => {
   });
 
   it('says file for a book without a whole-book timeline', async () => {
-    await render(<SeekTimes elapsed={0} length={600} rate={1} perFile />);
+    await render(<SeekTimes elapsed={0} length={600} rate={1} kind="file" />);
     expect(screen.getByText(/^10m left in the file · ends /)).toBeTruthy();
   });
 });
@@ -308,6 +308,33 @@ describe('PlayerSeekBar', () => {
     await screen.rerender(<PlayerSeekBar timesHidden />);
     expect(screen.queryByText('41:12')).toBeNull();
     expect(screen.getByText('41:12', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('names a chapterless book as the book, not a chapter', async () => {
+    jest.useFakeTimers({ now: new Date(2026, 9, 5, 21, 40) });
+    // A 40-minute single file: a whole-book timeline, no chapters.
+    player.setState({ nowPlaying: { queue: { total: 2400 } }, bookPosition: 600, chapter: null });
+    await render(<PlayerSeekBar />);
+    expect(screen.getByRole('adjustable', { name: 'Position in book' })).toBeTruthy();
+    expect(screen.getByText(/^30m left in the book · ends /)).toBeTruthy();
+    jest.useRealTimers();
+  });
+
+  it('keeps the chapter it was dragging in when playback crosses into the next', async () => {
+    await render(<PlayerSeekBar />);
+    await layout(400);
+    const [pan] = lastGesture();
+    await act(async () => pan.handlers.onBegin({ x: 100 }));
+    // The book plays on into the next chapter while the finger is down.
+    const next: Chapter = { index: 23, title: 'Next', start: 0, end: 1000, book_offset: 6468 };
+    await act(async () => player.setState({ chapter: next, bookPosition: 6470 }));
+    const [panNow] = lastGesture();
+    await act(async () => panNow.handlers.onEnd({ x: 200 }, true));
+    // Half of the chapter being scrubbed (1800 + 4668 / 2), not of the next one.
+    expect(player.getState().seekBook).toHaveBeenLastCalledWith(1800 + 2334);
+    await act(async () => panNow.handlers.onFinalize({ x: 200 }, true));
+    // Released, it follows the playing chapter again.
+    expect(screen.getByRole('adjustable')).toHaveAccessibilityValue({ max: 1000 });
   });
 
   it('renders nothing with no book', async () => {

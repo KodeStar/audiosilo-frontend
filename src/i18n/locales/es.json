@@ -873,10 +873,12 @@
       "label": "Posición en el capítulo",
       "value": "{{position}} de {{duration}}",
       "labelFile": "Posición en el archivo",
+      "labelBook": "Posición en el libro",
       "inBook": "{{time}} en el libro",
       "clickToJump": "Haz clic para saltar",
       "chapterLeft": "quedan {{time}} del capítulo · termina a las {{clock}}",
-      "fileLeft": "quedan {{time}} del archivo · termina a las {{clock}}"
+      "fileLeft": "quedan {{time}} del archivo · termina a las {{clock}}",
+      "bookLeft": "quedan {{time}} del libro · termina a las {{clock}}"
     },
     "finished": {
       "eyebrow": "Fin del libro",

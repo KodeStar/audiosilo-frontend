@@ -15,7 +15,7 @@ import { SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { TransportControls } from '@/components/player/transport-controls';
 import { UndoChip, useUndoVisible } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
-import { usePlayingSegment } from '@/components/player/use-playing-segment';
+import { SEGMENT_LABEL, usePlayingSegment } from '@/components/player/use-playing-segment';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
@@ -60,13 +60,14 @@ export function dockLayout(
 function ChapterScrubber({ bookmarks }: { bookmarks: readonly number[] }) {
   const { t } = useTranslation();
   const left = usePlayingTimeLeft();
+  const [scrub, setScrub] = useState<number | null>(null);
   const {
     segment,
+    kind,
     elapsed,
     onSeek,
     bookmarks: inSegment,
-  } = usePlayingSegment(bookmarks, { wholeSeconds: true });
-  const [scrub, setScrub] = useState<number | null>(null);
+  } = usePlayingSegment(bookmarks, { wholeSeconds: true, hold: scrub !== null });
   return (
     <View className="-my-2.5 flex-row items-center gap-2.5">
       <Text variant="caption" style={tabularNums} className="min-w-[44px] text-right">
@@ -80,7 +81,7 @@ function ChapterScrubber({ bookmarks }: { bookmarks: readonly number[] }) {
           tone="ink"
           onValueCommit={onSeek}
           onPreview={setScrub}
-          accessibilityLabel={t(segment.perTrack ? 'player.seek.labelFile' : 'player.seek.label')}
+          accessibilityLabel={t(SEGMENT_LABEL[kind])}
           valueText={(v) =>
             t('player.seek.value', {
               position: formatClock(v),

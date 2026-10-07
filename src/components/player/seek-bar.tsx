@@ -19,7 +19,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { headFraction, Playhead, ScrubTip, useWebHoverFraction } from './scrub-parts';
 import { barCountFor, barsPath, seekBars } from './seek-texture';
-import { usePlayingSegment } from './use-playing-segment';
+import { SEGMENT_LABEL, type SegmentKind, usePlayingSegment } from './use-playing-segment';
 
 /** The bars' band. */
 const BAR_H = 44;
@@ -289,6 +289,13 @@ export function seekTextureKey(bookKey: string | null, segmentStart: number): st
   return `${bookKey ?? ''}#${Math.round(segmentStart)}`;
 }
 
+/** The times row's "21m left in the chapter · ends 22:01", by segment (i18n keys). */
+const SEGMENT_LEFT = {
+  chapter: 'player.seek.chapterLeft',
+  book: 'player.seek.bookLeft',
+  file: 'player.seek.fileLeft',
+} as const satisfies Record<SegmentKind, string>;
+
 /**
  * The times row under the seek bar: elapsed, "21m left in the chapter · ends 22:01"
  * (wall-clock time at the current speed, the end on the local clock) and "-remaining".
@@ -299,14 +306,14 @@ export const SeekTimes = memo(function SeekTimes({
   elapsed,
   length,
   rate,
-  perFile = false,
+  kind = 'chapter',
   className,
 }: {
   elapsed: number;
   length: number;
   rate: number;
-  /** The segment is a file (no whole-book timeline), not a chapter. */
-  perFile?: boolean;
+  /** What the segment is: "left in the chapter", "in the book" or "in the file". */
+  kind?: SegmentKind;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -327,9 +334,7 @@ export const SeekTimes = memo(function SeekTimes({
         style={tabularNums}
         numberOfLines={1}
       >
-        {time
-          ? t(perFile ? 'player.seek.fileLeft' : 'player.seek.chapterLeft', { time, clock })
-          : ''}
+        {time ? t(SEGMENT_LEFT[kind], { time, clock }) : ''}
       </Text>
       <Text variant="caption" style={tabularNums}>
         -{formatClock(remaining)}
@@ -364,8 +369,14 @@ export function PlayerSeekBar({
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const skipForward = useSettings((s) => s.skipForward);
   const skipBackward = useSettings((s) => s.skipBackward);
-  const { segment, elapsed, onSeek, bookmarks: inSegment } = usePlayingSegment(bookmarks);
   const [scrub, setScrub] = useState<number | null>(null);
+  const {
+    segment,
+    kind,
+    elapsed,
+    onSeek,
+    bookmarks: inSegment,
+  } = usePlayingSegment(bookmarks, { hold: scrub !== null });
   if (!bookKey) return null;
 
   return (
@@ -380,7 +391,7 @@ export function PlayerSeekBar({
         bookmarks={inSegment}
         bookOffset={segment.perTrack ? undefined : segment.start}
         onStep={(dir) => void skipSeconds(dir === 1 ? skipForward : -skipBackward)}
-        accessibilityLabel={segment.perTrack ? t('player.seek.labelFile') : undefined}
+        accessibilityLabel={t(SEGMENT_LABEL[kind])}
         bars={bars}
       />
       <View
@@ -392,7 +403,7 @@ export function PlayerSeekBar({
           elapsed={Math.floor(scrub ?? elapsed)}
           length={segment.length}
           rate={rate}
-          perFile={segment.perTrack}
+          kind={kind}
         />
       </View>
     </View>
