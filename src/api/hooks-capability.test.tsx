@@ -1,8 +1,8 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import type { Capabilities, ServerInfo } from '@/api/types';
+import type { Capabilities, Page, ServerInfo } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // The capability-gated hooks must never send a request the connected server does not
@@ -1257,10 +1257,22 @@ async function mountAnnotations<T>(caps: Partial<Capabilities>, useHooks: () => 
   return { ...r, qc: queryClients[queryClients.length - 1] };
 }
 
-const pagedCases = [
+type PagedCase = {
+  name: string;
+  useHook: () => {
+    refetch: () => Promise<{ isError: boolean }>;
+    fetchNextPage: () => Promise<unknown>;
+    isSuccess: boolean;
+    hasNextPage: boolean;
+  };
+  method: keyof StubClient;
+  next: string;
+};
+
+const pagedCases: PagedCase[] = [
   { name: 'useMyBookmarks', useHook: () => useMyBookmarks(), method: 'myBookmarks', next: 'b2' },
   { name: 'useMyNotes', useHook: () => useMyNotes(), method: 'myNotes', next: 'n2' },
-] as const;
+];
 
 describe('Phase 4 across-books lists', () => {
   it.each(pagedCases)(
@@ -1350,7 +1362,15 @@ describe('Phase 4 across-books lists', () => {
   });
 });
 
-const editCases = [
+type EditCase = {
+  name: string;
+  useHook: () => { mutateAsync: (vars: never) => Promise<unknown> };
+  vars: unknown;
+  method: keyof StubClient;
+  args: unknown[];
+};
+
+const editCases: EditCase[] = [
   {
     name: 'useUpdateBookmark',
     useHook: useUpdateBookmark,
@@ -1365,7 +1385,7 @@ const editCases = [
     method: 'updateNote',
     args: [8, { body: 'Edited', position: 12 }],
   },
-] as const;
+];
 
 describe('Phase 4 gated edits', () => {
   it.each(editCases)(
@@ -1462,13 +1482,16 @@ describe('Phase 4 cache updates', () => {
     body: 'b',
     ...extra,
   });
-  const pages = <T,>(...lists: T[][]) => ({
+  const pages = (...lists: object[][]) => ({
     pages: lists.map((items, i) =>
       i < lists.length - 1 ? { items, next_cursor: `p${i + 2}` } : { items },
     ),
     pageParams: lists.map((_, i) => (i === 0 ? undefined : `p${i + 1}`)),
   });
   const book = { title: 'Book' };
+  /** The rows of a cached across-books list. */
+  const rows = (qc: QueryClient, key: readonly unknown[]) =>
+    flattenPages(qc.getQueryData<InfiniteData<Page<unknown>>>(key));
 
   it("an edited bookmark replaces its row in the book's list and the across-books pages", async () => {
     const { result, qc } = await mountAnnotations({ annotations: true }, useUpdateBookmark);
@@ -1483,7 +1506,7 @@ describe('Phase 4 cache updates', () => {
       bookmark(2, { label: 'quote' }),
     ]);
     // The row keeps its `book` (an edit answers without it), and the list is read again.
-    expect(flattenPages(qc.getQueryData(qk.myBookmarks('c1')))).toEqual([
+    expect(rows(qc, qk.myBookmarks('c1'))).toEqual([
       { ...bookmark(2, { label: 'quote' }), book },
       bookmark(1),
     ]);
@@ -1504,7 +1527,7 @@ describe('Phase 4 cache updates', () => {
       note(3, 30),
     ]);
     // The across-books list stays newest made first: the row changes in place.
-    expect(flattenPages(qc.getQueryData(qk.myNotes('c1')))).toEqual([
+    expect(rows(qc, qk.myNotes('c1'))).toEqual([
       note(3, 30),
       note(2, 20),
       note(1, 25, { body: 'moved' }),
@@ -1536,8 +1559,8 @@ describe('Phase 4 cache updates', () => {
       await result.current.m.bookmark.mutateAsync(2);
       await result.current.m.note.mutateAsync(1);
     });
-    expect(flattenPages(qc.getQueryData(qk.myBookmarks('c1')))).toEqual([bookmark(1)]);
-    expect(flattenPages(qc.getQueryData(qk.myNotes('c1')))).toEqual([]);
+    expect(rows(qc, qk.myBookmarks('c1'))).toEqual([bookmark(1)]);
+    expect(rows(qc, qk.myNotes('c1'))).toEqual([]);
     for (const key of [
       qk.bookmarks('c1', 2, 'A/Book'),
       qk.myBookmarks('c1'),
