@@ -81,7 +81,7 @@ jest.mock('@/playback/store', () => {
 });
 
 // The scrubber and the speed/sleep controls have their own suites; stub them here.
-jest.mock('@/components/player/seek-bar', () => ({ SeekBar: () => null }));
+jest.mock('@/components/ui/slider', () => ({ Slider: () => null }));
 // The Up next entry point has its own suite (upnext/up-next-button.test.tsx).
 jest.mock('@/components/upnext/up-next-button', () => {
   const { Text: RNText } = jest.requireActual('react-native');

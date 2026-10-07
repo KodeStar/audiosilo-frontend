@@ -13,6 +13,7 @@ import {
   formatDurationFull,
   formatRelative,
   formatTimeOfDay,
+  formatWallClock,
 } from '@/lib/format';
 
 describe('formatCountdown', () => {
@@ -215,6 +216,15 @@ describe('formatTimeOfDay', () => {
     } finally {
       intl.DateTimeFormat = original;
     }
+  });
+});
+
+describe('formatWallClock', () => {
+  const spaces = (s: string) => s.replace(/\s/g, ' ');
+  it("reads a moment on the reader's clock", () => {
+    const at = new Date(2026, 9, 7, 22, 1);
+    expect(formatWallClock(at, 'de')).toBe('22:01');
+    expect(spaces(formatWallClock(at, 'en-US'))).toBe('10:01 PM');
   });
 });
 

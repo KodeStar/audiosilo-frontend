@@ -1,10 +1,9 @@
-import { useEffect, useMemo } from 'react';
-import { type LayoutChangeEvent, Platform, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { Platform, View } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
-import { useLatest } from '@/lib/use-latest';
+import { useSliderControl } from '@/components/ui/use-slider-control';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -12,11 +11,6 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 const TRACK_H = 6; // slim visual track
 const HIT_H = 44; // the touch target (STYLEGUIDE.md section 14)
 const THUMB = 16; // resting thumb diameter
-
-function clampFrac(v: number): number {
-  'worklet';
-  return Math.max(0, Math.min(1, v));
-}
 
 export type SliderProps = {
   value: number;
@@ -46,7 +40,8 @@ export type SliderProps = {
  * Tap jumps; a drag scrubs (the thumb grows while held) and commits on release. It is an
  * `adjustable` element (`role="slider"` on web) with a value text, increment/decrement
  * accessibility actions, and on web the arrow keys (one `step`), Page Up/Down (ten) and
- * Home/End. Gesture-handler + reanimated move the thumb and fill on the UI thread.
+ * Home/End. Gesture-handler + reanimated move the thumb and fill on the UI thread. The
+ * behaviour is `useSliderControl`, shared with the seek bar and the whole-book timeline.
  */
 export function Slider({
   value,
@@ -62,68 +57,17 @@ export function Slider({
   className,
 }: SliderProps) {
   const themed = useThemeColors();
-  const span = max - min;
-  const frac = span > 0 ? clampFrac((value - min) / span) : 0;
-  const width = useSharedValue(0);
-  const dragging = useSharedValue(0);
-  const dragFrac = useSharedValue(0);
-  const posFrac = useSharedValue(frac);
-
-  // Track the live value from props on the UI thread (read inside worklets). In an
-  // effect, never during render: Reanimated warns about a shared-value write made while
-  // rendering ("Writing to `value` during component render").
-  // `set()` rather than `.value =`: the React Compiler-safe form.
-  useEffect(() => {
-    posFrac.set(frac);
-  }, [frac, posFrac]);
-
-  // Stable stand-ins that call the latest callbacks: consumers pass fresh closures (the
-  // dock's chapter scrubber re-renders every second), and rebuilding the gesture for each
-  // one reattached its handlers every tick, mid-drag included.
-  const commitValue = useLatest(onValueCommit);
-  const previewValue = useLatest((v: number | null) => onPreview?.(v));
-
-  const gesture = useMemo(() => {
-    const commit = (f: number) => commitValue(min + f * (span > 0 ? span : 0));
-    const fracAt = (x: number) => {
-      'worklet';
-      return clampFrac(width.get() > 0 ? x / width.get() : 0);
-    };
-
-    const pan = Gesture.Pan()
-      .enabled(!disabled)
-      .onBegin((e) => {
-        dragging.set(1);
-        dragFrac.set(fracAt(e.x));
-        if (span > 0) runOnJS(previewValue)(min + dragFrac.get() * span);
-      })
-      .onUpdate((e) => {
-        dragFrac.set(fracAt(e.x));
-        if (span > 0) runOnJS(previewValue)(min + dragFrac.get() * span);
-      })
-      .onEnd((e) => {
-        const f = fracAt(e.x);
-        posFrac.set(f); // hold the thumb at release, no snap-back before the prop catches up
-        runOnJS(commit)(f);
-      })
-      .onFinalize(() => {
-        dragging.set(0);
-        runOnJS(previewValue)(null);
-      });
-
-    // Gesture-handler's default tap window (500ms), not a tight cap: a deliberate,
-    // slightly slow press-and-release with no drag must still jump. A too-short cap on a
-    // motionless press activates neither Tap nor Pan, and the tap silently no-ops.
-    const tap = Gesture.Tap()
-      .enabled(!disabled)
-      .onEnd((e) => {
-        const f = fracAt(e.x);
-        posFrac.set(f);
-        runOnJS(commit)(f);
-      });
-
-    return Gesture.Race(pan, tap);
-  }, [min, span, disabled, width, dragging, dragFrac, posFrac, commitValue, previewValue]);
+  const { gesture, width, dragging, dragFrac, posFrac, controlProps } = useSliderControl({
+    value,
+    min,
+    max,
+    step,
+    onValueCommit,
+    onPreview,
+    accessibilityLabel,
+    valueText,
+    disabled,
+  });
 
   const fillStyle = useAnimatedStyle(() => {
     const f = dragging.get() ? dragFrac.get() : posFrac.get();
@@ -137,46 +81,11 @@ export function Slider({
     };
   });
 
-  const onLayout = (e: LayoutChangeEvent) => {
-    width.set(e.nativeEvent.layout.width);
-  };
-
-  const stepBy = (delta: number) => {
-    if (disabled || span <= 0) return;
-    onValueCommit(Math.max(min, Math.min(max, value + delta)));
-  };
-
-  // Web keyboard. React Native's View types don't declare onKeyDown; react-native-web
-  // forwards it to the DOM node.
-  const keyboard =
-    Platform.OS === 'web'
-      ? {
-          focusable: !disabled,
-          onKeyDown: (e: { key: string; preventDefault: () => void }) => {
-            const moves: Record<string, number> = {
-              ArrowRight: step,
-              ArrowUp: step,
-              ArrowLeft: -step,
-              ArrowDown: -step,
-              PageUp: step * 10,
-              PageDown: -step * 10,
-              Home: min - value,
-              End: max - value,
-            };
-            const delta = moves[e.key];
-            if (delta === undefined) return;
-            e.preventDefault();
-            stepBy(delta);
-          },
-        }
-      : {};
-
   const fill = tone === 'brand' ? themed.brand : themed.primary;
 
   return (
     <GestureDetector gesture={gesture}>
       <View
-        onLayout={onLayout}
         style={{ height: HIT_H }}
         className={cn(
           'justify-center',
@@ -186,25 +95,7 @@ export function Slider({
           disabled && 'opacity-50',
           className,
         )}
-        // One accessibility element (a View isn't one by default): VoiceOver/TalkBack
-        // focus it and swipe up/down to adjust.
-        accessible
-        accessibilityRole="adjustable"
-        accessibilityLabel={accessibilityLabel}
-        accessibilityState={{ disabled }}
-        // The aria-value* props, not `accessibilityValue`: react-native maps both on
-        // native, but react-native-web reads only these (the old seek bar's object form
-        // never reached the DOM, so the web slider had no value).
-        aria-valuemin={Math.round(min)}
-        aria-valuemax={Math.max(Math.round(min), Math.round(max))}
-        aria-valuenow={Math.round(Math.max(min, Math.min(max, value)))}
-        aria-valuetext={valueText?.(value)}
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-        onAccessibilityAction={(e) => {
-          if (e.nativeEvent.actionName === 'increment') stepBy(step);
-          else if (e.nativeEvent.actionName === 'decrement') stepBy(-step);
-        }}
-        {...keyboard}
+        {...controlProps}
       >
         <View style={{ height: TRACK_H }} className="overflow-hidden rounded-full bg-foreground/15">
           <Animated.View

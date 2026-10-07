@@ -21,7 +21,7 @@ import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
-import { SeekBar } from '@/components/player/seek-bar';
+import { PlayerSeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
@@ -163,7 +163,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const toggle = usePlayer((s) => s.toggle);
   const retry = usePlayer((s) => s.retry);
   const seekBook = usePlayer((s) => s.seekBook);
-  const seekInTrack = usePlayer((s) => s.seekInTrack);
   const goToTrack = usePlayer((s) => s.goToTrack);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
@@ -272,7 +271,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // and navigate per-file instead.
   const {
     perTrack,
-    start: segStart,
     length: segLength,
     elapsed: segElapsedRaw,
   } = currentSegment({
@@ -288,7 +286,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const centerLabel = perTrack
     ? t('player.controls.fileOf', { current: trackIndex + 1, total: queue.tracks.length })
     : formatTimeLeft(t, timeLeft(bookPosition, total, rate));
-  const onSeek = (p: number) => (perTrack ? void seekInTrack(p) : void seekBook(segStart + p));
 
   // Title line: the current chapter, else the current file's name.
   const track = queue.tracks[trackIndex];
@@ -439,12 +436,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         {/* Transport */}
         <Animated.View style={[{ width: '100%', alignItems: 'center' }, transportStyle]}>
           <View className="w-full max-w-[420px] gap-1">
-            <SeekBar
-              position={segElapsed}
-              duration={segLength}
-              onSeek={onSeek}
-              onScrub={setScrubPreview}
-            />
+            <PlayerSeekBar onScrub={setScrubPreview} />
             <View className="flex-row items-center justify-between">
               <Text variant="caption" style={tabularNums}>
                 {formatClock(segElapsed)}

@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApi } from '@/api/provider';
 import { serverStatus, useReachability } from '@/api/reachability';
 import { BookProgressLine } from '@/components/player/book-progress';
-import { SeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
 import { SpeedButton, SpeedSheet } from '@/components/player/speed-button';
@@ -17,6 +16,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
+import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
@@ -40,6 +40,7 @@ import { useChromeEdge } from './shell-metrics';
  * the whole book at the listener's speed. A per-tick leaf that moves in whole seconds
  * (the clock's resolution), so it re-renders about once a second, not per engine tick. */
 function ChapterScrubber({ total }: { total: number }) {
+  const { t } = useTranslation();
   const chapter = usePlayer(selectCurrentChapter);
   const trackDuration = usePlayer((s) => s.snapshot.duration);
   const elapsedSecond = usePlayer((s) =>
@@ -69,12 +70,20 @@ function ChapterScrubber({ total }: { total: number }) {
         {formatClock(scrub ?? segment.elapsed)}
       </Text>
       <View className="flex-1">
-        <SeekBar
-          position={segment.elapsed}
-          duration={segment.length}
-          onSeek={onSeek}
-          onScrub={setScrub}
+        <Slider
+          value={segment.elapsed}
+          max={Math.max(0, segment.length)}
+          step={15}
           tone="ink"
+          onValueCommit={onSeek}
+          onPreview={setScrub}
+          accessibilityLabel={t('player.seek.label')}
+          valueText={(v) =>
+            t('player.seek.value', {
+              position: formatClock(v),
+              duration: formatClock(segment.length),
+            })
+          }
         />
       </View>
       <Text variant="caption" style={tabularNums} className="min-w-[44px]" numberOfLines={1}>
