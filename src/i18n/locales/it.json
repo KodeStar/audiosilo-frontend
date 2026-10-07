@@ -1366,5 +1366,123 @@
     "pageError": "Impossibile caricare questi libri",
     "narratorUnsupported": "Questo server non sa ancora elencare i libri per narratore",
     "narratorUnsupportedHint": "Un server AudioSilo più recente lo fa."
+  },
+  "journal": {
+    "title": "Diario",
+    "heading": "Tutto ciò che hai segnato",
+    "entryHint": "Il tuo diario di ascolto, i segnalibri e le note",
+    "tabs": {
+      "label": "Sezioni del diario",
+      "diary": "Ascolti",
+      "bookmarks": "Segnalibri",
+      "notes": "Note"
+    },
+    "search": {
+      "placeholder": "Cerca nei tuoi segnalibri e nelle note",
+      "label": "Cerca nel diario"
+    },
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "openBook": "Apri {{title}}",
+    "openLibrary": "Vai alla libreria",
+    "jumpFailed": "Impossibile avviare {{title}}",
+    "diary": {
+      "today": "Oggi",
+      "yesterday": "Ieri",
+      "when": "{{time}}, {{minutes}}",
+      "range": "da {{from}} a {{to}}",
+      "barLabel": "Ascolto durante la giornata: {{spans}}",
+      "finished": "Libro finito",
+      "empty": {
+        "title": "Nessun ascolto ancora",
+        "hint": "Ogni giorno di ascolto compare qui, con i libri e i capitoli che hai sentito."
+      },
+      "error": {
+        "title": "Impossibile caricare il tuo ascolto",
+        "hint": "Non si è perso nulla. Controlla la connessione al server e riprova."
+      },
+      "drift": {
+        "jumpBack_one": "Ti sei addormentato verso le {{time}}. Tornare indietro di {{count}} minuto?",
+        "jumpBack_other": "Ti sei addormentato verso le {{time}}. Tornare indietro di {{count}} minuti?",
+        "jumpBackAction": "Torna indietro",
+        "resume": "Il timer di spegnimento l'ha fermato alle {{time}}.",
+        "resumeAction": "Riprendi da dove ti sei addormentato"
+      }
+    },
+    "bookmarks": {
+      "labels": "Etichette",
+      "allLabels": "Tutte le etichette",
+      "noMatch": "Nessun segnalibro corrisponde",
+      "error": "Impossibile caricare i tuoi segnalibri",
+      "empty": {
+        "title": "Ancora nessun segnalibro",
+        "hint": "Aggiungine uno dal lettore mentre ascolti. Qui si raccolgono quelli di tutti i tuoi libri."
+      },
+      "unsupported": {
+        "title": "Questo server non può ancora elencare tutti i tuoi segnalibri",
+        "hint": "La pagina di ogni libro mostra ancora i suoi segnalibri. Un server AudioSilo più recente li elenca tutti qui."
+      }
+    },
+    "notes": {
+      "noMatch": "Nessuna nota corrisponde",
+      "error": "Impossibile caricare le tue note",
+      "empty": {
+        "title": "Ancora nessuna nota",
+        "hint": "Aggiungi una nota dal lettore mentre ascolti. Qui si raccolgono quelle di tutti i tuoi libri."
+      },
+      "unsupported": {
+        "title": "Questo server non può ancora elencare tutte le tue note",
+        "hint": "La pagina di ogni libro mostra ancora le sue note. Un server AudioSilo più recente le elenca tutte qui."
+      }
+    },
+    "servers": {
+      "failed": {
+        "history": "Impossibile raggiungere {{server}}, quindi il suo ascolto non è mostrato.",
+        "bookmarks": "Impossibile raggiungere {{server}}, quindi i suoi segnalibri non sono mostrati.",
+        "notes": "Impossibile raggiungere {{server}}, quindi le sue note non sono mostrate."
+      },
+      "unsupported": {
+        "bookmarks": "{{server}} non può ancora elencare qui i suoi segnalibri. Li trovi nella pagina di ogni libro.",
+        "notes": "{{server}} non può ancora elencare qui le sue note. Le trovi nella pagina di ogni libro."
+      }
+    },
+    "export": {
+      "label": "Esporta",
+      "menu": "Esporta il diario",
+      "download": "Scarica",
+      "copyMarkdown": "Copia come Markdown",
+      "downloadMarkdown": "Scarica Markdown",
+      "downloadCsv": "Scarica CSV",
+      "shareMarkdown": "Condividi come Markdown",
+      "shareCsv": "Condividi come CSV",
+      "preparing_one": "Raccolta di {{n}} voce",
+      "preparing_other": "Raccolta di {{n}} voci",
+      "copied": "Diario copiato come Markdown",
+      "nothing": "Ancora nessun segnalibro o nota da esportare",
+      "failed": "Impossibile esportare il diario",
+      "failedServers": "Impossibile includere {{servers}}",
+      "truncated_one": "È stata esportata solo la voce più recente ({{max}}) di un elenco",
+      "truncated_other": "Sono state esportate solo le {{max}} voci più recenti di un elenco",
+      "dialogTitle": "Esporta il diario",
+      "exported": "Esportato il {{date}}",
+      "bookmark": "Segnalibro",
+      "note": "Nota",
+      "columns": {
+        "server": "Server",
+        "kind": "Tipo",
+        "book": "Libro",
+        "author": "Autore",
+        "position": "Posizione",
+        "chapter": "Capitolo",
+        "label": "Etichetta",
+        "text": "Testo",
+        "created": "Creato"
+      }
+    },
+    "history": {
+      "jump": "Vai",
+      "jumpLabel": "Vai a {{time}}",
+      "span": "da {{from}} a {{to}}"
+    }
   }
 }

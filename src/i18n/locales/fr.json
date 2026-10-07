@@ -1366,5 +1366,123 @@
     "pageError": "Impossible de charger ces livres",
     "narratorUnsupported": "Ce serveur ne peut pas encore lister les livres par narrateur",
     "narratorUnsupportedHint": "Un serveur AudioSilo plus récent le permet."
+  },
+  "journal": {
+    "title": "Journal",
+    "heading": "Tout ce que vous avez marqué",
+    "entryHint": "Votre journal d'écoute, vos signets et vos notes",
+    "tabs": {
+      "label": "Sections du journal",
+      "diary": "Écoutes",
+      "bookmarks": "Signets",
+      "notes": "Notes"
+    },
+    "search": {
+      "placeholder": "Rechercher dans vos signets et vos notes",
+      "label": "Rechercher dans le journal"
+    },
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "openBook": "Ouvrir {{title}}",
+    "openLibrary": "Aller à la bibliothèque",
+    "jumpFailed": "Impossible de lancer {{title}}",
+    "diary": {
+      "today": "Aujourd'hui",
+      "yesterday": "Hier",
+      "when": "{{time}}, {{minutes}}",
+      "range": "{{from}} à {{to}}",
+      "barLabel": "Écoute au fil de la journée : {{spans}}",
+      "finished": "Livre terminé",
+      "empty": {
+        "title": "Rien écouté pour l'instant",
+        "hint": "Chaque jour d'écoute s'affiche ici, avec les livres et les chapitres entendus."
+      },
+      "error": {
+        "title": "Impossible de charger votre écoute",
+        "hint": "Rien n'est perdu. Vérifiez la connexion à votre serveur et réessayez."
+      },
+      "drift": {
+        "jumpBack_one": "Vous vous êtes endormi vers {{time}}. Revenir {{count}} minute en arrière ?",
+        "jumpBack_other": "Vous vous êtes endormi vers {{time}}. Revenir {{count}} minutes en arrière ?",
+        "jumpBackAction": "Revenir en arrière",
+        "resume": "La minuterie de sommeil a arrêté la lecture à {{time}}.",
+        "resumeAction": "Reprendre là où vous vous êtes endormi"
+      }
+    },
+    "bookmarks": {
+      "labels": "Étiquettes",
+      "allLabels": "Toutes les étiquettes",
+      "noMatch": "Aucun signet ne correspond",
+      "error": "Impossible de charger vos signets",
+      "empty": {
+        "title": "Aucun signet pour l'instant",
+        "hint": "Ajoutez-en un depuis le lecteur pendant l'écoute. Les signets de tous vos livres se retrouvent ici."
+      },
+      "unsupported": {
+        "title": "Ce serveur ne peut pas encore lister tous vos signets",
+        "hint": "La page de chaque livre affiche toujours ses signets. Un serveur AudioSilo plus récent les liste tous ici."
+      }
+    },
+    "notes": {
+      "noMatch": "Aucune note ne correspond",
+      "error": "Impossible de charger vos notes",
+      "empty": {
+        "title": "Aucune note pour l'instant",
+        "hint": "Ajoutez une note depuis le lecteur pendant l'écoute. Les notes de tous vos livres se retrouvent ici."
+      },
+      "unsupported": {
+        "title": "Ce serveur ne peut pas encore lister toutes vos notes",
+        "hint": "La page de chaque livre affiche toujours ses notes. Un serveur AudioSilo plus récent les liste toutes ici."
+      }
+    },
+    "servers": {
+      "failed": {
+        "history": "Impossible de joindre {{server}}, son écoute n'est donc pas affichée.",
+        "bookmarks": "Impossible de joindre {{server}}, ses signets ne sont donc pas affichés.",
+        "notes": "Impossible de joindre {{server}}, ses notes ne sont donc pas affichées."
+      },
+      "unsupported": {
+        "bookmarks": "{{server}} ne peut pas encore lister ses signets ici. Retrouvez-les sur la page de chaque livre.",
+        "notes": "{{server}} ne peut pas encore lister ses notes ici. Retrouvez-les sur la page de chaque livre."
+      }
+    },
+    "export": {
+      "label": "Exporter",
+      "menu": "Exporter le journal",
+      "download": "Télécharger",
+      "copyMarkdown": "Copier en Markdown",
+      "downloadMarkdown": "Télécharger en Markdown",
+      "downloadCsv": "Télécharger en CSV",
+      "shareMarkdown": "Partager en Markdown",
+      "shareCsv": "Partager en CSV",
+      "preparing_one": "Collecte de {{n}} entrée",
+      "preparing_other": "Collecte de {{n}} entrées",
+      "copied": "Journal copié en Markdown",
+      "nothing": "Aucun signet ni aucune note à exporter pour l'instant",
+      "failed": "Impossible d'exporter le journal",
+      "failedServers": "Impossible d'inclure {{servers}}",
+      "truncated_one": "Seule l'entrée la plus récente ({{max}}) d'une liste a été exportée",
+      "truncated_other": "Seules les {{max}} entrées les plus récentes d'une liste ont été exportées",
+      "dialogTitle": "Exporter le journal",
+      "exported": "Exporté le {{date}}",
+      "bookmark": "Signet",
+      "note": "Note",
+      "columns": {
+        "server": "Serveur",
+        "kind": "Type",
+        "book": "Livre",
+        "author": "Auteur",
+        "position": "Position",
+        "chapter": "Chapitre",
+        "label": "Étiquette",
+        "text": "Texte",
+        "created": "Créé le"
+      }
+    },
+    "history": {
+      "jump": "Aller",
+      "jumpLabel": "Aller à {{time}}",
+      "span": "{{from}} à {{to}}"
+    }
   }
 }
