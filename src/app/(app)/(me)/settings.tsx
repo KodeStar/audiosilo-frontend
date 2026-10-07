@@ -3,6 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import { ConnectionsSection, useConnectionRemoval } from '@/components/account/connections-section';
+import {
+  KeepAheadControl,
+  KeepAheadStatusLine,
+  useAutoDownloadModes,
+} from '@/components/downloads/rules-card';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -20,15 +25,15 @@ import { TimeStepper } from '@/components/ui/time-stepper';
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/toggle-group';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { useLanguage, type LanguagePref } from '@/i18n/language-provider';
+import { formatSpeed } from '@/lib/format';
 import { isSupportAvailable, openSupport } from '@/lib/support';
 import { APP_VERSION } from '@/lib/version';
-import { useSettings, type AutoDownloadMode, type AutoSleepType } from '@/stores/settings';
+import { useSettings, type AutoSleepType } from '@/stores/settings';
 import { useTheme, type SchemePref } from '@/theme/theme-provider';
 
 const APPEARANCE: SchemePref[] = ['light', 'dark', 'system'];
 
 const sec = (v: number) => `${v}s`;
-const speed = (v: number) => `${Number(v.toFixed(2))}×`;
 const mins = (v: number) => `${Math.round(v / 60)}m`;
 
 /** A titled settings group: an eyebrow label above its content, with consistent rhythm. */
@@ -149,11 +154,7 @@ export default function SettingsScreen() {
     { value: 'on', label: t('common.on') },
     { value: 'off', label: t('common.off') },
   ];
-  const downloadOptions: SegmentedOption<AutoDownloadMode>[] = [
-    { value: 'never', label: t('settings.upNext.autoDownload.never') },
-    { value: 'wifi', label: t('settings.upNext.autoDownload.wifi') },
-    { value: 'always', label: t('settings.upNext.autoDownload.always') },
-  ];
+  const downloadOptions = useAutoDownloadModes();
 
   const paddingBottom = useMiniPlayerInset();
 
@@ -220,7 +221,7 @@ export default function SettingsScreen() {
                 step={0.05}
                 min={0.5}
                 max={2}
-                format={speed}
+                format={formatSpeed}
               />
             </StepperRow>
             <StepperRow label={t('settings.playback.autoRewind')}>
@@ -326,20 +327,30 @@ export default function SettingsScreen() {
                 accessibilityLabel={t('settings.upNext.autoPlay.label')}
               />
             </ChoiceRow>
+            {/* The same setting, and words, as the Downloads page's rules card. */}
             <ChoiceRow
-              label={t('settings.upNext.autoDownload.label')}
-              description={t('settings.upNext.autoDownload.description')}
+              label={t('downloads.rules.mode.label')}
+              description={t('downloads.rules.modeHint')}
             >
               <SegmentedControl
                 options={downloadOptions}
                 value={autoDownloadNext}
                 onChange={setAutoDownloadNext}
                 grow
-                accessibilityLabel={t('settings.upNext.autoDownload.label')}
+                accessibilityLabel={t('downloads.rules.mode.label')}
               />
             </ChoiceRow>
+            {/* The same setting as the Downloads page's "Automatic downloads" card. */}
             <ChoiceRow
-              label={t('settings.upNext.autoDelete.label')}
+              label={t('downloads.rules.keepAhead.label')}
+              description={t('downloads.rules.keepAhead.hint')}
+            >
+              <KeepAheadControl grow />
+              <KeepAheadStatusLine />
+            </ChoiceRow>
+            {/* The same setting, and words, as the Downloads page's rules card. */}
+            <ChoiceRow
+              label={t('downloads.rules.autoDelete')}
               description={t('settings.upNext.autoDelete.description')}
             >
               <SegmentedControl
@@ -347,7 +358,7 @@ export default function SettingsScreen() {
                 value={autoDeleteFinished ? 'on' : 'off'}
                 onChange={(v) => setAutoDeleteFinished(v === 'on')}
                 grow
-                accessibilityLabel={t('settings.upNext.autoDelete.label')}
+                accessibilityLabel={t('downloads.rules.autoDelete')}
               />
             </ChoiceRow>
           </View>

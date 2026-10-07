@@ -20,6 +20,7 @@ import { Cover } from '@/components/ui/cover';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
+import { formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -66,7 +67,7 @@ function TimeLeft({ total }: { total: number }) {
   const time = useBookTimeLeft(total);
   const rate = usePlayer((s) => s.rate);
   if (!time) return null;
-  const rateLabel = `${Number(rate.toFixed(2))}×`;
+  const rateLabel = formatSpeed(rate);
   return (
     <Text variant="caption" numberOfLines={1} style={tabularNums}>
       {t('player.controls.timeLeft', { time, rate: rateLabel })}

@@ -1,8 +1,8 @@
 import { Image, type ImageSource } from 'expo-image';
-import { useId } from 'react';
 import { Platform, type ViewStyle, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useDomId } from '@/lib/use-dom-id';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -39,9 +39,8 @@ export function CoverBackdrop({ source }: { source?: ImageSource | null }) {
   const { scheme } = useTheme();
   // Unique per instance: SVG def ids are document-global on web, so a fixed id would
   // collide when two backdrops mount at once (e.g. a book page behind an open player
-  // modal), making both `url(#id)` fills resolve to the first def. Strip characters
-  // React's useId emits (colons) that aren't valid in a `url(#...)` fragment.
-  const fadeId = `coverBackdropFade-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  // modal), making both `url(#id)` fills resolve to the first def.
+  const fadeId = useDomId('coverBackdropFade');
   if (!source) return null;
   const dark = scheme === 'dark';
   const native = Platform.OS !== 'web';

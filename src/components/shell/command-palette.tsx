@@ -13,34 +13,42 @@ import {
   View,
 } from 'react-native';
 
-import { useAllProgressAll, useSearchAll, useSourceLabeller } from '@/api/hooks';
-import { useApi } from '@/api/provider';
-import { DialogOverlay } from '@/components/ui/dialog';
-import { withFlatStyle } from '@/components/ui/overlay';
+import { type MergedBook, useAllProgressAll, useSourceLabeller } from '@/api/hooks';
+import { useApi, useApis } from '@/api/provider';
+import { roleLabelKey } from '@/components/library/book-meta';
+import { Highlighted } from '@/components/search/highlighted';
+import { NameToken } from '@/components/search/name-token';
+import { type SearchResults, useSearch } from '@/components/search/use-search';
 import { Cover } from '@/components/ui/cover';
+import { DialogOverlay } from '@/components/ui/dialog';
 import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
+import { withFlatStyle } from '@/components/ui/overlay';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { openUpNext } from '@/components/upnext/up-next-store';
+import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { chapterLabel } from '@/lib/chapter-label';
+import { useGlobalShortcut } from '@/lib/keyboard';
 import { useLayout } from '@/lib/layout';
-import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useOpen } from '@/lib/open';
-import { pathLeaf } from '@/lib/paths';
-import { isInProgress } from '@/lib/progress-view';
+import { bookTitle, pathLeaf } from '@/lib/paths';
+import { isInProgress, percentHeard } from '@/lib/progress-view';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { cn } from '@/lib/utils';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
+import { useRecentSearches } from '@/stores/search';
 import { useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { TOP_BAR_TABS, useTabPress } from './destinations';
 import {
+  buildActionItems,
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
-  matchRange,
   moveSelection,
   type PaletteCover,
   type PaletteGroupKey,
@@ -57,6 +65,10 @@ const GROUP_LABEL_KEY = {
   actions: 'palette.groups.actions',
   continue: 'home.continueListening',
   books: 'palette.groups.books',
+  series: 'palette.groups.series',
+  authors: 'palette.groups.authors',
+  narrators: 'palette.groups.narrators',
+  characters: 'palette.groups.characters',
   goTo: 'palette.groups.goTo',
 } as const satisfies Record<PaletteGroupKey, string>;
 
@@ -66,81 +78,62 @@ const PaletteContent = withFlatStyle(DialogPrimitive.Content);
 const optionId = (index: number) => `palette-option-${index}`;
 const LIST_ID = 'palette-list';
 
-/** The palette's Actions for what the app can do right now (only what exists today:
- * the transport, the sleep timer, the full player, settings and appearance). */
+/** The palette's Actions (`buildActionItems`) over the player, the sleep timer, Up next,
+ * settings and the theme. */
 function useActionItems(): PaletteItem[] {
   const { t } = useTranslation();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const isPlaying = usePlayer(selectIsPlaying);
   const chapter = usePlayer(selectCurrentChapter);
+  const upNext = useUpNextBadge();
   const { scheme, toggleScheme } = useTheme();
   const { press } = useTabPress();
 
   return useMemo(() => {
-    const items: PaletteItem[] = [];
-    if (nowPlaying) {
-      const chapterName = chapter ? chapterLabel(chapter, t) : null;
-      items.push({
-        id: 'toggle',
-        title: isPlaying
-          ? t('player.controls.pause')
-          : t('palette.resume', { name: chapterName ?? nowPlaying.title }),
-        subtitle: nowPlaying.title,
-        icon: isPlaying ? 'pause' : 'play',
-        run: () => void usePlayer.getState().toggle(),
-      });
-      const sleepTitle = t('palette.sleepMinutes', { count: SLEEP_MINUTES });
-      const sleepHint = t('palette.sleepFades');
-      items.push({
-        id: 'sleep-minutes',
-        title: sleepTitle,
-        subtitle: sleepHint,
-        icon: 'sleep',
-        run: () => {
+    const chapterName = nowPlaying && chapter ? chapterLabel(chapter, t) : null;
+    const notify = (title: string, description?: string) => toast({ title, description });
+    return buildActionItems(
+      {
+        nowPlaying: nowPlaying
+          ? {
+              title: nowPlaying.title,
+              chapterName,
+              hasChapters: nowPlaying.queue.chapters.length > 0,
+            }
+          : null,
+        isPlaying,
+        sleepMinutes: SLEEP_MINUTES,
+        upNext: upNext.supported === true ? { count: upNext.count } : null,
+        dark: scheme === 'dark',
+      },
+      {
+        toggle: () => void usePlayer.getState().toggle(),
+        sleepMinutes: () => {
           useSleepTimer.getState().startDuration(SLEEP_MINUTES);
-          toast({ title: sleepTitle, description: sleepHint });
+          notify(t('palette.sleepMinutes', { count: SLEEP_MINUTES }), t('palette.sleepFades'));
         },
-      });
-      // Only with real chapters: without them "end of chapter" falls back to a short
-      // duration timer, which this label would misdescribe.
-      if (nowPlaying.queue.chapters.length > 0) {
-        const title = t('palette.sleepChapter');
-        items.push({
-          id: 'sleep-chapter',
-          title,
-          subtitle: chapterName ?? undefined,
-          icon: 'sleep',
-          run: () => {
-            useSleepTimer.getState().startChapterTimer({ allowEndOfBook: true });
-            toast({ title, description: chapterName ?? undefined });
-          },
-        });
-      }
-      items.push({
-        id: 'player',
-        title: t('palette.openPlayer'),
-        subtitle: nowPlaying.title,
-        icon: 'chevron-up',
-        run: () => router.push('/player'),
-      });
-    }
-    items.push({
-      id: 'settings',
-      title: t('palette.settings'),
-      subtitle: t('palette.settingsHint'),
-      icon: 'settings',
-      run: () => press('(me)'),
-    });
-    const dark = scheme === 'dark';
-    items.push({
-      id: 'appearance',
-      title: dark ? t('palette.light') : t('palette.dark'),
-      subtitle: t('settings.appearance.label'),
-      icon: 'settings',
-      run: toggleScheme,
-    });
-    return items;
-  }, [t, nowPlaying, isPlaying, chapter, scheme, toggleScheme, press]);
+        sleepChapter: () => {
+          useSleepTimer.getState().startChapterTimer({ allowEndOfBook: true });
+          notify(t('palette.sleepChapter'), chapterName ?? undefined);
+        },
+        player: () => router.push('/player'),
+        upNext: openUpNext,
+        settings: () => press('(me)'),
+        appearance: toggleScheme,
+      },
+      t,
+    );
+  }, [
+    t,
+    nowPlaying,
+    isPlaying,
+    chapter,
+    upNext.supported,
+    upNext.count,
+    scheme,
+    toggleScheme,
+    press,
+  ]);
 }
 
 /** Go to: the top bar's destinations (Downloads only where this browser can keep books). */
@@ -159,24 +152,26 @@ function useGoToItems(): PaletteItem[] {
   );
 }
 
-/** Books for the query (the cross-server search) and, with no query, Continue listening
- * from the progress Home already loads: the cache as is (opening the palette must not
- * refetch every server's progress), and nothing at all while a query is typed. */
-function useBookItems(query: string): {
+/** Books for the query (the cross-server search, from `useSearch`) and, with no query,
+ * Continue listening from the progress Home already loads: the cache as is (opening the
+ * palette must not refetch every server's progress), and nothing at all while a query
+ * is typed. */
+function useBookItems(
+  query: string,
+  found: MergedBook[],
+): {
   books: PaletteItem[];
   continueListening: PaletteItem[];
-  searching: boolean;
 } {
   const { t } = useTranslation();
   const { openBook } = useOpen();
   const sourceOf = useSourceLabeller();
-  const search = useSearchAll(query);
   const { progress } = useAllProgressAll({ enabled: !query, refetchOnMount: false });
 
   const books = useMemo(
     () =>
-      search.books.map((b): PaletteItem => {
-        const title = b.title || pathLeaf(b.rel_path);
+      found.map((b): PaletteItem => {
+        const title = bookTitle(b.title, b.rel_path);
         return {
           id: `book:${b.connectionId}:${b.library_id}:${b.rel_path}`,
           title,
@@ -187,13 +182,13 @@ function useBookItems(query: string): {
           run: () => openBook(b.connectionId, b.library_id, b.rel_path),
         };
       }),
-    [search.books, sourceOf, openBook],
+    [found, sourceOf, openBook],
   );
 
   const continueListening = useMemo(
     () =>
       progress.filter(isInProgress).map((p): PaletteItem => {
-        const percent = p.duration > 0 ? Math.round((p.position / p.duration) * 100) : 0;
+        const percent = percentHeard(p.position, p.duration, false);
         return {
           id: `continue:${p.connectionId}:${p.library_id}:${p.path}`,
           title: pathLeaf(p.path),
@@ -210,29 +205,61 @@ function useBookItems(query: string): {
     [progress, sourceOf, t, openBook],
   );
 
-  return { books, continueListening, searching: search.isFetching };
+  return { books, continueListening };
 }
 
-/** The title with the first match of the query in `brand-ink` bold. */
-function Highlighted({ text, query }: { text: string; query: string }) {
-  const range = matchRange(text, query);
-  return (
-    <Text variant="label" numberOfLines={1}>
-      {range ? (
-        <>
-          {text.slice(0, range[0])}
-          {/* `label` like the line around it: a bare <Text> would apply the `body`
-              variant's larger size to the match. */}
-          <Text variant="label" className="font-sans-bold text-brand-ink">
-            {text.slice(range[0], range[1])}
-          </Text>
-          {text.slice(range[1])}
-        </>
-      ) : (
-        text
-      )}
-    </Text>
-  );
+/** Series, authors, narrators and the characters the listener has met, as palette items
+ * (the search model already matched, ranked, capped and spoiler-gated them), plus the
+ * count of characters not met yet. */
+function useNamedItems(results: SearchResults) {
+  const { t } = useTranslation();
+  const { openSeries, openAuthor, openNarrator, openBook } = useOpen();
+  const many = useApis().length > 1;
+  const where = (connectionName: string) => (many ? connectionName : null);
+  const books = (count: number) => t('search.bookCount', { count });
+  return {
+    series: results.series.map((s): PaletteItem => ({
+      id: `series:${s.source.connectionId}:${s.source.libraryId}:${s.name}`,
+      title: s.name,
+      subtitle: [books(s.books), s.author, where(s.source.connectionName)]
+        .filter(Boolean)
+        .join(' · '),
+      icon: 'layers',
+      run: () => openSeries(s.source.connectionId, s.source.libraryId, { name: s.name }),
+    })),
+    authors: results.authors.map((p): PaletteItem => ({
+      id: `author:${p.source.connectionId}:${p.source.libraryId}:${p.name}`,
+      title: p.name,
+      subtitle: [t('search.roleAuthor'), books(p.books), where(p.source.connectionName)]
+        .filter(Boolean)
+        .join(' · '),
+      token: { kind: 'author', name: p.name },
+      run: () => openAuthor(p.source.connectionId, p.source.libraryId, p.name),
+    })),
+    narrators: results.narrators.map((p): PaletteItem => ({
+      id: `narrator:${p.source.connectionId}:${p.source.libraryId}:${p.name}`,
+      title: p.name,
+      subtitle: [t('search.roleNarrator'), books(p.books), where(p.source.connectionName)]
+        .filter(Boolean)
+        .join(' · '),
+      token: { kind: 'narrator', name: p.name },
+      run: () => openNarrator(p.source.connectionId, p.source.libraryId, p.name),
+    })),
+    characters: results.characters.hits.map((c): PaletteItem => {
+      const roleKey = roleLabelKey(c.role);
+      return {
+        id: `character:${c.key}`,
+        title: c.name,
+        subtitle: [roleKey ? t(roleKey) : null, c.bookTitle].filter(Boolean).join(' · '),
+        token: { kind: 'character', name: c.name },
+        run: () => openBook(c.connectionId, c.libraryId, c.path),
+      };
+    }),
+    charactersNote:
+      results.characters.hidden > 0
+        ? t('palette.hiddenCharacters', { count: results.characters.hidden })
+        : undefined,
+  };
 }
 
 function CoverThumb({ cover, label }: { cover: PaletteCover; label: string }) {
@@ -241,7 +268,7 @@ function CoverThumb({ cover, label }: { cover: PaletteCover; label: string }) {
     <Cover
       source={{ uri: api.coverUrl(cover.libraryId, cover.path), headers: api.authHeaders() }}
       label={label}
-      rounded="rounded-[5px]"
+      rounded="rounded-cover"
       size={36}
     />
   );
@@ -282,6 +309,8 @@ function Option({
     >
       {item.cover ? (
         <CoverThumb cover={item.cover} label={item.title} />
+      ) : item.token ? (
+        <NameToken name={item.token.name} kind={item.token.kind} size={36} />
       ) : (
         <View className="h-9 w-9 items-center justify-center rounded-control bg-muted">
           <Icon name={item.icon ?? 'chevron-right'} size={17} color={themed.mutedForeground} />
@@ -300,13 +329,30 @@ function Option({
   );
 }
 
+/** A group's quiet line that is not an option: the characters the listener hasn't met
+ * yet, counted (never named), so the arrows skip it. */
+function GroupNote({ text }: { text: string }) {
+  const { t } = useTranslation();
+  return (
+    <View className="min-h-[48px] flex-row items-center gap-3 px-2.5 py-2">
+      <NameToken kind="character" size={36} hidden />
+      <View className="flex-1">
+        <Text variant="label" numberOfLines={2}>
+          {text}
+        </Text>
+        <Text variant="caption">{t('palette.hiddenHint')}</Text>
+      </View>
+    </View>
+  );
+}
+
 function PaletteBody() {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const query = usePalette((s) => s.query);
   const setQuery = usePalette((s) => s.setQuery);
-  const recent = usePalette((s) => s.recent);
-  const remember = usePalette((s) => s.remember);
+  const recent = useRecentSearches((s) => s.recent);
+  const remember = useRecentSearches((s) => s.remember);
   const close = usePalette((s) => s.close);
   const connections = useSession((s) => s.connections);
   const debounced = useDebouncedValue(query.trim(), DEBOUNCE_MS);
@@ -314,15 +360,11 @@ function PaletteBody() {
 
   const actions = useActionItems();
   const goTo = useGoToItems();
-  const { books, continueListening, searching } = useBookItems(debounced);
-  const groups = buildPaletteGroups({
-    query,
-    actions,
-    // Results belong to the debounced query; none while the field is empty.
-    books: query.trim() ? books : [],
-    continueListening,
-    goTo,
-  });
+  const results = useSearch(debounced, { refetchProgress: false });
+  const { books, continueListening } = useBookItems(debounced, results.books);
+  const named = useNamedItems(results);
+  // The model shows results only while the field has a query, and caps each group.
+  const groups = buildPaletteGroups({ query, actions, books, continueListening, ...named, goTo });
   const flat = flattenGroups(groups);
   const active = Math.min(selected, Math.max(0, flat.length - 1));
 
@@ -350,7 +392,7 @@ function PaletteBody() {
     }
   };
 
-  const pending = query.trim() !== '' && (searching || debounced !== query.trim());
+  const pending = query.trim() !== '' && (!results.settled || debounced !== query.trim());
   const servers = connections.map((c) => c.name).join(' + ');
 
   return (
@@ -437,6 +479,7 @@ function PaletteBody() {
                 onRun={run}
               />
             ))}
+            {g.note ? <GroupNote text={g.note} /> : null}
           </View>
         ))}
         {pending && !groups.some((g) => g.key === 'books') ? (
@@ -444,7 +487,7 @@ function PaletteBody() {
             {t('palette.searching')}
           </Text>
         ) : null}
-        {flat.length === 0 && !pending ? (
+        {groups.length === 0 && !pending ? (
           <View className="items-center gap-1 px-4 py-7">
             <Text variant="label">{t('palette.empty', { query: query.trim() })}</Text>
             <Text variant="muted">{t('palette.emptyHint')}</Text>
@@ -480,7 +523,8 @@ function PaletteBody() {
 
 /**
  * The web command palette (STYLEGUIDE section 8, "Command palette"): a combobox over a
- * grouped listbox - Actions, Books (or Continue listening), Go to - on the Dialog
+ * grouped listbox - Actions, Books (or Continue listening), Series, Authors, Narrators,
+ * Characters (met only; the rest counted), Go to - on the Dialog
  * primitive (focus trap, Esc, `aria-modal`). Open it with `usePalette().openPalette()`:
  * the top bar's omnisearch, ⌘K / Ctrl+K or `/` (`usePaletteShortcut`). Mounted once, by
  * the web shell; native tablets keep the omnisearch's jump to the Search tab.
@@ -519,33 +563,11 @@ export function CommandPalette() {
   );
 }
 
-/** Whether the focus is in something you type into (no shortcut fires there). */
-function isEditable(el: Element | null): boolean {
-  if (!el) return false;
-  const tag = el.tagName;
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    tag === 'SELECT' ||
-    (el as HTMLElement).isContentEditable === true
-  );
-}
-
 /**
  * The palette's global shortcuts (web): ⌘K / Ctrl+K and `/` open it from any tab page -
  * not over the full player, not over another dialog, and never while typing in a field.
  */
 export function usePaletteShortcut(enabled: boolean) {
   const openPalette = usePalette((s) => s.openPalette);
-  useEffect(() => {
-    if (!enabled || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!isPaletteShortcut(e, isEditable(document.activeElement))) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
-      e.preventDefault();
-      openPalette();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [enabled, openPalette]);
+  useGlobalShortcut(enabled, isPaletteShortcut, openPalette);
 }

@@ -11,7 +11,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
 import { FullWindowOverlay } from './overlay';
-import { Text } from './text';
+import { FOCUS_RING_CLASS, Text } from './text';
 
 /**
  * Stacks toasts (STYLEGUIDE.md section 8): ink cards with one line, an optional
@@ -140,7 +140,7 @@ function ToastCard({ item }: { item: ToastItem }) {
             className={cn(
               'rounded-lg bg-primary-foreground/15 px-2.5 py-1.5 active:bg-primary-foreground/25',
               Platform.select({
-                web: 'cursor-pointer outline-none hover:bg-primary-foreground/25 focus-visible:ring-2 focus-visible:ring-ring',
+                web: `cursor-pointer hover:bg-primary-foreground/25 ${FOCUS_RING_CLASS}`,
               }),
             )}
           >
@@ -155,7 +155,7 @@ function ToastCard({ item }: { item: ToastItem }) {
           className={cn(
             'h-7 w-7 items-center justify-center rounded-full active:bg-primary-foreground/15',
             Platform.select({
-              web: 'cursor-pointer outline-none hover:bg-primary-foreground/15 focus-visible:ring-2 focus-visible:ring-ring',
+              web: `cursor-pointer hover:bg-primary-foreground/15 ${FOCUS_RING_CLASS}`,
             }),
           )}
         >

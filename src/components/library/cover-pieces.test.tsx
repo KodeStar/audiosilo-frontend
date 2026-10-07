@@ -1,0 +1,279 @@
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { StyleSheet, Text } from 'react-native';
+
+import { settleFlashList } from '@/testing/flash-list';
+
+const mockPush = jest.fn();
+// A tile's actions menu (book actions, the player) has its own tests.
+const mockTileActions = jest.fn((_props: { request: number; book?: unknown }) => null);
+jest.mock('@/components/library/tile-actions', () => ({
+  TileActions: (p: { request: number; book?: unknown }) => mockTileActions(p),
+}));
+jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+jest.mock('@/api/provider', () => ({
+  useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
+}));
+let mockSaved: { position: number; duration: number; finished: boolean } | undefined;
+jest.mock('@/api/hooks', () => ({
+  useSavedProgress: () => mockSaved,
+  useServerInfo: () => ({ data: { capabilities: {} } }),
+}));
+let mockDownloaded = false;
+jest.mock('@/downloads/store', () => ({
+  useDownloadEntry: () =>
+    mockDownloaded ? { status: 'downloaded', manifest: { coverUri: null } } : undefined,
+}));
+// The grid clears the mini player (whose module loads the playback engine).
+jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
+jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
+let mockLayout: 'phone' | 'tablet' | 'desktop' = 'phone';
+jest.mock('@/lib/layout', () => ({
+  ...jest.requireActual('@/lib/layout'),
+  useLayout: () => mockLayout,
+}));
+
+/* eslint-disable import/first */
+import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
+
+import { CoverGrid, CoverGridSkeleton, CoverListRow } from './cover-grid';
+import { CoverTile } from './cover-tile';
+import { GhostCover, hatchLines } from './ghost-cover';
+import { ShelfRow } from './shelf-row';
+/* eslint-enable import/first */
+
+const tile = { connectionId: 'c', libraryId: 1, path: 'Dune', title: 'Dune', width: 132 };
+
+describe('CoverTile', () => {
+  beforeEach(() => {
+    mockDownloaded = false;
+    mockSaved = undefined;
+    mockPush.mockClear();
+  });
+
+  it("marks the listener's saved progress itself, unless the caller says", async () => {
+    mockSaved = { position: 3000, duration: 10_000, finished: false };
+    await render(<CoverTile {...tile} />);
+    expect(screen.getByRole('button', { name: 'Dune, 30% listened' })).toBeTruthy();
+
+    mockSaved = { position: 10_000, duration: 10_000, finished: true };
+    await render(<CoverTile {...tile} />);
+    expect(screen.getByRole('button', { name: 'Dune, Finished' })).toBeTruthy();
+
+    await render(<CoverTile {...tile} progress={0.5} />);
+    expect(screen.getByRole('button', { name: 'Dune, 50% listened' })).toBeTruthy();
+  });
+
+  it('opens the book, named by its title, caption and state', async () => {
+    mockDownloaded = true;
+    await render(<CoverTile {...tile} caption="Frank Herbert" progress={0.42} server="Maya" />);
+    const button = screen.getByRole('button', {
+      name: 'Dune, Frank Herbert, 42% listened, Downloaded, On Maya',
+    });
+    await fireEvent.press(button);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/book/[libraryId]',
+      params: { libraryId: '1', connection: 'c', path: 'Dune' },
+    });
+    expect(screen.getByText('Maya')).toBeTruthy();
+  });
+
+  // Native/web layout jest can't measure: the flags row must be bound to the tile on
+  // both sides and the server name must be the part that gives way (an iPhone showed
+  // "mac-studio-3.local:18571" running off the cover's left edge).
+  it('keeps a long server name inside the cover, ellipsized', async () => {
+    await render(<CoverTile {...tile} server="mac-studio-3.local:18571" finished />);
+    const flags = String(screen.getByTestId('tile-flags').props.className).split(' ');
+    expect(flags).toEqual(expect.arrayContaining(['left-[7px]', 'right-[7px]', 'justify-end']));
+    const name = screen.getByTestId('tile-server-flag');
+    expect(name.props.numberOfLines).toBe(1);
+    expect(String(name.props.className).split(' ')).toContain('shrink');
+  });
+
+  it('opens the book actions on a long-press, again on each, with the row it was given', async () => {
+    mockTileActions.mockClear();
+    const book = { rel_path: 'Dune' };
+    await render(<CoverTile {...tile} book={book as never} />);
+    expect(mockTileActions).not.toHaveBeenCalled();
+    const button = screen.getByRole('button', { name: 'Dune' });
+    await fireEvent(button, 'longPress');
+    expect(mockTileActions).toHaveBeenLastCalledWith(expect.objectContaining({ request: 1, book }));
+    await fireEvent(button, 'longPress');
+    expect(mockTileActions).toHaveBeenLastCalledWith(expect.objectContaining({ request: 2 }));
+    // A screen reader reaches them as the tile's "More actions".
+    expect(button.props.accessibilityActions).toEqual([
+      { name: 'longpress', label: 'More actions' },
+    ]);
+  });
+
+  it('says finished instead of a percentage', async () => {
+    await render(<CoverTile {...tile} progress={1} finished />);
+    expect(screen.getByRole('button', { name: 'Dune, Finished' })).toBeTruthy();
+  });
+
+  it('takes its own press handler', async () => {
+    const onPress = jest.fn();
+    await render(<CoverTile {...tile} onPress={onPress} />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Dune' }));
+    expect(onPress).toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+describe('GhostCover', () => {
+  it("shows only the title's initials as a thumbnail, never a clipped title", async () => {
+    await render(<GhostCover title="Restoration of Faith" position="0.5" width={56} />);
+    expect(
+      screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true }).props.children,
+    ).toBe('RF');
+    expect(screen.queryByText('Restoration of Faith')).toBeNull();
+    expect(
+      screen.getByRole('image', { name: 'Book 0.5, Restoration of Faith, Not in your library' }),
+    ).toBeTruthy();
+    await render(<GhostCover title="Restoration of Faith" width={56} server="Maya's Shelf" />);
+    expect(
+      screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true }).props.children,
+    ).toBe('RF');
+  });
+
+  it('names a missing book with its real title and place', async () => {
+    await render(<GhostCover title="Rogue Protocol" position={3} width={132} />);
+    expect(
+      screen.getByRole('image', { name: 'Book 3, Rogue Protocol, Not in your library' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Not in your library')).toBeTruthy();
+  });
+
+  it("marks a book on another server with that server's name", async () => {
+    await render(<GhostCover title="Oathbringer" width={132} server="Maya's Shelf" />);
+    expect(screen.getByRole('image', { name: "Oathbringer, On Maya's Shelf" })).toBeTruthy();
+  });
+
+  it('hatches the whole square', () => {
+    const lines = hatchLines(100);
+    expect(lines.length).toBe(14);
+    expect(lines[0][0]).toBeCloseTo(14.14, 1);
+    expect(lines.every(([, y1, , y2]) => y1 === 0 && y2 === 100)).toBe(true);
+  });
+});
+
+describe('ShelfRow and CoverGrid', () => {
+  const books = ['A', 'B', 'C'];
+
+  it('renders each tile at the shelf width (132 on a phone, 164 elsewhere)', async () => {
+    mockLayout = 'phone';
+    const widths: number[] = [];
+    await render(
+      <ShelfRow
+        data={books}
+        keyExtractor={(b) => b}
+        renderItem={(b, w) => {
+          widths.push(w);
+          return <Text>{b}</Text>;
+        }}
+      />,
+    );
+    expect(screen.getByText('A')).toBeTruthy();
+    expect(screen.getByText('C')).toBeTruthy();
+    expect(new Set(widths)).toEqual(new Set([132]));
+
+    mockLayout = 'desktop';
+    widths.length = 0;
+    await render(
+      <ShelfRow
+        data={books}
+        keyExtractor={(b) => b}
+        renderItem={(b, w) => (widths.push(w), (<Text>{b}</Text>))}
+      />,
+    );
+    expect(new Set(widths)).toEqual(new Set([164]));
+    await settleFlashList();
+  });
+
+  it('lays a phone grid in two columns of the measured width', async () => {
+    mockLayout = 'phone';
+    const widths: number[] = [];
+    await render(
+      <CoverGrid
+        data={books}
+        keyExtractor={(b) => b}
+        renderItem={(b, w) => {
+          widths.push(w);
+          return <Text>{b}</Text>;
+        }}
+        ListHeaderComponent={<Text>Header</Text>}
+      />,
+    );
+    // Not laid out yet: nothing renders until the width is known.
+    expect(screen.queryByText('A')).toBeNull();
+    await fireEvent(screen.getByTestId('cover-grid'), 'layout', {
+      nativeEvent: { layout: { width: 390, height: 800 } },
+    });
+    expect(screen.getByText('Header')).toBeTruthy();
+    expect(screen.getByText('A')).toBeTruthy();
+    expect(screen.getByText('C')).toBeTruthy();
+    // 390 less two 16 gutters, less one 14 gap, in two.
+    expect(new Set(widths)).toEqual(new Set([172]));
+    await settleFlashList();
+  });
+
+  it('shows exact cover-shaped placeholders while loading', async () => {
+    mockLayout = 'phone';
+    await render(<CoverGridSkeleton rows={2} />);
+    // Hidden from assistive tech, so the queries must include hidden elements.
+    const hidden = { includeHiddenElements: true };
+    await fireEvent(screen.getByTestId('cover-grid-skeleton', hidden), 'layout', {
+      nativeEvent: { layout: { width: 390, height: 800 } },
+    });
+    expect(screen.getAllByTestId('cover-skeleton', hidden)).toHaveLength(4);
+  });
+});
+
+describe('FilterChip', () => {
+  it('is a checkbox, checked when on, with its count in its name', async () => {
+    const onPress = jest.fn();
+    await render(<FilterChip label="In progress" count={12} selected={false} onPress={onPress} />);
+    const chip = screen.getByRole('checkbox', { name: 'In progress, 12', checked: false });
+    await fireEvent.press(chip);
+    expect(onPress).toHaveBeenCalled();
+    await render(<FilterChip label="Finished" selected onPress={jest.fn()} />);
+    expect(screen.getByRole('checkbox', { name: 'Finished', checked: true })).toBeTruthy();
+  });
+});
+
+describe('ChipRow', () => {
+  // HORIZONTAL_SCROLLER: on native a growing row would swallow the column under it.
+  it('keeps to its own height (no native flex-grow), gutter bleed included', async () => {
+    await render(
+      <ChipRow accessibilityLabel="Filters" gutter={16}>
+        <FilterChip label="Finished" selected={false} onPress={jest.fn()} />
+      </ChipRow>,
+    );
+    const style = StyleSheet.flatten(screen.getByTestId('chip-row').props.style);
+    expect(style?.flexGrow).toBe(0);
+    expect(style?.marginHorizontal).toBe(-16);
+  });
+});
+
+describe('CoverListRow', () => {
+  it('keeps its trailing menu inside the row card, beside the press, not in a gutter', async () => {
+    const onPress = jest.fn();
+    await render(
+      <CoverListRow
+        {...tile}
+        subtitle="Frank Herbert"
+        onPress={onPress}
+        trailing={<Text>menu</Text>}
+      />,
+    );
+    const row = screen.getByTestId('cover-list-row');
+    expect(String(row.props.className)).toContain('border-border');
+    expect(String(row.props.className)).toContain('bg-card');
+    expect(within(row).getByText('menu')).toBeTruthy();
+    // The press is not a second card inside the first, and doesn't hold the menu.
+    const press = screen.getByRole('button', { name: 'Dune, Frank Herbert' });
+    expect(String(press.props.className)).toContain('bg-transparent');
+    expect(within(press).queryByText('menu')).toBeNull();
+    await fireEvent.press(press);
+    expect(onPress).toHaveBeenCalled();
+  });
+});

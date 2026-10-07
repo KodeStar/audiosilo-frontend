@@ -1,6 +1,4 @@
-/** The book screen's tabs, in display order. */
-export type BookTab =
-  'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series';
+import { type BookTab, firstParam } from '@/lib/paths';
 
 /** The i18n key labelling each tab. Deliberately REUSES the existing section /
  * heading strings rather than minting tab-only duplicates (the bookmarks/history/
@@ -61,4 +59,22 @@ export function bookTabs(input: BookTabInput): BookTab[] {
   tabs.push('bookmarks', 'history', 'notes');
   if (input.hasSeries) tabs.push('series');
   return tabs;
+}
+
+const BOOK_TABS: readonly BookTab[] = [
+  'chapters',
+  'recaps',
+  'characters',
+  'bookmarks',
+  'history',
+  'notes',
+  'series',
+];
+
+/** The tab a book link's `?tab=` asks to open on (Expo Router may hand back `string[]`),
+ * or null for none or an unknown one. Only an intent: the screen still falls back to the
+ * first tab that exists. */
+export function parseBookTab(param?: string | string[]): BookTab | null {
+  const v = firstParam(param);
+  return (BOOK_TABS as readonly string[]).includes(v) ? (v as BookTab) : null;
 }

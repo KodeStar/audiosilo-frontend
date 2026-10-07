@@ -11,11 +11,8 @@ import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { bookHref, libraryHref } from '@/lib/paths';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-// A quiet surface row (PressableRow). The loud filled folder/book blocks are demoted to
-// a tinted glyph tile - folders keep a pink identity (brand/10), books/files a
-// low-alpha info-blue tint.
-
-/** One row in the filesystem browse view: a folder (pink glyph tile, drill in) or
+import { GlyphTile } from './glyph-tile';
+/** One row in the filesystem browse view: a folder (muted glyph tile, drill in) or
  * an audio file (blue glyph tile, opens the book). `connectionId` is the browse
  * scope's server, so drilling in / opening a book stays on the same connection. */
 export function EntryRow({
@@ -63,15 +60,7 @@ export function EntryRow({
           accessibilityRole="link"
           className="flex-1 flex-row items-center gap-3 px-3 py-2"
         >
-          <View
-            className={`h-10 w-10 items-center justify-center rounded-lg ${isDir ? 'bg-brand/10' : 'bg-info/10'}`}
-          >
-            <Icon
-              name={isDir ? 'folder' : 'book'}
-              size={18}
-              color={isDir ? themed.brand : themed.info}
-            />
-          </View>
+          <GlyphTile icon={isDir ? 'folder' : 'book'} tone={isDir ? 'muted' : 'info'} />
           <View className="flex-1">
             <Text variant="label" numberOfLines={1}>
               {title}

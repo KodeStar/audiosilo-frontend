@@ -11,6 +11,7 @@ import { ShakeToExtendListener } from '@/components/player/shake-to-extend-liste
 import { ShellToastHost } from '@/components/shell/shell-toast-host';
 import { RootInsetsProvider } from '@/components/ui/overlay';
 import { engine } from '@/downloads/engine';
+import { startKeepAhead } from '@/downloads/keep-ahead-controller';
 import { useDownloads } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
@@ -23,6 +24,7 @@ import '@/lib/register-sw';
 // role-bearing pressables (tab, radio, switch...). All top-level imports evaluate before
 // the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
+import { useLibrarySelection } from '@/stores/library-selection';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -62,6 +64,7 @@ export default function RootLayout() {
   const hydrateSettings = useSettings((s) => s.hydrate);
   const hydrateDownloads = useDownloads((s) => s.hydrate);
   const hydrateSeriesOrderings = useSeriesOrderings((s) => s.hydrate);
+  const hydrateLibrarySelection = useLibrarySelection((s) => s.hydrate);
   useEffect(() => {
     void (async () => {
       // Reconcile storage left incompatible by a version bump BEFORE the stores read it,
@@ -93,8 +96,9 @@ export default function RootLayout() {
       void hydrateSettings();
       void hydrateDownloads();
       void hydrateSeriesOrderings();
+      void hydrateLibrarySelection();
     })();
-  }, [hydrate, hydrateSettings, hydrateDownloads, hydrateSeriesOrderings]);
+  }, [hydrate, hydrateSettings, hydrateDownloads, hydrateSeriesOrderings, hydrateLibrarySelection]);
 
   // The nightly auto sleep timer. Framework-free (subscriptions, no rendering), so it is
   // started here rather than mounted as a component that renders null - this is simply
@@ -104,6 +108,10 @@ export default function RootLayout() {
   // the player modal is open, since the timer has to arm for a book started from the
   // mini player, the library, or a lock-screen play.
   useEffect(() => startAutoSleep(), []);
+
+  // "Keep the next books ready" (downloads the books after the loaded one when the
+  // listener opted in). Framework-free like the auto sleep timer; see the controller.
+  useEffect(() => startKeepAhead(), []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.

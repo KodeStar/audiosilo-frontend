@@ -213,7 +213,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--destructive` | `#c42b3c` | `#f0606e` | Sign out, remove server, failed download |
 | `--info` | `#2c56c9` | `#7d9bf2` | "On Maya's Shelf" (a friend's server), "Also on ..." |
 | `--seq-0..5` | pink ramp | pink ramp | Listening calendar heatmap only |
-| `--chart-1..5` | fixed order | fixed order | Storage per server, any categorical chart. A sixth series folds into "Other". |
+| `--chart-1..5` | fixed order | fixed order | Storage per server, any categorical chart. A sixth series folds into "Other". Where the view already has its pink thing (the Downloads page), start at `chart-2` and use `chart-1` last. |
 
 ### Cover-derived colour
 
@@ -633,11 +633,15 @@ The CSS in section 3 is the design reference. In the app:
   `brand-ink` (AA on both themes).
 - **Radii and the overlay shadow have their own names** (`src/global.css` `@theme`): shadcn's `--radius`
   scale is not adopted (it would move every existing `rounded-*` class; Phase 0a decision), so the section 5
-  radii are `rounded-control` (10: buttons, inputs, selects), `rounded-menu` (14: menus, popovers, toasts),
+  radii are `rounded-cover` (5: covers, cover tiles and their placeholders), `rounded-control` (10:
+  buttons, inputs, selects), `rounded-menu` (14: menus, popovers, toasts),
   `rounded-card` (16), `rounded-dialog` (20) and `rounded-sheet` (24); `--shadow-overlay` is the
   `shadow-overlay` utility (web two-layer, iOS one box-shadow, Android elevation). `cn()` knows these names.
-- **Not adopted yet:** `--wash`, `--shadow-cover*`, `--shadow-dock` and the motion tokens. They land with the
-  components that need them.
+- **`--wash`** is `WASH_STRENGTH` in `src/lib/cover-tint.ts` (with `coverTint`, the pure wash colours from a
+  book's `cover_color`), drawn by `CoverWash` (`src/components/library/cover-wash{,.web}.tsx`: SVG radial
+  gradients on native, CSS on web).
+- **Not adopted yet:** `--shadow-cover*`, `--shadow-dock` and the motion tokens (covers still use
+  `CoverFrame`'s `shadow-xs` / `shadow-lg`). They land with the components that need them.
 
 ### Components in this codebase
 
@@ -660,14 +664,33 @@ through `TextClassContext`; a primitive that renders its own text node reuses `E
 `withFlatStyle`. On web, Space presses any role-bearing pressable (tab, radio, switch, checkbox, option)
 through one react-native-web patch (`src/lib/rnw-button-fix.web.ts`). The bottom `sheet.tsx` is still hand-rolled (its comment says why).
 
+The covers and shelves of section 8 live in `src/components/library/`: `BookCover` (art via
+`coverUrl(..., { size, version })`: the downloaded copy, else the smallest thumbnail covering the drawn
+pixels when the server has `cover_sizes`, falling back to the full art; `ui/cover.tsx` draws the no-art
+fallback, the title and author, or under 72 points a two-letter monogram on the title's cloth colour,
+`src/lib/monogram.ts`), `CoverTile` (long-press / right-click opens the book actions, `TileActions`),
+`GhostCover`, `ShelfRow` (FlashList, the ledge), `CoverGrid` / `CoverGridSkeleton` / `CoverListRow`
+(sizes in `cover-layout.ts`), `QueueButton` + `useQueueActions`, `CoverWash`, the book actions
+(`books/book-actions.tsx`: `BookActionsMenu`, `BookActionsButton`), the A-Z rail (`books/az-rail.tsx`),
+`LibraryPicker` and the collection cards and dialogs (`collections/`); `FilterChip` / `ChipRow` are in
+`ui/filter-chip.tsx`. A `scrollable` `SegmentedControl` keeps the chosen segment in view and fades the
+side that has more.
+
+Phase 2's signature pieces: the spine, bookcase and mini shelf (`src/components/series/`: `Spine`,
+`Bookcase`, `MiniShelf`, `SeriesCard`, `Portrait` for authors and narrators), Home's Now card, chapter
+scale, This week card and smart shelves (`src/components/home/`), the Up next drawer, sheet, queue list
+and drop zone (`src/components/upnext/`), the Downloads page's storage bar, rules card and rows
+(`src/components/downloads/`, with `RemoveDownloadConfirm`) and the Search screen's grouped results
+(`src/components/search/`).
+
 The shell's section 8 pieces live in `src/components/shell/`: the **command palette** (`command-palette.tsx`,
 web only, on the Dialog primitive: a combobox with `aria-activedescendant` over a grouped listbox, 48 px
-options, the match in `brand-ink` bold, key hints and the result count in the footer; for now Actions,
-Books / Continue listening and Go to, since authors, series, narrators and characters need Phase 2) and the
+options, the match in `brand-ink` bold, key hints and the result count in the footer: Actions, Books / Continue listening, Series, Authors,
+Narrators, Characters (met only, the rest counted in a note row) and Go to, from the Search screen's
+model in `src/components/search/`) and the
 top bar's **profile menu** (`profile-menu.tsx`, a DropdownMenu: servers with their state, Add a server,
-the account, appearance; the household waits for Phase 8). The appearance items use the settings glyph:
-the vendored set has no sun or moon (adding one needs the FontAwesome generator's token), and the sleep
-glyph already means the sleep timer.
+the account, appearance; the household waits for Phase 8). The appearance items show the sun or the moon
+of the appearance they switch to.
 
 ### Fonts
 

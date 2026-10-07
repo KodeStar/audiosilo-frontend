@@ -412,3 +412,8 @@ export const useSession = create<SessionState>()((set, get) => ({
     });
   },
 }));
+
+/** A signed-in server's name ('' for none): "isn't on <server>", a card's server line. */
+export function useConnectionName(connectionId: string | undefined): string {
+  return useSession((s) => s.connections.find((c) => c.id === connectionId)?.name ?? '');
+}

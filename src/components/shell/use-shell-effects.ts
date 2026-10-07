@@ -1,10 +1,16 @@
 import { usePathname } from 'expo-router';
 import { useEffect } from 'react';
 
+import { BROWSE_PATHS } from '@/lib/paths';
 import { clearScrollMemory } from '@/lib/scroll-memory';
 import { useSearchStore } from '@/stores/search';
 
 import { useActiveTab } from './destinations';
+
+/** Whether a pathname is inside the browse section (its scroll memory is kept). */
+export function isBrowsePath(pathname: string): boolean {
+  return BROWSE_PATHS.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+}
 
 /**
  * The route-driven side effects of the shell, run by both `(app)` layouts:
@@ -24,7 +30,7 @@ export function useShellEffects() {
   }, [inSearch, setQuery]);
 
   const pathname = usePathname();
-  const inBrowse = pathname.startsWith('/library') || pathname.startsWith('/book');
+  const inBrowse = isBrowsePath(pathname);
   useEffect(() => {
     if (!inBrowse) clearScrollMemory();
   }, [inBrowse]);

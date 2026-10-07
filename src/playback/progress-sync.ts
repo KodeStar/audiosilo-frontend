@@ -80,6 +80,12 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
+/** How many saves wait in the offline replay queue (read-only: Home's sync pill). */
+export async function pendingSaveCount(): Promise<number> {
+  const queue = await readQueue();
+  return Array.isArray(queue) ? queue.length : 0;
+}
+
 export async function loadInitialProgress(
   api: ApiClient | null,
   connectionId: string,

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { useState } from 'react';
+import { StyleSheet } from 'react-native';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs';
 import { Text } from './text';
@@ -53,5 +54,12 @@ describe('Tabs', () => {
     await mount(<Harness />);
     const active = screen.getByRole('tab', { name: 'notes' });
     expect(String(active.props.className)).toContain('border-foreground');
+  });
+
+  // HORIZONTAL_SCROLLER: on native a growing row would swallow the column under it.
+  it('keeps a scrolling tab row to its own height (no native flex-grow)', async () => {
+    await mount(<Harness scrollable />);
+    const row = screen.getByTestId('tabs-scroller');
+    expect(StyleSheet.flatten(row.props.style)?.flexGrow).toBe(0);
   });
 });

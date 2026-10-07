@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import type { Book, ChaptersResponse } from '@/api/types';
+import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
@@ -11,7 +14,8 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Download affordance on the book detail screen: download / progress+cancel /
  * downloaded+delete / retry, with a fallback when offline storage is unavailable
- * (an insecure-context or very old browser). */
+ * (an insecure-context or very old browser). Delete asks first (the Downloads page's
+ * confirm, with the size): the only undo is downloading the book again. */
 export function DownloadControl({
   libraryId,
   path,
@@ -30,8 +34,15 @@ export function DownloadControl({
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const { supported, status, error, progress, bytes, totalBytes, start, cancel, remove } =
+  const { connectionId, supported, status, error, progress, bytes, totalBytes, start, cancel } =
     useDownloadControls(libraryId, path, book, chapterData);
+  const [confirming, setConfirming] = useState(false);
+  const confirm = (
+    <RemoveDownloadConfirm
+      target={confirming ? { connectionId, libraryId, path, title: book?.title ?? '' } : null}
+      onClose={() => setConfirming(false)}
+    />
+  );
 
   // Icon-only variant for the overview's inline button row. Each state collapses
   // to a single square (height matches the Listen button via the row's stretch).
@@ -51,13 +62,16 @@ export function DownloadControl({
     // stop = cancel the one in progress (the bar below already signals progress).
     if (status === 'downloaded') {
       return (
-        <Button
-          icon="trash"
-          variant="secondary"
-          size="lg"
-          onPress={remove}
-          accessibilityLabel={t('library.download.delete')}
-        />
+        <>
+          <Button
+            icon="trash"
+            variant="secondary"
+            size="lg"
+            onPress={() => setConfirming(true)}
+            accessibilityLabel={t('library.download.remove')}
+          />
+          {confirm}
+        </>
       );
     }
     if (status === 'downloading' || status === 'queued') {
@@ -107,14 +121,15 @@ export function DownloadControl({
           </Text>
         </View>
         <Pressable
-          onPress={remove}
+          onPress={() => setConfirming(true)}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={t('library.download.delete')}
+          accessibilityLabel={t('library.download.remove')}
           className="h-11 w-11 items-center justify-center rounded-lg bg-muted"
         >
           <Icon name="trash" size={16} color={themed.mutedForeground} />
         </Pressable>
+        {confirm}
       </View>
     );
   }
@@ -139,12 +154,7 @@ export function DownloadControl({
             <Icon name="close" size={16} color={themed.mutedForeground} />
           </Pressable>
         </View>
-        <View className="h-1.5 overflow-hidden rounded-full bg-muted">
-          <View
-            className="h-full rounded-full bg-brand"
-            style={{ width: `${Math.max(4, progress * 100)}%` }}
-          />
-        </View>
+        <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
       </View>
     );
   }
@@ -182,12 +192,7 @@ export function DownloadProgress({ libraryId, path }: { libraryId: number; path:
           : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
-      <View className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <View
-          className="h-full rounded-full bg-brand"
-          style={{ width: `${Math.max(4, progress * 100)}%` }}
-        />
-      </View>
+      <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
     </View>
   );
 }

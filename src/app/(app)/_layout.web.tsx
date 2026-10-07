@@ -8,6 +8,8 @@ import { TABS, useActiveTab } from '@/components/shell/destinations';
 import { PhoneTabBar } from '@/components/shell/phone-tab-bar';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
+import { UpNextSheet } from '@/components/upnext/up-next-sheet';
+import { useUpNextShortcut } from '@/components/upnext/use-up-next-shortcut';
 
 /**
  * The web shell: headless `expo-router/ui` Tabs over the SAME `(home)`/`(library)`/...
@@ -20,12 +22,14 @@ import { useShellEffects } from '@/components/shell/use-shell-effects';
  * the URL to another tab). Phone: the page (with its Stack header), the mini player and
  * our tab bar. Tablet/desktop: top bar + sub-nav + banners, the page beside the drawer
  * slot, the docked player bar. The command palette (⌘K, `/`, the omnisearch) opens over
- * any tab page, at every width.
+ * any tab page, at every width; so does Up next's tablet/phone sheet (Q toggles Up next).
  */
 function WebShell() {
   useShellEffects();
   // Not over the full player or the finished screen (root modals: no active tab).
-  usePaletteShortcut(useActiveTab() !== null);
+  const onTabPage = useActiveTab() !== null;
+  usePaletteShortcut(onTabPage);
+  useUpNextShortcut(onTabPage);
   return (
     <Tabs style={{ flex: 1 }}>
       <TabList style={{ display: 'none' }}>
@@ -45,6 +49,7 @@ function WebShell() {
       >
         <TabSlot />
       </ShellFrame>
+      <UpNextSheet />
       <CommandPalette />
     </Tabs>
   );

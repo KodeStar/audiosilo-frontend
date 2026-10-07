@@ -1,6 +1,7 @@
 import * as SwitchPrimitives from '@rn-primitives/switch';
 import { Platform, View } from 'react-native';
 
+import { FOCUS_RING_OFFSET_CLASS } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
 /**
@@ -20,7 +21,7 @@ export function Switch({
         'h-[24px] w-[40px] shrink-0 flex-row items-center rounded-full px-[3px]',
         props.checked ? 'bg-brand' : 'bg-border-strong',
         Platform.select({
-          web: 'cursor-pointer outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none',
+          web: `cursor-pointer transition-colors motion-reduce:transition-none ${FOCUS_RING_OFFSET_CLASS}`,
         }),
         props.disabled && 'opacity-50',
         className,

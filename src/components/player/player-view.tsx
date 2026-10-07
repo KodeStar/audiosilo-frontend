@@ -13,10 +13,10 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
-import { CoverFrame } from '@/components/library/cover-frame';
 import { useAddBookmark } from '@/api/hooks';
 import { useApi } from '@/api/provider';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';
@@ -33,7 +33,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock } from '@/lib/format';
+import { formatClock, formatSpeed } from '@/lib/format';
 import { bookHref, finishedHref, pathLeaf } from '@/lib/paths';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { wallClockSeconds } from '@/playback/rate';
@@ -260,7 +260,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
     if (!info) return;
     goTo(finishedHref(info.connectionId, info.libraryId, info.path, true));
   };
-  const rateLabel = `${Number(rate.toFixed(2))}×`;
+  const rateLabel = formatSpeed(rate);
   // The engine reports 'error' when a stream fails (e.g. became unreachable mid-
   // playback). Surface it with a retry rather than silently sitting on a dead
   // stream where the play button does nothing. While buffering ('loading') show a

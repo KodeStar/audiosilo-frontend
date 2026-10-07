@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 
 import {
   useBook,
@@ -11,7 +11,6 @@ import {
   useLibraries,
   useServerInfo,
 } from '@/api/hooks';
-import { CoverFrame } from '@/components/library/cover-frame';
 import { useApi, useScopedCid } from '@/api/provider';
 import { ContentScope } from '@/components/layout/content-scope';
 import {
@@ -24,16 +23,19 @@ import {
   seriesRails,
   summaryIsVisible,
 } from '@/components/library/book-meta';
-import { type BookTab, bookTabs, TAB_LABEL_KEY } from '@/components/library/book-tabs';
-import { listeningProgressFor } from '@/components/library/meta-gating';
-import { BookmarksSection } from '@/components/library/bookmarks-section';
+import { bookPanes } from '@/components/library/book-panes';
 import { BookStats } from '@/components/library/book-stats';
+import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { BookVersions } from '@/components/library/book-versions';
+import { BookmarksSection } from '@/components/library/bookmarks-section';
+import { CoverFrame } from '@/components/library/cover-frame';
 import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { HistorySection } from '@/components/library/history-section';
+import { chapterStartsOf, listeningProgressFor } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { useListeningPosition } from '@/components/player/use-listening-position';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Cover } from '@/components/ui/cover';
@@ -46,11 +48,10 @@ import { Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
-import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
+import { type BookTab, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { chapterBookOffset } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
-import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { selectCurrentChapter, usePlayer } from '@/playback/store';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
@@ -105,9 +106,14 @@ export default function BookDetailScreen() {
 function BookDetailContent() {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
+  const {
+    libraryId: libraryIdParam,
+    path: pathParam,
+    tab: tabParam,
+  } = useLocalSearchParams<{
     libraryId: string;
     path?: string | string[];
+    tab?: string | string[];
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
@@ -115,10 +121,14 @@ function BookDetailContent() {
   // The connection rides in the `?connection=` query param; the `(app)` layout publishes
   // it as the scope, so this screen's content resolves to that server (not the default).
   const cid = useScopedCid();
-  // Tablet and desktop get the two-pane layout (the cover panel is narrower on a
-  // tablet); a phone gets the single column.
+  // Tablet and desktop play inline (the docked player bar is the transport) and get the
+  // two-pane layout where the PAGE is wide enough (`bookPanes`: the Up next drawer can
+  // leave a desktop page phone-narrow); a phone gets the single column and the modal.
   const layout = useLayout();
   const wide = layout !== 'phone';
+  const [pageWidth, setPageWidth] = useState(0);
+  const panes = bookPanes(layout, pageWidth);
+  const measurePage = (e: LayoutChangeEvent) => setPageWidth(e.nativeEvent.layout.width);
 
   const { data: book, isLoading, refetch } = useBook(libraryId, path);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
@@ -137,21 +147,20 @@ function BookDetailContent() {
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const currentChapter = usePlayer(selectCurrentChapter);
-  // The player's live whole-book POSITION, bucketed (see LIVE_POSITION_BUCKET_S) and
-  // zeroed unless this library on this connection is the one playing - so an unrelated
-  // book playing elsewhere never re-renders this screen. The caller still checks
-  // `isThisPlaying` (which also matches the path) before trusting it.
-  const livePosition = usePlayer((s) =>
-    s.nowPlaying?.connectionId === cid && s.nowPlaying.libraryId === libraryId
-      ? Math.floor(selectBookPosition(s) / LIVE_POSITION_BUCKET_S) * LIVE_POSITION_BUCKET_S
-      : 0,
+  // Where the listener is: the player's live whole-book POSITION while this book plays
+  // (bucketed, see LIVE_POSITION_BUCKET_S, so an unrelated book playing elsewhere never
+  // re-renders this screen), never below the saved one; else the saved one.
+  const listeningPosition = useListeningPosition(
+    { connectionId: cid, libraryId, path },
+    progress?.position,
+    LIVE_POSITION_BUCKET_S,
   );
   const downloadEntry = useDownloadEntry(cid, libraryId, path);
   const paddingBottom = useMiniPlayerInset();
   // The selected tab. Held as an intent: which tabs EXIST depends on data that
   // can arrive late (or vanish), so the render below falls back to the first
   // available tab rather than showing a blank panel.
-  const [tab, setTab] = useState<BookTab>('chapters');
+  const [tab, setTab] = useState<BookTab>(() => parseBookTab(tabParam) ?? 'chapters');
   // The spoiler reveal is held HERE, not per tab: revealing in Characters and
   // switching to Recaps must not re-hide everything the reader just chose to see.
   const [showSpoilers, setShowSpoilers] = useState(false);
@@ -182,11 +191,7 @@ function BookDetailContent() {
   // so it is recomputed from the cumulative file durations (shared with book-queue) -
   // an O(chapters x files) pass, memoized because the History and metadata tabs read
   // it on every render, including while parked on another tab.
-  const chapterStarts = useMemo(() => {
-    if (files.length === 0) return chapters.map((ch) => ch.book_offset);
-    const fileDurations = files.map((f) => ({ path: f.rel_path, duration: f.duration }));
-    return chapters.map((ch) => chapterBookOffset(fileDurations, ch));
-  }, [chapters, files]);
+  const chapterStarts = useMemo(() => chapterStartsOf(chapters, files), [chapters, files]);
   // Chapters carrying the corrected offset, so the History tab can label each
   // listening span with its chapter.
   const historyChapters = useMemo(
@@ -365,7 +370,7 @@ function BookDetailContent() {
   // that has not ticked yet can't briefly un-reveal what the saved one already showed.
   const listening = listeningProgressFor({
     chapterStarts,
-    position: isThisPlaying ? Math.max(livePosition, progress?.position ?? 0) : progress?.position,
+    position: listeningPosition,
     finished: !!progress?.finished,
   });
   // Whether the whole-book summary will actually render - the same predicate the
@@ -456,11 +461,11 @@ function BookDetailContent() {
     </Tabs>
   );
 
-  if (wide) {
+  if (panes) {
     // The cover panel never carries a transport: the docked player bar does, so while
     // this book plays its button opens the full player instead of restarting it.
     return (
-      <View className="flex-1 flex-row">
+      <View testID="book-two-pane" className="flex-1 flex-row" onLayout={measurePage}>
         <ScrollView className="flex-1" contentContainerClassName="gap-4 p-6 lg:p-8">
           <BreadCrumbs crumbs={crumbs} />
           <BookVersions book={book} connectionId={cid} />
@@ -477,7 +482,7 @@ function BookDetailContent() {
 
         <View
           className={`overflow-hidden border-l border-border ${
-            layout === 'desktop' ? 'w-[380px]' : 'w-[300px]'
+            panes.panel === 380 ? 'w-[380px]' : 'w-[300px]'
           }`}
         >
           <View className="flex-1 items-center justify-center">
@@ -532,7 +537,9 @@ function BookDetailContent() {
 
   return (
     <ScrollView
+      testID="book-single-column"
       className="flex-1"
+      onLayout={measurePage}
       contentContainerClassName="gap-6 p-4"
       contentContainerStyle={{ paddingBottom }}
     >
@@ -567,13 +574,25 @@ function BookDetailContent() {
 
       <View className="gap-3">
         <View className="flex-row gap-2">
-          <Button
-            size="lg"
-            title={t('book.listen')}
-            icon="play"
-            className="flex-1"
-            onPress={() => goPlay({})}
-          />
+          {/* A tablet or desktop page too narrow for two panes plays inline too: while this
+              book plays, its button opens the player rather than restarting the book. */}
+          {wide && isThisPlaying ? (
+            <Button
+              size="lg"
+              title={t('book.openPlayer')}
+              icon="chevron-up"
+              className="flex-1"
+              onPress={() => router.push('/player')}
+            />
+          ) : (
+            <Button
+              size="lg"
+              title={t('book.listen')}
+              icon="play"
+              className="flex-1"
+              onPress={() => goPlay({})}
+            />
+          )}
           <DownloadControl
             libraryId={libraryId}
             path={path}

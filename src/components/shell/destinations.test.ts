@@ -3,6 +3,8 @@
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'light', pref: 'light', setPref: jest.fn() }),
 }));
+// top-bar -> the Up next button -> the playback store (a native module).
+jest.mock('@/components/upnext/up-next-button', () => ({ UpNextButton: () => null }));
 
 /* eslint-disable import/first */
 import {
@@ -15,7 +17,7 @@ import {
   tabStackListeners,
   TOP_BAR_TABS,
 } from './destinations';
-import { serverLine } from './top-bar';
+import { OMNISEARCH_MIN, omnisearchFits, serverLine } from './top-bar';
 /* eslint-enable import/first */
 
 describe('destinations', () => {
@@ -47,14 +49,18 @@ describe('destinations', () => {
 });
 
 describe('tabStackListeners', () => {
-  const chain = () => {
+  const chain = (rootName = 'index', tab = '(home)') => {
     const calls: string[] = [];
-    type Nav = { replaceParams: () => void; getParent: () => Nav | undefined };
+    const replaced: Record<string, object> = {};
+    type Nav = { replaceParams: (p: object) => void; getParent: () => Nav | undefined };
     const nav = (name: string, parent?: Nav): Nav => ({
-      replaceParams: () => calls.push(name),
+      replaceParams: (p) => {
+        calls.push(name);
+        replaced[name] = p;
+      },
       getParent: () => parent,
     });
-    return { calls, navigation: nav('index', nav('(home)', nav('(app)'))) };
+    return { calls, replaced, navigation: nav(rootName, nav(tab, nav('(app)'))) };
   };
 
   it('clears params a cold link left on a tab root, and on every ancestor', () => {
@@ -71,6 +77,33 @@ describe('tabStackListeners', () => {
       navigation,
     }).focus();
     expect(calls).toEqual([]);
+  });
+
+  it("keeps a root's own params (Library's mode) and clears only the rest", () => {
+    const own = chain('library/index', '(library)');
+    tabStackListeners({
+      route: { name: 'library/index', params: { mode: 'authors' } },
+      navigation: own.navigation,
+    }).focus();
+    expect(own.calls).toEqual([]);
+
+    const mixed = chain('library/index', '(library)');
+    tabStackListeners({
+      route: { name: 'library/index', params: { mode: 'series', libraryId: '1' } },
+      navigation: mixed.navigation,
+    }).focus();
+    expect(mixed.calls).toEqual(['library/index', '(library)', '(app)']);
+    expect(mixed.replaced['library/index']).toEqual({ mode: 'series' });
+    expect(mixed.replaced['(app)']).toEqual({});
+  });
+
+  it("does not let another root keep Library's params", () => {
+    const { replaced, navigation } = chain();
+    tabStackListeners({
+      route: { name: 'index', params: { mode: 'authors' } },
+      navigation,
+    }).focus();
+    expect(replaced.index).toEqual({});
   });
 });
 
@@ -114,5 +147,16 @@ describe('derived destination lists', () => {
   it('lists the top bar destinations without Search and Me', () => {
     expect(TOP_BAR_TABS.map((t) => t.name)).toEqual(['(home)', '(library)', '(offline)']);
     expect(PHONE_TABS).toHaveLength(5);
+  });
+});
+
+describe('omnisearchFits', () => {
+  it('keeps the field while the middle has room beside the destinations', () => {
+    expect(omnisearchFits(140 + 16 + OMNISEARCH_MIN, 140)).toBe(true);
+    expect(omnisearchFits(140 + 16 + OMNISEARCH_MIN - 1, 140)).toBe(false);
+  });
+
+  it('counts an unmeasured bar as fitting', () => {
+    expect(omnisearchFits(0, 0)).toBe(true);
   });
 });

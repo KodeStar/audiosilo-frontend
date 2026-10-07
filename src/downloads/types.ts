@@ -2,8 +2,31 @@ import type { Book, ChaptersResponse } from '@/api/types';
 
 export type DownloadStatus = 'queued' | 'downloading' | 'downloaded' | 'error';
 
-/** A downloaded audio file: the book-relative path mapped to its local file:// uri. */
-export type DownloadedFile = { relPath: string; localUri: string };
+/** A downloaded audio file: the book-relative path mapped to its local file:// uri.
+ * `bytes` is what was written (absent on entries saved before it was recorded). */
+export type DownloadedFile = { relPath: string; localUri: string; bytes?: number };
+
+/** Why a download stopped (`classifyDownloadError`), so the UI can say what went wrong
+ * in the reader's language instead of echoing an engine message.
+ * - `network`: the server stopped answering mid-transfer (or never answered);
+ * - `server`: it answered with an HTTP error (`status`);
+ * - `storage`: this device or browser ran out of room;
+ * - `unservable`: saved, but the web service worker can't play it offline yet;
+ * - `removed`: the server's connection was removed while it waited;
+ * - `interrupted`: the app closed (or was killed) before it finished;
+ * - `unknown`: anything else. */
+export type DownloadFailure = {
+  kind: 'network' | 'server' | 'storage' | 'unservable' | 'removed' | 'interrupted' | 'unknown';
+  status?: number;
+  /** The share of the book (0..1) whose files finished before it stopped: they stay on
+   * the device (across a restart, while every one of them is still there), and a retry
+   * skips them. */
+  kept?: number;
+};
+
+/** Who asked for a download: the listener (a button, or starting the book with automatic
+ * downloads on) or "Keep the next books ready". Shown on the Downloads page. */
+export type DownloadOrigin = 'listener' | 'keep-ahead';
 
 /**
  * Offline source of truth for a downloaded book - everything the playback layer
@@ -33,7 +56,21 @@ export type DownloadEntry = {
   /** Total bytes when known (sum of file sizes), else 0. */
   totalBytes: number;
   error?: string;
+  /** The classified reason for an `error` status (absent on older saved entries). */
+  failure?: DownloadFailure;
+  /** Absent means `listener`. */
+  origin?: DownloadOrigin;
   manifest: DownloadManifest;
+};
+
+/** Room for downloads where it is knowable. Native: the device's disk (`free`, and the
+ * `capacity` of the disk). Web: the origin's quota from `navigator.storage.estimate()`
+ * (`capacity` = the quota, `free` = quota minus everything this site stores; other
+ * apps' use is not knowable there). */
+export type StorageEstimate = {
+  scope: 'device' | 'browser';
+  capacity: number;
+  free: number;
 };
 
 export type DownloadProgressCb = (bytesWritten: number, totalBytes: number) => void;
@@ -94,4 +131,7 @@ export interface DownloadEngine {
   clearAll?(): Promise<void>;
   /** Total bytes used by all downloads. */
   totalBytesUsed(): Promise<number>;
+  /** How much room there is (see {@link StorageEstimate}), or null when the platform
+   * can't say. */
+  storageEstimate(): Promise<StorageEstimate | null>;
 }

@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { Capabilities, ServerInfo } from '@/api/types';
+import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // The capability-gated hooks must never send a request the connected server does not
 // advertise (CROSS-REPO §15: shipped clients and older servers coexist). The provider is
@@ -137,6 +138,8 @@ function serverWith(id: string, caps: Partial<Capabilities>): ServerInfo {
 }
 
 const queryClients: QueryClient[] = [];
+
+notifyQueriesSynchronously();
 
 /** Render `useHooks` against stub servers advertising `servers[id]`, one stub client per
  * connection id. A negative test then waits until the hooks have RENDERED with the

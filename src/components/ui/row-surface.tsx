@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { Platform, View, type ViewProps } from 'react-native';
 
+import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
 import { AnimatedPressable, type AnimatedPressableProps } from './animated-pressable';
@@ -34,7 +35,7 @@ export const PressableRow = forwardRef<View, AnimatedPressableProps>(function Pr
         SURFACE,
         'active:bg-accent hover:bg-accent',
         Platform.select({
-          web: 'cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          web: `cursor-pointer ${FOCUS_RING_CLASS}`,
         }),
         className,
       )}

@@ -8,3 +8,8 @@
 export function contentKey(connectionId: string, libraryId: number, path: string): string {
   return `${connectionId}:${libraryId}:${path}`;
 }
+
+/** `contentKey` of anything that names a book by where it lives. */
+export function contentKeyOf(b: { connectionId: string; libraryId: number; path: string }): string {
+  return contentKey(b.connectionId, b.libraryId, b.path);
+}

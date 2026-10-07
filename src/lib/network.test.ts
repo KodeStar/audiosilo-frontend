@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import * as Network from 'expo-network';
 
-import { canAutoDownload } from './network';
+import { canAutoDownload, onNetworkChange } from './network';
 
 // The real module needs a native ExpoNetwork; stub it and drive each branch.
 jest.mock('expo-network', () => ({
@@ -67,5 +67,25 @@ describe('canAutoDownload', () => {
     Platform.OS = 'web';
     await expect(canAutoDownload('wifi')).resolves.toBe(true);
     expect(mockGetState).not.toHaveBeenCalled();
+  });
+});
+
+describe('onNetworkChange', () => {
+  it('subscribes to the native network events and unsubscribes', () => {
+    const remove = jest.fn();
+    const add = jest.fn(() => ({ remove }));
+    (Network as unknown as { addNetworkStateListener: unknown }).addNetworkStateListener = add;
+    Platform.OS = 'ios';
+    const listener = jest.fn();
+    const off = onNetworkChange(listener);
+    (add.mock.calls[0] as unknown as [() => void])[0]();
+    expect(listener).toHaveBeenCalled();
+    off();
+    expect(remove).toHaveBeenCalled();
+  });
+
+  it('subscribes to nothing on the web', () => {
+    Platform.OS = 'web';
+    expect(() => onNetworkChange(jest.fn())()).not.toThrow();
   });
 });

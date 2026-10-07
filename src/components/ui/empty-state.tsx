@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { cn } from '@/lib/utils';
@@ -8,35 +9,58 @@ import { Icon, type IconName } from './icon';
 import { Text } from './text';
 
 export type EmptyStateProps = {
-  /** Any glyph from icon-data.ts; defaults to the neutral "inbox". */
+  /** Any glyph from icon-data.ts; defaults to the neutral "inbox". Not drawn with `art`. */
   icon?: IconName;
+  /** The state's picture (`GhostCovers`, `GhostSpines`, a ghost shelf) in place of the
+   * icon. */
+  art?: ReactNode;
   title: string;
   /** One-line supporting hint below the title. */
   hint?: string;
   /** Optional call to action. */
   action?: { label: string; onPress: () => void; icon?: IconName };
+  /** `card`: on a quiet card, for a state inside a page (a list's empty or failed load). */
+  variant?: 'plain' | 'card';
   className?: string;
 };
 
 /**
- * A quiet, centered empty state: a muted icon, a title, an optional hint, and an
- * optional action button. Deliberately borderless (no Card) with generous vertical
- * padding - it teaches rather than boxing off a gray sentence.
+ * An empty state (STYLEGUIDE section 8: one picture, one headline, one sentence, one
+ * action), centred. Plain by default - it teaches rather than boxing off a gray
+ * sentence - or on a quiet card (`variant="card"`). A picture (`art`) makes it a page's
+ * state, with a heading; an icon keeps it a quiet section note.
  */
-export function EmptyState({ icon = 'inbox', title, hint, action, className }: EmptyStateProps) {
+export function EmptyState({
+  icon = 'inbox',
+  art,
+  title,
+  hint,
+  action,
+  variant = 'plain',
+  className,
+}: EmptyStateProps) {
   const themed = useThemeColors();
-  const iconColor = themed.mutedForeground;
-
+  const card = variant === 'card';
   return (
-    // cn: a caller's padding (e.g. a tab panel's py-6) must beat the default py-12 on
-    // every platform, not only where the stylesheet happens to order it last.
-    <View className={cn('items-center justify-center gap-3 px-6 py-12', className)}>
-      <Icon name={icon} size={40} color={iconColor} />
-      <Text variant="title" className="text-center">
+    // cn: a caller's padding (e.g. a tab panel's py-6) must beat the default on every
+    // platform, not only where the stylesheet happens to order it last.
+    <View
+      className={cn(
+        'items-center justify-center gap-3 px-6',
+        card ? 'rounded-2xl border border-border bg-card py-10' : 'py-12',
+        className,
+      )}
+    >
+      {art ?? <Icon name={icon} size={40} color={themed.mutedForeground} />}
+      <Text
+        variant={art || card ? 'heading' : 'title'}
+        className="text-center"
+        accessibilityRole="header"
+      >
         {title}
       </Text>
       {hint ? (
-        <Text variant="muted" className="text-center">
+        <Text variant="muted" className="max-w-[440px] text-center">
           {hint}
         </Text>
       ) : null}
@@ -44,9 +68,10 @@ export function EmptyState({ icon = 'inbox', title, hint, action, className }: E
         <Button
           title={action.label}
           icon={action.icon}
-          variant="secondary"
+          variant={card ? 'outline' : 'secondary'}
+          size={card ? 'sm' : undefined}
           onPress={action.onPress}
-          className="mt-2"
+          className={card ? undefined : 'mt-2'}
         />
       ) : null}
     </View>

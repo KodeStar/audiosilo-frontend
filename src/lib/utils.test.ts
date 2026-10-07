@@ -25,6 +25,7 @@ describe('cn', () => {
 
   it('knows the Stacks radii and overlay shadow', () => {
     expect(cn('rounded-lg', 'rounded-control')).toBe('rounded-control');
+    expect(cn('rounded-cover', 'rounded-full')).toBe('rounded-full');
     expect(cn('rounded-dialog', 'rounded-full')).toBe('rounded-full');
     expect(cn('shadow-xs', 'shadow-overlay')).toBe('shadow-overlay');
   });

@@ -2,6 +2,8 @@ import type { FsEntry } from '@/api/types';
 import {
   filterEntries,
   groupByLetter,
+  headIndexForLetter,
+  letterItems,
   presentLetters,
   sectionIndexForLetter,
   sectionLetter,
@@ -19,8 +21,13 @@ describe('sectionLetter', () => {
 
   it('buckets digits, symbols and non-Latin starts under "#"', () => {
     expect(sectionLetter('3 Body Problem')).toBe('#');
-    expect(sectionLetter('éclair')).toBe('#');
+    expect(sectionLetter('吾輩')).toBe('#');
     expect(sectionLetter('')).toBe('#');
+  });
+
+  it('folds accents, so "Émile" files under E', () => {
+    expect(sectionLetter('éclair')).toBe('E');
+    expect(sectionLetter('Émile Zola')).toBe('E');
   });
 
   it('ignores leading whitespace', () => {
@@ -88,5 +95,52 @@ describe('sectionIndexForLetter', () => {
 
   it('returns -1 when there are no sections', () => {
     expect(sectionIndexForLetter([], 'A')).toBe(-1);
+  });
+});
+
+describe('groupByLetter over other items', () => {
+  it('groups by the name an accessor gives', () => {
+    const books = [
+      { title: 'Dune' },
+      { title: 'anathem' },
+      { title: '1984' },
+      { title: 'Dracula' },
+    ];
+    expect(groupByLetter(books, (b) => b.title)).toEqual([
+      { letter: 'A', data: [{ title: 'anathem' }] },
+      { letter: 'D', data: [{ title: 'Dune' }, { title: 'Dracula' }] },
+      { letter: '#', data: [{ title: '1984' }] },
+    ]);
+  });
+});
+
+describe('letterItems / headIndexForLetter', () => {
+  const { items, heads } = letterItems(['Anathem', 'Babel', 'Body', 'Dune', '1984'], (s) => s);
+
+  it('groups A to Z then #, each led by its head', () => {
+    expect(items.map((i) => (i.kind === 'head' ? `#${i.letter}` : i.item))).toEqual([
+      '#A',
+      'Anathem',
+      '#B',
+      'Babel',
+      'Body',
+      '#D',
+      'Dune',
+      '##',
+      '1984',
+    ]);
+    expect(heads).toEqual([
+      { letter: 'A', index: 0 },
+      { letter: 'B', index: 2 },
+      { letter: 'D', index: 5 },
+      { letter: '#', index: 7 },
+    ]);
+  });
+
+  it('jumps to the letter, else the next one, else the last', () => {
+    expect(headIndexForLetter(heads, 'B')).toBe(2);
+    expect(headIndexForLetter(heads, 'C')).toBe(5);
+    expect(headIndexForLetter(heads, 'Z')).toBe(7);
+    expect(headIndexForLetter([], 'A')).toBe(-1);
   });
 });

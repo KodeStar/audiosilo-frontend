@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import { SegmentedControl } from './toggle-group';
 
@@ -45,6 +45,22 @@ describe('SegmentedControl', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('shows an optional count after the label, inside its accessible name', async () => {
+    await mount(
+      <SegmentedControl
+        options={[
+          { value: 'all', label: 'All' },
+          { value: 'books', label: 'Books', count: 3249 },
+        ]}
+        value="all"
+        onChange={jest.fn()}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Books, 3249' })).toBeTruthy();
+    expect(screen.getByText('3,249')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'All' })).toBeTruthy();
+  });
+
   it('raises the chosen segment on a card (Stacks), not a pink fill', async () => {
     await mount(<SegmentedControl options={[...options]} value="books" onChange={jest.fn()} />);
     const chosen = String(screen.getByRole('radio', { name: 'Books' }).props.className);
@@ -69,5 +85,15 @@ describe('SegmentedControl', () => {
     await mount(<SegmentedControl options={[...options]} value="all" onChange={onChange} />);
     await fireEvent.press(screen.getByRole('radio', { name: 'Books' }));
     expect(onChange).toHaveBeenCalledWith('books');
+  });
+
+  // Native-only layout jest can't measure (HORIZONTAL_SCROLLER says why): the phone
+  // Library's sections ate the screen and its grid got 0 height.
+  it('keeps a scrolling control to its own height (no native flex-grow)', async () => {
+    await mount(
+      <SegmentedControl options={[...options]} value="all" onChange={jest.fn()} scrollable />,
+    );
+    const scroller = screen.getByTestId('segment-scroller');
+    expect(StyleSheet.flatten(scroller.props.style)?.flexGrow).toBe(0);
   });
 });

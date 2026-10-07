@@ -10,4 +10,5 @@ export const engine: DownloadEngine = {
   fileExists: async () => false,
   removeBook: async () => {},
   totalBytesUsed: async () => 0,
+  storageEstimate: async () => null,
 };

@@ -108,7 +108,15 @@ jest.mock('react-native-reanimated', () => {
     // Layout-animation builders (`FadeIn.duration(200).reduceMotion(...)`): every
     // modifier returns the same chainable stub; the mocked Animated views ignore them.
     ...Object.fromEntries(
-      ['FadeIn', 'FadeOut', 'FadeInUp', 'FadeInDown', 'SlideInDown', 'SlideOutDown'].map((n) => {
+      [
+        'FadeIn',
+        'FadeOut',
+        'FadeInUp',
+        'FadeInDown',
+        'SlideInDown',
+        'SlideOutDown',
+        'LinearTransition',
+      ].map((n) => {
         const builder: Record<string, unknown> = {};
         for (const m of ['duration', 'delay', 'reduceMotion', 'withInitialValues', 'easing'])
           builder[m] = () => builder;
@@ -131,5 +139,19 @@ jest.mock('expo-secure-store', () => {
       store.delete(k);
       return Promise.resolve();
     }),
+  };
+});
+
+// FlashList v2 measures its parent and items natively (nothing under Node). Fixed
+// measurements - a 400x900 viewport of 100x100 items, the values of the package's own
+// `jestSetup.js`, whose FlashList -> RecyclerView swap no longer matches its exports -
+// let a list render its first items in tests.
+jest.mock('@shopify/flash-list/dist/recyclerview/utils/measureLayout', () => {
+  const viewport = { x: 0, y: 0, width: 400, height: 900 };
+  return {
+    ...jest.requireActual('@shopify/flash-list/dist/recyclerview/utils/measureLayout'),
+    measureParentSize: jest.fn(() => viewport),
+    measureFirstChildLayout: jest.fn(() => viewport),
+    measureItemLayout: jest.fn(() => ({ x: 0, y: 0, width: 100, height: 100 })),
   };
 });

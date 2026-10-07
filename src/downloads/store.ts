@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { create } from 'zustand';
 
 import { resolveClient } from '@/api/connection-clients';
@@ -10,7 +11,14 @@ import { bookFileSpecs } from '@/playback/book-queue';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
-import type { DownloadedFile, DownloadEntry, DownloadManifest } from './types';
+import { classifyDownloadError } from './failure';
+import type {
+  DownloadedFile,
+  DownloadEntry,
+  DownloadFailure,
+  DownloadManifest,
+  DownloadOrigin,
+} from './types';
 
 const KEY = 'audiosilo.downloads';
 
@@ -26,16 +34,31 @@ let running = false;
 const queue: string[] = [];
 const controllers = new Map<string, AbortController>();
 
+// Books whose download was cancelled or removed in this session (by the listener, or by
+// "remove a download when you finish the book"). Automatic downloads skip them, so a
+// book someone just removed is never fetched again behind their back; the listener
+// downloading it again clears the mark. Session-only on purpose: memory, not storage.
+const declined = new Set<string>();
+
+/** Whether this book's download was cancelled or removed earlier in this session. */
+export function isDeclined(connectionId: string, libraryId: number, path: string): boolean {
+  return declined.has(downloadKey(connectionId, libraryId, path));
+}
+
 type DownloadsState = {
   entries: Registry;
   hydrated: boolean;
   supported: boolean;
   hydrate: () => Promise<void>;
+  /** Queue a book. `origin` says who asked (default: the listener, which also lifts a
+   * cancel/remove mark from earlier in the session). An errored entry is retried,
+   * keeping the files it already finished. */
   download: (
     connectionId: string,
     libraryId: number,
     book: Book,
     chapterData?: ChaptersResponse,
+    origin?: DownloadOrigin,
   ) => void;
   cancel: (connectionId: string, libraryId: number, path: string) => void;
   remove: (connectionId: string, libraryId: number, path: string) => Promise<void>;
@@ -56,20 +79,21 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       // files are still on disk. Without this the existence check below fails and
       // the book is dropped *and deleted* - the download vanishes after a rebuild.
       const e = relocateEntry(raw);
-      // Only fully-downloaded books survive a relaunch; our engine can't resume a
-      // download interrupted by an app kill, so partials are dropped + cleaned up.
-      const present =
-        e.status === 'downloaded' &&
+      // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
+      const allPresent =
         e.manifest.files.length > 0 &&
         (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
           Boolean,
         );
+      const revived = reviveEntry(e, allPresent);
       // Key on the entry's own connection-scoped id (stale un-scoped entries from before
       // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
       const key = downloadKey(e.connectionId, e.libraryId, e.path);
-      if (present) {
-        cleaned[key] = e;
-        seedQueryCache(e.connectionId, e.libraryId, e.path, e.manifest);
+      if (revived) {
+        cleaned[key] = revived;
+        if (revived.status === 'downloaded') {
+          seedQueryCache(e.connectionId, e.libraryId, e.path, e.manifest);
+        }
       } else {
         void engine.removeBook(e.connectionId, e.libraryId, e.path);
       }
@@ -96,16 +120,19 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     }
   },
 
-  download: (connectionId, libraryId, book, chapterData) => {
+  download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
     if (!engine.supported) return;
     const key = downloadKey(connectionId, libraryId, book.rel_path);
     const existing = get().entries[key];
     if (existing && existing.status !== 'error') return; // already queued/downloading/done
+    if (origin === 'listener') declined.delete(key);
 
     const manifest: DownloadManifest = {
       book,
-      chapters: chapterData ?? null,
-      files: [],
+      chapters: chapterData ?? existing?.manifest.chapters ?? null,
+      // A retry keeps the files the failed attempt finished (runOne skips those still
+      // on disk).
+      files: existing?.manifest.files ?? [],
       coverUri: null,
       savedAt: new Date().toISOString(),
     };
@@ -118,6 +145,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       progress: 0,
       bytes: 0,
       totalBytes: 0,
+      origin,
       manifest,
     };
     set({ entries: { ...get().entries, [key]: entry } });
@@ -128,6 +156,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   cancel: (connectionId, libraryId, path) => {
     const key = downloadKey(connectionId, libraryId, path);
+    declined.add(key);
     const idx = queue.indexOf(key);
     if (idx >= 0) queue.splice(idx, 1);
     controllers.get(key)?.abort();
@@ -137,6 +166,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   remove: async (connectionId, libraryId, path) => {
     const key = downloadKey(connectionId, libraryId, path);
+    declined.add(key);
     const idx = queue.indexOf(key);
     if (idx >= 0) queue.splice(idx, 1);
     controllers.get(key)?.abort();
@@ -147,8 +177,67 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
 // --- helpers ---------------------------------------------------------------
 
+/**
+ * What a saved entry becomes on launch (`allPresent`: every file it lists is on disk):
+ * - a downloaded book stays downloaded;
+ * - a failed download, or one the app closed mid-way (still `queued` / `downloading`:
+ *   the engines can't resume a transfer, but the files it FINISHED are listed as they
+ *   land), stays as a failure keeping those files, so Retry fetches only the rest. One
+ *   cut short by the app closing says so (`interrupted`);
+ * - anything else is dropped (and its folder deleted by the caller): an entry with no
+ *   finished file, or one whose files are no longer all there.
+ * The kept share is recomputed from the files, so it is what is really on the device.
+ */
+export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntry | null {
+  const files = e.manifest.files;
+  if (files.length === 0 || !allPresent) return null;
+  if (e.status === 'downloaded') return e;
+  const of = bookFileSpecs(e.manifest.book, e.manifest.chapters ?? undefined).length;
+  const kept = Math.min(1, files.length / Math.max(of, files.length));
+  const failure: DownloadFailure =
+    e.status === 'error' && e.failure ? { ...e.failure, kept } : { kind: 'interrupted', kept };
+  return {
+    ...e,
+    status: 'error',
+    progress: kept,
+    bytes: files.reduce((sum, f) => sum + (f.bytes ?? 0), 0),
+    error: e.status === 'error' ? e.error : 'Interrupted',
+    failure,
+  };
+}
+
+/** While a download runs, its finished files reach storage at most this often
+ * (`persistSoon`); everything else saves at once. */
+const PERSIST_EVERY_MS = 2000;
+/** A running download's progress reaches the store (and every screen that shows it) at
+ * most this often; status changes and completion are never held back. */
+const PROGRESS_EVERY_MS = 250;
+/** A save `persistSoon` is holding, and the app-state watch that flushes it early. */
+let pendingSave: { timer: ReturnType<typeof setTimeout>; watch: { remove: () => void } } | null =
+  null;
+
+/** Save the registry now (and drop any save `persistSoon` was holding). */
 function persist(): Promise<void> {
+  if (pendingSave) {
+    clearTimeout(pendingSave.timer);
+    pendingSave.watch.remove();
+    pendingSave = null;
+  }
   return setItem(KEY, useDownloads.getState().entries);
+}
+
+/** Save the registry within `PERSIST_EVERY_MS`: a book of many files lands one file at
+ * a time, and each save writes the whole registry. A failure, completion, cancel or the
+ * app leaving the foreground saves at once (`persist`), so the kept-files record of a
+ * download the app is closed in the middle of still reaches storage. */
+function persistSoon() {
+  if (pendingSave) return;
+  pendingSave = {
+    timer: setTimeout(() => void persist(), PERSIST_EVERY_MS),
+    watch: AppState.addEventListener('change', (state) => {
+      if (state !== 'active') void persist();
+    }),
+  };
 }
 
 function patchEntry(key: string, patch: Partial<DownloadEntry>) {
@@ -232,7 +321,11 @@ async function runOne(key: string) {
   // race a shared client. A removed connection errors the entry rather than downloading.
   const api = resolveClient(entry.connectionId);
   if (!api) {
-    patchEntry(key, { status: 'error', error: 'Server connection removed' });
+    patchEntry(key, {
+      status: 'error',
+      error: 'Server connection removed',
+      failure: { kind: 'removed' },
+    });
     void persist();
     return;
   }
@@ -242,8 +335,12 @@ async function runOne(key: string) {
   patchEntry(key, { status: 'downloading', progress: 0, bytes: 0 });
   void persist();
 
+  // The files that finished, so a failure can keep them, and how many there are.
+  const files: DownloadedFile[] = [];
+  let fileCount = 0;
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
+    fileCount = specs.length;
     const knownTotal = specs.every((s) => s.size > 0)
       ? specs.reduce((sum, s) => sum + s.size, 0)
       : 0;
@@ -264,10 +361,24 @@ async function runOne(key: string) {
       // otherwise the cover is optional - carry on without it
     }
 
-    const files: DownloadedFile[] = [];
     let priorBytes = 0;
+    let lastTick = 0;
+    // Files a failed attempt already finished, by position (the on-disk name is the
+    // index, so a file only counts where it was saved).
+    const earlier = entry.manifest.files;
     for (let i = 0; i < specs.length; i++) {
       const s = specs[i];
+      const done = earlier[i];
+      if (done?.relPath === s.path && (await engine.fileExists(done.localUri))) {
+        files.push(done);
+        priorBytes += done.bytes ?? s.size;
+        patchEntry(key, {
+          bytes: priorBytes,
+          totalBytes: knownTotal,
+          progress: (i + 1) / specs.length,
+        });
+        continue;
+      }
       let curBytes = 0;
       const localUri = await engine.downloadFile(
         connectionId,
@@ -277,6 +388,9 @@ async function runOne(key: string) {
         api.streamUrl(libraryId, s.path, true),
         (bytesWritten, totalBytes) => {
           curBytes = bytesWritten;
+          const now = Date.now();
+          if (now - lastTick < PROGRESS_EVERY_MS) return;
+          lastTick = now;
           const curFrac = totalBytes > 0 ? bytesWritten / totalBytes : 0;
           patchEntry(key, {
             bytes: priorBytes + bytesWritten,
@@ -287,7 +401,20 @@ async function runOne(key: string) {
         ctrl.signal,
       );
       priorBytes += curBytes;
-      files.push({ relPath: s.path, localUri });
+      files.push({ relPath: s.path, localUri, bytes: curBytes });
+      // List each finished file as it lands, so a download the app is closed in the
+      // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
+      // finished further on stay listed in their places (the name on disk is the index).
+      const cur = useDownloads.getState().entries[key];
+      if (cur) {
+        patchEntry(key, {
+          bytes: priorBytes,
+          totalBytes: knownTotal,
+          progress: (i + 1) / specs.length,
+          manifest: { ...cur.manifest, files: [...files, ...earlier.slice(files.length)] },
+        });
+        persistSoon();
+      }
     }
 
     const manifest: DownloadManifest = {
@@ -304,6 +431,7 @@ async function runOne(key: string) {
       patchEntry(key, {
         status: 'error',
         error: 'Saved, but offline playback isn’t ready yet - reload the app, then retry.',
+        failure: { kind: 'unservable' },
         progress: 1,
         bytes: priorBytes,
         manifest,
@@ -316,13 +444,21 @@ async function runOne(key: string) {
     void persist();
     seedQueryCache(connectionId, libraryId, path, manifest);
   } catch (e) {
-    void engine.removeBook(connectionId, libraryId, path);
     if (isAbort(e)) {
+      void engine.removeBook(connectionId, libraryId, path);
       removeEntry(key); // cancelled - drop the partial entry
     } else {
+      // Keep the files that finished: a retry skips them, so a failure 41% through a
+      // multi-file book doesn't throw that 41% away. (The one being written is partial,
+      // and is written over by the retry.)
+      const kept = fileCount > 0 ? files.length / fileCount : 0;
+      const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
+      const cur = useDownloads.getState().entries[key];
       patchEntry(key, {
         status: 'error',
         error: e instanceof Error ? e.message : 'Download failed',
+        failure,
+        ...(cur ? { manifest: { ...cur.manifest, files } } : {}),
       });
       void persist();
     }

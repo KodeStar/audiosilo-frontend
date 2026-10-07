@@ -1,7 +1,9 @@
 import type { FsEntry } from '@/api/types';
+import { foldAccents } from '@/lib/names';
 
-/** A first-letter group of filesystem entries for the browse SectionList. */
-export type AlphaSection = { letter: string; data: FsEntry[] };
+/** A first-letter group: filesystem entries for the folder browser's SectionList (the
+ * default), or any named items (the Library's books by title). */
+export type AlphaSection<T = FsEntry> = { letter: string; data: T[] };
 
 /** The A–Z jump-rail letters. The '#' bucket (non-Latin/digits/symbols) is a real
  * section but is omitted from the rail to save vertical space - it stays reachable
@@ -10,10 +12,11 @@ export const RAIL_LETTERS: string[] = Array.from({ length: 26 }, (_, i) =>
   String.fromCharCode(65 + i),
 );
 
-/** First-letter bucket for an entry name: an uppercase A–Z, or '#' for anything
- * else (digits, symbols, accented/non-Latin first characters, empty). */
+/** First-letter bucket for a name: an uppercase A–Z with accents folded ("Émile" files
+ * under E), or '#' for anything else (digits, symbols, non-Latin first characters,
+ * empty). */
 export function sectionLetter(name: string): string {
-  const ch = name.trim().charAt(0).toUpperCase();
+  const ch = foldAccents(name.trim().charAt(0)).toUpperCase();
   return ch >= 'A' && ch <= 'Z' ? ch : '#';
 }
 
@@ -33,29 +36,63 @@ function letterRank(letter: string): number {
 /** Group entries into first-letter sections (A–Z then '#'), preserving the input
  * order within each bucket. The server already returns directories before files
  * (each alphabetical), so iterating in that order keeps folders ahead of files
- * inside a shared letter for free. */
-export function groupByLetter(entries: FsEntry[]): AlphaSection[] {
-  const buckets = new Map<string, FsEntry[]>();
+ * inside a shared letter for free. Other items name themselves through `nameOf`. */
+export function groupByLetter(entries: FsEntry[]): AlphaSection[];
+export function groupByLetter<T>(entries: T[], nameOf: (item: T) => string): AlphaSection<T>[];
+export function groupByLetter<T>(
+  entries: T[],
+  nameOf: (item: T) => string = (e) => (e as FsEntry).name,
+): AlphaSection<T>[] {
+  const buckets = new Map<string, T[]>();
   for (const e of entries) {
-    const letter = sectionLetter(e.name);
+    const letter = sectionLetter(nameOf(e));
     const bucket = buckets.get(letter);
     if (bucket) bucket.push(e);
     else buckets.set(letter, [e]);
   }
   return [...buckets.keys()]
     .sort((a, b) => letterRank(a) - letterRank(b))
-    .map((letter) => ({ letter, data: buckets.get(letter) as FsEntry[] }));
+    .map((letter) => ({ letter, data: buckets.get(letter) as T[] }));
 }
 
 /** Letters that have at least one entry - drives which rail letters are active. */
-export function presentLetters(sections: AlphaSection[]): Set<string> {
+export function presentLetters(sections: readonly { letter: string }[]): Set<string> {
   return new Set(sections.map((s) => s.letter));
+}
+
+/** A list as its rows with letter heads: each A-Z group (then '#') led by a head row,
+ * in the input's order, and where each head sits (an A-Z rail's jump targets). */
+export type LetterItem<T> = { kind: 'head'; letter: string } | { kind: 'item'; item: T };
+export type LetterHead = { letter: string; index: number };
+
+export function letterItems<T>(
+  sorted: readonly T[],
+  nameOf: (item: T) => string,
+): { items: LetterItem<T>[]; heads: LetterHead[] } {
+  const items: LetterItem<T>[] = [];
+  const heads: LetterHead[] = [];
+  for (const section of groupByLetter([...sorted], nameOf)) {
+    heads.push({ letter: section.letter, index: items.length });
+    items.push({ kind: 'head', letter: section.letter });
+    for (const item of section.data) items.push({ kind: 'item', item });
+  }
+  return { items, heads };
+}
+
+/** The row a rail letter jumps to: its head, else the next head after it, else the
+ * last; -1 with no heads. */
+export function headIndexForLetter(heads: readonly LetterHead[], letter: string): number {
+  const i = sectionIndexForLetter(heads, letter);
+  return i < 0 ? -1 : heads[i].index;
 }
 
 /** The section index to scroll to for a tapped rail letter: the matching section,
  * else the next present section at/after it (so a gap snaps forward to the closest
  * group), else the last section. Returns -1 when there are no sections. */
-export function sectionIndexForLetter(sections: AlphaSection[], letter: string): number {
+export function sectionIndexForLetter(
+  sections: readonly { letter: string }[],
+  letter: string,
+): number {
   if (sections.length === 0) return -1;
   const target = letterRank(letter);
   for (let i = 0; i < sections.length; i++) {

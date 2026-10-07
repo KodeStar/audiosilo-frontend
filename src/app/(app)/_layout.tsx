@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { View } from 'react-native';
 
 import { FloatingMiniPlayer } from '@/components/player/mini-player';
 
@@ -11,6 +12,7 @@ import { AuthGate } from '@/components/shell/auth-gate';
 import { TABS } from '@/components/shell/destinations';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
+import { UpNextSheet } from '@/components/upnext/up-next-sheet';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
@@ -54,39 +56,43 @@ function NativeShell() {
 
   return (
     <ThemeProvider value={navTheme}>
-      <ShellFrame
-        // Absolutely positioned in the frame, which spans the window: its bottom offset is
-        // the native bar's measured top edge, so it sits on the bar on every tab and over a
-        // pushed page, and a tab switch never remounts it.
-        phoneBottom={ACCESSORY_SUPPORTED ? null : <FloatingMiniPlayer />}
-      >
-        <NativeTabs
-          hidden={wide}
-          tintColor={themed.brand}
-          // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
-          // active one on a brand-soft pill.
-          labelVisibilityMode="labeled"
-          indicatorColor={themed.brandSoft}
-          minimizeBehavior="onScrollDown"
-          unstable_nativeProps={{ ios: { bottomAccessoryHidden: !loaded || wide } }}
+      {/* Up next's tablet/phone sheet renders in place, so it sits over the whole shell. */}
+      <View style={{ flex: 1 }}>
+        <ShellFrame
+          // Absolutely positioned in the frame, which spans the window: its bottom offset is
+          // the native bar's measured top edge, so it sits on the bar on every tab and over a
+          // pushed page, and a tab switch never remounts it.
+          phoneBottom={ACCESSORY_SUPPORTED ? null : <FloatingMiniPlayer />}
         >
-          {TABS.map((d) => (
-            <NativeTabs.Trigger
-              key={d.name}
-              name={d.name}
-              role={d.name === '(search)' ? 'search' : undefined}
-            >
-              <NativeTabs.Trigger.Icon sf={d.sf} md={d.md} />
-              <NativeTabs.Trigger.Label>{t(d.labelKey)}</NativeTabs.Trigger.Label>
-            </NativeTabs.Trigger>
-          ))}
-          {ACCESSORY_SUPPORTED ? (
-            <NativeTabs.BottomAccessory>
-              <AccessoryPlayer />
-            </NativeTabs.BottomAccessory>
-          ) : null}
-        </NativeTabs>
-      </ShellFrame>
+          <NativeTabs
+            hidden={wide}
+            tintColor={themed.brand}
+            // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
+            // active one on a brand-soft pill.
+            labelVisibilityMode="labeled"
+            indicatorColor={themed.brandSoft}
+            minimizeBehavior="onScrollDown"
+            unstable_nativeProps={{ ios: { bottomAccessoryHidden: !loaded || wide } }}
+          >
+            {TABS.map((d) => (
+              <NativeTabs.Trigger
+                key={d.name}
+                name={d.name}
+                role={d.name === '(search)' ? 'search' : undefined}
+              >
+                <NativeTabs.Trigger.Icon sf={d.sf} md={d.md} />
+                <NativeTabs.Trigger.Label>{t(d.labelKey)}</NativeTabs.Trigger.Label>
+              </NativeTabs.Trigger>
+            ))}
+            {ACCESSORY_SUPPORTED ? (
+              <NativeTabs.BottomAccessory>
+                <AccessoryPlayer />
+              </NativeTabs.BottomAccessory>
+            ) : null}
+          </NativeTabs>
+        </ShellFrame>
+        <UpNextSheet />
+      </View>
     </ThemeProvider>
   );
 }

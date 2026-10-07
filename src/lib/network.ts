@@ -27,3 +27,16 @@ export async function canAutoDownload(mode: AutoDownloadMode): Promise<boolean> 
     return true; // fail open: a failed probe shouldn't strand a user on wifi
   }
 }
+
+/** Calls `listener` whenever the device's network changes (native: Wi-Fi coming back);
+ * returns the unsubscribe. The web reports nothing, and a platform without network
+ * events subscribes to nothing. */
+export function onNetworkChange(listener: () => void): () => void {
+  if (Platform.OS === 'web') return () => undefined;
+  try {
+    const sub = Network.addNetworkStateListener(() => listener());
+    return () => sub.remove();
+  } catch {
+    return () => undefined;
+  }
+}

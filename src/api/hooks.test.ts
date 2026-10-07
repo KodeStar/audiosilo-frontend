@@ -26,7 +26,7 @@ jest.mock('@/api/provider', () => ({
 }));
 
 /* eslint-disable import/first */
-import { fetchBookProgress, qk } from '@/api/hooks';
+import { anyCapability, fetchBookProgress, isQueueKey, isSearchKey, qk } from '@/api/hooks';
 /* eslint-enable import/first */
 
 function makeProgress(): Progress {
@@ -153,5 +153,25 @@ describe('qk.bookMeta', () => {
     expect(new Set(variants.map((k) => JSON.stringify(k))).size).toBe(3);
     // The plain key prefixes every variant, so invalidating it reaches them all.
     for (const k of variants) expect(k.slice(0, 4)).toEqual(plain);
+  });
+});
+
+describe('anyCapability', () => {
+  it('is true once any server has the flag, false once all are known without it', () => {
+    expect(anyCapability({ a: { queue: true } as never, b: undefined }, 'queue')).toBe(true);
+    expect(anyCapability({ a: {} as never, b: undefined }, 'queue')).toBeUndefined();
+    expect(anyCapability({ a: {} as never, b: {} as never }, 'queue')).toBe(false);
+    expect(anyCapability({}, 'queue')).toBeUndefined();
+  });
+});
+
+describe('key predicates', () => {
+  it('match their own key families', () => {
+    expect(isQueueKey(qk.queue('c'))).toBe(true);
+    expect(isQueueKey(qk.collections('c'))).toBe(false);
+    expect(isSearchKey(qk.search('c', 'dune'), 'dune')).toBe(true);
+    expect(isSearchKey(qk.search('c', 'dun'), 'dune')).toBe(false);
+    expect(qk.allProgress('c').slice(0, 2)).toEqual([...qk.allProgressAll()]);
+    expect(qk.recent('c', 48).slice(0, 2)).toEqual([...qk.recentAll()]);
   });
 });

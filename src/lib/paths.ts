@@ -19,12 +19,28 @@ export function pathLeaf(relPath: string): string {
   return parts[parts.length - 1] ?? '';
 }
 
+/** A book's title as shown: its own, else its file or folder name. */
+export function bookTitle(title: string | undefined, relPath: string): string {
+  return title || pathLeaf(relPath);
+}
+
 /** Path one level up (the containing folder), or '' at the library root. */
 export function parentPath(relPath: string): string {
   const parts = relPath.split('/').filter(Boolean);
   parts.pop();
   return parts.join('/');
 }
+
+/** The browse section's pages (the hrefs below): the Library root and folders, and the
+ * detail pages a browse can push (a book, a series, an author or narrator, a collection). */
+export const BROWSE_PATHS = [
+  '/library',
+  '/book',
+  '/series',
+  '/author',
+  '/narrator',
+  '/collection',
+] as const;
 
 // Content routes are FLAT (`/book/[libraryId]`, `/library/[libraryId]`, `/account`); the
 // connection they belong to and the library-relative path both ride as QUERY params
@@ -48,10 +64,25 @@ export function libraryHref(connectionId: string, libraryId: number, relPath = '
   };
 }
 
-export function bookHref(connectionId: string, libraryId: number, relPath: string): Href {
+/** The book screen's tabs, in display order (the rules are `book-tabs.ts`). */
+export type BookTab =
+  'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series';
+
+/** A book page; `tab` opens it on that tab (`parseBookTab`) instead of the first. */
+export function bookHref(
+  connectionId: string,
+  libraryId: number,
+  relPath: string,
+  tab?: BookTab,
+): Href {
   return {
     pathname: '/book/[libraryId]',
-    params: { libraryId: String(libraryId), connection: connectionId, path: relPath },
+    params: {
+      libraryId: String(libraryId),
+      connection: connectionId,
+      path: relPath,
+      ...(tab ? { tab } : {}),
+    },
   };
 }
 
@@ -93,4 +124,110 @@ export function finishedHref(
       auto: auto ? '1' : '0',
     },
   };
+}
+
+// --- Browse detail pages (player redesign Phase 2) ---------------------------------
+// Flat routes in the shared `(home,library,search,offline,me)` group, like the book page:
+// the connection and the library ride as query params (`connection`, `library`), so the
+// tab that pushes one owns it and `<ContentScope>` reads the connection. Names are the
+// exact field values the server groups by (`Book.author` / `narrator` / `series`), which
+// are also the exact `author=` / `narrator=` / `series=` filters of GET /books.
+
+/**
+ * Which series a series page shows. `name` is a LOCAL series: the exact `Book.series`
+ * value in the library (the `series=` books filter and a `SeriesCount.name`). `work` is
+ * a community-metadata work id (`BookMetaRailEntry.id`, `/meta/work?id=`): the page
+ * shows that work's series rails, which is how a series the listener owns nothing of is
+ * reached (a ghost on a rail, a "next in your series" for a book not in the library).
+ * Give at least one; with both, `name` lists the owned books and `work` supplies the
+ * community rail (reading orders, ghosts) around them.
+ */
+export type SeriesRef = { name: string; work?: string } | { name?: string; work: string };
+
+/** `/series?connection=<cid>&library=<id>&name=<series>[&work=<meta work id>]`. */
+export function seriesHref(connectionId: string, libraryId: number, ref: SeriesRef): Href {
+  return {
+    pathname: '/series',
+    params: {
+      connection: connectionId,
+      library: String(libraryId),
+      ...(ref.name ? { name: ref.name } : {}),
+      ...(ref.work ? { work: ref.work } : {}),
+    },
+  };
+}
+
+/** `/author?connection=<cid>&library=<id>&name=<author>`: the books whose `Book.author`
+ * is exactly `name` (a "Kramer & Reading" credit is one author, as the server lists it). */
+export function authorHref(connectionId: string, libraryId: number, name: string): Href {
+  return {
+    pathname: '/author',
+    params: { connection: connectionId, library: String(libraryId), name },
+  };
+}
+
+/** `/narrator?connection=<cid>&library=<id>&name=<narrator>` (exact `Book.narrator`). */
+export function narratorHref(connectionId: string, libraryId: number, name: string): Href {
+  return {
+    pathname: '/narrator',
+    params: { connection: connectionId, library: String(libraryId), name },
+  };
+}
+
+/** `/collection?connection=<cid>&id=<collection id>`: a collection is per server, not
+ * per library (its items can span the server's libraries). */
+export function collectionHref(connectionId: string, id: number): Href {
+  return { pathname: '/collection', params: { connection: connectionId, id: String(id) } };
+}
+
+/** A route's raw search params (Expo Router may hand back `string[]`). */
+export type RawParams = Record<string, string | string[] | undefined>;
+
+/** A search param's first value ('' when absent). Kept exactly as given (names are exact
+ * filter values); only a blank one is treated as absent. */
+export function firstParam(v: string | string[] | undefined): string {
+  const s = (Array.isArray(v) ? v[0] : v) ?? '';
+  return s.trim() ? s : '';
+}
+
+/** A positive integer id param, or null. */
+function idParam(v: string | string[] | undefined): number | null {
+  const s = firstParam(v).trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return n > 0 && Number.isSafeInteger(n) ? n : null;
+}
+
+/** The series page's params, or null when the link can't name a series (no library, or
+ * neither a `name` nor a `work`). */
+export function parseSeriesParams(
+  p: RawParams,
+): { connectionId: string; libraryId: number; name?: string; work?: string } | null {
+  const libraryId = idParam(p.library);
+  const name = firstParam(p.name);
+  const work = firstParam(p.work);
+  if (libraryId === null || (!name && !work)) return null;
+  return {
+    connectionId: connectionParam(p.connection),
+    libraryId,
+    ...(name ? { name } : {}),
+    ...(work ? { work } : {}),
+  };
+}
+
+/** An author or narrator page's params, or null without a library and a name. */
+export function parsePersonParams(
+  p: RawParams,
+): { connectionId: string; libraryId: number; name: string } | null {
+  const libraryId = idParam(p.library);
+  const name = firstParam(p.name);
+  if (libraryId === null || !name) return null;
+  return { connectionId: connectionParam(p.connection), libraryId, name };
+}
+
+/** The collection page's params, or null without a valid id. */
+export function parseCollectionParams(p: RawParams): { connectionId: string; id: number } | null {
+  const id = idParam(p.id);
+  if (id === null) return null;
+  return { connectionId: connectionParam(p.connection), id };
 }

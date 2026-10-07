@@ -52,16 +52,8 @@
         "label": "Nächstes Buch automatisch abspielen",
         "description": "Startet das nächste Buch im Ordner, sobald eines endet."
       },
-      "autoDownload": {
-        "label": "Bücher automatisch herunterladen",
-        "description": "Lädt das Buch herunter, das du zu hören beginnst, damit es offline bereitsteht.",
-        "never": "Nie",
-        "wifi": "Nur WLAN",
-        "always": "Immer"
-      },
       "autoDelete": {
-        "label": "Beendete Bücher automatisch löschen",
-        "description": "Entfernt heruntergeladene Dateien, sobald ein Buch beendet ist."
+        "description": "Gibt den Platz frei, sobald du ein Buch beendet hast. Deine Stelle im Buch bleibt erhalten."
       }
     },
     "account": {
@@ -200,14 +192,103 @@
     "favourites": "Favoriten",
     "recentlyAdded": "Kürzlich hinzugefügt",
     "recentlyFinished": "Kürzlich beendet",
-    "viewMore": "Mehr anzeigen",
     "seeAll": "Alle anzeigen",
-    "collapse": "Einklappen",
     "added": "Hinzugefügt {{when}}",
-    "progressError": "Dein Fortschritt konnte nicht geladen werden.",
-    "continueEmptyTitle": "Nichts angefangen",
-    "continueEmpty": "Starte ein Buch und es erscheint hier.",
-    "recentError": "Neue Bücher konnten nicht geladen werden."
+    "recentError": "Neue Bücher konnten nicht geladen werden.",
+    "continueMore_one": "{{count}} weiteres angefangen",
+    "continueMore_other": "{{count}} weitere angefangen",
+    "allInProgress": "Alle angefangenen",
+    "acrossServers": "Von all deinen Servern",
+    "progressCaption": "{{percent}} % · noch {{left}}",
+    "finishedWhen": "Beendet {{when}}",
+    "servers_one": "{{count}} Server",
+    "servers_other": "{{count}} Server",
+    "greeting": {
+      "morning": "Guten Morgen.",
+      "afternoon": "Guten Tag.",
+      "evening": "Guten Abend.",
+      "morningNamed": "Guten Morgen, {{name}}.",
+      "afternoonNamed": "Guten Tag, {{name}}.",
+      "eveningNamed": "Guten Abend, {{name}}."
+    },
+    "sync": {
+      "local": "Auf diesem Gerät gespeichert, wird synchronisiert",
+      "synced": "Fortschritt synchronisiert {{when}}",
+      "syncedShort": "Synchronisiert {{when}}"
+    },
+    "now": {
+      "seriesBook": "{{series}}, Band {{position}}",
+      "chapterOf": "Kapitel {{chapter}} von {{total}}",
+      "chapterShort": "Kap. {{chapter}} von {{total}}",
+      "scaleLabel": "{{percent}} % des Buchs gehört",
+      "through": "des Buchs gehört",
+      "leftAt": "übrig bei {{speed}}",
+      "finishPace": "fertig in deinem Tempo",
+      "resume": "Fortsetzen",
+      "resumeChapter": "Kapitel {{chapter}} fortsetzen",
+      "pause": "Pause",
+      "resumeFailed": "Das Buch konnte nicht gestartet werden. Deine Stelle bleibt erhalten, versuche es noch einmal.",
+      "openBook": "{{title}} öffnen",
+      "whosWho": "Wer ist wer",
+      "whosWhoLabel_one": "Wer ist wer, {{count}} Figur bisher kennengelernt",
+      "whosWhoLabel_other": "Wer ist wer, {{count}} Figuren bisher kennengelernt",
+      "storySoFar": "Bisher geschehen"
+    },
+    "week": {
+      "title": "Diese Woche",
+      "weekdayLetters": "M,D,M,D,F,S,S",
+      "hoursLabel": "{{duration}} gehört in den letzten sieben Tagen",
+      "streak_one": "{{count}} Tag in Folge",
+      "streak_other": "{{count}} Tage in Folge",
+      "noStreak": "Noch keine Serie",
+      "goalLabel_one": "{{count}} von {{goal}} Büchern dieses Jahr beendet",
+      "goalLabel_other": "{{count}} von {{goal}} Büchern dieses Jahr beendet",
+      "ofGoal": "von {{goal}}",
+      "goalBehind_one": "Dir fehlt noch {{count}} Buch bis zu deinem Ziel von {{goal}} in diesem Jahr, {{every}}.",
+      "goalBehind_other": "Dir fehlen noch {{count}} Bücher bis zu deinem Ziel von {{goal}} in diesem Jahr, {{every}}.",
+      "every_one": "etwa eins pro Tag",
+      "every_other": "etwa eins alle {{count}} Tage",
+      "goalReached": "Du hast dein Ziel von {{goal}} Büchern in diesem Jahr erreicht.",
+      "finishedThisYear_one": "{{count}} Buch dieses Jahr beendet",
+      "finishedThisYear_other": "{{count}} Bücher dieses Jahr beendet",
+      "barsLabel": "Hören pro Tag: {{days}}"
+    },
+    "next": {
+      "title": "Weiter in deinen Reihen",
+      "sub": "Was nach deinen aktuellen Büchern kommt, auch was du noch nicht hast",
+      "allSeries": "Alle Reihen",
+      "afterCurrent": "Nach dem Buch, das du gerade hörst",
+      "afterProgress": "Nach {{title}}, das du zu {{percent}} % gehört hast",
+      "afterFinished": "Du hast {{title}} am {{date}} beendet",
+      "afterFinishedUndated": "Du hast {{title}} beendet"
+    },
+    "smart": {
+      "title": "Intelligente Regale",
+      "sub": "Gespeicherte Filter, die sich selbst aktuell halten",
+      "eyebrow": "Intelligentes Regal",
+      "progress": "Beende, was du angefangen hast",
+      "books_one": "{{count}} Buch",
+      "books_other": "{{count}} Bücher",
+      "short": "Kurz zu hören",
+      "shortSub": "Unter 5 Stunden",
+      "narrator": "Gelesen von {{name}}",
+      "narratorSub_one": "{{count}} Buch · {{duration}} in 30 Tagen",
+      "narratorSub_other": "{{count}} Bücher · {{duration}} in 30 Tagen",
+      "added": "Diese Woche hinzugefügt",
+      "addedSub_one": "{{count}} neues Buch",
+      "addedSub_other": "{{count}} neue Bücher",
+      "addedServers_one": "{{count}} neues auf {{servers}} Servern",
+      "addedServers_other": "{{count}} neue auf {{servers}} Servern"
+    },
+    "empty": {
+      "title": "Such dir etwas zum Hören aus",
+      "body": "Starte ein beliebiges Buch, es wartet hier auf dich, deine Stelle bleibt erhalten.",
+      "action": "Bibliothek durchstöbern"
+    },
+    "error": {
+      "title": "Dein Fortschritt konnte nicht geladen werden",
+      "body": "Nichts ist verloren: Deine Stelle ist auf jedem Server gespeichert. Prüfe die Verbindung und versuche es noch einmal."
+    }
   },
   "library": {
     "browse": {
@@ -220,21 +301,12 @@
       "emptyHint": "In diesem Ordner gibt es nichts zum Abspielen.",
       "noMatchesHint": "Versuche einen anderen Suchbegriff."
     },
-    "bookRow": {
-      "alsoOn": "Auch auf {{servers}}",
-      "alsoIn": "Auch in {{libraries}}"
-    },
     "entryRow": {
       "duration": "Dauer: {{value}}",
       "bitrate": "Bitrate: {{value}}"
     },
     "progressCard": {
-      "markFinished": "Als abgeschlossen markieren",
-      "moreInSeries": "Mehr aus der Reihe",
-      "resume": "Fortsetzen",
-      "moreActions": "Weitere Aktionen",
-      "timeLeft": "{{duration}} übrig",
-      "finished": "Abgeschlossen"
+      "markFinished": "Als abgeschlossen markieren"
     },
     "notes": {
       "title": "Notizen",
@@ -269,7 +341,7 @@
     },
     "download": {
       "unavailable": "Downloads nicht verfügbar",
-      "delete": "Download löschen",
+      "remove": "Download entfernen",
       "cancel": "Download abbrechen",
       "retry": "Download wiederholen",
       "download": "Herunterladen",
@@ -280,7 +352,6 @@
     "list": {
       "recentlyAdded": "Kürzlich hinzugefügt",
       "recentlyFinished": "Kürzlich abgeschlossen",
-      "added": "Hinzugefügt {{when}}",
       "loadError": "Konnte nicht geladen werden.",
       "noBooks": "Noch keine Bücher.",
       "noBooksHint": "Bücher, die du zu deiner Bibliothek hinzufügst, erscheinen hier.",
@@ -296,27 +367,332 @@
       "emptyHint": "Tippe bei einem Eintrag auf das Herz, um ihn zu sammeln",
       "itemCount_one": "{{count}} Eintrag",
       "itemCount_other": "{{count}} Einträge",
-      "empty": "Tippe bei einem Ordner oder Buch auf das Herz, um es hier hinzuzufügen."
+      "empty": "Tippe bei einem Ordner oder Buch auf das Herz, um es hier hinzuzufügen.",
+      "books": "Bücher",
+      "folders": "Ordner",
+      "error": "Deine Favoriten konnten nicht geladen werden",
+      "errorHint": "Ein Server hat nicht geantwortet. Versuche es gleich noch einmal."
+    },
+    "modes": {
+      "label": "Stöbern nach",
+      "books": "Bücher",
+      "authors": "Autoren",
+      "series": "Reihen",
+      "narrators": "Sprecher",
+      "collections": "Sammlungen",
+      "folders": "Ordner"
+    },
+    "picker": {
+      "label": "Bibliothek",
+      "placeholder": "Bibliothek wählen",
+      "serverLabel": "Server",
+      "serverPlaceholder": "Server wählen"
+    },
+    "detail": {
+      "badLink": "Dieser Link führt hier zu nichts.",
+      "collection": "Sammlung"
+    },
+    "books": {
+      "count_one": "{{formatted}} Buch",
+      "count_other": "{{formatted}} Bücher",
+      "matches_one": "{{shown}} von {{total}} passt",
+      "matches_other": "{{shown}} von {{total}} passen",
+      "loadingMore": "Lädt weitere...",
+      "progress": "{{percent}} % · noch {{left}}",
+      "finishedWhen": "Beendet {{when}}",
+      "rail": "Zu Buchstabe springen",
+      "sort": {
+        "label": "Sortierung: {{sort}}",
+        "heading": "Sortieren nach",
+        "recent": "Zuletzt hinzugefügt",
+        "title": "Titel",
+        "author": "Autor",
+        "length": "Länge"
+      },
+      "layout": {
+        "label": "Ansicht",
+        "grid": "Raster",
+        "list": "Liste"
+      },
+      "filters": {
+        "label": "Filter",
+        "new": "Nicht begonnen",
+        "progress": "Begonnen",
+        "finished": "Abgeschlossen",
+        "downloaded": "Heruntergeladen",
+        "short": "Unter 5 Std.",
+        "mid": "5 bis 15 Std.",
+        "long": "Über 15 Std.",
+        "clear": "Zurücksetzen"
+      },
+      "columns": {
+        "title": "Titel",
+        "narrator": "Sprecher",
+        "length": "Länge",
+        "progress": "Fortschritt"
+      },
+      "empty": {
+        "title": "Noch keine Bücher in {{library}}",
+        "hint": "Bücher erscheinen hier nach dem nächsten Scan dieser Bibliothek durch den Server.",
+        "action": "Erneut prüfen"
+      },
+      "noMatches": {
+        "title": "Keine Bücher passen zu diesen Filtern",
+        "hint": "Entferne einen Filter oder setze alle zurück.",
+        "action": "Filter zurücksetzen"
+      },
+      "error": {
+        "title": "Die Bücher konnten nicht geladen werden",
+        "hint": "Der Server hat nicht geantwortet. Nichts ist verloren: Versuche es noch einmal.",
+        "partial": "Nicht alle Bücher konnten geladen werden",
+        "partialHint_one": "Angezeigt wird das {{formatted}} geladene Buch.",
+        "partialHint_other": "Angezeigt werden die {{formatted}} geladenen Bücher."
+      }
+    },
+    "bookActions": {
+      "more": "Mehr zu {{title}}",
+      "play": "Abspielen",
+      "resume": "Fortsetzen",
+      "collect": "Zu Sammlung hinzufügen...",
+      "download": "Für offline herunterladen",
+      "removeDownload": "Download entfernen",
+      "cancelDownload": "Download abbrechen",
+      "markFinished": "Als abgeschlossen markieren",
+      "markUnfinished": "Als nicht abgeschlossen markieren",
+      "moreInSeries": "Mehr aus dieser Reihe",
+      "markedFinished": "Als abgeschlossen markiert",
+      "markedUnfinished": "Als nicht abgeschlossen markiert",
+      "downloading": "Wird für offline heruntergeladen",
+      "downloadRemoved": "Download entfernt",
+      "failed": "Das Buch konnte nicht aktualisiert werden. Versuche es noch einmal.",
+      "playFailed": "Das Buch konnte nicht gestartet werden. Versuche es noch einmal.",
+      "loadFailed": "Das Buch konnte nicht geladen werden. Versuche es noch einmal."
+    },
+    "collections": {
+      "itemCount_one": "{{count}} Buch",
+      "itemCount_other": "{{count}} Bücher",
+      "favouritesHint": "Mit Herz markiert, auf jedem Server",
+      "new": "Neue Sammlung",
+      "newHint": "Stelle Bücher zusammen und teile eine Sammlung mit jemandem auf diesem Server.",
+      "sharedWith": "Geteilt mit {{names}}",
+      "sharedWithMore_one": "Geteilt mit {{names}} und einer weiteren Person",
+      "sharedWithMore_other": "Geteilt mit {{names}} und {{count}} weiteren Personen",
+      "sharedBy": "Geteilt von {{name}}",
+      "error": "Deine Sammlungen konnten nicht geladen werden"
+    },
+    "collection": {
+      "total": "insgesamt {{length}}",
+      "notIndexed": "Gerade nicht im Bibliotheksindex",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "leave": "Verlassen",
+      "remove": "Aus der Sammlung entfernen",
+      "moveUp": "Nach oben",
+      "moveDown": "Nach unten",
+      "added": "Zu {{name}} hinzugefügt",
+      "removed": "Aus {{name}} entfernt",
+      "deleted": "{{name}} gelöscht",
+      "left": "{{name}} verlassen",
+      "full": "Diese Sammlung ist voll. Entferne ein Buch, um ein weiteres hinzuzufügen.",
+      "tooMany": "Du hast so viele Sammlungen, wie dieser Server erlaubt. Lösche eine, um eine neue anzulegen.",
+      "failed": "Die Sammlung konnte nicht aktualisiert werden. Versuche es noch einmal.",
+      "error": "Diese Sammlung konnte nicht geladen werden",
+      "form": {
+        "newTitle": "Neue Sammlung",
+        "editTitle": "Sammlung bearbeiten",
+        "newHint": "Stelle Bücher zusammen und teile eine Sammlung mit jemandem auf diesem Server.",
+        "name": "Name",
+        "description": "Beschreibung",
+        "create": "Anlegen",
+        "createAndAdd": "Anlegen und hinzufügen"
+      },
+      "share": {
+        "action": "Teilen",
+        "title": "{{name}} teilen",
+        "hint": "Sie können die Sammlung sehen, aber nicht ändern, und jede Person sieht nur die Bücher, die sie öffnen kann.",
+        "none": "Auf diesem Server gibt es noch niemanden zum Teilen.",
+        "error": "Die Personen auf diesem Server konnten nicht geladen werden"
+      },
+      "deleteConfirm": {
+        "title": "{{name}} löschen?",
+        "message": "Die Bücher bleiben in deiner Bibliothek. Alle, mit denen sie geteilt ist, verlieren sie ebenfalls."
+      },
+      "leaveConfirm": {
+        "title": "{{name}} verlassen?",
+        "message": "Sie verschwindet aus deinen Sammlungen. {{owner}} kann sie wieder mit dir teilen."
+      },
+      "empty": {
+        "title": "Noch nichts in dieser Sammlung",
+        "hint": "Füge Bücher über das Menü eines Buchs in der Listenansicht hinzu.",
+        "viewerHint": "{{owner}} hat noch kein Buch hinzugefügt, das du öffnen kannst."
+      },
+      "notFound": {
+        "title": "Diese Sammlung gibt es hier nicht",
+        "hint": "Sie wurde gelöscht oder ist nicht mehr mit dir geteilt.",
+        "action": "Zurück"
+      },
+      "addTo": {
+        "title": "Zu Sammlung hinzufügen",
+        "none": "Du hast noch keine Sammlungen. Lege hier eine an."
+      }
     }
   },
   "downloads": {
-    "storageUsed": "{{size}} belegt",
-    "downloaded": "Heruntergeladen",
-    "failed": "Download fehlgeschlagen",
-    "unsupported": "Offline-Downloads sind in diesem Browser nicht verfügbar. Verwende die installierte App oder eine sichere (https) Verbindung.",
-    "unsupportedTitle": "Downloads nicht verfügbar",
-    "empty": "Lade ein Buch über seine Detailseite herunter, um es offline zu hören.",
-    "emptyTitle": "Noch keine Downloads",
-    "remove": "{{title}} entfernen"
+    "summary": {
+      "device": "Auf diesem Gerät · {{size}}",
+      "browser": "In diesem Browser · {{size}}",
+      "browserQuota": "In diesem Browser · {{size}} von etwa {{quota}}, die der Browser erlaubt"
+    },
+    "storage": {
+      "titleDevice": "Speicher auf diesem Gerät",
+      "titleBrowser": "Speicher in diesem Browser",
+      "used": "{{size}} belegt",
+      "label": "Speicher nach Server",
+      "legend": "{{name}} {{size}}",
+      "moreServers_one": "{{count}} weiterer Server",
+      "moreServers_other": "{{count}} weitere Server",
+      "otherApps": "Andere Apps",
+      "unknownServer": "Unbekannter Server",
+      "freeDevice": "{{size}} frei auf diesem Gerät.",
+      "browserRoom": "Etwa {{size}} stehen diesem Browser zur Verfügung. Er kann Downloads löschen, wenn deine Festplatte voll wird.",
+      "browserUnknown": "Der Browser kann Downloads löschen, wenn deine Festplatte voll wird."
+    },
+    "rules": {
+      "title": "Automatische Downloads",
+      "mode": {
+        "label": "Automatisch herunterladen",
+        "never": "Nie",
+        "wifi": "Im WLAN",
+        "always": "Immer"
+      },
+      "modeHint": "Lädt ein Buch herunter, sobald du es zu hören beginnst.",
+      "webWifi": "Ein Browser kann WLAN nicht von mobilen Daten unterscheiden, daher lädt „Im WLAN“ hier über jede Verbindung herunter.",
+      "keepAhead": {
+        "label": "Die nächsten Bücher bereithalten",
+        "hint": "Lädt die nächsten Bücher aus „Als Nächstes“ und dann aus der Reihe herunter, bevor du sie brauchst.",
+        "off": "Aus"
+      },
+      "keepAheadStatus": {
+        "idle": "Startet, sobald du ein Buch abspielst.",
+        "never": "Schalte automatische Downloads ein, um das zu nutzen.",
+        "working": "Die nächsten Bücher werden bereitgestellt.",
+        "ready": "Die nächsten Bücher sind offline bereit.",
+        "waiting": "Wartet auf WLAN.",
+        "noSpace": "Pausiert: Es ist nicht genug Speicher frei. Automatische Downloads lassen immer mindestens 1 GB frei.",
+        "failed": "Eines der nächsten Bücher wurde nicht fertig geladen. Versuche es unter Downloads erneut.",
+        "declined": "Die nächsten Bücher bleiben unberührt: Du hast sie entfernt."
+      },
+      "autoDelete": "Download entfernen, wenn du das Buch beendet hast"
+    },
+    "browser": {
+      "title": "So funktionieren Downloads im Browser",
+      "body": "Audio wird im Speicher dieses Browsers abgelegt, nur über eine sichere (https) Verbindung. Der Browser kann es löschen, wenn der Speicher knapp wird, und auf iPhone und iPad stoppt Safari die Wiedergabe im Hintergrund. Für zuverlässiges Offline-Hören nutze die iOS- oder Android-App."
+    },
+    "inProgress": {
+      "title": "Wird geladen"
+    },
+    "row": {
+      "meta": "{{server}} · {{size}}",
+      "progress": "{{percent}} % · noch {{size}}",
+      "percent": "{{percent}} %",
+      "queued": "Wartet auf den Start",
+      "waitingWifi": "Wartet auf WLAN",
+      "noSpace": "Braucht mehr freien Speicher",
+      "keptAhead": "Vorausgeladen",
+      "stoppedAt": "Bei {{percent}} % angehalten",
+      "cancel": "Abbrechen",
+      "cancelLabel": "Download von {{title}} abbrechen",
+      "retry": "Erneut versuchen",
+      "retryLabel": "Download von {{title}} erneut versuchen",
+      "play": "{{title}} abspielen",
+      "remove": "{{title}} entfernen",
+      "notStarted": "Nicht begonnen",
+      "finished": "Beendet"
+    },
+    "failure": {
+      "network": "{{server}} antwortet nicht mehr.",
+      "server": "{{server}} konnte das Buch nicht senden (Fehler {{status}}).",
+      "storageDevice": "Auf diesem Gerät ist kein Speicher mehr frei.",
+      "storageBrowser": "Dem Browser ist der Speicher ausgegangen.",
+      "unservable": "Gespeichert, aber die Offline-Wiedergabe ist noch nicht bereit. Lade die App neu und versuche es dann erneut.",
+      "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
+      "interrupted": "Die App wurde geschlossen, bevor der Download fertig war.",
+      "unknown": "Der Download wurde angehalten.",
+      "kept": "Deine {{percent}} % bleiben erhalten.",
+      "restart": "Ein neuer Versuch beginnt von vorn."
+    },
+    "ready": {
+      "title": "Offline bereit",
+      "sub_one": "{{count}} Buch · spielt ohne Verbindung",
+      "sub_other": "{{count}} Bücher · spielen ohne Verbindung",
+      "serverSize": "{{server}} · {{size}}"
+    },
+    "remove": {
+      "title": "Diesen Download entfernen?",
+      "message": "{{title}} braucht dann wieder eine Verbindung zum Abspielen. Deine Stelle im Buch bleibt erhalten.",
+      "frees": "Das gibt {{size}} frei.",
+      "confirm": "Entfernen"
+    },
+    "empty": {
+      "title": "Noch nichts heruntergeladen",
+      "body": "Lade ein Buch auf seiner Seite herunter, um es ohne Verbindung zu hören.",
+      "action": "Bibliothek durchstöbern"
+    },
+    "unsupported": {
+      "title": "Downloads sind hier nicht verfügbar",
+      "insecure": "Offline-Audio braucht eine sichere (https) Verbindung. Öffne den Player über https oder nutze die iOS- oder Android-App.",
+      "noCache": "Dieser Browser kann kein Audio offline speichern. Nutze einen aktuellen Browser oder die iOS- oder Android-App.",
+      "noWorker": "Die Offline-Wiedergabe ist in diesem Browser noch nicht bereit. Lade die Seite neu, und wenn das nicht hilft, nutze die iOS- oder Android-App."
+    },
+    "loading": "Downloads werden geladen"
   },
   "search": {
-    "placeholder": "Titel, Autoren, Reihen suchen…",
+    "placeholder": "Bücher, Personen, Reihen, Figuren suchen",
     "promptTitle": "Finde dein nächstes Hörbuch",
-    "noResultsTitle": "Keine Ergebnisse",
     "clear": "Suche löschen",
-    "prompt": "Suche nach Titeln, Autoren und Reihen.",
-    "failed": "Suche fehlgeschlagen.",
-    "noResults": "Keine Ergebnisse für „{{query}}“."
+    "prompt": "Suche nach Titeln, Autoren, Reihen, Sprechern und Figuren.",
+    "label": "Suche",
+    "fieldPlaceholder": "Bücher, Autoren, Reihen, Sprecher, Figuren",
+    "fieldPlaceholderShort": "Bücher, Personen, Reihen, Figuren",
+    "recentTitle": "Letzte Suchen",
+    "clearRecent": "Löschen",
+    "clearRecentLabel": "Letzte Suchen löschen",
+    "searchAgain": "Nach {{query}} suchen",
+    "browse": "Stöbern",
+    "browseIn": "In {{library}}",
+    "browseCard": "{{label}}, {{count}}",
+    "searching": "Suche läuft",
+    "resultsFor_one": "{{count}} Ergebnis für „{{query}}“",
+    "resultsFor_other": "{{count}} Ergebnisse für „{{query}}“",
+    "resultsAcross_one": "{{count}} Ergebnis für „{{query}}“ auf {{servers}}",
+    "resultsAcross_other": "{{count}} Ergebnisse für „{{query}}“ auf {{servers}}",
+    "someOffline": "Offline, daher nicht durchsucht: {{servers}}",
+    "offlineTitle": "Du bist offline",
+    "offlineHint": "Die Suche fragt deine Server. Heruntergeladene Bücher findest du unter Downloads.",
+    "noMatchesTitle": "Nichts namens „{{query}}“ auf deinen Servern",
+    "noMatchesHint": "Prüfe die Schreibweise oder suche stattdessen nach dem Autor.",
+    "groups": {
+      "books": "Bücher",
+      "series": "Reihen",
+      "people": "Personen",
+      "characters": "Figuren"
+    },
+    "charactersSub": "Nur Figuren, die dir schon begegnet sind",
+    "hiddenCharacters_one": "{{count}} weiterer Treffer nach deiner Stelle im Buch, ausgeblendet, um nichts vorwegzunehmen.",
+    "hiddenCharacters_other": "{{count}} weitere Treffer nach deiner Stelle im Buch, ausgeblendet, um nichts vorwegzunehmen.",
+    "roleAuthor": "Autor",
+    "roleNarrator": "Sprecher",
+    "seriesRole": "Reihe",
+    "bookCount_one": "{{count}} Buch",
+    "bookCount_other": "{{count}} Bücher",
+    "alsoOn": "Auch auf {{servers}}",
+    "alsoIn": "Auch in {{libraries}}",
+    "showAll": "Alle {{count}} zeigen",
+    "showFewer": "Weniger zeigen",
+    "booksFailed": "Deine Server haben auf diese Suche nicht geantwortet.",
+    "booksPartial": "Einige Server haben nicht geantwortet, daher fehlen eventuell ihre Bücher.",
+    "peopleFailed": "Autoren, Sprecher und Reihen konnten gerade nicht durchsucht werden.",
+    "charactersFailed": "Figuren konnten gerade nicht geprüft werden."
   },
   "book": {
     "loadError": "Dieses Buch konnte nicht geladen werden.",
@@ -472,7 +848,6 @@
     "library": "Bibliothek",
     "search": "Suchen",
     "downloads": "Downloads",
-    "logout": "Abmelden",
     "offline": "Offline – Änderungen werden bei erneuter Verbindung synchronisiert",
     "someOffline": "Einige Server offline",
     "me": "Ich",
@@ -501,8 +876,8 @@
   "shell": {
     "home": "AudioSilo-Startseite",
     "offline": "Offline · Downloads spielen",
-    "serverMore": "{{name}} + {{count}} weitere",
-    "account": "Dein Konto, {{name}}",
+    "serverMore_one": "{{name}} + {{count}} weiterer",
+    "serverMore_other": "{{name}} + {{count}} weitere",
     "openPlayer": "Vollen Player für {{title}} öffnen",
     "titleTimeLeft": "{{title}} · noch {{time}}",
     "dock": {
@@ -531,7 +906,11 @@
     "groups": {
       "actions": "Aktionen",
       "books": "Bücher",
-      "goTo": "Gehe zu"
+      "goTo": "Gehe zu",
+      "series": "Reihen",
+      "authors": "Autoren",
+      "narrators": "Sprecher",
+      "characters": "Figuren"
     },
     "resume": "{{name}} fortsetzen",
     "sleepMinutes_one": "Schlafen in {{count}} Minute",
@@ -539,6 +918,9 @@
     "sleepFades": "Blendet in den letzten 30 Sekunden aus",
     "sleepChapter": "Schlafen am Kapitelende",
     "openPlayer": "Vollen Player öffnen",
+    "upNext": "Als Nächstes öffnen",
+    "upNextHint_one": "{{count}} Buch vorgemerkt",
+    "upNextHint_other": "{{count}} Bücher vorgemerkt",
     "settings": "Zu den Einstellungen",
     "settingsHint": "Server, Darstellung und Wiedergabe",
     "dark": "Zur dunklen Darstellung wechseln",
@@ -546,7 +928,7 @@
     "listened": "{{percent}} % gehört",
     "searching": "Suche läuft",
     "empty": "Nichts namens „{{query}}“",
-    "emptyHint": "Versuche einen Titel oder einen Autor.",
+    "emptyHint": "Versuche einen Autor, einen Sprecher oder eine Figur, die dir schon begegnet ist.",
     "keys": {
       "move": "bewegen",
       "open": "öffnen",
@@ -555,6 +937,190 @@
     "results_one": "{{count}} Ergebnis",
     "results_other": "{{count}} Ergebnisse",
     "resultsOn_one": "{{count}} Ergebnis · {{servers}}",
-    "resultsOn_other": "{{count}} Ergebnisse · {{servers}}"
+    "resultsOn_other": "{{count}} Ergebnisse · {{servers}}",
+    "hiddenCharacters_one": "{{count}} weiterer Treffer nach deiner Stelle im Buch",
+    "hiddenCharacters_other": "{{count}} weitere Treffer nach deiner Stelle im Buch",
+    "hiddenHint": "Ausgeblendet, um nichts vorwegzunehmen"
+  },
+  "covers": {
+    "notInLibrary": "Nicht in deiner Bibliothek",
+    "onServer": "Auf {{server}}",
+    "bookNumber": "Band {{position}}",
+    "ghostLabel": "{{title}}, {{note}}",
+    "ghostLabelNumbered": "Band {{position}}, {{title}}, {{note}}",
+    "finished": "Abgeschlossen",
+    "listened": "{{percent}} % gehört",
+    "downloaded": "Heruntergeladen",
+    "moreActions": "Weitere Aktionen"
+  },
+  "queue": {
+    "queueIt": "Einreihen",
+    "queued": "Eingereiht",
+    "addLabel": "Zu „Als Nächstes“ hinzufügen",
+    "removeLabel": "Aus „Als Nächstes“ entfernen",
+    "added": "Zu „Als Nächstes“ hinzugefügt",
+    "removed": "Aus „Als Nächstes“ entfernt",
+    "undo": "Rückgängig",
+    "full": "„Als Nächstes“ ist voll. Entferne ein Buch, um ein weiteres hinzuzufügen.",
+    "failed": "„Als Nächstes“ konnte nicht aktualisiert werden. Versuche es noch einmal."
+  },
+  "upnext": {
+    "title": "Als Nächstes",
+    "heading": "Als Nächstes · {{count}}",
+    "hide": "„Als Nächstes“ ausblenden",
+    "resize": "Breite von „Als Nächstes“ ändern",
+    "queued": "{{time}} eingereiht",
+    "nothingQueued": "Nichts eingereiht",
+    "nowPlaying": "Läuft gerade",
+    "leftAtSpeed": "noch {{time}} bei {{speed}}x",
+    "clear": "Leeren",
+    "clearLabel": "„Als Nächstes“ leeren",
+    "cleared": "„Als Nächstes“ geleert",
+    "loadFailed": "„Als Nächstes“ konnte nicht geladen werden.",
+    "refreshFailed": "„Als Nächstes“ konnte nicht aktualisiert werden. Das ist der zuletzt geladene Stand.",
+    "empty": {
+      "title": "Noch nichts eingereiht",
+      "hint": "Tippe bei einem Buch auf „Einreihen“, um es hier anzustellen.",
+      "dropHint": "Zieh ein Cover hierher oder nutze bei einem Buch „Einreihen“."
+    },
+    "drop": {
+      "hint": "Zieh ein Cover hierher, um es einzureihen",
+      "over": "Loslassen, um es zu „Als Nächstes“ hinzuzufügen",
+      "otherServer": "Hier können nur Bücher von {{server}} hin"
+    },
+    "finished": "Beendet",
+    "percent": "{{percent}} %",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "reorder": "{{title}} verschieben",
+    "reorderHint": "Mit den Pfeiltasten verschieben.",
+    "playNow": "{{title}} jetzt abspielen",
+    "remove": "{{title}} aus „Als Nächstes“ entfernen",
+    "playFailed": "{{title}} konnte nicht gestartet werden. Versuche es noch einmal.",
+    "suggestions": "Reihe fortsetzen und mehr",
+    "nextInSeries": "Weiter in {{series}}",
+    "nextAfter": "Weiter nach diesem Buch",
+    "continueAt": "{{percent}} % · weiterhören",
+    "ghost": "{{title}} ist nicht auf {{server}}",
+    "ghostNoServer": "{{title}} ist nicht auf diesem Server",
+    "seeSeries": "Zur Reihe",
+    "add": "{{title}} zu „Als Nächstes“ hinzufügen",
+    "autoPlay": "Das nächste Buch der Reihe automatisch abspielen",
+    "buttonLabel_one": "Als Nächstes, {{count}} Buch",
+    "buttonLabel_other": "Als Nächstes, {{count}} Bücher",
+    "buttonLabelEmpty": "Als Nächstes"
+  },
+  "series": {
+    "eyebrow": "Reihe",
+    "bookN": "Band {{position}}",
+    "stats": {
+      "entries_one": "{{count}} Eintrag",
+      "entries_other": "{{count}} Einträge",
+      "onServers": "{{count}} auf deinen Servern",
+      "missing_one": "{{count}} nicht in deiner Bibliothek",
+      "missing_other": "{{count}} nicht in deiner Bibliothek",
+      "length": "{{duration}} zum Hören"
+    },
+    "progress": {
+      "into": "{{percent}} % von Band {{position}}",
+      "intoTitle": "{{percent}} % von {{title}}",
+      "finished": "{{finished}} von {{total}} abgeschlossen",
+      "ahead": "noch {{duration}} zum Hören",
+      "label": "Fortschritt der Reihe"
+    },
+    "readingOrder": "Lesereihenfolge",
+    "orderNote": {
+      "publication": "Die Reihenfolge, in der die Bücher erschienen sind.",
+      "chronological": "Die Reihenfolge, in der die Geschichte spielt.",
+      "recommended": "Die Reihenfolge, die die Community empfiehlt."
+    },
+    "listTitle": {
+      "publication": "In Erscheinungsreihenfolge",
+      "chronological": "In der Reihenfolge der Handlung",
+      "recommended": "In empfohlener Reihenfolge",
+      "default": "Bücher der Reihe"
+    },
+    "shelfLabel": "{{series}} im Regal. Wähle ein Buch, um es herauszunehmen.",
+    "listening": "Hörst du · {{percent}} %",
+    "listeningNow": "hörst du gerade",
+    "resume": "Fortsetzen",
+    "resumeChapter": "Kapitel {{chapter}} fortsetzen",
+    "play": "Abspielen",
+    "details": "Details",
+    "open": "Öffnen",
+    "openOn": "Auf {{server}} öffnen",
+    "listenOn": "Auf {{server}} hören",
+    "viewOnMeta": "Auf AudioSilo Meta ansehen",
+    "openBookLabel": "{{label}}. Buch öffnen",
+    "readBy": "Gelesen von {{narrator}}",
+    "elsewhereNote": "Nicht auf {{here}}, aber {{server}} hat es.",
+    "ghostNote": "Noch auf keinem deiner Server. Die Reihendaten der Community kennen es.",
+    "gapNote": "Diese Nummer fehlt in deinen Büchern.",
+    "legend": {
+      "owned": "Auf deinen Servern",
+      "elsewhere": "Auf einem anderen Server",
+      "ghost": "Nicht in deiner Bibliothek",
+      "current": "Hörst du gerade"
+    },
+    "source": "Reihe und Lesereihenfolgen von der AudioSilo-Meta-Community",
+    "empty": {
+      "title": "Hier gibt es nichts aus dieser Reihe",
+      "hint": "Kein Buch in dieser Bibliothek ist unter {{name}} eingeordnet."
+    },
+    "error": {
+      "title": "Diese Reihe konnte nicht geladen werden",
+      "hint": "Der Server hat nicht geantwortet. Es ist nichts verloren."
+    },
+    "work": {
+      "eyebrow": "Ein Buch aus einer Reihe",
+      "hint": "Du hast noch kein Buch dieser Reihe.",
+      "published": "Erstmals erschienen {{year}}",
+      "noRail": "Die ganze Reihe erscheint, sobald eines ihrer Bücher auf deinen Servern ist."
+    },
+    "mode": {
+      "books_one": "{{count}} Buch",
+      "books_other": "{{count}} Bücher",
+      "ofTotal": "{{owned}} von {{total}}",
+      "inProgress": "{{count}} angefangen",
+      "finished_one": "{{count}} abgeschlossen",
+      "finished_other": "{{count}} abgeschlossen",
+      "emptyTitle": "Noch keine Reihen hier",
+      "emptyHint": "Bücher mit einer Reihe erscheinen hier als Regal voller Buchrücken.",
+      "emptyAction": "Bücher durchsehen",
+      "errorTitle": "Die Reihen konnten nicht geladen werden"
+    },
+    "keepAhead": "Offline vorausladen"
+  },
+  "people": {
+    "author": "Autor",
+    "narrator": "Sprecher",
+    "books_one": "{{count}} Buch",
+    "books_other": "{{count}} Bücher",
+    "finished_one": "{{count}} abgeschlossen",
+    "finished_other": "{{count}} abgeschlossen",
+    "unknownAuthor_one": "{{count}} Buch hat keinen Autor.",
+    "unknownAuthor_other": "{{count}} Bücher haben keinen Autor.",
+    "unknownNarrator_one": "{{count}} Buch hat keinen Sprecher.",
+    "unknownNarrator_other": "{{count}} Bücher haben keinen Sprecher.",
+    "stats": {
+      "books": "Bücher hier",
+      "length": "Gesamtlänge",
+      "finished": "Abgeschlossen",
+      "listened": "Gehört"
+    },
+    "readBy": "Gelesen von",
+    "booksBy": "Bücher von",
+    "books": "Bücher",
+    "otherBooks": "Weitere Bücher",
+    "openSeries": "Reihe {{series}} öffnen",
+    "emptyAuthors": "Noch keine Autoren hier",
+    "emptyNarrators": "Noch keine Sprecher hier",
+    "emptyHint": "Bücher erscheinen hier, sobald sie den Namen tragen.",
+    "errorTitle": "Die Liste konnte nicht geladen werden",
+    "pageEmpty": "Hier gibt es keine Bücher von {{name}}",
+    "pageEmptyHint": "In dieser Bibliothek ist nichts genau diesem Namen zugeordnet.",
+    "pageError": "Diese Bücher konnten nicht geladen werden",
+    "narratorUnsupported": "Dieser Server kann Bücher noch nicht nach Sprecher auflisten",
+    "narratorUnsupportedHint": "Ein neuerer AudioSilo-Server kann es."
   }
 }

@@ -1,7 +1,12 @@
 import {
+  formatDayMonth,
+  formatDurationOrZero,
+  formatServerDay,
+  formatSpeed,
   bookSubtitle,
   formatBitrate,
   formatBytes,
+  formatCount,
   formatClock,
   formatCountdown,
   formatDuration,
@@ -235,5 +240,33 @@ describe('bookSubtitle', () => {
   it('is empty when nothing is provided', () => {
     expect(bookSubtitle({})).toBe('');
     expect(bookSubtitle({ author: '', series: '' })).toBe('');
+  });
+});
+
+describe('formatCount', () => {
+  it('groups thousands in the locale', () => {
+    expect(formatCount(3249, 'en')).toBe('3,249');
+    expect(formatCount(3249, 'de')).toBe('3.249');
+    expect(formatCount(7, 'en')).toBe('7');
+  });
+});
+
+describe('formatSpeed / formatDurationOrZero', () => {
+  it('drops trailing zeros from a speed', () => {
+    expect(formatSpeed(1)).toBe('1×');
+    expect(formatSpeed(1.25)).toBe('1.25×');
+    expect(formatSpeed(1.5000001)).toBe('1.5×');
+  });
+
+  it('reads 0m for nothing', () => {
+    expect(formatDurationOrZero(0)).toBe('0m');
+    expect(formatDurationOrZero(3600)).toBe('1h');
+  });
+});
+
+describe('date formatters', () => {
+  it('reads a server day as that calendar day', () => {
+    expect(formatServerDay('2026-10-20', 'en-GB')).toBe('20 Oct');
+    expect(formatDayMonth(new Date(2026, 9, 20, 12), 'en-GB')).toBe('20 Oct');
   });
 });

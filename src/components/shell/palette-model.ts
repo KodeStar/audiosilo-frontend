@@ -1,4 +1,7 @@
+import type { TFunction } from 'i18next';
+
 import type { IconName } from '@/components/ui/icon';
+import type { ShortcutKey } from '@/lib/keyboard';
 
 /**
  * The web command palette's model (STYLEGUIDE section 8, "Command palette"): which items
@@ -6,7 +9,8 @@ import type { IconName } from '@/components/ui/icon';
  * component (`command-palette.tsx`) builds the candidates from the stores and runs them.
  */
 
-export type PaletteGroupKey = 'actions' | 'continue' | 'books' | 'goTo';
+export type PaletteGroupKey =
+  'actions' | 'continue' | 'books' | 'series' | 'authors' | 'narrators' | 'characters' | 'goTo';
 
 /** A book row's cover: resolved against its own server by the row. */
 export type PaletteCover = { connectionId: string; libraryId: number; path: string };
@@ -16,24 +20,121 @@ export type PaletteItem = {
   id: string;
   title: string;
   subtitle?: string;
-  /** Actions and Go to show a glyph tile; books show their cover. */
+  /** Actions, Go to and series show a glyph tile; books show their cover; people and
+   * characters their initials (`token`). */
   icon?: IconName;
   cover?: PaletteCover;
+  token?: PaletteToken;
   run: () => void;
 };
+
+/** A person's or character's initials disc in place of an icon. */
+export type PaletteToken = { kind: 'author' | 'narrator' | 'character'; name: string };
 
 export type PaletteGroup = {
   key: PaletteGroupKey;
   items: PaletteItem[];
+  /** A quiet line under the items that is not an option (the characters a listener
+   * hasn't met yet, counted). A group with a note shows even with no items. */
+  note?: string;
   /** The flat (listbox) index of the group's first item: item `i` is option `start + i`. */
   start: number;
 };
 
+/** What the Actions group is built from: the app's state right now. */
+export type ActionState = {
+  /** The loaded book (none: no transport actions). `chapterName` is the current chapter's
+   * label; `hasChapters` whether the book has real chapters. */
+  nowPlaying: { title: string; chapterName: string | null; hasChapters: boolean } | null;
+  isPlaying: boolean;
+  /** The minutes the sleep action arms. */
+  sleepMinutes: number;
+  /** Up next is offered (the queue's server has `queue`), with this many books queued. */
+  upNext: { count: number } | null;
+  dark: boolean;
+};
+
+/** What each action does (the component wires the stores and the router). */
+export type ActionRuns = Record<
+  'toggle' | 'sleepMinutes' | 'sleepChapter' | 'player' | 'upNext' | 'settings' | 'appearance',
+  () => void
+>;
+
+/**
+ * The palette's Actions, only what the app can do right now: the transport (pause or
+ * "Resume <chapter>"), the sleep timer (end of chapter only with real chapters: without
+ * them it falls back to a short duration timer the label would misdescribe), the full
+ * player - all three only with a book loaded -, Up next (only where it is offered),
+ * settings and the light/dark switch.
+ */
+export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction): PaletteItem[] {
+  const items: PaletteItem[] = [];
+  const np = s.nowPlaying;
+  if (np) {
+    items.push({
+      id: 'toggle',
+      title: s.isPlaying
+        ? t('player.controls.pause')
+        : t('palette.resume', { name: np.chapterName ?? np.title }),
+      subtitle: np.title,
+      icon: s.isPlaying ? 'pause' : 'play',
+      run: run.toggle,
+    });
+    items.push({
+      id: 'sleep-minutes',
+      title: t('palette.sleepMinutes', { count: s.sleepMinutes }),
+      subtitle: t('palette.sleepFades'),
+      icon: 'sleep',
+      run: run.sleepMinutes,
+    });
+    if (np.hasChapters) {
+      items.push({
+        id: 'sleep-chapter',
+        title: t('palette.sleepChapter'),
+        subtitle: np.chapterName ?? undefined,
+        icon: 'sleep',
+        run: run.sleepChapter,
+      });
+    }
+    items.push({
+      id: 'player',
+      title: t('palette.openPlayer'),
+      subtitle: np.title,
+      icon: 'chevron-up',
+      run: run.player,
+    });
+  }
+  if (s.upNext) {
+    items.push({
+      id: 'up-next',
+      title: t('palette.upNext'),
+      subtitle: t('palette.upNextHint', { count: s.upNext.count }),
+      icon: 'queue',
+      run: run.upNext,
+    });
+  }
+  items.push({
+    id: 'settings',
+    title: t('palette.settings'),
+    subtitle: t('palette.settingsHint'),
+    icon: 'settings',
+    run: run.settings,
+  });
+  items.push({
+    id: 'appearance',
+    title: s.dark ? t('palette.light') : t('palette.dark'),
+    subtitle: t('settings.appearance.label'),
+    icon: s.dark ? 'sun' : 'moon',
+    run: run.appearance,
+  });
+  return items;
+}
+
 /** At most this many book results, and Continue listening rows on an empty query. */
 export const MAX_BOOKS = 8;
 export const MAX_CONTINUE = 4;
-/** Recent searches kept on this device. */
-export const MAX_RECENT = 5;
+/** At most this many series, authors, narrators and characters each. */
+export const MAX_NAMED = 3;
 
 const fold = (s: string) => s.toLocaleLowerCase();
 
@@ -51,13 +152,20 @@ const matches = (text: string | undefined, q: string) => !!text && fold(text).in
 /**
  * The groups for a query, in order: Actions (matching their title, or their subtitle once
  * there is a query), then Books (the server search's results) - or, with no query,
- * Continue listening - then Go to. Empty groups are dropped.
+ * Continue listening -, then (with a query) Series, Authors, Narrators and Characters
+ * (already matched by the search model, `@/components/search/search-model`), then Go to.
+ * Empty groups are dropped, except Characters when it has a note (the unmet count).
  */
 export function buildPaletteGroups({
   query,
   actions,
   books,
   continueListening,
+  series = [],
+  authors = [],
+  narrators = [],
+  characters = [],
+  charactersNote,
   goTo,
 }: {
   query: string;
@@ -65,9 +173,20 @@ export function buildPaletteGroups({
   /** Results of the cross-server search for `query` (already matched by the server). */
   books: PaletteItem[];
   continueListening: PaletteItem[];
+  series?: PaletteItem[];
+  authors?: PaletteItem[];
+  narrators?: PaletteItem[];
+  /** Characters the listener has met (the model never hands over the others). */
+  characters?: PaletteItem[];
+  /** "2 more matches after your place in the book": a count, never a name. */
+  charactersNote?: string;
   goTo: PaletteItem[];
 }): PaletteGroup[] {
   const q = query.trim();
+  const named = (key: PaletteGroupKey, items: PaletteItem[]) => ({
+    key,
+    items: q ? items.slice(0, MAX_NAMED) : [],
+  });
   const candidates: Omit<PaletteGroup, 'start'>[] = [
     {
       key: 'actions',
@@ -76,12 +195,16 @@ export function buildPaletteGroups({
     q
       ? { key: 'books', items: books.slice(0, MAX_BOOKS) }
       : { key: 'continue', items: continueListening.slice(0, MAX_CONTINUE) },
+    named('series', series),
+    named('authors', authors),
+    named('narrators', narrators),
+    { ...named('characters', characters), note: q ? charactersNote : undefined },
     { key: 'goTo', items: q ? goTo.filter((g) => matches(g.title, q)) : goTo },
   ];
   const groups: PaletteGroup[] = [];
   let start = 0;
   for (const g of candidates) {
-    if (g.items.length === 0) continue;
+    if (g.items.length === 0 && !g.note) continue;
     groups.push({ ...g, start });
     start += g.items.length;
   }
@@ -98,22 +221,6 @@ export function moveSelection(index: number, delta: number, count: number): numb
   if (count <= 0) return 0;
   return Math.max(0, Math.min(count - 1, index + delta));
 }
-
-/** Puts a search at the front of the recent list: trimmed, de-duplicated ignoring case,
- * at most `MAX_RECENT`. An empty search changes nothing. */
-export function addRecent(recent: readonly string[], query: string): string[] {
-  const q = query.trim();
-  if (!q) return [...recent];
-  return [q, ...recent.filter((r) => fold(r) !== fold(q))].slice(0, MAX_RECENT);
-}
-
-/** The slice of a DOM KeyboardEvent the global shortcut reads. */
-export type ShortcutKey = {
-  key: string;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-};
 
 /**
  * Whether a keydown opens the palette: ⌘K / Ctrl+K, or a bare `/` (STYLEGUIDE section
