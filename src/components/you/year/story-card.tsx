@@ -7,23 +7,17 @@ import { Icon } from '@/components/ui/icon';
 import { tabularNums } from '@/theme/tabular-nums';
 import { colors } from '@/theme/tokens';
 
+import { CARD_DESIGN_WIDTH, cardHeight } from './card-size';
 import { StoryBackground } from './story-background';
 import { StoryClock } from './story-clock';
-import { StoryCoverArt, StreakGrid, Tower } from './story-pieces';
+import { StoryCoverArt } from './story-cover';
+import { StreakGrid, Tower } from './story-pieces';
 import { StoryText } from './story-text';
 import type { CardCopy } from './year-copy';
 import type { YearCard } from './year-model';
 
 /** The product's name beside its mark on the summary card (a name, not translated). */
 const BRAND = 'AudioSilo';
-
-/** The width a card is designed at: every size on it is in units of `width / 360`. */
-export const CARD_DESIGN_WIDTH = 360;
-
-/** A card's height for its width: 9:16. */
-export function cardHeight(width: number): number {
-  return Math.round((width * 16) / 9);
-}
 
 /**
  * One story card (STYLEGUIDE section 8, "Year in listening"; the prototype's
@@ -114,8 +108,8 @@ function CardBody({
       );
     case 'book':
       return (
-        <View className="flex-1" style={{ gap: 6 * u }}>
-          <View className="items-center" style={{ marginTop: 22 * u, marginBottom: 12 * u }}>
+        <View className="flex-1 justify-center" style={{ gap: 6 * u, paddingBottom: 24 * u }}>
+          <View className="items-center" style={{ marginBottom: 12 * u }}>
             <StoryCoverArt
               connectionId={connectionId}
               book={card.book}
@@ -133,8 +127,8 @@ function CardBody({
       );
     case 'voice':
       return (
-        <View style={{ gap: 6 * u }}>
-          <View style={{ marginTop: 28 * u, marginBottom: 12 * u }}>
+        <View className="flex-1 justify-center" style={{ gap: 6 * u, paddingBottom: 24 * u }}>
+          <View style={{ marginBottom: 12 * u }}>
             <Portrait name={card.narrator.name} kind="narrator" size={140 * u} />
           </View>
           {copy.title ? <Heading u={u}>{copy.title}</Heading> : null}
@@ -209,38 +203,40 @@ function CardBody({
     case 'summary':
       return (
         <>
-          <View className="flex-row flex-wrap" style={{ marginTop: 22 * u, rowGap: 14 * u }}>
-            {(copy.figures ?? []).map((f) => (
-              <View key={f.label} style={{ width: '50%', paddingRight: 8 * u }}>
-                <StoryText
-                  className="font-display"
-                  style={[
-                    tabularNums,
-                    { fontSize: 34 * u, lineHeight: 36 * u, letterSpacing: -1.4 * u },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {f.value}
-                </StoryText>
-                <StoryText style={{ fontSize: 13 * u, lineHeight: 18 * u, opacity: 0.85 }}>
-                  {f.label}
-                </StoryText>
-              </View>
-            ))}
+          <View className="flex-1 justify-center" style={{ gap: 26 * u }}>
+            <View className="flex-row flex-wrap" style={{ rowGap: 14 * u }}>
+              {(copy.figures ?? []).map((f) => (
+                <View key={f.label} style={{ width: '50%', paddingRight: 8 * u }}>
+                  <StoryText
+                    className="font-display"
+                    style={[
+                      tabularNums,
+                      { fontSize: 44 * u, lineHeight: 46 * u, letterSpacing: -1.8 * u },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {f.value}
+                  </StoryText>
+                  <StoryText style={{ fontSize: 13 * u, lineHeight: 18 * u, opacity: 0.85 }}>
+                    {f.label}
+                  </StoryText>
+                </View>
+              ))}
+            </View>
+            <View className="flex-row" style={{ gap: 4 * u }}>
+              {card.covers.map((b) => (
+                <StoryCoverArt
+                  key={`${b.library_id}:${b.path}`}
+                  connectionId={connectionId}
+                  book={b}
+                  width={Math.floor(44 * u)}
+                  plain={plainCovers}
+                />
+              ))}
+            </View>
           </View>
-          <View className="flex-row" style={{ marginTop: 22 * u, gap: 4 * u }}>
-            {card.covers.map((b) => (
-              <StoryCoverArt
-                key={`${b.library_id}:${b.path}`}
-                connectionId={connectionId}
-                book={b}
-                width={Math.floor(44 * u)}
-                plain={plainCovers}
-              />
-            ))}
-          </View>
-          <View className="flex-row items-center" style={{ marginTop: 'auto', gap: 6 * u }}>
+          <View className="flex-row items-center" style={{ gap: 6 * u }}>
             <Logo size={16 * u} color={colors.white} />
             <StoryText
               className="font-sans-bold"

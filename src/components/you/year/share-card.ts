@@ -14,7 +14,7 @@ import {
  * Native: capture the rendered card (`view`, the same component the story shows) to a
  * 1080 x 1920 PNG in the cache with react-native-view-shot. Rejects when the capture
  * fails (the caller can retry without covers: see `useShareCard`). The web build has its
- * own module (`share-card.web.ts`: html2canvas, then the Web Share API or a download).
+ * own module (`share-card.web.ts`: html-to-image, then the Web Share API or a download).
  */
 export function captureCard(view: View, fileName: string): Promise<CapturedCard> {
   return captureRef(view, {

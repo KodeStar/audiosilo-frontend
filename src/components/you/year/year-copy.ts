@@ -180,7 +180,7 @@ export function cardCopy(card: YearCard, ctx: CopyContext, t: TFunction): CardCo
         kicker: t('year.card.people.kicker'),
         body: [],
         rows,
-        thumb: card.author ? card.author.name : (card.series?.name ?? ''),
+        thumb: card.author ? t('year.card.people.author') : t('year.card.people.series'),
       };
     }
     case 'summary': {

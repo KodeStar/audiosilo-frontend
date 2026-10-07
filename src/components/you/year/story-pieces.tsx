@@ -1,14 +1,11 @@
 import { View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { BookCover } from '@/components/library/book-cover';
-import { Cover } from '@/components/ui/cover';
-
-import type { StoryCover, TowerSpine } from './year-model';
+import type { TowerSpine } from './year-model';
 
 /**
  * The drawings on the story cards (`story-card.tsx`): the tower of finished books, the
- * streak's 12 weeks, a cover. All decorative: each card says the same in words.
+ * streak's 12 weeks (covers: `story-cover.tsx`). All decorative: each card says the same in words.
  */
 
 /** The tallest the tower stands, in card units (a card is 360 units wide). */
@@ -78,38 +75,5 @@ export function StreakGrid({ days, unit }: { days: readonly number[]; unit: numb
         </View>
       ))}
     </View>
-  );
-}
-
-/** A book's cover on a card. `plain` draws it as its title on cloth instead of the art:
- * the second try of a share whose capture could not read an image. */
-export function StoryCoverArt({
-  connectionId,
-  book,
-  width,
-  plain,
-}: {
-  connectionId: string;
-  book: StoryCover;
-  width: number;
-  plain: boolean;
-}) {
-  if (plain) {
-    return (
-      <View style={{ width, height: width }} className="overflow-hidden rounded-cover">
-        <Cover source={null} label={book.title} sublabel={book.author} size={width} rounded="" />
-      </View>
-    );
-  }
-  return (
-    <BookCover
-      connectionId={connectionId}
-      libraryId={book.library_id}
-      path={book.path}
-      width={width}
-      title={book.title}
-      author={book.author}
-      shadow={width > 100 ? 'lg' : 'xs'}
-    />
   );
 }

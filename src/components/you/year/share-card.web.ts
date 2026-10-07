@@ -13,20 +13,24 @@ import {
 
 /**
  * Web: rasterise the rendered card's DOM node (the same component the story shows) to a
- * 1080 x 1920 PNG with html2canvas, react-native-view-shot's own web engine, called
- * directly so it draws at the share size instead of upscaling a screen-sized bitmap.
- * html2canvas is loaded on first use (its own chunk, out of the main bundle).
+ * 1080 x 1920 PNG with html-to-image, which lets the browser itself lay the card out
+ * (an SVG `foreignObject` drawn onto a canvas), so the type sits exactly where it does on
+ * screen. react-native-view-shot's own web engine (html2canvas) was tried first: it
+ * re-lays text out itself and clipped every line react-native-web clamps
+ * (`numberOfLines`), and it upscales a screen-sized bitmap. Loaded on first use (its own
+ * chunk, out of the main bundle).
  *
- * It works under the server's `/web` CSP: it reads the page's own stylesheets and draws
- * same-origin images (covers come from the server that serves the player), SVG through
- * `data:` images (`img-src data:`), and never fetches (`connect-src 'self'` blocks a
- * `fetch()` of a `data:` URL); the PNG comes out of `canvas.toBlob`, not a data URL.
- * A cross-origin cover (a dev server on another port) is left out rather than tainting
- * the canvas.
+ * It works under the server's `/web` CSP (`connect-src 'self'`, `img-src 'self' data:
+ * blob:`): the fonts and covers it inlines are same-origin `fetch()`es (the story's
+ * covers are plain URLs on the web, `story-cover.web.tsx`, never `blob:` ones, which
+ * `connect-src 'self'` would refuse), it never fetches a `data:` URL (it keeps those as
+ * they are), the drawing is a `data:` SVG image, and the PNG comes out of
+ * `canvas.toBlob`. A cover it can't fetch is left blank rather than failing the card.
  *
- * `deliverCard` then uses the Web Share API when the browser can share files (phones, Safari, Chrome on
- * macOS and Windows), else a download. A share the browser refuses (Safari wants it
- * close to the tap, and the drawing takes a moment) falls back to the download too.
+ * `deliverCard` then uses the Web Share API when the browser can share files (phones,
+ * Safari, Chrome on macOS and Windows), else a download. A share the browser refuses
+ * (Safari wants it close to the tap, and the drawing takes a moment) falls back to the
+ * download too.
  */
 export function captureCard(view: View, _fileName: string): Promise<CapturedCard> {
   return renderPng(view as unknown as HTMLElement);
@@ -57,14 +61,15 @@ export async function deliverCard(
 }
 
 async function renderPng(node: HTMLElement): Promise<Blob> {
-  const html2canvas = await loadRasteriser();
+  const { toCanvas } = await loadRasteriser();
   const box = node.getBoundingClientRect();
   if (box.width <= 0 || box.height <= 0) throw new Error('The card is not on screen');
-  const drawn = await html2canvas(node, {
-    scale: SHARE_WIDTH / box.width,
-    useCORS: true,
-    backgroundColor: null,
-    logging: false,
+  const drawn = await toCanvas(node, {
+    pixelRatio: SHARE_WIDTH / box.width,
+    skipAutoScale: true,
+    // Covers differ only in their query (`?path=`): without it they'd share one cache entry.
+    includeQueryParams: true,
+    cacheBust: false,
   });
   // Layout rounding can leave the drawing a pixel off 1080 x 1920: fit it exactly.
   let canvas = drawn;

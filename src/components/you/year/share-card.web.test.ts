@@ -1,9 +1,6 @@
-const mockHtml2canvas = jest.fn();
+const mockToCanvas = jest.fn();
 jest.mock('./load-rasteriser', () => ({
-  loadRasteriser:
-    async () =>
-    (...a: unknown[]) =>
-      mockHtml2canvas(...a),
+  loadRasteriser: async () => ({ toCanvas: (...a: unknown[]) => mockToCanvas(...a) }),
 }));
 const mockDownload = jest.fn();
 jest.mock('@/lib/download-blob', () => ({
@@ -21,7 +18,7 @@ const opts = { fileName: 'audiosilo-2026-01-hours.png', title: 'My 2026 in liste
 const g = globalThis as unknown as Record<string, unknown>;
 const saved = { navigator: g.navigator, document: g.document, File: g.File };
 
-/** A canvas html2canvas would hand back. */
+/** A canvas html-to-image would hand back. */
 function canvas(width: number, height: number) {
   return {
     width,
@@ -40,19 +37,19 @@ afterEach(() => {
 
 describe('share a card (web)', () => {
   it('draws the card node at the share size, out of a canvas blob', async () => {
-    mockHtml2canvas.mockResolvedValue(canvas(1080, 1920));
+    mockToCanvas.mockResolvedValue(canvas(1080, 1920));
     const node = { getBoundingClientRect: () => ({ width: 360, height: 640 }) };
     expect(await captureCard(node as unknown as View, opts.fileName)).toBe(png);
-    expect(mockHtml2canvas).toHaveBeenCalledWith(node, {
-      scale: 3,
-      useCORS: true,
-      backgroundColor: null,
-      logging: false,
+    expect(mockToCanvas).toHaveBeenCalledWith(node, {
+      pixelRatio: 3,
+      skipAutoScale: true,
+      includeQueryParams: true,
+      cacheBust: false,
     });
   });
 
   it('fits a drawing that came out a pixel off to exactly 1080 x 1920', async () => {
-    mockHtml2canvas.mockResolvedValue(canvas(1079, 1918));
+    mockToCanvas.mockResolvedValue(canvas(1079, 1918));
     const exact = canvas(0, 0);
     g.document = { createElement: () => exact };
     const node = { getBoundingClientRect: () => ({ width: 359.7, height: 639.4 }) };

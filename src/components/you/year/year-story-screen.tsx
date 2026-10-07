@@ -16,7 +16,7 @@ import { useGlobalShortcut } from '@/lib/keyboard';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 
-import { CARD_DESIGN_WIDTH } from './story-card';
+import { CARD_DESIGN_WIDTH } from './card-size';
 import { StoryStage } from './story-stage';
 import { StoryText } from './story-text';
 import { useScreenReaderEnabled } from './use-screen-reader';

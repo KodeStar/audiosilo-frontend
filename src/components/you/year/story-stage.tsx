@@ -7,7 +7,8 @@ import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 
-import { cardHeight, CARD_DESIGN_WIDTH, StoryCard } from './story-card';
+import { CARD_DESIGN_WIDTH, cardHeight } from './card-size';
+import { StoryCard } from './story-card';
 import type { StoryPlayer } from './use-story-player';
 import { type CardCopy, cardSpeech } from './year-copy';
 import type { YearCard } from './year-model';

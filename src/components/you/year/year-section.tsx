@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 
 import { StoryBackground } from './story-background';
-import { cardHeight } from './story-card';
+import { cardHeight } from './card-size';
 import { StoryStage } from './story-stage';
 import { StoryText } from './story-text';
 import { useScreenReaderEnabled } from './use-screen-reader';
