@@ -340,6 +340,16 @@ describe('JournalScreen: bookmarks and notes', () => {
     ).toBeTruthy();
   });
 
+  it('counts the notes once they are loaded, and shows no count while they are held back', async () => {
+    mockSources.notes = [source<MyNote>('c1', [], { status: 'loading' })];
+    const view = await mount();
+    expect(screen.getByLabelText('Notes')).toBeTruthy();
+    await view.unmount();
+    mockSources = { ...mockSources, notes: [source('c1', [note(1, 'a'), note(2, 'b')])] };
+    await mount();
+    expect(screen.getByLabelText('Notes, 2')).toBeTruthy();
+  });
+
   it('shows no count while more pages wait', async () => {
     mockSources.bookmarks = [source('c1', [bookmark(1)], { hasNextPage: true })];
     await mount();

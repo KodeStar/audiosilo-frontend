@@ -54,7 +54,8 @@ export function JournalScreen() {
   const [query, setQuery] = useState('');
   const [width, setWidth] = useState(0);
   // The notes are asked for once the Notes tab is first opened (the Diary shows none);
-  // the export reads them on its own.
+  // the export reads them on its own. Until then the tab's count shows only what the
+  // cache already holds (an earlier visit), else none.
   const [notesWanted, setNotesWanted] = useState(tab === 'notes');
   if (tab === 'notes' && !notesWanted) setNotesWanted(true);
   const sources = useJournalSources({ notes: notesWanted });

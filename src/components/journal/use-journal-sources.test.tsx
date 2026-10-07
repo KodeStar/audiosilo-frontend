@@ -46,8 +46,9 @@ notifyQueriesSynchronously();
 let qc: QueryClient;
 afterEach(() => qc.clear());
 
-async function mount(opts: { notes?: boolean } = {}) {
+async function mount(opts: { notes?: boolean } = {}, seed?: (qc: QueryClient) => void) {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  seed?.(qc);
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
@@ -120,6 +121,16 @@ describe('useJournalSources', () => {
     await waitFor(() => expect(result.current.notes[0].status).toBe('ready'));
     // A page of notes never rebuilds the other lists.
     expect(result.current.history).toBe(history);
+  });
+
+  // The Notes tab's count, with nothing asked on the Diary: what an earlier visit loaded.
+  it('reads the notes an earlier visit loaded while they are held back, asking nothing', async () => {
+    const { result } = await mount({ notes: false }, (c) =>
+      c.setQueryData(qk.myNotes('c1'), { pages: [page([7, 8])], pageParams: [undefined] }),
+    );
+    await waitFor(() => expect(result.current.notes[0].status).toBe('ready'));
+    expect(result.current.notes[0].rows).toHaveLength(2);
+    expect(mockConnections[0].client.myNotes).not.toHaveBeenCalled();
   });
 
   // A list read deep would refetch every page it holds, one after another, on a revisit.
