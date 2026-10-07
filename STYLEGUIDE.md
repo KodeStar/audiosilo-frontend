@@ -15,7 +15,7 @@ a real player at every size, and physical shelf metaphors that make a household'
 
 Target stack: **Expo SDK 56 + React Native 0.85 + React 19 + Expo Router**, **react-native-reusables**
 (shadcn/ui "new-york" on `@rn-primitives`), styled with **Uniwind** (Tailwind v4 tokens; confirmed by the Phase 0a
-spike, which moved the app off NativeWind v4, so NativeWind is no longer a fallback). Companions: `@expo/ui` bottom sheet (vaul on web), FlashList v2, react-native-gifted-charts,
+spike, which moved the app off NativeWind v4, so NativeWind is no longer a fallback). Companions: `@expo/ui` bottom sheet (vaul on web), FlashList v2, charts drawn with react-native-svg,
 expo-router native tabs, Reanimated 4, expo-glass-effect, expo-font, a vendored SVG icon set.
 
 The prototype (`design/player-redesign/stacks/index.html` in the workspace repo, route `#styleguide`) shows this
@@ -463,12 +463,27 @@ tab bar on phone). Dialogs radius 20 with a 40 px tinted icon badge; on phone th
 sit under the top bar for app-wide states. Notices (icon tile + bold headline + one sentence + at most two
 actions) explain local situations.
 
-### Stat tile, listening calendar, listening clock *custom on gifted-charts*
-Stat tile: label with icon, Bricolage 32 value with small unit, one line of context or a delta. Listening
-calendar: 53 x 7 rounded squares on `--seq-0..5`, month labels, today outlined, hover tooltip ("1h 36m · Sat
-3 Oct"), legend Less/More; scrolls to today on phone. Listening clock: 24 radial petals from 00 at the top,
-peaks in `--brand`, the busiest hour in the centre. Weekly bars: 18 px bars with 4 px rounded tops, this week in
-pink. Rank lists (top authors, narrators, series) use portraits/covers + an ink bar.
+### Stat tile, listening calendar, listening clock *custom on react-native-svg*
+Stat tile: label with icon, Bricolage 32 value (25 on a narrow page) with small units, one line of context or a
+delta, read as one element ("This week, 5h 9m, 3h 41m less than last week"). Listening calendar: 53 x 7 rounded
+squares on `--seq-0..5` (graded against the listener's own heavy days, the 95th percentile, so one marathon
+doesn't wash the rest out), month and weekday labels, today outlined, a tooltip ("1h 36m · Sat 3 Oct") on hover
+on the web and on a tap everywhere, legend Less/More, "N days with listening in the last 12 months"; below an
+11 pt cell it scrolls sideways and starts at today. Listening clock: 24 radial petals from 00 at the top, peaks
+(75% of the busiest hour or more) in `--brand`, the rest ink, the busiest hour in the centre, or the hour under
+the pointer or a tap. Weekly bars: the last 12 seven-day windows as 18 px bars with 4 px rounded tops on a dashed
+hour grid, this week in pink, the week under the pointer or a tap in a tooltip. On these pages the clock's peaks
+and this week's bar are the pink; the goal ring, rank bars and links stay ink. Rank lists (top authors,
+narrators, series) use portraits (a series: its monogram cover) + an ink bar, each row opening its page.
+
+In this codebase (`src/components/you/stats/`): the charts are react-native-svg drawings and Views, not
+gifted-charts (never installed). Each chart is one `image` element with a text summary, and is read without
+hover: `ChartPointer` lays a layer over the drawing that reports the point under a web pointer or a tap, and
+`ChartTip` is the ink tooltip. All the rules (weeks, streaks, the grid, the petals, hit tests, the goal steps,
+the layout columns) are the pure `stats-model.ts`. The page lays out by its measured width. Finished this year
+is a shelf of `Spine`s on the series bookcase's `Plank` (the stats carry no length or cover colour, so the
+spines are the standard width in their title's cloth colour), and the Year banner is a washed ink card in the
+blue and violet chart colours, not pink.
 
 ### Avatar, portrait, character token *custom*
 Household avatars: gradient monograms (two hues per person), Bricolage initials; a pink ring marks who is
@@ -601,7 +616,7 @@ Older servers lack these; the UI degrades quietly (Maya's Shelf on 1.12.3 shows 
 | `--accent` | `bg-accent` | Hover/pressed ghost items |
 | `--border / --input / --ring` | `border-border ring-ring` | Hairlines, Input, focus |
 | `--destructive` | `bg-destructive` | Sign out, delete |
-| `--chart-1..5` | `fill-chart-1` | gifted-charts series |
+| `--chart-1..5` | `fill-chart-1` | categorical chart series |
 | `--seq-0..5` | `bg-seq-3` | Listening calendar |
 | `--brand / --brand-ink / --brand-soft` | `bg-brand text-brand-ink` | Progress, ribbon, selection (custom) |
 | `--community` | `text-community` | CC BY-SA marks, note pins (custom) |
