@@ -341,7 +341,6 @@ export function DockedPlayer() {
       </View>
       {/* The sleep timer's last seconds and post-pause grace, just above the bar. */}
       <GraceCard bottom={(size?.height ?? DOCK_HEIGHT) + 12} />
-      {/* PlayerSheetHost mounts in src/components/shell/docked-player.tsx (workstream E) */}
     </>
   );
 }

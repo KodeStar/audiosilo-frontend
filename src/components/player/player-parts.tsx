@@ -36,6 +36,7 @@ import { addBookmarkHere } from './player-shortcuts';
 import { usePlayerSheets } from './player-sheets';
 import { playerContext, syncState } from './player-view-model';
 import { UndoChip } from './undo-chip';
+import { useSleepCountdown } from './use-sleep-countdown';
 import { usePlayingTimeLeft } from './use-time-left';
 
 const roundIcon = cn(
@@ -258,15 +259,12 @@ function SleepPill({ wide }: { wide: boolean }) {
   const remaining = useSleepTimer((s) => s.remaining);
   const label = useSleepTimer((s) => s.label);
   const extendable = useSleepTimer(selectSleepExtendable);
+  const countdown = useSleepCountdown();
   const active = phase !== 'idle';
   const text =
     phase === 'grace'
       ? t('player.sleepTimer.keepGoingShort')
-      : active && remaining !== null
-        ? formatClock(remaining)
-        : wide
-          ? t('player.full.sleep')
-          : undefined;
+      : (countdown ?? (wide ? t('player.full.sleep') : undefined));
   const a11y = extendable
     ? t('player.sleepTimer.keepListening')
     : active && label && remaining !== null
