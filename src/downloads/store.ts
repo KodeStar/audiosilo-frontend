@@ -20,6 +20,7 @@ import type {
   DownloadFailure,
   DownloadManifest,
   DownloadOrigin,
+  DownloadOutcome,
   StorageEstimate,
 } from './types';
 
@@ -55,14 +56,15 @@ type DownloadsState = {
   hydrate: () => Promise<void>;
   /** Queue a book. `origin` says who asked (default: the listener, which also lifts a
    * cancel/remove mark from earlier in the session). An errored entry is retried,
-   * keeping the files it already finished. */
+   * keeping the files it already finished. Resolves what it did (`DownloadOutcome`); a
+   * listener's request is queued at once, an automatic one after reading the room. */
   download: (
     connectionId: string,
     libraryId: number,
     book: Book,
     chapterData?: ChaptersResponse,
     origin?: DownloadOrigin,
-  ) => void;
+  ) => Promise<DownloadOutcome>;
   cancel: (connectionId: string, libraryId: number, path: string) => void;
   remove: (connectionId: string, libraryId: number, path: string) => Promise<void>;
 };
@@ -124,36 +126,55 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   },
 
   download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
-    if (!engine.supported) return;
+    const done = (outcome: DownloadOutcome) => Promise.resolve(outcome);
+    if (!engine.supported) return done('unsupported');
     // A book this browser plays through the server's transcoder would download as its
     // raw files, which it can't play offline: refuse (every path - the book page, auto
-    // download, keep-ahead - lands here). The UI says why (useDownloadControls).
-    if (webTranscodeFromCache(connectionId, book, chapterData)) return;
+    // download, keep-ahead - lands here). The UI says why (useDownloadControls, and the
+    // Downloads page's row for an earlier download of it that failed).
+    if (webTranscodeFromCache(connectionId, book, chapterData)) return done('transcoded');
     const key = downloadKey(connectionId, libraryId, book.rel_path);
     const existing = get().entries[key];
-    if (existing && existing.status !== 'error') return; // already queued/downloading/done
+    if (existing && existing.status !== 'error') return done('exists'); // queued/downloading/done
     if (origin === 'listener') {
       declined.delete(key);
       enqueue(key, connectionId, libraryId, book, chapterData, origin);
-      return;
+      return done('queued');
     }
     // An automatic download (the book you start, keep-ahead) never takes back a book
     // the listener cancelled or removed this session, and never eats into the reserve
     // (`roomLeft`; an unknowable room lets it start, one at a time).
-    if (declined.has(key)) return;
-    void (async () => {
+    if (declined.has(key)) return done('declined');
+    return (async (): Promise<DownloadOutcome> => {
       let storage: StorageEstimate | null = null;
       try {
         storage = await engine.storageEstimate();
       } catch {
         // not knowable: start it, one at a time like keep-ahead
       }
-      const room = roomLeft(storage, pendingBytes(Object.values(get().entries)));
-      if (room !== null && estimateBytes(book) > room) return;
+      const need = estimateBytes(book);
+      const entries = Object.entries(get().entries);
+      const room = roomLeft(storage, pendingBytes(entries.map(([, e]) => e)));
+      // The book being listened to outranks keep-ahead's books still waiting their turn:
+      // if only they stand in its way, they step aside (keep-ahead plans them again
+      // around it, when they still fit). One already downloading finishes.
+      let yielding: string[] = [];
+      if (room !== null && need > room) {
+        if (origin !== 'auto') return 'no-space';
+        yielding = entries
+          .filter(([, e]) => e.origin === 'keep-ahead' && e.status === 'queued')
+          .map(([k]) => k);
+        const others = entries.filter(([k]) => !yielding.includes(k)).map(([, e]) => e);
+        const without = roomLeft(storage, pendingBytes(others));
+        if (without !== null && need > without) return 'no-space';
+      }
       // Things may have moved while the room was read.
       const now = get().entries[key];
-      if (declined.has(key) || (now && now.status !== 'error')) return;
+      if (declined.has(key)) return 'declined';
+      if (now && now.status !== 'error') return 'exists';
+      for (const k of yielding) stepAside(k);
       enqueue(key, connectionId, libraryId, book, chapterData, origin);
+      return 'queued';
     })();
   },
 
@@ -215,8 +236,22 @@ function enqueue(
   };
   useDownloads.setState({ entries: { ...entries, [key]: entry } });
   void persist();
-  if (!queue.includes(key)) queue.push(key);
+  if (!queue.includes(key)) {
+    // The book you start goes next, ahead of keep-ahead's books still waiting (queue[0]
+    // is the download running now).
+    if (origin === 'auto' && running) queue.splice(1, 0, key);
+    else queue.push(key);
+  }
   void runQueue();
+}
+
+/** Take a waiting automatic download off the queue for the book you start, without the
+ * session's decline mark (the listener didn't cancel it): keep-ahead plans it again. A
+ * waiting keep-ahead download has no files yet (keep-ahead never retries a failure). */
+function stepAside(key: string) {
+  const idx = queue.indexOf(key);
+  if (idx >= 0) queue.splice(idx, 1);
+  removeEntry(key);
 }
 
 /**

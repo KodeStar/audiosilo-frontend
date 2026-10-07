@@ -31,6 +31,15 @@ export type DownloadFailure = {
  * `auto` like the listener's own (it is the book they chose to play). */
 export type DownloadOrigin = 'listener' | 'auto' | 'keep-ahead';
 
+/** What `download` did with a request: `queued` it, or why not - `exists` (already
+ * queued, downloading or on the device), `unsupported` (no offline storage here),
+ * `transcoded` (web: this browser plays the book through the server's transcoder, so its
+ * raw files would not play offline), `declined` (an automatic download of a book the
+ * listener cancelled or removed this session) or `no-space` (an automatic download that
+ * would eat into the reserve). */
+export type DownloadOutcome =
+  'queued' | 'exists' | 'unsupported' | 'transcoded' | 'declined' | 'no-space';
+
 /**
  * Offline source of truth for a downloaded book - everything the playback layer
  * needs to build the queue and render the player with no network: the book +

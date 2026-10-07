@@ -604,7 +604,8 @@
         "waiting": "Wartet auf WLAN.",
         "noSpace": "Pausiert: Es ist nicht genug Speicher frei. Automatische Downloads lassen immer mindestens 1 GB frei.",
         "failed": "Eines der nächsten Bücher wurde nicht fertig geladen. Versuche es unter Downloads erneut.",
-        "declined": "Die nächsten Bücher bleiben unberührt: Du hast sie entfernt."
+        "declined": "Die nächsten Bücher bleiben unberührt: Du hast sie entfernt.",
+        "unavailable": "Dieser Browser kann die nächsten Bücher nicht offline bereithalten."
       },
       "autoDelete": "Download entfernen, wenn du das Buch beendet hast"
     },
@@ -642,6 +643,7 @@
       "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
       "interrupted": "Die App wurde geschlossen, bevor der Download fertig war.",
       "unknown": "Der Download wurde angehalten.",
+      "notInBrowser": "Dieser Browser kann dieses Buch nicht offline abspielen. Entferne es, um den Platz freizugeben.",
       "kept": "Deine {{percent}} % bleiben erhalten.",
       "restart": "Ein neuer Versuch beginnt von vorn."
     },

@@ -1170,7 +1170,7 @@ describe('auto-download on start', () => {
     mockCanAutoDownload.mockResolvedValue(true);
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     // A path no earlier test removed (the session decline mark is module state).
     const book = makeBook({ rel_path: 'A/Fresh.m4b' });
@@ -1186,7 +1186,7 @@ describe('auto-download on start', () => {
     useSettings.setState({ autoDownloadNext: 'never' });
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     await startBook(makeBook(), 0);
     await Promise.resolve();
@@ -1221,7 +1221,7 @@ describe('auto-download on start', () => {
     useDownloads.setState({ entries: { [`c1:2:${book.rel_path}`]: entry } });
     const downloadSpy = jest
       .spyOn(useDownloads.getState(), 'download')
-      .mockImplementation(() => {});
+      .mockImplementation(async () => 'queued');
 
     await startBook(book, 0);
     await Promise.resolve();

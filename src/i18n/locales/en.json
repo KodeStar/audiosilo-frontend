@@ -604,7 +604,8 @@
         "waiting": "Waiting for Wi-Fi.",
         "noSpace": "Paused: there isn't enough free space. Automatic downloads always leave at least 1 GB free.",
         "failed": "One of the next books stopped downloading. Retry it in Downloads.",
-        "declined": "Leaving the next books alone: you removed them."
+        "declined": "Leaving the next books alone: you removed them.",
+        "unavailable": "This browser can't keep the next books offline."
       },
       "autoDelete": "Remove a download when you finish the book"
     },
@@ -642,6 +643,7 @@
       "removed": "You're no longer signed in to this server.",
       "interrupted": "The app closed before it finished.",
       "unknown": "The download stopped.",
+      "notInBrowser": "This browser can't play this book offline. Remove it to free the space.",
       "kept": "Your {{percent}}% is kept.",
       "restart": "Retry starts it again."
     },

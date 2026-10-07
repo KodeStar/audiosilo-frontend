@@ -37,6 +37,8 @@ function input(p: Partial<KeepAheadInput> = {}): KeepAheadInput {
     window: [book('A'), book('B')],
     entries: new Map(),
     declined: new Set(),
+    unavailable: new Set(),
+    tooBig: new Set(),
     storage: { scope: 'device', capacity: 128 * GB, free: 60 * GB },
     pending: 0,
     ...p,
@@ -253,5 +255,39 @@ describe('planKeepAhead', () => {
       }),
     );
     expect(third.start.map((x) => x.path)).toEqual(['B']);
+  });
+});
+
+describe('planKeepAhead with books the downloads store turned away', () => {
+  it('leaves a book this device cannot keep alone, and plans the next instead', () => {
+    const [a, b] = [book('A'), book('B')];
+    const plan = planKeepAhead(input({ window: [a, b], unavailable: new Set([contentKeyOf(a)]) }));
+    expect(plan.slots.map((s) => s.state)).toEqual(['unavailable', 'start']);
+    expect(plan.start).toEqual([b]);
+    expect(plan.status).toBe('working');
+  });
+
+  it('spends the one-at-a-time budget of an unknowable room on a book it can keep', () => {
+    const [a, b] = [book('A'), book('B')];
+    const plan = planKeepAhead(
+      input({ window: [a, b], storage: null, unavailable: new Set([contentKeyOf(a)]) }),
+    );
+    expect(plan.start).toEqual([b]);
+  });
+
+  it('says so when no book of the window can be kept', () => {
+    const [a, b] = [book('A'), book('B')];
+    const plan = planKeepAhead(
+      input({ window: [a, b], unavailable: new Set([contentKeyOf(a), contentKeyOf(b)]) }),
+    );
+    expect(plan.status).toBe('unavailable');
+    expect(plan.start).toEqual([]);
+  });
+
+  it('reads a book turned away for room as no room, holding the ones after it', () => {
+    const [a, b] = [book('A'), book('B')];
+    const plan = planKeepAhead(input({ window: [a, b], tooBig: new Set([contentKeyOf(a)]) }));
+    expect(plan.slots.map((s) => s.state)).toEqual(['no-space', 'no-space']);
+    expect(plan.status).toBe('no-space');
   });
 });

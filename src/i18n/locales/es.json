@@ -604,7 +604,8 @@
         "waiting": "Esperando al wifi.",
         "noSpace": "En pausa: no hay suficiente espacio libre. Las descargas automáticas siempre dejan al menos 1 GB libre.",
         "failed": "Uno de los próximos libros dejó de descargarse. Reinténtalo en Descargas.",
-        "declined": "Los próximos libros se quedan como están: los quitaste."
+        "declined": "Los próximos libros se quedan como están: los quitaste.",
+        "unavailable": "Este navegador no puede guardar los próximos libros sin conexión."
       },
       "autoDelete": "Quitar una descarga al terminar el libro"
     },
@@ -642,6 +643,7 @@
       "removed": "Ya no tienes la sesión iniciada en este servidor.",
       "interrupted": "La app se cerró antes de que terminara.",
       "unknown": "La descarga se detuvo.",
+      "notInBrowser": "Este navegador no puede reproducir este libro sin conexión. Quítalo para liberar el espacio.",
       "kept": "Tu {{percent}} % se conserva.",
       "restart": "Al reintentar empieza de nuevo."
     },

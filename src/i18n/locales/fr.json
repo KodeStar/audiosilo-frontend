@@ -604,7 +604,8 @@
         "waiting": "En attente du Wi-Fi.",
         "noSpace": "En pause : il n’y a pas assez d’espace libre. Les téléchargements automatiques laissent toujours au moins 1 Go libre.",
         "failed": "Le téléchargement d’un des prochains livres s’est arrêté. Réessayez dans Téléchargements.",
-        "declined": "Les prochains livres restent tels quels : vous les avez supprimés."
+        "declined": "Les prochains livres restent tels quels : vous les avez supprimés.",
+        "unavailable": "Ce navigateur ne peut pas garder les prochains livres hors ligne."
       },
       "autoDelete": "Supprimer un téléchargement quand vous terminez le livre"
     },
@@ -642,6 +643,7 @@
       "removed": "Vous n’êtes plus connecté à ce serveur.",
       "interrupted": "L’app s’est fermée avant la fin.",
       "unknown": "Le téléchargement s’est arrêté.",
+      "notInBrowser": "Ce navigateur ne peut pas lire ce livre hors ligne. Supprimez-le pour libérer l’espace.",
       "kept": "Vos {{percent}} % sont conservés.",
       "restart": "Réessayer le reprend depuis le début."
     },
