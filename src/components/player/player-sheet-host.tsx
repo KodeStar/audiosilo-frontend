@@ -2,9 +2,7 @@ import { type ReactNode, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowDimensions, View } from 'react-native';
 
-import { bottomChromeTop, useShellMetrics } from '@/components/shell/shell-metrics';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useRootInsets } from '@/components/ui/overlay';
 import { Sheet } from '@/components/ui/sheet';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
@@ -144,27 +142,22 @@ export function PlayerSheetHost({
   );
 }
 
-/** The sleep timer's grace card on a phone, outside the full player: lifted clear of the
- * measured bottom chrome (the tab bar, the mini player). Tablet and desktop show it from
- * the docked bar; the full player mounts its own. */
-function PhoneGraceCard() {
-  const phone = useLayout() === 'phone';
+/** The sleep timer's floating grace card outside the full player (which shows its own in
+ * the flow), above whatever bottom chrome the shell has. */
+function ShellGraceCard() {
   const playerOnTop = usePlayerOnTop();
-  const insets = useRootInsets();
-  const chromeTop = useShellMetrics((s) => bottomChromeTop(s.edges));
-  if (!phone || playerOnTop) return null;
-  return <GraceCard bottom={(chromeTop ?? insets.bottom + 120) + 12} />;
+  return playerOnTop ? null : <GraceCard />;
 }
 
 /**
  * The player's overlays at the app shell's root (both platform layouts mount it once,
  * beside Up next's sheet): the sheet host for the docked bar and the mini players, and
- * the phone's grace card. Renders in place, so it must sit at the shell's root.
+ * the floating grace card. Renders in place, so it must sit at the shell's root.
  */
 export function ShellPlayerOverlays() {
   return (
     <>
-      <PhoneGraceCard />
+      <ShellGraceCard />
       <PlayerSheetHost scope="shell" />
     </>
   );

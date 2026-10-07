@@ -5,9 +5,10 @@ import { create } from 'zustand';
  * The pieces of bottom chrome the shell lays out over or under the page: the phone tab
  * bar (`bar`: ours on web; the native bar's top edge from the tab stacks' layout), the
  * floating mini player card (`mini`), the iOS 26 tab bar accessory pill (`accessory`),
- * and the docked player bar (`dock`).
+ * the docked player bar (`dock`), and the sleep timer's floating grace card (`grace`,
+ * above all of them while it shows, so toasts clear it too).
  */
-export type ChromePiece = 'bar' | 'mini' | 'accessory' | 'dock';
+export type ChromePiece = 'bar' | 'mini' | 'accessory' | 'dock' | 'grace';
 
 /**
  * What the shell measures for overlays that live outside it (the root `ShellToastHost`):
@@ -57,9 +58,14 @@ export function nativeBarEdge(
 }
 
 /** The top edge of the bottom chrome (its highest piece), or undefined before any piece
- * has been laid out. */
-export function bottomChromeTop(edges: ShellMetrics['edges']): number | undefined {
-  const values = Object.values(edges);
+ * has been laid out. `except` leaves one piece out (the grace card sits on the rest). */
+export function bottomChromeTop(
+  edges: ShellMetrics['edges'],
+  except?: ChromePiece,
+): number | undefined {
+  const values = Object.entries(edges)
+    .filter(([piece]) => piece !== except)
+    .map(([, edge]) => edge);
   return values.length > 0 ? Math.max(...values) : undefined;
 }
 

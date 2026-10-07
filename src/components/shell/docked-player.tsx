@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { serverStatus, useReachability } from '@/api/reachability';
 import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
-import { GraceCard } from '@/components/player/grace-card';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
@@ -358,8 +357,6 @@ export function DockedPlayer() {
           </View>
         </View>
       </View>
-      {/* The sleep timer's last seconds and post-pause grace, just above the bar. */}
-      <GraceCard bottom={(size?.height ?? DOCK_HEIGHT) + 12} />
     </>
   );
 }

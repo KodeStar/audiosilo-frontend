@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { playerStoreMock } from '@/testing/player-store-mock';
 
@@ -10,15 +11,25 @@ jest.mock('@/playback/store', () =>
 
 /* eslint-disable import/first */
 import { GraceCard, useGraceCardOpen } from '@/components/player/grace-card';
+import { setChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics';
 import { GRACE_SECONDS, useSleepTimer } from '@/playback/sleep-timer';
 import { useSettings } from '@/stores/settings';
 /* eslint-enable import/first */
 
 const player = playerStoreMock();
 
+const METRICS = {
+  frame: { x: 0, y: 0, width: 400, height: 800 },
+  insets: { top: 0, left: 0, right: 0, bottom: 20 },
+};
+
 async function mount(inline = false) {
   await act(async () => {
-    render(<GraceCard inline={inline} />);
+    render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GraceCard inline={inline} />
+      </SafeAreaProvider>,
+    );
   });
 }
 
@@ -48,6 +59,7 @@ describe('GraceCard', () => {
     player.setPlayState('playing');
     useSleepTimer.getState().cancel();
     useSettings.setState({ shakeToExtend: true });
+    useShellMetrics.setState({ edges: {} });
     Platform.OS = 'ios';
   });
 
@@ -180,5 +192,30 @@ describe('GraceCard', () => {
     const root = screen.toJSON() as { props: { className?: string; style?: unknown } };
     expect(root.props.className).toBe('w-full items-center');
     expect(root.props.style).toBeUndefined();
+  });
+
+  it('floats just above the bottom chrome, and lifts the toasts above itself', async () => {
+    setChromeEdge('dock', 105);
+    await mount();
+    await act(async () => {
+      useSleepTimer.getState().startDuration(1);
+    });
+    await advance(36_000);
+    const card = () => screen.getByTestId('sleep-grace-float');
+    // Where a toast would sit: the chrome's top edge plus the toasts' gap.
+    expect(card().props.style).toEqual({ bottom: 117 });
+    await act(async () => {
+      card().props.onLayout({ nativeEvent: { layout: { height: 80 } } });
+    });
+    expect(useShellMetrics.getState().edges.grace).toBe(197);
+    // A taller chrome moves the card, never its own edge.
+    await act(async () => {
+      setChromeEdge('dock', 120);
+    });
+    expect(card().props.style).toEqual({ bottom: 132 });
+    // Gone: the toasts come back down.
+    await advance(60_000 + GRACE_SECONDS * 1000);
+    expect(screen.queryByTestId('sleep-grace-card')).toBeNull();
+    expect(useShellMetrics.getState().edges.grace).toBeUndefined();
   });
 });

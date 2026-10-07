@@ -9,7 +9,6 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle } from 'react-native-svg';
 
 import type { Book, BookMetaAttribution, BookMetaRecording } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
@@ -26,6 +25,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Icon } from '@/components/ui/icon';
+import { ProgressRing } from '@/components/ui/progress-ring';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
@@ -268,35 +268,24 @@ export function CreditsDialog({
 function CountdownRing({ seconds }: { seconds: number }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const r = 22;
-  const c = 2 * Math.PI * r;
   const left = Math.ceil(seconds);
   return (
     <View
       accessible
       role="timer"
       accessibilityLabel={t('player.finished.countdown', { count: left })}
-      className="h-[52px] w-[52px] items-center justify-center"
     >
-      <View className="absolute inset-0" style={{ transform: [{ rotate: '-90deg' }] }}>
-        <Svg width={52} height={52}>
-          <Circle cx={26} cy={26} r={r} fill="none" stroke={themed.border} strokeWidth={4} />
-          <Circle
-            cx={26}
-            cy={26}
-            r={r}
-            fill="none"
-            stroke={themed.brand}
-            strokeWidth={4}
-            strokeLinecap="round"
-            strokeDasharray={c}
-            strokeDashoffset={c * (1 - Math.min(1, seconds / GRACE_SECONDS))}
-          />
-        </Svg>
-      </View>
-      <Text className="font-display text-base" style={tabularNums}>
-        {left}
-      </Text>
+      <ProgressRing
+        fraction={seconds / GRACE_SECONDS}
+        size={52}
+        stroke={4}
+        color={themed.brand}
+        trackColor={themed.border}
+      >
+        <Text className="font-display text-base" style={tabularNums}>
+          {left}
+        </Text>
+      </ProgressRing>
     </View>
   );
 }

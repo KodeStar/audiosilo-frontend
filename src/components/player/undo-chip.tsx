@@ -1,21 +1,10 @@
-import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  ReduceMotion,
-  cancelAnimation,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { CountdownRing } from '@/components/ui/progress-ring';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
@@ -24,106 +13,6 @@ import { selectUndoFor, undoJump, UNDO_WINDOW_MS, useJumpUndo } from '@/playback
 import { selectBookKey, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-const RING = 22;
-const STROKE = 2;
-const R = (RING - STROKE) / 2;
-const C = RING / 2;
-/** The right half of the ring, top to bottom clockwise; the left half is the same path
- * turned half a turn. */
-const HALF_ARC = `M ${C} ${C - R} A ${R} ${R} 0 0 1 ${C} ${C + R}`;
-
-/**
- * The ring that empties over the chip's life. Transform-only on every platform (no
- * animated SVG props): each half of the arc is a static half-ring in a half-width
- * window, turned away under the window's edge as the time runs out - the right half
- * first holds the last 180 degrees, then the left.
- *
- * It runs out at `until` (epoch ms), from the share of `UNDO_WINDOW_MS` left when it
- * mounts. Reduced motion: a still, full ring (the chip still goes away on time).
- */
-function CountdownRing({ until, color }: { until: number; color: string }) {
-  const reduced = useReducedMotion();
-  const left = useSharedValue(1);
-  useEffect(() => {
-    if (reduced) {
-      left.set(1);
-      return;
-    }
-    const ms = Math.max(0, until - Date.now());
-    left.set(Math.min(1, ms / UNDO_WINDOW_MS));
-    left.set(withTiming(0, { duration: ms, easing: Easing.linear }));
-    return () => cancelAnimation(left);
-  }, [until, reduced, left]);
-
-  // Degrees of arc left, clockwise from the top.
-  const rightStyle = useAnimatedStyle(() => {
-    const deg = Math.max(0, Math.min(1, left.get())) * 360;
-    return { transform: [{ rotate: `${Math.min(deg, 180) - 180}deg` }] };
-  });
-  const leftStyle = useAnimatedStyle(() => {
-    const deg = Math.max(0, Math.min(1, left.get())) * 360;
-    return { transform: [{ rotate: `${Math.max(deg, 180) - 180}deg` }] };
-  });
-
-  const half = (
-    <Svg width={RING} height={RING}>
-      <Path d={HALF_ARC} stroke={color} strokeWidth={STROKE} fill="none" />
-    </Svg>
-  );
-  return (
-    <View style={{ width: RING, height: RING }} pointerEvents="none">
-      <Svg width={RING} height={RING} style={{ position: 'absolute' }}>
-        <Circle
-          cx={C}
-          cy={C}
-          r={R}
-          stroke={color}
-          strokeOpacity={0.25}
-          strokeWidth={STROKE}
-          fill="none"
-        />
-      </Svg>
-      {/* Right window: the half arc turned back anticlockwise as the time runs out. */}
-      <View
-        style={{
-          position: 'absolute',
-          left: C,
-          top: 0,
-          width: C,
-          height: RING,
-          overflow: 'hidden',
-        }}
-      >
-        <Animated.View
-          style={[
-            { position: 'absolute', left: -C, top: 0, width: RING, height: RING },
-            rightStyle,
-          ]}
-        >
-          {half}
-        </Animated.View>
-      </View>
-      {/* Left window: the half arc starts at the bottom (180) and turns back to it. */}
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: C,
-          height: RING,
-          overflow: 'hidden',
-        }}
-      >
-        <Animated.View
-          style={[{ position: 'absolute', left: 0, top: 0, width: RING, height: RING }, leftStyle]}
-        >
-          {half}
-        </Animated.View>
-      </View>
-    </View>
-  );
-}
 
 /** Take the listener back and say so (the chip's press). Returns whether there was
  * anything to undo. */
@@ -179,7 +68,15 @@ export function UndoChip({ className }: { className?: string }) {
         >
           {label}
         </Text>
-        <CountdownRing until={jump.until} color={themed.primaryForeground} />
+        {/* Empties over the chip's ten seconds. */}
+        <CountdownRing
+          until={jump.until}
+          windowMs={UNDO_WINDOW_MS}
+          size={22}
+          stroke={2}
+          color={themed.primaryForeground}
+          trackOpacity={0.25}
+        />
       </AnimatedPressable>
     </Animated.View>
   );
