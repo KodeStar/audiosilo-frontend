@@ -44,6 +44,18 @@
       "type": {
         "label": "Timer type",
         "chapter": "End of chapter"
+      },
+      "shake": {
+        "label": "Shake to extend",
+        "description": "Shake your phone in the last 30 seconds, or just after the timer stops, to keep listening.",
+        "unavailable": "Not available in the browser."
+      },
+      "sensitivity": {
+        "label": "Shake sensitivity",
+        "description": "How hard the shake has to be. Choose Low if bumps in bed keep the book going.",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
       }
     },
     "upNext": {
@@ -793,26 +805,59 @@
     },
     "sleepTimer": {
       "title": "Sleep timer",
-      "running": "Timer running",
-      "timeSection": "Time",
       "minutes_one": "{{count}} min",
       "minutes_other": "{{count}} min",
-      "endOfChapterSection": "End of chapter",
       "endOf": "End of {{chapter}}",
       "endOfChapterNumber": "End of Chapter {{number}}",
-      "current": " (current)",
       "endOfBook": "End of book",
-      "noChapters": "No chapters available.",
-      "fading": "Fading out",
-      "ending": "Ending soon",
-      "grace": "Playback paused",
       "keepListening": "Keep listening",
-      "shakeHint": "Shake your phone to keep listening",
       "keepGoingShort": "Keep going",
-      "cancel": "Cancel timer"
+      "minutesUnit_one": "minute",
+      "minutesUnit_other": "minutes",
+      "afterChapters_one": "After {{count}} chapter",
+      "afterChapters_other": "After {{count}} chapters",
+      "endOfChapter": "End of chapter",
+      "inTime": "in {{time}}",
+      "stopAfter": "Or stop after",
+      "thisChapter": "This chapter",
+      "nChapters_one": "{{count}} chapter",
+      "nChapters_other": "{{count}} chapters",
+      "endsAt": "ends {{time}}",
+      "pillRunning": "Sleep timer, {{label}}, {{time}} left",
+      "turnOff": "Turn off",
+      "notice": {
+        "on": "Sleep timer on",
+        "book": "Stopping at the end of the book",
+        "chapters_one": "Stopping at the end of this chapter",
+        "chapters_other": "Stopping after {{count}} chapters",
+        "left": "{{time}} left",
+        "leftFades": "{{time}} left · fades out over the last 30 s",
+        "graceLeft": "{{time}} left to keep listening"
+      },
+      "grace": {
+        "fadingIn_one": "Fading out in {{count}} s",
+        "fadingIn_other": "Fading out in {{count}} s",
+        "stoppingIn_one": "Stopping in {{count}} s",
+        "stoppingIn_other": "Stopping in {{count}} s",
+        "pausedTitle": "Paused by the sleep timer",
+        "stillAwakeShake": "Still awake? Shake your phone or tap to keep listening.",
+        "stillAwake": "Still awake? Keep listening.",
+        "pausedShake": "Still awake? Shake your phone or tap to pick up where it stopped.",
+        "paused": "Still awake? Pick up where it stopped."
+      },
+      "autoChapter": "Stops at the end of the chapter whenever you press play between {{from}} and {{until}}.",
+      "autoMinutes_one": "Starts a {{count}}-minute timer whenever you press play between {{from}} and {{until}}.",
+      "autoMinutes_other": "Starts a {{count}}-minute timer whenever you press play between {{from}} and {{until}}.",
+      "fellAsleepHint": "If you fall asleep, a \"Fell asleep\" bookmark marks where the timer stopped, and the next time you play the book you can jump back to the last moment you were awake.",
+      "fellAsleepNote": "Fell asleep"
     },
     "speed": {
-      "title": "Playback speed"
+      "title": "Playback speed",
+      "leftInBook": "{{time}} left in the book at {{speed}} · remembered for this book",
+      "slower": "Slower by 0.05",
+      "faster": "Faster by 0.05",
+      "presets": "Speed presets",
+      "presetLabel": "{{speed}}, {{time}} left"
     },
     "seek": {
       "label": "Playback position",
@@ -829,6 +874,12 @@
     "menu": {
       "label": "More",
       "viewCredits": "View end credits"
+    },
+    "drift": {
+      "title": "You drifted off around {{time}}",
+      "description_one": "Jump back {{count}} minute?",
+      "description_other": "Jump back {{count}} minutes?",
+      "jumpBack": "Jump back"
     }
   },
   "reconnect": {

@@ -44,6 +44,18 @@
       "type": {
         "label": "Tipo de temporizador",
         "chapter": "Fin del capítulo"
+      },
+      "shake": {
+        "label": "Agitar para alargar",
+        "description": "Agita el teléfono en los últimos 30 segundos, o justo después de que se detenga el temporizador, para seguir escuchando.",
+        "unavailable": "No disponible en el navegador."
+      },
+      "sensitivity": {
+        "label": "Sensibilidad al agitar",
+        "description": "Con qué fuerza hay que agitar. Elige Baja si los movimientos en la cama hacen que el libro siga.",
+        "low": "Baja",
+        "medium": "Media",
+        "high": "Alta"
       }
     },
     "upNext": {
@@ -793,26 +805,59 @@
     },
     "sleepTimer": {
       "title": "Temporizador",
-      "running": "Temporizador en marcha",
-      "timeSection": "Tiempo",
       "minutes_one": "{{count}} min",
       "minutes_other": "{{count}} min",
-      "endOfChapterSection": "Fin del capítulo",
       "endOf": "Fin de {{chapter}}",
       "endOfChapterNumber": "Fin del capítulo {{number}}",
-      "current": " (actual)",
       "endOfBook": "Fin del libro",
-      "noChapters": "No hay capítulos disponibles.",
-      "fading": "Bajando el volumen",
-      "ending": "Termina en breve",
-      "grace": "Reproducción en pausa",
       "keepListening": "Seguir escuchando",
-      "shakeHint": "Agita el teléfono para seguir escuchando",
       "keepGoingShort": "Seguir",
-      "cancel": "Cancelar temporizador"
+      "minutesUnit_one": "minuto",
+      "minutesUnit_other": "minutos",
+      "afterChapters_one": "Tras {{count}} capítulo",
+      "afterChapters_other": "Tras {{count}} capítulos",
+      "endOfChapter": "Fin del capítulo",
+      "inTime": "en {{time}}",
+      "stopAfter": "O parar después de",
+      "thisChapter": "Este capítulo",
+      "nChapters_one": "{{count}} capítulo",
+      "nChapters_other": "{{count}} capítulos",
+      "endsAt": "termina a las {{time}}",
+      "pillRunning": "Temporizador, {{label}}, quedan {{time}}",
+      "turnOff": "Desactivar",
+      "notice": {
+        "on": "Temporizador activado",
+        "book": "Se detendrá al final del libro",
+        "chapters_one": "Se detendrá al final de este capítulo",
+        "chapters_other": "Se detendrá tras {{count}} capítulos",
+        "left": "Quedan {{time}}",
+        "leftFades": "Quedan {{time}} · baja el volumen en los últimos 30 s",
+        "graceLeft": "Quedan {{time}} para seguir escuchando"
+      },
+      "grace": {
+        "fadingIn_one": "Bajando el volumen, se detiene en {{count}} s",
+        "fadingIn_other": "Bajando el volumen, se detiene en {{count}} s",
+        "stoppingIn_one": "Se detiene en {{count}} s",
+        "stoppingIn_other": "Se detiene en {{count}} s",
+        "pausedTitle": "En pausa por el temporizador",
+        "stillAwakeShake": "¿Sigues despierto? Agita el teléfono o toca para seguir escuchando.",
+        "stillAwake": "¿Sigues despierto? Sigue escuchando.",
+        "pausedShake": "¿Sigues despierto? Agita el teléfono o toca para continuar donde se detuvo.",
+        "paused": "¿Sigues despierto? Continúa donde se detuvo."
+      },
+      "autoChapter": "Se detiene al final del capítulo cada vez que pulsas reproducir entre las {{from}} y las {{until}}.",
+      "autoMinutes_one": "Inicia un temporizador de {{count}} minuto cada vez que pulsas reproducir entre las {{from}} y las {{until}}.",
+      "autoMinutes_other": "Inicia un temporizador de {{count}} minutos cada vez que pulsas reproducir entre las {{from}} y las {{until}}.",
+      "fellAsleepHint": "Si te duermes, un marcador «Me dormí» señala dónde se detuvo el temporizador, y la próxima vez que reproduzcas el libro podrás volver al último momento en que estabas despierto.",
+      "fellAsleepNote": "Me dormí"
     },
     "speed": {
-      "title": "Velocidad de reproducción"
+      "title": "Velocidad de reproducción",
+      "leftInBook": "Quedan {{time}} del libro a {{speed}} · se recuerda para este libro",
+      "slower": "0,05 más lento",
+      "faster": "0,05 más rápido",
+      "presets": "Velocidades predefinidas",
+      "presetLabel": "{{speed}}, quedan {{time}}"
     },
     "seek": {
       "label": "Posición de reproducción",
@@ -829,6 +874,12 @@
     "menu": {
       "label": "Más",
       "viewCredits": "Ver créditos finales"
+    },
+    "drift": {
+      "title": "Te quedaste dormido hacia las {{time}}",
+      "description_one": "¿Volver {{count}} minuto atrás?",
+      "description_other": "¿Volver {{count}} minutos atrás?",
+      "jumpBack": "Volver atrás"
     }
   },
   "reconnect": {
