@@ -68,10 +68,17 @@ jest.mock('@/components/player/use-play-book', () => ({
 }));
 
 let mockBookmarks: Bookmark[] = [];
-jest.mock('@/components/player/use-playing-pins', () => ({
-  ...jest.requireActual('@/components/player/use-playing-pins'),
-  useBookAnnotations: () => ({ bookmarks: mockBookmarks, notes: [] }),
-}));
+jest.mock('@/components/player/use-playing-pins', () => {
+  const actual = jest.requireActual('@/components/player/use-playing-pins');
+  return {
+    ...actual,
+    useBookAnnotations: () => ({
+      bookmarks: mockBookmarks,
+      notes: [],
+      pins: actual.pinsOf(mockBookmarks, []),
+    }),
+  };
+});
 
 // Sections with their own data and tests.
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
@@ -108,7 +115,6 @@ import { BookScreen } from './book-page';
 
 const player = playerStoreMock();
 const mockPlayBook = jest.fn((..._args: unknown[]) => Promise.resolve());
-const mockGoToTrack = jest.fn((..._args: unknown[]) => Promise.resolve());
 
 const BOOK: Book = {
   id: 1,
@@ -196,10 +202,9 @@ beforeEach(() => {
   mockPush.mockClear();
   mockStartBook.mockClear();
   mockPlayBook.mockClear();
-  mockGoToTrack.mockClear();
   player.reset();
   player.clearSpies();
-  player.patch({ playBook: mockPlayBook, goToTrack: mockGoToTrack } as never);
+  player.patch({ playBook: mockPlayBook } as never);
   useSession.setState({
     connections: [{ id: 'home', name: 'Hearthside', serverUrl: 'https://h', token: 't' }],
   } as never);
@@ -309,28 +314,18 @@ describe('book page chapters tab', () => {
     expect(screen.getByTestId('book-tab-bookmarks')).toHaveTextContent(/Bookmarks\s*2/);
   });
 
-  it('starts a not-playing book at a chapter on desktop, and seeks the playing one', async () => {
+  // Where the jump goes (the player on a phone, in place elsewhere, the loaded book
+  // seeking) is the one play path's (`playRoute`, its own table).
+  it('jumps to a chapter through the one play path, for the playing book too', async () => {
+    const target = { connectionId: 'home', libraryId: 1, path: 'Author/Book' };
     await mountAt('desktop');
     await fireEvent.press(screen.getByRole('button', { name: /^Honor Is Dead/ }));
-    expect(mockPlayBook).toHaveBeenCalledWith('home', 1, BOOK, CHAPTERS, 2000, undefined);
+    expect(mockStartBook).toHaveBeenLastCalledWith(target, { at: { position: 2000 } });
 
-    player.patch({
-      nowPlaying: THIS_BOOK as never,
-      snapshot: { ...player.usePlayer.getState().snapshot, state: 'paused' },
-    });
-    await mountAt('desktop');
-    await fireEvent.press(screen.getByRole('button', { name: /^Stormblessed/ }));
-    expect(player.spies.seekBook).toHaveBeenCalledWith(1000);
-    expect(player.spies.toggle).toHaveBeenCalled();
-  });
-
-  it('opens the player on the chapter on a phone', async () => {
+    player.patch({ nowPlaying: THIS_BOOK as never });
     await mountAt('phone');
-    await fireEvent.press(screen.getByRole('button', { name: /^Honor Is Dead/ }));
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/player',
-      params: { connection: 'home', libraryId: '1', path: 'Author/Book', position: '2000' },
-    });
+    await fireEvent.press(screen.getByRole('button', { name: /^Stormblessed/ }));
+    expect(mockStartBook).toHaveBeenLastCalledWith(target, { at: { position: 1000 } });
     expect(mockPlayBook).not.toHaveBeenCalled();
   });
 

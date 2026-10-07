@@ -51,11 +51,18 @@ export function formatCount(n: number, locale: string = getLocale()): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n);
 }
 
+/** Average kilobits a second of a file's bytes over its seconds (`size * 8 / duration`,
+ * as the server's admin derives it), or null when not derivable. */
+export function bitrateKbps(sizeBytes?: number, durationSec?: number): number | null {
+  if (!sizeBytes || sizeBytes <= 0 || !durationSec || durationSec <= 0) return null;
+  const kbps = Math.round((sizeBytes * 8) / durationSec / 1000);
+  return kbps > 0 ? kbps : null;
+}
+
 /** "128kbps" from a file's bytes + seconds; empty when not derivable. */
 export function formatBitrate(sizeBytes?: number, durationSec?: number): string {
-  if (!sizeBytes || !durationSec || durationSec <= 0) return '';
-  const kbps = Math.round((sizeBytes * 8) / durationSec / 1000);
-  return kbps > 0 ? `${kbps}kbps` : '';
+  const kbps = bitrateKbps(sizeBytes, durationSec);
+  return kbps === null ? '' : `${kbps}kbps`;
 }
 
 /** "8m52s" / "1h33m" / "45s" - compact spoken-style duration (per old client). */
@@ -154,6 +161,12 @@ export function formatLongDate(date: Date, locale: string = getLocale()): string
 /** "20 Oct". */
 export function formatDayMonth(date: Date, locale: string = getLocale()): string {
   return formatDate(date, 'dm', { day: 'numeric', month: 'short' }, locale);
+}
+
+/** A date as a record: "20 Oct", with the year ("20 Oct 2024") when it is not `now`'s. */
+export function formatRecordDate(date: Date, now: Date, locale: string = getLocale()): string {
+  if (date.getFullYear() === now.getFullYear()) return formatDayMonth(date, locale);
+  return formatDate(date, 'dmy', { day: 'numeric', month: 'short', year: 'numeric' }, locale);
 }
 
 /** "20 Oct" for a server `YYYY-MM-DD` day, read as that calendar day (not shifted into

@@ -5,11 +5,17 @@ import { Platform, View } from 'react-native';
 
 import { BookTimeline } from '@/components/player/book-timeline';
 import { timelinePosition } from '@/components/player/book-timeline-model';
-import { scrubTarget, stepSegment } from '@/components/player/transport';
+import {
+  nextSegmentStart,
+  previousSegmentStart,
+  scrubTarget,
+  stepSegment,
+} from '@/components/player/transport';
 import type { BookPins } from '@/components/player/use-playing-pins';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
+import { Notice } from '@/components/ui/notice';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration } from '@/lib/format';
@@ -20,13 +26,11 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { BookNotice } from './book-notice';
 import {
   type ChapterList,
-  currentRow,
   type Jump,
   type ListRow,
-  rowsHolding,
+  rowAt,
   timelineStarts,
 } from './book-page-model';
 
@@ -36,7 +40,8 @@ export type BookChaptersTabProps = {
   total: number;
   /** The listener's place, whole-book seconds (live while loaded, else saved). */
   position: number;
-  started: boolean;
+  /** The row the listener is in (`rowAt`), or -1 before the start. */
+  current: number;
   finished: boolean;
   /** This book is the one in the player: the timeline follows and seeks the player. */
   loaded: boolean;
@@ -60,7 +65,7 @@ export function BookChaptersTab({
   list,
   total,
   position,
-  started,
+  current: currentRow,
   finished,
   loaded,
   pins,
@@ -70,9 +75,20 @@ export function BookChaptersTab({
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
   const starts = useMemo(() => timelineStarts(list.rows), [list.rows]);
-  const current = finished ? list.rows.length : currentRow(list.rows, position, started);
+  const labels = useMemo(
+    () => list.rows.map((r) => rowLabel(r, list.kind, t)),
+    [list.rows, list.kind, t],
+  );
+  // Every row is behind a finished listener.
+  const current = finished ? list.rows.length : currentRow;
+  // The rows holding a bookmark (one in the book: never past its end).
   const marked = useMemo(
-    () => rowsHolding(list.rows, pins.bookmarks, total),
+    () =>
+      new Set(
+        pins.bookmarks
+          .filter((p) => p >= 0 && !(total > 0 && p > total))
+          .map((p) => rowAt(list.rows, p)),
+      ),
     [list.rows, pins.bookmarks, total],
   );
 
@@ -81,7 +97,7 @@ export function BookChaptersTab({
       {total > 0 ? (
         <WholeBook
           starts={starts}
-          titles={list.rows.map((r) => rowLabel(r, list.kind, t))}
+          titles={labels}
           total={total}
           savedPosition={finished ? total : position}
           finished={finished}
@@ -91,7 +107,7 @@ export function BookChaptersTab({
         />
       ) : null}
       {list.kind === 'parts' ? (
-        <BookNotice
+        <Notice
           icon="circle-info"
           tone="info"
           title={t('book.chapters.partsTitle')}
@@ -99,11 +115,11 @@ export function BookChaptersTab({
         />
       ) : null}
       <View accessibilityRole="list">
-        {list.rows.map((r) => (
+        {list.rows.map((r, i) => (
           <Row
             key={r.key}
             row={r}
-            label={rowLabel(r, list.kind, t)}
+            label={labels[i]}
             state={r.index < current ? 'past' : r.index === current ? 'current' : 'ahead'}
             bookmark={marked.has(r.index)}
             roomy={roomy}
@@ -160,12 +176,15 @@ function WholeBook({
   };
   const onStep = (dir: 1 | -1) => {
     if (loaded) return stepSegment(usePlayer.getState(), dir);
-    // Not playing: the chapter after (or the start of the one before) the saved place.
-    const next =
-      dir === 1
-        ? starts.find((s) => s > position)
-        : [...starts].reverse().find((s) => s < position - 3);
-    onJump({ position: next ?? (dir === 1 ? position : 0) });
+    // Not playing: the chapter after the saved place (none: from the place itself), or the
+    // start of the one it is in (the one before, within its first seconds), as the
+    // player's own previous and next.
+    onJump({
+      position:
+        dir === 1
+          ? (nextSegmentStart(starts, position) ?? position)
+          : previousSegmentStart(starts, position),
+    });
   };
   return (
     <Card testID="book-whole-timeline" className="gap-4 p-5">

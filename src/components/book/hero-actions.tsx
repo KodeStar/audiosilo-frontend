@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { useCapability, useFavourites, useQueue, useToggleFavourite } from '@/api/hooks';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
-import { BookActionsMenu } from '@/components/library/books/book-actions';
+import { type BookActionKey, BookActionsMenu } from '@/components/library/books/book-actions';
 import { AddToCollectionDialog } from '@/components/library/collections/collection-dialogs';
 import { DownloadControl } from '@/components/library/download-control';
 import { findQueued, useQueueActions } from '@/components/library/use-queue-actions';
@@ -17,12 +17,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { cn } from '@/lib/utils';
 
 import { type PrimaryAction, primaryLabel } from './book-page-model';
 
 /** The book menu's items the hero's own buttons already are. */
-const MENU_OMIT = ['play', 'queue', 'collect', 'download'] as const;
+const MENU_OMIT: readonly BookActionKey[] = ['play', 'queue', 'collect', 'download'];
 
 /** An icon-only hero button: 46 tall like the primary, square. */
 const ICON_BUTTON = 'w-[46px] px-0';
@@ -61,14 +60,8 @@ export function HeroActions({
   const { t } = useTranslation();
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
-  const progressEdit = useCapability('progress_edit', connectionId);
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
-  const finished = !!progress?.finished;
-  // Mark finished needs `progress_edit` known (an older server saves at the end instead,
-  // so any known answer offers it); Mark as not finished needs it on.
-  const menuHasItems =
-    !!book.series || (finished ? progressEdit === true : progressEdit !== undefined);
 
   const primaryButton = (
     <Button
@@ -85,6 +78,7 @@ export function HeroActions({
       book={book}
       chapterData={chapterData}
       disabled={chaptersLoading}
+      short={stacked}
     />
   );
   const icons = (
@@ -101,27 +95,26 @@ export function HeroActions({
           onPress={() => setCollect(true)}
         />
       ) : null}
-      {menuHasItems ? (
-        <BookActionsMenu
-          connectionId={connectionId}
-          libraryId={libraryId}
-          book={book}
-          progress={progress ?? undefined}
-          omit={MENU_OMIT}
-          sheetOpen={sheet}
-          onSheetOpenChange={setSheet}
-          trigger={
-            <Button
-              variant="ghost"
-              size="lg"
-              icon="ellipsis"
-              className={ICON_BUTTON}
-              accessibilityLabel={t('library.bookActions.more', { title: book.title })}
-              onPress={stacked ? () => setSheet(true) : undefined}
-            />
-          }
-        />
-      ) : null}
+      {/* Renders nothing when all it would offer is the buttons above. */}
+      <BookActionsMenu
+        connectionId={connectionId}
+        libraryId={libraryId}
+        book={book}
+        progress={progress ?? undefined}
+        omit={MENU_OMIT}
+        sheetOpen={sheet}
+        onSheetOpenChange={setSheet}
+        trigger={
+          <Button
+            variant="ghost"
+            size="lg"
+            icon="ellipsis"
+            className={ICON_BUTTON}
+            accessibilityLabel={t('library.bookActions.more', { title: book.title })}
+            onPress={stacked ? () => setSheet(true) : undefined}
+          />
+        }
+      />
     </>
   );
 
@@ -242,7 +235,7 @@ function UpNextMenu({
           variant="outline"
           size="lg"
           icon="queue"
-          className={cn(ICON_BUTTON)}
+          className={ICON_BUTTON}
           accessibilityLabel={t('book.upNext.label', { title: book.title })}
           loading={q.pending}
         />

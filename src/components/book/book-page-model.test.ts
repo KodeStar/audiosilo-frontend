@@ -1,21 +1,19 @@
 import type { Chapter } from '@/api/types';
 import i18n from '@/i18n';
+import { formatDuration, formatRecordDate, formatSpeed } from '@/lib/format';
 
 import {
   bookFacts,
   BODY_COLUMNS_MIN,
   bookPageLayout,
   chapterList,
-  currentRow,
   fileName,
-  formatRecordDate,
   heroEyebrow,
-  listenedSeconds,
+  listeningFigures,
   placeLine,
   primaryAction,
   primaryLabel,
-  publishedYear,
-  rowsHolding,
+  rowAt,
   startedAt,
   timelineStarts,
   titleScale,
@@ -226,11 +224,29 @@ describe('the place in the list', () => {
     bookPath: 'A/B',
   }).rows;
 
-  it('marks the chapter the listener is in, and nothing before they start', () => {
-    expect(currentRow(rows, 150, true)).toBe(1);
-    expect(currentRow(rows, 0, true)).toBe(0);
-    expect(currentRow(rows, 299, true)).toBe(2);
-    expect(currentRow(rows, 150, false)).toBe(-1);
+  it('finds the row holding a place, the first one before any start', () => {
+    expect(rowAt(rows, 150)).toBe(1);
+    expect(rowAt(rows, 0)).toBe(0);
+    expect(rowAt(rows, 100)).toBe(1);
+    expect(rowAt(rows, 299)).toBe(2);
+    expect(rowAt(rows, 400)).toBe(2);
+    expect(rowAt([], 150)).toBe(-1);
+  });
+
+  it('never reaches a file after one of unknown length', () => {
+    const files = chapterList({
+      chapters: [],
+      files: [
+        { rel_path: 'A/B/1.mp3', duration: 100 },
+        { rel_path: 'A/B/2.mp3', duration: 0 },
+        { rel_path: 'A/B/3.mp3', duration: 100 },
+      ],
+      chapterStarts: [],
+      total: 200,
+      interval: 1800,
+      bookPath: 'A/B',
+    }).rows;
+    expect(rowAt(files, 150)).toBe(1);
   });
 
   it('says "Chapter 2 of 3", or "Part 2 of 3" for parts, and nothing for files', () => {
@@ -238,11 +254,6 @@ describe('the place in the list', () => {
     expect(placeLine(t, 'parts', 1, 3)).toBe('Part 2 of 3');
     expect(placeLine(t, 'files', 1, 3)).toBe('');
     expect(placeLine(t, 'chapters', -1, 3)).toBe('');
-  });
-
-  it('finds the chapters holding a bookmark', () => {
-    expect([...rowsHolding(rows, [5, 150, 160, 299, 400], 300)].sort()).toEqual([0, 1, 2]);
-    expect(rowsHolding(rows, [250], 300).has(2)).toBe(true);
   });
 });
 
@@ -330,26 +341,59 @@ describe('bookFacts', () => {
       }).map((f) => f.key),
     ).not.toContain('chapters');
   });
-
-  it('reads the year from any published form', () => {
-    expect(publishedYear('2010')).toBe('2010');
-    expect(publishedYear('2010-08')).toBe('2010');
-    expect(publishedYear('')).toBe('');
-    expect(publishedYear(undefined)).toBe('');
-  });
 });
 
 describe('Your listening', () => {
-  it('adds up the history spans, ignoring broken ones', () => {
+  const now = new Date(2026, 9, 7);
+  const spans = [
+    { started_at: '2026-10-01T20:00:00Z', ended_at: '2026-10-01T21:30:00Z' },
+    { started_at: '2026-10-02T20:00:00Z', ended_at: '2026-10-02T20:10:00Z' },
+    { started_at: 'nonsense', ended_at: '2026-10-02T20:10:00Z' },
+  ];
+
+  it('has nothing to say for a book not started', () => {
+    expect(listeningFigures({ started: false, finished: false, speed: 1, now })).toBeNull();
+  });
+
+  it('adds up the history spans and names the speed and the start', () => {
+    const figures = listeningFigures({
+      started: true,
+      finished: false,
+      history: spans,
+      speed: 1.25,
+      now,
+    });
+    expect(figures).toEqual({
+      started: formatRecordDate(new Date('2026-10-01T20:00:00Z'), now),
+      finished: undefined,
+      speed: formatSpeed(1.25),
+      listened: formatDuration(100 * 60),
+    });
+  });
+
+  it('leaves out a figure it does not know: seconds of history, a finish not dated', () => {
+    const short = [{ started_at: '2026-10-01T20:00:00Z', ended_at: '2026-10-01T20:00:30Z' }];
     expect(
-      listenedSeconds([
-        { started_at: '2026-10-01T20:00:00Z', ended_at: '2026-10-01T21:30:00Z' },
-        { started_at: '2026-10-02T20:00:00Z', ended_at: '2026-10-02T20:10:00Z' },
-        { started_at: 'nonsense', ended_at: '2026-10-02T20:10:00Z' },
-        { started_at: '2026-10-03T20:10:00Z', ended_at: '2026-10-03T20:00:00Z' },
-      ]),
-    ).toBe(100 * 60);
-    expect(listenedSeconds([])).toBe(0);
+      listeningFigures({ started: true, finished: false, history: short, speed: 1, now })?.listened,
+    ).toBeUndefined();
+    const finished = listeningFigures({
+      started: false,
+      finished: true,
+      progress: { started_at: undefined, finished_at: '2024-09-14T09:00:00Z' },
+      speed: 1,
+      now,
+    });
+    expect(finished).toMatchObject({ started: undefined, listened: undefined });
+    expect(finished?.finished).toBe(formatRecordDate(new Date('2024-09-14T09:00:00Z'), now));
+    expect(
+      listeningFigures({
+        started: true,
+        finished: false,
+        progress: { finished_at: '2024-09-14T09:00:00Z' },
+        speed: 1,
+        now,
+      })?.finished,
+    ).toBeUndefined();
   });
 
   it("takes the server's start date, else the earliest span", () => {
@@ -359,11 +403,5 @@ describe('Your listening', () => {
     );
     expect(startedAt(undefined, spans)?.toISOString()).toBe('2026-09-14T10:00:00.000Z');
     expect(startedAt(undefined, [])).toBeNull();
-  });
-
-  it('writes a record date, with the year only when it is another', () => {
-    const now = new Date(2026, 9, 7);
-    expect(formatRecordDate(new Date(2026, 8, 14), now, 'en-GB')).toBe('14 Sept');
-    expect(formatRecordDate(new Date(2024, 8, 14), now, 'en-GB')).toBe('14 Sept 2024');
   });
 });

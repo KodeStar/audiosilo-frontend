@@ -29,15 +29,12 @@ jest.mock('@/theme/theme-provider', () => ({
 
 /* eslint-disable import/first */
 import {
-  aboutText,
-  BookMetaAbout,
   BookMetaCharactersTab,
   BookMetaRecapsTab,
   BookMetaSeriesTab,
-  type MatchedBookMeta,
-  seriesRails,
   summaryIsVisible,
 } from './book-meta';
+import { seriesRails } from './series-rails';
 /* eslint-enable import/first */
 
 // The spoiler reveal is the SCREEN's state (shared by both tabs), so these
@@ -115,87 +112,6 @@ const recaps: BookMetaRecap[] = [
   { through: { chapter: 0 }, scope: 'series', text: 'Prior books.' },
   { through: { chapter: 6 }, scope: 'book', text: 'So far.' },
 ];
-
-const matched: MatchedBookMeta = {
-  matched: true,
-  work: {
-    id: 'the-hobbit',
-    title: 'The Hobbit',
-    authors: [{ id: 'jrr', name: 'J. R. R. Tolkien' }],
-    language: 'en',
-    description: 'In a hole in the ground there lived a hobbit.',
-    first_published: '1937',
-    characters,
-    recaps,
-  },
-  recording: { id: 'rec', narrators: [], publisher: 'Recorded Books', abridged: true },
-  web_url: 'https://m/work?id=the-hobbit',
-};
-
-describe('BookMetaAbout', () => {
-  it('renders the description, production details and the meta link', async () => {
-    await mount(<BookMetaAbout meta={matched} fallback="Nothing" />);
-    expect(screen.getByText('About')).toBeTruthy();
-    expect(screen.getByText('In a hole in the ground there lived a hobbit.')).toBeTruthy();
-    expect(screen.getByText('Recorded Books')).toBeTruthy();
-    expect(screen.getByText('1937')).toBeTruthy();
-    expect(screen.getByText('Abridged')).toBeTruthy();
-    expect(screen.getByText('Yes')).toBeTruthy();
-    expect(screen.queryByText('Nothing')).toBeNull();
-    // No community text: no licence line, and the work's page is one quiet link away.
-    expect(screen.queryByText('Improve this')).toBeNull();
-    await press('View on AudioSilo Meta');
-    expect(mockOpenExternal).toHaveBeenCalledWith('https://m/work?id=the-hobbit');
-  });
-
-  it('leads with the community description, credited, with Improve this', async () => {
-    const community: MatchedBookMeta = {
-      ...matched,
-      work: {
-        ...matched.work,
-        community_description: { text: 'A hobbit goes there and back again.' },
-        attribution: {
-          credit: 'AudioSilo Meta contributors',
-          license: 'CC BY-SA 4.0',
-          license_url: 'https://cc/by-sa',
-          source_url: 'https://m/work?id=the-hobbit&edit',
-        },
-      },
-    };
-    await mount(<BookMetaAbout meta={community} description="Server text." fallback="x" />);
-    expect(screen.getByText('A hobbit goes there and back again.')).toBeTruthy();
-    expect(screen.queryByText('Server text.')).toBeNull();
-    expect(screen.getByText('CC BY-SA 4.0')).toBeTruthy();
-    await press('Improve this');
-    expect(mockOpenExternal).toHaveBeenCalledWith('https://m/work?id=the-hobbit&edit');
-  });
-
-  it('reads complete for an unmatched book: the server text or the fallback', async () => {
-    await mount(<BookMetaAbout description="  The server's own words.  " fallback="x" />);
-    expect(screen.getByText("The server's own words.")).toBeTruthy();
-    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
-    await mount(<BookMetaAbout published="2010-08-31" fallback="Words by Someone." />);
-    expect(screen.getByText('Words by Someone.')).toBeTruthy();
-    expect(screen.getByText('2010-08-31')).toBeTruthy();
-    expect(screen.queryByText('Publisher')).toBeNull();
-  });
-});
-
-describe('aboutText', () => {
-  it('prefers the community text, then the server, then the work', () => {
-    const withCommunity = {
-      ...matched,
-      work: { ...matched.work, community_description: { text: ' Community. ' } },
-    };
-    expect(aboutText(withCommunity, 'Server.')).toEqual({ text: 'Community.', community: true });
-    expect(aboutText(matched, 'Server.')).toEqual({ text: 'Server.', community: false });
-    expect(aboutText(matched, '  ')).toEqual({
-      text: 'In a hole in the ground there lived a hobbit.',
-      community: false,
-    });
-    expect(aboutText(undefined, undefined)).toEqual({ text: '', community: false });
-  });
-});
 
 describe('BookMetaCharactersTab', () => {
   it('hides characters the listener has not reached, then reveals them on request', async () => {

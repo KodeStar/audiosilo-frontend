@@ -11,6 +11,7 @@ import {
   parsePersonParams,
   parseSeriesParams,
   pathLeaf,
+  playerHref,
   segmentsToPath,
   seriesHref,
 } from '@/lib/paths';
@@ -106,6 +107,28 @@ describe('bookHref', () => {
 describe('accountHref', () => {
   it('builds the flat account route with the connection query param', () => {
     expect(accountHref('c1')).toEqual({ pathname: '/account', params: { connection: 'c1' } });
+  });
+});
+
+describe('playerHref', () => {
+  it('opens the player on a book, at its saved place by default', () => {
+    expect(playerHref('c1', 3, 'A/B')).toEqual({
+      pathname: '/player',
+      params: { connection: 'c1', libraryId: '3', path: 'A/B' },
+    });
+  });
+
+  it('carries a place: whole seconds (never below 0), or a file by index', () => {
+    expect(playerHref('c1', 3, 'A/B', { position: 62_810.6 })).toMatchObject({
+      params: { position: '62811' },
+    });
+    expect(playerHref('c1', 3, 'A/B', { position: -0.2 })).toMatchObject({
+      params: { position: '0' },
+    });
+    expect(playerHref('c1', 3, 'A/B', { track: 2 })).toEqual({
+      pathname: '/player',
+      params: { connection: 'c1', libraryId: '3', path: 'A/B', track: '2' },
+    });
   });
 });
 

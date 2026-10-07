@@ -36,9 +36,12 @@ import { AddToCollectionDialog } from '../collections/collection-dialogs';
 import { useQueueActions } from '../use-queue-actions';
 import { bookStatus, unfinishedPosition } from './books-view';
 
+/** The keys of `useBookActions`' own items (a screen's `extra` brings its own). */
+export type BookActionKey = 'play' | 'queue' | 'collect' | 'download' | 'finish' | 'series';
+
 /** One entry of a book's actions menu. `group` starts a new section (a separator). */
-export type BookAction = {
-  key: string;
+export type BookAction<K extends string = string> = {
+  key: K;
   icon: IconName;
   label: string;
   onPress: () => void;
@@ -81,7 +84,7 @@ export function useBookActions(
   { connectionId, libraryId, book, progress }: Target,
   { openCollect, confirmRemove }: BookActionDialogs,
   opened = false,
-): BookAction[] {
+): BookAction<BookActionKey>[] {
   const { t } = useTranslation();
   const path = book.rel_path;
   const play = usePlayBook();
@@ -148,7 +151,7 @@ export function useBookActions(
     });
   };
 
-  const out: BookAction[] = [
+  const out: BookAction<BookActionKey>[] = [
     {
       key: 'play',
       icon: 'play',
@@ -234,7 +237,8 @@ export function useBookActions(
  * also renders the dialogs the actions open (Add to collection, the remove-download
  * confirm). `BookActionsButton` gives it a visible "..." trigger; a cover tile a hidden
  * anchor it opens through `triggerRef` (`TileActions`). `omit` leaves out items by key
- * (the book page, whose own buttons already play, queue, collect and download).
+ * (the book page, whose own buttons already play, queue, collect and download). With
+ * nothing left to offer it renders nothing, its trigger included.
  */
 export function BookActionsMenu({
   connectionId,
@@ -250,7 +254,7 @@ export function BookActionsMenu({
   onCloseAutoFocus,
 }: Target & {
   extra?: BookAction[];
-  omit?: readonly string[];
+  omit?: readonly BookActionKey[];
   trigger: ReactElement;
   triggerRef?: Ref<TriggerRef>;
   sheetOpen: boolean;
@@ -274,6 +278,7 @@ export function BookActionsMenu({
     ).filter((a) => !omit.includes(a.key)),
     ...extra,
   ];
+  if (actions.length === 0) return null;
   return (
     <>
       {phone ? (

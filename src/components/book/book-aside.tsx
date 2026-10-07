@@ -2,21 +2,15 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import type { Book } from '@/api/types';
-import { BookMetaAbout, type MatchedBookMeta } from '@/components/library/book-meta';
+import type { MatchedBookMeta } from '@/components/library/book-meta';
 import { BookVersions } from '@/components/library/book-versions';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
-/** Your listening's figures, already in words; a figure the page doesn't know honestly
- * is absent (never made up). */
-export type ListeningFigures = {
-  started?: string;
-  finished?: string;
-  speed?: string;
-  listened?: string;
-};
+import { BookAbout } from './book-about';
+import type { ListeningFigures } from './book-page-model';
 
 /**
  * The book page's aside (the prototype's right column; between the hero and the tabs on
@@ -36,28 +30,9 @@ export function BookAside({
   listening: ListeningFigures | null;
   className?: string;
 }) {
-  const { t } = useTranslation();
-  // An undescribed book still reads complete: who wrote and reads it.
-  const fallback =
-    book.author && book.narrator
-      ? t('book.about.fallbackBoth', {
-          title: book.title,
-          author: book.author,
-          narrator: book.narrator,
-        })
-      : book.author
-        ? t('book.about.fallbackAuthor', { title: book.title, author: book.author })
-        : t('book.about.none');
   return (
     <View testID="book-aside" className={cn('gap-4', className)}>
-      <Card>
-        <BookMetaAbout
-          meta={meta}
-          description={book.description}
-          published={book.published}
-          fallback={fallback}
-        />
-      </Card>
+      <BookAbout book={book} meta={meta} />
       <BookVersions book={book} connectionId={connectionId} />
       {listening ? <YourListening figures={listening} /> : null}
     </View>

@@ -2,13 +2,11 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Card } from '@/components/ui/card';
+import { Notice } from '@/components/ui/notice';
 import { EmptyState } from '@/components/ui/empty-state';
 import { GhostCovers } from '@/components/ui/ghost-art';
-import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Text } from '@/components/ui/text';
 import type { UnsupportedReason } from '@/downloads/downloads-view';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** Nothing downloaded and nothing on its way: ghost covers, one headline, one sentence,
  * one action. */
@@ -39,23 +37,6 @@ export function DownloadsUnsupported({ reason }: { reason: UnsupportedReason }) 
       title={t('downloads.unsupported.title')}
       body={t(UNSUPPORTED_KEY[reason])}
     />
-  );
-}
-
-/** A notice (STYLEGUIDE section 8): an icon tile, a bold headline and one sentence,
- * explaining a local situation. */
-export function Notice({ icon, title, body }: { icon: IconName; title: string; body: string }) {
-  const themed = useThemeColors();
-  return (
-    <Card className="flex-row items-start gap-4 p-4">
-      <View className="h-10 w-10 items-center justify-center rounded-lg bg-info-soft">
-        <Icon name={icon} size={18} color={themed.info} />
-      </View>
-      <View className="min-w-0 flex-1 gap-1">
-        <Text variant="label">{title}</Text>
-        <Text variant="muted">{body}</Text>
-      </View>
-    </Card>
   );
 }
 

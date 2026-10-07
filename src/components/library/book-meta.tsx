@@ -14,7 +14,6 @@ import type {
   BookMetaSeriesWork,
   BookMetaWork,
 } from '@/api/types';
-import { Attribution } from '@/components/player/companion/companion-pieces';
 import { NameToken } from '@/components/search/name-token';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
@@ -39,10 +38,6 @@ import {
   splitRecaps,
 } from './meta-gating';
 import type { SeriesRail } from './series-rails';
-
-// The pure series-rail rules live in their own module (the downloads store reads them to
-// keep the previous book's work for offline use, without this module's UI).
-export { previousWorks, seriesPositionValue, seriesRails, type SeriesRail } from './series-rails';
 
 /** Descriptions past this many characters get a collapse + "show more" toggle.
  * A deterministic length heuristic (rather than an onTextLayout measure pass) so
@@ -138,9 +133,10 @@ export function SpoilerChip() {
   return <Chip label={t('book.meta.spoiler')} />;
 }
 
-/** The open/closed marker every collapsible thing in this block shares: pink beside a
- * pink link, `quiet` (muted) on a character card, whose only pink is "Just met". */
-function DisclosureChevron({ open, quiet }: { open: boolean; quiet?: boolean }) {
+/** The open/closed marker every collapsible thing in this block shares (and the book
+ * page's About card): pink beside a pink link, `quiet` (muted) on a character card,
+ * whose only pink is "Just met". */
+export function DisclosureChevron({ open, quiet }: { open: boolean; quiet?: boolean }) {
   const themed = useThemeColors();
   return (
     <Icon
@@ -581,155 +577,6 @@ function PreviousCharactersBody({
         <CharacterCard key={c.id} character={c} />
       ))}
     </View>
-  );
-}
-
-/**
- * What the About card says: the community's description (CC BY-SA, `community`, which
- * then needs the attribution beside it), else the server's own (the admin-edited value),
- * else the work's core description. '' when none says anything.
- */
-export function aboutText(
-  meta: MatchedBookMeta | undefined,
-  serverDescription: string | undefined,
-): { text: string; community: boolean } {
-  const community = meta?.work.community_description?.text?.trim();
-  if (community) return { text: community, community: true };
-  const own = serverDescription?.trim() || meta?.work.description?.trim() || '';
-  return { text: own, community: false };
-}
-
-/**
- * The book page's About card (in the aside): the description (`aboutText`, collapsed past
- * six lines; `fallback` when nothing describes the book, so an unmatched book still
- * reads complete), the production facts the community or the server knows, and, beside
- * community text, the server's attribution line with "Improve this" (the work's page,
- * opened in the browser). A matched book without community text keeps the quiet "View
- * on AudioSilo Meta" link. Nothing in it is pink.
- */
-export function BookMetaAbout({
-  meta,
-  description,
-  published,
-  fallback,
-}: {
-  meta?: MatchedBookMeta;
-  /** The server's description (`Book.description`, the item response only). */
-  description?: string;
-  /** The book's `published` date, for an unmatched book's Released row. */
-  published?: string;
-  fallback: string;
-}) {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
-  const [expanded, setExpanded] = useState(false);
-  const about = aboutText(meta, description);
-  const text = about.text || fallback;
-  const canCollapse = descriptionIsLong(text);
-  const recording = meta?.recording;
-  const work = meta?.work;
-
-  const details: { label: string; value: string }[] = [];
-  if (recording?.publisher)
-    details.push({ label: t('book.meta.publisher'), value: recording.publisher });
-  const released = recording?.release_date || published;
-  if (released) details.push({ label: t('book.meta.released'), value: released });
-  if (work?.first_published)
-    details.push({ label: t('book.meta.firstPublished'), value: work.first_published });
-  if (typeof recording?.abridged === 'boolean')
-    details.push({
-      label: t('book.meta.abridged'),
-      value: recording.abridged ? t('book.about.yes') : t('book.about.no'),
-    });
-  const attribution = about.community ? work?.attribution : undefined;
-  const improveUrl = attribution?.source_url || meta?.web_url;
-
-  return (
-    <View className="gap-2.5">
-      <Text variant="eyebrow">{t('book.meta.about')}</Text>
-      <View className="gap-1">
-        <Text
-          className="text-[15px] leading-6 text-foreground"
-          numberOfLines={expanded || !canCollapse ? undefined : 6}
-        >
-          {text}
-        </Text>
-        {canCollapse ? (
-          <AnimatedPressable
-            onPress={() => setExpanded((v) => !v)}
-            hitSlop={8}
-            accessibilityRole="button"
-            className="flex-row items-center gap-1 self-start py-0.5"
-          >
-            <Text className="font-sans-semibold text-sm text-foreground">
-              {expanded ? t('book.meta.showLess') : t('book.meta.showMore')}
-            </Text>
-            <DisclosureChevron open={expanded} quiet />
-          </AnimatedPressable>
-        ) : null}
-      </View>
-      {details.length > 0 ? (
-        <View className="mt-1 gap-1.5">
-          {details.map((d) => (
-            <View key={d.label} className="flex-row gap-3">
-              <Text variant="muted" className="w-28">
-                {d.label}
-              </Text>
-              <Text variant="label" className="min-w-0 flex-1">
-                {d.value}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {attribution ? (
-        <View className="mt-1 gap-1">
-          <Attribution attribution={attribution} />
-          {improveUrl ? (
-            <QuietLink
-              label={t('book.about.improve')}
-              icon="arrow-up-right"
-              color={themed.mutedForeground}
-              onPress={() => void openExternalUrl(improveUrl)}
-            />
-          ) : null}
-        </View>
-      ) : meta ? (
-        <QuietLink
-          label={t('book.meta.viewOnMeta')}
-          icon="arrow-up-right"
-          color={themed.mutedForeground}
-          onPress={() => void openExternalUrl(meta.web_url)}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-/** An underlined link out of the app in muted text (the About card's). */
-function QuietLink({
-  label,
-  icon,
-  color,
-  onPress,
-}: {
-  label: string;
-  icon: 'arrow-up-right';
-  color: string;
-  onPress: () => void;
-}) {
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      accessibilityRole="link"
-      hitSlop={8}
-      className="flex-row items-center gap-1 self-start py-1"
-    >
-      <Text variant="caption" className="underline">
-        {label}
-      </Text>
-      <Icon name={icon} size={11} color={color} />
-    </AnimatedPressable>
   );
 }
 

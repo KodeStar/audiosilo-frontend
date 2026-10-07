@@ -3,6 +3,7 @@ import { contentKey } from '@/lib/content-key';
 import { foldAccents } from '@/lib/names';
 import { bookTitle } from '@/lib/paths';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
+import { yearOf } from '@/lib/published';
 import type { SeriesView } from '@/lib/series-orderings';
 
 /**
@@ -89,10 +90,6 @@ export function looseKey(s: string | undefined): string {
   return foldAccents(s ?? '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '');
-}
-
-export function yearOf(published: string | undefined): string | undefined {
-  return /^\d{4}/.exec(published ?? '')?.[0];
 }
 
 function progressFields(

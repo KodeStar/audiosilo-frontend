@@ -1557,12 +1557,13 @@ export function useRating(libraryId: number, path: string, connectionId?: string
 }
 
 /** Every rating the caller can still see, newest change first (capability `ratings`). */
-export function useMyRatings(connectionId?: string) {
+export function useMyRatings(connectionId?: string, opts: { enabled?: boolean } = {}) {
   return useCapabilityQuery(
     'ratings',
     qk.myRatings,
     (api, signal) => api.myRatings(signal),
     connectionId,
+    opts,
   );
 }
 

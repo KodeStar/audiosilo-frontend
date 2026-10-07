@@ -2,13 +2,12 @@ import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView } from 'react-native';
 
+import type { Crumb } from '@/components/ui/breadcrumbs';
 import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-export type BookCrumb = { label: string; onPress?: () => void };
 
 /**
  * Where the book sits in its library, as quiet links over the hero: the library, each
@@ -16,7 +15,7 @@ export type BookCrumb = { label: string; onPress?: () => void };
  * link). Muted ink, never pink (the hero's one pink thing is its progress bar); a
  * sideways scroller when the path is longer than the row.
  */
-export function BookCrumbs({ crumbs }: { crumbs: BookCrumb[] }) {
+export function BookCrumbs({ crumbs }: { crumbs: Crumb[] }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const last = crumbs.length - 1;

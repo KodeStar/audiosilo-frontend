@@ -3,13 +3,16 @@ import { chaptersQuery, itemQuery } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { usePlayer } from '@/playback/store';
 
-import type { PlayTarget } from './use-play-book';
+import type { PlayTarget } from './play-route';
 
 /** Where `startBookInPlace` starts a book, when not from its saved place. */
 export type StartOptions = {
   /** Whole-book seconds to start at (lowers the resume floor there, so the start's own
    * saves are not refused as a slip). */
   position?: number;
+  /** A file to start at, by index, when no `position` says where (a file of a book
+   * whose durations are unknown). */
+  track?: number;
   /** The speed to play at, from the start (else the book's saved speed, which the store
    * restores at an explicit `position` too, from what this device knows). */
   speed?: number;
@@ -46,6 +49,6 @@ export async function startBookInPlace(
   // The speed goes in with the start: set after it, the book audibly began at another.
   await usePlayer
     .getState()
-    .playBook(connectionId, libraryId, book, chapters, opts.position, undefined, opts.speed);
+    .playBook(connectionId, libraryId, book, chapters, opts.position, opts.track, opts.speed);
   return true;
 }

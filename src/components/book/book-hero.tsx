@@ -6,6 +6,7 @@ import type { Book } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { CoverWash } from '@/components/library/cover-wash';
 import { RatingStars } from '@/components/player/rating-stars';
+import { useBookRating } from '@/components/player/use-book-rating';
 import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -18,7 +19,6 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { BookPageLayout, Fact, TitleScale } from './book-page-model';
 import { titleScale } from './book-page-model';
-import { useBookRating } from './use-book-rating';
 
 /** The title's display size per step (STYLEGUIDE section 4, Display XL: 52 desktop, 40
  * tablet, 30 phone; one step down for a long title). */

@@ -1,7 +1,8 @@
 import { store } from 'expo-router/build/global-state/router-store';
 
 /** A navigation state, as much of it as the root-stack reads below use. */
-export type NavState = { index?: number; routes: { name: string; state?: NavState }[] };
+export type NavState = { index?: number; routes: NavRoute[] };
+export type NavRoute = { name: string; params?: object; state?: NavState };
 
 /** The root stack's route that holds the app shell (the tabs and their pages). The root
  * routes over it are the full player and the credits (`src/app/_layout.tsx`). */
@@ -21,6 +22,18 @@ function rootStack(state: NavState | undefined): NavState | null {
 export function topRootRoute(state: NavState | undefined): string | null {
   const root = rootStack(state);
   return root?.routes[root.index ?? root.routes.length - 1]?.name ?? null;
+}
+
+/** The route on screen: the end of the focused chain (a shell page such as
+ * `book/[libraryId]` with its params, or a root route over the shell), or null. */
+export function focusedRoute(state: NavState | undefined): NavRoute | null {
+  let route: NavRoute | null = null;
+  let s = state;
+  while (s) {
+    route = s.routes[s.index ?? s.routes.length - 1] ?? null;
+    s = route?.state;
+  }
+  return route;
 }
 
 /**

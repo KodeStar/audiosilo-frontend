@@ -273,25 +273,26 @@ where `browse_people` is off), the facts (`bookFacts`), then the place of a book
 pink thing) or the finished badge (`finished_at`) and the stars (`ratings`, `useBookRating`
 keeps the note). **Actions** (`hero-actions.tsx`): the primary (`primaryAction`: Pause while
 this book plays, Resume chapter N, Start listening, Listen again; through `usePlayBook` with
-`toggle`, so it never restarts the loaded book), `DownloadControl`'s full form, Up next (Play
+`toggle`, so it never restarts the loaded book), `DownloadControl` (`short` on a stacked hero), Up next (Play
 next / Add to the end, `queue`), favourite (ink, never pink), Add to collection
 (`collections`) and `BookActionsMenu` with `omit` (the items the hero already has).
 `DownloadProgress` and the transcode note sit under them. Chapter rows, timeline taps and pins
-go through `usePlayAt`: a phone opens the player on the place, a tablet or desktop seeks the
-loaded book or starts this one there. **Tabs** (`bookTabs()`, `src/components/library/book-tabs.ts`):
+go through `usePlayBook` with `at` (below): a phone opens the player on the place, a tablet or
+desktop jumps the loaded book there and plays on, or starts this one there. **Tabs** (`bookTabs()`, `src/components/library/book-tabs.ts`):
 Chapters (label Chapters / Parts / Files; the default tab) · Recaps · Characters · Bookmarks ·
 History · Notes · Series · **Details**, with counts where already in hand (chapters, bookmarks,
 notes, characters met). Chapters (`book-chapters-tab.tsx`) is "The whole book" (the player's
-`BookTimeline` for ANY book, pins from `useBookAnnotations`, the generalised
-`usePlayingPins`) then the rows (`chapterList`: the real chapters at their corrected starts, a
+`BookTimeline` for ANY book, pins from `useBookAnnotations`, which `usePlayingPins` reads for
+the playing book; the rows' place is `rowAt`, previous/next for a book not playing the player's
+own `nextSegmentStart`/`previousSegmentStart`) then the rows (`chapterList`: the real chapters at their corrected starts, a
 long chapterless file's 30-minute parts as the player makes them, else the files). Details
 (`book-details-tab.tsx`): direct play / converted for this browser (web, `useNeedsWebTranscode`)
 / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
-and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookMetaAbout`:
-`community_description` with the server's attribution and "Improve this", else the server's
-`description`, else a sentence naming the author and narrator), Other versions
-(`BookVersions`), Your listening (started, finished, speed, and the time listened summed from
-this book's history spans). The panels render inside the page's own ScrollView (never a nested
+and the path progress keys on. The **aside** (`book-aside.tsx`): About (`book-about.tsx`, its words
+from the pure `aboutContent`: `community_description` with the server's attribution and "Improve
+this", else the server's `description`, else a sentence naming the author and narrator), Other versions
+(`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
+listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
 vertical scroller). Which tabs exist: chapters when there's a list, the three community-metadata
 tabs only when that data is non-empty (so nothing regresses on an older server or an unmatched
 book), bookmarks/history/notes always (they're user-creatable, so they must be reachable from
@@ -302,9 +303,9 @@ falls back to the first existing tab when data changes under it. Labels come fro
 
 **Enriched book metadata.** One `useBookMeta` fetch at the screen level feeds
 `matchedMeta()` and the placeable blocks exported from
-`src/components/library/book-meta.tsx`: `BookMetaAbout` (the aside's About card, above),
+`src/components/library/book-meta.tsx` (and the book page's About card, above):
 `BookMetaRecapsTab`, `BookMetaCharactersTab`,
-`BookMetaSeriesTab`. Those take **plain data, not a query**, so a sibling block can be
+`BookMetaSeriesTab` (the rails' pure rules are `series-rails.ts`). Those take **plain data, not a query**, so a sibling block can be
 appended without another restructure - which is how the **"catch up on previous books"**
 block lands: `previousWorks(rails)` (pure, tested - earlier positions only, from each
 rail's shown reading order, deduped, position-DESCENDING, unparsable positions dropped)
@@ -836,10 +837,13 @@ your series uses `next_book` (a work without `local` is a ghost opening the seri
 shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
 offline queue length without changing progress-sync (decision 7).
 
-**One play path** (`src/components/player/use-play-book.ts`): `usePlayBook()` is how Home, the
-Library, the series page and Up next start a book: a phone opens the full player (over the book page
-with `viaBookPage`), a tablet or desktop plays it under the docked bar through the book's own
-connection once its chapters are in, a loaded book plays on (or toggles, with `toggle`). With the full
+**One play path** (`src/components/player/use-play-book.ts`, the rule is the pure `playRoute` in
+`play-route.ts`): `usePlayBook()` is how Home, the Library, the series page, Up next, the book page and
+the jumps (bookmark and note rows, history spans: `useJumpTo`) start a book or move into one: a phone
+opens the full player (`playerHref` with the place; over the book page with `viaBookPage`, unless that
+page is already the one on screen), a tablet or desktop plays it under the docked bar through the
+book's own connection once its chapters are in (`startBookInPlace`, at `at` when given), a loaded book
+plays on (jumping to `at` first, resuming a paused one; or toggles, with `toggle`). With the full
 player already on top (Up next's sheet over it), every layout starts in place: pushing `/player` over
 the open one stacked a second player. It rejects when the book can't be fetched, so the caller can say
 so.
