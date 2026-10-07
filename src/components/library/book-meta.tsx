@@ -238,7 +238,7 @@ function Chip({ label, tone }: { label: string; tone: 'neutral' | 'primary' }) {
 
 /** A small "spoiler" chip marking an entry the listener has not reached yet
  * (only ever rendered once they have chosen to show spoilers anyway). */
-function SpoilerChip() {
+export function SpoilerChip() {
   const { t } = useTranslation();
   return <Chip label={t('book.meta.spoiler')} tone="neutral" />;
 }
@@ -562,7 +562,7 @@ function PreviousBooksSection({
  * row leaks nothing to a screen reader or the web DOM. Used for a work's ending
  * (a previous book always; the current book only once finished) and for the
  * current book's whole-book summary while the listener is still in it. */
-function SpoilerAccordion({ label, text }: { label: string; text: string }) {
+export function SpoilerAccordion({ label, text }: { label: string; text: string }) {
   return (
     <Disclosure
       className="rounded-lg border border-border"
@@ -589,7 +589,7 @@ function SpoilerAccordion({ label, text }: { label: string; text: string }) {
  * the "How it ends" spoiler row; before that, `in_short` sits behind a collapsed
  * "Whole-book summary" spoiler row and the ending is not offered at all. Null when
  * there is nothing (see `summaryIsVisible`). */
-function RecapSummaryBlock({
+export function RecapSummaryBlock({
   summary,
   finished,
 }: {
