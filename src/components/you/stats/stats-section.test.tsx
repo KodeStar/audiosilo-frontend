@@ -182,6 +182,8 @@ describe('StatsSection states', () => {
     await mount();
     expect(screen.getByText('No listening yet')).toBeTruthy();
     expect(screen.getByText('0m this week')).toBeTruthy();
+    // No story to open yet.
+    expect(screen.queryByText('Open your 2026 story')).toBeNull();
   });
 });
 

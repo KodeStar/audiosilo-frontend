@@ -193,6 +193,7 @@ function StatsContent({
   const year = /^\d{4}$/.test(stats.range) ? stats.range : today.slice(0, 4);
   const openYear = () => router.navigate(YEAR_SECTION_HREF);
 
+  const nothingYet = stats.totals.listened <= 0 && !listening.days.some((d) => d.listened > 0);
   const header = (
     <View className="flex-row flex-wrap items-end justify-between gap-3">
       <View className="min-w-0 flex-1 gap-1">
@@ -203,7 +204,7 @@ function StatsContent({
           {t('stats.header.thisWeek', { duration: formatDurationOrZero(week.thisWeek) })}
         </Text>
       </View>
-      {wide ? (
+      {wide && !nothingYet ? (
         <Button
           variant="outline"
           icon="sparkles"
@@ -214,7 +215,6 @@ function StatsContent({
     </View>
   );
 
-  const nothingYet = stats.totals.listened <= 0 && !listening.days.some((d) => d.listened > 0);
   if (nothingYet) {
     return (
       <View className="gap-4">
