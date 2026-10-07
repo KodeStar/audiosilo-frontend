@@ -191,13 +191,19 @@ export function useOptionalApi(connectionId?: string): ApiClient | null {
   return clients.get(cid) ?? null;
 }
 
-/** Every connection paired with its client, in user-defined order. */
+/** Every connection paired with its client, in user-defined order. The same array while
+ * the connections and clients are (callers memoise on it: the Journal's per-server
+ * queries and their merge). */
 export function useApis(): ApiConnection[] {
   const { clients, connections } = useContext(ApiContext);
-  return connections
-    .map((connection) => {
-      const client = clients.get(connection.id);
-      return client ? { connection, client } : null;
-    })
-    .filter((x): x is ApiConnection => x !== null);
+  return useMemo(
+    () =>
+      connections
+        .map((connection) => {
+          const client = clients.get(connection.id);
+          return client ? { connection, client } : null;
+        })
+        .filter((x): x is ApiConnection => x !== null),
+    [clients, connections],
+  );
 }
