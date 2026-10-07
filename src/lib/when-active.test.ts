@@ -1,6 +1,14 @@
 import { AppState } from 'react-native';
 
-import { whenActive } from './when-active';
+const mockPush = jest.fn();
+const mockReplace = jest.fn();
+jest.mock('expo-router', () => ({
+  router: { push: (h: unknown) => mockPush(h), replace: (h: unknown) => mockReplace(h) },
+}));
+
+/* eslint-disable import/first */
+import { navigateWhenActive, whenActive } from './when-active';
+/* eslint-enable import/first */
 
 let state: string;
 let listeners: ((s: string) => void)[];
@@ -47,5 +55,27 @@ describe('whenActive', () => {
     whenActive(fn)();
     emit('active');
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('navigateWhenActive', () => {
+  beforeEach(() => {
+    mockPush.mockReset();
+    mockReplace.mockReset();
+  });
+
+  it('pushes now in the foreground', () => {
+    navigateWhenActive('/player');
+    expect(mockPush).toHaveBeenCalledWith('/player');
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('replaces the screen once the app is back', () => {
+    state = 'background';
+    navigateWhenActive('/player', { replace: true });
+    expect(mockReplace).not.toHaveBeenCalled();
+    emit('active');
+    expect(mockReplace).toHaveBeenCalledWith('/player');
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

@@ -47,8 +47,9 @@ export default function PlayerScreen() {
   // between those two steps this effect re-runs with `nowPlaying === null` - the
   // "already playing" guard below stops matching and, without the latch, we'd fall through
   // and restart the just-finished book (audio playing under the end-credits screen). A
-  // different key (the route reused for another book, e.g. Play next does
-  // router.replace(playerHref(next))) naturally differs, so a genuine new target still starts.
+  // different key (the route reused for another book) naturally differs, so a genuine new
+  // target still starts. The end of a book is not such a target: the credits start the
+  // next book in place (`advanceTo`) and only then show it here, already playing.
   const startedKeyRef = useRef<string | null>(null);
   // Start playback once the book AND its chapters/files have loaded - otherwise
   // multi-file/folder books would fall back to streaming the folder path and

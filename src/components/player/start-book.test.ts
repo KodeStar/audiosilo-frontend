@@ -7,8 +7,14 @@ jest.mock('@/api/provider', () =>
   require('@/testing/api-provider-mock').apiProviderMock({}),
 );
 const mockPlayBook = jest.fn();
+const mockSetRate = jest.fn();
 jest.mock('@/playback/store', () => ({
-  usePlayer: { getState: () => ({ playBook: (...a: unknown[]) => mockPlayBook(...a) }) },
+  usePlayer: {
+    getState: () => ({
+      playBook: (...a: unknown[]) => mockPlayBook(...a),
+      setRate: (r: number) => mockSetRate(r),
+    }),
+  },
 }));
 
 /* eslint-disable import/first */
@@ -28,6 +34,7 @@ beforeEach(() => {
   mockItem.mockReset().mockResolvedValue({ rel_path: target.path });
   mockChapters.mockReset().mockResolvedValue({ chapters: [], files: [] });
   mockPlayBook.mockReset().mockResolvedValue(undefined);
+  mockSetRate.mockReset();
 });
 
 describe('startBookInPlace', () => {
@@ -39,7 +46,16 @@ describe('startBookInPlace', () => {
       2,
       { rel_path: target.path },
       { chapters: [], files: [] },
+      undefined,
     );
+    // The resume lookup restores the saved speed itself.
+    expect(mockSetRate).not.toHaveBeenCalled();
+  });
+
+  it('starts at a given place, at the speed the caller passes', async () => {
+    await expect(startBookInPlace(target, { position: 1234, speed: 1.25 })).resolves.toBe(true);
+    expect(mockPlayBook).toHaveBeenCalledWith('c1', 2, expect.anything(), expect.anything(), 1234);
+    expect(mockSetRate).toHaveBeenCalledWith(1.25);
   });
 
   it('does nothing when the connection is gone', async () => {

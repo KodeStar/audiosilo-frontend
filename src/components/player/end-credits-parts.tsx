@@ -308,6 +308,7 @@ export function UpNextCard({
   decision,
   stillPlaying,
   phone,
+  starting = false,
   onPlay,
   onNotNow,
 }: {
@@ -316,6 +317,8 @@ export function UpNextCard({
   /** The finished book is still playing: the countdown is its remaining audio. */
   stillPlaying: boolean;
   phone: boolean;
+  /** The next book is being started (Play now shows it is busy). */
+  starting?: boolean;
   onPlay: () => void;
   onNotNow: () => void;
 }) {
@@ -368,6 +371,7 @@ export function UpNextCard({
             icon="play"
             title={t('player.finished.playNow')}
             accessibilityLabel={t('player.finished.playNowLabel', { title: next.title })}
+            loading={starting}
             onPress={onPlay}
           />
           {decision.showCountdown ? (

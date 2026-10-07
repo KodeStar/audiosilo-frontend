@@ -1,4 +1,5 @@
 import {
+  MutationObserver,
   type QueryClient,
   queryOptions,
   skipToken,
@@ -361,8 +362,7 @@ function useCapabilityMutation<V, T>(
   const supported = useCapability(flag, connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationKey: [flag, cid],
-    scope: { id: `${flag}:${cid}` },
+    ...mutationScope(flag, cid),
     mutationFn: async (vars: V) => {
       if (!api) throw new Error('no connection');
       if (supported !== true) throw new CapabilityError(flag, supported === undefined);
@@ -371,6 +371,12 @@ function useCapabilityMutation<V, T>(
       return answer;
     },
   });
+}
+
+/** A capability's writes on ONE connection: their key and their one-at-a-time scope
+ * (see `useCapabilityMutation`). */
+function mutationScope(flag: keyof Capabilities, cid: string) {
+  return { mutationKey: [flag, cid], scope: { id: `${flag}:${cid}` } };
 }
 
 /** Put a write's answer into the cache entry at `queryKey`. `update` gets the entry's
@@ -967,6 +973,26 @@ export function useRemoveFromQueue(connectionId?: string) {
     // Not awaited: the queue's next write (same scope) needn't wait for this read.
     ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.queue(cid) }),
   );
+}
+
+/** {@link useRemoveFromQueue} outside React (the end of a book, which may run with no
+ * screen mounted): the same request, cache refresh and per-connection write order.
+ * Rejects with a `CapabilityError`, sending nothing, unless the cached `/server` says the
+ * server has `queue`. */
+export function removeFromQueue(
+  cid: string,
+  client: ApiClient,
+  v: { libraryId: number; path: string },
+): Promise<void> {
+  return new MutationObserver(queryClient, {
+    ...mutationScope('queue', cid),
+    mutationFn: async () => {
+      const supported = cachedCapability(cid, 'queue');
+      if (supported !== true) throw new CapabilityError('queue', supported === undefined);
+      await client.removeFromQueue(v.libraryId, v.path);
+      void queryClient.invalidateQueries({ queryKey: qk.queue(cid) });
+    },
+  }).mutate();
 }
 
 /** The caller's collections: owned first, then shared with them (capability

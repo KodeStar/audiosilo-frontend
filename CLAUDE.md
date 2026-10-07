@@ -515,10 +515,12 @@ media GETs only.
 - **Never navigate while the app is in the background.** `/player` and `/finished` are
   root `fullScreenModal`s and iOS cannot present one from the background (a book that
   ended locked with auto-play on came back to a black screen until a relaunch). Code
-  that playback drives (`BookEndedListener`, the end-credits countdown) starts the next
-  book in place with `startBookInPlace` (`src/components/player/start-book.ts`: item +
-  chapters through the query cache, then `playBook`) and defers any screen with
-  `whenActive` (`src/lib/when-active.ts`).
+  that playback drives (`BookEndedListener`, the end-credits Play now and countdown)
+  moves on with `advanceTo` (`src/components/player/end-of-book.ts`: start the next book
+  in place with `startBookInPlace`, item + chapters through the query cache then
+  `playBook`, and take it and the finished book off Up next with `dropFromQueue`) and
+  defers any screen with `whenActive` / `navigateWhenActive` (`src/lib/when-active.ts`).
+  The `/player` route only shows a book started that way; it never starts it.
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
   playing and on pause/seek/rate/stop/ended.

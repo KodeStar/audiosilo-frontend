@@ -5,20 +5,19 @@ import { ScopedTheme } from 'uniwind';
 import { create } from 'zustand';
 
 import {
-  chaptersQuery,
-  itemQuery,
   type SourcedProgress,
   useBook,
   useBookMeta,
   useCapability,
   useChapters,
 } from '@/api/hooks';
-import { ConnectionScope, queryClient, useApiRegistry } from '@/api/provider';
+import { ConnectionScope } from '@/api/provider';
 import { BookCover } from '@/components/library/book-cover';
 import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
 import { chapterStartsOf } from '@/components/library/meta-gating';
 import { Attribution } from '@/components/player/companion/companion-pieces';
+import { startBookInPlace } from '@/components/player/start-book';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -43,36 +42,23 @@ const useDismissed = create<{ keys: string[]; dismiss: (key: string) => void }>(
 }));
 
 /**
- * Start `at` 30 seconds before its saved place, at its saved speed: through
- * `playBook(..., startBookPosition)`, which also lowers the resume floor to where it
- * starts (so the overlap's saves are not refused as a slip). A phone then opens the full
- * player over the book's page, as every Home start does.
+ * Start `at` 30 seconds before its saved place, at its saved speed (`startBookInPlace`
+ * with a position, which also lowers the resume floor to where it starts, so the
+ * overlap's saves are not refused as a slip). A phone then opens the full player over
+ * the book's page, as every Home start does.
  */
 function useResumeWithOverlap() {
-  const { clients } = useApiRegistry();
   const phone = useLayout() === 'phone';
   const { openBook, openPlayer } = useOpen();
   return async (at: BookAt, saved: { position: number; playback_speed: number }) => {
-    const { connectionId, libraryId, path } = at;
-    const api = clients.get(connectionId);
-    if (!api) throw new Error('connection gone');
-    const [book, chapters] = await Promise.all([
-      queryClient.fetchQuery({
-        ...itemQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-      queryClient.fetchQuery({
-        ...chaptersQuery(connectionId, api, libraryId, path),
-        staleTime: 30_000,
-      }),
-    ]);
-    const player = usePlayer.getState();
-    await player.playBook(connectionId, libraryId, book, chapters, overlapStart(saved.position));
-    // An explicit start skips the resume lookup, which is what restores the book's speed.
-    if (saved.playback_speed > 0) await usePlayer.getState().setRate(saved.playback_speed);
+    const started = await startBookInPlace(at, {
+      position: overlapStart(saved.position),
+      speed: saved.playback_speed,
+    });
+    if (!started) throw new Error('connection gone');
     if (phone) {
-      openBook(connectionId, libraryId, path);
-      openPlayer(connectionId, libraryId, path);
+      openBook(at.connectionId, at.libraryId, at.path);
+      openPlayer(at.connectionId, at.libraryId, at.path);
     }
   };
 }
