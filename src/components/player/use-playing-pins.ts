@@ -63,9 +63,10 @@ export function usePlayingPins(): BookPins {
 
 /**
  * The pins of `bookmarks` and `notes`: every bookmark at its place, and the notes that
- * have one. A note at 0 has none: the app writes notes without a place (the server
- * stores 0), and drawing them all at 0:00 stacked pins on the start of the book and
- * pulled any tap near it there (a tap on a pin lands on it).
+ * have one. Notes are pinned to the listener's place when they are made; a note at 0 is
+ * one made before that (older apps wrote every note at 0, which the server keeps), and
+ * drawing those all at 0:00 stacked pins on the start of the book and pulled any tap
+ * near it there (a tap on a pin lands on it). The note lists still show them at 0:00.
  */
 export function pinsOf(
   bookmarks: readonly { position: number }[],
