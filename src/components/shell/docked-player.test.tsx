@@ -101,6 +101,16 @@ describe('dockLayout', () => {
     expect(dockLayout(900)).toEqual({ allActions: false, scrubber: true });
     expect(dockLayout(700)).toEqual({ allActions: false, scrubber: false });
   });
+
+  it('makes room for the Undo chip from the scrubber row first, then the secondary actions', () => {
+    // A tablet (834): the scrubber row goes while the chip shows, so the book keeps its title.
+    expect(dockLayout(834, true)).toEqual({ allActions: false, scrubber: false });
+    expect(dockLayout(834, false)).toEqual({ allActions: false, scrubber: true });
+    // A small desktop window: the secondary actions make way, the scrubber stays.
+    expect(dockLayout(1024, true)).toEqual({ allActions: false, scrubber: true });
+    // A wide window has room for everything.
+    expect(dockLayout(1440, true)).toEqual({ allActions: true, scrubber: true });
+  });
 });
 
 describe('segmentTicks', () => {
@@ -215,6 +225,25 @@ describe('DockedPlayer', () => {
       }),
     );
     expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
+  });
+
+  it('on a tablet the Undo chip takes the scrubber row, so the book keeps its room', async () => {
+    mockLayout = 'tablet';
+    await renderAt(834);
+    expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
+    await act(async () =>
+      useJumpUndo.setState({
+        jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
+      }),
+    );
+    expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
+    expect(screen.queryByText('47m left at 1.25×')).toBeNull();
+    expect(screen.getByLabelText('Play')).toBeTruthy();
+    // ...and the right cluster stops sharing the slack, which goes to the book.
+    expect(screen.getByTestId('dock-actions').props.className).toContain('grow-0');
+    // The chip's ten seconds are up: the scrubber row comes back.
+    await act(async () => useJumpUndo.setState({ jump: null }));
+    expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
   });
 
   it('ticks the bookmarks in the current segment over the scrubber', async () => {

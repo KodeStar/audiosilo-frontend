@@ -25,7 +25,9 @@ import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
+import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
 import {
+  selectBookKey,
   selectBookPosition,
   selectCurrentChapter,
   selectIsPlaying,
@@ -40,15 +42,26 @@ import { useChromeEdge } from './shell-metrics';
 /** The bar's height above the safe area (STYLEGUIDE "Docked player bar"). */
 const DOCK_HEIGHT = 84;
 
+/** The room the Undo chip takes in the right cluster ("Back to 17:26:50", its ring and
+ * margin), which comes out of the room the rest of the dock is laid out in. */
+export const UNDO_CHIP_ROOM = 180;
+
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
  * the desktop drawer; a tablet, a split view or a narrow browser window is less): from
  * 1024 every action (speed, bookmark, output); below it the tablet set, whose hidden
  * actions are all in the full player; below 800 the chapter scrubber row goes too (the
- * transport alone fits between the book and the actions).
+ * transport alone fits between the book and the actions). While the Undo chip shows
+ * (`undo`, ten seconds after a jump) its room is taken off the width first, so the
+ * scrubber row and then the secondary actions make way for it and the book keeps its
+ * title (at 834 the chip used to crush it to "C...").
  */
-export function dockLayout(width: number): { allActions: boolean; scrubber: boolean } {
-  return { allActions: width >= 1024, scrubber: width >= 800 };
+export function dockLayout(
+  width: number,
+  undo = false,
+): { allActions: boolean; scrubber: boolean } {
+  const room = undo ? width - UNDO_CHIP_ROOM : width;
+  return { allActions: room >= 1024, scrubber: room >= 800 };
 }
 
 /** Bookmark positions inside the current segment, as fractions of it (0..1). */
@@ -236,6 +249,7 @@ export function DockedPlayer() {
   const isPlaying = usePlayer(selectIsPlaying);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
+  const undo = useJumpUndo(selectUndoFor(usePlayer(selectBookKey))) !== null;
   // The bar sits on the window's bottom edge, so its height is its top edge (published
   // for the root toasts). Its width picks what fits.
   const [size, setSize] = useState<{ width: number; height: number }>();
@@ -243,7 +257,7 @@ export function DockedPlayer() {
   if (!nowPlaying) return null;
 
   // Before the first layout: the form factor's guess.
-  const { allActions, scrubber } = dockLayout(size?.width ?? (desktop ? 1280 : 800));
+  const { allActions, scrubber } = dockLayout(size?.width ?? (desktop ? 1280 : 800), undo);
   const { queue, title, author } = nowPlaying;
   const heading = chapter ? chapterLabel(chapter, t) : title;
   const bookLine = author ? `${title} · ${author}` : title;
@@ -307,7 +321,12 @@ export function DockedPlayer() {
 
           <View
             testID="dock-actions"
-            className="shrink-0 grow basis-auto flex-row items-center justify-end gap-1"
+            // The cluster shares the bar's slack with the book, except while the Undo chip
+            // is in it: then the book takes all of it (the chip already widened the cluster).
+            className={cn(
+              'shrink-0 basis-auto flex-row items-center justify-end gap-1',
+              undo ? 'grow-0' : 'grow',
+            )}
           >
             <UndoChip className="mr-1" />
             {allActions ? <SpeedPill /> : null}
