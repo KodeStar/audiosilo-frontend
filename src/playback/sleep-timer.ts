@@ -4,13 +4,14 @@ import type { Chapter } from '@/api/types';
 import { ticker } from '@/lib/ticker';
 
 import { nextChapterEnd } from './book-queue';
+import { lastInteraction, noteInteraction, type Interaction } from './last-interaction';
 import { prettifyChapterTitle } from './prettify-title';
 import { wallClockSeconds } from './rate';
 import { selectBookKey, selectBookPosition, selectIsTransportLive, usePlayer } from './store';
 
 /**
  * Wall-clock seconds before the timer fires at which it enters its `ending` phase:
- * the window in which a shake (or the sheet's "keep listening" button) re-arms it,
+ * the window in which a shake (or the grace card's "Keep listening" button) re-arms it,
  * and - for a DURATION timer only - the span over which the gain ramps down.
  *
  * Named for the fade because the fade is what sets its length. An end-of-chapter
@@ -103,6 +104,20 @@ export const RESET_AFTER_PAUSE_SECONDS = 20 * 60;
  */
 export const ABANDON_AFTER_PAUSE_SECONDS = 2 * 60 * 60;
 
+/**
+ * How long after firing a live transport still does NOT count as the listener resuming
+ * by hand: the pause is asynchronous, and the engine keeps reporting `playing` (with a
+ * progress tick or two) until it lands. See `syncGrace`.
+ */
+const PAUSE_SETTLE_MS = 2000;
+
+/**
+ * How far (content seconds) the position may sit from where the timer stopped it, during
+ * the grace, before that counts as the listener scrubbing. Generous enough for the audio
+ * that plays between asking for the pause and it landing (more at 2x).
+ */
+const SCRUB_SECONDS = 5;
+
 /** How the current timer was armed - what a shake resets it back to. */
 export type SleepOrigin = { kind: 'duration'; minutes: number } | { kind: 'chapter' };
 
@@ -112,7 +127,7 @@ export type SleepOrigin = { kind: 'duration'; minutes: number } | { kind: 'chapt
  * The difference exists because the two callers mean different things by "end of
  * chapter", and one shared fallback served one of them badly:
  *
- * - the LISTENER's reset (a shake, or the sheet's "keep listening") means "one more
+ * - the LISTENER's reset (a shake, or "Keep listening") means "one more
  *   chapter"; where there is no next chapter, the end of the book is the honest answer,
  *   so it passes `{ allowEndOfBook: true }`;
  * - the AUTOMATIC nightly arm (`auto-sleep-controller.ts`) means "stop me at the next
@@ -142,9 +157,34 @@ export type ChapterTimerOptions = {
  */
 export type SleepEndReason = 'cancelled' | 'expired';
 
+/**
+ * The listener fell asleep: the timer FIRED and paused a playing book, and its grace
+ * window then closed with nobody keeping it going - no shake or "Keep listening", no
+ * resume, no scrub. Only that path carries one (see `closeGrace`); every other ending,
+ * including an `expired` one (fired against a paused book, book replaced, abandoned
+ * after a long pause), does not.
+ */
+export type FellAsleep = {
+  /** Whole-book position where the timer paused playback. */
+  stoppedAt: number;
+  /** The listener's last touch of the player before the timer fired (`last-interaction`),
+   * or null when none was recorded for this book. */
+  touch: Interaction | null;
+};
+
 /** The end of one book's timer: which book, and why it ended. The payload of
- * `onSleepTimerEnded`, which is how anything outside this module hears about it. */
-export type SleepOutcome = { bookKey: string; reason: SleepEndReason };
+ * `onSleepTimerEnded`, which is how anything outside this module hears about it.
+ * `fellAsleep` is set only for an `expired` timer the listener slept through. */
+export type SleepOutcome = { bookKey: string; reason: SleepEndReason; fellAsleep?: FellAsleep };
+
+/** What the timer remembers about its firing, for the grace that follows it. */
+type Fired = FellAsleep & {
+  /** Epoch ms of the fire. */
+  at: number;
+  /** The listener showed they were awake during the grace (resumed by hand, or moved the
+   * position): when the window closes it is not a drift-off. Sticky. */
+  stirred: boolean;
+};
 
 /**
  * The timer's state machine, stored directly (not derived from a set of booleans -
@@ -172,7 +212,8 @@ export type SleepLabel = {
     | 'player.sleepTimer.minutes'
     | 'player.sleepTimer.endOf'
     | 'player.sleepTimer.endOfChapterNumber'
-    | 'player.sleepTimer.endOfBook';
+    | 'player.sleepTimer.endOfBook'
+    | 'player.sleepTimer.afterChapters';
   params?: Record<string, string | number>;
 };
 
@@ -210,7 +251,10 @@ let unwatchPlayback: (() => void) | null = null;
 const playbackWatch = {
   start() {
     if (unwatchPlayback) return;
-    unwatchPlayback = usePlayer.subscribe(() => syncPlaybackFreeze());
+    unwatchPlayback = usePlayer.subscribe(() => {
+      syncGrace();
+      syncPlaybackFreeze();
+    });
   },
   stop() {
     unwatchPlayback?.();
@@ -380,10 +424,10 @@ function syncFade() {
  * A FROZEN countdown is never in the `ending` phase either, and that is the same rule
  * rather than a second one: `ending` means "about to stop", and a countdown that is not
  * counting is not about to stop. It matters because the phase is public - it is what
- * keeps the accelerometer subscribed (`selectSleepExtendable`), what turns the badge
- * solid pink and what makes the sheet say "Fading out" - and a book paused with 20
- * seconds left would otherwise sit in that phase, at full volume, indefinitely: nothing
- * but a thaw ever re-evaluates it. A shake there would silently reset the timer without
+ * keeps the accelerometer subscribed (`selectSleepExtendable`) and what shows the grace
+ * card ("Fading out in 20 s") - and a book paused with 20 seconds left would otherwise
+ * sit in that phase, at full volume, indefinitely: nothing but a thaw ever re-evaluates
+ * it. A shake there would silently reset the timer without
  * resuming (the grace, not the ending window, is what resumes).
  *
  * Otherwise the phase change is unconditional - both kinds of timer become extendable for
@@ -496,6 +540,54 @@ function syncPlaybackFreeze() {
 }
 
 /**
+ * Close the post-pause grace window, the one way a fired timer runs its course. It is
+ * `expired` either way; it is a DRIFT-OFF (`fellAsleep`) unless the listener stirred
+ * during the window (see `syncGrace`) - which is what the "Fell asleep" bookmark and the
+ * "You drifted off" prompt hang off (`drift-controller.ts`).
+ */
+function closeGrace(state: SleepTimerState) {
+  const fired = state.fired;
+  useSleepTimer
+    .getState()
+    .endTimer(
+      'expired',
+      fired && !fired.stirred ? { stoppedAt: fired.stoppedAt, touch: fired.touch } : undefined,
+    );
+}
+
+/**
+ * The grace window's reconcile, run from the play-state watch (every player write) and
+ * the 1s tick. Two jobs:
+ *
+ * 1. **Close it once its deadline has passed.** The tick alone is not enough: iOS suspends
+ *    the app once the timer has paused the audio, so on the night that matters no tick runs
+ *    until the app wakes - and the thing that wakes it can be the listener pressing play
+ *    the next morning. Seeing that write here (deadline long gone) closes the window as the
+ *    drift-off it was, instead of a tick a moment later finding the book playing and
+ *    reading it as a listener who resumed by hand.
+ * 2. **Notice the listener stirring inside it**: the transport live again once the pause
+ *    has settled (`PAUSE_SETTLE_MS` - the engine reports `playing` for a moment after the
+ *    pause is asked for), or the position moved away from where the timer stopped it (a
+ *    scrub). Either says they were awake, so the window closing is not a drift-off.
+ */
+function syncGrace() {
+  const state = useSleepTimer.getState();
+  if (state.phase !== 'grace') return; // the cheap answer for almost every write
+  if (cancelIfBookChanged(state)) return;
+  const now = Date.now();
+  if (now >= graceDeadline(state)) {
+    closeGrace(state);
+    return;
+  }
+  const fired = state.fired;
+  if (!fired || fired.stirred) return;
+  const player = usePlayer.getState();
+  const resumed = selectIsTransportLive(player) && now - fired.at >= PAUSE_SETTLE_MS;
+  const scrubbed = Math.abs(selectBookPosition(player) - fired.stoppedAt) > SCRUB_SECONDS;
+  if (resumed || scrubbed) useSleepTimer.setState({ fired: { ...fired, stirred: true } });
+}
+
+/**
  * The "End of <chapter>" label for a chapter, with the numbered fallback for an
  * untitled one. A descriptor, so the untitled case is ONE key with a number rather
  * than a `t()` nested inside another `t()`. Exported so the sheet labels the timer
@@ -538,26 +630,46 @@ export function chapterSleepLabel(chapter: Chapter): SleepLabel {
  *
  * Where a chapter ends on the whole-book timeline, and how far away that is, are
  * `book-queue.ts`'s business (it owns the whole-book timeline mapping) - so the scan
- * itself is `nextChapterEnd` there, shared with the sheet's countdown list. Two copies
+ * itself is `nextChapterEnd` there, beside the sheet's stop-after rows. Two copies
  * of that formula would let the list the listener picks from and the boundary a shake
  * retargets drift apart.
  */
-function nextChapterTarget(
-  allowEndOfBook: boolean,
-): { position: number; label: SleepLabel } | null {
+function nextChapterTarget(allowEndOfBook: boolean): ChapterTimerTarget | null {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return null;
-  const pos = selectBookPosition(player);
-  const total = np.queue.total;
-  const next = nextChapterEnd(np.queue.chapters, pos, player.rate, MIN_CHAPTER_SECONDS);
+  return chapterTimerTarget(np.queue, selectBookPosition(player), player.rate, allowEndOfBook);
+}
+
+/** Where a chapter timer would stop, and how long until then (wall clock). */
+export type ChapterTimerTarget = { position: number; label: SleepLabel; untilEnd: number };
+
+/**
+ * `nextChapterTarget` over plain inputs: the boundary `startChapterTimer` arms. Exported
+ * so the sleep sheet's "End of chapter" countdown is computed by the very rule the timer
+ * it starts uses - a sheet that said "in 12m" for a timer aiming somewhere else would be
+ * the drift `nextChapterEnd` exists to prevent.
+ */
+export function chapterTimerTarget(
+  queue: { chapters: Chapter[]; total: number },
+  position: number,
+  rate: number,
+  allowEndOfBook: boolean,
+): ChapterTimerTarget | null {
+  const total = queue.total;
+  const next = nextChapterEnd(queue.chapters, position, rate, MIN_CHAPTER_SECONDS);
   // `total <= 0` is a book whose duration is unknown, where "does this chapter end where
   // the book does?" has no answer - take the chapter, which is a real boundary either way.
   if (next && (allowEndOfBook || total <= 0 || next.endPosition < total)) {
-    return { position: next.endPosition, label: chapterSleepLabel(next.chapter) };
+    return {
+      position: next.endPosition,
+      label: chapterSleepLabel(next.chapter),
+      untilEnd: next.untilEnd,
+    };
   }
-  if (allowEndOfBook && wallClockSeconds(total - pos, player.rate) > MIN_CHAPTER_SECONDS) {
-    return { position: total, label: { key: 'player.sleepTimer.endOfBook' } };
+  const untilEnd = wallClockSeconds(total - position, rate);
+  if (allowEndOfBook && untilEnd > MIN_CHAPTER_SECONDS) {
+    return { position: total, label: { key: 'player.sleepTimer.endOfBook' }, untilEnd };
   }
   return null;
 }
@@ -589,6 +701,9 @@ export type SleepTimerState = {
    * armed with nothing loaded). The timer cancels itself once this stops matching the
    * book that is playing - see `cancelIfBookChanged`. */
   bookKey: string | null;
+  /** What the fire recorded (where it stopped the book, the listener's last touch before
+   * it, whether they have stirred since), for the `grace` phase only; null otherwise. */
+  fired: Fired | null;
 
   /** Arm a timer for `minutes` of wall-clock time. */
   startDuration: (minutes: number) => void;
@@ -611,6 +726,13 @@ export type SleepTimerState = {
    * 30 minutes again, an end-of-chapter timer retargets the next chapter. Inside the
    * post-pause grace it also resumes playback. A no-op outside the ending/grace
    * windows, so a stray shake mid-book can never disturb a running timer.
+   *
+   * A timer set to stop after SEVERAL chapters ("Or stop after 3 chapters") is a chapter
+   * timer too, and re-arms for ONE more chapter, not the same N again. The N was the
+   * listener's guess at how long they would last tonight; a shake in its last seconds is
+   * "a little more", and handing back another hour of chapters to someone that sleepy
+   * would mostly be listened to by nobody. Another shake at the next boundary gives
+   * another chapter.
    */
   keepListening: () => void;
   /** The listener stops the timer by hand. Reports a `cancelled` outcome (see
@@ -623,9 +745,10 @@ export type SleepTimerState = {
   /**
    * Internal: drop the timer, back to idle, and tell `onSleepTimerEnded` subscribers
    * WHY. The single ending path - every other one delegates here - so no route out of a
-   * live timer can forget to say what happened to it.
+   * live timer can forget to say what happened to it. `fellAsleep` is passed only by
+   * `closeGrace`.
    */
-  endTimer: (reason: SleepEndReason) => void;
+  endTimer: (reason: SleepEndReason, fellAsleep?: FellAsleep) => void;
 };
 
 /** Every field of an idle timer, so a reset can never leave one behind. */
@@ -639,6 +762,7 @@ const IDLE = {
   origin: null,
   graceUntil: null,
   bookKey: null,
+  fired: null,
 } as const;
 
 /** Subscribers to `onSleepTimerEnded`, in registration order. */
@@ -693,6 +817,7 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
       phase: 'running',
       frozenAt: null,
       graceUntil: null,
+      fired: null,
       bookKey: selectBookKey(usePlayer.getState()),
     });
     // The new phase is `running`, so this stops the old timer's ramp and hands the volume
@@ -761,10 +886,12 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
       // phone up hours later is exactly the motion the shake detector is tuned for, so
       // check the clock too - otherwise a stale grace starts the book playing out loud.
       if (phase === 'grace' && Date.now() >= graceDeadline(get())) {
-        get().endTimer('expired'); // the window closed unshaken, however late we noticed
+        closeGrace(get()); // the window closed unshaken, however late we noticed
         return;
       }
       const wasPaused = phase === 'grace';
+      // A shake or a tap: the listener is awake right here (`last-interaction`).
+      noteInteraction();
       if (origin.kind === 'duration') get().startDuration(origin.minutes);
       // The listener asked for one more chapter, so the end of the book is an answer they
       // would accept - unlike the automatic arm, which must not be handed one.
@@ -774,7 +901,7 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
 
     cancel: () => get().endTimer('cancelled'),
 
-    endTimer: (reason) => {
+    endTimer: (reason, fellAsleep) => {
       const { bookKey } = get();
       stopCountdown();
       set({ ...IDLE });
@@ -785,7 +912,9 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
       // A timer armed with nothing loaded has no book to attribute the ending to, and
       // every subscriber is per-book - so there is nothing to tell anyone about.
       if (bookKey === null) return;
-      const outcome: SleepOutcome = { bookKey, reason };
+      const outcome: SleepOutcome = fellAsleep
+        ? { bookKey, reason, fellAsleep }
+        : { bookKey, reason };
       for (const listener of endedListeners) listener(outcome);
     },
 
@@ -796,10 +925,15 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
       if (cancelIfBookChanged(first)) return;
       if (first.phase === 'grace') {
         // Post-pause grace: nothing is counting down towards a pause any more, we are
-        // only holding the window open for a shake.
-        const until = graceDeadline(first);
-        if (Date.now() >= until) get().endTimer('expired');
-        else set({ remaining: Math.max(0, Math.round((until - Date.now()) / 1000)) });
+        // only holding the window open for a shake. `syncGrace` closes it once due (and
+        // notices a listener stirring that the watch missed).
+        syncGrace();
+        const state = get();
+        if (state.phase === 'grace') {
+          set({
+            remaining: Math.max(0, Math.round((graceDeadline(state) - Date.now()) / 1000)),
+          });
+        }
         return;
       }
       if (first.phase === 'idle') return;
@@ -849,6 +983,15 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
         get().endTimer('expired');
         return;
       }
+      // Recorded BEFORE pausing: the pause is itself a transport edge the interaction
+      // watch would record as a touch, and the listener's last touch is what was before it.
+      const bookKey = get().bookKey;
+      const fired: Fired = {
+        at: Date.now(),
+        stoppedAt: selectBookPosition(player),
+        touch: bookKey === null ? null : lastInteraction(bookKey),
+        stirred: false,
+      };
       // Pause FIRST, then restore the gain. The other order would blast the last
       // instant of audio back to full volume, and skipping the restore would leave a
       // manual resume silently muted - so it is chained onto the pause, not dropped,
@@ -867,6 +1010,7 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
         pauseAtPosition: null,
         remaining: GRACE_SECONDS,
         graceUntil: Date.now() + GRACE_SECONDS * 1000,
+        fired,
       });
       startCountdown(); // keeps ticking to expire the grace
     },
