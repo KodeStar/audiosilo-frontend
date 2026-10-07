@@ -21,6 +21,7 @@ import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
 import { ChapterListSheet, type ChapterItem } from '@/components/player/chapter-list';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
+import { GraceCard } from '@/components/player/grace-card';
 import { SeekBar } from '@/components/player/seek-bar';
 import { SkipButton } from '@/components/player/skip-button';
 import { SleepSheet, SleepTimerButton } from '@/components/player/sleep-timer-button';
@@ -589,6 +590,10 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         )}
         <SleepTimerButton onPress={() => setSheet('sleep')} />
       </View>
+
+      {/* The sleep timer's last seconds and post-pause grace: floats over the controls,
+          under the sheets. */}
+      <GraceCard bottom={insets.bottom + 64} />
 
       {/* Sheets, all mounted at the root so the shared bottom Sheet presents
           correctly (it renders inline, not as an RN Modal). */}
