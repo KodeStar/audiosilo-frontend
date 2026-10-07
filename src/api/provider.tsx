@@ -5,6 +5,7 @@ import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth
 import { flushConnection } from '@/playback/progress-sync';
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
+import { pickedUrl, useAddressRoute } from './address-route';
 import { ApiClient } from './client';
 import { onReconnect, setReachabilityClients } from './reachability';
 
@@ -87,25 +88,29 @@ export type ApiConnection = { connection: Connection; client: ApiClient };
 
 export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
+  // Which of each connection's addresses (home / away) requests go to right now.
+  const picks = useAddressRoute((s) => s.picks);
 
-  // Build the clients only when the connections change - re-rendering for an
-  // unrelated reason must not tear down and recreate every ApiClient (it would drop
-  // in-flight reachability probes and force-refetch every query).
+  // Build the clients only when the connections or the picked addresses change -
+  // re-rendering for an unrelated reason must not tear down and recreate every
+  // ApiClient (it would drop in-flight reachability probes and force-refetch every
+  // query).
   const clients = useMemo<Map<string, ApiClient>>(() => {
     const map = new Map<string, ApiClient>();
     for (const c of connections) {
       // Inject the dead-token callback so a 401 on ANY request through this client
       // (query OR mutation) flags this connection for reconnect - the client is the one
-      // choke point every request path shares.
+      // choke point every request path shares. Built on the address in use now
+      // (`resolveClient` does the same), never straight from `serverUrl`.
       map.set(
         c.id,
-        new ApiClient(c.serverUrl, c.token, undefined, () =>
+        new ApiClient(pickedUrl(c, picks), c.token, undefined, () =>
           useSession.getState().markNeedsReconnect(c.id, 'auth'),
         ),
       );
     }
     return map;
-  }, [connections]);
+  }, [connections, picks]);
 
   const registry = useMemo<ApiRegistry>(() => ({ clients, connections }), [clients, connections]);
 

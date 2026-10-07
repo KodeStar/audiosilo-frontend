@@ -1559,5 +1559,14 @@
       "jumpLabel": "Ir a {{time}}",
       "span": "{{from}} a {{to}}"
     }
+  },
+  "addresses": {
+    "home": "Dirección de casa",
+    "away": "Dirección fuera de casa",
+    "paired": "Dirección del servidor",
+    "usingHome": "Usando tu dirección de casa",
+    "usingAway": "Usando tu dirección fuera de casa",
+    "usingPaired": "Usando la dirección con la que te conectaste",
+    "switches": "La app cambia entre ellas por sí sola."
   }
 }

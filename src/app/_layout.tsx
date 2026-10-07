@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { startAddressRouting } from '@/api/address-runner';
 import { ApiProvider } from '@/api/provider';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
@@ -127,6 +128,10 @@ export default function RootLayout() {
   // (scrub, chapter tap, lock-screen seek...) for the "Back to 17:26:50" chip. Watches the
   // player's snapshots, so it must run whatever is on screen; see the module.
   useEffect(() => startJumpUndo(), []);
+
+  // Home and away addresses: picks the address each server is reached at (native only)
+  // and keeps the playing book on it. Framework-free like the others; see the module.
+  useEffect(() => startAddressRouting(), []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.
