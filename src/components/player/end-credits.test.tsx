@@ -220,7 +220,7 @@ beforeEach(() => {
     { started_at: '2026-10-01T20:00:00Z', ended_at: '2026-10-01T21:30:00Z' },
     { started_at: '2026-10-04T20:00:00Z', ended_at: '2026-10-04T21:00:00Z' },
   ]);
-  useSettings.setState({ autoPlayNext: false });
+  useSettings.setState({ autoPlayNext: false, defaultRate: 1 });
   setPlayer({ nowPlaying: null, snapshot: { state: 'idle' }, rate: 1, position: 0 });
 });
 
@@ -249,7 +249,6 @@ describe('EndCredits', () => {
     useSettings.setState({ defaultRate: 1.1 });
     await mount();
     expect(screen.getByText('1.1×')).toBeTruthy();
-    useSettings.setState({ defaultRate: 1 });
   });
 
   it('Play now plays the queue head and takes it off Up next', async () => {

@@ -1,6 +1,7 @@
 import {
   currentSegment,
   nextSegmentStart,
+  trackLabel,
   previousSegmentStart,
   segmentStarts,
   stepSegment,
@@ -127,5 +128,14 @@ describe('stepSegment', () => {
     const back = make(perFile, 2, 2);
     stepSegment(back, -1);
     expect(back.goToTrack).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('trackLabel', () => {
+  it("is the leaf of the track's path, else the fallback", () => {
+    expect(trackLabel({ id: '2:Author/Book/03 - Part.mp3' }, 'Book')).toBe('03 - Part.mp3');
+    expect(trackLabel({ id: '2:Odd:Name/x.mp3' }, 'Book')).toBe('x.mp3');
+    expect(trackLabel(undefined, 'Book')).toBe('Book');
+    expect(trackLabel({ id: '2:' }, 'Book')).toBe('Book');
   });
 });

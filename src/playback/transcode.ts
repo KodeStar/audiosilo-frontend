@@ -77,8 +77,7 @@ export function transcodedTrackPosition(
   offset: number,
   duration?: number,
 ): number {
-  const pos = Math.max(0, (Number.isFinite(currentTime) ? currentTime : 0) + offset);
-  return duration != null && duration > 0 ? Math.min(pos, duration) : pos;
+  return clampTranscodedSeek((Number.isFinite(currentTime) ? currentTime : 0) + offset, duration);
 }
 
 /** Clamp a seek target into a transcoded track: `[0, duration]` when the duration is

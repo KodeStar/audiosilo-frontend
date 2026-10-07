@@ -575,7 +575,7 @@ function PreviousBooksSection({
  * row leaks nothing to a screen reader or the web DOM. Used for a work's ending
  * (a previous book always; the current book only once finished) and for the
  * current book's whole-book summary while the listener is still in it. */
-export function SpoilerAccordion({ label, text }: { label: string; text: string }) {
+function SpoilerAccordion({ label, text }: { label: string; text: string }) {
   return (
     <Disclosure
       className="rounded-lg border border-border"

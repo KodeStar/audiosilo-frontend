@@ -1,3 +1,5 @@
+import { chapterNumberAt } from '@/components/library/meta-gating';
+
 /**
  * The whole-book timeline's maths (STYLEGUIDE section 8, "Seek bar and chapter
  * timeline"): one segment per chapter, sized by its length, the chapters behind the
@@ -31,12 +33,7 @@ export function maxSegmentsFor(width: number): number {
 
 /** The index of the chapter holding `position` (0 before the first start). */
 export function chapterIndexAt(starts: readonly number[], position: number): number {
-  let index = 0;
-  for (let i = 0; i < starts.length; i++) {
-    if (position >= starts[i]) index = i;
-    else break;
-  }
-  return index;
+  return Math.max(0, chapterNumberAt(starts, position) - 1);
 }
 
 /**

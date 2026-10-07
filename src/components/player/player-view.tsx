@@ -21,7 +21,6 @@ import { Text } from '@/components/ui/text';
 import { UpNextSheet } from '@/components/upnext/up-next-sheet';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
-import { pathLeaf } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -49,6 +48,7 @@ import {
   playerWash,
 } from './player-view-model';
 import { PlayerSeekBar } from './seek-bar';
+import { trackLabel } from './transport';
 import { TransportControls } from './transport-controls';
 
 /** `--dur-4` (STYLEGUIDE section 6): the cover's breathe and the player's rise. */
@@ -97,7 +97,7 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
   if (!np) return null;
   const { queue, title, author } = np;
   const track = queue.tracks[trackIndex];
-  const trackName = track ? pathLeaf(track.id.split(':').slice(1).join(':')) || title : title;
+  const trackName = trackLabel(track, title);
   const heading = chapter ? chapterLabel(chapter, t) : prettifyChapterTitle(trackName);
   const many = queue.chapters.length > 1 || queue.tracks.length > 1;
   const titleClass = cn(

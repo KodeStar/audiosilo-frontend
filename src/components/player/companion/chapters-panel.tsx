@@ -7,13 +7,13 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDurationOrZero } from '@/lib/format';
-import { pathLeaf } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { trackLabel } from '../transport';
 import { chapterRows, type ChapterRow } from './companion-model';
 
 const ROW_H = 52;
@@ -123,7 +123,7 @@ export function ChaptersPanel({
     return perTrack
       ? queue.tracks.map(
           (tr, i) =>
-            prettifyChapterTitle(pathLeaf(tr.id.split(':').slice(1).join(':')) || title) ||
+            prettifyChapterTitle(trackLabel(tr, title)) ||
             t('player.controls.fileNumber', { number: i + 1 }),
         )
       : queue.chapters.map((c) => chapterLabel(c, t));
