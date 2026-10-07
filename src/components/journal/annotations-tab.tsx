@@ -164,6 +164,7 @@ export function AnnotationsTab({
   return (
     <FlatList
       {...listProps}
+      testID="journal-list"
       data={rows}
       keyExtractor={(r) => `${r.type}\n${r.row.connectionId}\n${r.row.id}`}
       ListHeaderComponent={

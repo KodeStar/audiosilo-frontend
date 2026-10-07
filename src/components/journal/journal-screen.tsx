@@ -170,6 +170,7 @@ function DiaryTab({
   return (
     <FlatList
       {...listProps}
+      testID="journal-list"
       data={days}
       keyExtractor={(d) => String(d.start)}
       ListHeaderComponent={
