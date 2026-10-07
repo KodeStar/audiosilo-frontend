@@ -23,14 +23,22 @@ export type SaveOutcome = 'file' | 'text';
  * share sheet instead (React Native's `Share`), so the listener can still copy it. The
  * web build has its own module (`export-save.web.ts`: a download).
  */
-export async function saveExport(file: ExportFile, dialogTitle: string): Promise<SaveOutcome> {
+export async function saveExport(
+  file: ExportFile,
+  dialogTitle: string,
+  /** Called once the export is ready, just before the share sheet opens (which resolves
+   * only when it closes): the caller's "Gathering" state ends there. */
+  onReady?: () => void,
+): Promise<SaveOutcome> {
   if (!(await Sharing.isAvailableAsync())) {
+    onReady?.();
     await shareText(file.content);
     return 'text';
   }
   const out = new File(Paths.cache, file.name);
   out.create({ overwrite: true });
   out.write(file.content);
+  onReady?.();
   await Sharing.shareAsync(out.uri, { mimeType: file.mimeType, UTI: file.uti, dialogTitle });
   return 'file';
 }

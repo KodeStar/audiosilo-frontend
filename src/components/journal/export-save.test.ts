@@ -58,6 +58,17 @@ describe('saveExport (native)', () => {
     expect(mockShareText).not.toHaveBeenCalled();
   });
 
+  it('says it is ready once the file is written, before the share sheet opens', async () => {
+    const order: string[] = [];
+    mockShareAsync.mockImplementationOnce(async () => {
+      order.push('sheet');
+    });
+    await saveExport(file, 'x', () =>
+      order.push(`ready:${mockFiles[0]?.content ? 'written' : 'empty'}`),
+    );
+    expect(order).toEqual(['ready:written', 'sheet']);
+  });
+
   it("hands the text to the share sheet where files can't be shared", async () => {
     mockIsAvailable.mockResolvedValueOnce(false);
     await expect(saveExport(file, 'x')).resolves.toBe('text');

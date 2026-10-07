@@ -1,6 +1,6 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { qk } from '@/api/hooks';
@@ -56,6 +56,9 @@ export function useJournalExport(sources: {
   const { t } = useTranslation();
   const apis = useApis();
   const [preparing, setPreparing] = useState<number | null>(null);
+  // One export at a time, for the whole run: `preparing` ends before the share sheet
+  // (which stays up until the listener closes it), this only when it is all over.
+  const busy = useRef(false);
 
   const words = (): ExportWords => ({
     columns: {
@@ -75,8 +78,12 @@ export function useJournalExport(sources: {
   });
 
   const run = async (format: ExportFormat, action: ExportAction) => {
-    if (preparing !== null) return;
+    if (busy.current) return;
+    busy.current = true;
     setPreparing(0);
+    // The rows are gathered: the label goes before anything else comes up (the share
+    // sheet, the copy's fallback sheet), not once that closes.
+    const ready = () => setPreparing(null);
     const counts = new Map<string, number>();
     const progress = (id: string) => (n: number) => {
       counts.set(id, n);
@@ -137,6 +144,7 @@ export function useJournalExport(sources: {
       const content =
         format === 'csv' ? toCsv(rows, words(), withServer) : toMarkdown(rows, words(), withServer);
       if (action === 'copy') {
+        ready();
         // Web: the Clipboard API. Elsewhere `copyText` falls back to the share sheet,
         // which can't confirm a copy, so only a real copy says "Copied".
         if (await copyText(content)) toast({ title: t('journal.export.copied') });
@@ -144,6 +152,7 @@ export function useJournalExport(sources: {
         await saveExport(
           { name: exportFileName(format, new Date()), content, ...FILE_TYPES[format] },
           t('journal.export.dialogTitle'),
+          ready,
         );
       }
       if (truncated) {
@@ -157,7 +166,9 @@ export function useJournalExport(sources: {
     } catch {
       toast({ title: t('journal.export.failed') });
     } finally {
-      setPreparing(null);
+      // Cancelled, failed or nothing to export: the label goes too.
+      ready();
+      busy.current = false;
     }
   };
 

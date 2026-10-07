@@ -6,7 +6,12 @@ export type { ExportFile, SaveOutcome };
  * Web: download the export (a Blob behind a temporary link, named `journal-<date>.md` or
  * `.csv`). The native build shares a file instead (`export-save.ts`).
  */
-export async function saveExport(file: ExportFile, _dialogTitle: string): Promise<SaveOutcome> {
+export async function saveExport(
+  file: ExportFile,
+  _dialogTitle: string,
+  onReady?: () => void,
+): Promise<SaveOutcome> {
+  onReady?.();
   const blob = new Blob([file.content], { type: `${file.mimeType};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

@@ -145,6 +145,51 @@ describe('useJournalExport', () => {
     expect(mockSave).not.toHaveBeenCalled();
   });
 
+  // The share sheet stays up until the listener closes it, and "Gathering N entries"
+  // stayed visible under it and after it: it ends once the file is written.
+  it('ends "Gathering" once the file is written, before the share sheet closes', async () => {
+    mockMyBookmarks.mockResolvedValue({ items: [bm(1, 'a')] });
+    mockMyNotes.mockResolvedValue({ items: [] });
+    let closeSheet: () => void = () => {};
+    mockSave.mockImplementationOnce(async (...a: unknown[]) => {
+      (a[2] as () => void)(); // the file is written
+      await new Promise<void>((r) => (closeSheet = r)); // the share sheet is up
+      return 'file';
+    });
+    const { result } = await renderHook(() =>
+      useJournalExport({ bookmarks: [source('c1', 'ready')], notes: [source('c1', 'ready')] }),
+    );
+    let done: Promise<void> = Promise.resolve();
+    await act(async () => {
+      done = result.current.run('md', 'save');
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(result.current.preparing).toBeNull();
+    // Still one export at a time while the sheet is up.
+    await act(() => result.current.run('md', 'save'));
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      closeSheet();
+      await done;
+    });
+    expect(result.current.preparing).toBeNull();
+  });
+
+  it('ends "Gathering" when the share fails, and lets the listener try again', async () => {
+    mockMyBookmarks.mockResolvedValue({ items: [bm(1, 'a')] });
+    mockMyNotes.mockResolvedValue({ items: [] });
+    mockSave.mockRejectedValueOnce(new Error('no room'));
+    const { result } = await renderHook(() =>
+      useJournalExport({ bookmarks: [source('c1', 'ready')], notes: [source('c1', 'ready')] }),
+    );
+    await act(() => result.current.run('csv', 'save'));
+    expect(result.current.preparing).toBeNull();
+    expect(mockToast).toHaveBeenCalledWith({ title: expect.any(String) });
+    await act(() => result.current.run('csv', 'save'));
+    expect(mockSave).toHaveBeenCalledTimes(2);
+  });
+
   it('says when there is nothing to export', async () => {
     mockMyBookmarks.mockResolvedValue({ items: [] });
     mockMyNotes.mockResolvedValue({ items: [] });
