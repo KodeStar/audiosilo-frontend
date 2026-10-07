@@ -9,16 +9,16 @@ jest.mock('@/playback/store', () =>
 );
 
 /* eslint-disable import/first */
-import { GraceCard } from '@/components/player/grace-card';
+import { GraceCard, useGraceCardOpen } from '@/components/player/grace-card';
 import { GRACE_SECONDS, useSleepTimer } from '@/playback/sleep-timer';
 import { useSettings } from '@/stores/settings';
 /* eslint-enable import/first */
 
 const player = playerStoreMock();
 
-async function mount() {
+async function mount(inline = false) {
   await act(async () => {
-    render(<GraceCard />);
+    render(<GraceCard inline={inline} />);
   });
 }
 
@@ -155,5 +155,30 @@ describe('GraceCard', () => {
     await advance(5_000);
     expect(announce).toHaveBeenCalledTimes(1);
     announce.mockRestore();
+  });
+
+  it('lays out in the flow when inline (the full player)', async () => {
+    let open = false;
+    function Probe() {
+      open = useGraceCardOpen();
+      return null;
+    }
+    await act(async () => {
+      render(
+        <>
+          <Probe />
+          <GraceCard inline />
+        </>,
+      );
+    });
+    expect(open).toBe(false);
+    await act(async () => {
+      useSleepTimer.getState().startDuration(1);
+    });
+    await advance(36_000);
+    expect(open).toBe(true);
+    const root = screen.toJSON() as { props: { className?: string; style?: unknown } };
+    expect(root.props.className).toBe('w-full items-center');
+    expect(root.props.style).toBeUndefined();
   });
 });

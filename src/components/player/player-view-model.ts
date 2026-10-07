@@ -23,6 +23,31 @@ export function playerCoverSize(layout: LayoutClass, width: number, height: numb
   return Math.round(Math.max(200, Math.min(380, (width - COMPANION_WIDTH) * 0.6, height * 0.4)));
 }
 
+/** The smallest cover a phone shrinks to; below it the player scrolls instead. */
+export const PHONE_COVER_MIN = 120;
+/** What sits around the cover in a phone's column: its own vertical padding, the
+ * column's gap and the scroll content's top padding. */
+const PHONE_COVER_CHROME = 16 + 16 + 4;
+
+/**
+ * A phone's cover edge: as wide as the width allows (`playerCoverSize`), but no taller
+ * than the MEASURED scroll viewport leaves once everything under the cover (`rest`, which
+ * does not depend on the cover) and the bottom padding are placed, so the whole player
+ * fits a typical phone without scrolling. Never under `PHONE_COVER_MIN`. Before both
+ * heights are measured (0), the width alone decides.
+ */
+export function phoneCoverSize(
+  width: number,
+  viewport: number,
+  rest: number,
+  bottomPad: number,
+): number {
+  const byWidth = playerCoverSize('phone', width, 0);
+  if (viewport <= 0 || rest <= 0) return byWidth;
+  const fit = Math.floor(viewport - rest - bottomPad - PHONE_COVER_CHROME);
+  return Math.max(PHONE_COVER_MIN, Math.min(byWidth, fit));
+}
+
 /** The line under "Playing from <server>": the book's place in its series, else its
  * library, else nothing. */
 export type PlayerContext =

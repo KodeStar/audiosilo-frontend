@@ -174,6 +174,25 @@ describe('SeekBar', () => {
     expect(screen.queryByTestId('seek-bars-hovered')).toBeNull();
   });
 
+  it('says when its tip shows (a drag, a web hover), so the slot above can make way', async () => {
+    Platform.OS = 'web';
+    const onTip = jest.fn();
+    await render(<SeekBar {...bar({ onTip })} />);
+    await layout(400);
+    expect(onTip).toHaveBeenLastCalledWith(false);
+    const [pan] = lastGesture();
+    await act(async () => pan.handlers.onBegin({ x: 200 }));
+    expect(onTip).toHaveBeenLastCalledWith(true);
+    await act(async () => pan.handlers.onFinalize({ x: 200 }, true));
+    expect(onTip).toHaveBeenLastCalledWith(false);
+    const slider = screen.getByRole('adjustable');
+    const rect = { getBoundingClientRect: () => ({ left: 0, width: 400 }) };
+    await fireEvent(slider, 'pointerMove', { nativeEvent: { clientX: 300 }, currentTarget: rect });
+    expect(onTip).toHaveBeenLastCalledWith(true);
+    await fireEvent(slider, 'pointerLeave');
+    expect(onTip).toHaveBeenLastCalledWith(false);
+  });
+
   it('uses real peaks when given (same bars, any length)', async () => {
     await render(<SeekBar {...bar({ peaks: [0.1, 0.9, 0.4] })} />);
     await layout();

@@ -30,7 +30,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { PlayerBookTimeline } from './book-timeline';
 import { Companion } from './companion/companion';
 import { useCompanion } from './companion/companion-store';
-import { GraceCard } from './grace-card';
+import { GraceCard, useGraceCardOpen } from './grace-card';
 import {
   CompanionChips,
   PlayerActions,
@@ -41,7 +41,13 @@ import {
 } from './player-parts';
 import { PlayerSheetHost } from './player-sheet-host';
 import { usePlayerSheets } from './player-sheets';
-import { COMPANION_WIDTH, playerCoverSize, playerLayout, playerWash } from './player-view-model';
+import {
+  COMPANION_WIDTH,
+  phoneCoverSize,
+  playerCoverSize,
+  playerLayout,
+  playerWash,
+} from './player-view-model';
 import { PlayerSeekBar } from './seek-bar';
 import { TransportControls } from './transport-controls';
 
@@ -144,6 +150,14 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const desktop = layout === 'desktop';
   const np = usePlayer((s) => s.nowPlaying);
   const { data: book } = useBook(np?.libraryId ?? -1, np?.path ?? '', np?.connectionId);
+  const graceOpen = useGraceCardOpen();
+  // The seek bar's scrub (or hover) tip floats into the status slot above it: the slot
+  // makes way while it shows, so the tip never sits on top of the status line's words.
+  const [tip, setTip] = useState(false);
+  // A phone's cover takes what the rest leaves of the MEASURED scroll viewport, so the
+  // player fits a phone without scrolling (the rest does not depend on the cover).
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [restHeight, setRestHeight] = useState(0);
 
   // Entrance: the cover scales up and fades in, the titles and the controls rise after
   // it, once per open (the view stays mounted as chapters change). Reduced motion
@@ -182,7 +196,10 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
     else usePlayerSheets.getState().openSheet('chapters');
   };
   const w = width || windowWidth;
-  const coverSize = playerCoverSize(layout, w, height);
+  const bottomPad = insets.bottom + (phone ? 12 : 24);
+  const coverSize = phone
+    ? phoneCoverSize(w, viewportHeight, restHeight, bottomPad)
+    : playerCoverSize(layout, w, height);
   const wash = playerWash(book?.cover_color, themed.mutedForeground, themed.brand);
 
   const main = (
@@ -190,11 +207,25 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
       <Animated.View style={coverStyle} className="py-2">
         <BreathingCover size={coverSize} coverVersion={book?.cover_version} />
       </Animated.View>
-      <Animated.View style={restStyle} className="w-full items-center gap-3">
+      <Animated.View
+        style={restStyle}
+        className="w-full items-center gap-3"
+        onLayout={phone ? (e) => setRestHeight(e.nativeEvent.layout.height) : undefined}
+      >
         <PlayerTitles phone={phone} onChapters={onChapters} />
-        <PlayerStatusLine />
+        {/* The sleep timer's last seconds take the status line's place: in the flow, so
+            the card never covers the transport or the actions. */}
+        <View
+          testID="player-status-slot"
+          className="w-full"
+          style={tip ? { opacity: 0 } : undefined}
+          aria-hidden={tip || undefined}
+          importantForAccessibility={tip ? 'no-hide-descendants' : 'auto'}
+        >
+          {graceOpen ? <GraceCard inline /> : <PlayerStatusLine />}
+        </View>
         <View className="w-full gap-3">
-          <PlayerSeekBar times bars={phone ? 56 : 96} />
+          <PlayerSeekBar times bars={phone ? 56 : 96} onTip={setTip} />
           <PlayerBookTimeline variant="compact" />
         </View>
         <TransportControls size={phone ? 'md' : 'lg'} className="py-1" />
@@ -235,7 +266,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         <ScrollView
           className="flex-1"
           contentContainerClassName={phone ? 'px-5 pt-1' : 'px-12 pt-2'}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: bottomPad }}
+          onLayout={phone ? (e) => setViewportHeight(e.nativeEvent.layout.height) : undefined}
         >
           {main}
           {!phone ? (
@@ -248,8 +280,6 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           ) : null}
         </ScrollView>
       )}
-      {/* Sleep timer's last seconds, over the controls (workstream C). */}
-      <GraceCard bottom={insets.bottom + 64} />
       <PlayerSheetHost scope="player" chaptersInColumn={desktop} />
       <UpNextSheet scope="player" />
     </View>

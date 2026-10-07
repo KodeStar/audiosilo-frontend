@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { formatClock, formatDuration, formatWallClock } from '@/lib/format';
+import { useLatest } from '@/lib/use-latest';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import {
@@ -65,6 +66,9 @@ export type SeekBarProps = {
   onSeek: (position: number) => void;
   /** The position under the finger while dragging, then `null` on release. */
   onScrub?: (position: number | null) => void;
+  /** Whether the scrub (or web hover) tip is showing: it floats over whatever sits just
+   * above the bar, which the caller can make way for (the full player's status line). */
+  onTip?: (showing: boolean) => void;
   /** Seeds the bar texture: one per book and chapter (`seekTextureKey`). */
   textureKey: string;
   /** Real audio peaks for the segment, any length and scale; replaces the texture. */
@@ -103,6 +107,7 @@ export function SeekBar({
   duration,
   onSeek,
   onScrub,
+  onTip,
   textureKey,
   peaks,
   bookmarks,
@@ -189,6 +194,11 @@ export function SeekBar({
 
   const tipFrac = scrub !== null && length > 0 ? scrub / length : hover;
   const tipSeconds = scrub ?? (hover !== null ? hover * length : null);
+  const tipShowing = tipFrac !== null && tipSeconds !== null && width > 0;
+  const reportTip = useLatest((showing: boolean) => onTip?.(showing));
+  useEffect(() => {
+    reportTip(tipShowing);
+  }, [tipShowing, reportTip]);
 
   return (
     <GestureDetector gesture={gesture}>
@@ -296,7 +306,7 @@ export function SeekBar({
         </View>
 
         {/* The scrub (or, on the web, hover) tip. */}
-        {tipFrac !== null && tipSeconds !== null && width > 0 ? (
+        {tipShowing ? (
           <View
             pointerEvents="none"
             style={{
@@ -396,11 +406,13 @@ export function SeekTimes({
 export function PlayerSeekBar({
   times = false,
   onScrub,
+  onTip,
   bars,
   className,
 }: {
   times?: boolean;
   onScrub?: (position: number | null) => void;
+  onTip?: (showing: boolean) => void;
   bars?: number;
   className?: string;
 }) {
@@ -459,6 +471,7 @@ export function PlayerSeekBar({
           setScrub(v);
           onScrub?.(v);
         }}
+        onTip={onTip}
         textureKey={seekTextureKey(bookKey, segment.perTrack ? -1 - trackIndex : segment.start)}
         bookmarks={inSegment}
         bookOffset={segment.perTrack ? undefined : segment.start}

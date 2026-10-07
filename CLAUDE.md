@@ -265,7 +265,7 @@ the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 then the meta **About** block) and puts *everything else* behind a
 `Tabs` row (`src/components/ui/tabs.tsx`, the Stacks underline tabs with
 `scrollable`, so the row scrolls horizontally and carries tablist/tab/tabpanel
-a11y roles): **Chapters** (label
+a11y roles; when the tabs overflow, a chevron beside the tablist pages the row, `tabsScrollCue`): **Chapters** (label
 switches to "Files"; the default tab) · **Recaps** · **Characters** · **Bookmarks** ·
 **History** · **Notes** · **Series**. Both layouts share the same tab section; tablet and
 desktop keep a right-hand cover panel (300 / 380 wide) whose button plays inline - the docked
@@ -868,7 +868,8 @@ and `DockedPlayer` (84) whenever a book is loaded: the 3 px whole-book line, boo
 scrubber with bookmark ticks, then `UndoChip`, speed, sleep (C's `SleepTimerButton`: `brand-soft` + countdown while
 running), bookmark (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. What fits
 is decided by its MEASURED width (`dockLayout`: all actions from 1024, the tablet set below, no
-scrubber below 800; everything hidden is in the full player). Speed and sleep open through
+scrubber below 800; everything hidden is in the full player; while the Undo chip shows, its
+`UNDO_CHIP_ROOM` comes off the width first and the right cluster stops growing, so the book keeps its title). Speed and sleep open through
 `usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does), only
 the sleep timer's `GraceCard` just above the bar. Route-driven side effects (search reset on leaving the Search
 tab, browse scroll memory) are `useShellEffects`.
@@ -877,10 +878,14 @@ tab, browse scroll memory) are `useShellEffects`.
   The cover washed into the background (`CoverWash` from the item's `cover_color`, else a neutral),
   breathing to 94% while paused; header (minimise, "Playing from <server>", series line, overflow
   `DropdownMenu`); chapter title (tap: the chapter sheet, or the companion's Chapters tab on desktop);
-  `PlayerStatusLine` (sync state, % of the book, time left) that becomes the `UndoChip`; seek bar,
+  `PlayerStatusLine` (sync state, % of the book, time left) that becomes the `UndoChip`, gives its
+  slot to the sleep timer's `GraceCard` (`inline`: in the flow, never over the controls) and fades
+  while the seek bar's scrub/hover tip floats into it (`onTip`); seek bar,
   compact timeline, transport, actions (speed, sleep, bookmark, output, Up next on phone/tablet).
   The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
-  a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone;
+  a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
+  (one row, a sideways scroller where it doesn't fit; the phone's cover shrinks with the MEASURED
+  viewport, `phoneCoverSize`, so the player fits without scrolling);
   gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal
   per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every block.
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing

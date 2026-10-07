@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 
 import { useCapability, useLibrariesAll } from '@/api/hooks';
 import { serverStatus, useReachability } from '@/api/reachability';
@@ -14,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { openUpNext } from '@/components/upnext/up-next-store';
@@ -346,7 +347,7 @@ function Chip({ icon, label, onPress }: { icon: IconName; label: string; onPress
       onPress={onPress}
       accessibilityRole="button"
       className={cn(
-        'h-10 flex-row items-center gap-1.5 rounded-full border border-border bg-card px-3.5 active:bg-accent',
+        'h-11 flex-row items-center gap-1.5 rounded-full border border-border bg-card px-3 active:bg-accent',
         Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}` }),
       )}
     >
@@ -365,7 +366,9 @@ export function openCompanionSheet(tab: CompanionTab) {
 }
 
 /** The phone's way into the companion: Who's who, Story so far (where the server has
- * community data) and Chapters, each opening the companion sheet on that tab. */
+ * community data) and Chapters, each opening the companion sheet on that tab. One row,
+ * centred where it fits and scrolling sideways where it doesn't (a narrow phone, a long
+ * translation), so it never wraps the player past the fold. */
 export function CompanionChips() {
   const { t } = useTranslation();
   const cid = usePlayer((s) => s.nowPlaying?.connectionId);
@@ -380,11 +383,18 @@ export function CompanionChips() {
     { tab: 'chapters', icon: 'list', label: t('player.chapters.chaptersTitle') },
   ];
   return (
-    <View className="flex-row flex-wrap justify-center gap-2">
+    <ScrollView
+      horizontal
+      testID="player-companion-chips"
+      showsHorizontalScrollIndicator={false}
+      style={HORIZONTAL_SCROLLER}
+      className="w-full"
+      contentContainerClassName="grow justify-center gap-2"
+    >
       {chips.map((c) => (
         <Chip key={c.tab} icon={c.icon} label={c.label} onPress={() => openCompanionSheet(c.tab)} />
       ))}
-    </View>
+    </ScrollView>
   );
 }
 

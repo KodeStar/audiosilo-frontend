@@ -31,14 +31,27 @@ jest.mock('./companion/companion', () => {
   const { Text: T } = jest.requireActual('react-native');
   return { Companion: ({ variant }: { variant: string }) => <T>{`companion ${variant}`}</T> };
 });
-jest.mock('./seek-bar', () => ({ PlayerSeekBar: () => null }));
+let mockOnTip: ((showing: boolean) => void) | undefined;
+jest.mock('./seek-bar', () => ({
+  PlayerSeekBar: ({ onTip }: { onTip?: (showing: boolean) => void }) => {
+    mockOnTip = onTip;
+    return null;
+  },
+}));
 jest.mock('./book-timeline', () => ({ PlayerBookTimeline: () => null }));
 jest.mock('./transport-controls', () => {
   const { Text: T } = jest.requireActual('react-native');
   return { TransportControls: ({ size }: { size: string }) => <T>{`transport ${size}`}</T> };
 });
 jest.mock('./player-sheet-host', () => ({ PlayerSheetHost: () => null }));
-jest.mock('./grace-card', () => ({ GraceCard: () => null }));
+let mockGraceOpen = false;
+jest.mock('./grace-card', () => {
+  const { Text: T } = jest.requireActual('react-native');
+  return {
+    GraceCard: ({ inline }: { inline?: boolean }) => <T>{inline ? 'grace inline' : 'grace'}</T>,
+    useGraceCardOpen: () => mockGraceOpen,
+  };
+});
 jest.mock('@/components/upnext/up-next-sheet', () => ({ UpNextSheet: () => null }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/components/library/cover-wash', () => ({ CoverWash: () => null }));
@@ -92,6 +105,7 @@ async function mount(ui: ReactElement) {
 }
 
 beforeEach(() => {
+  mockGraceOpen = false;
   const player = playerStoreMock();
   player.reset();
   player.usePlayer.setState({ nowPlaying: BOOK, bookPosition: 150 } as never);
@@ -155,5 +169,35 @@ describe('PlayerView', () => {
     });
     expect(useCompanion.getState().tab).toBe('chapters');
     expect(usePlayerSheets.getState().open).toBeNull();
+  });
+
+  it.each(['phone', 'tablet', 'desktop'] as const)(
+    '%s: the grace card takes the status line place, in the flow, never over the controls',
+    async (layout) => {
+      mockLayout = layout;
+      mockGraceOpen = true;
+      await mount(<PlayerView onClose={jest.fn()} />);
+      expect(screen.getByText('grace inline')).toBeTruthy();
+      expect(screen.queryByText('grace')).toBeNull();
+      expect(screen.queryByText('status')).toBeNull();
+    },
+  );
+
+  it('shows the status line while no grace card is up', async () => {
+    mockLayout = 'phone';
+    await mount(<PlayerView onClose={jest.fn()} />);
+    expect(screen.getByText('status')).toBeTruthy();
+    expect(screen.queryByText(/^grace/)).toBeNull();
+  });
+
+  it("makes way for the seek bar's tip: the status slot fades while it shows", async () => {
+    mockLayout = 'desktop';
+    await mount(<PlayerView onClose={jest.fn()} />);
+    const slot = () => screen.getByTestId('player-status-slot', { includeHiddenElements: true });
+    expect(slot().props.style).toBeUndefined();
+    await act(async () => mockOnTip?.(true));
+    expect(slot().props.style).toEqual({ opacity: 0 });
+    await act(async () => mockOnTip?.(false));
+    expect(slot().props.style).toBeUndefined();
   });
 });

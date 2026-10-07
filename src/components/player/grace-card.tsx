@@ -73,14 +73,24 @@ function Ring({ fraction }: { fraction: number }) {
  * "Paused by the sleep timer"), how to keep going (a shake, where the listener has it on
  * and the device has a sensor) and a Keep listening button. Renders nothing otherwise.
  *
- * Absolutely positioned: mount it as the LAST child of a full-size container (the full
- * player, the shell around the dock) and pass `bottom`, the distance from that
- * container's bottom edge to sit at (clear of the transport or the dock). It is not a
+ * Floating by default: mount it as the LAST child of a full-size container (the shell
+ * around the dock, the phone shell) and pass `bottom`, the distance from that container's
+ * bottom edge to sit at (clear of the dock or the mini player). `inline` lays it out in
+ * the flow instead: the full player puts it in its status line's place, where it can
+ * never cover the transport or the actions at any width. It is not a
  * dialog: it never takes focus and blocks nothing outside its own box. It is announced
  * politely instead (a live region on Android and the web, an announcement on iOS, which
  * has no live regions) - once per phase, not once per second.
  */
-export function GraceCard({ bottom = 110, className }: { bottom?: number; className?: string }) {
+export function GraceCard({
+  bottom = 110,
+  inline = false,
+  className,
+}: {
+  bottom?: number;
+  inline?: boolean;
+  className?: string;
+}) {
   const { t } = useTranslation();
   const phase = useSleepTimer(selectSleepPhase);
   const remaining = useSleepTimer((s) => s.remaining);
@@ -115,31 +125,44 @@ export function GraceCard({ bottom = 110, className }: { bottom?: number; classN
   if (!open) return null;
   const windowSeconds = phase === 'grace' ? GRACE_SECONDS : FADE_SECONDS;
 
+  const card = (
+    <Animated.View
+      entering={FadeInDown.duration(320).reduceMotion(ReduceMotion.System)}
+      exiting={FadeOut.duration(200).reduceMotion(ReduceMotion.System)}
+      testID="sleep-grace-card"
+      className="w-full max-w-[460px] flex-row items-center gap-3.5 rounded-[18px] border border-border bg-popover px-4 py-3.5 shadow-overlay"
+    >
+      <Ring fraction={seconds / windowSeconds} />
+      <View className="flex-1 gap-0.5">
+        <Text variant="label" style={tabularNums}>
+          {title}
+        </Text>
+        {/* The live region: its text changes with the phase, not every second, so a
+              screen reader hears it once rather than a countdown. */}
+        <Text variant="caption" aria-live="polite" accessibilityLiveRegion="polite">
+          {body}
+        </Text>
+      </View>
+      <Button size="sm" title={t('player.sleepTimer.keepListening')} onPress={keepListening} />
+    </Animated.View>
+  );
+  if (inline) return <View className={cn('w-full items-center', className)}>{card}</View>;
   return (
     <View
       pointerEvents="box-none"
       style={{ bottom }}
       className={cn('absolute left-3 right-3 items-center', className)}
     >
-      <Animated.View
-        entering={FadeInDown.duration(320).reduceMotion(ReduceMotion.System)}
-        exiting={FadeOut.duration(200).reduceMotion(ReduceMotion.System)}
-        testID="sleep-grace-card"
-        className="w-full max-w-[460px] flex-row items-center gap-3.5 rounded-[18px] border border-border bg-popover px-4 py-3.5 shadow-overlay"
-      >
-        <Ring fraction={seconds / windowSeconds} />
-        <View className="flex-1 gap-0.5">
-          <Text variant="label" style={tabularNums}>
-            {title}
-          </Text>
-          {/* The live region: its text changes with the phase, not every second, so a
-              screen reader hears it once rather than a countdown. */}
-          <Text variant="caption" aria-live="polite" accessibilityLiveRegion="polite">
-            {body}
-          </Text>
-        </View>
-        <Button size="sm" title={t('player.sleepTimer.keepListening')} onPress={keepListening} />
-      </Animated.View>
+      {card}
     </View>
   );
+}
+
+/** Whether the grace card is showing (the timer's last seconds or its grace window): the
+ * full player gives it the status line's place. */
+export function useGraceCardOpen(): boolean {
+  return useSleepTimer((s) => {
+    const phase = selectSleepPhase(s);
+    return phase === 'ending' || phase === 'grace';
+  });
 }
