@@ -68,7 +68,11 @@ const LETTERS: Record<string, PlayerShortcut> = {
 /** The shortcut a keydown means, or null. Pure. */
 export function playerShortcutFor(e: PlayerKey, ctx: PlayerKeyContext): PlayerShortcut | null {
   if (ctx.editable || ctx.modalOpen) return null;
-  if (e.metaKey || e.ctrlKey || e.altKey) return null;
+  // Many layouts (German, French, Nordic...) type [ and ] with AltGr (Ctrl+Alt on Windows)
+  // or Option (macOS), so for those two the character counts, not the modifiers. Never
+  // with Cmd or a bare Ctrl, which are browser and system shortcuts.
+  const bracket = (e.key === '[' || e.key === ']') && !e.metaKey && (e.altKey || !e.ctrlKey);
+  if ((e.metaKey || e.ctrlKey || e.altKey) && !bracket) return null;
   if (e.key === '?') return 'help';
   if (e.key === 'Escape') return 'close';
   if (!ctx.loaded) return null;

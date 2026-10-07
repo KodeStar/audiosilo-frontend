@@ -99,6 +99,19 @@ describe('playerShortcutFor', () => {
     expect(playerShortcutFor(key('ArrowLeft', { metaKey: true }), CTX)).toBeNull();
   });
 
+  // German, French, Spanish, Italian and Nordic layouts type [ and ] with AltGr (Ctrl+Alt
+  // on Windows) or Option (macOS): the character is what counts there.
+  it('takes [ and ] typed through AltGr or Option, but not with Cmd or a bare Ctrl', () => {
+    const altGr = { ctrlKey: true, altKey: true };
+    expect(playerShortcutFor(key('[', altGr), CTX)).toBe('slower');
+    expect(playerShortcutFor(key(']', altGr), CTX)).toBe('faster');
+    expect(playerShortcutFor(key('[', { altKey: true }), CTX)).toBe('slower');
+    expect(playerShortcutFor(key(']', { altKey: true }), CTX)).toBe('faster');
+    expect(playerShortcutFor(key('[', { metaKey: true }), CTX)).toBeNull();
+    expect(playerShortcutFor(key(']', { ctrlKey: true }), CTX)).toBeNull();
+    expect(playerShortcutFor(key('[', altGr), { ...CTX, modalOpen: true })).toBeNull();
+  });
+
   it('needs a loaded book, except for ? and Esc', () => {
     const idle = { ...CTX, loaded: false };
     expect(playerShortcutFor(key(' '), idle)).toBeNull();
