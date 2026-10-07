@@ -228,8 +228,9 @@ describe('CommandPalette', () => {
     expect(screen.getByText('25% listened')).toBeTruthy();
     expect(screen.getByLabelText('Go to')).toBeTruthy();
     expect(screen.getByText('Journal')).toBeTruthy();
-    // Six actions, one book in progress, three destinations and the Journal.
-    expect(screen.getByText('11 results · Hearthside')).toBeTruthy();
+    // Five actions, one book in progress, three destinations, Your listening, Year in
+    // listening, the Journal and Settings.
+    expect(screen.getByText('13 results · Hearthside')).toBeTruthy();
   });
 
   it('searches books, moves with the arrows and opens the active one with Enter', async () => {
@@ -325,11 +326,20 @@ describe('CommandPalette', () => {
     await fireEvent.press(screen.getByText('Switch to dark appearance'));
     expect(mockSetPref).toHaveBeenCalledWith('dark');
 
-    // The Journal, a page of its own.
+    // The Journal: the You hub's section, opened as the Me tab's root.
     await act(async () => usePalette.getState().openPalette());
     await fireEvent.changeText(screen.getByTestId('palette-input'), 'journal');
     await fireEvent.press(screen.getByText('Journal'));
-    expect(mockRouter.push).toHaveBeenCalledWith('/journal');
+    expect(mockRouter.navigate).toHaveBeenCalledWith({
+      pathname: '/you',
+      params: { section: 'journal' },
+    });
+
+    // Settings: a page pushed on the current tab.
+    await act(async () => usePalette.getState().openPalette());
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'settings');
+    await fireEvent.press(screen.getByText('Settings'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/settings');
   });
 
   it('says so when nothing matches, and offers recent searches on an empty query', async () => {

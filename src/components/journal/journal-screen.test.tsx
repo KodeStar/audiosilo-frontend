@@ -368,6 +368,16 @@ describe('JournalScreen: header', () => {
     expect(mockSetParams).toHaveBeenCalledWith({ tab: 'notes' });
   });
 
+  it('leaves its heading to the You hub when embedded, keeping the tabs and the export', async () => {
+    mockParams = { tab: 'bookmarks' };
+    await mountWithPortal(<JournalScreen embedded />);
+    expect(screen.queryByText("Everything you've marked")).toBeNull();
+    expect(screen.getByLabelText('Export the journal')).toBeTruthy();
+    // The tab is still the route's own param, beside the hub's section.
+    await fireEvent.press(screen.getByLabelText('Diary'));
+    expect(mockSetParams).toHaveBeenCalledWith({ tab: undefined });
+  });
+
   it('goes back to the Diary with the plain route', async () => {
     mockParams = { tab: 'notes' };
     await mount();

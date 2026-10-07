@@ -16,7 +16,7 @@ describe('the real route tree', () => {
       ['/library', '(library)'],
       ['/search', '(search)'],
       ['/downloads', '(offline)'],
-      ['/settings', '(me)'],
+      ['/you', '(me)'],
     ] as const) {
       await nav(() => router.navigate(url));
       expect(routeInfo().pathname).toBe(url);
@@ -31,7 +31,7 @@ describe('the real route tree', () => {
       ['(library)', '/library'],
       ['(search)', '/search'],
       ['(offline)', '/downloads'],
-      ['(me)', '/settings'],
+      ['(me)', '/you'],
     ] as const) {
       await nav(() => router.navigate(root));
       await nav(() => router.push('/book/1?connection=c&path=a%2Fb'));
@@ -77,9 +77,45 @@ describe('the real route tree', () => {
   });
 
   it('opens the account screen inside the tab that pushed it', async () => {
-    await mount('/settings');
+    await mount('/you?section=settings');
     await nav(() => router.push('/account?connection=c'));
     expect(routeInfo().segments).toEqual(['(app)', '(me)', 'account']);
+    // Back returns to the hub on the section it was on.
+    await nav(() => router.back());
+    expect(routeInfo().pathname).toBe('/you');
+    expect(routeInfo().params).toEqual({ section: 'settings' });
+  });
+
+  it('pushes Settings on whichever tab opened it, and back returns there', async () => {
+    await mount('/');
+    for (const [root, tab] of [
+      ['/library', '(library)'],
+      ['/downloads', '(offline)'],
+      ['/you', '(me)'],
+      ['/', '(home)'],
+    ] as const) {
+      await nav(() => router.navigate(root));
+      await nav(() => router.push('/settings?section=accounts'));
+      expect(tabOf()).toEqual(['(app)', tab]);
+      expect(routeInfo().pathname).toBe('/settings');
+      expect(routeInfo().params).toEqual({ section: 'accounts' });
+      await nav(() => router.back());
+      expect(routeInfo().pathnameWithParams).toBe(root);
+    }
+  });
+
+  it("keeps the You hub's section and the Journal's tab across a push and back", async () => {
+    await mount('/you?section=journal&tab=notes');
+    expect(tabOf()).toEqual(['(app)', '(me)']);
+    expect(routeInfo().params).toEqual({ section: 'journal', tab: 'notes' });
+    await nav(() => router.push('/book/1?connection=c&path=x'));
+    await nav(() => router.back());
+    expect(routeInfo().pathname).toBe('/you');
+    expect(routeInfo().params).toEqual({ section: 'journal', tab: 'notes' });
+    // The hub switches sections in place.
+    await nav(() => router.setParams({ section: 'year', tab: undefined }));
+    expect(routeInfo().params).toEqual({ section: 'year' });
+    expect(router.canGoBack()).toBe(false);
   });
 
   it('keeps the browse detail pages in the tab that pushed them, and back returns', async () => {

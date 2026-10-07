@@ -15,11 +15,13 @@
       "label": "Apariencia",
       "light": "Claro",
       "dark": "Oscuro",
-      "system": "Sistema"
+      "system": "Sistema",
+      "description": "Claro, oscuro o igual que este dispositivo."
     },
     "language": {
       "label": "Idioma",
-      "system": "Sistema"
+      "system": "Sistema",
+      "description": "El idioma de la aplicación. Sistema sigue a este dispositivo."
     },
     "playback": {
       "label": "Reproducción",
@@ -127,7 +129,35 @@
       "intro": "AudioSilo es autoalojado y gratuito. Si quieres apoyar su desarrollo, puedes contribuir en GitHub Sponsors.",
       "cta": "Apoyar AudioSilo"
     },
-    "version": "AudioSilo v{{version}}"
+    "version": "AudioSilo v{{version}}",
+    "sectionsLabel": "Secciones de ajustes",
+    "groups": {
+      "listening": "Escucha",
+      "app": "Aplicación",
+      "servers": "Servidores"
+    },
+    "sections": {
+      "playback": "Reproducción",
+      "sleep": "Temporizador",
+      "downloads": "A continuación y descargas",
+      "appearance": "Apariencia",
+      "language": "Idioma",
+      "household": "Hogar y compartir",
+      "accounts": "Cuentas y dispositivos",
+      "support": "Apoyar AudioSilo"
+    },
+    "household": {
+      "title": "Los perfiles llegarán más adelante",
+      "body": "Un lugar propio en cada libro para cada persona de la casa, un modo infantil y compartir llegarán con los perfiles en una próxima actualización.",
+      "flag": "Llega con los perfiles"
+    },
+    "accounts": {
+      "intro": "Los servidores en los que este dispositivo tiene la sesión iniciada. Abre uno para ver su contraseña, tus dispositivos y las claves de API."
+    },
+    "stepper": {
+      "less": "{{label}}, menos",
+      "more": "{{label}}, más"
+    }
   },
   "account": {
     "connections": {
@@ -1164,8 +1194,27 @@
     "offline": "Sin conexión: los cambios se sincronizan al reconectar",
     "someOffline": "Algunos servidores sin conexión",
     "me": "Yo",
+    "you": "Tú",
     "back": "Atrás",
     "backTo": "Volver a {{name}}"
+  },
+  "you": {
+    "sections": {
+      "label": "Secciones de Tú",
+      "stats": "Estadísticas",
+      "year": "Año",
+      "journal": "Diario",
+      "settings": "Ajustes",
+      "account": "Cuenta"
+    },
+    "titles": {
+      "stats": "Lo que escuchas",
+      "year": "Tu año escuchando",
+      "journal": "Diario",
+      "settings": "Ajustes",
+      "account": "Cuenta"
+    },
+    "placeholder": "Esta parte llega pronto."
   },
   "ui": {
     "error": "Algo salió mal.",
@@ -1240,7 +1289,6 @@
     "upNext": "Abrir A continuación",
     "upNextHint_one": "{{count}} libro en cola",
     "upNextHint_other": "{{count}} libros en cola",
-    "settings": "Ir a ajustes",
     "settingsHint": "Servidores, apariencia y reproducción",
     "dark": "Cambiar a apariencia oscura",
     "light": "Cambiar a apariencia clara",
@@ -1445,7 +1493,6 @@
   "journal": {
     "title": "Diario",
     "heading": "Todo lo que has marcado",
-    "entryHint": "Tu diario de escucha, marcadores y notas",
     "tabs": {
       "label": "Secciones del diario",
       "diary": "Escuchas",

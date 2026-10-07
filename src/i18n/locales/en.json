@@ -15,11 +15,13 @@
       "label": "Appearance",
       "light": "Light",
       "dark": "Dark",
-      "system": "System"
+      "system": "System",
+      "description": "Light, dark, or the same as this device."
     },
     "language": {
       "label": "Language",
-      "system": "System"
+      "system": "System",
+      "description": "The app's language. System follows this device."
     },
     "playback": {
       "label": "Playback",
@@ -127,7 +129,35 @@
       "intro": "AudioSilo is self-hosted and free. If you'd like to support its development, you can contribute on GitHub Sponsors.",
       "cta": "Support AudioSilo"
     },
-    "version": "AudioSilo v{{version}}"
+    "version": "AudioSilo v{{version}}",
+    "sectionsLabel": "Settings sections",
+    "groups": {
+      "listening": "Listening",
+      "app": "App",
+      "servers": "Servers"
+    },
+    "sections": {
+      "playback": "Playback",
+      "sleep": "Sleep",
+      "downloads": "Up next and downloads",
+      "appearance": "Appearance",
+      "language": "Language",
+      "household": "Household and sharing",
+      "accounts": "Accounts and devices",
+      "support": "Support AudioSilo"
+    },
+    "household": {
+      "title": "Profiles arrive later",
+      "body": "Everyone in the house with their own place in every book, a kids mode and sharing come with profiles in a later update.",
+      "flag": "Arrives with profiles"
+    },
+    "accounts": {
+      "intro": "The servers this device is signed in to. Open one for its password, your devices and API keys."
+    },
+    "stepper": {
+      "less": "{{label}}, less",
+      "more": "{{label}}, more"
+    }
   },
   "account": {
     "connections": {
@@ -1164,8 +1194,27 @@
     "offline": "Offline - changes sync when reconnected",
     "someOffline": "Some servers offline",
     "me": "Me",
+    "you": "You",
     "back": "Back",
     "backTo": "Back to {{name}}"
+  },
+  "you": {
+    "sections": {
+      "label": "Sections of You",
+      "stats": "Stats",
+      "year": "Year",
+      "journal": "Journal",
+      "settings": "Settings",
+      "account": "Account"
+    },
+    "titles": {
+      "stats": "Your listening",
+      "year": "Year in listening",
+      "journal": "Journal",
+      "settings": "Settings",
+      "account": "Account"
+    },
+    "placeholder": "This part of You is on its way."
   },
   "ui": {
     "error": "Something went wrong.",
@@ -1240,7 +1289,6 @@
     "upNext": "Open Up next",
     "upNextHint_one": "{{count}} book queued",
     "upNextHint_other": "{{count}} books queued",
-    "settings": "Go to settings",
     "settingsHint": "Servers, appearance and playback",
     "dark": "Switch to dark appearance",
     "light": "Switch to light appearance",
@@ -1445,7 +1493,6 @@
   "journal": {
     "title": "Journal",
     "heading": "Everything you've marked",
-    "entryHint": "Your listening diary, bookmarks and notes",
     "tabs": {
       "label": "Journal sections",
       "diary": "Diary",

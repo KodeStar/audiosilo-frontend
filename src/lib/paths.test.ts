@@ -15,6 +15,8 @@ import {
   playerHref,
   segmentsToPath,
   seriesHref,
+  settingsHref,
+  youHref,
 } from '@/lib/paths';
 
 describe('segmentsToPath', () => {
@@ -184,10 +186,42 @@ describe('browse detail hrefs', () => {
 });
 
 describe('journalHref', () => {
-  it('is the plain route for the Diary and carries any other tab', () => {
-    expect(journalHref()).toBe('/journal');
-    expect(journalHref('diary')).toBe('/journal');
-    expect(journalHref('notes')).toEqual({ pathname: '/journal', params: { tab: 'notes' } });
+  it("is the You hub's Journal, carrying any tab but the Diary", () => {
+    expect(journalHref()).toEqual({ pathname: '/you', params: { section: 'journal' } });
+    expect(journalHref('diary')).toEqual({ pathname: '/you', params: { section: 'journal' } });
+    expect(journalHref('notes')).toEqual({
+      pathname: '/you',
+      params: { section: 'journal', tab: 'notes' },
+    });
+  });
+});
+
+describe('youHref', () => {
+  it('is the plain root for Stats and names every other section', () => {
+    expect(youHref()).toBe('/you');
+    expect(youHref('stats')).toBe('/you');
+    expect(youHref('year')).toEqual({ pathname: '/you', params: { section: 'year' } });
+    expect(youHref('settings')).toEqual({ pathname: '/you', params: { section: 'settings' } });
+  });
+
+  it("carries the Journal's tab only on the Journal", () => {
+    expect(youHref('year', 'notes')).toEqual({ pathname: '/you', params: { section: 'year' } });
+    expect(youHref('journal', 'bookmarks')).toEqual({
+      pathname: '/you',
+      params: { section: 'journal', tab: 'bookmarks' },
+    });
+  });
+});
+
+describe('settingsHref', () => {
+  it('is the plain route for the preferences and names any other pane', () => {
+    expect(settingsHref()).toBe('/settings');
+    expect(settingsHref('preferences')).toBe('/settings');
+    expect(settingsHref('accounts')).toEqual({
+      pathname: '/settings',
+      params: { section: 'accounts' },
+    });
+    expect(settingsHref('sleep')).toEqual({ pathname: '/settings', params: { section: 'sleep' } });
   });
 });
 

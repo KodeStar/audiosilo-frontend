@@ -4,11 +4,12 @@ import type { StoreApi, UseBoundStore } from 'zustand';
 
 // --- router -------------------------------------------------------------------------
 let mockSegments: string[] = ['(app)', '(home)'];
+let mockPathname = '/';
 const mockDispatch = jest.fn();
 const mockRouter = { navigate: jest.fn(), push: jest.fn(), back: jest.fn(), canGoBack: () => true };
 jest.mock('expo-router', () => ({
   useSegments: () => mockSegments,
-  usePathname: () => '/',
+  usePathname: () => mockPathname,
   useNavigationContainerRef: () => ({ dispatch: mockDispatch }),
   // A getter: the factory runs while the imports below load, before `mockRouter` exists.
   get router() {
@@ -166,12 +167,15 @@ describe('TopBar', () => {
     });
   });
 
-  it('lists Home, Library and Downloads, with the server line', async () => {
+  it('lists Home, Library, Downloads and You, with the server line', async () => {
     await render(<TopBar />);
     expect(screen.getByTestId('top-bar-(home)')).toBeSelected();
     expect(screen.getByTestId('top-bar-(library)')).not.toBeSelected();
     expect(screen.getByTestId('top-bar-(library)')).toBeTruthy();
     expect(screen.getByTestId('top-bar-(offline)')).toBeTruthy();
+    // The phone's "Me" tab is the top bar's "You".
+    expect(screen.getByTestId('top-bar-(me)')).toHaveProp('accessibilityLabel', 'You');
+    expect(screen.getByText('You')).toBeTruthy();
     expect(screen.queryByTestId('top-bar-(search)')).toBeNull();
     expect(screen.getByText('Hearthside + 1 more')).toBeTruthy();
     expect(screen.getByText('chris')).toBeTruthy();
@@ -212,20 +216,28 @@ describe('TopBar', () => {
   });
 
   it("marks settings as the current page with aria-current, not a tab's aria-selected", async () => {
-    mockSegments = ['(app)', '(me)', 'settings'];
+    // Settings is a page of whichever tab pushed it: the tab stays the selected one.
+    mockSegments = ['(app)', '(library)', 'settings'];
+    mockPathname = '/settings';
     await render(<TopBar />);
     const settings = screen.getByTestId('top-bar-settings');
     expect(settings).toHaveProp('aria-current', 'page');
     expect(settings.props['aria-selected']).toBeUndefined();
-    mockSegments = ['(app)', '(home)'];
+    expect(screen.getByTestId('top-bar-(library)')).toBeSelected();
+    mockSegments = ['(app)', '(me)'];
+    mockPathname = '/you';
     await render(<TopBar />);
     expect(screen.getByTestId('top-bar-settings').props['aria-current']).toBeUndefined();
+    expect(screen.getByTestId('top-bar-(me)')).toBeSelected();
+    mockSegments = ['(app)', '(home)'];
+    mockPathname = '/';
   });
 
-  it('opens settings, and names the profile menu after the user', async () => {
+  it('opens settings on the current tab, and names the profile menu after the user', async () => {
     await render(<TopBar />);
     await fireEvent.press(screen.getByLabelText('Settings'));
-    expect(mockDispatch).toHaveBeenCalledWith({ type: 'JUMP_TO', payload: { name: '(me)' } });
+    expect(mockRouter.push).toHaveBeenCalledWith('/settings');
+    expect(mockDispatch).not.toHaveBeenCalled();
     expect(screen.getByTestId('top-bar-profile')).toHaveProp(
       'accessibilityLabel',
       'Servers and account, chris',

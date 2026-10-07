@@ -1,4 +1,5 @@
 import { type Href, router } from 'expo-router';
+import { store } from 'expo-router/build/global-state/router-store';
 
 import {
   authorHref,
@@ -6,15 +7,19 @@ import {
   type BookPlace,
   type BookTab,
   collectionHref,
-  journalHref,
   type JournalTab,
   libraryHref,
   narratorHref,
   playerHref,
   seriesHref,
   type SeriesRef,
+  settingsHref,
+  type SettingsSection,
+  YOU_PATHNAME,
+  youHref,
+  type YouSection,
 } from '@/lib/paths';
-import { currentNavState, type NavState, shellUnderTop } from '@/lib/root-stack';
+import { currentNavState, focusedRoute, type NavState, shellUnderTop } from '@/lib/root-stack';
 
 /** `href` inside the tab group `tab` (`/book/1` -> `/(library)/book/1`). */
 function inTab(href: Href, tab: string): Href {
@@ -32,6 +37,10 @@ function inTab(href: Href, tab: string): Href {
  * none (it would land in Home).
  */
 export function pushInShell(href: Href, state: NavState | undefined = currentNavState()) {
+  if (pathnameOf(href) === YOU_PATHNAME) {
+    openTabRoot(href, ME_TAB, state);
+    return;
+  }
   const shell = shellUnderTop(state);
   if (!shell || shell.above === 0) {
     router.push(href);
@@ -40,6 +49,78 @@ export function pushInShell(href: Href, state: NavState | undefined = currentNav
   router.dismiss(shell.above);
   if (shell.tab) router.push(inTab(href, shell.tab));
   else router.push(href, { withAnchor: true });
+}
+
+/** The Me tab's group: its root is the You hub. */
+const ME_TAB = '(me)';
+
+/** An href's pathname (`/you` from `/you?section=year` or `{ pathname: '/you' }`). */
+function pathnameOf(href: Href): string {
+  const path = typeof href === 'string' ? href : href.pathname;
+  return path.split('?')[0];
+}
+
+type KeyedState = NavState & {
+  key?: string;
+  routes: (NavState['routes'][number] & { state?: KeyedState })[];
+};
+
+/** The stack state of tab `tab` (its routes, its navigator key), anywhere in `state`. */
+function tabStackState(state: KeyedState | undefined, tab: string): KeyedState | null {
+  for (const r of state?.routes ?? []) {
+    if (r.name === tab) return r.state ?? null;
+    const found = tabStackState(r.state, tab);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Open `href`, a tab's ROOT with its params (the You hub on a section), as THAT tab's root:
+ * close the full player or the credits over the shell, pop the tab's stack back to its
+ * root, then navigate there, which switches to the tab and gives the root the href's
+ * params. A plain push or navigate would put a second copy of the root on the tab's stack
+ * when it holds pages (a navigate is a push in this router), and `inTab` would look for
+ * the root in the current tab, where it doesn't exist.
+ */
+function openTabRoot(href: Href, tab: string, state: NavState | undefined) {
+  const shell = shellUnderTop(state);
+  if (shell && shell.above > 0) router.dismiss(shell.above);
+  const stack = tabStackState(state as KeyedState | undefined, tab);
+  if (stack?.key && stack.routes.length > 1) {
+    store.navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
+  }
+  router.navigate(href);
+}
+
+/** The You hub (the Me tab's root) on `section`, with the Journal's `tab`. */
+export function openYou(
+  section?: YouSection,
+  journalTab?: JournalTab,
+  state: NavState | undefined = currentNavState(),
+) {
+  openTabRoot(youHref(section, journalTab), ME_TAB, state);
+}
+
+/** The Journal (across every server): the You hub's Journal section, on `tab`. */
+export function openJournal(tab?: JournalTab, state: NavState | undefined = currentNavState()) {
+  openYou('journal', tab, state);
+}
+
+/**
+ * Settings, on `section` when given (the top bar's gear, the profile menu, the palette).
+ * A page pushed on the current tab, so back returns where the listener was; on the
+ * Settings page already, it only moves to `section` (none: stays put).
+ */
+export function openSettings(
+  section?: SettingsSection,
+  state: NavState | undefined = currentNavState(),
+) {
+  if (focusedRoute(state)?.name === 'settings') {
+    if (section) router.setParams({ section });
+    return;
+  }
+  pushInShell(settingsHref(section), state);
 }
 
 /**
@@ -70,7 +151,11 @@ export function useOpen() {
     openNarrator: (connectionId: string, libraryId: number, name: string) =>
       go(narratorHref(connectionId, libraryId, name)),
     openCollection: (connectionId: string, id: number) => go(collectionHref(connectionId, id)),
-    /** The Journal (across every server), on `tab` when given. */
-    openJournal: (tab?: JournalTab) => go(journalHref(tab)),
+    /** The Journal (across every server; the You hub's Journal), on `tab` when given. */
+    openJournal: (tab?: JournalTab) => openJournal(tab),
+    /** The You hub (the Me tab's root) on `section`. */
+    openYou: (section?: YouSection) => openYou(section),
+    /** Settings, on `section` when given. */
+    openSettings: (section?: SettingsSection) => openSettings(section),
   };
 }
