@@ -863,37 +863,48 @@ chrome; a tab root fills the rest with `SubNavSections` (its segmented sections)
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
 `useSubNav` store on tablet/desktop and render in place on a phone; published nodes render in the
 sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), the `DrawerSlot` on desktop (Up next's drawer, below),
-and `DockedPlayer` (84) whenever a book is loaded: the 3 px whole-book line, book + sync state
-(synced / saved on this device / sign in again), `TransportControls size="sm"` over a chapter
-scrubber with bookmark ticks, then `UndoChip`, speed, sleep (C's `SleepTimerButton`: `brand-soft` + countdown while
-running), bookmark (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. What fits
-is decided by its MEASURED width (`dockLayout`: all actions from 1024, the tablet set below, no
-scrubber below 800; everything hidden is in the full player; while the Undo chip shows, its
-`UNDO_CHIP_ROOM` comes off the width first and the right cluster stops growing, so the book keeps its title). Speed and sleep open through
-`usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does), only
-the sleep timer's `GraceCard` just above the bar. Route-driven side effects (search reset on leaving the Search
-tab, browse scroll memory) are `useShellEffects`.
+and `DockedPlayer` (84) whenever a book is loaded (nothing while the full player is on top, as for
+the mini player and the accessory: `usePlayerOnTop`): the 3 px whole-book line, book + sync state
+(`usePlaceSync`, shared with the full player's status line: sign in again > saved on this device
+(offline, or saves queued) > synced / synced just now), `TransportControls size="sm"` over a chapter
+scrubber with bookmark ticks (`usePlayingSegment`; the dock's one `usePlayingPins`), then `UndoChip`,
+speed, sleep (`SleepTimerButton`, `useSleepPill`: `brand-soft` + countdown while running), bookmark
+(`addBookmarkHere`), output (`canRoutePick`), Up next and expand. The player controls share one chrome
+(`control-pill.tsx`: `pillClass` / `ControlPill`). What fits is decided by its MEASURED width
+(`dockLayout`: all actions from 1024, the tablet set below, no scrubber below 800; everything hidden is
+in the full player; while the Undo chip shows (`useUndoVisible`), its MEASURED width comes off the
+width first and the right cluster stops growing, so the book keeps its title). Speed and sleep open
+through `usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does).
+Route-driven side effects (search reset on leaving the Search tab, browse scroll memory) are
+`useShellEffects`.
 - **Full player** (`src/app/player.tsx` thin, `src/components/player/player-view.tsx`, pieces in
   `player-parts.tsx`, rules in `player-view-model.ts`): laid out by its MEASURED width (`playerLayout`).
   The cover washed into the background (`CoverWash` from the item's `cover_color`, else a neutral),
   breathing to 94% while paused; header (minimise, "Playing from <server>", series line, overflow
-  `DropdownMenu`); chapter title (tap: the chapter sheet, or the companion's Chapters tab on desktop);
-  `PlayerStatusLine` (sync state, % of the book, time left) that becomes the `UndoChip`, gives its
+  `DropdownMenu`); chapter title (tap: asks for `chapters`, which the sheet host shows as the
+  companion's Chapters tab on desktop and phone, the chapter sheet on a tablet);
+  `PlayerStatusLine` (`usePlaceSync`, % of the book, time left) that becomes the `UndoChip`, gives its
   slot to the sleep timer's `GraceCard` (`inline`: in the flow, never over the controls) and fades
-  while the seek bar's scrub/hover tip floats into it (`onTip`); seek bar,
-  compact timeline, transport, actions (speed, sleep, bookmark, output, Up next on phone/tablet).
+  while the seek bar's scrub/hover tip floats into it (`onTip`); seek bar (its times row hides under
+  the timeline's tip the same way), compact timeline with bookmark and note pins (a tap on a pin lands
+  on it), transport, actions (speed, sleep, bookmark, output, Up next on phone/tablet). The two
+  scrubbers share `scrub-parts.tsx` (hover, `Playhead`, `ScrubTip`) and one `usePlayingPins` call; the
+  timeline draws the Now card's `scaleRuns`.
   The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
   a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
-  (one row, a sideways scroller where it doesn't fit; the phone's cover shrinks with the MEASURED
-  viewport, `phoneCoverSize`, so the player fits without scrolling);
+  (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover
+  slot takes what the rest leaves, `phoneCoverSize`, so the player fits without scrolling);
   gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal
   per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every block.
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
   only (`revealOnCrossing`). **Sheets**: `PlayerSheetHost` renders `usePlayerSheets` (speed, sleep,
-  chapters, the phone companion; bookmark/output are actions); one in the full player and one in the
-  shell (`ShellPlayerOverlays`, with the phone's `GraceCard`), and `hostIsActive` lets the shell's
-  stand back while the player route is on top (Up next's sheet follows the same rule). A hosted
-  `Sheet` is `aria-modal` on the web, so the player keys stand back over it.
+  chapters, the companion through `openCompanion(tab)`, Up next's `upnext`; bookmark/output are
+  actions), deciding the form from its layout (the full player's MEASURED one), all through one
+  presenter, `PlayerSheet` (`body` `scroll` or `fill`); one host in the full player and one in the
+  shell (`ShellPlayerOverlays`, with the floating `GraceCard` where a toast would sit; it publishes a
+  `grace` chrome edge, so the toasts lift above it), and `hostIsActive` lets the shell's stand back
+  while the player route is on top. A `Sheet` is `aria-modal` on the web, so the player keys stand
+  back over it.
 - **Previously on** (`home/previously-on.tsx`, rules in `previously-on-model.ts`): above the Now card
   when its book was last played 12+ days ago and a community recap reaches the listener (the Story so
   far gate); "Resume, with 30 seconds of overlap" is `playBook(..., saved - 30)` plus the saved speed.
@@ -918,8 +929,8 @@ tab, browse scroll memory) are `useShellEffects`.
   characters not met yet in a note row that is not an option.
 - **Up next** (`src/components/upnext/`, capability `queue`; nothing renders while `/server` is unknown):
   the desktop drawer in `DrawerSlot` (open by default, 300-480 wide by its left edge, both remembered
-  per device in `up-next-store.ts`) and the same `UpNextPanel` in a bottom `Sheet` on tablet/phone (mounted
-  once by each `(app)` layout). Entry points: `UpNextButton` in the top bar, the dock and the phone header
+  per device in `up-next-store.ts`) and the same `UpNextPanel` in a player sheet on tablet/phone
+  (`usePlayerSheets`' `upnext`, rendered by `PlayerSheetHost`). Entry points: `UpNextButton` in the top bar, the dock and the phone header
   on tab roots; Q on the web (`useUpNextShortcut`); `openUpNext()` / `toggleUpNext()` for anyone else. It
   shows ONE connection's queue: the loaded book's, else the default (`queueConnectionId`). Every write keeps
   hidden rows: a reorder (grip drag via gesture-handler, arrow keys on the grip or Alt+arrows, screen-reader
@@ -953,7 +964,7 @@ tab, browse scroll memory) are `useShellEffects`.
   `measureInWindow` is offset by the status bar under edge-to-edge, so comparing with the window
   height made the bar a status bar too tall); each stack publishes only once it has measured),
   `mini` (the floating card: bar + its height), `accessory` (the iOS 26 pill, measured in the window),
-  `dock` - and the root `ShellToastHost` passes `<ToastHost bottomInset>` from the pure
+  `dock`, `grace` (the sleep timer's floating card, above the rest while it shows) - and the root `ShellToastHost` passes `<ToastHost bottomInset>` from the pure
   `toastBottomOffset` over `bottomChromeTop` (the highest piece; one fallback before the first layout;
   tablet/desktop with nothing loaded and over a root modal: just above the home indicator). The web mini
   player sits on its tab bar through a `100%` bottom offset, no measured height. The accessory renders
