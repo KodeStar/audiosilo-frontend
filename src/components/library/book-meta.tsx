@@ -441,10 +441,12 @@ function PreviousBookRow({
       }
     >
       <View className="gap-2 px-3 pb-3">
-        {isError ? (
-          <PreviousBookNote message={t('book.meta.couldntLoad')} url={entry.web_url} />
-        ) : data ? (
+        {/* An answer in hand wins over a failed refetch: a downloaded book's kept work
+            is stale offline, and its refetch fails there. */}
+        {data ? (
           <Body work={data} entry={entry} />
+        ) : isError ? (
+          <PreviousBookNote message={t('book.meta.couldntLoad')} url={entry.web_url} />
         ) : (
           <SkeletonText lines={3} className="py-1" />
         )}
