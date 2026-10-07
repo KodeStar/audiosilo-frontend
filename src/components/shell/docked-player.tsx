@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,10 +10,10 @@ import { BookProgressLine } from '@/components/player/book-progress';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
-import { currentSegment } from '@/components/player/transport';
 import { TransportControls } from '@/components/player/transport-controls';
 import { UndoChip } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
+import { usePlayingSegment } from '@/components/player/use-playing-segment';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -25,13 +25,7 @@ import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
-import {
-  selectBookKey,
-  selectBookPosition,
-  selectCurrentChapter,
-  selectIsPlaying,
-  usePlayer,
-} from '@/playback/store';
+import { selectBookKey, selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -63,55 +57,28 @@ export function dockLayout(
   return { allActions: room >= 1024, scrubber: room >= 800 };
 }
 
-/** Bookmark positions inside the current segment, as fractions of it (0..1). */
-export function segmentTicks(bookmarks: readonly number[], start: number, length: number) {
-  return bookmarks
-    .filter((p) => p >= start && p < start + length)
-    .map((p) => (p - start) / Math.max(1, length));
-}
-
 /** The chapter scrubber row: elapsed in the chapter, a thin scrubber with the chapter's
- * bookmark ticks, and the time left in the whole book at the listener's speed. A
- * per-tick leaf that moves in whole seconds (the clock's resolution), so it re-renders
- * about once a second, not per engine tick. */
-function ChapterScrubber({ total }: { total: number }) {
+ * bookmark ticks (`bookmarks`: the playing book's, whole-book seconds), and the time
+ * left in the whole book at the listener's speed. A leaf that moves in whole seconds
+ * (the clock's resolution), so it re-renders about once a second, not per engine tick. */
+function ChapterScrubber({ bookmarks }: { bookmarks: readonly number[] }) {
   const { t } = useTranslation();
-  const chapter = usePlayer(selectCurrentChapter);
-  const trackDuration = usePlayer((s) => s.snapshot.duration);
-  const elapsedSecond = usePlayer((s) =>
-    Math.floor(
-      currentSegment({
-        total,
-        bookPosition: selectBookPosition(s),
-        chapter: selectCurrentChapter(s),
-        trackPosition: s.snapshot.position,
-        trackDuration: s.snapshot.duration,
-      }).elapsed,
-    ),
-  );
   const left = usePlayingTimeLeft();
-  const pins = usePlayingPins();
-  const seekBook = usePlayer((s) => s.seekBook);
-  const seekInTrack = usePlayer((s) => s.seekInTrack);
+  const {
+    segment,
+    elapsed,
+    onSeek,
+    bookmarks: inSegment,
+  } = usePlayingSegment(bookmarks, { wholeSeconds: true });
   const [scrub, setScrub] = useState<number | null>(null);
-  const segment = {
-    ...currentSegment({ total, bookPosition: 0, chapter, trackPosition: 0, trackDuration }),
-    elapsed: elapsedSecond,
-  };
-  const ticks = useMemo(
-    () => (segment.perTrack ? [] : segmentTicks(pins.bookmarks, segment.start, segment.length)),
-    [pins.bookmarks, segment.perTrack, segment.start, segment.length],
-  );
-  const onSeek = (p: number) =>
-    segment.perTrack ? void seekInTrack(p) : void seekBook(segment.start + p);
   return (
     <View className="-my-2.5 flex-row items-center gap-2.5">
       <Text variant="caption" style={tabularNums} className="min-w-[44px] text-right">
-        {formatClock(scrub ?? segment.elapsed)}
+        {formatClock(scrub ?? elapsed)}
       </Text>
       <View className="min-w-0 flex-1">
         <Slider
-          value={segment.elapsed}
+          value={elapsed}
           max={Math.max(0, segment.length)}
           step={15}
           tone="ink"
@@ -127,15 +94,15 @@ function ChapterScrubber({ total }: { total: number }) {
         />
         {/* The chapter's bookmarks, ticks over the track (decoration: the full player's
             bookmark list is the accessible way to them). */}
-        {ticks.map((f, i) => (
+        {inSegment.map((p, i) => (
           <View
-            key={`${i}-${f}`}
+            key={`${i}-${p}`}
             testID="dock-bookmark-tick"
             pointerEvents="none"
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
             className="absolute top-1/2 -mt-[5.5px] h-[11px] w-0.5 rounded-[1px] bg-foreground/55"
-            style={{ left: `${f * 100}%`, marginLeft: -1 }}
+            style={{ left: `${(p / Math.max(1, segment.length)) * 100}%`, marginLeft: -1 }}
           />
         ))}
       </View>
@@ -249,6 +216,8 @@ export function DockedPlayer() {
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
   const undo = useJumpUndo(selectUndoFor(usePlayer(selectBookKey))) !== null;
+  // The playing book's bookmarks, once for the bar.
+  const pins = usePlayingPins();
   // The bar sits on the window's bottom edge, so its height is its top edge (published
   // for the root toasts). Its width picks what fits.
   const [size, setSize] = useState<{ width: number; height: number }>();
@@ -315,7 +284,7 @@ export function DockedPlayer() {
             className={cn('justify-center', scrubber && 'min-w-[300px] flex-[1.4]')}
           >
             <TransportControls size="sm" />
-            {scrubber ? <ChapterScrubber total={queue.total} /> : null}
+            {scrubber ? <ChapterScrubber bookmarks={pins.bookmarks} /> : null}
           </View>
 
           <View

@@ -48,6 +48,7 @@ import {
 } from './player-view-model';
 import { PlayerSeekBar } from './seek-bar';
 import { TransportControls } from './transport-controls';
+import { usePlayingPins } from './use-playing-pins';
 
 /** `--dur-4` (STYLEGUIDE section 6): the cover's breathe and the player's rise. */
 const BREATHE_MS = 520;
@@ -149,9 +150,13 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const np = usePlayer((s) => s.nowPlaying);
   const { data: book } = useBook(np?.libraryId ?? -1, np?.path ?? '', np?.connectionId);
   const graceOpen = useGraceCardOpen();
-  // The seek bar's scrub (or hover) tip floats into the status slot above it: the slot
-  // makes way while it shows, so the tip never sits on top of the status line's words.
+  // The seek bar's scrub (or hover) tip floats into the status slot above it, the
+  // timeline's into the seek bar's times row: each makes way while its tip shows, so a tip
+  // never sits on top of words.
   const [tip, setTip] = useState(false);
+  const [timelineTip, setTimelineTip] = useState(false);
+  // The playing book's bookmarks and notes, once for both scrubbers.
+  const pins = usePlayingPins();
   // A phone's cover takes what the rest leaves of the MEASURED scroll viewport, so the
   // player fits a phone without scrolling (the rest does not depend on the cover).
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -220,8 +225,13 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           {graceOpen ? <GraceCard inline /> : <PlayerStatusLine />}
         </View>
         <View className="w-full gap-3">
-          <PlayerSeekBar times bars={phone ? 56 : 96} onTip={setTip} />
-          <PlayerBookTimeline variant="compact" />
+          <PlayerSeekBar
+            bookmarks={pins.bookmarks}
+            bars={phone ? 56 : 96}
+            onTip={setTip}
+            timesHidden={timelineTip}
+          />
+          <PlayerBookTimeline pins={pins} onTip={setTimelineTip} />
         </View>
         <TransportControls size={phone ? 'md' : 'lg'} className="py-1" />
         <PlayerErrorLine />

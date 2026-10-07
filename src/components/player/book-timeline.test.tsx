@@ -32,9 +32,6 @@ jest.mock('@/playback/store', () => {
     selectBookPosition: (s: MockPlayer) => s.bookPosition,
   };
 });
-jest.mock('./use-playing-pins', () => ({
-  usePlayingPins: () => ({ bookmarks: [500], notes: [1500, 99_999] }),
-}));
 
 /* eslint-disable import/first */
 import { usePlayer } from '@/playback/store';
@@ -52,6 +49,8 @@ const tapAt = async (x: number) => {
 };
 
 const STARTS = [0, 600, 1800, 3000];
+/** The required handlers, for a timeline whose seeking the test does not look at. */
+const H = { onSeek: jest.fn(), onStep: jest.fn() };
 const TITLES = ['Prelude', 'Stormblessed', 'Bridge Four', 'The Shattered Plains'];
 
 beforeEach(() => {
@@ -72,13 +71,7 @@ describe('BookTimeline', () => {
 
   it('draws a segment per chapter: past, current, ahead', async () => {
     await render(
-      <BookTimeline
-        starts={STARTS}
-        total={4000}
-        position={2000}
-        titles={TITLES}
-        onSeek={jest.fn()}
-      />,
+      <BookTimeline starts={STARTS} total={4000} position={2000} titles={TITLES} {...H} />,
     );
     expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
@@ -87,13 +80,7 @@ describe('BookTimeline', () => {
 
   it('is an adjustable "Whole-book timeline" naming the chapter and the place', async () => {
     await render(
-      <BookTimeline
-        starts={STARTS}
-        total={4000}
-        position={2000}
-        titles={TITLES}
-        onSeek={jest.fn()}
-      />,
+      <BookTimeline starts={STARTS} total={4000} position={2000} titles={TITLES} {...H} />,
     );
     expect(
       screen.getByRole('adjustable', { name: 'Whole-book timeline' }),
@@ -107,57 +94,77 @@ describe('BookTimeline', () => {
 
   it('seeks where it is tapped', async () => {
     const onSeek = jest.fn();
-    await render(<BookTimeline starts={STARTS} total={4000} position={0} onSeek={onSeek} />);
+    await render(
+      <BookTimeline starts={STARTS} total={4000} position={0} onSeek={onSeek} onStep={jest.fn()} />,
+    );
     await layout(400);
     await tapAt(100);
     expect(onSeek).toHaveBeenCalledWith(1000);
   });
 
-  it('steps by chapter with the screen-reader actions', async () => {
+  it('lands a tap on a pin exactly on its place', async () => {
     const onSeek = jest.fn();
-    await render(<BookTimeline starts={STARTS} total={4000} position={2000} onSeek={onSeek} />);
+    await render(
+      <BookTimeline
+        starts={STARTS}
+        total={4000}
+        position={0}
+        bookmarks={[1030]}
+        onSeek={onSeek}
+        onStep={jest.fn()}
+      />,
+    );
+    await layout(400);
+    // 1030 is at 103 points; a tap 5 points off is on the pin's head (16 wide).
+    await tapAt(108);
+    expect(onSeek).toHaveBeenLastCalledWith(1030);
+    // Well clear of it, the tap seeks where it is.
+    await tapAt(200);
+    expect(onSeek).toHaveBeenLastCalledWith(2000);
+  });
+
+  it('hands the screen-reader steps to onStep', async () => {
+    const onStep = jest.fn();
+    await render(
+      <BookTimeline
+        starts={STARTS}
+        total={4000}
+        position={2000}
+        onSeek={jest.fn()}
+        onStep={onStep}
+      />,
+    );
     const slider = screen.getByRole('adjustable');
     await fireEvent(slider, 'accessibilityAction', { nativeEvent: { actionName: 'increment' } });
-    expect(onSeek).toHaveBeenLastCalledWith(3000);
     await fireEvent(slider, 'accessibilityAction', { nativeEvent: { actionName: 'decrement' } });
-    expect(onSeek).toHaveBeenLastCalledWith(1800);
+    expect(onStep.mock.calls).toEqual([[1], [-1]]);
   });
 
-  it('shows bookmark and note pins in the full variant, none in the compact one', async () => {
-    const props = { starts: STARTS, total: 4000, position: 0, bookmarks: [100, 200], notes: [300] };
-    await render(<BookTimeline {...props} />);
+  it('shows bookmark and note pins above the track, dropping any outside the book', async () => {
+    const props = { starts: STARTS, total: 4000, position: 0, ...H };
+    await render(<BookTimeline {...props} bookmarks={[100, 200]} notes={[300, 9000]} />);
     expect(screen.getAllByTestId('timeline-bookmark')).toHaveLength(2);
     expect(screen.getAllByTestId('timeline-note')).toHaveLength(1);
-    await screen.rerender(<BookTimeline {...props} variant="compact" />);
+    await screen.rerender(<BookTimeline {...props} />);
     expect(screen.queryByTestId('timeline-bookmark')).toBeNull();
-    await screen.rerender(<BookTimeline {...props} variant="compact" pins />);
-    expect(screen.getAllByTestId('timeline-bookmark')).toHaveLength(2);
   });
 
-  it('has the axis in the full variant only', async () => {
-    await render(<BookTimeline starts={STARTS} total={166_320} position={62_810} />);
-    expect(screen.getByText('0:00')).toBeTruthy();
-    expect(screen.getByText('37% · 17:26:50')).toBeTruthy();
-    expect(screen.getByText('46:12:00')).toBeTruthy();
-    await screen.rerender(
-      <BookTimeline starts={STARTS} total={166_320} position={62_810} variant="compact" />,
-    );
-    expect(screen.queryByText('46:12:00')).toBeNull();
-  });
-
-  it('is a picture, not a control, without onSeek', async () => {
-    await render(<BookTimeline starts={STARTS} total={4000} position={2000} />);
-    expect(screen.queryByRole('adjustable')).toBeNull();
-    expect(
-      screen.getByRole('image', { name: 'Whole-book timeline, 50%, 33:20 of 1:06:40' }),
-    ).toBeTruthy();
+  it('says when its tip shows, so the times row above can make way', async () => {
+    Platform.OS = 'web';
+    const onTip = jest.fn();
+    await render(<BookTimeline starts={STARTS} total={4000} position={0} onTip={onTip} {...H} />);
+    await layout(400);
+    const rect = { getBoundingClientRect: () => ({ left: 0, width: 400 }) };
+    const slider = screen.getByRole('adjustable');
+    await fireEvent(slider, 'pointerMove', { nativeEvent: { clientX: 200 }, currentTarget: rect });
+    expect(onTip).toHaveBeenLastCalledWith(true);
+    await fireEvent(slider, 'pointerLeave');
+    expect(onTip).toHaveBeenLastCalledWith(false);
   });
 
   it('names the chapter under the pointer on the web', async () => {
     Platform.OS = 'web';
-    await render(
-      <BookTimeline starts={STARTS} total={4000} position={0} titles={TITLES} onSeek={jest.fn()} />,
-    );
+    await render(<BookTimeline starts={STARTS} total={4000} position={0} titles={TITLES} {...H} />);
     await layout(400);
     const rect = { getBoundingClientRect: () => ({ left: 0, width: 400 }) };
     await fireEvent(screen.getByRole('adjustable'), 'pointerMove', {
@@ -168,11 +175,9 @@ describe('BookTimeline', () => {
   });
 
   it('renders a chapterless book as one segment, and nothing without a length', async () => {
-    await render(<BookTimeline starts={[]} total={4000} position={1000} onSeek={jest.fn()} />);
+    await render(<BookTimeline starts={[]} total={4000} position={1000} {...H} />);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
-    await screen.rerender(
-      <BookTimeline starts={[]} total={0} position={1000} onSeek={jest.fn()} />,
-    );
+    await screen.rerender(<BookTimeline starts={[]} total={0} position={1000} {...H} />);
     expect(screen.toJSON()).toBeNull();
   });
 });
@@ -196,7 +201,7 @@ describe('PlayerBookTimeline', () => {
   });
 
   it("is the playing book's chapters, place and pins, seeking through the store", async () => {
-    await render(<PlayerBookTimeline variant="full" />);
+    await render(<PlayerBookTimeline pins={{ bookmarks: [500], notes: [1500, 99_999] }} />);
     expect(screen.getAllByTestId('timeline-bookmark')).toHaveLength(1);
     // The note past the end is dropped.
     expect(screen.getAllByTestId('timeline-note')).toHaveLength(1);

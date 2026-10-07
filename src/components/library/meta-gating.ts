@@ -34,7 +34,7 @@ const NO_PROGRESS: ListeningProgress = { chapter: 0, finished: false };
  * `chapters[0]` (the player must always be *somewhere*), which here would claim
  * chapter 1 has been reached on a book nobody has started.
  */
-export function chapterNumberAt(starts: number[], position: number): number {
+export function chapterNumberAt(starts: readonly number[], position: number): number {
   if (starts.length === 0 || position <= 0) return 0;
   let n = 0;
   for (let i = 0; i < starts.length; i++) {

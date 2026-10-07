@@ -33,12 +33,27 @@ jest.mock('./companion/companion', () => {
 });
 let mockOnTip: ((showing: boolean) => void) | undefined;
 jest.mock('./seek-bar', () => ({
-  PlayerSeekBar: ({ onTip }: { onTip?: (showing: boolean) => void }) => {
+  PlayerSeekBar: ({
+    onTip,
+    timesHidden,
+  }: {
+    onTip?: (showing: boolean) => void;
+    timesHidden?: boolean;
+  }) => {
     mockOnTip = onTip;
+    mockTimesHidden = !!timesHidden;
     return null;
   },
 }));
-jest.mock('./book-timeline', () => ({ PlayerBookTimeline: () => null }));
+let mockOnTimelineTip: ((showing: boolean) => void) | undefined;
+let mockTimesHidden = false;
+jest.mock('./book-timeline', () => ({
+  PlayerBookTimeline: ({ onTip }: { onTip?: (showing: boolean) => void }) => {
+    mockOnTimelineTip = onTip;
+    return null;
+  },
+}));
+jest.mock('./use-playing-pins', () => ({ usePlayingPins: () => ({ bookmarks: [], notes: [] }) }));
 jest.mock('./transport-controls', () => {
   const { Text: T } = jest.requireActual('react-native');
   return { TransportControls: ({ size }: { size: string }) => <T>{`transport ${size}`}</T> };
@@ -204,5 +219,18 @@ describe('PlayerView', () => {
     expect(slot().props.style).toEqual({ opacity: 0 });
     await act(async () => mockOnTip?.(false));
     expect(slot().props.style).toBeUndefined();
+  });
+
+  it("makes way for the timeline's tip: the seek bar's times row hides while it shows", async () => {
+    mockLayout = 'phone';
+    await mount(<PlayerView onClose={jest.fn()} />);
+    expect(mockTimesHidden).toBe(false);
+    await act(async () => mockOnTimelineTip?.(true));
+    expect(mockTimesHidden).toBe(true);
+    // The status slot is not in its way.
+    const slot = screen.getByTestId('player-status-slot', { includeHiddenElements: true });
+    expect(slot.props.style).toBeUndefined();
+    await act(async () => mockOnTimelineTip?.(false));
+    expect(mockTimesHidden).toBe(false);
   });
 });

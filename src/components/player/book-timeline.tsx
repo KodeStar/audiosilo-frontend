@@ -1,9 +1,14 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
+import {
+  bookmarkPins,
+  chapterIndexAt,
+  runState,
+  type ScaleState,
+} from '@/components/home/now-card-model';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
@@ -15,27 +20,22 @@ import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import {
-  chapterIndexAt,
-  maxSegmentsFor,
-  pinFractions,
-  SEGMENT_GAP,
-  timelineSegments,
-  type TimelineState,
-} from './book-timeline-model';
+import { heardIn, SEGMENT_GAP, timelineRuns } from './book-timeline-model';
+import { Playhead, ScrubTip, useWebHoverFraction } from './scrub-parts';
 import { stepSegment } from './transport';
-import { usePlayingPins } from './use-playing-pins';
+import type { BookPins } from './use-playing-pins';
 
-const TRACK_H = { full: 30, compact: 14 } as const;
+const TRACK_H = 14;
+/** The track's top without pins. */
+const TRACK_TOP = 4;
 /** The pin head and the room above the track it needs. */
 const PIN_HEAD = 16;
 const PIN_ROOM = PIN_HEAD + 4;
-/** The playhead: 3 wide, 4 past the track at each end, with a 3-point halo. */
+/** The playhead: 3 wide, 4 past the track at each end. */
 const HEAD_W = 3;
 const HEAD_OVER = 4;
-const HALO = 3;
 
-const SEGMENT_CLASS: Record<TimelineState, string> = {
+const SEGMENT_CLASS: Record<ScaleState, string> = {
   past: 'bg-foreground/35',
   current: 'bg-brand/25',
   ahead: 'bg-muted-foreground/15',
@@ -79,6 +79,31 @@ function Pin({
   );
 }
 
+/** One segment (a chapter, or a run of them), memoised on its few numbers: as the
+ * playhead moves only the current one redraws. */
+const Segment = memo(function Segment({
+  weight,
+  state,
+  played,
+}: {
+  weight: number;
+  state: ScaleState;
+  /** How much of the current segment is heard, 0..1. */
+  played: number;
+}) {
+  return (
+    <View
+      testID={`timeline-segment-${state}`}
+      className={cn('h-full overflow-hidden rounded-[3px]', SEGMENT_CLASS[state])}
+      style={{ flexGrow: weight, flexBasis: 0 }}
+    >
+      {played > 0 ? (
+        <View className="h-full rounded-[3px] bg-brand" style={{ width: `${played * 100}%` }} />
+      ) : null}
+    </View>
+  );
+});
+
 export type BookTimelineProps = {
   /** Chapter starts, whole-book seconds, ascending (none: the whole book is one). */
   starts: readonly number[];
@@ -92,27 +117,24 @@ export type BookTimelineProps = {
   bookmarks?: readonly number[];
   /** Note positions, whole-book seconds (community pins). */
   notes?: readonly number[];
-  /** `full`: 30-point track, pins, axis. `compact`: 14-point track only. */
-  variant?: 'full' | 'compact';
-  /** Show the pins (default: the full variant only). */
-  pins?: boolean;
-  /** Seek to a whole-book position (a tap, a drag's release). Without it the timeline is
-   * a picture (`role="image"`), not a control. */
-  onSeek?: (bookPosition: number) => void;
-  /** Increment/decrement and the web arrow keys: next/previous chapter. Defaults to the
-   * neighbouring chapter starts through `onSeek`. */
-  onStep?: (direction: 1 | -1) => void;
+  /** Seek to a whole-book position (a tap, a drag's release). */
+  onSeek: (bookPosition: number) => void;
+  /** Increment/decrement and the web arrow keys: next/previous chapter. */
+  onStep: (direction: 1 | -1) => void;
+  /** Whether the scrub (or web hover) tip is showing: it floats over whatever sits just
+   * above (the seek bar's times row), which the caller can make way for. */
+  onTip?: (showing: boolean) => void;
   className?: string;
 };
 
 /**
  * The whole-book timeline (STYLEGUIDE section 8): one segment per chapter (flex =
- * length, 2-point gaps), past chapters in ink, the current one pink with its heard part
- * solid, a pink playhead; bookmark pins (ink) and note pins (community) on stems above;
- * the full variant adds the axis "0:00 · 38% · 17:26:50 · 46:12:00". On the web a hover
- * names the chapter and the time. A tap or drag seeks (a jump, so the Undo chip offers
- * the way back by itself). Accessible as an adjustable "Whole-book timeline" whose steps
- * are chapters. Chapters too narrow to see merge with their neighbours by the measured
+ * length, 2-point gaps; the Now card's `scaleRuns`), past chapters in ink, the current
+ * one pink with its heard part solid, a pink playhead; bookmark pins (ink) and note pins
+ * (community) on stems above. On the web a hover names the chapter and the time. A tap
+ * or drag seeks (a jump, so the Undo chip offers the way back by itself); a tap on a pin
+ * lands on it exactly. Accessible as an adjustable "Whole-book timeline" whose steps are
+ * chapters. Chapters too narrow to see merge with their neighbours by the measured
  * width.
  */
 export function BookTimeline({
@@ -122,52 +144,59 @@ export function BookTimeline({
   titles,
   bookmarks,
   notes,
-  variant = 'full',
-  pins = variant === 'full',
   onSeek,
   onStep,
+  onTip,
   className,
 }: BookTimelineProps) {
   const { t } = useTranslation();
   const [width, setWidth] = useState(0);
-  const [hover, setHover] = useState<number | null>(null);
   const [scrub, setScrub] = useState<number | null>(null);
-  const interactive = !!onSeek && total > 0;
+  const known = total > 0;
+  const { hover, hoverProps } = useWebHoverFraction(known);
   const at = Math.min(Math.max(0, position), Math.max(0, total));
 
-  const segments = useMemo(
-    () => timelineSegments(starts, total, at, maxSegmentsFor(width)),
-    [starts, total, at, width],
+  // The structure follows the chapters and the width only; the playhead picks the current
+  // run and how much of it is heard.
+  const runs = useMemo(() => timelineRuns(starts, total, width), [starts, total, width]);
+  const chapter = chapterIndexAt(starts, at);
+  const pins = useMemo(
+    () => ({
+      bookmarks: bookmarkPins(bookmarks ?? [], total),
+      notes: bookmarkPins(notes ?? [], total),
+    }),
+    [bookmarks, notes, total],
   );
-  const percent = percentHeard(at, total, false);
+  const hasPins = pins.bookmarks.length + pins.notes.length > 0;
+
   const nameAt = (seconds: number) => {
+    if (starts.length === 0) return '';
     const index = chapterIndexAt(starts, seconds);
-    const title = titles?.[index];
-    return starts.length > 0 ? chapterLabel({ title: title ?? '', index }, t) : '';
+    return chapterLabel({ title: titles?.[index] ?? '', index }, t);
+  };
+  // A tap within a pin's head lands on its place.
+  const snapToPin = (v: number) => {
+    if (!(width > 0)) return v;
+    const reach = (PIN_HEAD / 2 / width) * total;
+    let best = v;
+    let gap = reach;
+    for (const p of [...(bookmarks ?? []), ...(notes ?? [])]) {
+      if (Math.abs(p - v) <= gap) {
+        best = p;
+        gap = Math.abs(p - v);
+      }
+    }
+    return best;
   };
 
-  const {
-    gesture,
-    width: widthSv,
-    posFrac,
-    dragFrac,
-    dragging,
-    controlProps,
-  } = useSliderControl({
+  const control = useSliderControl({
     value: at,
     max: Math.max(0, total),
     step: total / 100,
-    onStep:
-      onStep ??
-      ((dir) => {
-        const list = starts.length > 0 ? starts : [0];
-        const index = chapterIndexAt(list, at);
-        const target =
-          dir === 1 ? list[index + 1] : at - list[index] > 3 ? list[index] : list[index - 1];
-        if (target !== undefined) onSeek?.(target);
-      }),
-    onValueCommit: (v) => onSeek?.(v),
+    onStep,
+    onValueCommit: onSeek,
     onPreview: setScrub,
+    snapTap: snapToPin,
     accessibilityLabel: t('player.timeline.label'),
     valueText: (v) =>
       [
@@ -180,156 +209,71 @@ export function BookTimeline({
       ]
         .filter(Boolean)
         .join(', '),
-    disabled: !interactive,
+    disabled: !known,
   });
 
-  const headStyle = useAnimatedStyle(() => {
-    const f = dragging.get() ? dragFrac.get() : posFrac.get();
-    return { transform: [{ translateX: f * widthSv.get() - HEAD_W / 2 - HALO }] };
-  });
+  if (!known) return null;
 
-  if (!(total > 0)) return null;
-
-  const trackH = TRACK_H[variant];
-  const top = pins ? PIN_ROOM : variant === 'full' ? 8 : 4;
+  const top = hasPins ? PIN_ROOM : TRACK_TOP;
   const onLayout = (e: LayoutChangeEvent) => {
-    controlProps.onLayout(e);
+    control.controlProps.onLayout(e);
     setWidth(e.nativeEvent.layout.width);
   };
-  const hoverProps =
-    Platform.OS === 'web' && interactive
-      ? {
-          onPointerMove: (e: { nativeEvent: { clientX: number }; currentTarget: unknown }) => {
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect?.();
-            if (!rect || rect.width <= 0) return;
-            setHover(Math.max(0, Math.min(1, (e.nativeEvent.clientX - rect.left) / rect.width)));
-          },
-          onPointerLeave: () => setHover(null),
-        }
-      : {};
   const tipSeconds = scrub ?? (hover !== null ? hover * total : null);
-
-  const pinViews = pins ? (
-    <>
-      {pinFractions(bookmarks ?? [], total).map((f, i) => (
-        <Pin key={`b${i}`} at={f} kind="bookmark" stem={top - PIN_HEAD + trackH} />
-      ))}
-      {pinFractions(notes ?? [], total).map((f, i) => (
-        <Pin key={`n${i}`} at={f} kind="note" stem={top - PIN_HEAD + trackH} />
-      ))}
-    </>
-  ) : null;
-
-  const track = (
-    <View style={{ height: top + trackH + HEAD_OVER }}>
-      {pinViews}
-      <View
-        className="absolute left-0 right-0 flex-row"
-        style={{ top, height: trackH, gap: SEGMENT_GAP }}
-      >
-        {segments.map((s) => (
-          <View
-            key={s.first}
-            testID={`timeline-segment-${s.state}`}
-            className={cn('h-full overflow-hidden rounded-[3px]', SEGMENT_CLASS[s.state])}
-            style={{ flexGrow: s.weight, flexBasis: 0 }}
-          >
-            {s.state === 'current' && s.played > 0 ? (
-              <View
-                className="h-full rounded-[3px] bg-brand"
-                style={{ width: `${s.played * 100}%` }}
-              />
-            ) : null}
-          </View>
-        ))}
-      </View>
-      <Animated.View
-        pointerEvents="none"
-        className="items-center justify-center rounded-full bg-brand/25"
-        style={[
-          {
-            position: 'absolute',
-            left: 0,
-            top: top - HEAD_OVER - HALO,
-            width: HEAD_W + HALO * 2,
-            height: trackH + HEAD_OVER * 2 + HALO * 2,
-          },
-          headStyle,
-        ]}
-      >
-        <View className="flex-1 self-stretch rounded-full bg-brand" style={{ margin: HALO }} />
-      </Animated.View>
-      {tipSeconds !== null && width > 0 ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            bottom: trackH + HEAD_OVER + 6,
-            left: Math.max(60, Math.min(width - 60, (tipSeconds / total) * width)),
-            width: 0,
-            alignItems: 'center',
-          }}
-        >
-          <View className="rounded-control bg-primary px-2.5 py-1.5 shadow-overlay">
-            <Text
-              className="font-sans text-xs text-primary-foreground"
-              style={tabularNums}
-              numberOfLines={1}
-            >
-              {[nameAt(tipSeconds), formatClock(tipSeconds)].filter(Boolean).join(' · ')}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
+  const stem = top - PIN_HEAD + TRACK_H;
 
   return (
     <View className={className}>
-      {interactive ? (
-        <GestureDetector gesture={gesture}>
-          <View
-            {...controlProps}
-            {...hoverProps}
-            onLayout={onLayout}
-            className={cn(
-              Platform.select({ web: `cursor-pointer rounded-md ${FOCUS_RING_CLASS}` }),
-            )}
-          >
-            {track}
-          </View>
-        </GestureDetector>
-      ) : (
+      <GestureDetector gesture={control.gesture}>
         <View
+          {...control.controlProps}
+          {...hoverProps}
           onLayout={onLayout}
-          accessible
-          accessibilityRole="image"
-          accessibilityLabel={`${t('player.timeline.label')}, ${t('player.timeline.value', {
-            percent,
-            position: formatClock(at),
-            total: formatClock(total),
-          })}`}
+          className={cn(Platform.select({ web: `cursor-pointer rounded-md ${FOCUS_RING_CLASS}` }))}
         >
-          {track}
-        </View>
-      )}
-      {variant === 'full' ? (
-        <View className="mt-1 flex-row justify-between">
-          {[
-            formatClock(0),
-            t('player.timeline.axis', { percent, position: formatClock(at) }),
-            formatClock(total),
-          ].map((label, i) => (
-            <Text
-              key={i}
-              className="font-sans text-[11px] text-subtle-foreground"
-              style={tabularNums}
+          <View style={{ height: top + TRACK_H + HEAD_OVER }}>
+            {pins.bookmarks.map((f, i) => (
+              <Pin key={`b${i}`} at={f} kind="bookmark" stem={stem} />
+            ))}
+            {pins.notes.map((f, i) => (
+              <Pin key={`n${i}`} at={f} kind="note" stem={stem} />
+            ))}
+            <View
+              className="absolute left-0 right-0 flex-row"
+              style={{ top, height: TRACK_H, gap: SEGMENT_GAP }}
             >
-              {label}
-            </Text>
-          ))}
+              {runs.map((r) => {
+                const state = runState(r, chapter);
+                const played = state === 'current' ? heardIn(r, at) : 0;
+                return <Segment key={r.first} weight={r.weight} state={state} played={played} />;
+              })}
+            </View>
+            <Playhead
+              track={control.track}
+              width={HEAD_W}
+              height={TRACK_H + HEAD_OVER * 2}
+              top={top - HEAD_OVER}
+            />
+            {tipSeconds !== null && width > 0 ? (
+              <ScrubTip
+                x={(tipSeconds / total) * width}
+                width={width}
+                edge={60}
+                bottom={TRACK_H + HEAD_OVER + 6}
+                onTip={onTip}
+              >
+                <Text
+                  className="font-sans text-xs text-primary-foreground"
+                  style={tabularNums}
+                  numberOfLines={1}
+                >
+                  {[nameAt(tipSeconds), formatClock(tipSeconds)].filter(Boolean).join(' · ')}
+                </Text>
+              </ScrubTip>
+            ) : null}
+          </View>
         </View>
-      ) : null}
+      </GestureDetector>
     </View>
   );
 }
@@ -339,18 +283,19 @@ export function BookTimeline({
 const positionStep = (total: number) => Math.max(1, total / 2000);
 
 /**
- * The whole-book timeline of the PLAYING book: its chapters, place, bookmarks and notes,
- * seeking through the store (a jump: the Undo chip follows by itself) and stepping by
- * chapter (`stepSegment`, the transport's own previous/next). Renders nothing with no
- * book or a book without a whole-book timeline (per-file books).
+ * The whole-book timeline of the PLAYING book: its chapters, place, and the pins the
+ * caller fetched once (`usePlayingPins`), seeking through the store (a jump: the Undo chip
+ * follows by itself) and stepping by chapter (`stepSegment`, the transport's own
+ * previous/next). Renders nothing with no book or a book without a whole-book timeline
+ * (per-file books).
  */
 export function PlayerBookTimeline({
-  variant = 'compact',
   pins,
+  onTip,
   className,
 }: {
-  variant?: 'full' | 'compact';
-  pins?: boolean;
+  pins?: BookPins;
+  onTip?: (showing: boolean) => void;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -361,7 +306,6 @@ export function PlayerBookTimeline({
     return Math.floor(selectBookPosition(s) / step) * step;
   });
   const seekBook = usePlayer((s) => s.seekBook);
-  const bookPins = usePlayingPins();
   const chapters = queue?.chapters;
   const { starts, titles } = useMemo(
     () => ({
@@ -377,12 +321,11 @@ export function PlayerBookTimeline({
       total={total}
       position={position}
       titles={titles}
-      bookmarks={bookPins.bookmarks}
-      notes={bookPins.notes}
-      variant={variant}
-      pins={pins}
+      bookmarks={pins?.bookmarks}
+      notes={pins?.notes}
       onSeek={(p) => void seekBook(p)}
       onStep={(dir) => stepSegment(usePlayer.getState(), dir)}
+      onTip={onTip}
       className={className}
     />
   );

@@ -24,6 +24,9 @@ export type SliderControlOptions = {
   onValueCommit: (value: number) => void;
   /** The value under the finger while dragging, then `null` when the drag ends. */
   onPreview?: (value: number | null) => void;
+  /** Moves a TAP's value before it commits (the timeline's pins: a tap on one lands on
+   * it exactly). Drags and keys commit as they are. */
+  snapTap?: (value: number) => number;
   /** The accessible name. */
   accessibilityLabel: string;
   /** What a screen reader reads for the value (`aria-valuetext`). */
@@ -47,8 +50,10 @@ export type SliderControlOptions = {
  *   and Home/End.
  *
  * The caller draws: `posFrac` is where the value is (0..1), `dragFrac` where the finger
- * is while `dragging` is 1, `width` the measured track width (set by `onLayout`). Spread
- * `controlProps` on the View that `<GestureDetector gesture={gesture}>` wraps.
+ * is while `dragging` is 1, `width` the measured track width (set by `onLayout`); `track`
+ * is the four together, one stable object for a worklet to read (the player's
+ * `Playhead`). Spread `controlProps` on the View that `<GestureDetector gesture={gesture}>`
+ * wraps.
  */
 export function useSliderControl({
   value,
@@ -58,6 +63,7 @@ export function useSliderControl({
   onStep,
   onValueCommit,
   onPreview,
+  snapTap,
   accessibilityLabel,
   valueText,
   disabled = false,
@@ -76,9 +82,12 @@ export function useSliderControl({
 
   const commitValue = useLatest(onValueCommit);
   const previewValue = useLatest((v: number | null) => onPreview?.(v));
+  const snapValue = useLatest((v: number) => (snapTap ? snapTap(v) : v));
 
   const gesture = useMemo(() => {
-    const commit = (f: number) => commitValue(min + f * (span > 0 ? span : 0));
+    const valueAt = (f: number) => min + f * (span > 0 ? span : 0);
+    const commit = (f: number) => commitValue(valueAt(f));
+    const commitTap = (f: number) => commitValue(snapValue(valueAt(f)));
     const fracAt = (x: number) => {
       'worklet';
       return clampFrac(width.get() > 0 ? x / width.get() : 0);
@@ -113,11 +122,22 @@ export function useSliderControl({
       .onEnd((e) => {
         const f = fracAt(e.x);
         posFrac.set(f);
-        runOnJS(commit)(f);
+        runOnJS(commitTap)(f);
       });
 
     return Gesture.Race(pan, tap);
-  }, [min, span, disabled, width, dragging, dragFrac, posFrac, commitValue, previewValue]);
+  }, [
+    min,
+    span,
+    disabled,
+    width,
+    dragging,
+    dragFrac,
+    posFrac,
+    commitValue,
+    previewValue,
+    snapValue,
+  ]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     width.set(e.nativeEvent.layout.width);
@@ -185,5 +205,10 @@ export function useSliderControl({
     ...keyboard,
   };
 
-  return { gesture, width, dragging, dragFrac, posFrac, controlProps };
+  const track = useMemo(
+    () => ({ width, dragging, dragFrac, posFrac }),
+    [width, dragging, dragFrac, posFrac],
+  );
+
+  return { gesture, width, dragging, dragFrac, posFrac, track, controlProps };
 }

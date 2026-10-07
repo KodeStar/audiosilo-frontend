@@ -1,26 +1,21 @@
 import { View } from 'react-native';
 
 import { cn } from '@/lib/utils';
-import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { usePlayer } from '@/playback/store';
 
-import { currentSegment } from './transport';
+import { selectPlayingSegment } from './use-playing-segment';
 
 type PlayerSlice = Parameters<Parameters<typeof usePlayer>[0]>[0];
 
+/** The line's resolution: about a pixel of the widest compact player's line. */
+const STEPS = 300;
+
 /** How far through the current chapter (else the book, or the file without a whole-book
- * timeline) the player is, 0..1, rounded to a thousandth so a per-tick selector returns
- * the same value until the line would visibly move. */
+ * timeline) the player is, 0..1, rounded to 1/300 so a per-tick selector returns the
+ * same value until the line would visibly move. */
 export function selectChapterFraction(s: PlayerSlice): number {
-  const np = s.nowPlaying;
-  if (!np) return 0;
-  const seg = currentSegment({
-    total: np.queue.total,
-    bookPosition: selectBookPosition(s),
-    chapter: selectCurrentChapter(s),
-    trackPosition: s.snapshot.position,
-    trackDuration: s.snapshot.duration,
-  });
-  return Math.round((seg.elapsed / seg.length) * 1000) / 1000;
+  const seg = selectPlayingSegment(s);
+  return seg ? Math.round((seg.elapsed / seg.length) * STEPS) / STEPS : 0;
 }
 
 /**

@@ -1,4 +1,11 @@
-import { bookmarkPins, bookScale, chapterPlace, nowCardCompact } from './now-card-model';
+import {
+  bookmarkPins,
+  bookScale,
+  chapterIndexAt,
+  chapterPlace,
+  nowCardCompact,
+  scaleRuns,
+} from './now-card-model';
 
 describe('bookScale', () => {
   const starts = [0, 100, 300, 600];
@@ -31,6 +38,33 @@ describe('bookScale', () => {
       { weight: 750, state: 'ahead' },
     ]);
     expect(bookScale([], 0, 0)).toEqual([]);
+  });
+});
+
+describe('scaleRuns', () => {
+  it('is the chapters, or runs of them past the limit, whatever the place', () => {
+    expect(scaleRuns([0, 100, 300], 600, 10)).toEqual([
+      { first: 0, last: 0, from: 0, to: 100, weight: 100 },
+      { first: 1, last: 1, from: 100, to: 300, weight: 200 },
+      { first: 2, last: 2, from: 300, to: 600, weight: 300 },
+    ]);
+    expect(scaleRuns([0, 100, 300], 600, 2)).toEqual([
+      { first: 0, last: 1, from: 0, to: 300, weight: 300 },
+      { first: 2, last: 2, from: 300, to: 600, weight: 300 },
+    ]);
+    expect(scaleRuns([0, 100], 600, Infinity)).toHaveLength(2);
+    expect(scaleRuns([], 600, 10)).toEqual([]);
+    expect(scaleRuns([0], 0, 10)).toEqual([]);
+  });
+});
+
+describe('chapterIndexAt', () => {
+  it('is the 0-based chapter holding the place, 0 before the first start', () => {
+    expect(chapterIndexAt([0, 100, 300], 0)).toBe(0);
+    expect(chapterIndexAt([0, 100, 300], 299)).toBe(1);
+    expect(chapterIndexAt([0, 100, 300], 5000)).toBe(2);
+    expect(chapterIndexAt([50, 100], 10)).toBe(0);
+    expect(chapterIndexAt([], 10)).toBe(0);
   });
 });
 

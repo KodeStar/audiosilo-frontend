@@ -34,9 +34,6 @@ jest.mock('@/playback/store', () => {
     selectCurrentChapter: (s: MockPlayer) => s.chapter,
   };
 });
-jest.mock('./use-playing-pins', () => ({
-  usePlayingPins: () => ({ bookmarks: [1850, 2400, 9000], notes: [] }),
-}));
 
 /* eslint-disable import/first */
 import { formatWallClock } from '@/lib/format';
@@ -179,7 +176,7 @@ describe('SeekBar', () => {
     const onTip = jest.fn();
     await render(<SeekBar {...bar({ onTip })} />);
     await layout(400);
-    expect(onTip).toHaveBeenLastCalledWith(false);
+    expect(onTip).not.toHaveBeenCalled();
     const [pan] = lastGesture();
     await act(async () => pan.handlers.onBegin({ x: 200 }));
     expect(onTip).toHaveBeenLastCalledWith(true);
@@ -258,7 +255,7 @@ describe('PlayerSeekBar', () => {
   });
 
   it("shows only this chapter's bookmarks", async () => {
-    await render(<PlayerSeekBar />);
+    await render(<PlayerSeekBar bookmarks={[1850, 2400, 9000]} />);
     await layout(400);
     // 1850 and 2400 fall in the chapter (1800..6468), 9000 doesn't.
     expect(screen.getAllByTestId('seek-bookmark')).toHaveLength(2);
@@ -270,7 +267,7 @@ describe('PlayerSeekBar', () => {
       chapter: null,
       snapshot: { trackIndex: 2, position: 30, duration: 600 },
     });
-    await render(<PlayerSeekBar times />);
+    await render(<PlayerSeekBar />);
     const slider = screen.getByRole('adjustable', { name: 'Position in file' });
     expect(slider).toHaveAccessibilityValue({ now: 30, max: 600 });
     await layout(400);
@@ -278,6 +275,20 @@ describe('PlayerSeekBar', () => {
     await act(async () => tap.handlers.onEnd({ x: 200 }, true));
     expect(player.getState().seekInTrack).toHaveBeenCalledWith(300);
     expect(screen.getByText(/left in the file/)).toBeTruthy();
+  });
+
+  it('follows a scrub in its times row, and hides the row under the timeline tip', async () => {
+    await render(<PlayerSeekBar />);
+    await layout(400);
+    expect(screen.getByText('41:12')).toBeTruthy();
+    const [pan] = lastGesture();
+    await act(async () => pan.handlers.onBegin({ x: 100 }));
+    // A quarter of 1:17:48, in the tip and in the times row.
+    expect(screen.getAllByText('19:27')).toHaveLength(2);
+    await act(async () => pan.handlers.onFinalize({ x: 100 }, true));
+    await screen.rerender(<PlayerSeekBar timesHidden />);
+    expect(screen.queryByText('41:12')).toBeNull();
+    expect(screen.getByText('41:12', { includeHiddenElements: true })).toBeTruthy();
   });
 
   it('renders nothing with no book', async () => {

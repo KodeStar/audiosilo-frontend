@@ -12,6 +12,56 @@ export type ScaleSegment = { weight: number; state: ScaleState };
 /** More ticks than this would blur into a bar at card width, so neighbours merge. */
 const MAX_SCALE_SEGMENTS = 120;
 
+/** A run of neighbouring chapters drawn as one segment (one chapter until there are more
+ * than fit). */
+export type ScaleRun = {
+  /** The chapters it covers (indexes into the starts), first and last. */
+  first: number;
+  last: number;
+  /** Where it starts and ends, whole-book seconds. */
+  from: number;
+  to: number;
+  /** Flex weight: the seconds it covers (a zero-length chapter still gets a sliver, so
+   * the count stays honest). */
+  weight: number;
+};
+
+/**
+ * The runs for chapters starting at `starts` (whole-book seconds, ascending) in a book
+ * `total` long: more chapters than `max` merge into runs of neighbours, so a 300-chapter
+ * book still reads as ticks. Independent of the listener's place, so a caller can keep
+ * it while the playhead moves. Shared by the Now card's scale and the player's
+ * whole-book timeline.
+ */
+export function scaleRuns(starts: readonly number[], total: number, max: number): ScaleRun[] {
+  if (total <= 0 || starts.length === 0) return [];
+  const lengths = starts.map((s, i) => Math.max(0, (starts[i + 1] ?? total) - s));
+  const per = Math.max(1, Math.ceil(starts.length / Math.max(1, max)));
+  const out: ScaleRun[] = [];
+  for (let i = 0; i < starts.length; i += per) {
+    const last = Math.min(i + per, starts.length) - 1;
+    const weight = lengths.slice(i, last + 1).reduce((a, b) => a + b, 0);
+    out.push({
+      first: i,
+      last,
+      from: starts[i],
+      to: starts[last + 1] ?? total,
+      weight: Math.max(weight, total / 1000),
+    });
+  }
+  return out;
+}
+
+/** The 0-based index of the chapter holding `position` (0 before the first start). */
+export function chapterIndexAt(starts: readonly number[], position: number): number {
+  return Math.max(0, chapterNumberAt(starts, position) - 1);
+}
+
+/** A run's state against the chapter the listener is in. */
+export function runState(run: ScaleRun, current: number): ScaleState {
+  return run.last < current ? 'past' : run.first > current ? 'ahead' : 'current';
+}
+
 /**
  * The scale's segments from the chapters' whole-book starts (ascending) and the book's
  * length. With no chapters it is a plain progress bar: what was heard, then the rest.
@@ -32,18 +82,11 @@ export function bookScale(
       { weight: total - at, state: 'ahead' as const },
     ].filter((s) => s.weight > 0);
   }
-  const current = Math.max(0, chapterNumberAt([...starts], at) - 1);
-  const lengths = starts.map((s, i) => Math.max(0, (starts[i + 1] ?? total) - s));
-  const per = Math.ceil(starts.length / max);
-  const out: ScaleSegment[] = [];
-  for (let i = 0; i < starts.length; i += per) {
-    const last = Math.min(i + per, starts.length) - 1;
-    const weight = lengths.slice(i, last + 1).reduce((a, b) => a + b, 0);
-    const state: ScaleState = last < current ? 'past' : i > current ? 'ahead' : 'current';
-    // A zero-length chapter still gets a sliver, so the tick count stays honest.
-    out.push({ weight: Math.max(weight, total / 1000), state });
-  }
-  return out;
+  const current = chapterIndexAt(starts, at);
+  return scaleRuns(starts, total, max).map((r) => ({
+    weight: r.weight,
+    state: runState(r, current),
+  }));
 }
 
 /** Where along the scale (0..1) each bookmark sits, dropping any outside the book. */
@@ -71,6 +114,6 @@ export function chapterPlace(
   position: number,
 ): ChapterPlace | null {
   if (titles.length === 0 || starts.length !== titles.length) return null;
-  const number = Math.max(1, chapterNumberAt([...starts], position));
+  const number = Math.max(1, chapterNumberAt(starts, position));
   return { number, count: titles.length, title: titles[number - 1] ?? '' };
 }

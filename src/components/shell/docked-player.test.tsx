@@ -44,7 +44,7 @@ import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
 
-import { DockedPlayer, dockLayout, segmentTicks } from './docked-player';
+import { DockedPlayer, dockLayout } from './docked-player';
 import { useShellMetrics } from './shell-metrics';
 /* eslint-enable import/first */
 
@@ -110,13 +110,6 @@ describe('dockLayout', () => {
     expect(dockLayout(1024, true)).toEqual({ allActions: false, scrubber: true });
     // A wide window has room for everything.
     expect(dockLayout(1440, true)).toEqual({ allActions: true, scrubber: true });
-  });
-});
-
-describe('segmentTicks', () => {
-  it('places only the bookmarks inside the segment, as fractions of it', () => {
-    expect(segmentTicks([50, 600, 900, 1200], 600, 600)).toEqual([0, 0.5]);
-    expect(segmentTicks([], 0, 100)).toEqual([]);
   });
 });
 
