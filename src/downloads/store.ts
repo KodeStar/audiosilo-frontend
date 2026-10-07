@@ -1,8 +1,8 @@
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
+import { chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
@@ -57,7 +57,9 @@ type DownloadsState = {
   /** Queue a book. `origin` says who asked (default: the listener, which also lifts a
    * cancel/remove mark from earlier in the session). An errored entry is retried,
    * keeping the files it already finished. Resolves what it did (`DownloadOutcome`); a
-   * listener's request is queued at once, an automatic one after reading the room. */
+   * listener's request is queued at once, an automatic one after reading the room. On
+   * web, a list-shape `book` (no `direct_playable`) is first looked up in full, so a
+   * book this browser plays transcoded is refused whoever asks. */
   download: (
     connectionId: string,
     libraryId: number,
@@ -126,55 +128,33 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   },
 
   download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
-    const done = (outcome: DownloadOutcome) => Promise.resolve(outcome);
-    if (!engine.supported) return done('unsupported');
-    // A book this browser plays through the server's transcoder would download as its
-    // raw files, which it can't play offline: refuse (every path - the book page, auto
-    // download, keep-ahead - lands here). The UI says why (useDownloadControls, and the
-    // Downloads page's row for an earlier download of it that failed).
-    if (webTranscodeFromCache(connectionId, book, chapterData)) return done('transcoded');
-    const key = downloadKey(connectionId, libraryId, book.rel_path);
-    const existing = get().entries[key];
-    if (existing && existing.status !== 'error') return done('exists'); // queued/downloading/done
-    if (origin === 'listener') {
-      declined.delete(key);
-      enqueue(key, connectionId, libraryId, book, chapterData, origin);
-      return done('queued');
-    }
-    // An automatic download (the book you start, keep-ahead) never takes back a book
-    // the listener cancelled or removed this session, and never eats into the reserve
-    // (`roomLeft`; an unknowable room lets it start, one at a time).
-    if (declined.has(key)) return done('declined');
-    return (async (): Promise<DownloadOutcome> => {
-      let storage: StorageEstimate | null = null;
-      try {
-        storage = await engine.storageEstimate();
-      } catch {
-        // not knowable: start it, one at a time like keep-ahead
-      }
-      const need = estimateBytes(book);
-      const entries = Object.entries(get().entries);
-      const room = roomLeft(storage, pendingBytes(entries.map(([, e]) => e)));
-      // The book being listened to outranks keep-ahead's books still waiting their turn:
-      // if only they stand in its way, they step aside (keep-ahead plans them again
-      // around it, when they still fit). One already downloading finishes.
-      let yielding: string[] = [];
-      if (room !== null && need > room) {
-        if (origin !== 'auto') return 'no-space';
-        yielding = entries
-          .filter(([, e]) => e.origin === 'keep-ahead' && e.status === 'queued')
-          .map(([k]) => k);
-        const others = entries.filter(([k]) => !yielding.includes(k)).map(([, e]) => e);
-        const without = roomLeft(storage, pendingBytes(others));
-        if (without !== null && need > without) return 'no-space';
-      }
-      // Things may have moved while the room was read.
-      const now = get().entries[key];
-      if (declined.has(key)) return 'declined';
-      if (now && now.status !== 'error') return 'exists';
-      for (const k of yielding) stepAside(k);
-      enqueue(key, connectionId, libraryId, book, chapterData, origin);
-      return 'queued';
+    if (!engine.supported) return Promise.resolve<DownloadOutcome>('unsupported');
+    // On web, a list-shape book (`/books`, `/fs`, shelves, tiles, the queue) carries no
+    // `direct_playable`, so the transcode refusal below would read it as playable and
+    // download raw files this browser cannot play. Such a book is decided on its full
+    // item and chapters (through the query cache, as keep-ahead's `startOne` does), which
+    // also give the download its files. Native never transcodes, so it never asks.
+    const client = lacksPlayability(book, chapterData) ? resolveClient(connectionId) : null;
+    if (!client) return queueBook(connectionId, libraryId, book, chapterData, origin);
+    return (async () => {
+      const [item, chapters] = await Promise.allSettled([
+        queryClient.fetchQuery({
+          ...itemQuery(connectionId, client, libraryId, book.rel_path),
+          staleTime: 30_000,
+        }),
+        queryClient.fetchQuery({
+          ...chaptersQuery(connectionId, client, libraryId, book.rel_path),
+          staleTime: 30_000,
+        }),
+      ]);
+      // A lookup that failed decides on what the caller gave, as before.
+      return queueBook(
+        connectionId,
+        libraryId,
+        item.status === 'fulfilled' ? item.value : book,
+        chapters.status === 'fulfilled' ? chapters.value : chapterData,
+        origin,
+      );
     })();
   },
 
@@ -203,6 +183,76 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
 /** Put a book on the one-at-a-time queue (`download` decided it may go). An errored
  * entry is retried, keeping the files its failed attempt finished. */
+/** Whether a book's playability in this browser is unknown: on web, neither the book nor
+ * its chapters carry `direct_playable` (the list shape). */
+function lacksPlayability(book: Book, chapterData?: ChaptersResponse): boolean {
+  return (
+    Platform.OS === 'web' &&
+    book.direct_playable === undefined &&
+    chapterData?.direct_playable === undefined
+  );
+}
+
+/** `download()` once the book is known: the transcode refusal, then queue it by the
+ * listener's or the automatic rules. */
+function queueBook(
+  connectionId: string,
+  libraryId: number,
+  book: Book,
+  chapterData: ChaptersResponse | undefined,
+  origin: DownloadOrigin,
+): Promise<DownloadOutcome> {
+  const done = (outcome: DownloadOutcome) => Promise.resolve(outcome);
+  // A book this browser plays through the server's transcoder would download as its
+  // raw files, which it can't play offline: refuse (every path - the book page, auto
+  // download, keep-ahead - lands here). The UI says why (useDownloadControls, and the
+  // Downloads page's row for an earlier download of it that failed).
+  if (webTranscodeFromCache(connectionId, book, chapterData)) return done('transcoded');
+  const key = downloadKey(connectionId, libraryId, book.rel_path);
+  const existing = useDownloads.getState().entries[key];
+  if (existing && existing.status !== 'error') return done('exists'); // queued/downloading/done
+  if (origin === 'listener') {
+    declined.delete(key);
+    enqueue(key, connectionId, libraryId, book, chapterData, origin);
+    return done('queued');
+  }
+  // An automatic download (the book you start, keep-ahead) never takes back a book
+  // the listener cancelled or removed this session, and never eats into the reserve
+  // (`roomLeft`; an unknowable room lets it start, one at a time).
+  if (declined.has(key)) return done('declined');
+  return (async (): Promise<DownloadOutcome> => {
+    let storage: StorageEstimate | null = null;
+    try {
+      storage = await engine.storageEstimate();
+    } catch {
+      // not knowable: start it, one at a time like keep-ahead
+    }
+    const need = estimateBytes(book);
+    const entries = Object.entries(useDownloads.getState().entries);
+    const room = roomLeft(storage, pendingBytes(entries.map(([, e]) => e)));
+    // The book being listened to outranks keep-ahead's books still waiting their turn:
+    // if only they stand in its way, they step aside (keep-ahead plans them again
+    // around it, when they still fit). One already downloading finishes.
+    let yielding: string[] = [];
+    if (room !== null && need > room) {
+      if (origin !== 'auto') return 'no-space';
+      yielding = entries
+        .filter(([, e]) => e.origin === 'keep-ahead' && e.status === 'queued')
+        .map(([k]) => k);
+      const others = entries.filter(([k]) => !yielding.includes(k)).map(([, e]) => e);
+      const without = roomLeft(storage, pendingBytes(others));
+      if (without !== null && need > without) return 'no-space';
+    }
+    // Things may have moved while the room was read.
+    const now = useDownloads.getState().entries[key];
+    if (declined.has(key)) return 'declined';
+    if (now && now.status !== 'error') return 'exists';
+    for (const k of yielding) stepAside(k);
+    enqueue(key, connectionId, libraryId, book, chapterData, origin);
+    return 'queued';
+  })();
+}
+
 function enqueue(
   key: string,
   connectionId: string,

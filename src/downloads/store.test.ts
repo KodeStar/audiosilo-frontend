@@ -44,11 +44,16 @@ jest.mock('@/stores/session', () => ({
 // Avoid pulling the real React Query client / hooks graph into the unit test.
 // `getQueryData` answers the web transcode guard's cached `/server` read.
 const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
+// The full item/chapters lookup of a list-shape book on web (by query key).
+const mockFetchQuery = jest.fn((_o: { queryKey: unknown[] }): Promise<unknown> =>
+  Promise.reject(new Error('not mocked')),
+);
 jest.mock('@/api/provider', () => ({
   queryClient: {
     setQueryData: jest.fn(),
     invalidateQueries: jest.fn(),
     getQueryData: (...a: unknown[]) => mockGetQueryData(...a),
+    fetchQuery: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
   },
 }));
 jest.mock('@/api/hooks', () => ({
@@ -63,6 +68,12 @@ jest.mock('@/api/hooks', () => ({
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
     server: (cid: string) => ['server', cid],
   },
+  itemQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
+    queryKey: ['item', cid, lib, path],
+  }),
+  chaptersQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
+    queryKey: ['chapters', cid, lib, path],
+  }),
 }));
 
 // Imported after the mocks so the store binds to the fakes above.
@@ -523,6 +534,54 @@ describe('download() refuses a book this browser plays transcoded', () => {
     mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
     useDownloads.getState().download('c1', 2, ac3());
     expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeDefined();
+  });
+
+  // A list-shape book (`/books`, `/fs`, shelves, tiles) carries no `direct_playable`: on
+  // web it is decided on its full item and chapters, else the book menu downloaded raw
+  // files this browser could not play.
+  describe('a list-shape book on web', () => {
+    const listShape = () => makeBook({ title: 'From the list' });
+    const lookup = (full: Book) =>
+      mockFetchQuery.mockImplementation(async (o) =>
+        o.queryKey[0] === 'item'
+          ? full
+          : { chapters: [], files: [], direct_playable: full.direct_playable },
+      );
+    beforeEach(() => {
+      Platform.OS = 'web';
+      mockGetQueryData.mockReturnValue({ capabilities: { transcode: true } });
+      mockResolveClient.mockReturnValue({} as ApiClient);
+    });
+    afterEach(() => {
+      mockFetchQuery.mockReset();
+      mockResolveClient.mockReset().mockReturnValue(null);
+      useDownloads.setState({ entries: {} });
+    });
+
+    it('is refused as transcoded when its full item says the browser cannot play it', async () => {
+      lookup(ac3());
+      await expect(useDownloads.getState().download('c1', 2, listShape())).resolves.toBe(
+        'transcoded',
+      );
+      expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeUndefined();
+      expect(mockFetchQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['item', 'c1', 2, 'A/Book'] }),
+      );
+    });
+
+    it('downloads its full item when the browser plays it directly', async () => {
+      lookup(makeBook({ direct_playable: true, codec: 'mp3', title: 'Full item' }));
+      await expect(useDownloads.getState().download('c1', 2, listShape())).resolves.toBe('queued');
+      const entry = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+      expect(entry?.manifest.book.title).toBe('Full item');
+      expect(entry?.manifest.chapters).toEqual(expect.objectContaining({ direct_playable: true }));
+    });
+
+    it('never looks it up off web', async () => {
+      Platform.OS = 'ios';
+      await expect(useDownloads.getState().download('c1', 2, listShape())).resolves.toBe('queued');
+      expect(mockFetchQuery).not.toHaveBeenCalled();
+    });
   });
 });
 

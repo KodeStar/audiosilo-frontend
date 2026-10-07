@@ -1,4 +1,5 @@
-import { act, renderHook } from '@testing-library/react-native';
+import { act, fireEvent, renderHook, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import type { Book, Progress } from '@/api/types';
 
@@ -8,10 +9,17 @@ jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) 
 let mockCaps: Record<string, boolean | undefined> = {};
 const mockEdit = jest.fn();
 const mockMarkFinished = jest.fn();
+// The full item a list-shape book is looked up as (`useBook`; an empty path = not asked).
+let mockFull: Book | undefined;
+const mockUseBook = jest.fn();
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
+    useBook: (_lib: number, path: string) => {
+      mockUseBook(path);
+      return { data: path ? mockFull : undefined };
+    },
     useCapability: (flag: string) => mockCaps[flag],
     useEditProgress: () => ({ mutateAsync: mockEdit }),
     useMarkFinished: () => ({ mutate: mockMarkFinished }),
@@ -47,7 +55,9 @@ jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockP
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
 
-import { useBookActions } from './book-actions';
+import { mountWithPortal } from '@/testing/render-overlay';
+
+import { BookActionsButton, useBookActions } from './book-actions';
 /* eslint-enable import/first */
 
 const H = 3600;
@@ -81,13 +91,14 @@ const progress = (over: Partial<Progress> = {}): Progress => ({
 
 const ALL = { collections: true, progress_edit: true };
 
-async function actions(b: Book, p?: Progress) {
+async function actions(b: Book, p?: Progress, opened?: boolean) {
   const openCollect = jest.fn();
   const confirmRemove = jest.fn();
   const { result } = await renderHook(() =>
     useBookActions(
       { connectionId: 'c', libraryId: 1, book: b, progress: p },
       { openCollect, confirmRemove },
+      opened,
     ),
   );
   return {
@@ -219,6 +230,63 @@ describe('useBookActions, a downloaded book', () => {
     find('download')!.onPress();
     expect(confirmRemove).toHaveBeenCalledTimes(1);
     expect(mockRemove).not.toHaveBeenCalled();
+    mockEntry = undefined;
+  });
+});
+
+// On web, list responses carry no `direct_playable`: the menu used to download a book this
+// browser only plays transcoded (the store would read it as playable), and it then stopped
+// playing here. The full item decides, looked up once the menu is shown.
+describe('useBookActions on web, a list-shape book', () => {
+  const prevOS = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = 'web';
+    mockCaps = { ...ALL, transcode: true };
+    mockDownloadsSupported = true;
+    mockEntry = undefined;
+    mockFull = undefined;
+    mockDownload.mockReset();
+    mockUseBook.mockReset();
+  });
+  afterEach(() => {
+    Platform.OS = prevOS;
+  });
+
+  it('looks nothing up for a menu not shown, and offers no Download until it knows', async () => {
+    const { find } = await actions(book());
+    expect(mockUseBook).toHaveBeenCalledWith('');
+    expect(find('download')).toBeUndefined();
+  });
+
+  it('offers no Download for an AC-3 book the browser plays transcoded', async () => {
+    mockFull = book({ direct_playable: false, codec: 'ac3' });
+    const { find } = await actions(book(), undefined, true);
+    expect(mockUseBook).toHaveBeenCalledWith('Author/Series/01 - Book');
+    expect(find('download')).toBeUndefined();
+  });
+
+  it('downloads the full item of a book the browser plays directly', async () => {
+    const full = book({ direct_playable: true, codec: 'mp3' });
+    mockFull = full;
+    const { find } = await actions(book(), undefined, true);
+    expect(find('download')!.label).toBe('Download for offline');
+    find('download')!.onPress();
+    expect(mockDownload).toHaveBeenCalledWith('c', 1, full, undefined);
+  });
+
+  it('the menu looks the book up once it is opened, then offers its Download', async () => {
+    mockFull = book({ direct_playable: true, codec: 'mp3' });
+    await mountWithPortal(<BookActionsButton connectionId="c" libraryId={1} book={book()} />);
+    expect(mockUseBook).not.toHaveBeenCalledWith('Author/Series/01 - Book');
+    await fireEvent.press(screen.getByLabelText('More for Book'));
+    expect(mockUseBook).toHaveBeenCalledWith('Author/Series/01 - Book');
+    expect(screen.getByText('Download for offline')).toBeTruthy();
+  });
+
+  it('keeps a download already there manageable before it knows', async () => {
+    mockEntry = { status: 'downloaded' };
+    const { find } = await actions(book());
+    expect(find('download')!.label).toBe('Remove download');
     mockEntry = undefined;
   });
 });

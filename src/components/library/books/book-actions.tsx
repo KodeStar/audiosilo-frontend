@@ -3,7 +3,13 @@ import { Fragment, type ReactElement, type Ref, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable } from 'react-native';
 
-import { CapabilityError, useCapability, useEditProgress, useMarkFinished } from '@/api/hooks';
+import {
+  CapabilityError,
+  useBook,
+  useCapability,
+  useEditProgress,
+  useMarkFinished,
+} from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { usePlayBook } from '@/components/player/use-play-book';
@@ -52,6 +58,13 @@ type Target = { connectionId: string; libraryId: number; book: Book; progress?: 
 /** The dialogs an action opens, which the menu's owner renders. */
 export type BookActionDialogs = { openCollect: () => void; confirmRemove: () => void };
 
+/** Whether this browser's verdict on `book` is unknown: on web, a list-shape book (`/books`,
+ * `/fs`, shelves, tiles) carries no `direct_playable`, so it may be one that only plays
+ * transcoded here and cannot be downloaded. Its full item says. */
+function playabilityUnknown(book: Book): boolean {
+  return Platform.OS === 'web' && book.direct_playable === undefined;
+}
+
 /**
  * What can be done to a book from a list, each only where its server and this platform
  * allow it (a capability still unknown hides its item): Play or Resume, Add to / Remove
@@ -59,10 +72,15 @@ export type BookActionDialogs = { openCollect: () => void; confirmRemove: () => 
  * finished / not finished, More in this series. `openCollect` opens the Add to
  * collection dialog and `confirmRemove` the remove-download confirm, both rendered by
  * the caller (`BookActionsMenu`): removing a download asks first, as everywhere.
+ *
+ * On web a list-shape `book` is looked up in full once `opened` (the menu was shown; not
+ * per row of a list), and Download waits for it: offered only when the browser plays
+ * the book directly, so the menu never offers a download that would be refused.
  */
 export function useBookActions(
   { connectionId, libraryId, book, progress }: Target,
   { openCollect, confirmRemove }: BookActionDialogs,
+  opened = false,
 ): BookAction[] {
   const { t } = useTranslation();
   const path = book.rel_path;
@@ -73,7 +91,11 @@ export function useBookActions(
   const progressEdit = useCapability('progress_edit', connectionId);
   const edit = useEditProgress(connectionId);
   const markFinished = useMarkFinished(connectionId);
-  const download = useDownloadControls(libraryId, path, book, undefined, connectionId);
+  const unknown = playabilityUnknown(book);
+  // An empty path keeps the lookup off until it is wanted.
+  const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
+  const known = unknown ? full.data : book;
+  const download = useDownloadControls(libraryId, path, known ?? book, undefined, connectionId);
   const status = bookStatus(progress);
 
   const failed = (e: unknown) => {
@@ -154,8 +176,9 @@ export function useBookActions(
       onPress: openCollect,
     });
   }
-  if (download.supported) {
-    const s = download.status;
+  const s = download.status;
+  // A download already there stays manageable; a new one waits for the verdict.
+  if (download.supported && (known || (s !== undefined && s !== 'error'))) {
     const state =
       s === 'downloaded' ? 'remove' : s === 'downloading' || s === 'queued' ? 'cancel' : 'start';
     const run = {
@@ -237,10 +260,14 @@ export function BookActionsMenu({
   const phone = useLayout() === 'phone';
   const [collect, setCollect] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // Shown once (the sheet, or the menu): what the actions look up waits for it.
+  const [opened, setOpened] = useState(false);
+  if (sheetOpen && !opened) setOpened(true);
   const actions = [
     ...useBookActions(
       { connectionId, libraryId, book, progress },
       { openCollect: () => setCollect(true), confirmRemove: () => setRemoving(true) },
+      opened,
     ),
     ...extra,
   ];
@@ -249,7 +276,7 @@ export function BookActionsMenu({
       {phone ? (
         trigger
       ) : (
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={(open) => open && setOpened(true)}>
           <DropdownMenuTrigger ref={triggerRef} asChild>
             {trigger}
           </DropdownMenuTrigger>
