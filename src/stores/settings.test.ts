@@ -80,6 +80,8 @@ describe('settings store', () => {
         autoSleepFrom: '22:00',
         autoSleepUntil: '06:00',
         autoSleepType: 'chapter',
+        shakeToExtend: true,
+        shakeSensitivity: 'medium',
       }),
     );
 
@@ -153,5 +155,32 @@ describe('settings store', () => {
     useSettings.getState().setKeepAhead(2);
     await restart();
     expect(useSettings.getState().keepAhead).toBe(2);
+  });
+
+  it('shakes to extend at medium sensitivity for a blob saved before the settings existed', async () => {
+    await AsyncStorage.setItem(KEY, JSON.stringify({ skipForward: 45 }));
+    await useSettings.getState().hydrate();
+    expect(useSettings.getState().shakeToExtend).toBe(true);
+    expect(useSettings.getState().shakeSensitivity).toBe('medium');
+  });
+
+  it('reads a corrupt stored shake setting as the default', async () => {
+    await AsyncStorage.setItem(
+      KEY,
+      JSON.stringify({ shakeToExtend: 'yes', shakeSensitivity: 'extreme' }),
+    );
+    await useSettings.getState().hydrate();
+    // Only an explicit false switches the feature off.
+    expect(useSettings.getState().shakeToExtend).toBe(true);
+    expect(useSettings.getState().shakeSensitivity).toBe('medium');
+  });
+
+  it('persists and round-trips the shake settings', async () => {
+    await useSettings.getState().hydrate();
+    useSettings.getState().setShakeToExtend(false);
+    useSettings.getState().setShakeSensitivity('high');
+    await restart();
+    expect(useSettings.getState().shakeToExtend).toBe(false);
+    expect(useSettings.getState().shakeSensitivity).toBe('high');
   });
 });
