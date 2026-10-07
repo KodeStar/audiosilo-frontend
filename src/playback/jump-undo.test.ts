@@ -138,6 +138,30 @@ describe('startJumpUndo', () => {
     stop();
   });
 
+  it('records an Android media-session next chapter (clip transition, then a rebuffer)', () => {
+    // Media3 seekToNext moves to the next chapter clip: onPositionDiscontinuity reports
+    // the new file-relative position while the state is still playing, then the clip
+    // buffers and plays on.
+    const { report, jump, stop } = playingAt(3700);
+    jest.advanceTimersByTime(400);
+    report('playing', 3960);
+    report('loading', 3960);
+    jest.advanceTimersByTime(800);
+    report('playing', 3960.3);
+    expect(jump()?.from).toBe(3703);
+    stop();
+  });
+
+  it('does not record a next chapter that lands a minute or less ahead', () => {
+    // A 60 s chapter (The Short Light): no next chapter is ever more than a minute away.
+    const { report, jump, stop } = playingAt(130);
+    report('playing', 180);
+    report('loading', 180);
+    report('playing', 180.2);
+    expect(jump()).toBeNull();
+    stop();
+  });
+
   it('records a jump made while paused, however long after (a lock-screen seek)', () => {
     const { report, jump, stop } = playingAt(1000);
     report('paused', 1003.5);
