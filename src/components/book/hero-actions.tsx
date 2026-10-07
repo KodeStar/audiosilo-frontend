@@ -78,6 +78,7 @@ export function HeroActions({
       book={book}
       chapterData={chapterData}
       disabled={chaptersLoading}
+      short={stacked}
     />
   );
   const icons = (

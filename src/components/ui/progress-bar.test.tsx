@@ -4,10 +4,17 @@ import { ProgressBar } from './progress-bar';
 
 type Node = { props: { className?: string; style?: { width?: string } }; children: Node[] };
 
-async function bar(el: React.ReactElement): Promise<{ track: string; fill: string }> {
+async function bar(
+  el: React.ReactElement,
+): Promise<{ track: string; fill: string; fillClass: string }> {
   await render(el);
   const root = screen.toJSON() as unknown as Node;
-  return { track: String(root.props.className), fill: String(root.children[0].props.style?.width) };
+  const fill = root.children[0].props;
+  return {
+    track: String(root.props.className),
+    fill: String(fill.style?.width),
+    fillClass: String(fill.className),
+  };
 }
 
 describe('ProgressBar', () => {
@@ -22,5 +29,14 @@ describe('ProgressBar', () => {
     expect(track).toContain('h-1.5');
     expect(track).toContain('bg-white/35');
     expect(track).not.toContain('bg-muted');
+  });
+
+  it('lets the caller recolour the fill (a second bar where the pink is elsewhere)', async () => {
+    expect((await bar(<ProgressBar fraction={0.5} />)).fillClass).toContain('bg-brand');
+    const { fillClass } = await bar(
+      <ProgressBar fraction={0.5} fillClassName="bg-foreground/60" />,
+    );
+    expect(fillClass).toContain('bg-foreground/60');
+    expect(fillClass).not.toContain('bg-brand');
   });
 });

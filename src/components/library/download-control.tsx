@@ -13,42 +13,46 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
-import { useLayout } from '@/lib/layout';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** The full control's buttons give way in a tight row (the Button base is `shrink-0`). */
 const SHRINKS = 'max-w-full shrink';
 
-/** Download affordance on the book detail screen: Download for offline / "52% · Cancel"
- * / Downloaded (a menu with its size and Remove download) / Retry download, with a
- * fallback when offline storage is unavailable (an insecure-context or very old browser,
- * or a book this browser only plays converted). Delete asks first (the Downloads page's
- * confirm, with the size): the only undo is downloading the book again. */
+/**
+ * The book hero's download control (the prototype's `DownloadControl`): Download for
+ * offline / "52% · Cancel" / Downloaded (a menu with its size and Remove download) /
+ * Retry download, with a fallback when offline storage is unavailable (an
+ * insecure-context or very old browser, or a book this browser only plays converted).
+ * Delete asks first (the Downloads page's confirm, with the size): the only undo is
+ * downloading the book again. An outline button per state, so the hero's one pink thing
+ * stays its progress bar. It may shrink (a phone's row keeps the hero's icon buttons
+ * beside it), its words ending in "..." rather than wrapping the row.
+ */
 export function DownloadControl({
   libraryId,
   path,
   book,
   chapterData,
   disabled,
-  compact,
+  short,
 }: {
   libraryId: number;
   path: string;
   book?: Book;
   chapterData?: ChaptersResponse;
   disabled?: boolean;
-  /** Render an icon-only square button (sits inline next to the Listen button). */
-  compact?: boolean;
+  /** The hero's row is narrow (stacked, by the page's measured width): the short words,
+   * beside its icon buttons. */
+  short?: boolean;
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  // A phone's row is narrow: the short word, beside the hero's icon buttons.
-  const phone = useLayout() === 'phone';
   const {
     connectionId,
     supported,
@@ -73,65 +77,6 @@ export function DownloadControl({
     />
   );
 
-  // Icon-only variant for the overview's inline button row. Each state collapses
-  // to a single square (height matches the Listen button via the row's stretch).
-  if (compact) {
-    if (!supported) {
-      return (
-        <Button
-          icon="download"
-          variant="secondary"
-          size="lg"
-          disabled
-          accessibilityLabel={unavailableLabel}
-        />
-      );
-    }
-    // The icon shows the action, not the state: trash = delete the download,
-    // stop = cancel the one in progress (the bar below already signals progress).
-    if (status === 'downloaded') {
-      return (
-        <>
-          <Button
-            icon="trash"
-            variant="secondary"
-            size="lg"
-            onPress={() => setConfirming(true)}
-            accessibilityLabel={t('library.download.remove')}
-          />
-          {confirm}
-        </>
-      );
-    }
-    if (status === 'downloading' || status === 'queued') {
-      return (
-        <Button
-          icon="circle-stop"
-          variant="secondary"
-          size="lg"
-          onPress={cancel}
-          accessibilityLabel={t('library.download.cancel')}
-        />
-      );
-    }
-    return (
-      <Button
-        icon="download"
-        variant="secondary"
-        size="lg"
-        disabled={disabled || !book}
-        onPress={start}
-        accessibilityLabel={
-          status === 'error' ? t('library.download.retry') : t('library.download.download')
-        }
-      />
-    );
-  }
-
-  // The book hero's full-width control (the prototype's `DownloadControl`): an outline
-  // button per state, so the hero's one pink thing stays its progress bar. It may shrink
-  // (a phone's row keeps the hero's icon buttons beside it), its words ending in "..."
-  // rather than wrapping the row.
   const words = (text: string) => (
     <Text numberOfLines={1} className="shrink" style={tabularNums}>
       {text}
@@ -208,10 +153,10 @@ export function DownloadControl({
           color={themed.foreground}
           trackColor={themed.border}
         />
-        {/* A phone says only Cancel: the ring and the progress line under the hero
+        {/* A short row says only Cancel: the ring and the progress line under the hero
             carry the percent, and "52% · Cancel" pushed the row's icons onto a second
             row at 400. */}
-        {words(phone ? t('common.cancel') : said)}
+        {words(short ? t('common.cancel') : said)}
       </Button>
     );
   }
@@ -219,7 +164,7 @@ export function DownloadControl({
   const idleLabel =
     status === 'error'
       ? t('library.download.retry')
-      : phone
+      : short
         ? t('library.download.download')
         : t('book.download.forOffline');
   return (
@@ -251,7 +196,6 @@ export function DownloadProgress({ libraryId, path }: { libraryId: number; path:
   const { t } = useTranslation();
   const { status, progress, bytes, totalBytes } = useDownloadControls(libraryId, path);
   if (status !== 'downloading' && status !== 'queued') return null;
-  const percent = Math.max(4, Math.min(100, progress * 100));
   return (
     <View className="max-w-[560px] gap-1.5">
       <Text variant="caption" numberOfLines={1} style={tabularNums}>
@@ -260,9 +204,7 @@ export function DownloadProgress({ libraryId, path }: { libraryId: number; path:
           : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
-      <View className="h-1 overflow-hidden rounded-full bg-muted">
-        <View className="h-full rounded-full bg-foreground/60" style={{ width: `${percent}%` }} />
-      </View>
+      <ProgressBar fraction={progress} minPercent={4} fillClassName="bg-foreground/60" />
     </View>
   );
 }

@@ -273,7 +273,7 @@ where `browse_people` is off), the facts (`bookFacts`), then the place of a book
 pink thing) or the finished badge (`finished_at`) and the stars (`ratings`, `useBookRating`
 keeps the note). **Actions** (`hero-actions.tsx`): the primary (`primaryAction`: Pause while
 this book plays, Resume chapter N, Start listening, Listen again; through `usePlayBook` with
-`toggle`, so it never restarts the loaded book), `DownloadControl`'s full form, Up next (Play
+`toggle`, so it never restarts the loaded book), `DownloadControl` (`short` on a stacked hero), Up next (Play
 next / Add to the end, `queue`), favourite (ink, never pink), Add to collection
 (`collections`) and `BookActionsMenu` with `omit` (the items the hero already has).
 `DownloadProgress` and the transcode note sit under them. Chapter rows, timeline taps and pins

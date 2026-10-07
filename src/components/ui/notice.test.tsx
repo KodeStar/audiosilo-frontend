@@ -35,7 +35,7 @@ describe('Notice', () => {
   it.each(['success', 'warning'] as const)('tints its glyph and tile for %s', async (tone) => {
     await render(<Notice icon="circle-check" tone={tone} title="T" body="B" testID="n" />);
     expect(fills()).toEqual([argb(colors.light[tone])]);
-    const tile = screen.getByTestId('n').children[0] as { props: { className: string } };
+    const tile = screen.getByTestId('n').children[0] as unknown as { props: { className: string } };
     expect(tile.props.className).toContain(`bg-${tone}-soft`);
   });
 });
