@@ -151,6 +151,67 @@
       "downloadsWarning_other": "Cerrar sesión también eliminará {{count}} libros descargados de este servidor en este dispositivo."
     }
   },
+  "annotations": {
+    "labels": {
+      "quote": "Cita",
+      "favourite": "Favorito",
+      "relisten": "Volver a escuchar",
+      "funny": "Divertido",
+      "question": "Pregunta",
+      "fell_asleep": "Me dormí"
+    },
+    "labelGroup": "Etiqueta",
+    "labelClearHint": "Toca de nuevo para quitar la etiqueta",
+    "quoted": "«{{text}}»",
+    "jumpTo": "Ir a {{time}}",
+    "jumpFailed": "No se pudo empezar el libro ahí",
+    "undo": "Deshacer",
+    "seeAll": "Ver todo en tu diario",
+    "editUnsupported": "Para editar hace falta un servidor AudioSilo más reciente.",
+    "drift": {
+      "marker": "Te quedaste dormido por aquí"
+    },
+    "bookmark": {
+      "title": "Marcador",
+      "editTitle": "Editar marcador",
+      "noteLabel": "Nota",
+      "notePlaceholder": "¿Qué pasó aquí? Una cita, una idea, un recordatorio.",
+      "save": "Guardar marcador",
+      "addAt": "Marcador en {{time}}",
+      "saved": "Marcador guardado",
+      "saveFailed": "No se pudo guardar el marcador",
+      "deleted": "Marcador eliminado",
+      "deleteFailed": "No se pudo eliminar el marcador",
+      "restoreFailed": "No se pudo recuperar el marcador",
+      "edit": "Editar marcador en {{time}}",
+      "delete": "Eliminar marcador en {{time}}",
+      "noNote": "Sin nota",
+      "addNote": "Añadir nota",
+      "loadFailed": "No se pudieron cargar tus marcadores",
+      "emptyHintWeb": "Pulsa B mientras escuchas o toca el marcador en el reproductor.",
+      "emptyHintNative": "Toca el marcador en el reproductor mientras escuchas."
+    },
+    "note": {
+      "title": "Nota",
+      "editTitle": "Editar nota",
+      "bodyLabel": "Nota",
+      "placeholder": "Admite markdown: **negrita**, *cursiva*, listas.",
+      "pin": "Fijar nota",
+      "save": "Guardar nota",
+      "addAt": "Nota en {{time}}",
+      "pinned": "Nota fijada en {{time}}",
+      "saved": "Nota guardada",
+      "saveFailed": "No se pudo guardar la nota",
+      "deleted": "Nota eliminada",
+      "deleteFailed": "No se pudo eliminar la nota",
+      "restoreFailed": "No se pudo recuperar la nota",
+      "edit": "Editar nota en {{time}}",
+      "delete": "Eliminar nota en {{time}}",
+      "loadFailed": "No se pudieron cargar tus notas",
+      "empty": "Aún no hay notas.",
+      "emptyHint": "Fija una idea, una teoría o un recordatorio en un punto del libro."
+    }
+  },
   "connect": {
     "server": {
       "subtitle": "Conéctate a tu servidor de audiolibros",

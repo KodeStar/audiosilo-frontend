@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { AnnotationEditorSheet } from '@/components/annotations/annotation-editor';
 import { UpNextSheet } from '@/components/upnext/up-next-sheet';
 import { type LayoutClass, useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
@@ -12,24 +13,16 @@ import { GraceCard } from './grace-card';
 import { PlayerSheet } from './player-sheet';
 import { addBookmarkHere } from './player-shortcuts';
 import {
+  dropsWithBook,
+  editorFor,
   hostIsActive,
-  type PlayerSheet as PlayerSheetName,
   type SheetHostScope,
+  shownSheet,
   usePlayerOnTop,
   usePlayerSheets,
 } from './player-sheets';
 import { SleepSheet } from './sleep-timer-button';
 import { SpeedSheet } from './speed-button';
-
-/** The requests that need a loaded book (Up next and the shortcuts overlay do not). */
-const BOOK_SHEETS: ReadonlySet<PlayerSheetName> = new Set([
-  'speed',
-  'sleep',
-  'bookmark',
-  'output',
-  'chapters',
-  'companion',
-]);
 
 /**
  * The player's sheets, rendered from `usePlayerSheets` (STYLEGUIDE section 8, "Sheets"):
@@ -43,8 +36,10 @@ const BOOK_SHEETS: ReadonlySet<PlayerSheetName> = new Set([
  *   or inline companion already shows the tab, so the request just closes. The shell
  *   leaves it for the full player it is opening (the reveal toast's Show).
  * - `upnext`: Up next's sheet on a tablet or phone, with or without a book loaded.
- * - `bookmark` and `output` are actions, not sheets: a bookmark here (with its toast) or
- *   the system route picker. `shortcuts` is the web shell's `ShortcutsDialog`.
+ * - `bookmark` and `note` with an editor request (`openEditor`): the bookmark or note
+ *   editor, for any book on any connection, playing or not (`AnnotationEditorSheet`).
+ * - `bookmark` without one and `output` are actions, not sheets: a bookmark here (with its
+ *   toast) or the system route picker. `shortcuts` is the web shell's `ShortcutsDialog`.
  *
  * Mounted twice: inside the full player (`scope="player"`, with its measured `layout`)
  * and once in the app shell (`scope="shell"`, for the docked bar, the mini players and
@@ -71,16 +66,19 @@ export function PlayerSheetHost({
   // A book without a whole-book timeline lists its files.
   const perFile = usePlayer((s) => (s.nowPlaying?.queue.total ?? 1) <= 0);
   const open = usePlayerSheets((s) => s.open);
+  const editorRequest = usePlayerSheets((s) => s.editor);
   const close = usePlayerSheets((s) => s.close);
   const request = active ? open : null;
-  // The player's own sheets need a book; Up next does not.
-  const shown = loaded ? request : null;
+  // The player's own sheets need a book; Up next and the editors (which carry their own
+  // book) do not.
+  const shown = shownSheet(request, editorRequest, loaded);
+  const editor = shown ? editorFor(shown, editorRequest) : null;
   // Where the full player shows the companion itself (a column, inline), or as a sheet.
   const companionSheet = inPlayer && layout === 'phone';
 
   // The requests this host turns into something else.
   useEffect(() => {
-    if (shown === 'bookmark') {
+    if (shown === 'bookmark' && !editor) {
       close();
       void addBookmarkHere(t);
     } else if (shown === 'output') {
@@ -92,14 +90,15 @@ export function PlayerSheetHost({
     } else if (shown === 'companion' && inPlayer && !companionSheet) {
       close();
     }
-  }, [shown, close, t, inPlayer, layout, companionSheet]);
+  }, [shown, editor, close, t, inPlayer, layout, companionSheet]);
 
   // A book's sheets go with the book: when it unloads (it ended, Mark as finished) the
-  // hidden request is dropped, or the next book to load would open it by itself.
+  // hidden request is dropped, or the next book to load would open it by itself. An
+  // editor stays (`dropsWithBook`): it is about its own book, playing or not.
   useEffect(() => {
-    if (!active || loaded || !open || !BOOK_SHEETS.has(open)) return;
+    if (!active || loaded || !dropsWithBook(open, editorRequest)) return;
     close();
-  }, [active, loaded, open, close]);
+  }, [active, loaded, open, editorRequest, close]);
 
   // The full player's sheet goes with it (the keyboard overlay is the shell's own).
   useEffect(() => {
@@ -137,6 +136,7 @@ export function PlayerSheetHost({
         </PlayerSheet>
       ) : null}
       <UpNextSheet visible={request === 'upnext'} onClose={close} />
+      <AnnotationEditorSheet visible={!!editor} request={editorRequest} onClose={close} />
     </>
   );
 }
