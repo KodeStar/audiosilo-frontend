@@ -39,13 +39,25 @@ beforeEach(() => {
 });
 
 describe('DownloadControl', () => {
+  // The compact control removes from its trash button; the hero's full one from the
+  // menu its "Downloaded" button opens (with the size on this device).
+  const pressRemove = async (compact: boolean) => {
+    if (!compact) {
+      await fireEvent.press(screen.getByRole('button', { name: 'Downloaded' }));
+      expect(screen.getByText('50 MB on this device')).toBeTruthy();
+      await fireEvent.press(screen.getByText('Remove download'));
+    } else {
+      await fireEvent.press(screen.getByRole('button', { name: 'Remove download' }));
+    }
+  };
+
   it.each([false, true])(
     'asks before deleting a download, with its size (compact %s)',
     async (compact) => {
       await mountWithPortal(
         <DownloadControl libraryId={1} path="b" book={book} compact={compact} />,
       );
-      await fireEvent.press(screen.getByRole('button', { name: 'Remove download' }));
+      await pressRemove(compact);
       expect(mockRemove).not.toHaveBeenCalled();
       expect(screen.getByText('Remove this download?')).toBeTruthy();
       expect(screen.getByText(/Blood Rites will need a connection.*It frees 50 MB\./)).toBeTruthy();
@@ -53,12 +65,33 @@ describe('DownloadControl', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
       expect(mockRemove).not.toHaveBeenCalled();
 
-      await fireEvent.press(screen.getByRole('button', { name: 'Remove download' }));
+      await pressRemove(compact);
       await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
       expect(mockRemove).toHaveBeenCalledTimes(1);
       expect(mockRemove).toHaveBeenCalledWith('c', 1, 'b');
     },
   );
+
+  it('shows the percent on the full control, and cancels from it', async () => {
+    const cancel = jest.fn();
+    mockControlsOverride = { status: 'downloading', progress: 0.52, cancel };
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
+    expect(screen.getByText('52% · Cancel')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: '52% · Cancel, Cancel download' }));
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the download for offline, and a retry after a failure', async () => {
+    const start = jest.fn();
+    mockControlsOverride = { status: undefined, start };
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Download for offline' }));
+    expect(start).toHaveBeenCalledTimes(1);
+    mockControlsOverride = { status: 'error', error: 'The server stopped responding.', start };
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
+    expect(screen.getByRole('button', { name: 'Retry download' })).toBeTruthy();
+    expect(screen.getByText('The server stopped responding.')).toBeTruthy();
+  });
 
   it.each([false, true])(
     'says why when this browser plays the book transcoded (compact %s)',

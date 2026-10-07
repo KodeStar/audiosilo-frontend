@@ -19,12 +19,17 @@ jest.mock('@/api/hooks', () => ({
 }));
 // CoverFrame's iOS shadow hook reads the theme provider, whose module side-effect-
 // imports global.css (unparseable in Node); stub the hook.
+const mockOpenExternal = jest.fn();
+jest.mock('@/lib/support', () => ({
+  openExternalUrl: (url: string) => mockOpenExternal(url),
+}));
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'dark', pref: 'dark', setPref: jest.fn() }),
 }));
 
 /* eslint-disable import/first */
 import {
+  aboutText,
   BookMetaAbout,
   BookMetaCharactersTab,
   BookMetaRecapsTab,
@@ -72,6 +77,7 @@ function RecapsTab({ summaryVisible, ...props }: RecapsProps) {
 }
 
 beforeEach(() => {
+  mockOpenExternal.mockReset();
   mockUseMetaWork.mockReset();
   mockUseMetaWork.mockReturnValue({ data: undefined, isError: false });
 });
@@ -128,13 +134,66 @@ const matched: MatchedBookMeta = {
 
 describe('BookMetaAbout', () => {
   it('renders the description, production details and the meta link', async () => {
-    await mount(<BookMetaAbout meta={matched} />);
+    await mount(<BookMetaAbout meta={matched} fallback="Nothing" />);
     expect(screen.getByText('About')).toBeTruthy();
     expect(screen.getByText('In a hole in the ground there lived a hobbit.')).toBeTruthy();
     expect(screen.getByText('Recorded Books')).toBeTruthy();
     expect(screen.getByText('1937')).toBeTruthy();
     expect(screen.getByText('Abridged')).toBeTruthy();
-    expect(screen.getByText('View on AudioSilo Meta')).toBeTruthy();
+    expect(screen.getByText('Yes')).toBeTruthy();
+    expect(screen.queryByText('Nothing')).toBeNull();
+    // No community text: no licence line, and the work's page is one quiet link away.
+    expect(screen.queryByText('Improve this')).toBeNull();
+    await press('View on AudioSilo Meta');
+    expect(mockOpenExternal).toHaveBeenCalledWith('https://m/work?id=the-hobbit');
+  });
+
+  it('leads with the community description, credited, with Improve this', async () => {
+    const community: MatchedBookMeta = {
+      ...matched,
+      work: {
+        ...matched.work,
+        community_description: { text: 'A hobbit goes there and back again.' },
+        attribution: {
+          credit: 'AudioSilo Meta contributors',
+          license: 'CC BY-SA 4.0',
+          license_url: 'https://cc/by-sa',
+          source_url: 'https://m/work?id=the-hobbit&edit',
+        },
+      },
+    };
+    await mount(<BookMetaAbout meta={community} description="Server text." fallback="x" />);
+    expect(screen.getByText('A hobbit goes there and back again.')).toBeTruthy();
+    expect(screen.queryByText('Server text.')).toBeNull();
+    expect(screen.getByText('CC BY-SA 4.0')).toBeTruthy();
+    await press('Improve this');
+    expect(mockOpenExternal).toHaveBeenCalledWith('https://m/work?id=the-hobbit&edit');
+  });
+
+  it('reads complete for an unmatched book: the server text or the fallback', async () => {
+    await mount(<BookMetaAbout description="  The server's own words.  " fallback="x" />);
+    expect(screen.getByText("The server's own words.")).toBeTruthy();
+    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
+    await mount(<BookMetaAbout published="2010-08-31" fallback="Words by Someone." />);
+    expect(screen.getByText('Words by Someone.')).toBeTruthy();
+    expect(screen.getByText('2010-08-31')).toBeTruthy();
+    expect(screen.queryByText('Publisher')).toBeNull();
+  });
+});
+
+describe('aboutText', () => {
+  it('prefers the community text, then the server, then the work', () => {
+    const withCommunity = {
+      ...matched,
+      work: { ...matched.work, community_description: { text: ' Community. ' } },
+    };
+    expect(aboutText(withCommunity, 'Server.')).toEqual({ text: 'Community.', community: true });
+    expect(aboutText(matched, 'Server.')).toEqual({ text: 'Server.', community: false });
+    expect(aboutText(matched, '  ')).toEqual({
+      text: 'In a hole in the ground there lived a hobbit.',
+      community: false,
+    });
+    expect(aboutText(undefined, undefined)).toEqual({ text: '', community: false });
   });
 });
 

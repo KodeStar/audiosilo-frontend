@@ -346,21 +346,12 @@
       "delete": "Eliminar marcador"
     },
     "versions": {
-      "choose": "Elegir una versión",
-      "thisCopy": "Esta copia",
-      "otherCount_one": "{{count}} otra versión",
-      "otherCount_other": "{{count}} otras versiones",
       "multiFile": "varios archivos",
       "singleFile": "un solo archivo"
     },
     "favourite": {
       "remove": "Quitar de favoritos",
       "add": "Añadir a favoritos"
-    },
-    "bookStats": {
-      "favourite": "Favorito",
-      "audio": "Audio",
-      "length": "duración"
     },
     "download": {
       "unavailable": "Descargas no disponibles",
@@ -725,11 +716,7 @@
     "libraryFallback": "Biblioteca",
     "chaptersTitle": "Capítulos",
     "filesTitle": "Archivos",
-    "chapterFallback": "Capítulo {{number}}",
     "duration": "Duración: {{value}}",
-    "bitrate": "Tasa de bits: {{value}}",
-    "byAuthor": "De {{author}}",
-    "narratedBy": "Narrado por {{narrator}}",
     "transcodeNote": "El audio {{codec}} se convierte a MP3 para este navegador",
     "transcodeNoteGeneric": "Este audio se convierte a MP3 para este navegador",
     "listen": "Escuchar",
@@ -782,7 +769,95 @@
         "minor": "Menor"
       }
     },
-    "openPlayer": "Abrir el reproductor"
+    "page": {
+      "crumbs": "Dónde está este libro",
+      "loading": "Cargando el libro"
+    },
+    "hero": {
+      "by": "de",
+      "readBy": "leído por",
+      "openAuthor": "Libros de {{name}}",
+      "openNarrator": "Libros leídos por {{name}}",
+      "openSeries": "Abrir la serie {{series}}",
+      "seriesBook": "{{series}} · Libro {{position}}",
+      "chapters_one": "{{count}} capítulo",
+      "chapters_other": "{{count}} capítulos",
+      "parts_one": "{{count}} parte de {{minutes}} min",
+      "parts_other": "{{count}} partes de {{minutes}} min",
+      "files_one": "{{count}} archivo {{format}}",
+      "files_other": "{{count}} archivos {{format}}",
+      "chapterOf": "Capítulo {{chapter}} de {{total}}",
+      "partOf": "Parte {{part}} de {{total}}",
+      "finished": "Terminado",
+      "finishedOn": "Terminado el {{date}}",
+      "start": "Empezar a escuchar",
+      "resume": "Reanudar",
+      "resumeChapter": "Reanudar capítulo {{chapter}}",
+      "again": "Volver a escuchar",
+      "pause": "Pausa"
+    },
+    "upNext": {
+      "label": "A continuación para {{title}}",
+      "playNext": "Reproducir a continuación",
+      "addToEnd": "Añadir al final de A continuación",
+      "playsNext": "Se reproducirá a continuación"
+    },
+    "download": {
+      "forOffline": "Descargar para escuchar sin conexión",
+      "progressCancel": "{{percent}} % · Cancelar",
+      "queuedCancel": "En cola · Cancelar",
+      "onDevice": "{{size}} en este dispositivo"
+    },
+    "chapters": {
+      "wholeBook": "El libro entero",
+      "bookmarks": "Marcadores",
+      "notes": "Notas",
+      "parts": "Partes",
+      "part": "Parte {{number}}",
+      "partsTitle": "Este libro no tiene marcas de capítulo",
+      "partsBody": "Por eso está dividido en partes de {{minutes}} minutos entre las que puedes saltar. Cambia su duración en Ajustes, en Duración del capítulo.",
+      "here": "estás aquí",
+      "heard": "escuchado",
+      "hasBookmark": "tiene un marcador",
+      "startsAt": "empieza en {{time}}"
+    },
+    "details": {
+      "title": "Detalles",
+      "direct": "Reproducción directa",
+      "directBody": "El archivo original se transmite tal cual. No se convierte nada y los saltos son instantáneos.",
+      "local": "Se reproduce desde este dispositivo",
+      "localBody": "Los archivos originales descargados se reproducen aquí, con o sin conexión.",
+      "converted": "Convertido para este navegador",
+      "convertedBody": "Este navegador no puede reproducir {{codec}}, así que {{server}} lo convierte mientras escuchas. Las apps de iOS y Android reproducen el original.",
+      "convertedBodyGeneric": "Este navegador no puede reproducir este audio, así que {{server}} lo convierte mientras escuchas. Las apps de iOS y Android reproducen el original.",
+      "file": "Archivo",
+      "codec": "Códec",
+      "bitrate": "Tasa de bits",
+      "length": "Duración",
+      "kbps": "unos {{kbps}} kbps",
+      "moreFiles_one": "y {{count}} archivo más",
+      "moreFiles_other": "y {{count}} archivos más",
+      "pathOn": "Ruta en {{server}}",
+      "pathNote": "Los libros se identifican por esta ruta, así que tu progreso sobrevive a los cambios de etiquetas y a los nuevos escaneos."
+    },
+    "about": {
+      "improve": "Mejorar esto",
+      "yes": "Sí",
+      "no": "No",
+      "fallbackBoth": "{{title}} de {{author}}, leído por {{narrator}}.",
+      "fallbackAuthor": "{{title}} de {{author}}.",
+      "none": "Todavía no hay descripción."
+    },
+    "versions": {
+      "title": "Otras versiones"
+    },
+    "listening": {
+      "title": "Tu escucha",
+      "listened": "Escuchado",
+      "speed": "Velocidad",
+      "started": "Empezado",
+      "finished": "Terminado"
+    }
   },
   "player": {
     "controls": {

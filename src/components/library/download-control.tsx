@@ -1,20 +1,29 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { Book, ChaptersResponse } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
-import { ProgressBar } from '@/components/ui/progress-bar';
+import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
+import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** Download affordance on the book detail screen: download / progress+cancel /
- * downloaded+delete / retry, with a fallback when offline storage is unavailable
- * (an insecure-context or very old browser). Delete asks first (the Downloads page's
+/** Download affordance on the book detail screen: Download for offline / "52% · Cancel"
+ * / Downloaded (a menu with its size and Remove download) / Retry download, with a
+ * fallback when offline storage is unavailable (an insecure-context or very old browser,
+ * or a book this browser only plays converted). Delete asks first (the Downloads page's
  * confirm, with the size): the only undo is downloading the book again. */
 export function DownloadControl({
   libraryId,
@@ -41,7 +50,6 @@ export function DownloadControl({
     status,
     error,
     progress,
-    bytes,
     totalBytes,
     start,
     cancel,
@@ -114,93 +122,109 @@ export function DownloadControl({
     );
   }
 
+  // The book hero's full-width control (the prototype's `DownloadControl`): an outline
+  // button per state, so the hero's one pink thing stays its progress bar.
   if (!supported) {
-    return <Button title={unavailableLabel} variant="secondary" icon="download" disabled />;
+    return <Button title={unavailableLabel} variant="outline" size="lg" icon="download" disabled />;
   }
 
   if (status === 'downloaded') {
     return (
-      <View className="flex-row items-center gap-2">
-        <View className="flex-1 flex-row items-center gap-2 rounded-lg bg-muted px-4 py-3">
-          <Icon name="check" size={16} color={themed.brand} />
-          <Text className="font-sans-semibold">
-            {t('library.download.downloaded')}
-            {totalBytes > 0 ? ` · ${formatBytes(totalBytes)}` : ''}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => setConfirming(true)}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={t('library.download.remove')}
-          className="h-11 w-11 items-center justify-center rounded-lg bg-muted"
-        >
-          <Icon name="trash" size={16} color={themed.mutedForeground} />
-        </Pressable>
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="lg"
+              accessibilityLabel={t('library.download.downloaded')}
+              accessibilityHint={t('library.download.remove')}
+            >
+              <Icon name="circle-check" size={18} color={themed.success} />
+              <Text>{t('library.download.downloaded')}</Text>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {totalBytes > 0 ? (
+              <DropdownMenuLabel>
+                {t('book.download.onDevice', { size: formatBytes(totalBytes) })}
+              </DropdownMenuLabel>
+            ) : null}
+            <DropdownMenuItem
+              icon="trash"
+              variant="destructive"
+              onPress={() => setConfirming(true)}
+            >
+              <Text>{t('library.download.remove')}</Text>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {confirm}
-      </View>
+      </>
     );
   }
 
   if (status === 'downloading' || status === 'queued') {
+    const words =
+      status === 'queued'
+        ? t('book.download.queuedCancel')
+        : t('book.download.progressCancel', { percent: Math.round(progress * 100) });
     return (
-      <View className="gap-1.5">
-        <View className="flex-row items-center gap-2">
-          <Text variant="muted" className="flex-1" numberOfLines={1}>
-            {status === 'queued'
-              ? t('library.download.queued')
-              : t('library.download.downloading', { percent: Math.round(progress * 100) })}
-            {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
-          </Text>
-          <Pressable
-            onPress={cancel}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t('library.download.cancel')}
-            className="h-8 w-8 items-center justify-center"
-          >
-            <Icon name="close" size={16} color={themed.mutedForeground} />
-          </Pressable>
-        </View>
-        <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
-      </View>
+      <Button
+        variant="outline"
+        size="lg"
+        onPress={cancel}
+        accessibilityLabel={`${words}, ${t('library.download.cancel')}`}
+      >
+        <ProgressRing
+          fraction={status === 'queued' ? 0 : progress}
+          size={18}
+          stroke={2.5}
+          color={themed.foreground}
+          trackColor={themed.border}
+        />
+        <Text style={tabularNums}>{words}</Text>
+      </Button>
     );
   }
 
   return (
     <View className="gap-1.5">
-      {status === 'error' && error ? (
-        <Text className="text-xs text-destructive" numberOfLines={2}>
-          {error}
-        </Text>
-      ) : null}
       <Button
-        title={status === 'error' ? t('library.download.retry') : t('library.download.download')}
-        variant="secondary"
-        icon="download"
+        title={status === 'error' ? t('library.download.retry') : t('book.download.forOffline')}
+        variant={status === 'error' ? 'destructive-outline' : 'outline'}
+        size="lg"
+        icon={status === 'error' ? 'rotate' : 'download'}
         disabled={disabled || !book}
         onPress={start}
       />
+      {status === 'error' && error ? (
+        <Text variant="caption" className="max-w-[320px] text-destructive" numberOfLines={2}>
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
-/** The in-flight download progress bar, shown only while downloading/queued.
- * Pairs with the compact DownloadControl button (which handles cancel), so it
- * carries no controls of its own - just the percentage and bar. */
+/** The in-flight download's line, shown only while downloading/queued: the percentage
+ * and the bytes so far over an ink bar (the hero's pink is the book's progress). Pairs
+ * with the control's button (which handles cancel), so it carries no controls. */
 export function DownloadProgress({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
   const { status, progress, bytes, totalBytes } = useDownloadControls(libraryId, path);
   if (status !== 'downloading' && status !== 'queued') return null;
+  const percent = Math.max(4, Math.min(100, progress * 100));
   return (
-    <View className="gap-1.5">
-      <Text variant="muted" numberOfLines={1}>
+    <View className="max-w-[560px] gap-1.5">
+      <Text variant="caption" numberOfLines={1} style={tabularNums}>
         {status === 'queued'
           ? t('library.download.queued')
           : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
-      <ProgressBar fraction={progress} minPercent={4} className="h-1.5" />
+      <View className="h-1 overflow-hidden rounded-full bg-muted">
+        <View className="h-full rounded-full bg-foreground/60" style={{ width: `${percent}%` }} />
+      </View>
     </View>
   );
 }

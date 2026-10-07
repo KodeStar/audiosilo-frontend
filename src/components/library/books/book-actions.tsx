@@ -233,7 +233,8 @@ export function useBookActions(
  * tablet and desktop, the same items in a bottom sheet on a phone (`sheetOpen`). It
  * also renders the dialogs the actions open (Add to collection, the remove-download
  * confirm). `BookActionsButton` gives it a visible "..." trigger; a cover tile a hidden
- * anchor it opens through `triggerRef` (`TileActions`).
+ * anchor it opens through `triggerRef` (`TileActions`). `omit` leaves out items by key
+ * (the book page, whose own buttons already play, queue, collect and download).
  */
 export function BookActionsMenu({
   connectionId,
@@ -241,6 +242,7 @@ export function BookActionsMenu({
   book,
   progress,
   extra = [],
+  omit = [],
   trigger,
   triggerRef,
   sheetOpen,
@@ -248,6 +250,7 @@ export function BookActionsMenu({
   onCloseAutoFocus,
 }: Target & {
   extra?: BookAction[];
+  omit?: readonly string[];
   trigger: ReactElement;
   triggerRef?: Ref<TriggerRef>;
   sheetOpen: boolean;
@@ -268,7 +271,7 @@ export function BookActionsMenu({
       { connectionId, libraryId, book, progress },
       { openCollect: () => setCollect(true), confirmRemove: () => setRemoving(true) },
       opened,
-    ),
+    ).filter((a) => !omit.includes(a.key)),
     ...extra,
   ];
   return (
@@ -281,9 +284,9 @@ export function BookActionsMenu({
             {trigger}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onCloseAutoFocus={onCloseAutoFocus}>
-            {actions.map((a) => (
+            {actions.map((a, i) => (
               <Fragment key={a.key}>
-                {a.group ? <DropdownMenuSeparator /> : null}
+                {a.group && i > 0 ? <DropdownMenuSeparator /> : null}
                 <DropdownMenuItem
                   icon={a.icon}
                   variant={a.destructive ? 'destructive' : 'default'}
