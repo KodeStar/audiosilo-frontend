@@ -1,6 +1,6 @@
 import { act, fireEvent, renderHook, screen } from '@testing-library/react-native';
 import { useState } from 'react';
-import { Dimensions, Platform, Text } from 'react-native';
+import { Dimensions, Keyboard, type KeyboardEvent, Platform, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -107,5 +107,47 @@ describe('useDialogFrame', () => {
     expect(frame.contentClassName).toContain('rounded-t-sheet');
     expect(frame.overlayClassName).toContain('justify-end');
     expect(frame.contentStyle).toEqual({ paddingBottom: 50 });
+  });
+
+  it('rises above the iOS keyboard on a phone and fits under the top edge', async () => {
+    Platform.OS = 'ios';
+    await act(async () => {
+      Dimensions.set({ window: { width: 390, height: 844, scale: 3, fontScale: 1 } });
+    });
+    const handlers: Record<string, (e: KeyboardEvent) => void> = {};
+    const spy = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+      name: string,
+      cb: (e: KeyboardEvent) => void,
+    ) => {
+      handlers[name] = cb;
+      return { remove: jest.fn() };
+    }) as never);
+    try {
+      const { result } = await renderHook(() => useDialogFrame(), {
+        wrapper: ({ children }) => (
+          <SafeAreaProvider
+            initialMetrics={{
+              frame: { x: 0, y: 0, width: 390, height: 844 },
+              insets: { top: 47, left: 0, right: 0, bottom: 34 },
+            }}
+          >
+            {children}
+          </SafeAreaProvider>
+        ),
+      });
+      await act(() =>
+        handlers.keyboardWillShow({
+          duration: 250,
+          endCoordinates: { screenY: 844 - 336, height: 336, screenX: 0, width: 390 },
+        } as KeyboardEvent),
+      );
+      expect(result.current.contentStyle).toEqual({
+        paddingBottom: 50,
+        marginBottom: 336 - 34,
+        maxHeight: 844 - 336 - 47 - 8,
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

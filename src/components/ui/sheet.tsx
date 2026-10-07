@@ -19,7 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { keyboardCap, keyboardLift, useKeyboardFrame } from '@/lib/keyboard-lift';
+import { useKeyboardAvoidance } from '@/lib/keyboard-lift';
 import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -128,17 +128,24 @@ export function Sheet({
   // Measured panel height, in px; seeded with the window height so the closed
   // position is offscreen before the first layout pass.
   const panelHeight = useSharedValue(height);
-  // iOS: the keyboard lies over the window, so the panel rises above it (and caps its
-  // height to what is left, its body scrolling); 0 elsewhere (`useKeyboardFrame`).
-  const keyboard = useKeyboardFrame();
+  // iOS: the keyboard lies over the window, so the open panel rises above it (and caps
+  // its height to what is left, its body scrolling); 0 elsewhere.
+  const keyboard = useKeyboardAvoidance({
+    active: mounted,
+    fraction: maxHeightFraction,
+    bottomInset: insets.bottom,
+    topInset: insets.top,
+  });
   const lift = useSharedValue(0);
   useEffect(() => {
-    const to = keyboardLift(keyboard.overlap, insets.bottom);
     lift.value =
       reduced || keyboard.duration <= 0
-        ? to
-        : withTiming(to, { duration: keyboard.duration, easing: Easing.out(Easing.cubic) });
-  }, [keyboard, insets.bottom, reduced, lift]);
+        ? keyboard.lift
+        : withTiming(keyboard.lift, {
+            duration: keyboard.duration,
+            easing: Easing.out(Easing.cubic),
+          });
+  }, [keyboard.lift, keyboard.duration, reduced, lift]);
 
   // The single mount-state driver - runs in an effect (never during render) so a
   // concurrent render replay can't discard the update (see the component doc).
@@ -189,12 +196,7 @@ export function Sheet({
   };
 
   if (!mounted) return null;
-  const panelCap = keyboardCap({
-    windowHeight: height,
-    fraction: maxHeightFraction,
-    overlap: keyboard.overlap,
-    topInset: insets.top,
-  });
+  const panelCap = keyboard.cap;
 
   const overlay = (
     <View

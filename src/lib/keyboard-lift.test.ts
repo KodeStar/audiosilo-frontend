@@ -6,6 +6,7 @@ import {
   keyboardCap,
   keyboardLift,
   keyboardOverlap,
+  useKeyboardAvoidance,
   useKeyboardFrame,
 } from './keyboard-lift';
 
@@ -65,6 +66,62 @@ describe('useKeyboardFrame', () => {
     expect(result.current).toEqual({ overlap: 300, duration: 250 });
     await act(() => handlers.keyboardWillHide(event(height)));
     expect(result.current.overlap).toBe(0);
+  });
+
+  it('listens to nothing while its overlay is closed, and forgets the keyboard on closing', async () => {
+    Platform.OS = 'ios';
+    const handlers = listen();
+    const { height } = Dimensions.get('window');
+    const view = await renderHook(({ active }: { active: boolean }) => useKeyboardFrame(active), {
+      initialProps: { active: false },
+    });
+    expect(handlers.keyboardWillShow).toBeUndefined();
+    await view.rerender({ active: true });
+    await act(() => handlers.keyboardWillShow(event(height - 300)));
+    expect(view.result.current.overlap).toBe(300);
+    await view.rerender({ active: false });
+    expect(view.result.current.overlap).toBe(0);
+  });
+
+  it('starts from a keyboard already up when its overlay opens', async () => {
+    Platform.OS = 'ios';
+    listen();
+    const { height } = Dimensions.get('window');
+    jest.spyOn(Keyboard, 'metrics').mockReturnValue({
+      screenX: 0,
+      screenY: height - 250,
+      width: 0,
+      height: 250,
+    });
+    const { result } = await renderHook(() => useKeyboardFrame());
+    expect(result.current.overlap).toBe(250);
+  });
+
+  // Will-show and will-change-frame both fire for one rise: the second must not render.
+  it('keeps its answer when an event leaves the overlap as it was', async () => {
+    Platform.OS = 'ios';
+    const handlers = listen();
+    const { height } = Dimensions.get('window');
+    const { result } = await renderHook(() => useKeyboardFrame());
+    await act(() => handlers.keyboardWillShow(event(height - 300)));
+    const first = result.current;
+    await act(() => handlers.keyboardWillChangeFrame(event(height - 300)));
+    expect(result.current).toBe(first);
+  });
+
+  it('lifts and caps a panel above the keyboard (useKeyboardAvoidance)', async () => {
+    Platform.OS = 'ios';
+    const handlers = listen();
+    const { height } = Dimensions.get('window');
+    const opts = { active: true, fraction: 0.85, bottomInset: 34, topInset: 47 };
+    const { result } = await renderHook(() => useKeyboardAvoidance(opts));
+    expect(result.current).toEqual({ lift: 0, cap: Math.round(height * 0.85), duration: 0 });
+    await act(() => handlers.keyboardWillShow(event(height - 300)));
+    expect(result.current).toEqual({
+      lift: 266,
+      cap: keyboardCap({ windowHeight: height, fraction: 0.85, overlap: 300, topInset: 47 }),
+      duration: 250,
+    });
   });
 
   // Android resizes the window for the keyboard: lifting too would lift twice.
