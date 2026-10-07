@@ -3,7 +3,10 @@
  */
 
 // A real DOM, so `isModalOpen` runs its selector against real attributes.
-import { isEditable, isModalOpen, ownsArrows, ownsSpace } from './keyboard';
+import { renderHook } from '@testing-library/react-native';
+import { Platform } from 'react-native';
+
+import { isEditable, isModalOpen, ownsArrows, ownsSpace, useGlobalShortcut } from './keyboard';
 
 const el = (tagName: string, isContentEditable = false) =>
   ({ tagName, isContentEditable }) as unknown as Element;
@@ -63,6 +66,59 @@ describe('isModalOpen', () => {
     expect(isModalOpen(document)).toBe(false);
     dialog.setAttribute('data-state', 'open');
     expect(isModalOpen(document)).toBe(true);
+  });
+});
+
+describe('a layer the shortcut owns', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  /** An open bottom sheet (`Sheet` on the web), named `layer` when given. */
+  const sheet = (layer?: string) => {
+    const div = document.createElement('div');
+    div.setAttribute('role', 'dialog');
+    div.setAttribute('aria-modal', 'true');
+    if (layer) div.setAttribute('data-layer', layer);
+    document.body.appendChild(div);
+    return div;
+  };
+
+  it('does not count its own layer, but still counts any other', () => {
+    sheet('upnext');
+    expect(isModalOpen(document)).toBe(true);
+    expect(isModalOpen(document, 'upnext')).toBe(false);
+    expect(isModalOpen(document, 'other')).toBe(true);
+    // A menu opened over it (a portal, outside the sheet) holds the shortcut back.
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('data-state', 'open');
+    document.body.appendChild(menu);
+    expect(isModalOpen(document, 'upnext')).toBe(true);
+  });
+
+  // Q opened Up next's sheet; the sheet is aria-modal, so without its own layer Q could
+  // no longer close it.
+  it('lets the shortcut close the sheet it opened (Q over Up next)', async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      const run = jest.fn();
+      const isQ = (e: { key: string }) => e.key === 'q';
+      await renderHook(() => useGlobalShortcut(true, isQ, run, 'upnext'));
+      const q = () =>
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'q', bubbles: true }));
+      sheet('upnext');
+      q();
+      expect(run).toHaveBeenCalledTimes(1);
+      // Another sheet: not its own, so Q stands aside.
+      document.body.innerHTML = '';
+      sheet();
+      q();
+      expect(run).toHaveBeenCalledTimes(1);
+    } finally {
+      Platform.OS = prevOS;
+    }
   });
 });
 

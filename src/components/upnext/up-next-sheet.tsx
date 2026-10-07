@@ -6,6 +6,7 @@ import { useLayout } from '@/lib/layout';
 
 import { UpNextPanel, useQueuedLine } from './up-next-panel';
 import { useUpNextData, useUpNextServer } from './use-up-next';
+import { UP_NEXT_LAYER } from './use-up-next-shortcut';
 
 /**
  * Up next on a tablet or phone: the same content as the desktop drawer in a player sheet
@@ -20,7 +21,13 @@ export function UpNextSheet({ visible, onClose }: { visible: boolean; onClose: (
   const { cid, supported } = useUpNextServer();
   const shown = visible && layout !== 'desktop' && supported === true && !!cid;
   return (
-    <PlayerSheet visible={shown} onClose={onClose} title={t('upnext.title')} className="px-3">
+    <PlayerSheet
+      visible={shown}
+      onClose={onClose}
+      title={t('upnext.title')}
+      className="px-3"
+      layer={UP_NEXT_LAYER}
+    >
       {cid ? <SheetBody cid={cid} onNavigate={onClose} /> : null}
     </PlayerSheet>
   );

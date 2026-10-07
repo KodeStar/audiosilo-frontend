@@ -86,11 +86,18 @@ const OPEN_LAYER = [
   '[role="listbox"][data-state="open"]',
 ].join(', ');
 
+/** The attribute a layer names itself by (`Sheet`'s `layer`, rendered as `data-layer` on
+ * the web), so the shortcut that toggles it can still close it. */
+const LAYER_ATTR = 'data-layer';
+
 /** Whether a modal dialog or an open menu is in `doc` (the palette, a sheet, the desktop
  * speed or sleep dialog, the shortcuts overlay, an alert, the player's overflow menu, a
- * select): a shortcut must not act behind it. */
-export function isModalOpen(doc: Pick<Document, 'querySelector'>): boolean {
-  return doc.querySelector(OPEN_LAYER) !== null;
+ * select): a shortcut must not act behind it. `own` names a layer that does not count
+ * (Q's own Up next sheet: Q opened it, so Q closes it too). */
+export function isModalOpen(doc: Pick<Document, 'querySelectorAll'>, own?: string): boolean {
+  const open = Array.from(doc.querySelectorAll(OPEN_LAYER));
+  if (own === undefined) return open.length > 0;
+  return open.some((el) => el.closest(`[${LAYER_ATTR}="${own}"]`) === null);
 }
 
 /** The slice of a DOM KeyboardEvent a global shortcut reads. */
@@ -103,13 +110,15 @@ export type ShortcutKey = {
 
 /**
  * A global keyboard shortcut on the web: `run` when a keydown `matches` (told whether
- * the focus is in a field), never over a modal dialog or an open menu, never for a held
- * key's repeats. Nothing is attached while `enabled` is false, or off the web.
+ * the focus is in a field), never over a modal dialog or an open menu other than its own
+ * `layer` (see `isModalOpen`), never for a held key's repeats. Nothing is attached while
+ * `enabled` is false, or off the web.
  */
 export function useGlobalShortcut(
   enabled: boolean,
   matches: (e: ShortcutKey, editable: boolean) => boolean,
   run: () => void,
+  layer?: string,
 ): void {
   const match = useLatest(matches);
   const act = useLatest(run);
@@ -117,11 +126,11 @@ export function useGlobalShortcut(
     if (!enabled || Platform.OS !== 'web' || typeof document === 'undefined') return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat || !match(e, isEditable(document.activeElement))) return;
-      if (isModalOpen(document)) return;
+      if (isModalOpen(document, layer)) return;
       e.preventDefault();
       act();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [enabled, match, act]);
+  }, [enabled, match, act, layer]);
 }

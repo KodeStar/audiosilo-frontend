@@ -49,6 +49,9 @@ export type SheetProps = {
    * definite height to measure itself against. */
   fill?: boolean;
   contentClassName?: string;
+  /** Names the layer on the web (`data-layer`), for the one shortcut that may act over
+   * it: the shortcut that toggles it (Q for Up next; `useGlobalShortcut`'s `layer`). */
+  layer?: string;
 };
 
 /**
@@ -100,6 +103,7 @@ export function Sheet({
   scroll = false,
   fill = false,
   contentClassName,
+  layer,
 }: SheetProps) {
   const themed = useThemeColors();
   const { t } = useTranslation();
@@ -180,7 +184,14 @@ export function Sheet({
       pointerEvents="box-none"
       // Web: a modal layer (the player's keyboard shortcuts stand back while one is open,
       // and its OverlayHost owns Escape).
-      {...(Platform.OS === 'web' ? { role: 'dialog' as const, 'aria-modal': true } : {})}
+      {...(Platform.OS === 'web'
+        ? {
+            role: 'dialog' as const,
+            'aria-modal': true,
+            // react-native-web renders `dataSet` as data-* attributes.
+            ...(layer ? { dataSet: { layer } } : {}),
+          }
+        : {})}
     >
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: themed.overlay }, backdropStyle]}
