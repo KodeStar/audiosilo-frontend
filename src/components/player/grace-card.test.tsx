@@ -102,6 +102,21 @@ describe('GraceCard', () => {
     expect(screen.queryByText(/Fading/)).toBeNull();
   });
 
+  it('hides a chapter timer paused by hand in its last seconds, and comes back on resume', async () => {
+    await mount();
+    await act(async () => {
+      useSleepTimer.getState().startUntilPosition(120, { key: 'player.sleepTimer.endOfBook' });
+    });
+    expect(screen.getByText('Stopping in 20 s')).toBeTruthy();
+    await act(async () => player.setPlayState('paused'));
+    // Nothing is about to stop a paused book: no card counting down over it.
+    expect(screen.queryByTestId('sleep-grace-card')).toBeNull();
+    await advance(5_000);
+    expect(screen.queryByTestId('sleep-grace-card')).toBeNull();
+    await act(async () => player.setPlayState('playing'));
+    expect(screen.getByText('Stopping in 20 s')).toBeTruthy();
+  });
+
   it('asks whether the listener is still awake once the timer has paused', async () => {
     await mount();
     await act(async () => {

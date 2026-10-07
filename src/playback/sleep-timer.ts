@@ -254,6 +254,7 @@ const playbackWatch = {
     unwatchPlayback = usePlayer.subscribe(() => {
       syncGrace();
       syncPlaybackFreeze();
+      syncChapterHold();
     });
   },
   stop() {
@@ -430,21 +431,61 @@ function syncFade() {
  * it. A shake there would silently reset the timer without
  * resuming (the grace, not the ending window, is what resumes).
  *
+ * The same holds for an end-of-chapter timer whose book is paused (`countdownHeld`): it
+ * has no `frozenAt` (its position target needs no freezing), but a chapter paused 20
+ * seconds before its end is no more "about to stop" than a frozen duration timer, and
+ * leaving it `ending` kept the accelerometer on and the grace card counting down over a
+ * paused book, where a shake retargeted the next chapter without resuming.
+ *
  * Otherwise the phase change is unconditional - both kinds of timer become extendable for
  * their last `FADE_SECONDS` - and what that means for the audio is entirely `syncFade`'s
  * business: a chapter timer (or a frozen one) never even starts the fade ticker, and
  * leaving the window restores full volume.
  */
 function syncEndingPhase(remaining: number) {
-  const { phase, frozenAt } = useSleepTimer.getState();
-  if (phase === 'running' && frozenAt === null && remaining <= FADE_SECONDS) {
+  const state = useSleepTimer.getState();
+  const { phase } = state;
+  const held = countdownHeld(state);
+  if (phase === 'running' && !held && remaining <= FADE_SECONDS) {
     useSleepTimer.setState({ phase: 'ending' });
-  } else if (phase === 'ending' && (frozenAt !== null || remaining > FADE_SECONDS)) {
+  } else if (phase === 'ending' && (held || remaining > FADE_SECONDS)) {
     useSleepTimer.setState({ phase: 'running' });
   } else {
     return; // the phase did not move, so the fade cannot have anything to reconcile
   }
   syncFade(); // and start the ramp on THIS tick, not 250ms later
+}
+
+/**
+ * Is the countdown standing still? A duration timer is frozen by a pause (`frozenAt`, see
+ * `syncPlaybackFreeze`). An end-of-chapter timer counts down by book position, which a
+ * paused book does not advance, so it is held whenever the transport is not live - read
+ * live rather than recorded, because its target stays valid however long the pause and
+ * there is nothing to slide on the resume. Only `syncEndingPhase` asks: a held countdown
+ * is never `ending`. (Firing does not ask: a chapter target reached while paused is the
+ * `fire` path's "nothing was playing" case.)
+ */
+function countdownHeld(state: SleepTimerState): boolean {
+  if (state.frozenAt !== null) return true;
+  return state.pauseAtPosition !== null && !selectIsTransportLive(usePlayer.getState());
+}
+
+/**
+ * The play-state watch's half of `countdownHeld` for an end-of-chapter timer: leave the
+ * `ending` phase the instant its book pauses, and re-enter it the instant it resumes
+ * still inside the window - on the event, as `syncPlaybackFreeze` does for a duration
+ * timer, because after a pause the app may never tick again (iOS suspends it, a hidden
+ * tab is throttled). Runs on every player write, so it answers "nothing to do" from the
+ * timer's own fields for everything but a chapter timer inside its last `FADE_SECONDS`.
+ */
+function syncChapterHold() {
+  const state = useSleepTimer.getState();
+  if (state.pauseAtPosition === null) return;
+  const inWindow =
+    state.phase === 'ending' ||
+    (state.phase === 'running' && state.remaining !== null && state.remaining <= FADE_SECONDS);
+  if (!inWindow || cancelIfBookChanged(state)) return;
+  syncEndingPhase(preciseRemaining(state) ?? 0);
 }
 
 /**

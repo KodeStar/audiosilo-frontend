@@ -366,6 +366,51 @@ describe('sleep timer', () => {
       expect(quietestVolume()).toBe(1); // nothing to restore, because nothing dipped
     });
 
+    it('leaves the ending window while paused by hand, and re-enters it on resume', async () => {
+      setBook(chapteredBook());
+      setPosition(580); // 20s from the end of chapter 1: inside the window
+      useSleepTimer.getState().startUntilPosition(600, endOf('Chapter 1'));
+      expect(useSleepTimer.getState().phase).toBe('ending');
+
+      // Paused by the listener, 20 seconds short: nothing is about to stop, so no
+      // accelerometer and no grace card - on the pause itself, since the app may never
+      // tick again once the audio stops.
+      setPlayState('paused');
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(false);
+      // The tick must not put it straight back.
+      jest.advanceTimersByTime(5 * 60_000);
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(false);
+
+      // A shake there does nothing: it would retarget the next chapter without resuming.
+      useSleepTimer.getState().keepListening();
+      expect(mockToggle).not.toHaveBeenCalled();
+      expect(useSleepTimer.getState().pauseAtPosition).toBe(600);
+
+      // Resumed still 20s out: back in the window on the event, still aimed at chapter 1.
+      setPlayState('playing');
+      expect(useSleepTimer.getState().phase).toBe('ending');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(true);
+      setPosition(600);
+      jest.advanceTimersByTime(1_000);
+      await flush();
+      expect(mockPause).toHaveBeenCalledTimes(1);
+      expect(selectSleepPhase(useSleepTimer.getState())).toBe('grace');
+      expect(quietestVolume()).toBe(1);
+    });
+
+    it('armed inside the window while paused, waits for the resume to be extendable', () => {
+      setBook(chapteredBook());
+      setPosition(580);
+      setPlayState('paused');
+      useSleepTimer.getState().startUntilPosition(600, endOf('Chapter 1'));
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(selectSleepExtendable(useSleepTimer.getState())).toBe(false);
+      setPlayState('playing');
+      expect(useSleepTimer.getState().phase).toBe('ending');
+    });
+
     it('opens the same post-pause grace, where a shake resumes and retargets', async () => {
       setBook(chapteredBook());
       setPosition(595);
