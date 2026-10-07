@@ -58,6 +58,7 @@ import { colors } from '@/theme/tokens';
 import { BookmarkRow } from './bookmark-row';
 import { LabelPicker } from './chips';
 import { NoteRow } from './note-row';
+import { RowCover, ServerFlag } from './row-parts';
 /* eslint-enable import/first */
 
 const MADE = new Date(Date.now() - 3 * 86_400_000).toISOString();
@@ -362,6 +363,32 @@ describe('NoteRow', () => {
     mockAnnotations = false;
     await render(<NoteRow note={note()} connectionId="c" />);
     expect(screen.queryByRole('button', { name: 'Edit note at 10:20:00' })).toBeNull();
+  });
+});
+
+describe('row parts the Diary shares', () => {
+  const book = { library_id: 1, rel_path: 'a/book', title: 'The Way of Kings' } as Book;
+
+  it('names a cover link by its book, or as the caller says', async () => {
+    const onOpen = jest.fn();
+    const view = await render(<RowCover connectionId="c" book={book} onOpen={onOpen} />);
+    await fireEvent.press(screen.getByRole('link', { name: 'The Way of Kings' }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    await view.rerender(
+      <RowCover
+        connectionId="c"
+        book={book}
+        onOpen={onOpen}
+        accessibilityLabel="Open The Way of Kings"
+      />,
+    );
+    expect(screen.getByRole('link', { name: 'Open The Way of Kings' })).toBeTruthy();
+  });
+
+  it('flags a server by its name', async () => {
+    await render(<ServerFlag name="Maya's Shelf" />);
+    expect(screen.getByTestId('row-server')).toBeTruthy();
+    expect(screen.getByText("Maya's Shelf")).toBeTruthy();
   });
 });
 

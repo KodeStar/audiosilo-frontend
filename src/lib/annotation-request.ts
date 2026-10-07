@@ -6,6 +6,10 @@ import type { Bookmark, Note } from '@/api/types';
  * without importing each other.
  */
 
+/** The two kinds of annotation, and the row each one is. */
+export type AnnotationKind = 'bookmark' | 'note';
+export type AnnotationOf = { bookmark: Bookmark; note: Note };
+
 /** The book an annotation belongs to: its own connection, library and path (the same
  * shape as the player's `PlayTarget`). */
 export type AnnotationTarget = { connectionId: string; libraryId: number; path: string };

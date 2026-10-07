@@ -48,19 +48,26 @@ export function RowAction({
   );
 }
 
-/** The book a row across books belongs to: its cover, opening its page. */
+/** The book a row across books belongs to: its cover, opening its page. Its label is
+ * the book's title unless the caller names the link (`accessibilityLabel`). */
 export function RowCover({
   connectionId,
   book,
   onOpen,
+  accessibilityLabel,
 }: {
   connectionId: string;
   book: Book;
   onOpen: () => void;
+  accessibilityLabel?: string;
 }) {
   const title = bookTitle(book.title, book.rel_path);
   return (
-    <AnimatedPressable accessibilityRole="link" accessibilityLabel={title} onPress={onOpen}>
+    <AnimatedPressable
+      accessibilityRole="link"
+      accessibilityLabel={accessibilityLabel ?? title}
+      onPress={onOpen}
+    >
       <BookCover
         connectionId={connectionId}
         libraryId={book.library_id}
@@ -71,6 +78,20 @@ export function RowCover({
         author={book.author}
       />
     </AnimatedPressable>
+  );
+}
+
+/** The server a row is on, in a list across servers (the Diary's server flag look): a
+ * server glyph and the name in `info`. */
+export function ServerFlag({ name }: { name: string }) {
+  const themed = useThemeColors();
+  return (
+    <View className="shrink flex-row items-center gap-1" testID="row-server">
+      <Icon name="server" size={11} color={themed.info} />
+      <Text variant="caption" className="text-info" numberOfLines={1}>
+        {name}
+      </Text>
+    </View>
   );
 }
 
@@ -107,8 +128,7 @@ export function AnnotationRowFrame({
 }
 
 /** A row's meta line: "Chapter · title · 3 days ago", whichever parts it has, and the
- * server it is on (`server`, a list across servers only: the Diary's server flag look, a
- * server glyph and the name in `info`). */
+ * server it is on (`server`, a list across servers only: `ServerFlag`). */
 export function RowMeta({
   parts,
   server,
@@ -116,7 +136,6 @@ export function RowMeta({
   parts: (string | null | undefined)[];
   server?: string;
 }) {
-  const themed = useThemeColors();
   const text = parts.filter((p): p is string => !!p).join(' · ');
   if (!text && !server) return null;
   return (
@@ -126,14 +145,7 @@ export function RowMeta({
           {text}
         </Text>
       ) : null}
-      {server ? (
-        <View className="shrink flex-row items-center gap-1" testID="row-server">
-          <Icon name="server" size={11} color={themed.info} />
-          <Text variant="caption" className="text-info" numberOfLines={1}>
-            {server}
-          </Text>
-        </View>
-      ) : null}
+      {server ? <ServerFlag name={server} /> : null}
     </View>
   );
 }

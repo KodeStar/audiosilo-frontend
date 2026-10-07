@@ -7,7 +7,7 @@ import { addBookmark, addNote, useDeleteBookmark, useDeleteNote } from '@/api/ho
 import type { Bookmark, Note } from '@/api/types';
 import { startBookInPlace } from '@/components/player/start-book';
 import { toast } from '@/components/ui/toast';
-import type { AnnotationTarget } from '@/lib/annotation-request';
+import type { AnnotationOf, AnnotationTarget } from '@/lib/annotation-request';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -75,14 +75,11 @@ export function restoreNote(connectionId: string, note: Note): Promise<Note> {
   return addNote(connectionId, note.library_id, note.path, note.body, note.position);
 }
 
-/** The row a delete with Undo takes, by kind. */
-type UndoRow = { bookmark: Bookmark; note: Note };
-
 /** What a delete with Undo needs per kind: its delete hook, its restore, its copy. */
 const UNDO: {
-  [K in keyof UndoRow]: {
+  [K in keyof AnnotationOf]: {
     useDelete: typeof useDeleteBookmark;
-    restore: (connectionId: string, row: UndoRow[K]) => Promise<unknown>;
+    restore: (connectionId: string, row: AnnotationOf[K]) => Promise<unknown>;
     copy: Record<'deleted' | 'deleteFailed' | 'restoreFailed', ParseKeys>;
   };
 } = {
@@ -113,12 +110,12 @@ const UNDO: {
  * timer an app suspend could stop; the cost of Undo is a new date on the row. `kind` is
  * fixed for a caller (it picks the delete hook).
  */
-export function useDeleteWithUndo<K extends keyof UndoRow>(
+export function useDeleteWithUndo<K extends keyof AnnotationOf>(
   kind: K,
   connectionId: string,
   libraryId: number,
   path: string,
-): (row: UndoRow[K]) => void {
+): (row: AnnotationOf[K]) => void {
   const { t } = useTranslation();
   const { useDelete, restore, copy } = UNDO[kind];
   const del = useDelete(libraryId, path, connectionId);
