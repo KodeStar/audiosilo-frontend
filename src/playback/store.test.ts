@@ -51,12 +51,14 @@ const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
 const mockLoadInitialProgress = jest.fn(async (..._args: unknown[]): Promise<ResumeLookup> => ({
   kind: 'empty',
 }));
+const mockReadMirror = jest.fn(async (..._args: unknown[]): Promise<unknown> => null);
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
+  readMirror: (...args: unknown[]) => mockReadMirror(...args),
 }));
 
 // Keep React Query out of the unit test.
@@ -180,6 +182,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
   mockCanAutoDownload.mockResolvedValue(true);
+  mockReadMirror.mockResolvedValue(null);
   // Default the start-of-book auto-download OFF so the many startBook() calls below don't
   // fire the real downloads pipeline; the dedicated describe opts each of its cases in.
   useSettings.setState({ autoDownloadNext: 'never' });
@@ -756,6 +759,51 @@ describe('resume never restarts an in-progress book from 0', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(mockSaveProgress).toHaveBeenCalled();
+  });
+});
+
+describe('the speed a book starts at', () => {
+  const mirror = (playback_speed: number, updated_at: string) => ({
+    connectionId: 'c1',
+    libraryId: 2,
+    path: 'A/Book.m4b',
+    position: 40,
+    duration: 100,
+    finished: false,
+    playback_speed,
+    device_id: 'dev-1',
+    updated_at,
+  });
+
+  it("at an explicit place, is the book's saved speed, not the default", async () => {
+    useSettings.setState({ defaultRate: 1 });
+    mockReadMirror.mockResolvedValueOnce(mirror(1.4, '2026-10-01T00:00:00Z'));
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30); // a chapter tap
+    expect(usePlayer.getState().rate).toBe(1.4);
+    expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1.4]]);
+    // The resume lookup (a network round trip) is still skipped.
+    expect(mockLoadInitialProgress).not.toHaveBeenCalled();
+  });
+
+  it('takes the newer of the cached server progress and the local mirror', async () => {
+    mockReadMirror.mockResolvedValueOnce(mirror(1.4, '2026-10-01T00:00:00Z'));
+    (queryClient.getQueryData as jest.Mock).mockReturnValueOnce(
+      makeProgress({ playback_speed: 1.8, updated_at: '2026-10-02T00:00:00Z' }),
+    );
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30);
+    expect(usePlayer.getState().rate).toBe(1.8);
+  });
+
+  it('is the asked-for speed, set before the engine starts, over a saved one', async () => {
+    mockReadMirror.mockResolvedValue(mirror(1.4, '2026-10-01T00:00:00Z'));
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 30, playback_speed: 1.4 }),
+    });
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30, undefined, 1.25);
+    expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1.25]]);
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, undefined, undefined, 1.25);
+    expect(usePlayer.getState().rate).toBe(1.25);
   });
 });
 
