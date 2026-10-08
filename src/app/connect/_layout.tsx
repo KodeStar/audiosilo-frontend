@@ -18,5 +18,10 @@ export default function ConnectLayout() {
   // decide it: on a link arriving while the app runs, the child's params only reach the
   // layout after the child mounts, so `useGlobalSearchParams` read no `token` on the first
   // render and a pairing link bounced home before it could pair.
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* The first run's end: the sign-in it replaced is spent, so no swipe back to it. */}
+      <Stack.Screen name="ready" options={{ gestureEnabled: false }} />
+    </Stack>
+  );
 }

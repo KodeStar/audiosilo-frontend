@@ -474,4 +474,76 @@ describe('session store (multi-connection)', () => {
       warn.mockRestore();
     });
   });
+
+  // Home and away addresses (capability `addresses`): kept with the connection, never
+  // erased by a pairing that doesn't carry them, and no storage-version bump.
+  describe('addresses', () => {
+    const HOME = 'http://192.168.1.20:8080';
+    const AWAY = 'https://books.example.com';
+    const pair = (addresses?: { home?: string; away?: string }, serverUrl = AWAY) =>
+      useSession.getState().setSession({
+        serverUrl,
+        serverId: 'srv-a',
+        token: 't',
+        user: mkUser('a'),
+        ...(addresses ? { addresses } : {}),
+      });
+    const addressesOf = () => useSession.getState().connections[0]?.addresses;
+
+    it('stores them with the connection and restores them on a fresh hydrate', async () => {
+      await pair({ home: HOME, away: AWAY });
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      reset();
+      await useSession.getState().hydrate();
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      expect(useSession.getState().connections[0].serverUrl).toBe(AWAY); // never rewritten
+    });
+
+    it('loads a connection saved before addresses existed (no version bump)', async () => {
+      await AsyncStorage.setItem('audiosilo.storageVersion', JSON.stringify(2));
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([{ id: 'srv-old', serverUrl: AWAY, name: 'Old', user: mkUser('o') }]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv-old', 'tok');
+      const reset1 = await resetStaleStorage();
+      expect(reset1.authReset).toBe(false);
+      await useSession.getState().hydrate();
+      const [c] = useSession.getState().connections;
+      expect(c).toMatchObject({ id: 'srv-old', token: 'tok' });
+      expect(c.addresses).toBeUndefined();
+    });
+
+    it('a re-pair without them keeps what the connection knew', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await pair();
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+    });
+
+    it('a re-pair from outside the home network keeps the known home address', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await pair({ away: 'https://new.example.com' });
+      expect(addressesOf()).toEqual({ home: HOME, away: 'https://new.example.com' });
+    });
+
+    it('cleans what it is given (an invalid address is dropped)', async () => {
+      await pair({ home: 'not a url', away: `${AWAY}/` });
+      expect(addressesOf()).toEqual({ away: AWAY });
+    });
+
+    it('setConnectionAddresses replaces and persists them, and no-ops when unchanged', async () => {
+      await pair({ home: HOME });
+      const before = useSession.getState().connections;
+      await useSession.getState().setConnectionAddresses('srv-a', { home: HOME });
+      expect(useSession.getState().connections).toBe(before); // nothing changed, no churn
+      await useSession.getState().setConnectionAddresses('srv-a', { away: AWAY });
+      expect(addressesOf()).toEqual({ away: AWAY });
+      await useSession.getState().setConnectionAddresses('srv-a', undefined);
+      expect(useSession.getState().connections[0]).not.toHaveProperty('addresses');
+      await useSession.getState().setConnectionAddresses('nope', { home: HOME }); // unknown: no-op
+      reset();
+      await useSession.getState().hydrate();
+      expect(addressesOf()).toBeUndefined();
+    });
+  });
 });

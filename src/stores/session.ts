@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 
 import { ApiError } from '@/api/client';
-import type { User } from '@/api/types';
+import type { ServerAddresses, User } from '@/api/types';
 import { list as listKnownServers, remember as rememberServer } from '@/lib/known-servers';
+import { cleanAddresses } from '@/lib/pairing';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import { mergeAddresses, sameAddresses } from '@/lib/server-address';
 import { getItem, removeItem, setItem } from '@/lib/storage';
 
 // Multi-connection session: the app can be signed in to several servers at once.
@@ -184,6 +186,11 @@ export type Connection = {
    * successful re-pair (`setSession`) or a successful authed response
    * (`clearNeedsReconnect`) resolves it. */
   needsReconnect?: ReconnectReason;
+  /** The server's home and away addresses (capability `addresses`), persisted with the
+   * rest of the metadata (a connection saved before they existed simply has none: no
+   * storage-version bump). The player picks which one to use by itself
+   * (`src/api/address-route.ts`); `serverUrl` stays what the user paired with or typed. */
+  addresses?: ServerAddresses;
 };
 
 /** Connection metadata persisted to AsyncStorage (token + the in-memory reconnect flag
@@ -214,12 +221,21 @@ type SessionState = {
     token: string;
     user: User;
     name?: string;
+    /** The server's addresses from the pairing link, the redeem payload, or the exchange
+     * / login answer. Absent keeps what the connection already knew (a re-pair through
+     * an older server, or a link without them, must not erase what a newer pairing
+     * taught it); present is merged with it (`mergeAddresses`). */
+    addresses?: ServerAddresses;
   }) => Promise<string>;
   /** Remember the server URL mid-connect, before authenticating. */
   setPendingServerUrl: (url: string) => Promise<void>;
   /** Update a specific connection's user (a `/me` refresh after a password change
    * lands on the connection it was made against, not whatever is default). */
   setConnectionUser: (id: string, user: User) => Promise<void>;
+  /** Replace a connection's addresses (`undefined` = none) and persist them. A no-op
+   * for an unknown connection or the same addresses. The caller merges
+   * (`mergeAddresses`); the address runner calls it after `GET /addresses`. */
+  setConnectionAddresses: (id: string, addresses: ServerAddresses | undefined) => Promise<void>;
   /** Update the default connection's user (sugar over `setConnectionUser`). */
   setUser: (user: User) => Promise<void>;
   /** Remove one connection (deleting its token). Sign-out goes through this (via
@@ -302,7 +318,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     }
   },
 
-  setSession: async ({ serverUrl, serverId, token, user, name }) => {
+  setSession: async ({ serverUrl, serverId, token, user, name, addresses }) => {
     // The connection id IS the server-minted server_id: it keys every per-server store
     // (downloads, the progress mirror/queue, the query cache, scroll memory, the
     // secure-store token). A blank id would file distinct servers under one shared bucket
@@ -319,12 +335,14 @@ export const useSession = create<SessionState>()((set, get) => ({
     // token is dead - flagged needsReconnect='server-reset'). It must be dropped here, or
     // re-pairing leaves a zombie the reconnect banner keeps re-flagging on every /server hit.
     const stale = existing.filter((c) => c.id !== serverId && sameServer(c.serverUrl, serverUrl));
+    const known = mergeAddresses(prior?.addresses, cleanAddresses(addresses));
     const conn: Connection = {
       id: serverId,
       serverUrl,
       name: name ?? prior?.name ?? hostName(serverUrl),
       token,
       user,
+      ...(known ? { addresses: known } : {}),
     };
     const surviving = existing.filter((c) => !stale.includes(c));
     const connections = prior
@@ -362,6 +380,19 @@ export const useSession = create<SessionState>()((set, get) => ({
     const { connections, defaultConnectionId } = get();
     if (!connections.some((c) => c.id === id)) return;
     const next = connections.map((c) => (c.id === id ? { ...c, user } : c));
+    await persist(next, defaultConnectionId);
+    set({ connections: next, ...mirror(next, defaultConnectionId) });
+  },
+
+  setConnectionAddresses: async (id, addresses) => {
+    const { connections, defaultConnectionId } = get();
+    const conn = connections.find((c) => c.id === id);
+    if (!conn || sameAddresses(conn.addresses, addresses)) return;
+    const next = connections.map((c) => {
+      if (c.id !== id) return c;
+      const { addresses: _old, ...rest } = c;
+      return addresses ? { ...rest, addresses } : rest;
+    });
     await persist(next, defaultConnectionId);
     set({ connections: next, ...mirror(next, defaultConnectionId) });
   },

@@ -321,30 +321,22 @@
   },
   "connect": {
     "server": {
-      "subtitle": "Mit deinem Hörbuch-Server verbinden",
       "connecting": "Gerät wird verbunden…",
       "addressLabel": "Serveradresse",
-      "connect": "Verbinden",
       "enterAddress": "Gib deine Serveradresse ein",
       "missingAddress": "Bei diesem Kopplungslink fehlt die Serveradresse. Gib sie unten ein.",
       "pairingFailed": "Kopplung fehlgeschlagen: {{message}}. Du kannst dich auch verbinden, indem du deinen Einladungscode auf dem Anmeldebildschirm eingibst.",
       "pairingReachError": "Der Server konnte nicht erreicht werden, um die Kopplung abzuschließen.",
-      "serverError": "Der Server hat mit einem Fehler geantwortet: {{message}}",
-      "reachError": "Dieser Server konnte nicht erreicht werden. Überprüfe die Adresse und ob er online ist.",
       "demoError": "Die Demo konnte nicht gestartet werden: {{message}}",
       "demoReachError": "Der Demo-Server konnte nicht erreicht werden.",
-      "demoDivider": "Demo-Server",
-      "demoIntro": "Dieser Server bietet eine Gast-Demo – kein Konto erforderlich.",
       "tryDemo": "Demo ausprobieren",
-      "signInInstead": "Stattdessen anmelden",
-      "or": "oder",
       "scanQr": "QR-Code scannen"
     },
     "signIn": {
       "title": "Anmelden",
       "mode": {
-        "code": "Code",
-        "password": "Passwort"
+        "code": "Einladungscode",
+        "password": "Benutzername und Passwort"
       },
       "codeLabel": "Einladungscode",
       "codePlaceholder": "Gib deinen Einladungscode ein",
@@ -352,7 +344,6 @@
       "usernamePlaceholder": "Benutzername",
       "passwordLabel": "Passwort",
       "passwordPlaceholder": "Passwort",
-      "connect": "Verbinden",
       "submit": "Anmelden",
       "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
       "modeLabel": "Anmeldeart"
@@ -365,6 +356,66 @@
       "tryAgain": "Erneut versuchen",
       "openSettings": "Einstellungen öffnen",
       "aimHint": "Richte deine Kamera auf den Kopplungs-QR-Code auf der Verbindungsseite deines Servers."
+    },
+    "probe": {
+      "found": "{{name}} gefunden",
+      "version": "AudioSilo {{version}}",
+      "signIn": "Anmelden",
+      "signInTo": "Bei {{name}} anmelden",
+      "unreachable": "{{address}} ist nicht erreichbar",
+      "hint": "Prüfe die Schreibweise und ob der Server läuft. Eine Heimadresse wie 192.168.1.20:8080 funktioniert nur im selben Netzwerk wie der Server.",
+      "homeHint": "Das ist eine Adresse im Heimnetz, sie antwortet nur im selben Netzwerk wie der Server. Prüfe, ob dieses Gerät in diesem Netzwerk ist, und die Schreibweise.",
+      "errorTitle": "Der Server hat mit einem Fehler geantwortet",
+      "errorBody": "Meldung: {{message}}"
+    },
+    "link": {
+      "open": "Ich habe einen Kopplungslink",
+      "label": "Kopplungslink",
+      "connect": "Verbinden",
+      "invalid": "Das ist kein AudioSilo-Kopplungslink. Kopplungslinks sehen so aus: https://<server>/web/connect?token=... oder audiosilo://connect?..."
+    }
+  },
+  "onboarding": {
+    "step": "Schritt {{step}} von {{count}}",
+    "start": {
+      "title": "Deine Hörbücher, von deinem eigenen Server.",
+      "lead": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder scanne den Code auf dessen Bildschirm.",
+      "leadWeb": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder füge den Kopplungslink ein, den du bekommen hast.",
+      "continue": "Weiter"
+    },
+    "signIn": {
+      "eyebrow": "{{name}} · {{host}}",
+      "codeHint": "Aus der Einladung deines Admins."
+    },
+    "anotherServer": "Anderer Server",
+    "addresses": {
+      "title": "Zu Hause und unterwegs",
+      "body": "{{name}} hat zwei Adressen. AudioSilo nutzt zu Hause die schnelle und wechselt von selbst, wenn du gehst.",
+      "home": "Zu Hause",
+      "away": "Unterwegs"
+    },
+    "panel": {
+      "title": "Jedes Buch im Haus, auf jedem Gerät.",
+      "body": "Ein Fortschritt, der nie auf null springt. Downloads, die ohne Verbindung laufen. Die Bücher, die in einer Reihe fehlen, sichtbar im Regal."
+    },
+    "ready": {
+      "connected": "{{name}} ist verbunden",
+      "title": "Deine Bibliothek ist bereit.",
+      "and": "{{rest}} und {{last}}",
+      "booksIn_one": "{{books}} Buch in {{list}}.",
+      "booksIn_other": "{{books}} Bücher in {{list}}.",
+      "booksAcross_one": "{{books}} Buch in {{libraries}} Bibliotheken.",
+      "booksAcross_other": "{{books}} Bücher in {{libraries}} Bibliotheken.",
+      "librariesIn_one": "Deine Bibliothek: {{list}}.",
+      "librariesIn_other": "Deine Bibliotheken: {{list}}.",
+      "librariesCount_one": "{{count}} Bibliothek ist bereit.",
+      "librariesCount_other": "{{count}} Bibliotheken sind bereit.",
+      "empty": "{{name}} hat noch keine Bücher. Sie erscheinen hier, sobald dein Admin welche hinzufügt.",
+      "loadError": "Deine Bibliotheken konnten gerade nicht gelesen werden. Sie erscheinen in der App, sobald der Server antwortet.",
+      "placeChapter": "Deine Stelle in {{title}} ist mitgekommen: Kapitel {{chapter}}, {{percent}} % gehört.",
+      "place": "Deine Stelle in {{title}} ist mitgekommen: {{percent}} % gehört.",
+      "start": "Loslegen",
+      "browse": "Bibliothek durchsuchen"
     }
   },
   "home": {
@@ -1373,7 +1424,8 @@
     "banner": {
       "auth": "Erneut mit {{name}} verbinden",
       "serverReset": "{{name}} wurde zurückgesetzt - erneut koppeln, um fortzufahren",
-      "more": "+{{count}} weitere"
+      "more": "+{{count}} weitere",
+      "hint": "Öffnet die Anmeldung für diesen Server"
     },
     "connect": {
       "heading": "Erneut verbinden",
@@ -1801,6 +1853,15 @@
       "jumpLabel": "Zu {{time}} springen",
       "span": "{{from}} bis {{to}}"
     }
+  },
+  "addresses": {
+    "home": "Heimadresse",
+    "away": "Adresse unterwegs",
+    "paired": "Serveradresse",
+    "usingHome": "Verwendet die Heimadresse",
+    "usingAway": "Verwendet die Adresse für unterwegs",
+    "usingPaired": "Verwendet die Adresse, mit der du verbunden hast",
+    "switches": "Die App wechselt selbst zwischen beiden."
   },
   "year": {
     "eyebrow": "Dein Hörjahr",

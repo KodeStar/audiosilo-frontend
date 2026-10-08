@@ -2,6 +2,7 @@ import { act, render } from '@testing-library/react-native';
 
 import { useSession } from '@/stores/session';
 
+import { setAddressPick, useAddressRoute } from './address-route';
 import { type ApiConnection, ApiProvider, useApis } from './provider';
 
 jest.mock('./reachability', () => ({
@@ -45,5 +46,31 @@ describe('useApis', () => {
     );
     expect(seen.at(-1)).not.toBe(seen[0]);
     expect(seen.at(-1)!.map((a) => a.connection.id)).toEqual(['c1', 'c2']);
+  });
+});
+
+describe('ApiProvider clients', () => {
+  // A switch between a server's home and away address must reach every request the
+  // provider's clients make (queries, mutations, media URLs).
+  it('rebuilds a connection client on the address the player picked', async () => {
+    const home = 'http://192.168.1.20:8080';
+    useSession.setState({
+      connections: [
+        {
+          id: 'c1',
+          name: 'Hearthside',
+          serverUrl: 'https://h',
+          token: 't',
+          addresses: { home, away: 'https://h' },
+        },
+      ],
+    } as never);
+    seen.length = 0;
+    await render(ui(0));
+    expect(seen.at(-1)![0].client.baseUrl).toBe('https://h');
+    await act(async () => setAddressPick('c1', home));
+    expect(seen.at(-1)![0].client.baseUrl).toBe(home);
+    await act(async () => useAddressRoute.setState({ picks: {} }));
+    expect(seen.at(-1)![0].client.baseUrl).toBe('https://h');
   });
 });

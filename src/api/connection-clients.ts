@@ -1,5 +1,6 @@
 import { useSession } from '@/stores/session';
 
+import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
 
 /**
@@ -11,8 +12,8 @@ import { ApiClient } from './client';
 /**
  * The `ApiClient` for a connection id, or null when that connection no longer
  * exists. Built fresh per call - the client is a stateless holder of
- * (serverUrl, token), so this always reflects the current token with nothing
- * to invalidate.
+ * (address, token), so this always reflects the current token and the address in use
+ * now (home or away, `effectiveUrl`) with nothing to invalidate.
  */
 export function resolveClient(connectionId: string): ApiClient | null {
   const conn = useSession.getState().connections.find((c) => c.id === connectionId);
@@ -20,7 +21,7 @@ export function resolveClient(connectionId: string): ApiClient | null {
   // Inject the dead-token callback so a 401 from the framework-free progress-sync save
   // loop (which resolves its client here) flags this connection for reconnect too - the
   // same detection every provider-built client gets, so no request path is a blind spot.
-  return new ApiClient(conn.serverUrl, conn.token, undefined, () =>
+  return new ApiClient(effectiveUrl(conn), conn.token, undefined, () =>
     useSession.getState().markNeedsReconnect(connectionId, 'auth'),
   );
 }

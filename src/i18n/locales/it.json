@@ -321,30 +321,22 @@
   },
   "connect": {
     "server": {
-      "subtitle": "Connettiti al tuo server di audiolibri",
       "connecting": "Connessione del dispositivo in corso…",
       "addressLabel": "Indirizzo del server",
-      "connect": "Connetti",
       "enterAddress": "Inserisci l'indirizzo del tuo server",
       "missingAddress": "A questo link di abbinamento manca l'indirizzo del server. Inseriscilo qui sotto.",
       "pairingFailed": "Abbinamento non riuscito: {{message}}. Puoi anche connetterti inserendo il tuo codice di invito nella schermata di accesso.",
       "pairingReachError": "Impossibile raggiungere il server per completare l'abbinamento.",
-      "serverError": "Il server ha risposto con un errore: {{message}}",
-      "reachError": "Impossibile raggiungere quel server. Controlla l'indirizzo e che sia online.",
       "demoError": "Impossibile avviare la demo: {{message}}",
       "demoReachError": "Impossibile raggiungere il server demo.",
-      "demoDivider": "server demo",
-      "demoIntro": "Questo server offre una demo per ospiti, senza bisogno di un account.",
       "tryDemo": "Prova la demo",
-      "signInInstead": "Accedi invece",
-      "or": "oppure",
-      "scanQr": "Scansiona codice QR"
+      "scanQr": "Scansiona un codice QR"
     },
     "signIn": {
       "title": "Accedi",
       "mode": {
-        "code": "Codice",
-        "password": "Password"
+        "code": "Codice di invito",
+        "password": "Nome utente e password"
       },
       "codeLabel": "Codice di invito",
       "codePlaceholder": "Inserisci il tuo codice di invito",
@@ -352,7 +344,6 @@
       "usernamePlaceholder": "Nome utente",
       "passwordLabel": "Password",
       "passwordPlaceholder": "Password",
-      "connect": "Connetti",
       "submit": "Accedi",
       "failed": "Accesso non riuscito. Riprova.",
       "modeLabel": "Come accedere"
@@ -365,6 +356,66 @@
       "tryAgain": "Riprova",
       "openSettings": "Apri le impostazioni",
       "aimHint": "Inquadra con la fotocamera il codice QR di abbinamento nella pagina di connessione del tuo server."
+    },
+    "probe": {
+      "found": "Trovato {{name}}",
+      "version": "AudioSilo {{version}}",
+      "signIn": "Accedi",
+      "signInTo": "Accedi a {{name}}",
+      "unreachable": "Impossibile raggiungere {{address}}",
+      "hint": "Controlla come è scritto e che il server sia online. Un indirizzo di casa come 192.168.1.20:8080 funziona solo sulla stessa rete del server.",
+      "homeHint": "È un indirizzo della rete di casa, quindi risponde solo sulla stessa rete del server. Controlla che questo dispositivo sia su quella rete, e come è scritto.",
+      "errorTitle": "Il server ha risposto con un errore",
+      "errorBody": "Messaggio: {{message}}"
+    },
+    "link": {
+      "open": "Ho un link di associazione",
+      "label": "Link di associazione",
+      "connect": "Connetti",
+      "invalid": "Questo non è un link di associazione di AudioSilo. Questi link sono come https://<server>/web/connect?token=... o audiosilo://connect?..."
+    }
+  },
+  "onboarding": {
+    "step": "Passaggio {{step}} di {{count}}",
+    "start": {
+      "title": "I tuoi audiolibri, dal tuo server.",
+      "lead": "Inserisci l'indirizzo che ti ha dato il tuo amministratore, o scansiona il codice sul suo schermo.",
+      "leadWeb": "Inserisci l'indirizzo che ti ha dato il tuo amministratore, o incolla il link di associazione che ti ha inviato.",
+      "continue": "Continua"
+    },
+    "signIn": {
+      "eyebrow": "{{name}} · {{host}}",
+      "codeHint": "Dall'invito che ti ha inviato il tuo amministratore."
+    },
+    "anotherServer": "Un altro server",
+    "addresses": {
+      "title": "A casa e fuori",
+      "body": "{{name}} ha due indirizzi. AudioSilo usa quello veloce a casa e cambia da solo quando esci.",
+      "home": "A casa",
+      "away": "Fuori"
+    },
+    "panel": {
+      "title": "Ogni libro di casa, su ogni dispositivo.",
+      "body": "Progressi che non tornano mai a zero. Download che si ascoltano senza connessione. I libri che mancano in una serie, in vista sullo scaffale."
+    },
+    "ready": {
+      "connected": "{{name}} è connesso",
+      "title": "La tua biblioteca è pronta.",
+      "and": "{{rest}} e {{last}}",
+      "booksIn_one": "{{books}} libro in {{list}}.",
+      "booksIn_other": "{{books}} libri in {{list}}.",
+      "booksAcross_one": "{{books}} libro in {{libraries}} biblioteche.",
+      "booksAcross_other": "{{books}} libri in {{libraries}} biblioteche.",
+      "librariesIn_one": "La tua biblioteca: {{list}}.",
+      "librariesIn_other": "Le tue biblioteche: {{list}}.",
+      "librariesCount_one": "{{count}} biblioteca è pronta.",
+      "librariesCount_other": "{{count}} biblioteche sono pronte.",
+      "empty": "{{name}} non ha ancora libri. Compariranno qui quando il tuo amministratore ne aggiungerà.",
+      "loadError": "Non è stato possibile leggere le tue biblioteche in questo momento. Compariranno nell'app quando il server risponderà.",
+      "placeChapter": "Il tuo punto in {{title}} è venuto con te: capitolo {{chapter}}, {{percent}}% ascoltato.",
+      "place": "Il tuo punto in {{title}} è venuto con te: {{percent}}% ascoltato.",
+      "start": "Inizia ad ascoltare",
+      "browse": "Sfoglia la biblioteca"
     }
   },
   "home": {
@@ -1373,7 +1424,8 @@
     "banner": {
       "auth": "Riconnetti a {{name}}",
       "serverReset": "{{name}} è stato reimpostato - riesegui l'associazione per continuare",
-      "more": "+{{count}} altri"
+      "more": "+{{count}} altri",
+      "hint": "Apre l'accesso a questo server"
     },
     "connect": {
       "heading": "Riconnetti",
@@ -1801,6 +1853,15 @@
       "jumpLabel": "Vai a {{time}}",
       "span": "da {{from}} a {{to}}"
     }
+  },
+  "addresses": {
+    "home": "Indirizzo di casa",
+    "away": "Indirizzo fuori casa",
+    "paired": "Indirizzo del server",
+    "usingHome": "Usa il tuo indirizzo di casa",
+    "usingAway": "Usa il tuo indirizzo fuori casa",
+    "usingPaired": "Usa l'indirizzo con cui ti sei connesso",
+    "switches": "L'app passa dall'uno all'altro da sola."
   },
   "year": {
     "eyebrow": "Il tuo anno di ascolto",

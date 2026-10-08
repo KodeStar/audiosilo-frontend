@@ -51,6 +51,7 @@ import type {
   Rating,
   RatingValue,
   SeriesCount,
+  ServerAddresses,
   ServerInfo,
   ShareTarget,
   StatsRange,
@@ -290,6 +291,14 @@ export class ApiClient {
   }
   pair() {
     return this.request<PairingPayload>('POST', '/auth/pair');
+  }
+  /** The server's home and away addresses (capability `addresses`; `{}` when it has
+   * neither). Lets a paired device learn an address configured after it paired. The
+   * server derives `home` from the request when none is configured, so an answer read
+   * through the away address can lack a home the device already knows
+   * (`mergeAddresses` keeps it). */
+  addresses(signal?: AbortSignal) {
+    return this.request<ServerAddresses>('GET', '/addresses', { signal });
   }
 
   // --- Self-service password (authed) --------------------------------------

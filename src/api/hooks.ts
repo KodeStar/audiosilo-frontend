@@ -117,6 +117,8 @@ export const qk = {
   myListening: (cid: string, range: StatsRange) => ['myListening', cid, range] as const,
   listeningGoal: (cid: string) => ['listeningGoal', cid] as const,
   myDevices: (cid: string) => ['myDevices', cid] as const,
+  // Home and away addresses (Phase 5), capability `addresses`.
+  addresses: (cid: string) => ['addresses', cid] as const,
   /** Prefix matching every connection's progress list (refetch on Home). */
   allProgressAll: () => ['progress', 'all'] as const,
   /** Prefix matching every connection's recently added list. */
@@ -207,6 +209,16 @@ export function nextBookQuery(cid: string, client: MaybeClient, libraryId: numbe
     queryKey: qk.nextBook(cid, libraryId, path),
     queryFn: client ? ({ signal }) => client.nextBook(libraryId, path, signal) : skipToken,
     staleTime: NEXT_BOOK_STALE_MS,
+  });
+}
+
+/** The server's home and away addresses (`GET /addresses`). Ask only a server with
+ * `addresses` (`supported`): without it there is no query function at all. Read by the
+ * address runner on launch and on reconnect (`src/api/address-runner.ts`). */
+export function addressesQuery(cid: string, client: MaybeClient, supported: boolean) {
+  return queryOptions({
+    queryKey: qk.addresses(cid),
+    queryFn: client && supported ? ({ signal }) => client.addresses(signal) : skipToken,
   });
 }
 
@@ -1716,6 +1728,19 @@ export function useRevokeMyDevice(connectionId?: string) {
       void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
       void qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
     },
+  );
+}
+
+/** The server's home and away addresses as it answers them now (capability
+ * `addresses`), for a screen that shows them (Account). Which address the player uses
+ * right now is `useActiveAddress` (`src/api/address-route.ts`); the addresses the
+ * device keeps are the connection's `addresses`. */
+export function useServerAddresses(connectionId?: string) {
+  return useCapabilityQuery(
+    'addresses',
+    qk.addresses,
+    (api, signal) => api.addresses(signal),
+    connectionId,
   );
 }
 

@@ -321,30 +321,22 @@
   },
   "connect": {
     "server": {
-      "subtitle": "Liga-te ao teu servidor de audiolivros",
       "connecting": "A ligar o teu dispositivo…",
       "addressLabel": "Endereço do servidor",
-      "connect": "Ligar",
       "enterAddress": "Introduz o endereço do teu servidor",
       "missingAddress": "Falta o endereço do servidor a esta ligação de emparelhamento. Introduze-o abaixo.",
       "pairingFailed": "Falha no emparelhamento: {{message}}. Também podes ligar-te introduzindo o teu código de convite no ecrã de início de sessão.",
       "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",
-      "serverError": "O servidor respondeu com um erro: {{message}}",
-      "reachError": "Não foi possível contactar esse servidor. Verifica o endereço e se está online.",
       "demoError": "Não foi possível iniciar a demonstração: {{message}}",
       "demoReachError": "Não foi possível contactar o servidor de demonstração.",
-      "demoDivider": "servidor de demonstração",
-      "demoIntro": "Este servidor oferece uma demonstração para convidados - sem necessidade de conta.",
       "tryDemo": "Experimentar a demonstração",
-      "signInInstead": "Iniciar sessão em alternativa",
-      "or": "ou",
-      "scanQr": "Ler código QR"
+      "scanQr": "Ler um código QR"
     },
     "signIn": {
       "title": "Iniciar sessão",
       "mode": {
-        "code": "Código",
-        "password": "Palavra-passe"
+        "code": "Código de convite",
+        "password": "Utilizador e palavra-passe"
       },
       "codeLabel": "Código de convite",
       "codePlaceholder": "Introduz o teu código de convite",
@@ -352,7 +344,6 @@
       "usernamePlaceholder": "Nome de utilizador",
       "passwordLabel": "Palavra-passe",
       "passwordPlaceholder": "Palavra-passe",
-      "connect": "Ligar",
       "submit": "Iniciar sessão",
       "failed": "Falha ao iniciar sessão. Tenta novamente.",
       "modeLabel": "Como iniciar sessão"
@@ -365,6 +356,66 @@
       "tryAgain": "Tentar novamente",
       "openSettings": "Abrir definições",
       "aimHint": "Aponta a câmara para o código QR de emparelhamento na página de ligação do teu servidor."
+    },
+    "probe": {
+      "found": "{{name}} encontrado",
+      "version": "AudioSilo {{version}}",
+      "signIn": "Iniciar sessão",
+      "signInTo": "Iniciar sessão em {{name}}",
+      "unreachable": "Não foi possível chegar a {{address}}",
+      "hint": "Confirma a escrita e que o servidor está online. Um endereço de casa como 192.168.1.20:8080 só funciona na mesma rede que o servidor.",
+      "homeHint": "É um endereço da rede de casa, por isso só responde na mesma rede que o servidor. Confirma que este dispositivo está nessa rede, e a escrita.",
+      "errorTitle": "O servidor respondeu com um erro",
+      "errorBody": "Mensagem: {{message}}"
+    },
+    "link": {
+      "open": "Tenho uma ligação de emparelhamento",
+      "label": "Ligação de emparelhamento",
+      "connect": "Ligar",
+      "invalid": "Isto não é uma ligação de emparelhamento do AudioSilo. Estas ligações são como https://<servidor>/web/connect?token=... ou audiosilo://connect?..."
+    }
+  },
+  "onboarding": {
+    "step": "Passo {{step}} de {{count}}",
+    "start": {
+      "title": "Os teus audiolivros, do teu próprio servidor.",
+      "lead": "Introduz o endereço que o teu administrador te deu, ou lê o código no ecrã dele.",
+      "leadWeb": "Introduz o endereço que o teu administrador te deu, ou cola a ligação de emparelhamento que te enviou.",
+      "continue": "Continuar"
+    },
+    "signIn": {
+      "eyebrow": "{{name}} · {{host}}",
+      "codeHint": "Do convite que o teu administrador te enviou."
+    },
+    "anotherServer": "Outro servidor",
+    "addresses": {
+      "title": "Em casa e fora",
+      "body": "{{name}} tem dois endereços. O AudioSilo usa o rápido em casa e muda sozinho quando sais.",
+      "home": "Em casa",
+      "away": "Fora"
+    },
+    "panel": {
+      "title": "Todos os livros da casa, em todos os dispositivos.",
+      "body": "Um progresso que nunca volta a zero. Transferências que tocam sem ligação. Os livros que faltam numa série, à vista na estante."
+    },
+    "ready": {
+      "connected": "{{name}} está ligado",
+      "title": "A tua biblioteca está pronta.",
+      "and": "{{rest}} e {{last}}",
+      "booksIn_one": "{{books}} livro em {{list}}.",
+      "booksIn_other": "{{books}} livros em {{list}}.",
+      "booksAcross_one": "{{books}} livro em {{libraries}} bibliotecas.",
+      "booksAcross_other": "{{books}} livros em {{libraries}} bibliotecas.",
+      "librariesIn_one": "A tua biblioteca: {{list}}.",
+      "librariesIn_other": "As tuas bibliotecas: {{list}}.",
+      "librariesCount_one": "{{count}} biblioteca está pronta.",
+      "librariesCount_other": "{{count}} bibliotecas estão prontas.",
+      "empty": "{{name}} ainda não tem livros. Aparecem aqui quando o teu administrador adicionar alguns.",
+      "loadError": "Não foi possível ler as tuas bibliotecas agora. Aparecem na app quando o servidor responder.",
+      "placeChapter": "O teu ponto em {{title}} veio contigo: capítulo {{chapter}}, {{percent}}% ouvido.",
+      "place": "O teu ponto em {{title}} veio contigo: {{percent}}% ouvido.",
+      "start": "Começar a ouvir",
+      "browse": "Explorar a biblioteca"
     }
   },
   "home": {
@@ -1373,7 +1424,8 @@
     "banner": {
       "auth": "Voltar a ligar a {{name}}",
       "serverReset": "{{name}} foi reposto - volta a emparelhar para continuar",
-      "more": "+{{count}} mais"
+      "more": "+{{count}} mais",
+      "hint": "Abre o início de sessão deste servidor"
     },
     "connect": {
       "heading": "Voltar a ligar",
@@ -1801,6 +1853,15 @@
       "jumpLabel": "Ir para {{time}}",
       "span": "{{from}} a {{to}}"
     }
+  },
+  "addresses": {
+    "home": "Endereço de casa",
+    "away": "Endereço fora de casa",
+    "paired": "Endereço do servidor",
+    "usingHome": "A usar o teu endereço de casa",
+    "usingAway": "A usar o teu endereço fora de casa",
+    "usingPaired": "A usar o endereço com que te ligaste",
+    "switches": "A app alterna entre eles sozinha."
   },
   "year": {
     "eyebrow": "O teu ano de audição",

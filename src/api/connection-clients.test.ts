@@ -1,3 +1,4 @@
+import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { useSession } from '@/stores/session';
 
@@ -31,7 +32,14 @@ function installFetch(impl: (url: string) => FetchResult): jest.Mock {
 
 const markNeedsReconnect = jest.fn();
 
-function setStore(connections: { id: string; serverUrl: string; token: string | null }[]) {
+function setStore(
+  connections: {
+    id: string;
+    serverUrl: string;
+    token: string | null;
+    addresses?: { home?: string; away?: string };
+  }[],
+) {
   getState.mockReturnValue({ connections, markNeedsReconnect, status: 'ready' });
 }
 
@@ -69,6 +77,31 @@ describe('connection-clients', () => {
     const client = resolveClient('c1')!;
     await expect(client.me()).rejects.toMatchObject({ status: 403 });
     expect(markNeedsReconnect).not.toHaveBeenCalled();
+  });
+
+  describe('home and away addresses', () => {
+    const HOME = 'http://192.168.1.20:8080';
+    const conn = {
+      id: 'c1',
+      serverUrl: 'https://away.example',
+      token: 'tok',
+      addresses: { home: HOME, away: 'https://away.example' },
+    };
+    afterEach(() => useAddressRoute.setState({ picks: {} }));
+
+    it('builds the client on the address in use now', () => {
+      setStore([conn]);
+      expect(resolveClient('c1')!.baseUrl).toBe('https://away.example');
+      setAddressPick('c1', HOME);
+      expect(resolveClient('c1')!.baseUrl).toBe(HOME);
+      expect(resolveClient('c1')!.coverUrl(1, 'A')).toMatch(/^http:\/\/192\.168\.1\.20:8080\//);
+    });
+
+    it('ignores a pick that is no longer one of the connection addresses', () => {
+      setStore([{ ...conn, addresses: undefined }]);
+      setAddressPick('c1', HOME);
+      expect(resolveClient('c1')!.baseUrl).toBe('https://away.example');
+    });
   });
 
   it('sessionReady reflects the store status', () => {
