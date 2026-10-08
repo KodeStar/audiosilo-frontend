@@ -67,15 +67,6 @@ describe('the native engine, Phase 6 events', () => {
     expect(svc.getSnapshot().rate).toBe(1.5);
   });
 
-  it('passes a remote bookmark press on, without moving', async () => {
-    const svc = await setUp();
-    const handler = jest.fn();
-    svc.onRemoteBookmark!(handler);
-    send('onRemoteBookmark', { trackIndex: 0, position: 9 });
-    expect(handler).toHaveBeenCalledWith(0, 9);
-    expect(svc.getSnapshot().position).toBe(0);
-  });
-
   it("reads Smart Speed's total from progress ticks, and nothing from an older binary's", async () => {
     const svc = await setUp();
     const handler = jest.fn();

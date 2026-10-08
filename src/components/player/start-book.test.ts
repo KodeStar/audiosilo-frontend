@@ -19,14 +19,37 @@ jest.mock('@/playback/store', () => ({
 
 /* eslint-disable import/first */
 import { queryClient } from '@/api/provider';
+import { useDownloads } from '@/downloads/store';
+import type { DownloadEntry } from '@/downloads/types';
 
 import { startBookInPlace } from './start-book';
 /* eslint-enable import/first */
 
 const target = { connectionId: 'c1', libraryId: 2, path: 'Weir/Project Hail Mary' };
 
+function downloadedEntry(): DownloadEntry {
+  return {
+    connectionId: 'c1',
+    libraryId: 2,
+    path: target.path,
+    title: 'Project Hail Mary',
+    status: 'downloaded',
+    progress: 1,
+    bytes: 0,
+    totalBytes: 0,
+    manifest: {
+      book: { rel_path: target.path, title: 'From the download' } as never,
+      chapters: { chapters: [], files: [], from: 'download' } as never,
+      files: [],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00.000Z',
+    },
+  };
+}
+
 beforeEach(() => {
   queryClient.clear();
+  useDownloads.setState({ entries: {} });
   mockClient = {
     item: (...a: unknown[]) => mockItem(...a),
     chapters: (...a: unknown[]) => mockChapters(...a),
@@ -86,6 +109,25 @@ describe('startBookInPlace', () => {
     mockClient = null;
     await expect(startBookInPlace(target)).resolves.toBe(false);
     expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+
+  // Phase 6: a downloaded book starts from its download, with no server: CarPlay (and any
+  // other caller) can start it offline, and while its connection's token failed to hydrate.
+  it('starts a downloaded book from its download, offline and with its connection gone', async () => {
+    mockClient = null;
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    await expect(startBookInPlace(target)).resolves.toBe(true);
+    expect(mockItem).not.toHaveBeenCalled();
+    expect(mockChapters).not.toHaveBeenCalled();
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c1',
+      2,
+      { rel_path: target.path, title: 'From the download' },
+      { chapters: [], files: [], from: 'download' },
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('rejects, without playing, when the book cannot be fetched', async () => {

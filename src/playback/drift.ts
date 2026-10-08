@@ -1,3 +1,4 @@
+import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 
 /**
@@ -95,12 +96,7 @@ export function driftOffer(record: DriftRecord, now: number, position: number): 
 
 /** Every read-modify-write of the document runs in turn, so a save and a take started
  * together can never drop each other's change. */
-let queue: Promise<unknown> = Promise.resolve();
-function serial<T>(job: () => Promise<T>): Promise<T> {
-  const run = queue.then(job, job);
-  queue = run.catch(() => undefined);
-  return run;
-}
+const serial = serialQueue();
 
 async function readAll(now: number): Promise<DriftRecords> {
   return pruneDrifts(await getItem<unknown>(DRIFT_STORAGE_KEY), now);

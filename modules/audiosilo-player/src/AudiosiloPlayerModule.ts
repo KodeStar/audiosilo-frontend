@@ -16,10 +16,10 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
   /** Update runtime tunables (rewind, lock-screen skip intervals). */
   setConfig(config: PlayerConfig): Promise<void>;
   /** Load a queue and position to `startIndex` at `positionInTrack` seconds (does not
-   * auto-play). `chapters` (Android only) makes each chapter a clipped media item so the
-   * lock screen gets a chapter scrubber + prev/next chapter; omit/empty for file-per-item.
-   * `book` (Phase 6) names the book so Android can tell which book a queue is when the service
-   * is asked about it later (`getLoadedBook`); iOS accepts and ignores it. */
+   * auto-play). `chapters` gives the lock screen a chapter scrubber + prev/next chapter
+   * (Android makes each a clipped media item; iOS maps the file place onto them); omit/empty
+   * for file-per-item. `book` (Phase 6) names the book: Android's `getLoadedBook`, and on iOS
+   * CarPlay's playing indicator. */
   load(
     tracks: NativeTrack[],
     startIndex: number,

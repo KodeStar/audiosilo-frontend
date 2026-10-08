@@ -1,6 +1,6 @@
 import type { EventSubscription } from 'expo-modules-core';
 
-import AudiosiloPlayer, { type NativeTrack } from '../../modules/audiosilo-player';
+import AudiosiloPlayer from '../../modules/audiosilo-player';
 
 import {
   type BookRef,
@@ -10,20 +10,8 @@ import {
   type PlaybackService,
   type PlaybackSnapshot,
   type PlaybackTrack,
+  toNativeTrack,
 } from './types';
-
-function toNativeTrack(t: PlaybackTrack): NativeTrack {
-  return {
-    id: t.id,
-    url: t.url,
-    headers: t.headers,
-    title: t.title,
-    album: t.album,
-    artist: t.artist,
-    artwork: t.artwork,
-    duration: t.duration,
-  };
-}
 
 /** Does the installed binary know Phase 6's module surface (`load`'s 5th `book` argument
  * among it)? The JS bundle can be newer than the binary (a shipped store build lags), and
@@ -42,9 +30,10 @@ function moduleTakesBook(): boolean {
  * speed. The whole-book timeline lives in the player store; this engine works
  * per-track. The module's `NativeState` values match `PlaybackState` 1:1.
  *
- * Phase 6 events (`onRemoteMove`, `onRateChange`, `onRemoteBookmark`, `silenceSaved` on
- * `onProgress`) are listened for on every binary: an older one simply never sends them,
- * and listening for an event a module doesn't declare is harmless.
+ * Phase 6 events (`onRemoteMove`, `onRateChange`, `silenceSaved` on `onProgress`) are
+ * listened for on every binary: an older one simply never sends them, and listening for an
+ * event a module doesn't declare is harmless. (`onRemoteBookmark` is the car's: see
+ * `src/car/car-native.native.ts`.)
  */
 class NativePlaybackService implements PlaybackService {
   private snapshot: PlaybackSnapshot = { ...INITIAL_SNAPSHOT };
@@ -53,7 +42,6 @@ class NativePlaybackService implements PlaybackService {
   private setupDone = false;
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
-  private remoteBookmark: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private silenceSaved: ((totalSeconds: number) => void) | null = null;
 
   private emit() {
@@ -90,10 +78,6 @@ class NativePlaybackService implements PlaybackService {
         this.update({ rate });
         this.rateChange?.(rate);
       }),
-      AudiosiloPlayer.addListener('onRemoteBookmark', ({ trackIndex, position }) => {
-        if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
-        this.remoteBookmark?.(trackIndex, position);
-      }),
     );
     await AudiosiloPlayer.setup();
     this.setupDone = true;
@@ -112,9 +96,9 @@ class NativePlaybackService implements PlaybackService {
     chapters?: PlaybackChapter[],
     book?: BookRef,
   ) {
-    // chapters are the per-chapter clips; the Android module builds clipped media items
-    // from them (iOS ignores the arg). PlaybackChapter and NativeChapter are the same
-    // shape, so they pass straight through. `book` goes only to a binary that takes it
+    // chapters are the per-chapter clips: Android builds clipped media items from them, iOS
+    // drives its chapter lock screen with them. PlaybackChapter and NativeChapter are the
+    // same shape, so they pass straight through. `book` goes only to a binary that takes it
     // (see `moduleTakesBook`).
     const native = tracks.map(toNativeTrack);
     if (book && moduleTakesBook()) {
@@ -180,9 +164,6 @@ class NativePlaybackService implements PlaybackService {
   }
   onRateChange(handler: ((rate: number) => void) | null) {
     this.rateChange = handler;
-  }
-  onRemoteBookmark(handler: ((trackIndex: number, positionInTrack: number) => void) | null) {
-    this.remoteBookmark = handler;
   }
   onSilenceSaved(handler: ((totalSeconds: number) => void) | null) {
     this.silenceSaved = handler;

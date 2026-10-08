@@ -1,3 +1,10 @@
+import type {
+  BookRef,
+  NativeTrack,
+} from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
+
+export type { BookRef };
+
 export type PlaybackTrack = {
   id: string;
   url: string;
@@ -17,13 +24,13 @@ export type PlaybackTrack = {
 };
 
 /**
- * A chapter clip for the native engine to play as a clipped media item - the basis
- * for the Android lock screen's chapter-relative scrubber and prev/next-chapter
- * buttons. `fileIndex` indexes into the `tracks` passed to `load`; `startInFile`/
- * `endInFile` bound the clip within that file (`endInFile <= 0` ⇒ play to end of
- * file). The whole-book timeline stays file-based in the store; the native module
- * translates between its chapter items and the file-relative positions it reports.
- * iOS and web ignore this (optional `load` arg).
+ * A chapter clip for the native engine: the basis for the lock screen's chapter-relative
+ * scrubber and prev/next-chapter buttons (Android plays each as a clipped media item; iOS
+ * maps the file-relative place onto it). `fileIndex` indexes into the `tracks` passed to
+ * `load`; `startInFile`/`endInFile` bound the clip within that file (`endInFile <= 0` ⇒
+ * play to end of file). The whole-book timeline stays file-based in the store; the native
+ * module translates between its chapters and the file-relative positions it reports. The
+ * web ignores this (optional `load` arg).
  */
 export type PlaybackChapter = {
   fileIndex: number;
@@ -74,16 +81,35 @@ export type PlaybackConfig = {
   jumpForward: number;
   /** Lock-screen / media-session skip-backward interval (seconds). */
   jumpBackward: number;
-  /** Trim the silences between words (native only: Android every book, iOS downloaded
-   * books only; the web ignores it). */
+  /** Trim the silences between words (Android only; iOS and the web ignore it). */
   smartSpeed: boolean;
   /** Compress and lift speech (native; web through Web Audio, never in Safari). */
   voiceBoost: boolean;
 };
 
-/** A book's identity, as the native engine is told it (`load`'s optional `book`): path is
- * the identity, scoped by connection. The module's `BookRef` has the same shape. */
-export type BookRef = { connectionId: string; libraryId: number; path: string };
+/** A book's identity (the module's `BookRef`, re-exported above: the one definition), as
+ * the native engine is told it (`load`'s optional `book`) and the car names it: path is the
+ * identity, scoped by connection. Built from anything that carries the three fields (a
+ * `NowPlaying`, a `LoadedBook`, a download entry) without its other fields riding along
+ * into JSON or the bridge. */
+export function bookRefOf(b: BookRef): BookRef {
+  return { connectionId: b.connectionId, libraryId: b.libraryId, path: b.path };
+}
+
+/** A track as the native module takes it (exactly its fields, so nothing JS-only, such as
+ * `transcoded`, crosses the bridge or lands in the car snapshot). */
+export function toNativeTrack(t: PlaybackTrack): NativeTrack {
+  return {
+    id: t.id,
+    url: t.url,
+    headers: t.headers,
+    title: t.title,
+    album: t.album,
+    artist: t.artist,
+    artwork: t.artwork,
+    duration: t.duration,
+  };
+}
 
 /**
  * Coerce a caller's volume into the [0,1] linear-gain range every engine expects.
@@ -191,9 +217,6 @@ export interface PlaybackService {
   /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an
    * Android controller) and the engine already applied it. Optional. */
   onRateChange?(handler: ((rate: number) => void) | null): void;
-  /** Native: a bookmark button outside the app was pressed (CarPlay, the Android
-   * notification / Android Auto), at `(trackIndex, positionInTrack)`. Optional. */
-  onRemoteBookmark?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
   /** Native: book seconds Smart Speed has removed since the engine was created (monotonic
    * while that engine lives; a new engine starts again at 0), reported with the engine's
    * progress ticks. Not playback state, so not in the snapshot. Optional, and never called

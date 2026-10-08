@@ -16,7 +16,6 @@ let remoteSeek: ((positionInTrack: number) => void) | null = null;
 type TrackPlace = (trackIndex: number, positionInTrack: number) => void;
 let remoteMove: TrackPlace | null = null;
 let rateChange: ((rate: number) => void) | null = null;
-let remoteBookmark: TrackPlace | null = null;
 let silenceSaved: ((total: number) => void) | null = null;
 const mockSvc = {
   onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
@@ -27,9 +26,6 @@ const mockSvc = {
   }),
   onRateChange: jest.fn((handler: ((rate: number) => void) | null) => {
     rateChange = handler;
-  }),
-  onRemoteBookmark: jest.fn((handler: TrackPlace | null) => {
-    remoteBookmark = handler;
   }),
   onSilenceSaved: jest.fn((handler: ((total: number) => void) | null) => {
     silenceSaved = handler;
@@ -144,7 +140,6 @@ import {
   LONG_PAUSE_MS,
   localMoveCount,
   onPickedUpAgain,
-  onRemoteBookmarkRequest,
   selectBookKey,
   selectIsPlaying,
   selectIsTransportLive,
@@ -1841,38 +1836,5 @@ describe('Smart Speed and Voice Boost', () => {
     mockFlushTimeSaved.mockClear();
     pushSnapshot(snap('paused', 12));
     expect(mockFlushTimeSaved).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('onRemoteBookmarkRequest', () => {
-  it('hands the loaded book and the whole-book place of a press outside the app', async () => {
-    const seen: unknown[] = [];
-    const off = onRemoteBookmarkRequest((r) => seen.push(r));
-    await startBook(makeBook(), 10);
-    expect(remoteBookmark).not.toBeNull();
-    remoteBookmark!(0, 42);
-    expect(seen).toEqual([
-      {
-        connectionId: 'c1',
-        libraryId: 2,
-        path: 'A/Book.m4b',
-        bookPosition: 42,
-        trackIndex: 0,
-        positionInTrack: 42,
-      },
-    ]);
-    off();
-    remoteBookmark!(0, 50);
-    expect(seen).toHaveLength(1);
-  });
-
-  it('drops a press with no book loaded', async () => {
-    const listener = jest.fn();
-    const off = onRemoteBookmarkRequest(listener);
-    await startBook(makeBook(), 10);
-    await usePlayer.getState().stop();
-    remoteBookmark!(0, 5);
-    expect(listener).not.toHaveBeenCalled();
-    off();
   });
 });

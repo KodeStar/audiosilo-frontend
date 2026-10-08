@@ -12,10 +12,10 @@ export type NativeTrack = {
   duration?: number;
 };
 
-/** A chapter clip for the Android engine to turn into a clipped MediaItem (lock-screen
- * chapter scrubber + prev/next chapter). `fileIndex` indexes into the `tracks` passed to
- * `load`; `startInFile`/`endInFile` bound the clip within that file (`endInFile <= 0` ⇒ to
- * end of file). Optional `load` arg - iOS ignores it. */
+/** A chapter clip for the lock screen's chapter scrubber + prev/next chapter (Android turns
+ * each into a clipped MediaItem; iOS maps the file place onto them). `fileIndex` indexes into
+ * the `tracks` passed to `load`; `startInFile`/`endInFile` bound the clip within that file
+ * (`endInFile <= 0` ⇒ to end of file). Optional `load` arg. */
 export type NativeChapter = {
   fileIndex: number;
   startInFile: number;
@@ -65,8 +65,8 @@ export type LoadedBook = BookRef & {
   playing: boolean;
 };
 
-/** Android: a bookmark pressed while no JS was running. `at` is ISO 8601. */
-export type PendingBookmark = BookRef & { trackIndex: number; position: number; at: string };
+/** Android: a bookmark pressed while no JS was running. */
+export type PendingBookmark = BookRef & { trackIndex: number; position: number };
 
 /** Tunables that can change at runtime (driven by the app's settings store). */
 export type PlayerConfig = {

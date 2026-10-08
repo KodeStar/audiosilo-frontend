@@ -297,6 +297,8 @@ describe('adoptLoaded', () => {
         },
       },
     });
+    await flushMicrotasks(); // the reads are asked (`fetchFailFast` first drops a held one)
+    expect(answers).toHaveLength(2);
     for (const answer of answers) answer();
     expect(await adopting).toBe(false);
     expect(usePlayer.getState().nowPlaying!.path).toBe('X');
@@ -305,9 +307,43 @@ describe('adoptLoaded', () => {
     mockFetchQuery.mockImplementation(async () => ({}));
   });
 
+  // The engine's volume is sticky: a sleep-timer fade cut off by the switch (or by a JS
+  // restart, which also forgets `outputVolume`) would leave the adopted book quiet.
+  it('restores full output gain once the adopted book is loaded', async () => {
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 10);
+    await usePlayer.getState().setOutputVolume(0.3); // a fade under way
+    const setVolume = mockSvc.setVolume as jest.Mock;
+    setVolume.mockClear();
+    const pathAtRestore: (string | undefined)[] = [];
+    setVolume.mockImplementation(async () => {
+      pathAtRestore.push(usePlayer.getState().nowPlaying?.path);
+    });
+
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({}));
+    expect(setVolume.mock.calls).toEqual([[1]]);
+    // After the swap, so the old book's fade ticker can't write over it.
+    expect(pathAtRestore).toEqual(['B']);
+
+    // The remembered gain is 1 again: the next fade step reaches the engine.
+    await usePlayer.getState().setOutputVolume(0.3);
+    expect(setVolume).toHaveBeenLastCalledWith(0.3);
+    setVolume.mockImplementation(async () => {});
+  });
+
+  it("drops the previous book's stall timer", async () => {
+    // A start that never reaches `playing` has the stall watchdog armed.
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 10);
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+    jest.advanceTimersByTime(10_000);
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+  });
+
   it('gives up when the book is neither downloaded nor on a signed-in server', async () => {
-    mockResolveClient.mockReturnValueOnce(null);
+    mockResolveClient.mockReturnValue(null);
     expect(await usePlayer.getState().adoptLoaded(loadedB({}))).toBe(false);
     expect(usePlayer.getState().nowPlaying).toBeNull();
+    mockResolveClient.mockReturnValue(fakeClient);
   });
 });

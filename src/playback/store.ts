@@ -2,12 +2,11 @@ import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { chaptersQuery, itemQuery, qk } from '@/api/hooks';
+import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
-import { downloadKey, useDownloads } from '@/downloads/store';
-import type { DownloadManifest } from '@/downloads/types';
+import { downloadedEntryOf, downloadKey, useDownloads } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { useSettings } from '@/stores/settings';
@@ -15,6 +14,7 @@ import { useSettings } from '@/stores/settings';
 import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
+import { bookSourceOf, localFromManifest, resumeStart, type LocalFiles } from './book-source';
 import { engineTick, engineTicker } from './engine-ticks';
 import {
   flushConnection,
@@ -26,11 +26,13 @@ import {
 } from './progress-sync';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
+import { bookSpeed } from './time-left';
 import { flushTimeSaved, noteSilenceSaved } from './time-saved';
 import { mayNeedWebTranscode } from './transcode';
 import { resolveWebTranscode } from './transcode-capability';
 import {
   AutoplayBlockedError,
+  bookRefOf,
   type BookRef,
   clampVolume,
   INITIAL_SNAPSHOT,
@@ -70,19 +72,6 @@ function isPlayingState(state: PlaybackState): boolean {
  */
 function isTransportLiveState(state: PlaybackState): boolean {
   return state === 'playing' || state === 'loading';
-}
-
-/** The `local` files map + artwork a downloaded book plays from, derived from its
- * manifest. Shared by `playBook` (downloaded-before-play) and `switchCurrentBookToLocal`
- * (downloaded-while-streaming), whose `buildBookQueue` calls take the same shape. */
-function localFromManifest(manifest: DownloadManifest): {
-  files: Map<string, string>;
-  artwork?: string;
-} {
-  return {
-    files: new Map(manifest.files.map((f) => [f.relPath, f.localUri] as const)),
-    artwork: manifest.coverUri ?? undefined,
-  };
 }
 
 let service: PlaybackService | null = null;
@@ -138,7 +127,6 @@ const SAVE_HOLD_MAX_MS = 5_000;
 let pausedAt: number | null = null;
 export const LONG_PAUSE_MS = 60_000;
 let pickedUpAgainListener: (() => void) | null = null;
-let remoteBookmarkListener: ((request: RemoteBookmarkRequest) => void) | null = null;
 /** Counts the listener's own moves in the loaded book (seeks, track jumps, a book
  * started): a reconcile that sees it change while its check was out stands back. */
 let localMoves = 0;
@@ -191,11 +179,6 @@ function currentConfig() {
   };
 }
 
-/** The book the engine is told it is loading (`load`'s `book`, for the Android service). */
-function bookRefOf(b: { connectionId: string; libraryId: number; path: string }): BookRef {
-  return { connectionId: b.connectionId, libraryId: b.libraryId, path: b.path };
-}
-
 export type NowPlaying = {
   /** The connection this book is playing through (scopes saves + download lookups). */
   connectionId: string;
@@ -206,6 +189,26 @@ export type NowPlaying = {
   cover: string;
   queue: BookQueue;
 };
+
+/** The loaded book as the player shows it, built the same way by every path that loads one
+ * (`playBook`, `adoptLoaded`). A downloaded book uses its local cover; with no client and
+ * no local cover there's simply no cover (offline, connection gone) and the player falls
+ * back to a placeholder. */
+function nowPlayingOf(
+  ref: BookRef,
+  book: Book,
+  queue: BookQueue,
+  api: ApiClient | null,
+  local?: LocalFiles,
+): NowPlaying {
+  return {
+    ...bookRefOf(ref),
+    title: book.title,
+    author: book.author || book.narrator || '',
+    cover: local?.artwork ?? api?.coverUrl(ref.libraryId, ref.path) ?? '',
+    queue,
+  };
+}
 
 /** The identity of the book that just finished - enough for a UI-layer end-of-book
  * flow (end credits) to show it and resolve the next book, captured by `finishBook`
@@ -519,6 +522,53 @@ function endHistory() {
     });
 }
 
+/**
+ * The switch to another book, as `playBook` and `adoptLoaded` both make it, BEFORE
+ * `nowPlaying` changes: the previous book's listening span flushed, its stall timer dropped
+ * and its periodic save loop stopped (otherwise a 15 s tick, or the engine's continued ticks
+ * after an early return, would map the OLD engine position through the NEW book's queue and
+ * persist it under the new book's path, corrupting its progress; the loop restarts on the
+ * engine's next `playing` transition for the new book), counted as the listener's own move,
+ * and the new book's server (null for an offline downloaded book: persist and history are
+ * then no-ops) and retry request taken.
+ */
+function switchBook(api: ApiClient | null, request: NonNullable<typeof lastPlayRequest>) {
+  endHistory();
+  cancelStallWatchdog();
+  stopSaveLoop();
+  userMoved();
+  apiRef = api;
+  lastPlayRequest = request; // so retry() can re-run resume
+  resumeLookupFailed = false;
+}
+
+/**
+ * A new book must never inherit a stale sleep-timer fade gain. The timer restores the
+ * volume on every path it owns; this is the backstop for the one it doesn't - something
+ * going wrong mid-fade, or a JS restart mid-fade (the engine's volume is sticky, while a
+ * fresh `outputVolume` reads 1, so a later restore to 1 would be skipped) - because
+ * near-silent audio with no visible cause is the worst failure this feature can produce.
+ * Not awaited: it is a no-op in the common case, and every play would otherwise wait on a
+ * bridge round-trip.
+ *
+ * Written unconditionally (not through `setOutputVolume`) because this is the backstop for
+ * a gain the store may have lost track of; `outputVolume` is updated with it so the no-op
+ * check can never think the engine is quieter than it is.
+ *
+ * Called AFTER `nowPlaying` is swapped, at every site that swaps it, and that ordering is
+ * the whole point: the fade ticker cancels itself by comparing the playing book against
+ * the timer's own, so while `nowPlaying` still holds the OLD book it keeps writing the fade
+ * gain - a resume lookup is a network round trip, far more than the fade's 250ms period.
+ * Restoring before the swap simply handed the ticker a window to undo it in, and the new
+ * book could start attenuated. A fade running for the swapped-in book itself (only
+ * possible for a timer that outlived the store's own book) writes its gain again on its
+ * next tick.
+ */
+function restoreOutputGain(svc: PlaybackService) {
+  outputVolume = 1;
+  void svc.setVolume(1);
+}
+
 async function ensureService(): Promise<PlaybackService> {
   if (service) return service;
   const svc = createPlaybackService();
@@ -641,16 +691,6 @@ async function ensureService(): Promise<PlaybackService> {
     if (rate !== raw) void svc.setRate(rate);
     void persist();
   });
-  svc.onRemoteBookmark?.((trackIndex, positionInTrack) => {
-    const np = usePlayer.getState().nowPlaying;
-    if (!np || !remoteBookmarkListener) return;
-    remoteBookmarkListener({
-      ...bookRefOf(np),
-      bookPosition: toBookPosition(np.queue.offsets, trackIndex, positionInTrack),
-      trackIndex,
-      positionInTrack,
-    });
-  });
   // Smart Speed's running total, counted on the playing book (`time-saved.ts`).
   svc.onSilenceSaved?.((total) => noteSilenceSaved(total, selectBookKey(usePlayer.getState())));
   service = svc;
@@ -681,8 +721,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const api = resolveClient(connectionId);
 
     // Play from local files when the book is downloaded (works fully offline).
-    const dl = useDownloads.getState().entries[downloadKey(connectionId, libraryId, book.rel_path)];
-    const local = dl?.status === 'downloaded' ? localFromManifest(dl.manifest) : undefined;
+    const ref = { connectionId, libraryId, path: book.rel_path };
+    const dl = downloadedEntryOf(ref);
+    const local = dl ? localFromManifest(dl.manifest) : undefined;
 
     // A fully-downloaded book plays entirely from `local` files, so it can start even when
     // the connection is gone (e.g. its secure-store token failed to hydrate this launch,
@@ -690,20 +731,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // still needs the server (not downloaded) requires a live client.
     if (!api && !local) return; // connection gone and nothing local; nothing to play
 
-    endHistory(); // flush any prior book's listening span before switching
-    cancelStallWatchdog(); // drop any stale stall timer from the previous book
-    // Stop the prior book's periodic save loop before we switch nowPlaying: otherwise
-    // a 15s tick (or the engine's continued ticks after an early return below) would
-    // map the OLD engine position through the NEW book's queue and persist it under the
-    // new book's path - corrupting the new book's progress. The loop restarts on the
-    // engine's next `playing` transition for this book.
-    stopSaveLoop();
+    switchBook(api, { connectionId, libraryId, book, chapterData });
     pausedAt = null; // a book (re)started here just had its place looked up
-    userMoved();
-    apiRef = api; // null for an offline downloaded book => persist()/history no-op (no server)
     deviceId = await getDeviceId();
-    lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
-    resumeLookupFailed = false;
 
     // Web only: a book the browser can't decode streams through the server's transcoder
     // when it has one (playback/transcode.ts). Decided once here, so every later reload
@@ -722,60 +752,22 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       useSettings.getState().virtualChapterInterval,
       transcode,
     );
-    const nowPlaying: NowPlaying = {
-      connectionId,
-      libraryId,
-      path: book.rel_path,
-      title: book.title,
-      author: book.author || book.narrator || '',
-      // A downloaded book uses its local cover; with no client and no local cover there's
-      // simply no cover (offline, connection gone) - the player falls back to a placeholder.
-      cover: local?.artwork ?? api?.coverUrl(libraryId, book.rel_path) ?? '',
-      queue,
-    };
+    const nowPlaying = nowPlayingOf(ref, book, queue, api, local);
     const svc = await ensureService();
-    /**
-     * A new book must never inherit a stale sleep-timer fade gain. The timer restores the
-     * volume on every path it owns; this is the backstop for the one it doesn't -
-     * something going wrong mid-fade - because near-silent audio with no visible cause is
-     * the worst failure this feature can produce. Not awaited: it is a no-op in the
-     * common case, and every play would otherwise wait on a bridge round-trip.
-     *
-     * Written unconditionally (not through `setOutputVolume`) because this is the
-     * backstop for a gain the store may have lost track of; `outputVolume` is updated
-     * with it so the no-op check can never think the engine is quieter than it is.
-     *
-     * Called AFTER `nowPlaying` is swapped, at every site that swaps it, and that
-     * ordering is the whole point: the fade ticker cancels itself by comparing the
-     * playing book against the timer's own, so while `nowPlaying` still holds the OLD
-     * book it keeps writing the fade gain - a resume lookup is a network round trip, far
-     * more than the fade's 250ms period. Restoring before the swap simply handed the
-     * ticker a window to undo it in, and the new book could start attenuated.
-     */
-    const restoreOutputGain = () => {
-      outputVolume = 1;
-      void svc.setVolume(1);
-    };
 
     let startAt = startBookPosition ?? 0;
     const askedSpeed = startSpeed !== undefined && startSpeed > 0;
-    let speed = clampRate(askedSpeed ? startSpeed : useSettings.getState().defaultRate);
+    const { defaultRate } = useSettings.getState();
+    let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
     if (startBookPosition === undefined && startTrack === undefined) {
       const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
       if (r.kind === 'progress') {
-        const p = r.progress;
-        // Resume an in-progress book where it left off. A FINISHED book instead restarts
-        // from 0 (a deliberate re-listen): finishBook saves the finished position at the
-        // whole-book end (position within FINISHED_TOLERANCE of its duration), so resuming
-        // from the saved spot would strand the listener at the very end and instantly
-        // re-fire the end-of-book flow. A book "marked as finished" mid-book carries the
-        // flag too - either way the `finished` flag is the user's "done" signal, so we
-        // ignore the saved position and leave startAt at 0. resumeFloor is derived from
-        // startAt below, so it stays 0 and the slip guard won't block the restart's early
-        // low-position saves. Only an unfinished book resumes at its saved position.
-        if (!p.finished && p.position > 0) startAt = p.position;
-        if (p.playback_speed > 0 && !askedSpeed) speed = clampRate(p.playback_speed);
-      } else if (r.kind === 'failed' && dl?.status !== 'downloaded') {
+        // An unfinished book resumes where it left off, a finished one starts again at 0
+        // (`resumeStart`). resumeFloor is derived from startAt below, so a restart's floor
+        // is 0 and the slip guard won't block its early low-position saves.
+        startAt = resumeStart(r.progress);
+        if (!askedSpeed) speed = bookSpeed(r.progress.playback_speed, defaultRate);
+      } else if (r.kind === 'failed' && !dl) {
         // Streaming book whose resume position couldn't be confirmed (server unreachable,
         // no local record). Starting at 0 here would restart an in-progress book AND a
         // later save could overwrite the real place. Fail safe: surface a recoverable
@@ -792,7 +784,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
           nowPlaying,
           snapshot: { ...INITIAL_SNAPSHOT, state: 'error', rate: speed },
         });
-        restoreOutputGain();
+        restoreOutputGain(svc);
         return;
       }
       // kind 'empty' (server reachable, genuinely new) or 'failed' for a downloaded book
@@ -817,7 +809,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const prev = get();
     const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
     set({ rate: speed, nowPlaying, loadingBook });
-    restoreOutputGain(); // only now can the old book's fade no longer write over it
+    restoreOutputGain(svc); // only now can the old book's fade no longer write over it
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
     await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips, bookRefOf(nowPlaying));
     if (get().loadingBook === key) set({ loadingBook: null });
@@ -1051,28 +1043,6 @@ export function onPickedUpAgain(listener: () => void): () => void {
   };
 }
 
-/** A bookmark button outside the app was pressed (CarPlay, the Android notification or
- * Android Auto) while this book was loaded: the book, and where it was at the press. */
-export type RemoteBookmarkRequest = BookRef & {
-  /** Whole-book seconds at the press. */
-  bookPosition: number;
-  /** The engine's own coordinates of the press (file index + seconds in that file). */
-  trackIndex: number;
-  positionInTrack: number;
-};
-
-/** Be told when a bookmark button outside the app is pressed while a book is loaded (one
- * listener: the car controller, which saves the bookmark). A press with no book loaded, or
- * no listener, is dropped. Returns the unsubscribe. */
-export function onRemoteBookmarkRequest(
-  listener: (request: RemoteBookmarkRequest) => void,
-): () => void {
-  remoteBookmarkListener = listener;
-  return () => {
-    if (remoteBookmarkListener === listener) remoteBookmarkListener = null;
-  };
-}
-
 /**
  * Stop playback (persisting the final position) when the playing book was loaded
  * through the given connection. Books playing through another connection keep going:
@@ -1165,8 +1135,8 @@ async function switchCurrentBookToLocal() {
  * keep playing one after the app's JS restarted. Adopting it gives the store that book
  * exactly as `playBook` would have built it, without `svc.load` (the engine is already
  * playing it; a reload would cut the audio and lose the place):
- * - the item and chapters from the download manifest when it is downloaded (the queue the
- *   service built came from it), else through the query cache like `startBookInPlace`;
+ * - the item and chapters from `bookSourceOf` (the download manifest when it is downloaded:
+ *   the queue the service built came from it; else through the query cache);
  * - `buildBookQueue` as `playBook` calls it (native never transcodes);
  * - the speed and place the engine reports: `resumeFloor` is that place, so a stray low
  *   position can't be saved over it, and the bridge's snapshot is seeded (`adoptPlace`)
@@ -1174,45 +1144,32 @@ async function switchCurrentBookToLocal() {
  * - the intent from `playing`: a playing book starts the save loop and a listening span; a
  *   paused one saves nothing until it plays (its place is the engine's, already saved by
  *   whoever played it, and a save now would date that place as new).
- * A different book already loaded is switched out the way `playBook` switches (its span
- * flushed, its save loop stopped first, so none of its saves can land under the new path).
+ * A different book already loaded is switched out the way `playBook` switches
+ * (`switchBook`: none of its saves can land under the new path, and its stall timer can't
+ * turn the adopted book into an error), and the output gain is restored to full after the
+ * swap (`restoreOutputGain`: the engine's volume is sticky, and a fade cut off by the
+ * switch or a JS restart would otherwise leave the adopted book quiet).
  * Gives up, changing nothing, when another book started while the item was being read.
  */
 async function adoptLoadedBook(loaded: LoadedBook): Promise<boolean> {
-  const { connectionId, libraryId, path } = loaded;
   const before = usePlayer.getState().nowPlaying;
-  const api = resolveClient(connectionId);
-  const dl = useDownloads.getState().entries[downloadKey(connectionId, libraryId, path)];
-  const local = dl?.status === 'downloaded' ? localFromManifest(dl.manifest) : undefined;
-  let book: Book;
-  let chapterData: ChaptersResponse | undefined;
+  const api = resolveClient(loaded.connectionId);
+  let source: Awaited<ReturnType<typeof bookSourceOf>>;
+  let id: string;
+  let svc: PlaybackService;
   try {
-    if (dl?.status === 'downloaded') {
-      book = dl.manifest.book;
-      chapterData = dl.manifest.chapters ?? undefined;
-    } else {
-      if (!api) return false;
-      [book, chapterData] = await Promise.all([
-        queryClient.fetchQuery({
-          ...itemQuery(connectionId, api, libraryId, path),
-          staleTime: 30_000,
-        }),
-        queryClient.fetchQuery({
-          ...chaptersQuery(connectionId, api, libraryId, path),
-          staleTime: 30_000,
-        }),
-      ]);
-    }
+    [source, id, svc] = await Promise.all([bookSourceOf(loaded), getDeviceId(), ensureService()]);
   } catch (err) {
     console.warn('[player] could not adopt the loaded book', err);
     return false;
   }
-  const id = await getDeviceId();
-  const svc = await ensureService();
+  if (!source) return false;
   // Another book started (or the same one was adopted) while we read: theirs stands.
   const now = usePlayer.getState();
   if (now.nowPlaying !== before || now.loadingBook !== null) return false;
 
+  const { book, chapters: chapterData, local } = source;
+  const { connectionId, libraryId } = loaded;
   const queue = buildBookQueue(
     api,
     libraryId,
@@ -1232,32 +1189,19 @@ async function adoptLoadedBook(loaded: LoadedBook): Promise<boolean> {
     rate,
   };
 
-  // The switch, as `playBook` makes it: the previous book's span and save loop end first.
-  endHistory();
+  switchBook(api, { connectionId, libraryId, book, chapterData });
   clearPlaybackIntent();
-  stopSaveLoop();
-  userMoved();
-  apiRef = api;
   deviceId = id;
-  lastPlayRequest = { connectionId, libraryId, book, chapterData };
-  resumeLookupFailed = false;
   resumeFloor = toBookPosition(queue.offsets, trackIndex, position);
   pausedAt = loaded.playing ? null : Date.now();
   svc.adoptPlace?.(snapshot);
   usePlayer.setState({
-    nowPlaying: {
-      connectionId,
-      libraryId,
-      path,
-      title: book.title,
-      author: book.author || book.narrator || '',
-      cover: local?.artwork ?? api?.coverUrl(libraryId, path) ?? '',
-      queue,
-    },
+    nowPlaying: nowPlayingOf(loaded, book, queue, api, local),
     rate,
     loadingBook: null,
     snapshot,
   });
+  restoreOutputGain(svc);
   if (loaded.playing) {
     wantsPlayback = true;
     startSaveLoop();
