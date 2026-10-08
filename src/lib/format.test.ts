@@ -8,6 +8,8 @@ import {
   localIsoDay,
   formatDurationOrZero,
   formatServerDay,
+  formatServerShortDay,
+  formatHour,
   formatSpeed,
   bookSubtitle,
   formatBitrate,
@@ -313,6 +315,13 @@ describe('date formatters', () => {
   it('reads a server day as that calendar day', () => {
     expect(formatServerDay('2026-10-20', 'en-GB')).toBe('20 Oct');
     expect(formatDayMonth(new Date(2026, 9, 20, 12), 'en-GB')).toBe('20 Oct');
+    expect(formatServerShortDay('2026-10-03', 'en-GB')).toBe('Sat 3 Oct');
+  });
+
+  it("writes an hour of the day on the reader's clock", () => {
+    expect(formatHour(22, 'en-GB')).toBe('22:00');
+    expect(formatHour(7, 'en-US')).toBe('7:00 AM');
+    expect(formatHour(24, 'en-GB')).toBe(formatHour(0, 'en-GB'));
   });
 
   it('writes a record date, with the year only when it is another', () => {

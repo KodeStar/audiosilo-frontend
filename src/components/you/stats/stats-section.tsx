@@ -3,14 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useWindowDimensions, View } from 'react-native';
 
 import {
-  useCapabilitiesAll,
   useCapability,
   useLibrariesAll,
   useListeningGoal,
   useMyListening,
   useMyStats,
 } from '@/api/hooks';
-import { useApis, useCid } from '@/api/provider';
 import type { ListeningGoalStatus, MyListening, UserStats } from '@/api/types';
 import { listeningStreak, serverToday } from '@/components/home/listening';
 import { Button } from '@/components/ui/button';
@@ -22,6 +20,7 @@ import { Notice } from '@/components/ui/notice';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { YearBanner } from '@/components/you/year/year-banner';
 import { formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -46,12 +45,11 @@ import {
   type RankRow,
   rankRows,
   statsColumns,
-  statsServerChoice,
   weekComparison,
   weeklyTotals,
 } from './stats-model';
+import { useStatsServer } from './use-stats-server';
 import { WeeklyBars } from './weekly-bars';
-import { YearBanner } from './year-banner';
 
 /** A card's border and padding, each side (Card: `p-5` + a 1px hairline). */
 const CARD_INSET = 21;
@@ -66,25 +64,11 @@ const GAP = 16;
  */
 export function StatsSection() {
   const { t } = useTranslation();
-  const apis = useApis();
-  const caps = useCapabilitiesAll();
-  const defaultId = useCid();
   const [picked, setPicked] = useState<string | null>(null);
+  const { cid, name: server, choices } = useStatsServer(picked);
   const window = useWindowDimensions();
   const [measured, setMeasured] = useState<number | null>(null);
   const width = measured ?? Math.max(0, Math.min(window.width - 32, 1480));
-
-  const ids = apis.map((a) => a.connection.id);
-  const userStats = Object.fromEntries(
-    ids.map((id) => [id, caps[id] ? !!caps[id]?.user_stats : undefined]),
-  );
-  const { cid, choices } = statsServerChoice({
-    connectionIds: ids,
-    userStats,
-    defaultId,
-    picked,
-  });
-  const nameOf = (id: string) => apis.find((a) => a.connection.id === id)?.connection.name ?? '';
 
   return (
     <View className="gap-4" onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}>
@@ -92,13 +76,13 @@ export function StatsSection() {
         <SegmentedControl
           scrollable
           accessibilityLabel={t('stats.server.pick')}
-          options={choices.map((id) => ({ value: id, label: nameOf(id) }))}
+          options={choices.map((c) => ({ value: c.id, label: c.name }))}
           value={cid}
           onChange={setPicked}
           className="self-start"
         />
       ) : null}
-      {cid ? <StatsBody key={cid} cid={cid} server={nameOf(cid)} width={width} /> : null}
+      {cid ? <StatsBody key={cid} cid={cid} server={server} width={width} /> : null}
     </View>
   );
 }
@@ -229,7 +213,7 @@ function StatsContent({
   const tileGap = compact ? 10 : GAP;
   const tileW = columnWidth(width, cols.tiles, tileGap);
   const streak = listeningStreak(listening.days, today);
-  const longest = longestStreak(stats.days);
+  const longest = longestStreak(stats.days).length;
   const average = dailyAverage(stats.days);
   const deltaText =
     week.delta === 0
@@ -422,6 +406,7 @@ function StatsContent({
 
       <YearBanner
         year={year}
+        theme="ink"
         summary={t('stats.year.summary', {
           duration: formatDurationOrZero(stats.totals.listened),
           count: stats.totals.finished,

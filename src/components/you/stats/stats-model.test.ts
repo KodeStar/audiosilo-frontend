@@ -7,6 +7,9 @@ import {
   barAt,
   calendarCellAt,
   calendarGrid,
+  clockAxis,
+  clockPetals,
+  clockRings,
   clockSummary,
   columnWidth,
   dailyAverage,
@@ -63,7 +66,10 @@ describe('weeklyTotals', () => {
 describe('streaks and averages', () => {
   it('finds the longest run of listening days', () => {
     const pattern = [1, 1, 0, 1, 1, 1, 0, 1];
-    expect(longestStreak(run(TODAY, pattern.length, (i) => pattern[i] * 60))).toBe(3);
+    expect(longestStreak(run(TODAY, pattern.length, (i) => pattern[i] * 60))).toEqual({
+      length: 3,
+      end: addDays(TODAY, -2),
+    });
   });
 
   it('breaks a run on a day missing from the list', () => {
@@ -72,8 +78,8 @@ describe('streaks and averages', () => {
       { date: '2026-01-02', listened: 60 },
       { date: '2026-01-04', listened: 60 },
     ];
-    expect(longestStreak(days)).toBe(2);
-    expect(longestStreak([])).toBe(0);
+    expect(longestStreak(days)).toEqual({ length: 2, end: '2026-01-02' });
+    expect(longestStreak([])).toEqual({ length: 0, end: null });
   });
 
   it('averages over every day, zeros included', () => {
@@ -199,6 +205,37 @@ describe('the listening clock', () => {
 
   it('draws a petal as a closed path', () => {
     expect(petalPath(200, 3, 5, 10)).toMatch(/^M.*Z$/);
+  });
+
+  it('draws every hour, a stub without listening, the busiest bright', () => {
+    const hours = Array.from({ length: 24 }, () => 0);
+    hours[7] = 80;
+    hours[22] = 100;
+    hours[13] = 10;
+    const petals = clockPetals(hours, 200);
+    expect(petals).toHaveLength(24);
+    expect(petals.filter((p) => p.peak).map((p) => p.hour)).toEqual([7, 22]);
+    expect(petals[0].d).toBe(petalPath(200, 0, 0, 100));
+    expect(petals[0].d).toMatch(
+      /^M[\d. ]+ L[\d. ]+ A[\d. ]+ 0 0 1 [\d. ]+ L[\d. ]+ A[\d. ]+ 0 0 0 [\d. ]+Z$/,
+    );
+    expect(
+      clockPetals(
+        Array.from({ length: 24 }, () => 0),
+        200,
+      ).some((p) => p.peak),
+    ).toBe(false);
+  });
+
+  it('rings the petals and labels 00 at the top, 06 on the right', () => {
+    expect(clockRings(100)).toEqual([42, 32]);
+    const [top, right] = clockAxis(200);
+    expect(top).toMatchObject({ hour: 0 });
+    expect(top.x).toBeCloseTo(100);
+    expect(top.y).toBeLessThan(100);
+    expect(right).toMatchObject({ hour: 6 });
+    expect(right.x).toBeGreaterThan(100);
+    expect(right.y).toBeCloseTo(100);
   });
 });
 

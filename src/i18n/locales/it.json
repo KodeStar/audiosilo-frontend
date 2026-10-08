@@ -639,9 +639,6 @@
       "spineLabel": "{{title}} di {{author}}, finito il {{date}}"
     },
     "year": {
-      "eyebrow": "Quando vuoi",
-      "title": "Il tuo {{year}} in ascolto",
-      "play": "Guarda la storia",
       "summary_one": "{{duration}} di ascolto e {{count}} libro finito finora.",
       "summary_other": "{{duration}} di ascolto e {{count}} libri finiti finora."
     }

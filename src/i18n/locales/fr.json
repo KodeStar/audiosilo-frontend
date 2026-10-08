@@ -639,9 +639,6 @@
       "spineLabel": "{{title}} de {{author}}, terminé le {{date}}"
     },
     "year": {
-      "eyebrow": "Quand tu veux",
-      "title": "Ton année {{year}} en écoute",
-      "play": "Lancer l’histoire",
       "summary_one": "{{duration}} d’écoute et {{count}} livre terminé jusqu’ici.",
       "summary_other": "{{duration}} d’écoute et {{count}} livres terminés jusqu’ici."
     }

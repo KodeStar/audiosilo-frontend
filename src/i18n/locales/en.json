@@ -639,9 +639,6 @@
       "spineLabel": "{{title}} by {{author}}, finished {{date}}"
     },
     "year": {
-      "eyebrow": "Ready when you are",
-      "title": "Your {{year}} in listening",
-      "play": "Play the story",
       "summary_one": "{{duration}} of listening and {{count}} book finished so far.",
       "summary_other": "{{duration}} of listening and {{count}} books finished so far."
     }

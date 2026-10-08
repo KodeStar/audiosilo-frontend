@@ -45,19 +45,27 @@ export function weekComparison(days: readonly ListeningDay[], today: string) {
 // --- Streaks and averages --------------------------------------------------------------
 
 /** The longest run of consecutive days with any listening in `days` (oldest first, every
- * day present, as the server sends them). */
-export function longestStreak(days: readonly ListeningDay[]): number {
-  let best = 0;
+ * day present, as the server sends them), and the day it ended on (the first such run on
+ * a tie; null without one). */
+export function longestStreak(days: readonly ListeningDay[]): {
+  length: number;
+  end: string | null;
+} {
+  let length = 0;
+  let end: string | null = null;
   let run = 0;
   let prev: string | null = null;
   for (const d of days) {
     // A day missing from the list breaks the run, like a day without listening.
     const follows = prev !== null && addDays(prev, 1) === d.date;
     run = d.listened > 0 ? (follows ? run + 1 : 1) : 0;
-    best = Math.max(best, run);
+    if (run > length) {
+      length = run;
+      end = d.date;
+    }
     prev = d.date;
   }
-  return best;
+  return { length, end };
 }
 
 /** Average seconds a day over `days` (zeros included), or 0 without days. */
@@ -159,10 +167,10 @@ export function calendarCellAt(
 // --- The listening clock ---------------------------------------------------------------
 
 /** Seconds listened in each hour of the day (0-23), summed over the weekdays of
- * `hour_weekday` (7 rows of 24). */
-export function hourTotals(hourWeekday: readonly (readonly number[])[]): number[] {
+ * `hour_weekday` (7 rows of 24). A short or missing row counts as none. */
+export function hourTotals(hourWeekday: readonly (readonly number[])[] | undefined): number[] {
   return Array.from({ length: 24 }, (_, h) =>
-    hourWeekday.reduce((sum, row) => sum + (row?.[h] ?? 0), 0),
+    (hourWeekday ?? []).reduce((sum, row) => sum + Math.max(0, row?.[h] ?? 0), 0),
   );
 }
 
@@ -179,7 +187,9 @@ export type ClockSummary = {
   windows: { from: number; to: number }[];
 };
 
-export function clockSummary(hourWeekday: readonly (readonly number[])[]): ClockSummary {
+export function clockSummary(
+  hourWeekday: readonly (readonly number[])[] | undefined,
+): ClockSummary {
   const hours = hourTotals(hourWeekday);
   const max = Math.max(0, ...hours);
   const busiest = max > 0 ? hours.indexOf(max) : null;
@@ -254,6 +264,36 @@ export function petalPath(size: number, i: number, value: number, max: number): 
   const p = (a: number, r: number) =>
     `${(c + Math.cos(a) * r).toFixed(1)} ${(c + Math.sin(a) * r).toFixed(1)}`;
   return `M${p(a0, r0)} L${p(a0, rr)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 0 1 ${p(a1, rr)} L${p(a1, r0)} A${r0.toFixed(1)} ${r0.toFixed(1)} 0 0 0 ${p(a0, r0)}Z`;
+}
+
+export type ClockPetal = { hour: number; d: string; peak: boolean };
+
+/** Every hour's petal at `size`, each as long as its share of the busiest hour (an hour
+ * without listening a short stub), the peaks (`PEAK_SHARE`) marked. */
+export function clockPetals(hours: readonly number[], size: number): ClockPetal[] {
+  const max = Math.max(0, ...hours);
+  return hours.map((v, hour) => ({
+    hour,
+    d: petalPath(size, hour, v, max),
+    peak: max > 0 && v >= max * PEAK_SHARE,
+  }));
+}
+
+/** The radii of the clock's two dashed rings: the petals' reach and half of it. */
+export function clockRings(size: number): [number, number] {
+  const { r0, r1 } = clockGeometry(size);
+  return [r1, r0 + (r1 - r0) * 0.5];
+}
+
+/** The hours the clock labels, and where each label's centre sits (just outside the
+ * petals, kept inside the clock's box). */
+export function clockAxis(size: number): { hour: number; x: number; y: number }[] {
+  const { c, r1 } = clockGeometry(size);
+  const r = Math.min(r1 + 12, c - 8);
+  return [0, 6, 12, 18].map((hour) => {
+    const a = ((hour / 24) * 360 - 90) * (Math.PI / 180);
+    return { hour, x: c + Math.cos(a) * r, y: c + Math.sin(a) * r };
+  });
 }
 
 // --- Hours per week ------------------------------------------------------------------

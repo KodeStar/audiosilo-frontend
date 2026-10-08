@@ -5,12 +5,11 @@ import { ScrollView, View } from 'react-native';
 import type { ListeningDay } from '@/api/types';
 import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
 import { Text } from '@/components/ui/text';
-import { formatDurationOrZero } from '@/lib/format';
+import { formatDurationOrZero, formatServerShortDay } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { ChartPointer, ChartTip, TipText } from './chart-pointer';
-import { formatServerShortDay } from './stats-format';
 import {
   CALENDAR_WEEKS,
   type CalendarCell,
