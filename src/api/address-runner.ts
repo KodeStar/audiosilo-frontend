@@ -31,9 +31,13 @@ export { PROBE_TIMEOUT_MS, probeServerId } from './server-id-probe';
  *   it only on a matching `server_id`) at launch, when the app comes to the foreground,
  *   when the network changes, when a connection's URL or addresses change, and at once
  *   when the reachability tracker marks a connection offline (its 20 s probe then runs
- *   through the client built on the new address). When the device leaves its network
- *   (`movedNetwork`), a home pick is dropped first (`leaveHome`), so the token never
- *   goes to a home address checked on another network;
+ *   through the client built on the new address), and every `HOME_RECHECK_MS` while
+ *   the app is in the foreground for a connection away from its home address (walking
+ *   in the door raises no event the runner hears: Wi-Fi joins without a type change,
+ *   and the app stays open); one probe per connection at a time, none in the
+ *   background. When the device leaves its network (`movedNetwork`), a home pick is
+ *   dropped first (`leaveHome`), so the token never goes to a home address checked on
+ *   another network;
  * - refreshes the addresses the device keeps from `GET /addresses` (servers with
  *   `addresses`) at launch, for a new connection and on reconnect;
  * - keeps the playing book playing when its connection switches address: a streamed
@@ -45,6 +49,11 @@ export { PROBE_TIMEOUT_MS, probeServerId } from './server-id-probe';
 let probe: ServerIdProbe = probeServerId;
 /** Each connection's latest re-pick: an older one still probing must not land over it. */
 const generations = new Map<string, number>();
+/** The connections with a re-pick in flight (the periodic re-check skips them). */
+const probing = new Map<string, number>();
+
+/** How often a connection away from its home address asks home again, in the foreground. */
+export const HOME_RECHECK_MS = 90_000;
 
 function connectionOf(connectionId: string): Connection | undefined {
   return useSession.getState().connections.find((c) => c.id === connectionId);
@@ -56,7 +65,15 @@ export async function repick(connectionId: string): Promise<void> {
   if (!conn) return;
   const generation = (generations.get(connectionId) ?? 0) + 1;
   generations.set(connectionId, generation);
-  const url = await pickAddress(conn, probe);
+  probing.set(connectionId, (probing.get(connectionId) ?? 0) + 1);
+  let url: string;
+  try {
+    url = await pickAddress(conn, probe);
+  } finally {
+    const left = (probing.get(connectionId) ?? 1) - 1;
+    if (left > 0) probing.set(connectionId, left);
+    else probing.delete(connectionId);
+  }
   if (generations.get(connectionId) !== generation) return;
   // The connection changed while the home address was being asked (removed, re-paired,
   // new addresses): that change re-picks on its own, with what is true now.
@@ -68,6 +85,16 @@ export async function repick(connectionId: string): Promise<void> {
 
 function repickAll(): void {
   for (const c of useSession.getState().connections) void repick(c.id);
+}
+
+/** The periodic re-check: ask home again for each connection that has a home address,
+ * isn't using it, and has no re-pick in flight already. */
+function recheckHome(): void {
+  for (const c of useSession.getState().connections) {
+    const home = c.addresses?.home;
+    if (!home || probing.has(c.id) || sameUrl(effectiveUrl(c), home)) continue;
+    void repick(c.id);
+  }
 }
 
 /**
@@ -219,13 +246,25 @@ export function startAddressRouting(opts: { probe?: ServerIdProbe } = {}): () =>
     Network.getNetworkStateAsync().then(onNetwork, () => {
       repickAll();
     });
+  // The re-check of home runs only in the foreground.
+  let recheck: ReturnType<typeof setInterval> | null = null;
+  const setRecheck = (on: boolean) => {
+    if (on && !recheck) recheck = setInterval(recheckHome, HOME_RECHECK_MS);
+    if (!on && recheck) {
+      clearInterval(recheck);
+      recheck = null;
+    }
+  };
   let appState: AppStateStatus = AppState.currentState;
+  setRecheck(appState !== 'background' && appState !== 'inactive');
   const appSub = AppState.addEventListener('change', (next) => {
     const wasAway = appState !== 'active';
     appState = next;
+    setRecheck(next === 'active');
     if (next === 'active' && wasAway) void readNetwork();
   });
   stops.push(() => appSub.remove());
+  stops.push(() => setRecheck(false));
 
   // Network changes (native only; the runner never runs on web). Seeded with the current
   // type so the first change can be told from a move.
@@ -261,5 +300,6 @@ export function startAddressRouting(opts: { probe?: ServerIdProbe } = {}): () =>
     for (const stop of stops) stop();
     probe = probeServerId;
     restart = null;
+    probing.clear();
   };
 }

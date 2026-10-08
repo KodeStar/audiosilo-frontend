@@ -54,6 +54,7 @@ jest.mock('@/api/hooks', () => ({
 import { useAddressRoute } from '@/api/address-route';
 import {
   followPlayingBook,
+  HOME_RECHECK_MS,
   probeServerId,
   refreshAddresses,
   repick,
@@ -350,6 +351,103 @@ describe('when it re-picks', () => {
     } finally {
       Platform.OS = os;
     }
+  });
+});
+
+describe('coming home without a trigger', () => {
+  // Walking in the door raises no network event the runner hears (Wi-Fi joins, the app
+  // stays open): the iPhone needed a foreground, the Pixel once stayed away for 60 s.
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** A probe whose answers the test releases, counting the home probes. */
+  function heldProbe() {
+    const calls: { url: string; answer: (id: string | null) => void }[] = [];
+    const probe = (url: string) =>
+      new Promise<string | null>((resolve) => calls.push({ url, answer: resolve }));
+    return { calls, probe };
+  }
+
+  it('asks home again every so often in the foreground while away, and switches', async () => {
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn()]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    expect(calls).toHaveLength(1); // launch
+    calls[0].answer(null); // not home yet
+    await flush();
+    expect(inUse()).toBe(AWAY);
+    jest.advanceTimersByTime(HOME_RECHECK_MS - 1);
+    expect(calls).toHaveLength(1);
+    jest.advanceTimersByTime(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe(HOME);
+    calls[1].answer('srv-a'); // home now
+    await flush();
+    expect(inUse()).toBe(HOME);
+    // On home: nothing more to ask.
+    jest.advanceTimersByTime(HOME_RECHECK_MS * 3);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('keeps one probe in flight per connection', async () => {
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn()]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    calls[0].answer(null);
+    await flush();
+    jest.advanceTimersByTime(HOME_RECHECK_MS);
+    expect(calls).toHaveLength(2);
+    // That probe hangs (a home IP from another network times out): no second one.
+    jest.advanceTimersByTime(HOME_RECHECK_MS * 2);
+    expect(calls).toHaveLength(2);
+    calls[1].answer(null);
+    await flush();
+    jest.advanceTimersByTime(HOME_RECHECK_MS);
+    expect(calls).toHaveLength(3);
+    calls[2].answer(null);
+    await flush();
+  });
+
+  it('stops in the background and starts again in the foreground', async () => {
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn()]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    calls[0].answer(null);
+    await flush();
+    appHandler!('background');
+    jest.advanceTimersByTime(HOME_RECHECK_MS * 3);
+    expect(calls).toHaveLength(1);
+    appHandler!('active'); // the foreground re-pick
+    await flush();
+    expect(calls).toHaveLength(2);
+    calls[1].answer(null);
+    await flush();
+    jest.advanceTimersByTime(HOME_RECHECK_MS);
+    expect(calls).toHaveLength(3);
+  });
+
+  it('asks nothing for a connection without a home address, and stops with the runner', async () => {
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn({ addresses: { away: AWAY } })]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    jest.advanceTimersByTime(HOME_RECHECK_MS * 2);
+    expect(calls).toHaveLength(0);
+    setConnections([mkConn()]);
+    await flush();
+    calls[0].answer(null);
+    await flush();
+    stop();
+    stop = null;
+    jest.advanceTimersByTime(HOME_RECHECK_MS * 2);
+    expect(calls).toHaveLength(1);
   });
 });
 
