@@ -599,7 +599,7 @@ const fromPending = (p: PendingBookmark): CarBookmark => ({
 });
 
 /** The bookmarks pressed while no JS ran (and any kept ones), added now. */
-export async function drainCarBookmarks(): Promise<void> {
+async function drainCarBookmarks(): Promise<void> {
   const pending = await carNative.consumePendingBookmarks();
   await addBookmarks(pending.map(fromPending));
 }
@@ -615,7 +615,7 @@ let checking: Promise<void> | null = null;
  * store changed its book while the service was asked (a book finished or stopped: the
  * service is about to drop the one it reported, which must not come back).
  */
-export function checkLoadedBook(): Promise<void> {
+function checkLoadedBook(): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve();
   checking ??= (async () => {
     try {

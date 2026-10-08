@@ -12,7 +12,7 @@ import { Directory, File, Paths } from 'expo-file-system';
  * Native only (the controller never starts on the web).
  */
 
-export const CAR_ARTWORK_DIR = 'car-artwork';
+const CAR_ARTWORK_DIR = 'car-artwork';
 
 function artworkDir(): Directory {
   return new Directory(Paths.document, CAR_ARTWORK_DIR);
