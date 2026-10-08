@@ -1,4 +1,6 @@
 /// <reference lib="dom" />
+import { sameOrigin } from '@/lib/same-origin';
+
 import { supportsVoiceBoost } from './effects';
 import {
   AutoplayBlockedError,
@@ -45,11 +47,6 @@ export function routePickerKind(el: {
   if (el.remote && typeof el.remote.prompt === 'function') return 'remote';
   return 'none';
 }
-
-// The web engine is where `supportsVoiceBoost` is asked (contract decision 7); the rule
-// itself lives with the other platform rules in `effects.ts`, so the UI can read it on
-// every platform without importing this engine.
-export { supportsVoiceBoost };
 
 /** The numbers of a `DynamicsCompressorNode`, in the units it takes (seconds for the times). */
 type CompressorSettings = {
@@ -108,19 +105,10 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
  * whose source is cross-origin (without CORS) plays SILENCE (the spec's "outputs zeroes"
  * for a tainted source), so only a same-origin source is ever routed: the player served at
  * `/web` by the server it plays from, and the service worker's `/_offline/` copies. A
- * stream from another signed-in server plays on unboosted. Pure + exported for the tests.
+ * stream from another signed-in server plays on unboosted.
  */
-export function isSameOrigin(url: string, page: { href: string; origin: string } | undefined) {
-  if (!page) return false;
-  try {
-    return new URL(url, page.href).origin === page.origin;
-  } catch {
-    return false;
-  }
-}
-
-const pageLocation = (): { href: string; origin: string } | undefined =>
-  typeof location !== 'undefined' ? location : undefined;
+const routable = (url: string): boolean =>
+  sameOrigin(url, typeof location !== 'undefined' ? location : undefined);
 
 /** A media element augmented with the (non-standard) picker entry points. */
 type RoutePickerEl = {
@@ -185,7 +173,7 @@ class WebPlaybackService implements PlaybackService {
   /** Each element's source node. An element takes exactly ONE for its whole life (a second
    * `createMediaElementSource` throws), and once it has one its sound only comes out
    * through the graph: so it is only made while the context is running (a suspended one
-   * would silence the book) and only for a same-origin source (see `isSameOrigin`). */
+   * would silence the book) and only for a same-origin source (see `routable`). */
   private sources = new Map<HTMLAudioElement, MediaElementAudioSourceNode>();
   /** Where each element's source node is connected now. */
   private routedTo = new Map<HTMLAudioElement, AudioNode>();
@@ -316,9 +304,9 @@ class WebPlaybackService implements PlaybackService {
     if (!track) return;
     const source = sourceFor(track, positionInTrack);
     // An element already routed through Voice Boost would play another server's stream
-    // as silence (see `isSameOrigin`): give that source a fresh, unrouted element. A load
+    // as silence (see `routable`): give that source a fresh, unrouted element. A load
     // interrupts playback anyway, so the change is inaudible.
-    if (this.audio && this.sources.has(this.audio) && !isSameOrigin(source.url, pageLocation())) {
+    if (this.audio && this.sources.has(this.audio) && !routable(source.url)) {
       this.discard(this.audio);
       this.audio = null;
     }
@@ -449,7 +437,7 @@ class WebPlaybackService implements PlaybackService {
     let source = this.sources.get(a);
     if (!source) {
       if (!this.wantsBoost() || boost.ctx.state !== 'running') return;
-      if (!isSameOrigin(a.src, pageLocation())) return;
+      if (!routable(a.src)) return;
       try {
         source = boost.ctx.createMediaElementSource(a);
       } catch {

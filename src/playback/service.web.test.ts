@@ -1,6 +1,5 @@
 import {
   createPlaybackService,
-  isSameOrigin,
   isSwapReady,
   routePickerKind,
   sourceFor,
@@ -647,18 +646,6 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
     setPositionState.mockClear();
     el().emit('timeupdate');
     expect(setPositionState).not.toHaveBeenCalled(); // then left alone
-  });
-});
-
-describe('isSameOrigin', () => {
-  const page = { href: 'https://s/web/player', origin: 'https://s' };
-  it('is true for this server and relative urls', () => {
-    expect(isSameOrigin('https://s/api/v1/libraries/2/stream?path=a', page)).toBe(true);
-    expect(isSameOrigin('/web/_offline/c1/2/a/0.mp3', page)).toBe(true);
-  });
-  it('is false for another server, or with no page', () => {
-    expect(isSameOrigin('https://other/api/v1/stream', page)).toBe(false);
-    expect(isSameOrigin('https://s/a', undefined)).toBe(false);
   });
 });
 
