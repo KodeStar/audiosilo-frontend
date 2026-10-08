@@ -12,9 +12,27 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
 /** The seek the store handed the engine for the OS media controls (`onRemoteSeek`). */
 let remoteSeek: ((positionInTrack: number) => void) | null = null;
+/** The native engine's Phase 6 handlers the store registered. */
+type TrackPlace = (trackIndex: number, positionInTrack: number) => void;
+let remoteMove: TrackPlace | null = null;
+let rateChange: ((rate: number) => void) | null = null;
+let remoteBookmark: TrackPlace | null = null;
+let silenceSaved: ((total: number) => void) | null = null;
 const mockSvc = {
   onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
     remoteSeek = handler;
+  }),
+  onRemoteMove: jest.fn((handler: TrackPlace | null) => {
+    remoteMove = handler;
+  }),
+  onRateChange: jest.fn((handler: ((rate: number) => void) | null) => {
+    rateChange = handler;
+  }),
+  onRemoteBookmark: jest.fn((handler: TrackPlace | null) => {
+    remoteBookmark = handler;
+  }),
+  onSilenceSaved: jest.fn((handler: ((total: number) => void) | null) => {
+    silenceSaved = handler;
   }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
@@ -59,6 +77,14 @@ jest.mock('./progress-sync', () => ({
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
   readMirror: (...args: unknown[]) => mockReadMirror(...args),
+}));
+
+// Smart Speed's counts: what the store hands over, and when it asks for a write.
+const mockNoteSilenceSaved = jest.fn((..._a: unknown[]) => {});
+const mockFlushTimeSaved = jest.fn(async () => {});
+jest.mock('./time-saved', () => ({
+  noteSilenceSaved: (...a: unknown[]) => mockNoteSilenceSaved(...a),
+  flushTimeSaved: () => mockFlushTimeSaved(),
 }));
 
 // Keep React Query out of the unit test.
@@ -118,6 +144,7 @@ import {
   LONG_PAUSE_MS,
   localMoveCount,
   onPickedUpAgain,
+  onRemoteBookmarkRequest,
   selectBookKey,
   selectIsPlaying,
   selectIsTransportLive,
@@ -1672,5 +1699,180 @@ describe('localMoveCount', () => {
     expect(localMoveCount()).toBe(start + 4);
     await startBook(makeBook({ rel_path: 'B/Other.m4b' }), 0);
     expect(localMoveCount()).toBe(start + 5);
+  });
+});
+
+// --- Phase 6: the native engine's own moves, speed, bookmarks and effects -----------
+
+/** Resume a 1000 s book at `at` and get it playing there. */
+async function resumeAt(at: number) {
+  mockLoadInitialProgress.mockResolvedValueOnce({
+    kind: 'progress',
+    progress: makeProgress({ position: at, duration: 1000 }),
+  });
+  await usePlayer.getState().playBook('c1', 2, makeBook({ duration: 1000 }), undefined);
+  pushSnapshot(snap('playing', at, { duration: 1000 }));
+}
+
+describe('a move the native engine made by itself (lock screen, headset, car)', () => {
+  it('saves a scrub back 5 minutes below the resume floor', async () => {
+    await resumeAt(600);
+    mockSaveProgress.mockClear();
+    const before = localMoveCount();
+
+    // The native bridge takes the landed place into its snapshot, then tells the store.
+    pushSnapshot(snap('playing', 300, { duration: 1000 }));
+    expect(remoteMove).not.toBeNull();
+    remoteMove!(0, 300);
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalled();
+    expect(mockSaveProgress.mock.calls.at(-1)![1]).toMatchObject({ position: 300 });
+    // The listener's own move: a place reconcile in flight stands back.
+    expect(localMoveCount()).toBe(before + 1);
+
+    // And the floor stays lowered: the pause after it saves there too.
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('paused', 302, { duration: 1000 }));
+    await flushMicrotasks();
+    expect(mockSaveProgress.mock.calls.at(-1)![1]).toMatchObject({ position: 302 });
+  });
+
+  it('without the event, the same low place is still refused (a slipped restart)', async () => {
+    await resumeAt(600);
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 300, { duration: 1000 }));
+    pushSnapshot(snap('paused', 300, { duration: 1000 }));
+    await flushMicrotasks();
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+  });
+});
+
+describe('a speed the OS set (CarPlay, the lock screen, an Android controller)', () => {
+  it('is kept and saved, without sending it back to the engine', async () => {
+    await resumeAt(400);
+    (mockSvc.setRate as jest.Mock).mockClear();
+    mockSaveProgress.mockClear();
+    expect(rateChange).not.toBeNull();
+    rateChange!(1.5);
+    await flushMicrotasks();
+    expect(usePlayer.getState().rate).toBe(1.5);
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    expect(mockSaveProgress.mock.calls.at(-1)![1]).toMatchObject({ playback_speed: 1.5 });
+  });
+
+  it("clamps a speed outside the app's range, and puts the engine on the clamped one", async () => {
+    await resumeAt(400);
+    (mockSvc.setRate as jest.Mock).mockClear();
+    rateChange!(3);
+    await flushMicrotasks();
+    expect(usePlayer.getState().rate).toBe(2);
+    expect(mockSvc.setRate).toHaveBeenCalledWith(2);
+  });
+});
+
+describe("the book's identity goes to the engine with every load", () => {
+  const ref = { connectionId: 'c1', libraryId: 2, path: 'A/Book.m4b' };
+
+  it('on a start and on a retry', async () => {
+    await startBook(makeBook(), 10);
+    expect((mockSvc.load as jest.Mock).mock.calls.at(-1)![4]).toEqual(ref);
+    pushSnapshot(snap('playing', 10));
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    expect((mockSvc.load as jest.Mock).mock.calls.at(-1)![4]).toEqual(ref);
+  });
+
+  it('on the move onto the downloaded copy', async () => {
+    await startBook(makeBook(), 10);
+    pushSnapshot(snap('playing', 10));
+    (mockSvc.load as jest.Mock).mockClear();
+    const manifest: DownloadManifest = {
+      book: makeBook(),
+      chapters: null,
+      files: [{ relPath: 'A/Book.m4b', localUri: 'file:///c1/0.m4b' }],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    useDownloads.setState({
+      entries: {
+        'c1:2:A/Book.m4b': {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'A/Book.m4b',
+          title: 'A Book',
+          status: 'downloaded',
+          progress: 1,
+          bytes: 0,
+          totalBytes: 0,
+          manifest,
+        },
+      },
+    });
+    await flushMicrotasks();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect((mockSvc.load as jest.Mock).mock.calls[0][0][0].url).toBe('file:///c1/0.m4b');
+    expect((mockSvc.load as jest.Mock).mock.calls[0][4]).toEqual(ref);
+  });
+});
+
+describe('Smart Speed and Voice Boost', () => {
+  it('reach the engine with the other tunables, and again when changed', async () => {
+    await startBook(makeBook(), 10);
+    (mockSvc.configure as jest.Mock).mockClear();
+    useSettings.getState().setSmartSpeed(true);
+    useSettings.getState().setVoiceBoost(true);
+    expect((mockSvc.configure as jest.Mock).mock.calls.at(-1)![0]).toMatchObject({
+      smartSpeed: true,
+      voiceBoost: true,
+    });
+    useSettings.setState({ smartSpeed: false, voiceBoost: false });
+  });
+
+  it("counts the engine's silence total on the playing book", async () => {
+    await startBook(makeBook(), 10);
+    expect(silenceSaved).not.toBeNull();
+    silenceSaved!(12.5);
+    expect(mockNoteSilenceSaved).toHaveBeenCalledWith(12.5, 'c1:2:A/Book.m4b');
+  });
+
+  it('saves the counts when playback halts', async () => {
+    await startBook(makeBook(), 10);
+    pushSnapshot(snap('playing', 10));
+    mockFlushTimeSaved.mockClear();
+    pushSnapshot(snap('paused', 12));
+    expect(mockFlushTimeSaved).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('onRemoteBookmarkRequest', () => {
+  it('hands the loaded book and the whole-book place of a press outside the app', async () => {
+    const seen: unknown[] = [];
+    const off = onRemoteBookmarkRequest((r) => seen.push(r));
+    await startBook(makeBook(), 10);
+    expect(remoteBookmark).not.toBeNull();
+    remoteBookmark!(0, 42);
+    expect(seen).toEqual([
+      {
+        connectionId: 'c1',
+        libraryId: 2,
+        path: 'A/Book.m4b',
+        bookPosition: 42,
+        trackIndex: 0,
+        positionInTrack: 42,
+      },
+    ]);
+    off();
+    remoteBookmark!(0, 50);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('drops a press with no book loaded', async () => {
+    const listener = jest.fn();
+    const off = onRemoteBookmarkRequest(listener);
+    await startBook(makeBook(), 10);
+    await usePlayer.getState().stop();
+    remoteBookmark!(0, 5);
+    expect(listener).not.toHaveBeenCalled();
+    off();
   });
 });

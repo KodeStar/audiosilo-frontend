@@ -24,10 +24,12 @@ import {
 } from './progress-sync';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
+import { flushTimeSaved, noteSilenceSaved } from './time-saved';
 import { mayNeedWebTranscode } from './transcode';
 import { resolveWebTranscode } from './transcode-capability';
 import {
   AutoplayBlockedError,
+  type BookRef,
   clampVolume,
   INITIAL_SNAPSHOT,
   type PlaybackService,
@@ -134,6 +136,7 @@ const SAVE_HOLD_MAX_MS = 5_000;
 let pausedAt: number | null = null;
 export const LONG_PAUSE_MS = 60_000;
 let pickedUpAgainListener: (() => void) | null = null;
+let remoteBookmarkListener: ((request: RemoteBookmarkRequest) => void) | null = null;
 /** Counts the listener's own moves in the loaded book (seeks, track jumps, a book
  * started): a reconcile that sees it change while its check was out stands back. */
 let localMoves = 0;
@@ -181,7 +184,14 @@ function currentConfig() {
     autoRewindMax: s.autoRewindMax,
     jumpForward: s.skipForward,
     jumpBackward: s.skipBackward,
+    smartSpeed: s.smartSpeed,
+    voiceBoost: s.voiceBoost,
   };
+}
+
+/** The book the engine is told it is loading (`load`'s `book`, for the Android service). */
+function bookRefOf(b: { connectionId: string; libraryId: number; path: string }): BookRef {
+  return { connectionId: b.connectionId, libraryId: b.libraryId, path: b.path };
 }
 
 export type NowPlaying = {
@@ -401,6 +411,7 @@ function stopSaveLoop() {
 function haltAndPersist() {
   void persist().then(invalidateProgressLists, invalidateProgressLists);
   stopSaveLoop();
+  void flushTimeSaved(); // Smart Speed's counts are saved when playback halts, too
 }
 
 /** Surface an `error` if we wanted to play but haven't reached `playing` within the
@@ -604,6 +615,35 @@ async function ensureService(): Promise<PlaybackService> {
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
   svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
+  // Native: the engine already moved for the lock screen, a headset or the car (its
+  // snapshot already holds the landed place). That is the listener's own move: it lowers
+  // the floor (a scrub back past the slip tolerance would otherwise never save) and counts
+  // for the place reconcile, which then stands back.
+  svc.onRemoteMove?.((trackIndex, positionInTrack) => {
+    const np = usePlayer.getState().nowPlaying;
+    userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
+    void persist();
+  });
+  // Native: the OS changed the speed and the engine already runs at it. Only a speed
+  // outside the app's range goes back to the engine, clamped.
+  svc.onRateChange?.((raw) => {
+    const rate = clampRate(raw);
+    usePlayer.setState({ rate });
+    if (rate !== raw) void svc.setRate(rate);
+    void persist();
+  });
+  svc.onRemoteBookmark?.((trackIndex, positionInTrack) => {
+    const np = usePlayer.getState().nowPlaying;
+    if (!np || !remoteBookmarkListener) return;
+    remoteBookmarkListener({
+      ...bookRefOf(np),
+      bookPosition: toBookPosition(np.queue.offsets, trackIndex, positionInTrack),
+      trackIndex,
+      positionInTrack,
+    });
+  });
+  // Smart Speed's running total, counted on the playing book (`time-saved.ts`).
+  svc.onSilenceSaved?.((total) => noteSilenceSaved(total, selectBookKey(usePlayer.getState())));
   service = svc;
   // Expose whether this platform/engine can show an audio-route picker so the player
   // can decide whether to render the cast button (web: only where the APIs exist).
@@ -770,7 +810,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     set({ rate: speed, nowPlaying, loadingBook });
     restoreOutputGain(); // only now can the old book's fade no longer write over it
     beginPlaybackAttempt(); // intent + start window + watchdog armed from here
-    await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
+    await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips, bookRefOf(nowPlaying));
     if (get().loadingBook === key) set({ loadingBook: null });
     await svc.setRate(speed);
     await startEngine(svc);
@@ -828,7 +868,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const svc = await ensureService();
     const bookPos = Math.max(resumeFloor, selectBookPosition(get()));
     const { index, positionInTrack } = locate(np.queue.offsets, bookPos);
-    await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips);
+    await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips, bookRefOf(np));
     await svc.setRate(get().rate);
     await startEngine(svc);
   },
@@ -1000,6 +1040,28 @@ export function onPickedUpAgain(listener: () => void): () => void {
   };
 }
 
+/** A bookmark button outside the app was pressed (CarPlay, the Android notification or
+ * Android Auto) while this book was loaded: the book, and where it was at the press. */
+export type RemoteBookmarkRequest = BookRef & {
+  /** Whole-book seconds at the press. */
+  bookPosition: number;
+  /** The engine's own coordinates of the press (file index + seconds in that file). */
+  trackIndex: number;
+  positionInTrack: number;
+};
+
+/** Be told when a bookmark button outside the app is pressed while a book is loaded (one
+ * listener: the car controller, which saves the bookmark). A press with no book loaded, or
+ * no listener, is dropped. Returns the unsubscribe. */
+export function onRemoteBookmarkRequest(
+  listener: (request: RemoteBookmarkRequest) => void,
+): () => void {
+  remoteBookmarkListener = listener;
+  return () => {
+    if (remoteBookmarkListener === listener) remoteBookmarkListener = null;
+  };
+}
+
 /**
  * Stop playback (persisting the final position) when the playing book was loaded
  * through the given connection. Books playing through another connection keep going:
@@ -1065,10 +1127,16 @@ async function switchCurrentBookToLocal() {
     // Gapless: keep streaming until the local file is buffered at this position. The
     // swap can be refused (e.g. the local source isn't servable on web) - in that
     // case leave nowPlaying on the streaming queue so playback keeps going.
-    const swapped = await svc.swapTo(queue.tracks, index, positionInTrack, queue.chapterClips);
+    const swapped = await svc.swapTo(
+      queue.tracks,
+      index,
+      positionInTrack,
+      queue.chapterClips,
+      bookRefOf(nowPlaying),
+    );
     if (!swapped) return;
   } else {
-    await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips);
+    await svc.load(queue.tracks, index, positionInTrack, queue.chapterClips, bookRefOf(nowPlaying));
     await svc.setRate(rate);
     if (wasPlaying) await svc.play();
   }

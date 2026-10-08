@@ -1988,5 +1988,21 @@
         "thumb": "Your year"
       }
     }
+  },
+  "effects": {
+    "smartSpeed": {
+      "label": "Smart speed",
+      "hint": "Shortens the silences between words",
+      "notInBrowser": "Not available in the browser",
+      "downloadedOnly": "For downloaded books on iPhone"
+    },
+    "voiceBoost": {
+      "label": "Voice boost",
+      "hint": "Evens out quiet and loud voices",
+      "notInThisBrowser": "Not available in this browser"
+    },
+    "saved": "Saved {{time}}",
+    "bookSaved": "Smart speed saved",
+    "pillLabel": "Smart speed and voice boost: {{state}}"
   }
 }

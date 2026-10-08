@@ -82,6 +82,8 @@ describe('settings store', () => {
         autoSleepType: 'chapter',
         shakeToExtend: true,
         shakeSensitivity: 'medium',
+        smartSpeed: false,
+        voiceBoost: false,
       }),
     );
 
@@ -182,5 +184,27 @@ describe('settings store', () => {
     await restart();
     expect(useSettings.getState().shakeToExtend).toBe(false);
     expect(useSettings.getState().shakeSensitivity).toBe('high');
+  });
+
+  it('keeps Smart Speed and Voice Boost off for a blob saved before they existed, or a corrupt one', async () => {
+    await AsyncStorage.setItem(KEY, JSON.stringify({ skipForward: 45 }));
+    await useSettings.getState().hydrate();
+    expect(useSettings.getState().smartSpeed).toBe(false);
+    expect(useSettings.getState().voiceBoost).toBe(false);
+
+    load();
+    await AsyncStorage.setItem(KEY, JSON.stringify({ smartSpeed: 'yes', voiceBoost: 1 }));
+    await useSettings.getState().hydrate();
+    expect(useSettings.getState().smartSpeed).toBe(false);
+    expect(useSettings.getState().voiceBoost).toBe(false);
+  });
+
+  it('persists and round-trips Smart Speed and Voice Boost', async () => {
+    await useSettings.getState().hydrate();
+    useSettings.getState().setSmartSpeed(true);
+    useSettings.getState().setVoiceBoost(true);
+    await restart();
+    expect(useSettings.getState().smartSpeed).toBe(true);
+    expect(useSettings.getState().voiceBoost).toBe(true);
   });
 });

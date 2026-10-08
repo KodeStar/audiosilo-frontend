@@ -89,6 +89,14 @@ describe('SpeedSheet', () => {
     expect(player.spies.setRate).toHaveBeenLastCalledWith(1.3);
   });
 
+  it('ends with the Smart Speed and Voice Boost switches', async () => {
+    load(1.25);
+    await open();
+    expect(screen.getByTestId('effects-settings')).toBeTruthy();
+    expect(screen.getByLabelText('Smart speed')).toBeTruthy();
+    expect(screen.getByLabelText('Voice boost')).toBeTruthy();
+  });
+
   it('shows each preset with the time left at it, and checks the current one', async () => {
     load(1.25);
     await open();

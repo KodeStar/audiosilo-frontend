@@ -74,7 +74,16 @@ export type PlaybackConfig = {
   jumpForward: number;
   /** Lock-screen / media-session skip-backward interval (seconds). */
   jumpBackward: number;
+  /** Trim the silences between words (native only: Android every book, iOS downloaded
+   * books only; the web ignores it). */
+  smartSpeed: boolean;
+  /** Compress and lift speech (native; web through Web Audio, never in Safari). */
+  voiceBoost: boolean;
 };
+
+/** A book's identity, as the native engine is told it (`load`'s optional `book`): path is
+ * the identity, scoped by connection. The module's `BookRef` has the same shape. */
+export type BookRef = { connectionId: string; libraryId: number; path: string };
 
 /**
  * Coerce a caller's volume into the [0,1] linear-gain range every engine expects.
@@ -97,11 +106,15 @@ export interface PlaybackService {
   setup(): Promise<void>;
   /** Apply runtime tunables (auto-rewind, skip intervals). */
   configure(config: PlaybackConfig): Promise<void>;
+  /** `book` names the book being loaded, so a native engine that outlives the JS (the
+   * Android service, played from the car) can tell later which book its queue is. The web
+   * ignores it. */
   load(
     tracks: PlaybackTrack[],
     startIndex: number,
     positionInTrack: number,
     chapters?: PlaybackChapter[],
+    book?: BookRef,
   ): Promise<void>;
   /**
    * Swap the queue to a new source as gaplessly as possible: keep the current
@@ -117,6 +130,7 @@ export interface PlaybackService {
     startIndex: number,
     positionInTrack: number,
     chapters?: PlaybackChapter[],
+    book?: BookRef,
   ): Promise<boolean>;
   play(): Promise<void>;
   pause(): Promise<void>;
@@ -163,6 +177,28 @@ export interface PlaybackService {
    * module handles its remote commands itself.
    */
   onRemoteSeek?(handler: ((positionInTrack: number) => void) | null): void;
+  /**
+   * Native: the engine ALREADY moved because of something outside the JS API (the lock
+   * screen or notification scrubber, its skip and chapter buttons, a headset, CarPlay,
+   * Android Auto and their chapter lists), and landed at `(trackIndex, positionInTrack)`.
+   * The engine updates its snapshot BEFORE calling `handler`, so a save inside it saves the
+   * new place. The store treats it as the listener's own move (it lowers the resume
+   * floor). Not called for moves the JS asked for, auto-rewind, Smart Speed's skips, or a
+   * file running on into the next. Optional: the web routes its OS seeks through
+   * `onRemoteSeek` instead (its engine has not moved yet when the OS asks).
+   */
+  onRemoteMove?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
+  /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an
+   * Android controller) and the engine already applied it. Optional. */
+  onRateChange?(handler: ((rate: number) => void) | null): void;
+  /** Native: a bookmark button outside the app was pressed (CarPlay, the Android
+   * notification / Android Auto), at `(trackIndex, positionInTrack)`. Optional. */
+  onRemoteBookmark?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
+  /** Native: book seconds Smart Speed has removed since the engine was created (monotonic
+   * while that engine lives; a new engine starts again at 0), reported with the engine's
+   * progress ticks. Not playback state, so not in the snapshot. Optional, and never called
+   * by a binary that predates Smart Speed. */
+  onSilenceSaved?(handler: ((totalSeconds: number) => void) | null): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }
