@@ -77,6 +77,21 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Apply the persisted language preference to i18next (default: follow the device) outside
+ * React, where no `LanguageProvider` runs: the car's headless task (`src/car/car-task.ts`),
+ * whose strings (the car snapshot's labels) must be in the listener's language too.
+ */
+export async function restoreLanguage(): Promise<void> {
+  try {
+    const saved = await getItem<LanguagePref>(STORAGE_KEY);
+    const pref: LanguagePref = saved === 'system' || isSupportedCode(saved) ? saved : 'system';
+    await i18n.changeLanguage(resolveLanguage(pref));
+  } catch {
+    // the fallback language
+  }
+}
+
 export function useLanguage() {
   const ctx = useContext(LanguageContext);
   if (!ctx) throw new Error('useLanguage must be used within a LanguageProvider');
