@@ -5,10 +5,12 @@ import { View } from 'react-native';
 
 import type { ServerAddresses } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
+import { usePlayBook } from '@/components/player/use-play-book';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Button } from '@/components/ui/button';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { toast } from '@/components/ui/toast';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 
@@ -22,7 +24,9 @@ import { type ReadyPlace, useReadySummary } from './use-ready-summary';
  * The first run's last moment (STYLEGUIDE section 8, "Empty, skeleton, first run"):
  * "Your library is ready." Spines drop onto a plank, then the server, the library counts
  * and, when the listener already had a place on this server, where it came from. Start
- * listening goes Home; Browse the library opens the Library. Shown after the device's
+ * listening goes Home, playing that book from its place when there is one
+ * (`usePlayBook`: the full player on a phone, the docked bar wider); Browse the library
+ * opens the Library. Shown after the device's
  * first sign-in only (`finishConnect`).
  */
 export function ReadyScreen({
@@ -39,6 +43,16 @@ export function ReadyScreen({
   const { line, failed, books, place } = useReadySummary(connectionId);
   const sentence = line ? lineText(line, name, t) : null;
   const placeText = place ? placeLine(place, t) : null;
+  const playBook = usePlayBook();
+  const onStart = () => {
+    // Home first, so the player opens over the app (and closing it lands on Home).
+    leaveOnboarding();
+    if (!place) return;
+    void playBook(place.book).catch((e: unknown) => {
+      console.warn('[connect] start listening failed', e);
+      toast({ title: t('home.now.resumeFailed') });
+    });
+  };
   return (
     <ConnectFrame centered testID="ready-screen">
       <ReadyShelf books={books} phone={phone} />
@@ -73,12 +87,7 @@ export function ReadyScreen({
         <AddressesCard addresses={addresses} body={addressesBody(name, t)} />
       ) : null}
       <View className="w-full flex-row flex-wrap justify-center gap-2">
-        <Button
-          size="lg"
-          icon="play"
-          title={t('onboarding.ready.start')}
-          onPress={leaveOnboarding}
-        />
+        <Button size="lg" icon="play" title={t('onboarding.ready.start')} onPress={onStart} />
         <Button
           size="lg"
           variant="outline"

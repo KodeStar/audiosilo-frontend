@@ -3,6 +3,7 @@ import { skipToken, useQueries, useQuery } from '@tanstack/react-query';
 import { allProgressQuery, qk, useBook, useCapability, useChapters } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { Book } from '@/api/types';
+import type { PlayTarget } from '@/components/player/play-route';
 import { useResumePosition } from '@/components/player/use-listening-position';
 import { useResumeChapter } from '@/components/series/use-resume-chapter';
 import { percentHeard } from '@/lib/progress-view';
@@ -12,9 +13,9 @@ import { bookTotal, latestPlace, readyLine, type ReadyLine } from './connect-mod
 /** How many of the newest books the shelf may stand up. */
 const SHELF_BOOKS = 24;
 
-/** Where the listener's place came from: the book, its chapter (when it has chapters)
- * and how far in. */
-export type ReadyPlace = { title: string; chapter?: number; percent: number };
+/** Where the listener's place came from: the book (`book`, to play it), its title, its
+ * chapter (when it has chapters) and how far in. */
+export type ReadyPlace = { book: PlayTarget; title: string; chapter?: number; percent: number };
 
 export type ReadySummary = {
   /** The library sentence; null while it is loading. */
@@ -80,8 +81,13 @@ export function useReadySummary(connectionId: string): ReadySummary {
   const position = useResumePosition(target, at?.position, 60) ?? 0;
   const total = chapters?.duration || at?.duration || book?.duration || 0;
   const place: ReadyPlace | null =
-    at && book
-      ? { title: book.title, chapter, percent: percentHeard(position, total, false) }
+    target && book
+      ? {
+          book: target,
+          title: book.title,
+          chapter,
+          percent: percentHeard(position, total, false),
+        }
       : null;
 
   return {

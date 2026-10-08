@@ -17,11 +17,22 @@ jest.mock('@/lib/layout', () => ({
   useLayout: () => mockLayout,
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
+const mockPlayBook = jest.fn(async (..._a: unknown[]) => {});
+jest.mock('@/components/player/use-play-book', () => ({
+  usePlayBook:
+    () =>
+    (...a: unknown[]) =>
+      mockPlayBook(...a),
+}));
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 let mockSummary: ReadySummary;
 jest.mock('./use-ready-summary', () => ({ useReadySummary: () => mockSummary }));
 
 const book = (title: string, i: number) =>
   ({ library_id: 1, rel_path: `b${i}`, title, author: 'X Y', duration: 3600 * 10 }) as Book;
+
+const KINGS = { connectionId: 'c1', libraryId: 1, path: 'Sanderson/The Way of Kings' };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -30,7 +41,7 @@ beforeEach(() => {
     line: { kind: 'booksIn', books: 3249, names: ['Fiction', 'Non-fiction', 'Kids'] },
     failed: false,
     books: [book('One', 1), book('Two', 2)],
-    place: { title: 'The Way of Kings', chapter: 23, percent: 38 },
+    place: { book: KINGS, title: 'The Way of Kings', chapter: 23, percent: 38 },
   };
 });
 
@@ -53,7 +64,7 @@ it('says nothing about a place the listener does not have', async () => {
 });
 
 it('a place in a book without chapters gives the percent alone', async () => {
-  mockSummary = { ...mockSummary, place: { title: 'Dune', percent: 5 } };
+  mockSummary = { ...mockSummary, place: { book: KINGS, title: 'Dune', percent: 5 } };
   await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
   expect(screen.getByText(/Your place in Dune came with you: 5% in\./)).toBeTruthy();
 });
@@ -71,10 +82,33 @@ it('libraries it could not read: says so, and still lets the listener in', async
   expect(screen.getByText('Start listening')).toBeTruthy();
 });
 
-it('Start listening goes Home; Browse the library opens the Library', async () => {
+it('Start listening plays the book whose place came with the listener, from Home', async () => {
   await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
   await fireEvent.press(screen.getByText('Start listening'));
   expect(mockDismissTo).toHaveBeenLastCalledWith('/');
+  // From its place: no `at`, so the player resumes where the listener was.
+  expect(mockPlayBook).toHaveBeenCalledWith(KINGS);
+  expect(mockDismissTo.mock.invocationCallOrder[0]).toBeLessThan(
+    mockPlayBook.mock.invocationCallOrder[0],
+  );
+});
+
+it('says so when the book could not be started, still Home', async () => {
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  mockPlayBook.mockRejectedValueOnce(new Error('gone'));
+  await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
+  await fireEvent.press(screen.getByText('Start listening'));
+  expect(mockDismissTo).toHaveBeenLastCalledWith('/');
+  expect(mockToast).toHaveBeenCalled();
+});
+
+it('Start listening goes Home; Browse the library opens the Library', async () => {
+  mockSummary = { ...mockSummary, place: null };
+  await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
+  await fireEvent.press(screen.getByText('Start listening'));
+  expect(mockDismissTo).toHaveBeenLastCalledWith('/');
+  // No place came with the listener: nothing to play.
+  expect(mockPlayBook).not.toHaveBeenCalled();
   await fireEvent.press(screen.getByText('Browse the library'));
   expect(mockDismissTo).toHaveBeenLastCalledWith('/library');
 });

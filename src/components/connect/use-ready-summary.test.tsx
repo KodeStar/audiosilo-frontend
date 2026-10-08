@@ -105,7 +105,12 @@ it('says where the listener was: the newest book in progress, its chapter and pe
   });
   const result = await mount();
   await waitFor(() => expect(result.current.place?.chapter).toBe(2));
-  expect(result.current.place).toEqual({ title: 'The Way of Kings', chapter: 2, percent: 38 });
+  expect(result.current.place).toEqual({
+    book: { connectionId: 'c1', libraryId: 1, path: 'kings' },
+    title: 'The Way of Kings',
+    chapter: 2,
+    percent: 38,
+  });
 });
 
 it("names the loaded book's chapter and percent from the same place, the player's", async () => {
@@ -133,7 +138,11 @@ it("names the loaded book's chapter and percent from the same place, the player'
   mockLoaded = { key: contentKey('c1', 1, 'kings'), position: 120 };
   const result = await mount();
   await waitFor(() => expect(result.current.place?.chapter).toBe(1));
-  expect(result.current.place).toEqual({ title: 'The Way of Kings', chapter: 1, percent: 12 });
+  expect(result.current.place).toMatchObject({
+    title: 'The Way of Kings',
+    chapter: 1,
+    percent: 12,
+  });
 });
 
 it('reports libraries it could not read', async () => {
