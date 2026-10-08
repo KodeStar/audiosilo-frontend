@@ -16,11 +16,17 @@ import { ticker } from '@/lib/ticker';
  * never both run inside one interval. The interval stays for the web, iOS and the
  * foreground; the events are the backstop. `start()` is idempotent and does not re-base
  * (the `ticker` contract); `stop()` takes it off both.
+ *
+ * "Due" allows a little slack (`slackMs`): an interval or an event that lands a few ms
+ * short of a full `ms` after the last run (timer jitter, an event cadence of about `ms`)
+ * still runs. Without it, every run that came slightly later than the one before it
+ * would skip a whole period - a 1 s countdown stepping every 2 s.
  */
 export function engineTicker(fn: () => void, ms: number) {
   let lastRun = 0;
+  const due = ms - slackMs(ms);
   const runIfDue = (now: number) => {
-    if (now - lastRun < ms) return;
+    if (now - lastRun < due) return;
     lastRun = now;
     fn();
   };
@@ -39,6 +45,12 @@ export function engineTicker(fn: () => void, ms: number) {
   };
 }
 
+/** How early a run may come and still count as due: a quarter of the period, at most
+ * 100 ms. */
+function slackMs(ms: number) {
+  return Math.min(ms / 4, 100);
+}
+
 /** The running `engineTicker`s. */
 const consumers = new Set<(now: number) => void>();
 
@@ -48,5 +60,14 @@ const consumers = new Set<(now: number) => void>();
  * before the pause lands). */
 export function engineTick() {
   const now = Date.now();
-  for (const run of [...consumers]) if (consumers.has(run)) run(now);
+  for (const run of [...consumers]) {
+    if (!consumers.has(run)) continue;
+    // One consumer's throw must not starve the rest this pass, nor escape into the
+    // engine's snapshot listener that called this.
+    try {
+      run(now);
+    } catch (err) {
+      console.error('[engineTick] a ticker threw', err);
+    }
+  }
 }

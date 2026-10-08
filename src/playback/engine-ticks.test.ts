@@ -45,6 +45,32 @@ describe('engineTicker', () => {
     expect(fn).toHaveBeenCalledTimes(10);
   });
 
+  it('runs on every event of a jittery cadence of about the interval', () => {
+    const { fn, t } = counted(1_000);
+    t.start();
+    // Events about a second apart, some a little short of it (bridge latency varies).
+    for (const gap of [1_000, 990, 1_010, 980, 1_000, 995]) {
+      jest.setSystemTime(Date.now() + gap);
+      engineTick();
+    }
+    expect(fn).toHaveBeenCalledTimes(6);
+  });
+
+  it('keeps the others running when one throws', () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const first = counted(1_000);
+    const second = counted(1_000);
+    first.fn.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    first.t.start();
+    second.t.start();
+    expect(() => eventsOnly(1)).not.toThrow();
+    expect(second.fn).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
   it('runs nothing before a start or after a stop, and a second start does not re-base', () => {
     const { fn, t } = counted(1_000);
     eventsOnly(3);
