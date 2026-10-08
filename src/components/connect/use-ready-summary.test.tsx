@@ -15,13 +15,17 @@ jest.mock('@/api/provider', () => ({
   useCid: (id?: string) => id ?? 'c1',
   useOptionalApi: () => mockClient,
 }));
+/** The book loaded in the player (its key) and its place, else none. */
+let mockLoaded: { key: string; position: number } | null = null;
 jest.mock('@/playback/store', () => ({
   usePlayer: (sel: (s: object) => unknown) => sel({ nowPlaying: null, snapshot: {} }),
-  selectBookKey: () => null,
-  selectBookPosition: () => 0,
+  selectBookKey: () => mockLoaded?.key ?? null,
+  selectBookPosition: () => mockLoaded?.position ?? 0,
 }));
 
 /* eslint-disable import/first */
+import { contentKey } from '@/lib/content-key';
+
 import { useReadySummary } from './use-ready-summary';
 /* eslint-enable import/first */
 
@@ -44,6 +48,7 @@ async function mount() {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockLoaded = null;
   mockClient.libraries.mockResolvedValue([
     { id: 1, name: 'Fiction' },
     { id: 2, name: 'Kids' },
@@ -101,6 +106,34 @@ it('says where the listener was: the newest book in progress, its chapter and pe
   const result = await mount();
   await waitFor(() => expect(result.current.place?.chapter).toBe(2));
   expect(result.current.place).toEqual({ title: 'The Way of Kings', chapter: 2, percent: 38 });
+});
+
+it("names the loaded book's chapter and percent from the same place, the player's", async () => {
+  mockClient.serverInfo.mockResolvedValue(caps(true));
+  mockClient.allProgress.mockResolvedValue([
+    {
+      library_id: 1,
+      path: 'kings',
+      position: 380,
+      duration: 1000,
+      finished: false,
+      updated_at: '2026-10-01T00:00:00Z',
+    },
+  ]);
+  mockClient.item.mockResolvedValue({ title: 'The Way of Kings', duration: 1000 });
+  mockClient.chapters.mockResolvedValue({
+    duration: 1000,
+    files: [],
+    chapters: [
+      { title: 'One', start: 0, end: 300, book_offset: 0, file_index: 0, file_path: 'a' },
+      { title: 'Two', start: 300, end: 1000, book_offset: 300, file_index: 0, file_path: 'a' },
+    ],
+  });
+  // Loaded here and paused at 120 s: the chapter said 1 while the percent said 38.
+  mockLoaded = { key: contentKey('c1', 1, 'kings'), position: 120 };
+  const result = await mount();
+  await waitFor(() => expect(result.current.place?.chapter).toBe(1));
+  expect(result.current.place).toEqual({ title: 'The Way of Kings', chapter: 1, percent: 12 });
 });
 
 it('reports libraries it could not read', async () => {

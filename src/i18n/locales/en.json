@@ -1410,6 +1410,12 @@
       "show": "Show",
       "noServerTitle": "This book's server isn't connected",
       "noServerHint": "Bookmarks, notes and history come back once it is."
+    },
+    "placeMoved": {
+      "title": "Picked up your place from another device",
+      "chapterAt": "Chapter {{chapter}}, {{time}}",
+      "at": "At {{time}}",
+      "undo": "Undo"
     }
   },
   "reconnect": {

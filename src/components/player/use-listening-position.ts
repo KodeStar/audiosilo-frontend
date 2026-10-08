@@ -45,6 +45,33 @@ export function useListeningPosition(
   return listeningPosition(live, saved);
 }
 
+/**
+ * Where a press on Resume plays `target` from, as ONE whole-book position: the player's
+ * live place while that book is loaded (and placed) and has moved off 0 (a press toggles
+ * it in place, from there), else the saved one. Rounded DOWN to `bucketS` steps.
+ *
+ * Unlike `useListeningPosition` this CAN go below the saved place, and must: when another
+ * device (or the other app on the same phone) saved a place further on while this one
+ * held the book paused, the press still plays from the player's place, so "Resume
+ * chapter N", the percent and the current row name that one, as the time left
+ * (`useBookTimeLeft`), the Now card and the mini player already do. The spoiler gate
+ * keeps `useListeningPosition` (a reveal is never taken back).
+ */
+export function useResumePosition(
+  target: PlayTarget | null | undefined,
+  saved: number | undefined,
+  bucketS: number,
+): number | undefined {
+  const key = target ? contentKey(target.connectionId, target.libraryId, target.path) : null;
+  const live = usePlayer((s) => {
+    if (!key || selectPlacedBookKey(s) !== key) return undefined;
+    const position = selectBookPosition(s);
+    // A load that has not ticked yet reads 0: keep the saved place until it has moved.
+    return position > 0 ? bucket(position, bucketS) : undefined;
+  });
+  return live ?? saved;
+}
+
 /** The live position never below the saved one; the saved one when nothing is live. */
 const listeningPosition = (live: number | undefined, saved: number | undefined) =>
   live === undefined ? saved : Math.max(live, saved ?? 0);

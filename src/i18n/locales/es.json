@@ -1410,6 +1410,12 @@
       "show": "Ver",
       "noServerTitle": "El servidor de este libro no está conectado",
       "noServerHint": "Los marcadores, las notas y el historial volverán en cuanto lo esté."
+    },
+    "placeMoved": {
+      "title": "Retomado donde lo dejaste en otro dispositivo",
+      "chapterAt": "Capítulo {{chapter}}, {{time}}",
+      "at": "En {{time}}",
+      "undo": "Deshacer"
     }
   },
   "reconnect": {

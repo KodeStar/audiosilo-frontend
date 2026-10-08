@@ -1410,6 +1410,12 @@
       "show": "Anzeigen",
       "noServerTitle": "Der Server dieses Buchs ist nicht verbunden",
       "noServerHint": "Lesezeichen, Notizen und Verlauf sind wieder da, sobald er es ist."
+    },
+    "placeMoved": {
+      "title": "Deine Stelle von einem anderen Gerät übernommen",
+      "chapterAt": "Kapitel {{chapter}}, {{time}}",
+      "at": "Bei {{time}}",
+      "undo": "Rückgängig"
     }
   },
   "reconnect": {
