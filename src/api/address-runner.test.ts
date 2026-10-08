@@ -563,9 +563,76 @@ describe('coming home without a trigger', () => {
     calls[1].answer('srv-a'); // home now
     await flush();
     expect(inUse()).toBe(HOME);
-    // On home: nothing more to ask.
-    jest.advanceTimersByTime(HOME_RECHECK_MS * 3);
+  });
+
+  it('on home while idle, notices home stop answering within one interval and goes away', async () => {
+    // The Pixel pass: the home proxy stopped with the app idle on Me > Account, and 2 of
+    // 3 tries never switched (nothing else was sent that could fail).
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn()]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    calls[0].answer('srv-a');
+    await flush();
+    expect(inUse()).toBe(HOME);
+    jest.advanceTimersByTime(HOME_RECHECK_MS);
     expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe(HOME);
+    calls[1].answer(null); // home is gone
+    await flush();
+    expect(inUse()).toBe(AWAY);
+    // And back once home answers again.
+    jest.advanceTimersByTime(HOME_RECHECK_MS);
+    expect(calls).toHaveLength(3);
+    calls[2].answer('srv-a');
+    await flush();
+    expect(inUse()).toBe(HOME);
+  });
+
+  it('on home while home keeps answering: one tokenless probe per interval, no change', async () => {
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn()]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    calls[0].answer('srv-a');
+    await flush();
+    const changes: unknown[] = [];
+    const unsub = useAddressRoute.subscribe((s) => changes.push(s.picks));
+    for (let i = 1; i <= 3; i++) {
+      jest.advanceTimersByTime(HOME_RECHECK_MS);
+      expect(calls).toHaveLength(i + 1);
+      calls[i].answer('srv-a');
+      await flush();
+      expect(inUse()).toBe(HOME);
+    }
+    unsub();
+    expect(changes).toEqual([]); // no flapping: the pick never changed
+  });
+
+  it('on home, a home that answers as another server is left (another network)', async () => {
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn()]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    calls[0].answer('srv-a');
+    await flush();
+    jest.advanceTimersByTime(HOME_RECHECK_MS);
+    calls[1].answer('someone-else');
+    await flush();
+    expect(inUse()).toBe(AWAY);
+  });
+
+  it('on home, stops checking in the background', async () => {
+    const { calls, probe } = heldProbe();
+    setConnections([mkConn()]);
+    stop = startAddressRouting({ probe });
+    await flush();
+    calls[0].answer('srv-a');
+    await flush();
+    appHandler!('background');
+    jest.advanceTimersByTime(HOME_RECHECK_MS * 3);
+    expect(calls).toHaveLength(1);
+    expect(inUse()).toBe(HOME);
   });
 
   it('keeps one probe in flight per connection', async () => {

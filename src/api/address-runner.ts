@@ -37,10 +37,10 @@ import { probeServerId } from './server-id-probe';
  *   `NETWORK_SETTLE_MS`), when a connection's URL or addresses change, and at once
  *   when the reachability tracker marks a connection offline (its 20 s probe then runs
  *   through the client built on the new address), and every `HOME_RECHECK_MS` while
- *   the app is in the foreground for a connection away from its home address (walking
- *   in the door raises no event the runner hears: Wi-Fi joins without a type change,
- *   and the app stays open); one probe per connection at a time, none in the
- *   background. When the device leaves its network (`movedNetwork`: another type, no
+ *   the app is in the foreground for a connection with a home address (walking in the
+ *   door raises no event the runner hears: Wi-Fi joins without a type change, and the
+ *   app stays open; and an idle app on its home address sends nothing that would fail
+ *   when home goes away); one probe per connection at a time, none in the background. When the device leaves its network (`movedNetwork`: another type, no
  *   connection, or `ipChanged`: another IP address of its own, one Wi-Fi to another), a
  *   home pick is dropped first (`leaveHome`), so the token never goes to a home address
  *   checked on another network;
@@ -58,7 +58,8 @@ const generations = new Map<string, number>();
 /** The connections with a re-pick in flight (the periodic re-check skips them). */
 const probing = new Map<string, number>();
 
-/** How often a connection away from its home address asks home again, in the foreground. */
+/** How often a connection with a home address asks home again, in the foreground: away,
+ * to come home; on home, to notice it stopped answering. */
 export const HOME_RECHECK_MS = 90_000;
 
 function connectionOf(connectionId: string): Connection | undefined {
@@ -101,12 +102,14 @@ function repickAll(): void {
   for (const c of useSession.getState().connections) void repick(c.id);
 }
 
-/** The periodic re-check: ask home again for each connection that has a home address,
- * isn't using it, and has no re-pick in flight already. */
+/** The periodic re-check: ask home again for each connection that has a home address
+ * and no re-pick in flight already. Away, that is how it comes home; ON its home address,
+ * it is how it notices leaving: an idle app sends nothing else that would fail (the
+ * Pixel stayed on a dead home address for 150 s), and a re-pick that finds home still
+ * answering as this server changes nothing. */
 function recheckHome(): void {
   for (const c of useSession.getState().connections) {
-    const home = c.addresses?.home;
-    if (!home || probing.has(c.id) || sameUrl(effectiveUrl(c), home)) continue;
+    if (!c.addresses?.home || probing.has(c.id)) continue;
     void repick(c.id);
   }
 }

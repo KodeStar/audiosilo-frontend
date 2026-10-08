@@ -269,7 +269,8 @@ connection's `server_id` (another box at the same private IP must never get the 
 else `serverUrl`; the web never switches (the served player is same-origin). The runner
 (`src/api/address-runner.ts`, `startAddressRouting` from the root layout, native only) re-picks at
 launch, on foreground, on a network change and when reachability marks a connection offline, asks
-home again every `HOME_RECHECK_MS` in the foreground while away, drops a
+home again every `HOME_RECHECK_MS` in the foreground (away, to come home; on home, to notice it
+stopped answering, since an idle app sends nothing else that would fail), drops a
 home pick at once when the device moves network, refreshes `GET /addresses` (`useServerAddresses`
 is the hook form), and restarts a streamed book still playing from a previous address in place
 through `startBookInPlace` (never a paused one). `parsePairingScan` returns `addresses` from
