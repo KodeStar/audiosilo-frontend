@@ -39,6 +39,11 @@ export type RepairConnection = AddressedConnection & { needsReconnect?: string }
  *   so the session store retires the dead identity (it drops another id at the same
  *   `serverUrl`), and carry its addresses over (the home address is probed against the
  *   new id before it is used, so this never sends a token to another box).
+ * - **A remembered server signed in to again** (`known`, the known-servers entry with the
+ *   answering `server_id`, reached through one of its addresses: a "Reconnect to <server>"
+ *   row signs in through the home address when it answers as that server): keep the
+ *   `serverUrl` it was paired with, so a sign-in at home never turns the home address into
+ *   the connection's paired one (away from home that would be the fallback).
  * - Anything else: the address signed in through, as typed or linked.
  *
  * `addresses` is what to hand `setSession` (it merges with what the connection kept).
@@ -49,11 +54,19 @@ export function repairPlan(input: {
   connections: readonly RepairConnection[];
   reconnectId?: string;
   answer?: ServerAddresses;
+  known?: KnownServer;
 }): { serverUrl: string; addresses: ServerAddresses | undefined } {
-  const { pending, serverId, connections, reconnectId, answer } = input;
+  const { pending, serverId, connections, reconnectId, answer, known } = input;
   const same = connections.find((c) => c.id === serverId);
   if (same && isOwnAddress(pending, same)) {
     return { serverUrl: same.serverUrl, addresses: answer };
+  }
+  if (
+    !same &&
+    known?.serverId === serverId &&
+    isOwnAddress(pending, { id: serverId, serverUrl: known.serverUrl, addresses: known.addresses })
+  ) {
+    return { serverUrl: known.serverUrl, addresses: answer };
   }
   const target = reconnectId ? connections.find((c) => c.id === reconnectId) : undefined;
   if (!same && target && isOwnAddress(pending, target)) {

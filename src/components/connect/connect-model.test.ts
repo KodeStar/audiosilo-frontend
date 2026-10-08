@@ -56,6 +56,27 @@ describe('repairPlan', () => {
     ).toEqual({ serverUrl: AWAY, addresses: undefined });
   });
 
+  it("keeps a remembered server's paired address when signing in again through its home one", () => {
+    const known = {
+      serverId: 'srv-9',
+      serverUrl: 'https://paired.example.com',
+      name: 'Hearthside',
+      addresses: { home: HOME },
+    };
+    expect(
+      repairPlan({ pending: HOME, serverId: 'srv-9', connections: [], answer: undefined, known }),
+    ).toEqual({ serverUrl: 'https://paired.example.com', addresses: undefined });
+    // Another server answering, or an address that isn't the remembered server's: as typed.
+    expect(repairPlan({ pending: HOME, serverId: 'other', connections: [], known })).toEqual({
+      serverUrl: HOME,
+      addresses: undefined,
+    });
+    expect(repairPlan({ pending: AWAY, serverId: 'srv-9', connections: [], known })).toEqual({
+      serverUrl: AWAY,
+      addresses: undefined,
+    });
+  });
+
   it('a new server keeps the typed address', () => {
     expect(repairPlan({ pending: AWAY, serverId: 'x', connections: [] })).toEqual({
       serverUrl: AWAY,

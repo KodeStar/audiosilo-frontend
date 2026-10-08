@@ -31,6 +31,22 @@ export async function list(): Promise<KnownServer[]> {
   return (await getItem<KnownServer[]>(KEY)) ?? [];
 }
 
+/** The writes so far, in order. Each write reads the list, changes it and writes it
+ * back, so two at once (the address runner learns every server's addresses together)
+ * would each write over the other's change: they run one after another instead. */
+let writes: Promise<void> = Promise.resolve();
+
+/** Read the list, change it with `next` (undefined: leave it) and write it back,
+ * after every write before. */
+function update(next: (current: KnownServer[]) => KnownServer[] | undefined): Promise<void> {
+  const run = writes.then(async () => {
+    const changed = next(await list());
+    if (changed) await setItem(KEY, changed);
+  });
+  writes = run.catch(() => undefined);
+  return run;
+}
+
 /** Upsert a server, moving it to the front. Dedupes on EITHER the stable
  * `serverId` OR the `serverUrl`: a re-pair at a new URL refreshes the existing
  * entry (same id), and a re-pair at the same address supersedes the old entry even
@@ -40,12 +56,10 @@ export async function list(): Promise<KnownServer[]> {
  * with what the device knew before handing them over. */
 export async function remember(entry: KnownServer): Promise<void> {
   if (!entry.serverId) return;
-  const current = await list();
-  const next = [
+  await update((current) => [
     entry,
     ...current.filter((e) => e.serverId !== entry.serverId && e.serverUrl !== entry.serverUrl),
-  ];
-  await setItem(KEY, next);
+  ]);
 }
 
 /** Replace a remembered server's addresses (the session's, already merged), in place.
@@ -54,11 +68,10 @@ export async function rememberAddresses(
   serverId: string,
   addresses: ServerAddresses | undefined,
 ): Promise<void> {
-  const current = await list();
-  if (!current.some((e) => e.serverId === serverId)) return;
-  await setItem(
-    KEY,
-    current.map((e) => (e.serverId === serverId ? { ...e, addresses } : e)),
+  await update((current) =>
+    current.some((e) => e.serverId === serverId)
+      ? current.map((e) => (e.serverId === serverId ? { ...e, addresses } : e))
+      : undefined,
   );
 }
 
@@ -69,7 +82,5 @@ export async function knownAddresses(serverId: string): Promise<ServerAddresses 
 
 /** Drop a remembered server (the connect screen's "forget" affordance). */
 export async function forget(serverId: string): Promise<void> {
-  const current = await list();
-  const next = current.filter((e) => e.serverId !== serverId);
-  await setItem(KEY, next);
+  await update((current) => current.filter((e) => e.serverId !== serverId));
 }

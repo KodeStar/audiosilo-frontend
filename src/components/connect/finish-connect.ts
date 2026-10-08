@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 
 import type { AuthSession, ServerAddresses } from '@/api/types';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
+import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
 import { useSession } from '@/stores/session';
 
@@ -34,18 +35,22 @@ export async function finishConnect(input: {
   name?: string;
   reconnectId?: string;
 }): Promise<string> {
+  const serverId = input.session.server_id;
+  // The remembered server, for a sign-in again after signing out (`repairPlan`).
+  const known = (await listKnownServers()).find((k) => k.serverId === serverId);
   const { connections, setSession } = useSession.getState();
   const first = isFirstConnection(connections);
   const plan = repairPlan({
     pending: input.serverUrl,
-    serverId: input.session.server_id,
+    serverId,
     connections,
     reconnectId: input.reconnectId,
     answer: mergeAddresses(input.linkAddresses, input.session.addresses),
+    known,
   });
   const id = await setSession({
     serverUrl: plan.serverUrl,
-    serverId: input.session.server_id,
+    serverId,
     token: input.session.token,
     user: input.session.user,
     ...(input.name ? { name: input.name } : {}),

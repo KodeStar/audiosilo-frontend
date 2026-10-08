@@ -118,5 +118,19 @@ describe('known-servers', () => {
       await rememberAddresses('nope', { away: AWAY });
       expect(await list()).toHaveLength(2);
     });
+
+    it('writes at the same time all land (each runs after the one before)', async () => {
+      await remember(mk('srv-a'));
+      await remember(mk('srv-b'));
+      await Promise.all([
+        rememberAddresses('srv-a', { home: HOME }),
+        rememberAddresses('srv-b', { away: AWAY }),
+        remember(mk('srv-c')),
+      ]);
+      const l = await list();
+      expect(l.map((e) => e.serverId)).toEqual(['srv-c', 'srv-b', 'srv-a']);
+      expect(await knownAddresses('srv-a')).toEqual({ home: HOME });
+      expect(await knownAddresses('srv-b')).toEqual({ away: AWAY });
+    });
   });
 });

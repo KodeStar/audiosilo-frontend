@@ -9,7 +9,8 @@ import {
   rememberAddresses,
 } from '@/lib/known-servers';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
-import { mergeAddresses, sameAddresses } from '@/lib/server-address';
+import { hostOf } from '@/lib/pairing';
+import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
 import { getItem, removeItem, setItem } from '@/lib/storage';
 
 // Multi-connection session: the app can be signed in to several servers at once.
@@ -258,17 +259,6 @@ type SessionState = {
   clearNeedsReconnect: (id: string) => void;
 };
 
-function hostName(url: string): string {
-  return url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || url;
-}
-
-/** Two stored serverUrls address the same physical server. All URLs come through
- * `normalizeUrl` (trailing slashes already stripped); the trim is defensive so a stray
- * trailing slash can't hide a same-server match. */
-function sameServer(a: string, b: string): boolean {
-  return a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
-}
-
 /** Derive the default-connection mirror fields from the connection list. */
 function mirror(connections: Connection[], defaultId: string | null) {
   const def = connections.find((c) => c.id === defaultId) ?? connections[0] ?? null;
@@ -340,7 +330,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     // this URL under a different id is a stale identity of the same physical server (its
     // token is dead - flagged needsReconnect='server-reset'). It must be dropped here, or
     // re-pairing leaves a zombie the reconnect banner keeps re-flagging on every /server hit.
-    const stale = existing.filter((c) => c.id !== serverId && sameServer(c.serverUrl, serverUrl));
+    const stale = existing.filter((c) => c.id !== serverId && sameUrl(c.serverUrl, serverUrl));
     // What the device knew of this server's addresses: the connection's, else (a sign-in
     // again after signing out, from the connect screen's remembered servers) the remembered
     // server's, so a sign-in through the away address doesn't forget the home one.
@@ -349,7 +339,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     const conn: Connection = {
       id: serverId,
       serverUrl,
-      name: name ?? prior?.name ?? hostName(serverUrl),
+      name: name ?? prior?.name ?? hostOf(serverUrl),
       token,
       user,
       addresses: known,
@@ -395,14 +385,18 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   learnAddresses: async (id, fresh) => {
+    // Read and set in one synchronous step, persisting after: the address runner learns
+    // every connection's addresses at once (launch, reconnect), and a list read before an
+    // await would be set over another call's update (or bring back a connection removed
+    // meanwhile).
     const { connections, defaultConnectionId } = get();
     const conn = connections.find((c) => c.id === id);
     if (!conn) return;
     const addresses = mergeAddresses(conn.addresses, fresh);
     if (sameAddresses(conn.addresses, addresses)) return;
     const next = connections.map((c) => (c.id === id ? { ...c, addresses } : c));
-    await Promise.all([persist(next, defaultConnectionId), rememberAddresses(id, addresses)]);
     set({ connections: next, ...mirror(next, defaultConnectionId) });
+    await Promise.all([persist(next, defaultConnectionId), rememberAddresses(id, addresses)]);
   },
 
   setUser: async (user) => {
