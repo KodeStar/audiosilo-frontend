@@ -47,7 +47,10 @@ export function ListeningCalendar({
 }) {
   const { t } = useTranslation();
   const grid = useMemo(() => calendarGrid(days, today), [days, today]);
-  const [tip, setTip] = useState<CalendarSlot | null>(null);
+  // The tapped or hovered day, with the grid it was picked on: new data (a reload after
+  // the app comes back, a day rolling over) is a new grid, and a slot of the old one
+  // means another day there (or none), so the tip closes rather than misread it.
+  const [tip, setTip] = useState<{ grid: CalendarGrid; slot: CalendarSlot } | null>(null);
   const scroller = useRef<ScrollView>(null);
   const room = Math.max(0, width - DAYS_COLUMN);
   const cell = Math.max(
@@ -60,7 +63,8 @@ export function ListeningCalendar({
   const months = t('stats.calendar.months').split(',');
   const weekdays = t('stats.calendar.weekdays').split(',');
   const listenedDays = daysWithListening(days);
-  const tipCell = tip ? grid.columns[tip.c][tip.r] : null;
+  const slot = tip?.grid === grid ? tip.slot : null;
+  const tipCell = slot ? (grid.columns[slot.c]?.[slot.r] ?? null) : null;
 
   const body = (
     <View style={{ width: gridWidth, height: MONTHS_ROW + gridHeight }}>
@@ -94,14 +98,18 @@ export function ListeningCalendar({
         onPoint={(p) => {
           const next = p ? calendarCellAt(grid, p.x, p.y, cell, GAP) : null;
           // The same day under the pointer again: no redraw.
-          setTip((prev) => (prev && next && prev.c === next.c && prev.r === next.r ? prev : next));
+          setTip((prev) =>
+            prev?.grid === grid && next && prev.slot.c === next.c && prev.slot.r === next.r
+              ? prev
+              : next && { grid, slot: next },
+          );
         }}
       />
-      {tip && tipCell ? (
+      {slot && tipCell ? (
         <ChartTip
           testID="calendar-tip"
-          x={tip.c * pitch + cell / 2}
-          y={MONTHS_ROW + tip.r * pitch}
+          x={slot.c * pitch + cell / 2}
+          y={MONTHS_ROW + slot.r * pitch}
           boundsWidth={gridWidth}
         >
           <TipText

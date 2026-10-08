@@ -29,7 +29,9 @@ function barPath(x: number, bottom: number, w: number, h: number, r: number): st
 export function WeeklyBars({ weeks, width }: { weeks: readonly number[]; width: number }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const [tip, setTip] = useState<number | null>(null);
+  const [picked, setTip] = useState<number | null>(null);
+  // A week picked before the data changed: only while it is still one of the bars.
+  const tip = picked !== null && picked < weeks.length ? picked : null;
   const { height, left, bottom, top: pad, bar } = BARS_FRAME;
   const { top, ticks } = niceAxis(Math.max(0, ...weeks));
   const plot = height - bottom - pad;

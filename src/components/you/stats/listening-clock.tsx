@@ -39,7 +39,9 @@ export function usePeakWords(summary: ClockSummary): string | null {
 export function ListeningClock({ summary, size }: { summary: ClockSummary; size: number }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const [hour, setHour] = useState<number | null>(null);
+  const [picked, setHour] = useState<number | null>(null);
+  // An hour picked before the data changed: only while the summary has it.
+  const hour = picked !== null && picked < summary.hours.length ? picked : null;
   const { c, r0 } = clockGeometry(size);
   const peaks = usePeakWords(summary);
   const shown = hour ?? summary.busiest;

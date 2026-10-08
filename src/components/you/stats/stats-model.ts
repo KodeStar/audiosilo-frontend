@@ -170,7 +170,7 @@ export function calendarCellAt(
   const c = Math.floor(x / pitch);
   const r = Math.floor(y / pitch);
   if (c < 0 || r < 0 || c >= grid.columns.length || r >= 7) return null;
-  return grid.columns[c][r] ? { c, r } : null;
+  return grid.columns[c]?.[r] ? { c, r } : null;
 }
 
 // --- The listening clock ---------------------------------------------------------------
