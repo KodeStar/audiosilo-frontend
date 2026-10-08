@@ -14,6 +14,7 @@ import { useLayout } from '@/lib/layout';
 
 import { joinList, type ReadyLine } from './connect-model';
 import { ConnectFrame, StepDots } from './connect-frame';
+import { addressesBody } from './connect-parts';
 import { ReadyShelf } from './ready-shelf';
 import { type ReadyPlace, useReadySummary } from './use-ready-summary';
 
@@ -69,7 +70,7 @@ export function ReadyScreen({
         )}
       </View>
       {addresses?.home && addresses.away ? (
-        <AddressesCard addresses={addresses} body={t('onboarding.addresses.body', { name })} />
+        <AddressesCard addresses={addresses} body={addressesBody(name, t)} />
       ) : null}
       <View className="w-full flex-row flex-wrap justify-center gap-2">
         <Button

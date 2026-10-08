@@ -236,7 +236,7 @@ function AccountAddresses({ cid, caps }: { cid: string; caps: Capabilities | und
   return (
     <AddressesCard
       addresses={addresses}
-      body={t('account.addresses.body')}
+      body={t('addresses.body')}
       inUse={Platform.OS === 'web' ? undefined : inUse}
     />
   );

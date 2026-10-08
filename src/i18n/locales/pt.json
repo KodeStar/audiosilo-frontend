@@ -207,9 +207,6 @@
       "qr": "Código de associação para {{server}}",
       "error": "Não foi possível contactar {{server}}. Nenhum código foi criado, tente novamente."
     },
-    "addresses": {
-      "body": "As apps usam o endereço de casa na tua rede doméstica e o endereço fora de casa em qualquer outro lado."
-    },
     "devices": {
       "title": "Dispositivos com sessão iniciada",
       "sub": "Termine a sessão de um dispositivo perdido ou vendido",
@@ -1850,6 +1847,7 @@
   },
   "addresses": {
     "title": "Em casa e fora",
+    "body": "As apps usam o endereço de casa na tua rede doméstica e o endereço fora de casa em qualquer outro lado.",
     "home": "Endereço de casa",
     "away": "Endereço fora de casa",
     "paired": "Endereço do servidor",

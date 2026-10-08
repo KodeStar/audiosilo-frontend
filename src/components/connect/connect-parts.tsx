@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
@@ -167,6 +168,13 @@ function ServerMark({ name }: { name: string }) {
       <Logo size={18} color={colors.white} />
     </View>
   );
+}
+
+/** The "At home and away" card's line on the connect steps: the apps switch between the
+ * two by themselves; a browser stays on the address it was opened at, so the web says
+ * only what the addresses are for. */
+export function addressesBody(name: string, t: TFunction): string {
+  return Platform.OS === 'web' ? t('addresses.body') : t('onboarding.addresses.body', { name });
 }
 
 /** "Another server": back to the first step. */

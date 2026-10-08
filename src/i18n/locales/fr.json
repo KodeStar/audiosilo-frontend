@@ -207,9 +207,6 @@
       "qr": "Code d'association pour {{server}}",
       "error": "Impossible de joindre {{server}}. Aucun code n'a été créé, réessayez."
     },
-    "addresses": {
-      "body": "Les applications utilisent l'adresse à la maison sur votre réseau domestique et l'adresse à l'extérieur partout ailleurs."
-    },
     "devices": {
       "title": "Appareils connectés",
       "sub": "Déconnectez un appareil perdu ou vendu",
@@ -1850,6 +1847,7 @@
   },
   "addresses": {
     "title": "À la maison et à l'extérieur",
+    "body": "Les applications utilisent l'adresse à la maison sur votre réseau domestique et l'adresse à l'extérieur partout ailleurs.",
     "home": "Adresse à la maison",
     "away": "Adresse à l'extérieur",
     "paired": "Adresse du serveur",

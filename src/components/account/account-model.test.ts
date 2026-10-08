@@ -168,7 +168,7 @@ describe('the Account page crumb', () => {
     expect(routeUnderAccount([tabRoot])).toBeUndefined();
   });
 
-  it('names Settings, the hub section, or says Back', () => {
+  it('names Settings or the hub section, and nothing else', () => {
     expect(accountParentKey({ name: 'settings', params: { section: 'accounts' } })).toBe(
       'settings.title',
     );
@@ -176,8 +176,8 @@ describe('the Account page crumb', () => {
       'you.titles.settings',
     );
     expect(accountParentKey({ name: 'you' })).toBe('you.titles.stats');
-    expect(accountParentKey({ name: 'book/[libraryId]' })).toBe('nav.back');
-    expect(accountParentKey(undefined)).toBe('nav.back');
+    expect(accountParentKey({ name: 'book/[libraryId]' })).toBeNull();
+    expect(accountParentKey(undefined)).toBeNull();
   });
 });
 

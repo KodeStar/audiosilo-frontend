@@ -136,9 +136,9 @@ export function routeUnderAccount(routes: readonly StackRoute[]): StackRoute | u
 
 /**
  * The Account page's first crumb, naming the page it was opened from: Settings (the page,
- * or the phone You hub's Settings section, both list the signed-in servers), another of
- * the hub's sections, else (the profile menu, over any page, or a cold link) a plain
- * Back.
+ * or the phone You hub's Settings section, both list the signed-in servers) or another of
+ * the hub's sections. Null for anything else (the profile menu over any page, a cold
+ * link): the chrome's own Back covers it.
  */
 export function accountParentKey(parent: StackRoute | undefined) {
   if (parent?.name === 'settings') return 'settings.title' as const;
@@ -146,5 +146,5 @@ export function accountParentKey(parent: StackRoute | undefined) {
     const section = (parent.params as { section?: string } | undefined)?.section;
     return youTitleKey(parseYouSection(section));
   }
-  return 'nav.back' as const;
+  return null;
 }

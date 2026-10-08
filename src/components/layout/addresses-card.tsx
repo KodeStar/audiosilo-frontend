@@ -31,7 +31,7 @@ export function AddressesCard({
   const themed = useThemeColors();
   if (!addresses.home && !addresses.away) return null;
   return (
-    <Card testID="addresses-card" className="w-full gap-3 p-4">
+    <Card testID="addresses-card" className="w-full gap-3">
       <View className="gap-1">
         <Text variant="title" accessibilityRole="header">
           {t('addresses.title')}

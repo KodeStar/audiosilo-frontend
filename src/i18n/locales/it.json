@@ -207,9 +207,6 @@
       "qr": "Codice di associazione per {{server}}",
       "error": "Impossibile raggiungere {{server}}. Nessun codice creato, riprova."
     },
-    "addresses": {
-      "body": "Le app usano l'indirizzo di casa sulla tua rete domestica e l'indirizzo fuori casa ovunque altrove."
-    },
     "devices": {
       "title": "Dispositivi connessi",
       "sub": "Disconnetti un dispositivo perso o venduto",
@@ -1850,6 +1847,7 @@
   },
   "addresses": {
     "title": "A casa e fuori",
+    "body": "Le app usano l'indirizzo di casa sulla tua rete domestica e l'indirizzo fuori casa ovunque altrove.",
     "home": "Indirizzo di casa",
     "away": "Indirizzo fuori casa",
     "paired": "Indirizzo del server",

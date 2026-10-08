@@ -207,9 +207,6 @@
       "qr": "Kopplungscode für {{server}}",
       "error": "{{server}} war nicht erreichbar. Es wurde kein Code erstellt, versuch es noch einmal."
     },
-    "addresses": {
-      "body": "Die Apps nutzen in deinem Heimnetz die Heimadresse und überall sonst die Adresse für unterwegs."
-    },
     "devices": {
       "title": "Angemeldete Geräte",
       "sub": "Melde ein verlorenes oder verkauftes Gerät ab",
@@ -1850,6 +1847,7 @@
   },
   "addresses": {
     "title": "Zu Hause und unterwegs",
+    "body": "Die Apps nutzen in deinem Heimnetz die Heimadresse und überall sonst die Adresse für unterwegs.",
     "home": "Heimadresse",
     "away": "Adresse unterwegs",
     "paired": "Serveradresse",

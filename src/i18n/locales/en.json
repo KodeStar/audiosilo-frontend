@@ -207,9 +207,6 @@
       "qr": "Pairing code for {{server}}",
       "error": "Couldn't reach {{server}}. No code was made, so try again."
     },
-    "addresses": {
-      "body": "The apps use the home address on your home network and the away address anywhere else."
-    },
     "devices": {
       "title": "Signed-in devices",
       "sub": "Sign out a device you've lost or sold",
@@ -1850,6 +1847,7 @@
   },
   "addresses": {
     "title": "At home and away",
+    "body": "The apps use the home address on your home network and the away address anywhere else.",
     "home": "Home address",
     "away": "Away address",
     "paired": "Server address",

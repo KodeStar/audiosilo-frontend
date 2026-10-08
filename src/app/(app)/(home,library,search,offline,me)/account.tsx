@@ -16,7 +16,7 @@ import { useSession } from '@/stores/session';
  * servers list (the Settings page, or the phone You hub's Settings section) and the
  * profile menu. The body is `AccountSection`, which the phone You hub's Account segment
  * renders too; this route adds the scroll and a breadcrumb back to the page it was
- * opened from (`accountParentKey`: Settings, a hub section, else a plain Back).
+ * opened from when that is Settings or a You hub section (`accountParentKey`).
  *
  * The `?connection=` scope comes from this route's OWN local param (reliable on a cold
  * deep link; `ContentScope` redirects home for a server that isn't signed in), read via
@@ -42,10 +42,14 @@ function AccountContent() {
     accountParentKey(routeUnderAccount(navigation.getState()?.routes ?? [])),
   );
 
-  const crumbs: Crumb[] = [
-    { label: t(parentKey), onPress: () => router.back() },
-    { label: name ?? t('settings.account.label'), active: true },
-  ];
+  // Only under a page the crumb can name: otherwise the chrome's own Back (the sub-nav,
+  // the phone header) is the way back, and a second "Back" would repeat it.
+  const crumbs: Crumb[] | null = parentKey
+    ? [
+        { label: t(parentKey), onPress: () => router.back() },
+        { label: name ?? t('settings.account.label'), active: true },
+      ]
+    : null;
 
   return (
     <ScrollView
@@ -54,9 +58,11 @@ function AccountContent() {
       contentContainerStyle={{ paddingBottom }}
       keyboardShouldPersistTaps="handled"
     >
-      <View className="w-full max-w-[880px] self-center">
-        <BreadCrumbs crumbs={crumbs} />
-      </View>
+      {crumbs ? (
+        <View className="w-full max-w-[880px] self-center">
+          <BreadCrumbs crumbs={crumbs} />
+        </View>
+      ) : null}
       <AccountSection connectionId={cid || undefined} />
     </ScrollView>
   );

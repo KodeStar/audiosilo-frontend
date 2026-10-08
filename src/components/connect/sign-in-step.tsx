@@ -14,7 +14,7 @@ import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { hostOf, pairingAddresses } from './connect-model';
-import { BackToStart } from './connect-parts';
+import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 
 type Mode = 'code' | 'password';
@@ -159,10 +159,7 @@ export function SignInStep({
       )}
 
       {known?.home && known.away ? (
-        <AddressesCard
-          addresses={known}
-          body={t('onboarding.addresses.body', { name: name ?? host })}
-        />
+        <AddressesCard addresses={known} body={addressesBody(name ?? host, t)} />
       ) : null}
 
       {error ? (

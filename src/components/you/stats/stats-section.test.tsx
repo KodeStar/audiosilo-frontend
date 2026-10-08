@@ -212,9 +212,12 @@ describe('StatsSection content', () => {
     expect(mockOpen.openYou).toHaveBeenCalledTimes(2);
   });
 
-  it('leaves the header button off a phone', async () => {
+  it('leaves the header button off a phone, and the page name off its eyebrow', async () => {
     mockLayout = 'phone';
     await mount();
+    // The hub's large title says "Your listening" there.
+    expect(screen.getByText('Hearthside')).toBeTruthy();
+    expect(screen.queryByText('Your listening · Hearthside')).toBeNull();
     expect(screen.queryByText('Open your 2026 story')).toBeNull();
   });
 

@@ -193,7 +193,8 @@ function StatsContent({
     <View className="flex-row flex-wrap items-end justify-between gap-3">
       <View className="min-w-0 flex-1 gap-1">
         <Text variant="eyebrow" numberOfLines={1}>
-          {t('stats.header.eyebrow', { server })}
+          {/* A phone's large title already says "Your listening". */}
+          {wide ? t('stats.header.eyebrow', { server }) : server}
         </Text>
         <Text variant="display" accessibilityRole="header" style={tabularNums}>
           {t('stats.header.thisWeek', { duration: formatDurationOrZero(week.thisWeek) })}

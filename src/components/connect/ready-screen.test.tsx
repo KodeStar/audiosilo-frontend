@@ -1,4 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import type { Book } from '@/api/types';
 
@@ -88,6 +89,24 @@ it('shows "At home and away" when the server has both addresses', async () => {
   );
   expect(screen.getByText('At home and away')).toBeTruthy();
   expect(screen.getByText(/Hearthside has two addresses/)).toBeTruthy();
+});
+
+it("says on the web only what the addresses are for (a browser doesn't switch)", async () => {
+  const os = Platform.OS;
+  Platform.OS = 'web';
+  try {
+    await render(
+      <ReadyScreen
+        connectionId="c1"
+        name="Hearthside"
+        addresses={{ home: 'http://192.168.1.20:8080', away: 'https://books.example.com' }}
+      />,
+    );
+    expect(screen.queryByText(/switches by itself/)).toBeNull();
+    expect(screen.getByText(/The apps use the home address/)).toBeTruthy();
+  } finally {
+    Platform.OS = os;
+  }
 });
 
 it('no addresses card with only one address', async () => {

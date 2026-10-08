@@ -207,9 +207,6 @@
       "qr": "Código de vinculación de {{server}}",
       "error": "No se pudo contactar con {{server}}. No se creó ningún código; inténtalo de nuevo."
     },
-    "addresses": {
-      "body": "Las apps usan la dirección de casa en tu red doméstica y la dirección fuera de casa en cualquier otro sitio."
-    },
     "devices": {
       "title": "Dispositivos con sesión iniciada",
       "sub": "Cierra la sesión de un dispositivo perdido o vendido",
@@ -1850,6 +1847,7 @@
   },
   "addresses": {
     "title": "En casa y fuera",
+    "body": "Las apps usan la dirección de casa en tu red doméstica y la dirección fuera de casa en cualquier otro sitio.",
     "home": "Dirección de casa",
     "away": "Dirección fuera de casa",
     "paired": "Dirección del servidor",
