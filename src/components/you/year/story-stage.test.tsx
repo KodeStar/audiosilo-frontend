@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform, type View } from 'react-native';
 
 import i18n from '@/i18n';
@@ -185,5 +185,29 @@ describe('StoryStage', () => {
     const text = [heading.props.children].flat().join('');
     expect(text.startsWith(`${Array.from(LONG).join('\u200B')}, here's`)).toBe(true);
     expect(screen.getByLabelText(new RegExp(`^Card 1 of 8\\. .*${LONG}, here's`))).toBeTruthy();
+  });
+
+  it('a hold and release does not step; a quick tap does', async () => {
+    // The device pass: releasing a long press on the story also counted as a tap.
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const p = player(2);
+      const onHold = jest.fn();
+      await mount(p, { onHold });
+      const next = screen.getByRole('button', { name: 'Next card' });
+      const previous = screen.getByRole('button', { name: 'Previous card' });
+      await user.longPress(next, { duration: 1500 });
+      await user.longPress(previous, { duration: 1500 });
+      expect(onHold).toHaveBeenCalledWith(true);
+      expect(p.next).not.toHaveBeenCalled();
+      expect(p.previous).not.toHaveBeenCalled();
+      await user.press(next);
+      await user.press(previous);
+      expect(p.next).toHaveBeenCalledTimes(1);
+      expect(p.previous).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

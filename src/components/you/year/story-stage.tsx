@@ -115,6 +115,10 @@ export function StoryStage({
       if (!pointer.current) setHolds((h) => ({ ...h, focus: true }));
     },
     onBlur: () => setHolds((h) => ({ ...h, focus: false })),
+    // A hold is a long press: with a handler for it, letting go after one is not also a
+    // tap (Pressable fires `onPress` on release only while no long press has fired), so
+    // a hold-and-release doesn't step the story. The hold itself is the press in/out.
+    onLongPress: () => undefined,
   };
 
   return (
