@@ -43,15 +43,13 @@ describe('resumeChapterLabel', () => {
   const tr = ((key: string, o: Record<string, unknown>) =>
     `${key}:${String(o.title ?? o.chapter)}`) as unknown as TFunction;
 
-  it("says the title when the number contradicts it, else the number, in the surface's words", () => {
-    expect(resumeChapterLabel(tr, { number: 11, title: 'Chapter 10' }, 'book')).toBe(
-      'book.hero.resumeTitled:Chapter 10',
+  it('says the title when the number contradicts it, else the number', () => {
+    expect(resumeChapterLabel(tr, { number: 11, title: 'Chapter 10' })).toBe(
+      'common.resumeTitled:Chapter 10',
     );
-    expect(resumeChapterLabel(tr, { number: 11, title: 'Chapter 11' }, 'home')).toBe(
-      'home.now.resumeChapter:11',
+    expect(resumeChapterLabel(tr, { number: 11, title: 'Chapter 11' })).toBe(
+      'common.resumeChapter:11',
     );
-    expect(resumeChapterLabel(tr, { number: 2, title: 'Ch. 1' }, 'series')).toBe(
-      'series.resumeTitled:Ch. 1',
-    );
+    expect(resumeChapterLabel(tr, { number: 2, title: 'Ch. 1' })).toBe('common.resumeTitled:Ch. 1');
   });
 });

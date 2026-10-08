@@ -7,7 +7,9 @@
     "close": "Close",
     "copied": "Copied",
     "on": "On",
-    "off": "Off"
+    "off": "Off",
+    "resumeChapter": "Resume chapter {{chapter}}",
+    "resumeTitled": "Resume {{title}}"
   },
   "settings": {
     "title": "Settings",
@@ -449,7 +451,6 @@
       "through": "through the book",
       "finishPace": "finish at your pace",
       "resume": "Resume",
-      "resumeChapter": "Resume chapter {{chapter}}",
       "pause": "Pause",
       "resumeFailed": "Couldn't start this book. Your place is kept, try again.",
       "openBook": "Open {{title}}",
@@ -457,7 +458,6 @@
       "whosWhoLabel_one": "Who's who, {{count}} character met so far",
       "whosWhoLabel_other": "Who's who, {{count}} characters met so far",
       "storySoFar": "Story so far",
-      "resumeTitled": "Resume {{title}}",
       "countOf": "{{chapter}} of {{total}}"
     },
     "week": {
@@ -1120,10 +1120,8 @@
       "finishedOn": "Finished {{date}}",
       "start": "Start listening",
       "resume": "Resume",
-      "resumeChapter": "Resume chapter {{chapter}}",
       "again": "Listen again",
       "pause": "Pause",
-      "resumeTitled": "Resume {{title}}",
       "titledOf": "{{title}} · {{chapter}} of {{total}}"
     },
     "upNext": {
@@ -1661,7 +1659,6 @@
     "listening": "Listening · {{percent}}%",
     "listeningNow": "listening now",
     "resume": "Resume",
-    "resumeChapter": "Resume chapter {{chapter}}",
     "play": "Play",
     "details": "Details",
     "open": "Open",
@@ -1706,8 +1703,7 @@
       "emptyAction": "Browse books",
       "errorTitle": "Couldn't load the series"
     },
-    "keepAhead": "Keep ahead offline",
-    "resumeTitled": "Resume {{title}}"
+    "keepAhead": "Keep ahead offline"
   },
   "people": {
     "author": "Author",

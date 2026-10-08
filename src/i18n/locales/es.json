@@ -7,7 +7,9 @@
     "close": "Cerrar",
     "copied": "Copiado",
     "on": "Activado",
-    "off": "Desactivado"
+    "off": "Desactivado",
+    "resumeChapter": "Reanudar capítulo {{chapter}}",
+    "resumeTitled": "Reanudar {{title}}"
   },
   "settings": {
     "title": "Ajustes",
@@ -449,7 +451,6 @@
       "through": "del libro escuchado",
       "finishPace": "final a tu ritmo",
       "resume": "Reanudar",
-      "resumeChapter": "Reanudar capítulo {{chapter}}",
       "pause": "Pausa",
       "resumeFailed": "No se pudo iniciar este libro. Tu posición se conserva, inténtalo de nuevo.",
       "openBook": "Abrir {{title}}",
@@ -457,7 +458,6 @@
       "whosWhoLabel_one": "Quién es quién, {{count}} personaje conocido hasta ahora",
       "whosWhoLabel_other": "Quién es quién, {{count}} personajes conocidos hasta ahora",
       "storySoFar": "La historia hasta ahora",
-      "resumeTitled": "Reanudar {{title}}",
       "countOf": "{{chapter}} de {{total}}"
     },
     "week": {
@@ -1120,10 +1120,8 @@
       "finishedOn": "Terminado el {{date}}",
       "start": "Empezar a escuchar",
       "resume": "Reanudar",
-      "resumeChapter": "Reanudar capítulo {{chapter}}",
       "again": "Volver a escuchar",
       "pause": "Pausa",
-      "resumeTitled": "Reanudar {{title}}",
       "titledOf": "{{title}} · {{chapter}} de {{total}}"
     },
     "upNext": {
@@ -1661,7 +1659,6 @@
     "listening": "Escuchando · {{percent}} %",
     "listeningNow": "escuchando ahora",
     "resume": "Reanudar",
-    "resumeChapter": "Reanudar el capítulo {{chapter}}",
     "play": "Reproducir",
     "details": "Detalles",
     "open": "Abrir",
@@ -1706,8 +1703,7 @@
       "emptyAction": "Ver los libros",
       "errorTitle": "No se pudieron cargar las series"
     },
-    "keepAhead": "Adelantarse sin conexión",
-    "resumeTitled": "Reanudar {{title}}"
+    "keepAhead": "Adelantarse sin conexión"
   },
   "people": {
     "author": "Autor",

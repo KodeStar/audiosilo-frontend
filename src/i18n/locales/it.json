@@ -7,7 +7,9 @@
     "close": "Chiudi",
     "copied": "Copiato",
     "on": "Attivo",
-    "off": "Disattivo"
+    "off": "Disattivo",
+    "resumeChapter": "Riprendi il capitolo {{chapter}}",
+    "resumeTitled": "Riprendi {{title}}"
   },
   "settings": {
     "title": "Impostazioni",
@@ -449,7 +451,6 @@
       "through": "del libro ascoltato",
       "finishPace": "fine al tuo ritmo",
       "resume": "Riprendi",
-      "resumeChapter": "Riprendi il capitolo {{chapter}}",
       "pause": "Pausa",
       "resumeFailed": "Impossibile avviare questo libro. La tua posizione è salva, riprova.",
       "openBook": "Apri {{title}}",
@@ -457,7 +458,6 @@
       "whosWhoLabel_one": "Chi è chi, {{count}} personaggio incontrato finora",
       "whosWhoLabel_other": "Chi è chi, {{count}} personaggi incontrati finora",
       "storySoFar": "La storia finora",
-      "resumeTitled": "Riprendi {{title}}",
       "countOf": "{{chapter}} di {{total}}"
     },
     "week": {
@@ -1120,10 +1120,8 @@
       "finishedOn": "Finito il {{date}}",
       "start": "Inizia ad ascoltare",
       "resume": "Riprendi",
-      "resumeChapter": "Riprendi il capitolo {{chapter}}",
       "again": "Ascolta di nuovo",
       "pause": "Pausa",
-      "resumeTitled": "Riprendi {{title}}",
       "titledOf": "{{title}} · {{chapter}} di {{total}}"
     },
     "upNext": {
@@ -1661,7 +1659,6 @@
     "listening": "In ascolto · {{percent}}%",
     "listeningNow": "in ascolto ora",
     "resume": "Riprendi",
-    "resumeChapter": "Riprendi il capitolo {{chapter}}",
     "play": "Riproduci",
     "details": "Dettagli",
     "open": "Apri",
@@ -1706,8 +1703,7 @@
       "emptyAction": "Sfoglia i libri",
       "errorTitle": "Impossibile caricare le serie"
     },
-    "keepAhead": "Portati avanti offline",
-    "resumeTitled": "Riprendi {{title}}"
+    "keepAhead": "Portati avanti offline"
   },
   "people": {
     "author": "Autore",

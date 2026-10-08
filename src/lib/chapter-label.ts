@@ -35,21 +35,11 @@ export function contradictedTitle(chapter: NamedChapter): string | null {
   return m && Number(m[1]) !== chapter.number ? title : null;
 }
 
-/** Each surface's own "Resume chapter N" and "Resume <title>" words. */
-const RESUME_KEYS = {
-  book: { numbered: 'book.hero.resumeChapter', titled: 'book.hero.resumeTitled' },
-  home: { numbered: 'home.now.resumeChapter', titled: 'home.now.resumeTitled' },
-  series: { numbered: 'series.resumeChapter', titled: 'series.resumeTitled' },
-} as const;
-
 /** "Resume chapter 11", or "Resume Chapter 10" when the title contradicts the number
- * (`contradictedTitle`), in `surface`'s words. */
-export function resumeChapterLabel(
-  t: TFunction,
-  chapter: NamedChapter,
-  surface: keyof typeof RESUME_KEYS,
-): string {
-  const keys = RESUME_KEYS[surface];
+ * (`contradictedTitle`): the book page, the Now card and the series page say it alike. */
+export function resumeChapterLabel(t: TFunction, chapter: NamedChapter): string {
   const titled = contradictedTitle(chapter);
-  return titled ? t(keys.titled, { title: titled }) : t(keys.numbered, { chapter: chapter.number });
+  return titled
+    ? t('common.resumeTitled', { title: titled })
+    : t('common.resumeChapter', { chapter: chapter.number });
 }

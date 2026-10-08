@@ -140,7 +140,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const resumeLabel = playing
     ? t('home.now.pause')
     : place
-      ? resumeChapterLabel(t, place, 'home')
+      ? resumeChapterLabel(t, place)
       : t('home.now.resume');
   // "Ch. 13 of 25" beside a title "Chapter 12" contradicts it: then the count alone.
   const placeCount = !place
