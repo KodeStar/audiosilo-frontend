@@ -24,8 +24,8 @@ import kotlin.math.sqrt
  * real time. 16-bit PCM in and out (the sink's float output is off, so the chain is always
  * 16-bit). Every channel shares one gain (stereo-linked), so the image never shifts.
  *
- * The wet path: an optional 80 Hz high-pass (rumble, handling noise), a compressor (-30 dBFS,
- * 3:1, 6 dB soft knee, 10 ms attack, 200 ms release, +9 dB make-up), a peak limiter (ceiling
+ * The wet path: an optional 80 Hz high-pass (rumble, handling noise), a compressor (-20 dBFS,
+ * 3:1, 6 dB soft knee, 10 ms attack, 200 ms release, +12 dB make-up), a peak limiter (ceiling
  * -1 dBFS, ~1 ms attack, 80 ms release) and a final clip at the ceiling, which only the first
  * millisecond of a sudden loud onset can reach (the limiter has no look-ahead, so it adds no
  * latency and holds no audio across a drain or a flush).
@@ -243,14 +243,17 @@ class VoiceBoostProcessor(
     private val DB_PER_LN = 20.0 / ln(10.0)
 
     const val HIGH_PASS_HZ = 80.0
-    // The stronger preset (device pass, 2026-10-08): -24 dBFS / +6 dB was hard to hear on a
-    // phone speaker. Quiet speech now gains 9 dB; at -30 dBFS 8.5 dB (the knee takes 0.5).
-    const val THRESHOLD_DB = -30.0
+    // The stronger preset (Phase 6 device pass): -24 dBFS / +6 dB was hard to hear. The
+    // detector follows sample PEAKS, so normal narration (-22..-25 dBFS RMS) sits well above a
+    // low threshold: -30 / +9 had its unity point at -16.5 dBFS and lifted it by only ~1 dB.
+    // -20 / +12 lifts quiet speech ~10-11 dB, normal ~8.5 dB, loud (-17 RMS) ~5.5 dB, and the
+    // limiter pins the peaks at -1 dBFS.
+    const val THRESHOLD_DB = -20.0
     const val RATIO = 3.0
     const val KNEE_DB = 6.0
     const val COMP_ATTACK_S = 0.010
     const val COMP_RELEASE_S = 0.200
-    const val MAKEUP_DB = 9.0
+    const val MAKEUP_DB = 12.0
     const val CEILING_DB = -1.0
     const val LIMIT_ATTACK_S = 0.001
     const val LIMIT_RELEASE_S = 0.080

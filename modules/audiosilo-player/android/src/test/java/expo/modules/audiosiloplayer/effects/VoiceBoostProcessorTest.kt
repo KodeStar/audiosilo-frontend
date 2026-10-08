@@ -79,32 +79,38 @@ class VoiceBoostProcessorTest {
   @Test
   fun quietSpeechIsLiftedAndLoudSpeechIsTamed() {
     val second = rate
-    // -36 dBFS: under the knee (-33 to -27), so only the +9 dB make-up applies.
+    // -36 dBFS: under the knee (-23 to -17), so only the +12 dB make-up applies.
     val quiet = PcmBuilder(rate, channels).tone(1000.0, 1000.0, dbfs(-36.0)).build()
     val (p1, _) = boost(on = true)
     val quietOut = runProcessor(p1, quiet, channels, chunk)
     val lift = rmsDb(quietOut, second / 2, second) - rmsDb(quiet, second / 2, second)
-    assertEquals("quiet speech lifted by the make-up gain", 9.0, lift, 0.5)
+    assertEquals("quiet speech lifted by the make-up gain", 12.0, lift, 0.5)
 
-    // -6 dBFS peak: 24 dB over the threshold -> 3:1 takes 16 dB, make-up gives 9 back.
+    // -6 dBFS peak: 14 dB over the threshold -> 3:1 takes 9.3 dB, make-up gives 12 back
+    // (out at -3.3 dBFS peak, under the limiter): loud speech gains the least.
     val loud = PcmBuilder(rate, channels).tone(1000.0, 1000.0, dbfs(-6.0)).build()
     val (p2, _) = boost(on = true)
     val loudOut = runProcessor(p2, loud, channels, chunk)
     val change = rmsDb(loudOut, second / 2, second) - rmsDb(loud, second / 2, second)
-    assertEquals("loud speech brought down", -7.0, change, 0.75)
+    assertEquals("loud speech lifted least", 2.67, change, 0.75)
   }
 
   @Test
-  fun liftAtTheThresholdIsAboutNineDb() {
-    // The preset's headline number: speech peaking at the -30 dBFS threshold comes out ~8.5 dB
-    // louder (+9 make-up, minus the knee's 0.5 dB).
+  fun liftByLevel() {
+    // The preset's curve on steady tones (the detector reads their peak): +11.5 dB at the
+    // -20 dBFS threshold (+12 make-up, minus the knee's 0.5), +8 dB for -14 dBFS peaks (typical
+    // narration peaks), +5.3 dB at -10.
     val second = rate
-    val atThreshold = PcmBuilder(rate, channels).tone(1000.0, 1000.0, dbfs(-30.0)).build()
-    val (p, _) = boost(on = true)
-    val out = runProcessor(p, atThreshold, channels, chunk)
-    val lift = rmsDb(out, second / 2, second) - rmsDb(atThreshold, second / 2, second)
-    println("Voice Boost lift at -30 dBFS: %.2f dB".format(lift))
-    assertEquals("lift at the threshold", 8.5, lift, 0.5)
+    for ((peakDb, expected) in listOf(-20.0 to 11.5, -14.0 to 8.0, -10.0 to 16.0 / 3.0)) {
+      val tone = PcmBuilder(rate, channels).tone(1000.0, 1000.0, dbfs(peakDb)).build()
+      val (p, _) = boost(on = true)
+      val out = runProcessor(p, tone, channels, chunk)
+      val lift = rmsDb(out, second / 2, second) - rmsDb(tone, second / 2, second)
+      println("Voice Boost lift at %.0f dBFS peak: %.2f dB".format(peakDb, lift))
+      // A tone's gain rides a little above the static curve between its peaks (the 200 ms
+      // release is slower than the 10 ms attack), so allow 0.75 dB.
+      assertEquals("lift at $peakDb dBFS", expected, lift, 0.75)
+    }
   }
 
   @Test
@@ -128,7 +134,7 @@ class VoiceBoostProcessorTest {
   @Test
   fun togglingRampsWithoutAClick() {
     // A steady -12 dBFS tone: its own largest sample-to-sample step is A x 2 pi f / fs. An
-    // instant switch would jump by |x| x (gain - 1), up to thousands at the +9 dB start.
+    // instant switch would jump by |x| x (gain - 1), up to thousands at the +12 dB start.
     val amplitude = dbfs(-12.0)
     val hz = 220.0
     val input = PcmBuilder(rate, channels).tone(3000.0, hz, amplitude).build()
@@ -139,7 +145,9 @@ class VoiceBoostProcessorTest {
       switch.set(frame in onAt until offAt)
     }
     val naturalStep = amplitude * 2.0 * Math.PI * hz / rate
-    val bound = 2.0 * naturalStep + 50.0
+    // The boosted tone's own steps are at most the make-up gain times the natural step (the
+    // compressor only takes gain away); a click (a jump of |x| x (gain - 1)) is far larger.
+    val bound = naturalStep * Math.pow(10.0, VoiceBoostProcessor.MAKEUP_DB / 20.0) + 50.0
     var worst = 0
     for (f in 1 until output.size / channels) {
       val step = abs(output[f * channels] - output[(f - 1) * channels])
@@ -155,9 +163,9 @@ class VoiceBoostProcessorTest {
   @Test
   fun compressorCurve() {
     assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-40.0), 1e-9)
-    assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-33.0), 1e-9) // knee starts
-    assertEquals(-0.5, VoiceBoostProcessor.compressorGainDb(-30.0), 1e-9) // mid-knee
-    assertEquals(-4.0, VoiceBoostProcessor.compressorGainDb(-24.0), 1e-9) // 6 over, 3:1
-    assertEquals(-20.0, VoiceBoostProcessor.compressorGainDb(0.0), 1e-9)
+    assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-23.0), 1e-9) // knee starts
+    assertEquals(-0.5, VoiceBoostProcessor.compressorGainDb(-20.0), 1e-9) // mid-knee
+    assertEquals(-4.0, VoiceBoostProcessor.compressorGainDb(-14.0), 1e-9) // 6 over, 3:1
+    assertEquals(-40.0 / 3.0, VoiceBoostProcessor.compressorGainDb(0.0), 1e-9)
   }
 }
