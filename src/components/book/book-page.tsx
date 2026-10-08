@@ -30,7 +30,10 @@ import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { TranscodeNote } from '@/components/library/transcode-note';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { selectIsLoaded } from '@/components/player/playing-target';
-import { useListeningPosition } from '@/components/player/use-listening-position';
+import {
+  useListeningPosition,
+  useResumePosition,
+} from '@/components/player/use-listening-position';
 import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
 import { useBookAnnotations } from '@/components/player/use-playing-pins';
 import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left';
@@ -151,6 +154,10 @@ function BookPage() {
     progress?.position,
     LIVE_POSITION_BUCKET_S,
   );
+  // Where a press on the primary plays from (the loaded book toggles in place, at the
+  // player's place, even when another device saved one further on): the hero's place,
+  // its Resume chapter N and the current row. The spoiler gate keeps the one above.
+  const resumePosition = useResumePosition(target, progress?.position, LIVE_POSITION_BUCKET_S);
   const downloaded = useDownloadEntry(cid, libraryId, path)?.status === 'downloaded';
   const transcoded = useNeedsWebTranscode(book, chapterData, cid);
   // The tab counts and pins read the entries the Bookmarks and Notes tabs read and write
@@ -206,7 +213,7 @@ function BookPage() {
   const status = progressQuery.isPending ? undefined : bookStatus(progress);
   const finished = status === 'finished' && !loaded;
   const started = loaded || status === 'progress' || (listeningPosition ?? 0) > 0;
-  const position = finished ? total : (listeningPosition ?? 0);
+  const position = finished ? total : (resumePosition ?? 0);
   // The row the listener is in (none marked before the start or once finished).
   const current = started && !finished ? rowAt(list.rows, position) : -1;
   const timeLeft = useBookTimeLeft(book ? target : null, progress, total);
