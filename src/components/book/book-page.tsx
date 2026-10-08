@@ -328,7 +328,7 @@ function BookPage() {
             loaded,
             pins: annotations.pins,
             interval,
-            fromCommunity: chapterData?.chapters_source === 'community',
+            fromCommunity: chapterData?.chapters_source === 'community' && list.kind === 'chapters',
             onJump,
           }}
           community={{

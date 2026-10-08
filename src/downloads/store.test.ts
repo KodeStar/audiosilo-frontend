@@ -123,6 +123,9 @@ jest.mock('@/api/hooks', () => ({
   chaptersQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
     queryKey: ['chapters', cid, lib, path],
   }),
+  // The real helper's reading of `qk.chapters` (hooks.test.ts covers it).
+  chaptersKeyParts: ([kind, cid, libraryId, path]: unknown[]) =>
+    kind === 'chapters' ? { cid, libraryId, path } : null,
 }));
 
 // Imported after the mocks so the store binds to the fakes above.
@@ -534,6 +537,8 @@ describe("refreshing a downloaded book's chapters", () => {
       const e = downloadedEntry();
       e.manifest.chapters = fresh();
       expect(refreshedChapters(e.manifest, fresh())).toBeNull();
+      // An unchanged refetch hands back the very same object.
+      expect(refreshedChapters(e.manifest, e.manifest.chapters)).toBeNull();
     });
   });
 
@@ -544,10 +549,17 @@ describe("refreshing a downloaded book's chapters", () => {
       }
     };
     let stop: () => void = () => {};
+    // Fake timers, so the save `persistSoon` holds runs here and never leaks into the
+    // next test (it would hold that test's save behind its own).
     beforeEach(() => {
+      jest.useFakeTimers();
       stop = startChapterRefresh();
     });
-    afterEach(() => stop());
+    afterEach(() => {
+      stop();
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    });
 
     it("saves the server's new chapters for a downloaded book with the same files", async () => {
       const e = downloadedEntry();
@@ -556,11 +568,28 @@ describe("refreshing a downloaded book's chapters", () => {
       const now = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
       expect(now.manifest.chapters).toEqual(fresh());
       expect(now.manifest.files).toBe(e.manifest.files);
-      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    it('saves a burst of answers once, a moment later', async () => {
+      const keys = ['A/Book', 'B/Book'].map((p) => downloadKey('c1', 2, p));
+      useDownloads.setState({
+        entries: Object.fromEntries(
+          keys.map((k, i) => [k, downloadedEntry({ path: i ? 'B/Book' : 'A/Book' })]),
+        ),
+      });
+      // The in-memory AsyncStorage's setItem is a jest.fn (jest.setup.ts): count its calls.
+      const save = AsyncStorage.setItem as jest.Mock;
+      save.mockClear();
+      answer(fresh());
+      answer(fresh(), false, ['chapters', 'c1', 2, 'B/Book']);
+      expect(save).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(2000);
+      expect(save).toHaveBeenCalledTimes(1);
       const saved = await readPersisted();
-      expect(saved[downloadKey('c1', 2, 'A/Book')].manifest.chapters?.chapters_source).toBe(
-        'community',
-      );
+      for (const k of Object.keys(saved)) {
+        expect(saved[k].manifest.chapters?.chapters_source).toBe('community');
+      }
+      expect(Object.keys(saved)).toHaveLength(2);
     });
 
     it('leaves it alone when the files differ, the answer is a seed, or the book is not downloaded', () => {

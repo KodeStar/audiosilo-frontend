@@ -132,7 +132,7 @@ export function BookChaptersTab({
           />
         ))}
       </View>
-      {fromCommunity && list.kind === 'chapters' ? (
+      {fromCommunity ? (
         <View testID="book-chapters-community" className="flex-row items-center gap-1.5 px-2.5">
           <Icon name="globe" size={12} color={themed.subtleForeground} />
           <Text variant="caption" className="shrink text-subtle-foreground">

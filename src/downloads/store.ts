@@ -2,7 +2,7 @@ import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { resolveClient } from '@/api/connection-clients';
-import { chaptersQuery, itemQuery, qk } from '@/api/hooks';
+import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
@@ -373,6 +373,8 @@ export function refreshedChapters(
   const want = bookFileSpecs(manifest.book, fresh).map((s) => s.path);
   const have = manifest.files.map((f) => f.relPath);
   if (want.length !== have.length || want.some((p, i) => p !== have[i])) return null;
+  // An unchanged refetch hands back the same object (structural sharing): skip the compare.
+  if (fresh === manifest.chapters) return null;
   if (JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
   return { ...manifest, chapters: fresh };
 }
@@ -388,16 +390,18 @@ export function startChapterRefresh(): () => void {
   return queryClient.getQueryCache().subscribe((event) => {
     // A server answer only: the store's own seeds (`setQueryData`) are manual.
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
-    const [kind, cid, libraryId, path] = event.query.queryKey;
+    const book = chaptersKeyParts(event.query.queryKey);
     const fresh = event.action.data as ChaptersResponse | undefined;
-    if (kind !== 'chapters' || !fresh) return;
-    const key = downloadKey(String(cid), Number(libraryId), String(path));
+    if (!book || !fresh) return;
+    const key = downloadKey(book.cid, book.libraryId, book.path);
     const entry = useDownloads.getState().entries[key];
     if (entry?.status !== 'downloaded') return;
     const manifest = refreshedChapters(entry.manifest, fresh);
     if (!manifest) return;
     patchEntry(key, { manifest });
-    void persist();
+    // A burst of answers (a reconnect's refetches, a search fan-out) saves the registry
+    // once, not once per book.
+    persistSoon();
   });
 }
 
