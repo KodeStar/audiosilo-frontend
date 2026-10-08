@@ -6,8 +6,11 @@ import i18next from 'i18next';
 import { AppState } from 'react-native';
 
 import { resolveClient } from '@/api/connection-clients';
+import { cachedCapability } from '@/api/hooks';
+import type { CoverSize } from '@/api/types';
+import { onForeground } from '@/lib/when-active';
 import { useSleepTimer } from '@/playback/sleep-timer';
-import { usePlayer, type NowPlaying } from '@/playback/store';
+import { type NowPlaying, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
@@ -19,7 +22,9 @@ import {
   fitsCover,
   MIN_WRITE_MS,
   sameActivity,
+  sameTiming,
   sleepActivityProps,
+  sleepTiming,
   WIDGET_COVER_MAX,
   WIDGET_COVER_SIZE,
   widgetMark,
@@ -104,10 +109,17 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
     }
   };
 
-  const coversFor = (np: NowPlaying): Covers => {
-    const stem = coverStem(np.connectionId, np.libraryId, np.path);
-    return covers?.stem === stem ? covers.files : {};
+  /** The loaded book's cover stem, worked out once per `nowPlaying` (progress ticks keep
+   * the same object, and every tick asks). */
+  let stemMemo: { np: NowPlaying; stem: string } | null = null;
+  const stemOf = (np: NowPlaying): string => {
+    if (stemMemo?.np !== np) {
+      stemMemo = { np, stem: coverStem(np.connectionId, np.libraryId, np.path) };
+    }
+    return stemMemo.stem;
   };
+
+  const coversFor = (np: NowPlaying): Covers => (covers?.stem === stemOf(np) ? covers.files : {});
 
   const connectionExists = (id: string) =>
     useSession.getState().connections.some((c) => c.id === id);
@@ -139,7 +151,7 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
 
   const ensureCovers = (np: NowPlaying | null) => {
     if (!np) return;
-    const stem = coverStem(np.connectionId, np.libraryId, np.path);
+    const stem = stemOf(np);
     if (coverJob === stem) return;
     coverJob = stem;
     void deps
@@ -169,6 +181,9 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
   // --- the Live Activity -----------------------------------------------------------
   let activity: Activity | null = null;
   let sent: SleepTimerActivityProps | null = null;
+  /** What `sent`'s words were made from: while these hold (and the language, see
+   * `onLanguage`), only the countdown can differ, so a tick compares that alone. */
+  let sentFrom: { np: NowPlaying; chapter: number | null; cover: string | undefined } | null = null;
   /** No (new) activity for the timer that is counting down: ActivityKit refused it
    * (Live Activities off in Settings) or the listener swiped it away. Cleared when that
    * timer ends. */
@@ -178,6 +193,7 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
     const a = activity;
     activity = null;
     sent = null;
+    sentFrom = null;
     if (a) void a.end('immediate').catch((e: unknown) => warn('activity end failed', e));
   };
 
@@ -189,30 +205,45 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
       refused = false;
       return;
     }
-    const np = usePlayer.getState().nowPlaying;
-    const desired = sleepActivityProps(
-      timer,
-      usePlayer.getState(),
-      deps.now(),
-      deps.t(),
-      np ? coversFor(np).activity : undefined,
-    );
-    if (!desired) {
+    const player = usePlayer.getState();
+    const np = player.nowPlaying;
+    const timing = sleepTiming(timer, player, deps.now());
+    if (!timing || !np) {
       endActivity();
       refused = false;
       return;
     }
+    if (!activity && (refused || !deps.isForeground())) return;
+    const from = {
+      np,
+      chapter: selectCurrentChapter(player)?.index ?? null,
+      cover: coversFor(np).activity,
+    };
+    // A progress tick under a running timer: the same words, so the countdown decides.
+    if (
+      activity &&
+      sent &&
+      sentFrom?.np === from.np &&
+      sentFrom.chapter === from.chapter &&
+      sentFrom.cover === from.cover &&
+      sameTiming(sent, timing)
+    ) {
+      return;
+    }
+    const desired = sleepActivityProps(timing, player, deps.t(), from.cover);
+    if (!desired) return; // never: `np` is loaded
     if (!activity) {
-      if (refused || !deps.isForeground()) return;
       try {
         activity = deps.activity.start(desired, desired.deepLink);
         sent = desired;
+        sentFrom = from;
       } catch (e) {
         refused = true;
         warn('activity start refused', e);
       }
       return;
     }
+    sentFrom = from;
     if (sent && sameActivity(sent, desired)) return;
     sent = desired;
     const current = activity;
@@ -221,6 +252,7 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
       if (activity === current) {
         activity = null;
         sent = null;
+        sentFrom = null;
         refused = true;
       }
       warn('activity update failed', e);
@@ -271,6 +303,7 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
   // A new language: every string the widget and the activity show is the app's.
   const onLanguage = () => {
     lastMark = null;
+    sentFrom = null;
     onPlayer();
   };
   i18next.on('languageChanged', onLanguage);
@@ -299,7 +332,7 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
   }
 }
 
-async function readBytes(uri: string): Promise<Uint8Array | null> {
+async function readBytesOnce(uri: string): Promise<Uint8Array | null> {
   if (uri.startsWith('http')) return fetchBytes(uri);
   try {
     const file = new File(uri);
@@ -310,8 +343,8 @@ async function readBytes(uri: string): Promise<Uint8Array | null> {
 }
 
 /** Write (or find) the book's widget and activity covers in `dir`, and delete every
- * other book's. */
-async function prepareCovers(dir: Directory, np: NowPlaying): Promise<Covers> {
+ * other book's. Exported for the tests. */
+export async function prepareCovers(dir: Directory, np: NowPlaying): Promise<Covers> {
   if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
   const stem = coverStem(np.connectionId, np.libraryId, np.path);
   for (const entry of dir.list()) {
@@ -324,32 +357,39 @@ async function prepareCovers(dir: Directory, np: NowPlaying): Promise<Covers> {
     }
   }
   const client = resolveClient(np.connectionId);
-  const want = [
-    { key: 'widget', size: WIDGET_COVER_SIZE, max: WIDGET_COVER_MAX },
-    { key: 'activity', size: ACTIVITY_COVER_SIZE, max: ACTIVITY_COVER_MAX },
-  ] as const;
-  const out: Covers = {};
-  for (const { key, size, max } of want) {
+  // A server known to lack `cover_sizes` ignores `size` and sends the full art, which
+  // `fitsCover` would refuse anyway: don't download it. Unknown (not asked yet) still tries.
+  const sized = cachedCapability(np.connectionId, 'cover_sizes') !== false;
+  // The two covers are made at once, and a source both try (the player's cover) is read once.
+  const reads = new Map<string, Promise<Uint8Array | null>>();
+  const readBytes = (uri: string) => {
+    let read = reads.get(uri);
+    if (!read) reads.set(uri, (read = readBytesOnce(uri)));
+    return read;
+  };
+  const prepare = async (key: keyof Covers, size: CoverSize, max: number) => {
     const file = new File(dir, `${stem}-${key === 'widget' ? 'w' : 'a'}.jpg`);
-    if (file.exists) {
-      out[key] = file.uri;
-      continue;
-    }
+    if (file.exists) return file.uri;
     // The server's thumbnail first (small by construction when it supports `size`), then
     // the downloaded or streamed cover the player shows, which is usually the full art.
-    const sources = [client?.coverUrl(np.libraryId, np.path, { size }), np.cover].filter(
-      (s): s is string => !!s,
-    );
+    const sources = [
+      sized ? client?.coverUrl(np.libraryId, np.path, { size }) : undefined,
+      np.cover,
+    ].filter((s): s is string => !!s);
     for (const source of sources) {
       const bytes = await readBytes(source);
       if (bytes && fitsCover(bytes, max)) {
         file.write(bytes);
-        out[key] = file.uri;
-        break;
+        return file.uri;
       }
     }
-  }
-  return out;
+    return undefined;
+  };
+  const [widget, activity] = await Promise.all([
+    prepare('widget', WIDGET_COVER_SIZE, WIDGET_COVER_MAX),
+    prepare('activity', ACTIVITY_COVER_SIZE, ACTIVITY_COVER_MAX),
+  ]);
+  return { ...(widget ? { widget } : {}), ...(activity ? { activity } : {}) };
 }
 
 /**
@@ -384,12 +424,7 @@ export function startWidgetSync(): () => void {
         }
       },
       isForeground: () => AppState.currentState === 'active',
-      onForeground: (fn) => {
-        const sub = AppState.addEventListener('change', (s) => {
-          if (s === 'active') fn();
-        });
-        return () => sub.remove();
-      },
+      onForeground,
       // eslint-disable-next-line import/no-named-as-default-member -- the i18next instance's own `t`, read per write so a language switch applies.
       t: () => i18next.t.bind(i18next) as T,
       now: () => Date.now(),
