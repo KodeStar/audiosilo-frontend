@@ -199,6 +199,15 @@ export interface PlaybackService {
    * progress ticks. Not playback state, so not in the snapshot. Optional, and never called
    * by a binary that predates Smart Speed. */
   onSilenceSaved?(handler: ((totalSeconds: number) => void) | null): void;
+  /**
+   * Phase 6 (the store's `adoptLoaded`): where an engine this bridge did NOT load is now (a
+   * queue the Android playback service loaded itself, for the car or before the app's JS
+   * restarted). Seeds the bridge's merged snapshot WITHOUT emitting, so the next event it
+   * re-emits carries the adopted track, place and state instead of the initial ones (a file
+   * index left at 0 would map the engine's place onto the wrong file). Optional: only the
+   * native bridge has an engine it did not load.
+   */
+  adoptPlace?(snapshot: PlaybackSnapshot): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

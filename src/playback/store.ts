@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
+import { chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
@@ -11,6 +11,8 @@ import type { DownloadManifest } from '@/downloads/types';
 import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { useSettings } from '@/stores/settings';
+
+import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
 import { engineTick, engineTicker } from './engine-ticks';
@@ -277,6 +279,13 @@ type PlayerState = {
   /** Present the OS audio-route / casting picker (AirPlay, Android output switcher, web
    * Remote Playback). No-op if the engine doesn't support it. */
   showRoutePicker: () => Promise<void>;
+  /** Phase 6, Android: take over the book the playback SERVICE has loaded (the car started
+   * it, or it kept playing while the app's JS restarted) WITHOUT reloading the engine: the
+   * queue is built as `playBook` builds it, the place and speed are the engine's, and the
+   * resume floor is that place, so the save loop saves under that book from where it is.
+   * Resolves whether it adopted (false: the book's connection and download are gone, its
+   * item could not be read, or another book started meanwhile). See `adoptLoadedBook`. */
+  adoptLoaded: (book: LoadedBook) => Promise<boolean>;
 };
 
 /** Persist the current whole-book position (offline-safe). Pass `forceFinished` to
@@ -1001,6 +1010,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const svc = service ?? (await ensureService());
     await svc.showRoutePicker?.();
   },
+
+  adoptLoaded: (book) => adoptLoadedBook(book),
 }));
 
 /**
@@ -1146,6 +1157,113 @@ async function switchCurrentBookToLocal() {
   usePlayer.setState({
     nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue },
   });
+}
+
+/**
+ * `adoptLoaded` (Phase 6, Android): the playback service can hold a book JS never loaded (a
+ * downloaded book the car started with no JS running, from the car snapshot's play spec), or
+ * keep playing one after the app's JS restarted. Adopting it gives the store that book
+ * exactly as `playBook` would have built it, without `svc.load` (the engine is already
+ * playing it; a reload would cut the audio and lose the place):
+ * - the item and chapters from the download manifest when it is downloaded (the queue the
+ *   service built came from it), else through the query cache like `startBookInPlace`;
+ * - `buildBookQueue` as `playBook` calls it (native never transcodes);
+ * - the speed and place the engine reports: `resumeFloor` is that place, so a stray low
+ *   position can't be saved over it, and the bridge's snapshot is seeded (`adoptPlace`)
+ *   so the next tick maps onto the right file;
+ * - the intent from `playing`: a playing book starts the save loop and a listening span; a
+ *   paused one saves nothing until it plays (its place is the engine's, already saved by
+ *   whoever played it, and a save now would date that place as new).
+ * A different book already loaded is switched out the way `playBook` switches (its span
+ * flushed, its save loop stopped first, so none of its saves can land under the new path).
+ * Gives up, changing nothing, when another book started while the item was being read.
+ */
+async function adoptLoadedBook(loaded: LoadedBook): Promise<boolean> {
+  const { connectionId, libraryId, path } = loaded;
+  const before = usePlayer.getState().nowPlaying;
+  const api = resolveClient(connectionId);
+  const dl = useDownloads.getState().entries[downloadKey(connectionId, libraryId, path)];
+  const local = dl?.status === 'downloaded' ? localFromManifest(dl.manifest) : undefined;
+  let book: Book;
+  let chapterData: ChaptersResponse | undefined;
+  try {
+    if (dl?.status === 'downloaded') {
+      book = dl.manifest.book;
+      chapterData = dl.manifest.chapters ?? undefined;
+    } else {
+      if (!api) return false;
+      [book, chapterData] = await Promise.all([
+        queryClient.fetchQuery({
+          ...itemQuery(connectionId, api, libraryId, path),
+          staleTime: 30_000,
+        }),
+        queryClient.fetchQuery({
+          ...chaptersQuery(connectionId, api, libraryId, path),
+          staleTime: 30_000,
+        }),
+      ]);
+    }
+  } catch (err) {
+    console.warn('[player] could not adopt the loaded book', err);
+    return false;
+  }
+  const id = await getDeviceId();
+  const svc = await ensureService();
+  // Another book started (or the same one was adopted) while we read: theirs stands.
+  const now = usePlayer.getState();
+  if (now.nowPlaying !== before || now.loadingBook !== null) return false;
+
+  const queue = buildBookQueue(
+    api,
+    libraryId,
+    book,
+    chapterData,
+    local,
+    useSettings.getState().virtualChapterInterval,
+  );
+  const trackIndex = Math.max(0, Math.min(loaded.trackIndex, queue.tracks.length - 1));
+  const position = Math.max(0, loaded.position);
+  const rate = clampRate(loaded.rate > 0 ? loaded.rate : now.rate);
+  const snapshot: PlaybackSnapshot = {
+    state: loaded.playing ? 'playing' : 'paused',
+    trackIndex,
+    position,
+    duration: queue.tracks[trackIndex]?.duration ?? 0,
+    rate,
+  };
+
+  // The switch, as `playBook` makes it: the previous book's span and save loop end first.
+  endHistory();
+  clearPlaybackIntent();
+  stopSaveLoop();
+  userMoved();
+  apiRef = api;
+  deviceId = id;
+  lastPlayRequest = { connectionId, libraryId, book, chapterData };
+  resumeLookupFailed = false;
+  resumeFloor = toBookPosition(queue.offsets, trackIndex, position);
+  pausedAt = loaded.playing ? null : Date.now();
+  svc.adoptPlace?.(snapshot);
+  usePlayer.setState({
+    nowPlaying: {
+      connectionId,
+      libraryId,
+      path,
+      title: book.title,
+      author: book.author || book.narrator || '',
+      cover: local?.artwork ?? api?.coverUrl(libraryId, path) ?? '',
+      queue,
+    },
+    rate,
+    loadingBook: null,
+    snapshot,
+  });
+  if (loaded.playing) {
+    wantsPlayback = true;
+    startSaveLoop();
+    beginHistory();
+  }
+  return true;
 }
 
 // When a download completes for the book that's currently playing, switch it to the

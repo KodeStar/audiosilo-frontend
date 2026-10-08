@@ -2008,5 +2008,18 @@
     "saved": "{{time}} poupados",
     "bookSaved": "Poupado com a velocidade inteligente",
     "pillLabel": "Velocidade inteligente e reforço de voz: {{state}}"
+  },
+  "car": {
+    "continue": "Continuar a ouvir",
+    "upNext": "A seguir",
+    "downloads": "Transferências",
+    "library": "Biblioteca",
+    "chapters": "Capítulos",
+    "bookmark": "Marcador",
+    "bookmarkSaved": "Marcador guardado",
+    "empty": "Ainda não há nada aqui",
+    "signedOut": "Ligue um servidor no AudioSilo para ouvir no carro",
+    "unavailable": "Este livro não pode ser reproduzido agora",
+    "subtitle": "{{author}} · {{left}}"
   }
 }

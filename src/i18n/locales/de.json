@@ -2008,5 +2008,18 @@
     "saved": "{{time}} gespart",
     "bookSaved": "Durch Pausenkürzen gespart",
     "pillLabel": "Pausen kürzen und Stimme verstärken: {{state}}"
+  },
+  "car": {
+    "continue": "Weiterhören",
+    "upNext": "Als Nächstes",
+    "downloads": "Downloads",
+    "library": "Bibliothek",
+    "chapters": "Kapitel",
+    "bookmark": "Lesezeichen",
+    "bookmarkSaved": "Lesezeichen gespeichert",
+    "empty": "Hier ist noch nichts",
+    "signedOut": "Verbinde in AudioSilo einen Server, um im Auto zu hören",
+    "unavailable": "Dieses Buch kann gerade nicht abgespielt werden",
+    "subtitle": "{{author}} · {{left}}"
   }
 }
