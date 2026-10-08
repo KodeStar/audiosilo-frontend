@@ -68,6 +68,7 @@
       ],
       "expo-localization",
       "./plugins/withXcode26SwiftUICoreFix",
+      "./plugins/withWidgetsNoPush",
       [
         "expo-build-properties",
         {
