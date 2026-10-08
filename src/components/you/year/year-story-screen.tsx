@@ -171,6 +171,7 @@ function FullStory({
         cardRef={cardRef}
         plainCovers={share.coversOff}
         screenReader={screenReader}
+        still={reduced}
         onHold={setHeld}
         rounded={width < window.width}
       >

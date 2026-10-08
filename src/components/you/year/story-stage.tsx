@@ -31,6 +31,7 @@ export function StoryStage({
   cardRef,
   plainCovers,
   screenReader,
+  still = false,
   onHold,
   rounded = true,
   children,
@@ -43,6 +44,8 @@ export function StoryStage({
   cardRef: RefObject<View | null>;
   plainCovers: boolean;
   screenReader: boolean;
+  /** Reduced motion: the story only moves when the listener moves it. */
+  still?: boolean;
   /** Whether the listener is holding the card (see above). */
   onHold: (held: boolean) => void;
   /** Rounded corners (the inline stage); the full-screen phone story is square. */
@@ -134,7 +137,9 @@ export function StoryStage({
         accessibilityLabel={Platform.OS === 'web' ? cardOf : speech}
         accessibilityLiveRegion="polite"
         role="region"
-        aria-live="polite"
+        // The web announces a card the listener moved to (focus in the story holds it), not
+        // one the clock brought up every 6 s, which would talk over everything else.
+        aria-live={held || still ? 'polite' : 'off'}
         testID="year-story-card"
       >
         <StoryCard

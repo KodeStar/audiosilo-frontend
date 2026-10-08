@@ -70,6 +70,15 @@ describe('StoryStage', () => {
     expect(screen.getByLabelText('Card 1 of 8')).toBeTruthy();
   });
 
+  it('announces cards on the web only while the listener drives the story', async () => {
+    Platform.OS = 'web';
+    await mount(player(0));
+    const region = () => screen.getByLabelText('Card 1 of 8');
+    expect(region().props['aria-live']).toBe('off');
+    await fireEvent(screen.getByRole('button', { name: 'Next card' }), 'focus');
+    expect(region().props['aria-live']).toBe('polite');
+  });
+
   it('moves with the labelled previous and next buttons', async () => {
     const p = player(3);
     await mount(p);

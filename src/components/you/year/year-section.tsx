@@ -238,6 +238,7 @@ function YearStage({
         cardRef={cardRef}
         plainCovers={share.coversOff}
         screenReader={screenReader}
+        still={reduced}
         onHold={setHeld}
       />
       <View style={{ width: column }} className="gap-5">
