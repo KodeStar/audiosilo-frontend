@@ -11,6 +11,7 @@ const mockNative = {
   consumePendingBookmarks: jest.fn(async (): Promise<unknown[]> => []),
   connection: null as ((connected: boolean) => void) | null,
   playRequest: null as ((id: string) => void) | null,
+  bookmark: null as ((trackIndex: number, positionInTrack: number) => void) | null,
   onConnection: jest.fn((h: (connected: boolean) => void) => {
     mockNative.connection = h;
     return () => {
@@ -23,6 +24,12 @@ const mockNative = {
       mockNative.playRequest = null;
     };
   }),
+  onBookmark: jest.fn((h: (trackIndex: number, positionInTrack: number) => void) => {
+    mockNative.bookmark = h;
+    return () => {
+      mockNative.bookmark = null;
+    };
+  }),
 };
 jest.mock('./car-native', () => ({
   get carNative() {
@@ -32,7 +39,8 @@ jest.mock('./car-native', () => ({
 
 jest.mock('./car-artwork', () => ({
   artworkName: (key: string, version?: string) => `${key}#${version ?? ''}.jpg`,
-  existingArtwork: (name: string) => mockArtOnDisk.get(name) ?? null,
+  artworkOnDisk: jest.fn(() => new Set(mockArtOnDisk.keys())),
+  artworkUri: (name: string) => mockArtOnDisk.get(name),
   ensureArtwork: jest.fn(async (name: string) => {
     const uri = `file:///docs/car-artwork/${encodeURIComponent(name)}`;
     mockArtOnDisk.set(name, uri);
@@ -49,19 +57,22 @@ jest.mock('@/components/player/start-book', () => ({
   startBookInPlace: (...a: unknown[]) => mockStartBookInPlace(...a),
 }));
 
-const mockLoadInitialProgress = jest.fn(
-  async (
-    api: { getProgress: () => Promise<Progress | null> } | null,
-    ..._where: [string, number, string]
-  ) => {
-    const row = api ? await api.getProgress() : null;
-    return row ? { kind: 'progress', progress: row } : { kind: api ? 'empty' : 'failed' };
-  },
-);
+// The device's own places (the mirror, the offline queue): read once per build.
+const mockLocalPlaces: { mirror: Record<string, unknown>; queue: unknown[] } = {
+  mirror: {},
+  queue: [],
+};
+const mockReadLocalPlaces = jest.fn(async () => mockLocalPlaces);
 jest.mock('@/playback/progress-sync', () => ({
-  loadInitialProgress: (...a: Parameters<typeof mockLoadInitialProgress>) =>
-    mockLoadInitialProgress(...a),
+  readLocalPlaces: () => mockReadLocalPlaces(),
+  resumeLookupOf: jest.requireActual('@/playback/progress-sync').resumeLookupOf,
 }));
+
+// The real model, with its play spec builder counted (rebuilt only when its inputs change).
+jest.mock('./car-model', () => {
+  const actual = jest.requireActual('./car-model');
+  return { ...actual, playSpec: jest.fn(actual.playSpec) };
+});
 
 // The player store, reduced to what the controller reads.
 type MockPlayerState = {
@@ -84,16 +95,8 @@ jest.mock('@/playback/store', () => {
     toggle: jest.fn(async () => {}),
     adoptLoaded: jest.fn(async () => true),
   }));
-  let remote: ((r: unknown) => void) | null = null;
   return {
     usePlayer,
-    onRemoteBookmarkRequest: (l: (r: unknown) => void) => {
-      remote = l;
-      return () => {
-        remote = null;
-      };
-    },
-    mockRemoteBookmark: (r: unknown) => remote?.(r),
     selectBookKey: (s: MockPlayerState) =>
       s.nowPlaying
         ? `${s.nowPlaying.connectionId}:${s.nowPlaying.libraryId}:${s.nowPlaying.path}`
@@ -158,7 +161,7 @@ import { useLibrarySelection } from '@/stores/library-selection';
 import { useSession, type Connection } from '@/stores/session';
 import { getItem, setItem } from '@/lib/storage';
 
-import { ensureArtwork } from './car-artwork';
+import { artworkOnDisk, ensureArtwork } from './car-artwork';
 import {
   forgetCarSync,
   handleCarPlayRequest,
@@ -166,7 +169,7 @@ import {
   SETTLE_MS,
   startCarSync,
 } from './car-controller';
-import { carItemId } from './car-model';
+import { carItemId, playSpec } from './car-model';
 /* eslint-enable import/first */
 
 const usePlayer = store.usePlayer as unknown as {
@@ -176,8 +179,6 @@ const usePlayer = store.usePlayer as unknown as {
   };
   setState: (s: object) => void;
 };
-const remoteBookmark = (store as unknown as { mockRemoteBookmark: (r: unknown) => void })
-  .mockRemoteBookmark;
 
 // --- Fixtures ------------------------------------------------------------------------------
 
@@ -302,7 +303,7 @@ const tab = (s: CarSnapshot, id: string) => s.tabs.find((t) => t.id === id);
 let stop: () => void = () => {};
 let appStateListener: ((state: string) => void) | null = null;
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   appStateListener = null;
@@ -328,8 +329,12 @@ beforeEach(() => {
     loadingBook: null,
   });
   useDownloads.setState({ entries: {} });
-  useLibrarySelection.setState({ selection: null });
+  useLibrarySelection.setState({ selection: null, shown: null });
+  mockLocalPlaces.mirror = {};
+  mockLocalPlaces.queue = [];
   connect([]);
+  // A car has met this phone before (the snapshot's gate); the gate's own tests clear it.
+  await setItem('audiosilo.carSeen', true);
 });
 
 afterEach(async () => {
@@ -344,18 +349,11 @@ afterEach(async () => {
 // --- Tests ---------------------------------------------------------------------------------
 
 describe('startCarSync', () => {
-  it('does nothing on the web', async () => {
-    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
-    stop = startCarSync();
-    await settle(5_000);
-    expect(mockNative.onConnection).not.toHaveBeenCalled();
-    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
-  });
-
-  it('does nothing on a binary without the car functions', async () => {
+  it('does nothing on a binary without the car functions (and on the web, which has none)', async () => {
     mockNative.available = false;
     stop = startCarSync();
     await settle(5_000);
+    expect(mockNative.onConnection).not.toHaveBeenCalled();
     expect(mockNative.onPlayRequest).not.toHaveBeenCalled();
     expect(mockNative.setSnapshot).not.toHaveBeenCalled();
   });
@@ -370,6 +368,7 @@ describe('startCarSync', () => {
   });
 
   it('builds the four tabs from every server, the queue, the downloads and the library', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
     connect(['c1', 'c2']);
     mockCaps.c1 = { queue: true, cover_sizes: true };
     mockClients.c1 = fakeClient({
@@ -401,6 +400,12 @@ describe('startCarSync', () => {
     const snap = lastSnapshot();
     expect(snap.signedIn).toBe(true);
     expect(snap.tabs.map((t) => t.id)).toEqual(['continue', 'upnext', 'downloads', 'library']);
+    expect(snap.tabs.map((t) => t.title)).toEqual([
+      'Continue listening',
+      'Up next',
+      'Downloads',
+      'Library',
+    ]);
     expect(tab(snap, 'continue')!.items.map((i) => i.title)).toEqual([
       'On the other server',
       'Progressing',
@@ -411,6 +416,7 @@ describe('startCarSync', () => {
     const d = tab(snap, 'downloads')!.items[0];
     expect(d).toMatchObject({
       id: carItemId({ connectionId: 'c1', libraryId: 2, path: 'D' }),
+      book: { connectionId: 'c1', libraryId: 2, path: 'D' },
       downloaded: true,
     });
     // The downloaded book's play spec resumes where the listed server row says (through
@@ -420,9 +426,25 @@ describe('startCarSync', () => {
     // Only the downloaded book has a play spec; no snapshot names a token or a URL.
     expect(tab(snap, 'library')!.items[0].play).toBeUndefined();
     expect(JSON.stringify(snap)).not.toMatch(/secret|https?:/);
+    // The date is in it, and the body after it.
+    const json = mockNative.setSnapshot.mock.calls[0][0];
+    expect(json.startsWith('{"generatedAt":"')).toBe(true);
+    expect(JSON.parse(json).version).toBe(1);
   });
 
-  it('looks a downloaded book up again only when its row changes or it is the loaded book', async () => {
+  it('builds no play specs on iOS (CarPlay asks JS for every book)', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'downloads')!.items[0].play).toBeUndefined();
+    expect(mockReadLocalPlaces).not.toHaveBeenCalled();
+    expect(playSpec).not.toHaveBeenCalled();
+  });
+
+  it("reads the device's own places once per build, and rebuilds a spec only when its inputs change", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
     connect(['c1']);
     mockClients.c1 = fakeClient({
       progress: [
@@ -434,27 +456,31 @@ describe('startCarSync', () => {
     });
     stop = startCarSync();
     await settle();
-    expect(mockLoadInitialProgress).toHaveBeenCalledTimes(2);
+    expect(mockReadLocalPlaces).toHaveBeenCalledTimes(1);
+    expect(playSpec).toHaveBeenCalledTimes(2);
 
-    // E becomes the loaded book: only its lookup runs again (its saves move it).
-    mockLoadInitialProgress.mockClear();
-    usePlayer.setState({
-      nowPlaying: {
+    // E is played on this device: its newer save (the mirror) moves its spec; D's stands.
+    mockReadLocalPlaces.mockClear();
+    jest.mocked(playSpec).mockClear();
+    mockLocalPlaces.mirror = {
+      'c1:2:E': {
         connectionId: 'c1',
         libraryId: 2,
         path: 'E',
-        queue: { offsets: [0, 100], total: 200 },
+        position: 150,
+        duration: 200,
+        finished: false,
+        playback_speed: 1.25,
+        device_id: 'me',
+        updated_at: '2026-02-01T00:00:00.000Z',
       },
-      snapshot: { state: 'playing', trackIndex: 0, position: 5, duration: 100, rate: 1 },
-    });
+    };
+    mockNative.connection?.(true);
     await settle(MIN_GAP_MS);
-    expect(mockLoadInitialProgress.mock.calls.map((c) => c[3])).toEqual(['E']);
-
-    // E stops being the loaded book: looked up once more, with its last save in.
-    mockLoadInitialProgress.mockClear();
-    usePlayer.setState({ nowPlaying: null });
-    await settle(MIN_GAP_MS);
-    expect(mockLoadInitialProgress.mock.calls.map((c) => c[3])).toEqual(['E']);
+    expect(mockReadLocalPlaces).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(playSpec).mock.calls.map((c) => c[0].path)).toEqual(['E']);
+    const e = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'E')!;
+    expect(e.play).toMatchObject({ startIndex: 1, positionInTrack: 50, rate: 1.25 });
   });
 
   it('leaves Up next out where the default server keeps no queue', async () => {
@@ -465,40 +491,67 @@ describe('startCarSync', () => {
     expect(lastSnapshot().tabs.map((t) => t.id)).toEqual(['continue', 'downloads', 'library']);
   });
 
-  it('uses a downloaded book’s own cover, and fetches no other until a car has connected', async () => {
+  it("lists the listener's library pick, and the first library when the pick is gone", async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'One' })] });
+    mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'Two' })] });
+    useLibrarySelection.setState({ selection: { connectionId: 'c2', libraryId: 2 } });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'library')!.items.map((i) => i.book)).toEqual([
+      { connectionId: 'c2', libraryId: 2, path: 'Two' },
+    ]);
+    expect(mockClients.c2.listBooks).toHaveBeenCalledWith(2, { sort: 'recent', limit: 50 });
+
+    // A pick of a library its server no longer lists falls back, as the Library tab does.
+    useLibrarySelection.setState({ selection: { connectionId: 'c2', libraryId: 9 } });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(tab(lastSnapshot(), 'library')!.items.map((i) => i.book.connectionId)).toEqual(['c1']);
+  });
+
+  it('builds nothing until a car has connected on this device, then writes at once', async () => {
+    await setItem('audiosilo.carSeen', false);
     connect(['c1']);
     mockCaps.c1 = { cover_sizes: true };
     mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1', cover_version: 'v7' })] });
     useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
     stop = startCarSync();
-    await settle();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    useDownloads.setState({ entries: {} });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+    expect(mockClients.c1.allProgress).not.toHaveBeenCalled();
+    expect(ensureArtwork).not.toHaveBeenCalled();
+
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    mockNative.connection?.(true);
+    await settle(0);
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(1);
+    expect(await getItem('audiosilo.carSeen')).toBe(true);
+    // A downloaded book's own cover; the others are fetched once the snapshot is out.
     expect(tab(lastSnapshot(), 'downloads')!.items[0].artwork).toBe('file:///d/cover.jpg');
     expect(tab(lastSnapshot(), 'library')!.items[0].artwork).toBeNull();
-    await settle(SETTLE_MS + MIN_GAP_MS);
-    expect(ensureArtwork).not.toHaveBeenCalled();
-  });
-
-  it('fetches the missing covers once a car connects, then names them in the next snapshot', async () => {
-    connect(['c1']);
-    mockCaps.c1 = { cover_sizes: true };
-    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1', cover_version: 'v7' })] });
-    stop = startCarSync();
-    await settle();
-    mockNative.connection?.(true);
-    await settle(MIN_GAP_MS);
     expect(ensureArtwork).toHaveBeenCalledWith(
       'c1:2:L1#v7.jpg',
       'https://srv/cover?lib=2&path=L1&size=320&token=secret',
     );
-    expect(await getItem('audiosilo.carSeen')).toBe(true);
     await settle(SETTLE_MS + MIN_GAP_MS);
     const snap = lastSnapshot();
     expect(tab(snap, 'library')!.items[0].artwork).toMatch(/^file:\/\/\/docs\/car-artwork\//);
     expect(JSON.stringify(snap)).not.toMatch(/secret|https?:/);
   });
 
-  it('asks for the full cover from a server without thumbnails (after a car was seen)', async () => {
-    await setItem('audiosilo.carSeen', true);
+  it('reads the artwork folder once per snapshot, for the checks and the prune', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({
+      books: [makeBook({ rel_path: 'L1' }), makeBook({ rel_path: 'L2' })],
+    });
+    stop = startCarSync();
+    await settle();
+    expect(artworkOnDisk).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for the full cover from a server without thumbnails', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1' })] });
     stop = startCarSync();
@@ -514,6 +567,8 @@ describe('startCarSync', () => {
     mockClients.c1 = fakeClient({});
     stop = startCarSync();
     await settle();
+    mockNative.connection?.(true); // a car is here: a book starting rebuilds at once
+    await settle(MIN_GAP_MS);
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(1);
 
     // A queue refresh with the same content: built again, not sent again.
@@ -535,7 +590,19 @@ describe('startCarSync', () => {
     await settle(200);
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(2);
 
+    // A download's progress tick (same states) asks for nothing.
+    const build = mockClients.c1.allProgress.mock.calls.length;
+    useDownloads.setState({
+      entries: {
+        'c1:2:D': downloaded('c1', 'D'),
+        'c1:2:E': { ...downloaded('c1', 'E'), bytes: 5 },
+      },
+    });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockClients.c1.allProgress.mock.calls.length).toBe(build);
+
     // A book starts right after: as soon as the gap allows, not before.
+    await settle(MIN_GAP_MS);
     usePlayer.setState({
       nowPlaying: {
         connectionId: 'c1',
@@ -545,10 +612,27 @@ describe('startCarSync', () => {
       },
       snapshot: { state: 'playing', trackIndex: 0, position: 5, duration: 100, rate: 1 },
     });
-    await settle(MIN_GAP_MS - 500);
-    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(2);
-    await settle(600);
+    await settle(0);
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  it('rebuilds nothing for a book starting or pausing while no car is connected', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    stop = startCarSync();
+    await settle();
+    const builds = mockClients.c1.allProgress.mock.calls.length;
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0] } },
+      snapshot: { state: 'playing', trackIndex: 0, position: 5, duration: 100, rate: 1 },
+    });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockClients.c1.allProgress.mock.calls.length).toBe(builds);
+
+    // A car connecting builds a fresh one (it shows the book playing).
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(tab(lastSnapshot(), 'continue')!.items[0].book.path).toBe('D');
   });
 
   it('refreshes at once when a car connects', async () => {
@@ -626,21 +710,32 @@ describe('play requests', () => {
 });
 
 describe('bookmarks from outside the app', () => {
-  it('adds one at the reported place, without a label', async () => {
+  /** The book loaded here: two files of 100 s (the second starts at 100). */
+  const load = (path = 'A/Book.m4b') =>
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path, queue: { offsets: [0, 100] } },
+    });
+
+  it("adds one at the loaded book's whole-book place at the press, without a label", async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({});
     stop = startCarSync();
     await settle();
-    remoteBookmark({
-      connectionId: 'c1',
-      libraryId: 2,
-      path: 'A/Book.m4b',
-      trackIndex: 0,
-      positionInTrack: 0,
-      bookPosition: 123.6,
-    });
+    load();
+    mockNative.bookmark?.(1, 23.6);
     await settle();
     expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 124);
+  });
+
+  it('drops a press with no book loaded', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    stop = startCarSync();
+    await settle();
+    mockNative.bookmark?.(0, 5);
+    await settle();
+    expect(mockAddBookmark).not.toHaveBeenCalled();
+    expect((await getItem<unknown[]>('audiosilo.carBookmarks')) ?? []).toHaveLength(0);
   });
 
   it('keeps one that cannot reach its server and adds it at the next drain', async () => {
@@ -648,20 +743,19 @@ describe('bookmarks from outside the app', () => {
     mockClients.c1 = fakeClient({});
     stop = startCarSync();
     await settle();
+    load();
     mockAddBookmark.mockRejectedValueOnce(new TypeError('Network request failed'));
-    remoteBookmark({
-      connectionId: 'c1',
-      libraryId: 2,
-      path: 'A/Book.m4b',
-      trackIndex: 0,
-      positionInTrack: 0,
-      bookPosition: 50,
-    });
+    mockNative.bookmark?.(0, 50);
     await settle();
-    expect(await getItem('audiosilo.carBookmarks')).toHaveLength(1);
+    // Kept at its whole-book place: no timeline needed to add it later.
+    expect(await getItem('audiosilo.carBookmarks')).toEqual([
+      { connectionId: 'c1', libraryId: 2, path: 'A/Book.m4b', position: 50 },
+    ]);
 
     mockAddBookmark.mockClear();
+    usePlayer.setState({ nowPlaying: null });
     // Back in the foreground: the drain adds it.
+    appStateListener?.('background');
     appStateListener?.('active');
     await settle();
     expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 50);
@@ -674,16 +768,10 @@ describe('bookmarks from outside the app', () => {
     mockClients.c1 = fakeClient({});
     stop = startCarSync();
     await settle();
+    load();
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockAddBookmark.mockRejectedValueOnce(new ApiError(404, 'gone'));
-    remoteBookmark({
-      connectionId: 'c1',
-      libraryId: 2,
-      path: 'A/Book.m4b',
-      trackIndex: 0,
-      positionInTrack: 0,
-      bookPosition: 50,
-    });
+    mockNative.bookmark?.(0, 50);
     await settle();
     expect((await getItem<unknown[]>('audiosilo.carBookmarks')) ?? []).toHaveLength(0);
     warn.mockRestore();
@@ -700,7 +788,6 @@ describe('bookmarks from outside the app', () => {
         path: 'D',
         trackIndex: 1,
         position: 30,
-        at: '2026-10-08T10:00:00Z',
       },
       {
         connectionId: 'gone',
@@ -708,7 +795,6 @@ describe('bookmarks from outside the app', () => {
         path: 'D',
         trackIndex: 0,
         position: 5,
-        at: '2026-10-08T10:01:00Z',
       },
     ]);
     stop = startCarSync();
@@ -725,7 +811,7 @@ describe('bookmarks from outside the app', () => {
       chapters: { S: { ...twoFileChapters, path: 'S' } },
     });
     mockNative.consumePendingBookmarks.mockResolvedValueOnce([
-      { connectionId: 'c1', libraryId: 2, path: 'S', trackIndex: 1, position: 10, at: 'x' },
+      { connectionId: 'c1', libraryId: 2, path: 'S', trackIndex: 1, position: 10 },
     ]);
     stop = startCarSync();
     await settle();
@@ -792,7 +878,7 @@ describe('adopting the service’s book (Android)', () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
     const playing = {
       nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0, 100] } },
-      snapshot: { state: 'playing', trackIndex: 1, position: 99, duration: 100, rate: 1 },
+      snapshot: { state: 'playing', trackIndex: 0, position: 99, duration: 100, rate: 1 },
     };
     usePlayer.setState(playing);
     stop = startCarSync();
@@ -804,8 +890,10 @@ describe('adopting the service’s book (Android)', () => {
           answer = resolve;
         }),
     );
-    // The book ends (a check is asked), then finishes: the store drops it before the answer.
-    usePlayer.setState({ snapshot: { ...playing.snapshot, state: 'ended' } });
+    // The engine moves on a file (a check is asked), then the book finishes: the store drops
+    // it before the answer.
+    usePlayer.setState({ snapshot: { ...playing.snapshot, trackIndex: 1, position: 0 } });
+    expect(mockNative.getLoadedBook).toHaveBeenCalled();
     usePlayer.setState({
       nowPlaying: null,
       snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0, rate: 1 },
@@ -813,6 +901,36 @@ describe('adopting the service’s book (Android)', () => {
     answer({ ...loaded, path: 'Other' });
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+  });
+
+  it("asks nothing for the store's own changes: a book switch, its load, a pause, a stop", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    stop = startCarSync();
+    await settle();
+    mockNative.getLoadedBook.mockClear();
+    const book = (path: string) => ({
+      connectionId: 'c1',
+      libraryId: 2,
+      path,
+      queue: { offsets: [0, 100] },
+    });
+    const at = (state: string, trackIndex = 0) => ({
+      state,
+      trackIndex,
+      position: 0,
+      duration: 100,
+      rate: 1,
+    });
+    const a = book('A');
+    // playBook: the switch with the load pending, the load landing on another file, then
+    // the clear; then a pause and a stop.
+    usePlayer.setState({ nowPlaying: a, loadingBook: 'c1:2:A', snapshot: at('loading') });
+    usePlayer.setState({ snapshot: at('ready', 1) });
+    usePlayer.setState({ loadingBook: null, snapshot: at('loading', 1) });
+    usePlayer.setState({ snapshot: at('paused', 1) });
+    usePlayer.setState({ nowPlaying: null, snapshot: at('idle') });
+    await settle();
+    expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
   });
 
   it('never asks on iOS (the service has no book of its own there)', async () => {

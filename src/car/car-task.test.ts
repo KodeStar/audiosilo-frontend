@@ -5,11 +5,6 @@ jest.mock('@/lib/bootstrap', () => ({
     calls.push('bootstrap');
   }),
 }));
-jest.mock('@/i18n/language-provider', () => ({
-  restoreLanguage: jest.fn(async () => {
-    calls.push('language');
-  }),
-}));
 jest.mock('./car-controller', () => ({
   startCarSync: jest.fn(() => {
     calls.push('start');
@@ -65,14 +60,14 @@ afterEach(() => {
 });
 
 describe('runCarTask', () => {
-  it('boots, applies the language, starts the car sync, then ends once idle (never stopping the sync)', async () => {
+  it('boots (the language among the launch steps), starts the car sync, then ends once idle (never stopping the sync)', async () => {
     setState('playing');
     let done = false;
     const task = runCarTask().then(() => {
       done = true;
     });
     await flush();
-    expect(calls).toEqual(['bootstrap', 'language', 'start', 'ready']);
+    expect(calls).toEqual(['bootstrap', 'start', 'ready']);
     await jest.advanceTimersByTimeAsync(CAR_TASK_IDLE_MS * 2);
     expect(done).toBe(false); // still playing
     setState('paused');

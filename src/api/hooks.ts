@@ -126,10 +126,16 @@ export const qk = {
   allProgressAll: () => ['progress', 'all'] as const,
   /** Prefix matching every connection's recently added list. */
   recentAll: () => ['books', 'recent'] as const,
+  /** The car's Library tab: a library's newest books, one page (`src/car`). */
+  carLibrary: (cid: string, lib: number) => ['car', 'library', cid, lib] as const,
 };
 
 /** Whether a query key is a connection's Up next queue (`qk.queue`). */
 export const isQueueKey = (key: readonly unknown[]): boolean => key[0] === 'queue';
+
+/** Whether a query key is a connection's whole progress list (`qk.allProgress`). */
+export const isAllProgressKey = (key: readonly unknown[]): boolean =>
+  key[0] === 'progress' && key[1] === 'all';
 
 /** The book a chapters query key names (`qk.chapters`), or null for any other key. */
 export function chaptersKeyParts(
@@ -231,6 +237,14 @@ export function addressesQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.addresses(cid),
     queryFn: client ? ({ signal }) => client.addresses(signal) : skipToken,
+  });
+}
+
+/** A server's libraries. */
+export function librariesQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.libraries(cid),
+    queryFn: client ? () => client.libraries() : skipToken,
   });
 }
 

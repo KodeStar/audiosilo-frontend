@@ -590,9 +590,9 @@ describe('readLocalPlaces / resumeLookupOf', () => {
     const places = await readLocalPlaces();
 
     // The mirror's place is newer than the server's row.
-    expect(
-      resumeLookupOf(makeProgress({ position: 10 }), places, 'c1', 1, 'A/Book'),
-    ).toMatchObject({ kind: 'progress', progress: { position: 20 } });
+    expect(resumeLookupOf(makeProgress({ position: 10 }), places, 'c1', 1, 'A/Book')).toMatchObject(
+      { kind: 'progress', progress: { position: 20 } },
+    );
     // A queued save stands in for an unreached server.
     expect(resumeLookupOf(undefined, places, 'c1', 1, 'B')).toMatchObject({
       kind: 'progress',

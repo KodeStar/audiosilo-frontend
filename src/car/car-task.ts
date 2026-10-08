@@ -1,4 +1,3 @@
-import { restoreLanguage } from '@/i18n/language-provider';
 import { bootstrapPlayback } from '@/lib/bootstrap';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 
@@ -13,8 +12,9 @@ export const CAR_TASK_IDLE_MS = 30_000;
  * activity (a car asked to play a book native can't start alone, a book it started must save
  * its place, a bookmark was pressed). It runs the launch steps the root layout runs before any
  * screen (`bootstrapPlayback`, the same memoised run, so an activity opened later on this
- * runtime doesn't repeat them), applies the listener's language (the snapshot's labels), then
- * starts the car sync, which adopts the service's book and adds the pending bookmarks.
+ * runtime doesn't repeat them; among them the listener's language, for the snapshot's
+ * labels), then starts the car sync, which adopts the service's book and adds the pending
+ * bookmarks.
  *
  * The car sync is never stopped here: the JS runtime outlives the task, and a later car event
  * (a play request, a bookmark) must still find its listeners.
@@ -26,7 +26,6 @@ export const CAR_TASK_IDLE_MS = 30_000;
  */
 export async function runCarTask(): Promise<void> {
   await bootstrapPlayback();
-  await restoreLanguage();
   startCarSync();
   await carSyncReady();
   await untilIdle(CAR_TASK_IDLE_MS);

@@ -103,9 +103,6 @@ describe('carLabels', () => {
     const labels = carLabels(t);
     expect(labels).toEqual({
       continue: 'Continue listening',
-      upNext: 'Up next',
-      downloads: 'Downloads',
-      library: 'Library',
       chapters: 'Chapters',
       bookmark: 'Bookmark',
       bookmarkSaved: 'Bookmark saved',
@@ -214,6 +211,8 @@ describe('carItem', () => {
     );
     expect(item).toEqual({
       id: carItemId(ref),
+      // The book itself too, so native compares fields rather than decoding the id.
+      book: { connectionId: ref.connectionId, libraryId: ref.libraryId, path: ref.path },
       title: 'A Book',
       subtitle: 'Ann Author · 40m left at 1.5×',
       progress: 0.5,

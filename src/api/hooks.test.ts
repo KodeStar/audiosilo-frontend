@@ -51,8 +51,10 @@ import {
   flattenPages,
   historyQuery,
   chaptersKeyParts,
+  isAllProgressKey,
   isQueueKey,
   isSearchKey,
+  librariesQuery,
   META_STALE_MS,
   metaWorkQuery,
   qk,
@@ -201,6 +203,8 @@ describe('key predicates', () => {
   it('match their own key families', () => {
     expect(isQueueKey(qk.queue('c'))).toBe(true);
     expect(isQueueKey(qk.collections('c'))).toBe(false);
+    expect(isAllProgressKey(qk.allProgress('c'))).toBe(true);
+    expect(isAllProgressKey(qk.progress('c', 2, 'A/Book'))).toBe(false);
     expect(chaptersKeyParts(qk.chapters('c', 2, 'A/Book'))).toEqual({
       cid: 'c',
       libraryId: 2,
@@ -426,5 +430,15 @@ describe('fetchCapabilities', () => {
       value: { queue: true, transcode: true },
     });
     stop();
+  });
+});
+
+describe('librariesQuery', () => {
+  it("reads a server's libraries under its libraries key, and nothing without a client", () => {
+    const client = { libraries: jest.fn(async () => []) } as unknown as ApiClient;
+    const q = librariesQuery('c', client);
+    expect(q.queryKey).toEqual(qk.libraries('c'));
+    expect(typeof q.queryFn).toBe('function');
+    expect(librariesQuery('c', null).queryFn).toBe(skipToken);
   });
 });

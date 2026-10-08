@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 
 import { chapterLabel } from '@/lib/chapter-label';
 import { contentKey } from '@/lib/content-key';
+import { fnv1a } from '@/lib/fnv1a';
 import { wallClockSeconds } from '@/playback/rate';
 import type { SleepTimerState } from '@/playback/sleep-timer';
 import {
@@ -282,14 +283,7 @@ export function sameActivity(a: SleepTimerActivityProps, b: SleepTimerActivityPr
 // --- Covers -----------------------------------------------------------------------------
 
 /** FNV-1a, 32 bit, as 8 hex digits: a stable, filename-safe name for a book's cover. */
-export function hashKey(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16).padStart(8, '0');
-}
+export const hashKey = fnv1a;
 
 /** File name stem shared by a book's two cover files (`-w` widget, `-a` activity). */
 export function coverStem(connectionId: string, libraryId: number, path: string): string {

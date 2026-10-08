@@ -33,6 +33,10 @@ jest.mock('@/downloads/store', () => ({
 jest.mock('@/stores/series-orderings', () => ({
   useSeriesOrderings: { getState: () => ({ hydrate: mockHydrates.series }) },
 }));
+const mockRestoreLanguage = jest.fn(async () => {
+  calls.push('language');
+});
+jest.mock('@/i18n/language-provider', () => ({ restoreLanguage: () => mockRestoreLanguage() }));
 jest.mock('@/stores/library-selection', () => ({
   useLibrarySelection: { getState: () => ({ hydrate: mockHydrates.library }) },
 }));
@@ -50,8 +54,31 @@ beforeEach(() => {
 describe('bootstrapPlayback', () => {
   it('migrates storage, then hydrates every store, in the root layout’s order', async () => {
     await bootstrapPlayback();
-    expect(calls).toEqual(['migrate', 'session', 'settings', 'downloads', 'series', 'library']);
+    expect(calls.filter((c) => c !== 'language')).toEqual([
+      'migrate',
+      'session',
+      'settings',
+      'downloads',
+      'series',
+      'library',
+    ]);
     expect(mockClearAll).not.toHaveBeenCalled();
+  });
+
+  // The car's headless task has no LanguageProvider: the launch steps apply the language.
+  it('applies the listener’s language alongside, and resolves only once it is applied', async () => {
+    let applied: () => void = () => {};
+    mockRestoreLanguage.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (applied = resolve)),
+    );
+    let done = false;
+    const run = bootstrapPlayback().then(() => (done = true));
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(mockHydrates.library).toHaveBeenCalled();
+    expect(done).toBe(false);
+    applied();
+    await run;
+    expect(mockRestoreLanguage).toHaveBeenCalledTimes(1);
   });
 
   it('runs the steps once: a second caller (the headless task, then the layout) shares the run', async () => {
@@ -73,7 +100,11 @@ describe('bootstrapPlayback', () => {
       return result;
     });
     await bootstrapPlayback();
-    expect(calls.slice(0, 3)).toEqual(['migrate', 'clearAll', 'session']);
+    expect(calls.filter((c) => c !== 'language').slice(0, 3)).toEqual([
+      'migrate',
+      'clearAll',
+      'session',
+    ]);
   });
 
   it('still hydrates when the migration fails, and settles when a store fails', async () => {

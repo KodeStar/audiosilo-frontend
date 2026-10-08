@@ -26,6 +26,10 @@ export type CarNative = {
   onConnection: (handler: (connected: boolean) => void) => () => void;
   /** The car asked to play a book (its car item id) that native can't start alone. */
   onPlayRequest: (handler: (id: string) => void) => () => void;
+  /** A bookmark button outside the app was pressed (CarPlay's Now Playing button, the
+   * Android notification / Android Auto) while JS runs: the engine's place at the press
+   * (file index + seconds in that file) of the book it has loaded. */
+  onBookmark: (handler: (trackIndex: number, positionInTrack: number) => void) => () => void;
 };
 
 const none = () => () => undefined;
@@ -37,4 +41,5 @@ export const carNative: CarNative = {
   consumePendingBookmarks: async () => [],
   onConnection: none,
   onPlayRequest: none,
+  onBookmark: none,
 };

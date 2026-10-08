@@ -55,6 +55,8 @@ jest.mock('expo-file-system', () => {
 /* eslint-disable import/first */
 import {
   artworkName,
+  artworkOnDisk,
+  artworkUri,
   ensureArtwork,
   existingArtwork,
   MAX_RETRY_MS,
@@ -186,10 +188,20 @@ describe('pruneArtwork', () => {
     mockFiles.set(`${DIR}/old.jpg`, 1);
     mockFiles.set(`${DIR}/stale.jpg.part`, 1);
     mockFiles.set('file:///docs/downloads/x.mp3', 1);
-    pruneArtwork(new Set(['keep.jpg']));
+    pruneArtwork(new Set(['keep.jpg']), artworkOnDisk());
     expect([...mockFiles.keys()].sort()).toEqual([
       `${DIR}/keep.jpg`,
       'file:///docs/downloads/x.mp3',
     ]);
+  });
+});
+
+describe('artworkOnDisk / artworkUri', () => {
+  it("lists the folder's file names once, for the existence checks and the prune", () => {
+    mockFiles.set(`${DIR}/a.jpg`, 1);
+    mockFiles.set(`${DIR}/b.jpg.part`, 1);
+    mockFiles.set('file:///docs/downloads/x.mp3', 1);
+    expect([...artworkOnDisk()].sort()).toEqual(['a.jpg', 'b.jpg.part']);
+    expect(artworkUri('a.jpg')).toBe(`${DIR}/a.jpg`);
   });
 });

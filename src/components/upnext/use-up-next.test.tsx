@@ -10,11 +10,13 @@ let mockQueue: QueueEntry[] | undefined;
 const mockAdd = jest.fn();
 const mockRemove = jest.fn();
 jest.mock('@/api/hooks', () => {
-  const { CapabilityError, itemQuery, chaptersQuery } = jest.requireActual('@/api/hooks');
+  const { CapabilityError, itemQuery, chaptersQuery, fetchFailFast } =
+    jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
     itemQuery,
     chaptersQuery,
+    fetchFailFast,
     useCapability: () => true,
     useQueue: () => ({ data: mockQueue, isLoading: false, error: null, refetch: jest.fn() }),
     useAddToQueue: () => ({ mutateAsync: mockAdd, isPending: false }),

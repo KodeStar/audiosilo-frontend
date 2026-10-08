@@ -1,5 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { fnv1a } from '@/lib/fnv1a';
+
 /**
  * The covers the car shows for books that are not downloaded (a downloaded book's own
  * cover file is used as it is): one small JPEG per book under the app's document folder
@@ -18,16 +20,6 @@ function artworkDir(): Directory {
   return new Directory(Paths.document, CAR_ARTWORK_DIR);
 }
 
-/** FNV-1a 32-bit, hex. */
-function fnv1a(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, '0');
-}
-
 /** djb2 32-bit, hex (a second hash, so two books need both to collide to share a file). */
 function djb2(s: string): string {
   let h = 5381;
@@ -44,6 +36,24 @@ export function artworkName(contentKey: string, coverVersion?: string): string {
 /** Where a car cover lives (whether or not it has been written yet). */
 function artworkFile(name: string): File {
   return new File(artworkDir(), name);
+}
+
+/** The file names in the car artwork folder (covers, and any leftover `.part` file): ONE
+ * directory read, for a snapshot's existence checks (`artworkUri`) and its prune. Empty
+ * when the folder is missing or can't be read. */
+export function artworkOnDisk(): Set<string> {
+  try {
+    const dir = artworkDir();
+    if (!dir.exists) return new Set();
+    return new Set(dir.list().flatMap((item) => (item instanceof File ? [item.name] : [])));
+  } catch {
+    return new Set();
+  }
+}
+
+/** The `file://` URI of a car cover (`artworkOnDisk` says whether it is written). */
+export function artworkUri(name: string): string {
+  return artworkFile(name).uri;
 }
 
 /** The `file://` URI of a car cover already on disk, else null. Never touches the network. */
@@ -136,24 +146,17 @@ async function write(name: string, url: string): Promise<string | null> {
   }
 }
 
-/** Delete every car cover (and leftover `.part` file) whose name is not in `keep`, except
- * those being written now. Best effort. */
-export function pruneArtwork(keep: ReadonlySet<string>): void {
-  try {
-    const dir = artworkDir();
-    if (!dir.exists) return;
-    for (const item of dir.list()) {
-      if (!(item instanceof File)) continue;
-      const name = item.name;
-      const base = name.endsWith('.part') ? name.slice(0, -'.part'.length) : name;
-      if (keep.has(base) || inFlight.has(base)) continue;
-      try {
-        item.delete();
-      } catch {
-        // best effort
-      }
+/** Delete every car cover (and leftover `.part` file) of `onDisk` (`artworkOnDisk`) whose
+ * name is not in `keep`, except those being written now. Best effort: a cover left behind
+ * is only wasted space. */
+export function pruneArtwork(keep: ReadonlySet<string>, onDisk: Iterable<string>): void {
+  for (const name of onDisk) {
+    const base = name.endsWith('.part') ? name.slice(0, -'.part'.length) : name;
+    if (keep.has(base) || inFlight.has(base)) continue;
+    try {
+      artworkFile(name).delete();
+    } catch {
+      // best effort
     }
-  } catch {
-    // best effort: a cover left behind is only wasted space
   }
 }

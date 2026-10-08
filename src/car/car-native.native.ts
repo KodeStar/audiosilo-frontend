@@ -16,7 +16,7 @@ export const carNative: CarNative = {
   available,
 
   async setSnapshot(json) {
-    if (!has(AudiosiloPlayer.setCarSnapshot)) return false;
+    if (!available) return false;
     try {
       await AudiosiloPlayer.setCarSnapshot!(json);
       return true;
@@ -55,6 +55,14 @@ export const carNative: CarNative = {
     if (!available) return () => undefined;
     const sub = AudiosiloPlayer.addListener('onCarPlayRequest', (e) => {
       if (typeof e?.id === 'string') handler(e.id);
+    });
+    return () => sub.remove();
+  },
+
+  onBookmark(handler) {
+    if (!available) return () => undefined;
+    const sub = AudiosiloPlayer.addListener('onRemoteBookmark', ({ trackIndex, position }) => {
+      if (Number.isFinite(trackIndex) && Number.isFinite(position)) handler(trackIndex, position);
     });
     return () => sub.remove();
   },

@@ -1,5 +1,6 @@
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
+import { restoreLanguage } from '@/i18n/language-provider';
 import { migrateStorage } from '@/lib/storage-migration';
 import { useLibrarySelection } from '@/stores/library-selection';
 import { useSeriesOrderings } from '@/stores/series-orderings';
@@ -27,6 +28,11 @@ let pending: Promise<void> | null = null;
  * 3. Hydrate the session, settings, downloads, series orderings and library selection, all
  *    started together in that order. Resolves once each has settled (a store's own hydrate
  *    has its fail-safe; a rejection is logged, never thrown).
+ *
+ * Alongside all of it (it reads no store and no record a reset touches), the listener's
+ * language is applied (`restoreLanguage`): the root layout's `LanguageProvider` applies it
+ * too, but the headless task has none, and its strings (the car snapshot's labels) must be
+ * in that language as well.
  */
 export function bootstrapPlayback(): Promise<void> {
   pending ??= run();
@@ -34,6 +40,7 @@ export function bootstrapPlayback(): Promise<void> {
 }
 
 async function run(): Promise<void> {
+  const language = restoreLanguage(); // never rejects
   let didReset = false;
   try {
     const { authReset, cacheReset } = await migrateStorage();
@@ -58,6 +65,7 @@ async function run(): Promise<void> {
   for (const r of results) {
     if (r.status === 'rejected') console.warn('[bootstrap] a store failed to hydrate', r.reason);
   }
+  await language;
 }
 
 /** Tests only: forget the memoised run, so the next `bootstrapPlayback` runs again. */

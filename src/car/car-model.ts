@@ -2,17 +2,19 @@ import type { TFunction } from 'i18next';
 
 import type { SourcedProgress } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
+import { progressAt, splitProgress } from '@/components/home/home-model';
+import { splitDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { contentKeyOf } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
-import { isInProgress } from '@/lib/progress-view';
+import { progressFractionRemaining } from '@/lib/progress-view';
 import { buildBookQueue, locate } from '@/playback/book-queue';
+import { localFromManifest, resumeStart } from '@/playback/book-source';
 import type { ResumeLookup } from '@/playback/progress-sync';
-import { clampRate } from '@/playback/rate';
 import { bookSpeed, formatTimeLeft, timeLeft } from '@/playback/time-left';
+import { bookRefOf, type BookRef, toNativeTrack } from '@/playback/types';
 
 import type {
-  BookRef,
   NativeChapter,
   NativeTrack,
 } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -27,12 +29,10 @@ import type {
 
 export type CarTabId = 'continue' | 'upnext' | 'downloads' | 'library';
 
-/** Every string the car shows. Native has none of its own. */
+/** Every string the car shows beyond the tab titles (each tab carries its own `title`).
+ * Native has none of its own. */
 export type CarLabels = {
   continue: string;
-  upNext: string;
-  downloads: string;
-  library: string;
   chapters: string;
   bookmark: string;
   bookmarkSaved: string;
@@ -57,7 +57,10 @@ export type CarPlaySpec = {
 };
 
 export type CarItem = {
+  /** `carItemId(book)`: Android's media id. */
   id: string;
+  /** The book itself, so native compares its fields instead of decoding `id` (CarPlay). */
+  book: BookRef;
   title: string;
   /** The author, then the time left at the book's own speed once started. */
   subtitle: string;
@@ -132,9 +135,6 @@ export function parseCarItemId(id: string): BookRef | null {
 export function carLabels(t: TFunction): CarLabels {
   return {
     continue: t('car.continue'),
-    upNext: t('car.upNext'),
-    downloads: t('car.downloads'),
-    library: t('car.library'),
     chapters: t('car.chapters'),
     bookmark: t('car.bookmark'),
     bookmarkSaved: t('car.bookmarkSaved'),
@@ -150,13 +150,6 @@ export function carLabels(t: TFunction): CarLabels {
  * null: the title then comes from its path; its saved progress row, else null). */
 export type CarBook = { ref: BookRef; book: Book | null; progress: Progress | null };
 
-/** A progress row's book. */
-const rowRef = (p: SourcedProgress): BookRef => ({
-  connectionId: p.connectionId,
-  libraryId: p.library_id,
-  path: p.path,
-});
-
 /**
  * Continue listening, Home's rule (`isInProgress`, newest first, every signed-in server):
  * the loaded book first (Home's Now card, also before its first save reaches the list),
@@ -167,9 +160,7 @@ export function continueRefs(
   rows: readonly SourcedProgress[],
   loaded: BookRef | null,
 ): { ref: BookRef; progress: Progress | null }[] {
-  const inProgress = [...rows]
-    .filter(isInProgress)
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const { inProgress } = splitProgress(rows);
   const out: { ref: BookRef; progress: Progress | null }[] = [];
   const seen = new Set<string>();
   const push = (ref: BookRef, progress: Progress | null) => {
@@ -180,18 +171,16 @@ export function continueRefs(
   };
   if (loaded) {
     const key = contentKeyOf(loaded);
-    push(loaded, rows.find((r) => contentKeyOf(rowRef(r)) === key) ?? null);
+    push(loaded, rows.find((r) => contentKeyOf(progressAt(r)) === key) ?? null);
   }
-  for (const row of inProgress) push(rowRef(row), row);
+  for (const row of inProgress) push(progressAt(row), row);
   return out;
 }
 
-/** The downloaded books, newest download first, `CAR_TAB_LIMITS.downloads` at most. */
+/** The downloaded books, newest download first (the Downloads page's ready list),
+ * `CAR_TAB_LIMITS.downloads` at most. */
 export function downloadedEntries(entries: Record<string, DownloadEntry>): DownloadEntry[] {
-  return Object.values(entries)
-    .filter((e) => e.status === 'downloaded')
-    .sort((a, b) => b.manifest.savedAt.localeCompare(a.manifest.savedAt))
-    .slice(0, CAR_TAB_LIMITS.downloads);
+  return splitDownloads(Object.values(entries)).ready.slice(0, CAR_TAB_LIMITS.downloads);
 }
 
 // --- Items ----------------------------------------------------------------------------
@@ -244,9 +233,7 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
     ? null
     : finished
       ? 1
-      : place.total > 0
-        ? Math.min(1, Math.max(0, place.position / place.total))
-        : 0;
+      : progressFractionRemaining(place.position, place.total).fraction;
   const author = b.book?.author || b.book?.narrator || '';
   const left =
     started && !finished
@@ -257,6 +244,7 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
   const play = downloaded ? ctx.playFor(b.ref) : undefined;
   return {
     id: carItemId(b.ref),
+    book: bookRefOf(b.ref),
     title: bookTitle(b.book?.title, b.ref.path),
     subtitle,
     progress,
@@ -268,15 +256,6 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
 }
 
 // --- Play specs -----------------------------------------------------------------------
-
-/** The local files a downloaded book plays from (the same map the player store builds for
- * it, `localFromManifest`). */
-function localFiles(manifest: DownloadManifest) {
-  return {
-    files: new Map(manifest.files.map((f) => [f.relPath, f.localUri] as const)),
-    artwork: manifest.coverUri ?? undefined,
-  };
-}
 
 /**
  * How Android starts a downloaded book with no JS: its queue exactly as `playBook` builds it
@@ -298,33 +277,19 @@ export function playSpec(
     ref.libraryId,
     manifest.book,
     manifest.chapters ?? undefined,
-    localFiles(manifest),
+    localFromManifest(manifest),
     virtualChapterInterval,
   );
   if (queue.tracks.length === 0 || queue.tracks.some((t) => !t.url)) return undefined;
-  let startAt = 0;
-  let speed = clampRate(defaultRate > 0 ? defaultRate : 1);
-  if (lookup.kind === 'progress') {
-    const p = lookup.progress;
-    if (!p.finished && p.position > 0) startAt = p.position;
-    if (p.playback_speed > 0) speed = clampRate(p.playback_speed);
-  }
-  const { index, positionInTrack } = locate(queue.offsets, startAt);
+  const saved = lookup.kind === 'progress' ? lookup.progress : null;
+  const { index, positionInTrack } = locate(queue.offsets, saved ? resumeStart(saved) : 0);
   return {
-    book: { connectionId: ref.connectionId, libraryId: ref.libraryId, path: ref.path },
-    tracks: queue.tracks.map((t) => ({
-      id: t.id,
-      url: t.url,
-      title: t.title,
-      album: t.album,
-      artist: t.artist,
-      artwork: t.artwork,
-      duration: t.duration,
-    })),
+    book: ref,
+    tracks: queue.tracks.map(toNativeTrack),
     chapters: queue.chapterClips,
     startIndex: index,
     positionInTrack,
-    rate: speed,
+    rate: bookSpeed(saved?.playback_speed, defaultRate),
   };
 }
 
@@ -339,12 +304,13 @@ export type CarSnapshotInput = {
   books: Record<Exclude<CarTabId, 'upnext'>, CarBook[]> & { upnext: CarBook[] | null };
 };
 
-const TAB_TITLE: Record<CarTabId, keyof CarLabels> = {
-  continue: 'continue',
-  upnext: 'upNext',
-  downloads: 'downloads',
-  library: 'library',
-};
+/** Each tab's title (namespace `car`). */
+const TAB_TITLE = {
+  continue: 'car.continue',
+  upnext: 'car.upNext',
+  downloads: 'car.downloads',
+  library: 'car.library',
+} as const satisfies Record<CarTabId, string>;
 
 /** The snapshot: the four tabs in order (Up next only where the queue exists), each
  * deduplicated by book and trimmed to its limit. Signed out, every tab is empty (native
@@ -365,7 +331,7 @@ export function buildCarSnapshot(input: CarSnapshotInput, ctx: CarItemContext): 
         if (items.length >= CAR_TAB_LIMITS[id]) break;
       }
     }
-    tabs.push({ id, title: input.labels[TAB_TITLE[id]], items });
+    tabs.push({ id, title: ctx.t(TAB_TITLE[id]), items });
   }
   return {
     version: 1,
