@@ -10,6 +10,11 @@ jest.mock('@/components/player/sleep-timer-button', () => ({
   ShakeSensitivityControl: () => null,
 }));
 jest.mock('@/playback/use-shake-to-extend', () => ({ shakeAvailable: () => true }));
+// The effects switches read the playback store too; their own suite covers them.
+jest.mock('@/components/player/effects-settings', () => {
+  const { Text: RNText } = jest.requireActual('react-native');
+  return { EffectsSettings: () => <RNText>effects-switches</RNText> };
+});
 jest.mock('@/components/downloads/rules-card', () => {
   const { Text: RNText } = jest.requireActual('react-native');
   return {
@@ -80,6 +85,8 @@ describe('SettingsContent, wide', () => {
     await render(<SettingsContent section="preferences" onSectionChange={onSectionChange} />);
     await layOut(1000);
     expect(screen.getByTestId('settings-pane-playback')).toBeTruthy();
+    // Smart Speed and Voice Boost live in Playback (the speed sheet shows the same rows).
+    expect(screen.getByText('effects-switches')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('settings-nav-sleep'));
     expect(onSectionChange).toHaveBeenCalledWith('sleep');
     expect(screen.getByTestId('settings-pane-sleep')).toBeTruthy();

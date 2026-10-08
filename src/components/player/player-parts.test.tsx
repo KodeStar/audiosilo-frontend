@@ -37,6 +37,8 @@ jest.mock('./undo-chip', () => {
 /* eslint-disable import/first */
 import { useJumpUndo } from '@/playback/jump-undo';
 import { usePlayer } from '@/playback/store';
+import { useTimeSavedStore } from '@/playback/time-saved';
+import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
 import { mountWithPortal } from '@/testing/render-overlay';
 import { expectNativeTarget } from '@/testing/touch-target';
@@ -167,5 +169,34 @@ describe('PlayerActions', () => {
   it('shows the output picker only where the device can pick one', async () => {
     await mount(<PlayerActions wide upNext />);
     expect(screen.queryByTestId('player-output')).toBeNull();
+  });
+
+  describe('the effects state', () => {
+    beforeEach(() => {
+      useSettings.setState({ smartSpeed: false, voiceBoost: false });
+      useTimeSavedStore.setState({ lifetime: 0, books: {} });
+    });
+
+    it('is not there while both effects are off', async () => {
+      await mount(<PlayerActions wide upNext />);
+      expect(screen.queryByTestId('player-effects')).toBeNull();
+    });
+
+    it('reads the time Smart Speed saved and opens the speed sheet, where its switch is', async () => {
+      useSettings.setState({ smartSpeed: true });
+      useTimeSavedStore.setState({ lifetime: 7860, books: {} });
+      await mount(<PlayerActions wide upNext />);
+      expect(screen.getByText('Saved 2h 11m')).toBeTruthy();
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText('Smart speed and voice boost: Saved 2h 11m'));
+      });
+      expect(usePlayerSheets.getState().open).toBe('speed');
+    });
+
+    it('stays off the phone row, which is full', async () => {
+      useSettings.setState({ voiceBoost: true });
+      await mount(<PlayerActions wide={false} upNext />);
+      expect(screen.queryByTestId('player-effects')).toBeNull();
+    });
   });
 });

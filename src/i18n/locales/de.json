@@ -1988,5 +1988,21 @@
         "thumb": "Dein Jahr"
       }
     }
+  },
+  "effects": {
+    "smartSpeed": {
+      "label": "Pausen kürzen",
+      "hint": "Kürzt die Stille zwischen den Wörtern",
+      "notInBrowser": "Im Browser nicht verfügbar",
+      "downloadedOnly": "Auf dem iPhone für heruntergeladene Bücher"
+    },
+    "voiceBoost": {
+      "label": "Stimme verstärken",
+      "hint": "Gleicht leise und laute Stimmen aus",
+      "notInThisBrowser": "In diesem Browser nicht verfügbar"
+    },
+    "saved": "{{time}} gespart",
+    "bookSaved": "Durch Pausenkürzen gespart",
+    "pillLabel": "Pausen kürzen und Stimme verstärken: {{state}}"
   }
 }

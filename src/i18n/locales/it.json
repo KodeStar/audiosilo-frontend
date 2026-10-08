@@ -1988,5 +1988,21 @@
         "thumb": "Il tuo anno"
       }
     }
+  },
+  "effects": {
+    "smartSpeed": {
+      "label": "Velocità intelligente",
+      "hint": "Accorcia i silenzi tra le parole",
+      "notInBrowser": "Non disponibile nel browser",
+      "downloadedOnly": "Per i libri scaricati su iPhone"
+    },
+    "voiceBoost": {
+      "label": "Voce potenziata",
+      "hint": "Bilancia le voci basse e alte",
+      "notInThisBrowser": "Non disponibile in questo browser"
+    },
+    "saved": "{{time}} risparmiati",
+    "bookSaved": "Risparmiato con la velocità intelligente",
+    "pillLabel": "Velocità intelligente e voce potenziata: {{state}}"
   }
 }

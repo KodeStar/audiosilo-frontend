@@ -7,6 +7,7 @@ import {
   KeepAheadStatusLine,
   useAutoDownloadModes,
 } from '@/components/downloads/rules-card';
+import { EffectsSettings } from '@/components/player/effects-settings';
 import { ShakeSensitivityControl } from '@/components/player/sleep-timer-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -136,6 +137,8 @@ function PlaybackPane() {
           <Stepper {...stepper} label={label} />
         </SettingRow>
       ))}
+      {/* The same rows as the speed sheet's: one place for each setting. */}
+      <EffectsSettings />
     </SettingsCard>
   );
 }

@@ -29,6 +29,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { COMPANION_TAB_LABEL, type CompanionTab } from './companion/companion-model';
 import { ControlPill, type PillLook, pillClass, slopTo44 } from './control-pill';
+import { useEffectsPill } from './effects-settings';
 import { usePlaceSync } from './place-sync';
 import { addBookmarkHere } from './player-shortcuts';
 import { usePlayerSheets } from './player-sheets';
@@ -299,6 +300,7 @@ export function PlayerActions({ wide, upNext }: { wide: boolean; upNext: boolean
           testID="player-output"
         />
       ) : null}
+      {wide ? <EffectsPill /> : null}
       {upNext && supported === true ? (
         <Pill
           icon="queue"
@@ -309,6 +311,28 @@ export function PlayerActions({ wide, upNext }: { wide: boolean; upNext: boolean
         />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * Smart Speed / Voice Boost's state (STYLEGUIDE section 8 "Full player": "Saved 2h 11m"
+ * native, "Voice boost" web), shown only while one is on; it opens the speed sheet, where
+ * their switches are. Tablet and desktop only: on a phone the row already holds five
+ * pills, and a running sleep countdown would push a sixth onto a second line.
+ * The guide's `wave` glyph isn't vendored (adding one needs the FontAwesome generator),
+ * so it wears `sparkles`.
+ */
+function EffectsPill() {
+  const effects = useEffectsPill();
+  if (!effects) return null;
+  return (
+    <Pill
+      icon="sparkles"
+      text={effects.text}
+      label={effects.label}
+      onPress={() => usePlayerSheets.getState().openSheet('speed')}
+      testID="player-effects"
+    />
   );
 }
 
