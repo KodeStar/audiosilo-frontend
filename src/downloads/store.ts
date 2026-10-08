@@ -356,6 +356,51 @@ export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntr
   };
 }
 
+/**
+ * A downloaded book's manifest with the server's `fresh` chapters in place of the saved
+ * ones, or null to leave it as it is. A book's chapters can change on the server after
+ * it was downloaded (a rescan, a community chapter list fitted onto its audio, the admin
+ * switching it back), and offline it plays and lists what the manifest holds. Only the
+ * chapters move: when the fresh answer's audio files are not the ones on the device (the
+ * same paths in the same order, `bookFileSpecs` as the download read them), the local
+ * audio no longer matches and that is a new download, so nothing changes. Null too when
+ * nothing differs.
+ */
+export function refreshedChapters(
+  manifest: DownloadManifest,
+  fresh: ChaptersResponse,
+): DownloadManifest | null {
+  const want = bookFileSpecs(manifest.book, fresh).map((s) => s.path);
+  const have = manifest.files.map((f) => f.relPath);
+  if (want.length !== have.length || want.some((p, i) => p !== have[i])) return null;
+  if (JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
+  return { ...manifest, chapters: fresh };
+}
+
+/**
+ * Keep downloaded books' chapters in step with the server: every chapters answer the
+ * server gives (any screen's fetch, the play and download paths) for a downloaded book
+ * replaces its saved copy when `refreshedChapters` allows. The cache already holds that
+ * answer, so there is nothing to seed. A queue already playing keeps its chapters until
+ * the book is next started. Returns the unsubscribe (started once from the root layout).
+ */
+export function startChapterRefresh(): () => void {
+  return queryClient.getQueryCache().subscribe((event) => {
+    // A server answer only: the store's own seeds (`setQueryData`) are manual.
+    if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
+    const [kind, cid, libraryId, path] = event.query.queryKey;
+    const fresh = event.action.data as ChaptersResponse | undefined;
+    if (kind !== 'chapters' || !fresh) return;
+    const key = downloadKey(String(cid), Number(libraryId), String(path));
+    const entry = useDownloads.getState().entries[key];
+    if (entry?.status !== 'downloaded') return;
+    const manifest = refreshedChapters(entry.manifest, fresh);
+    if (!manifest) return;
+    patchEntry(key, { manifest });
+    void persist();
+  });
+}
+
 /** While a download runs, its finished files reach storage at most this often
  * (`persistSoon`); everything else saves at once. */
 const PERSIST_EVERY_MS = 2000;

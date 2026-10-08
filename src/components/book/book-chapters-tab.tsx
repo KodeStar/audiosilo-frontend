@@ -50,6 +50,9 @@ export type BookChaptersTabProps = {
   roomy: boolean;
   /** The part length, seconds (the parts notice says it). */
   interval: number;
+  /** The chapters are a community recording's list fitted onto this audio
+   * (`chapters_source`), not the files' own: a quiet line under the rows says so. */
+  fromCommunity: boolean;
   onJump: (jump: Jump) => void;
 };
 
@@ -59,7 +62,7 @@ export type BookChaptersTabProps = {
  * a tap on a book that isn't playing starts it there), then the rows: the current one
  * marked, the ones behind ticked, a bookmark glyph on a chapter holding one, the start
  * time on wide layouts. A chapterless file lists the player's parts, with a notice
- * saying why.
+ * saying why; community chapters end with a line saying where they came from.
  */
 export function BookChaptersTab({
   list,
@@ -71,9 +74,11 @@ export function BookChaptersTab({
   pins,
   roomy,
   interval,
+  fromCommunity,
   onJump,
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
+  const themed = useThemeColors();
   const starts = useMemo(() => timelineStarts(list.rows), [list.rows]);
   const labels = useMemo(
     () => list.rows.map((r) => rowLabel(r, list.kind, t)),
@@ -127,6 +132,14 @@ export function BookChaptersTab({
           />
         ))}
       </View>
+      {fromCommunity && list.kind === 'chapters' ? (
+        <View testID="book-chapters-community" className="flex-row items-center gap-1.5 px-2.5">
+          <Icon name="globe" size={12} color={themed.subtleForeground} />
+          <Text variant="caption" className="shrink text-subtle-foreground">
+            {t('book.chapters.community')}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

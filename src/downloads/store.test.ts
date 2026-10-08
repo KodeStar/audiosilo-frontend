@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
-import type { Book } from '@/api/types';
+import type { Book, ChaptersResponse } from '@/api/types';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 
 // The store resolves its file storage from './engine' (Metro picks the per-platform
@@ -89,8 +89,16 @@ const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
 const mockFetchQuery = jest.fn((_o: { queryKey: unknown[] }): Promise<unknown> =>
   Promise.reject(new Error('not mocked')),
 );
+// The query cache's listeners (`startChapterRefresh` subscribes one).
+const mockCacheListeners = new Set<(event: unknown) => void>();
 jest.mock('@/api/provider', () => ({
   queryClient: {
+    getQueryCache: () => ({
+      subscribe: (l: (event: unknown) => void) => {
+        mockCacheListeners.add(l);
+        return () => mockCacheListeners.delete(l);
+      },
+    }),
     setQueryData: jest.fn(),
     invalidateQueries: jest.fn(),
     getQueryData: (...a: unknown[]) => mockGetQueryData(...a),
@@ -125,7 +133,9 @@ import {
   downloadedCountFor,
   downloadKey,
   isDeclined,
+  refreshedChapters,
   reviveEntry,
+  startChapterRefresh,
   useDownloads,
 } from '@/downloads/store';
 import { onConnectionRemoved } from '@/stores/session';
@@ -471,6 +481,111 @@ describe('reviveEntry', () => {
     const none = failed();
     none.manifest.files = [];
     expect(reviveEntry(none, true)).toBeNull();
+  });
+});
+
+describe("refreshing a downloaded book's chapters", () => {
+  // The two files `downloadedEntry` lists, as the server's chapters answer names them.
+  const fresh = (
+    paths = ['A/Book/01.mp3', 'A/Book/02.mp3'],
+    over: Partial<ChaptersResponse> = {},
+  ): ChaptersResponse => ({
+    library_id: 2,
+    path: 'A/Book',
+    duration: 120,
+    is_folder: true,
+    files: paths.map((rel_path, seq) => ({ rel_path, seq, duration: 60, format: 'mp3', size: 1 })),
+    chapters: paths.map((file_path, index) => ({
+      index,
+      title: `Chapter ${index + 1}`,
+      file_index: index,
+      file_path,
+      start: 0,
+      end: 60,
+      book_offset: index * 60,
+    })),
+    chapters_source: 'community',
+    ...over,
+  });
+
+  describe('refreshedChapters', () => {
+    it('takes the fresh chapters when the audio files are the same', () => {
+      const e = downloadedEntry();
+      const next = refreshedChapters(e.manifest, fresh());
+      expect(next?.chapters?.chapters_source).toBe('community');
+      // Only the chapters move: the local audio and the rest stay as they were.
+      expect(next).toEqual({ ...e.manifest, chapters: fresh() });
+      expect(next?.files).toBe(e.manifest.files);
+    });
+
+    it('leaves the manifest alone when the files differ (a re-download)', () => {
+      const e = downloadedEntry();
+      expect(refreshedChapters(e.manifest, fresh(['A/Book/01.mp3']))).toBeNull();
+      expect(refreshedChapters(e.manifest, fresh(['A/Book/02.mp3', 'A/Book/01.mp3']))).toBeNull();
+      expect(refreshedChapters(e.manifest, fresh(['A/Book/01.mp3', 'A/Book/03.mp3']))).toBeNull();
+    });
+
+    it('reads the files from the chapters when the answer lists none', () => {
+      const e = downloadedEntry();
+      expect(refreshedChapters(e.manifest, fresh(undefined, { files: [] }))).not.toBeNull();
+    });
+
+    it('changes nothing when the saved chapters are already these', () => {
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh();
+      expect(refreshedChapters(e.manifest, fresh())).toBeNull();
+    });
+  });
+
+  describe('startChapterRefresh', () => {
+    const answer = (data: unknown, manual?: boolean, key = ['chapters', 'c1', 2, 'A/Book']) => {
+      for (const l of mockCacheListeners) {
+        l({ type: 'updated', query: { queryKey: key }, action: { type: 'success', data, manual } });
+      }
+    };
+    let stop: () => void = () => {};
+    beforeEach(() => {
+      stop = startChapterRefresh();
+    });
+    afterEach(() => stop());
+
+    it("saves the server's new chapters for a downloaded book with the same files", async () => {
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [downloadKey('c1', 2, 'A/Book')]: e } });
+      answer(fresh());
+      const now = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+      expect(now.manifest.chapters).toEqual(fresh());
+      expect(now.manifest.files).toBe(e.manifest.files);
+      await new Promise((r) => setTimeout(r, 0));
+      const saved = await readPersisted();
+      expect(saved[downloadKey('c1', 2, 'A/Book')].manifest.chapters?.chapters_source).toBe(
+        'community',
+      );
+    });
+
+    it('leaves it alone when the files differ, the answer is a seed, or the book is not downloaded', () => {
+      const e = downloadedEntry();
+      const key = downloadKey('c1', 2, 'A/Book');
+      useDownloads.setState({ entries: { [key]: e } });
+      answer(fresh(['A/Book/01.mp3', 'A/Book/09.mp3']));
+      answer(fresh(), true);
+      answer(fresh(), false, ['item', 'c1', 2, 'A/Book']);
+      answer(fresh(), false, ['chapters', 'c2', 2, 'A/Book']);
+      expect(useDownloads.getState().entries[key]).toBe(e);
+      const queued = downloadedEntry({ status: 'queued' });
+      useDownloads.setState({ entries: { [key]: queued } });
+      answer(fresh());
+      expect(useDownloads.getState().entries[key]).toBe(queued);
+    });
+
+    it('stops listening once unsubscribed', () => {
+      const e = downloadedEntry();
+      const key = downloadKey('c1', 2, 'A/Book');
+      useDownloads.setState({ entries: { [key]: e } });
+      stop();
+      answer(fresh());
+      expect(useDownloads.getState().entries[key]).toBe(e);
+    });
   });
 });
 
