@@ -145,6 +145,8 @@ class WebPlaybackService implements PlaybackService {
    * through the graph: so it is only made while the context is running (a suspended one
    * would silence the book) and only for a same-origin source (see `isSameOrigin`). */
   private sources = new Map<HTMLAudioElement, MediaElementAudioSourceNode>();
+  /** Where each element's source node is connected now. */
+  private routedTo = new Map<HTMLAudioElement, AudioNode>();
   private pausedAt: number | null = null;
   /** Track-absolute start (seconds) of the active element's source: the `t` a
    * transcoded stream was requested at, 0 for a direct stream. */
@@ -413,8 +415,12 @@ class WebPlaybackService implements PlaybackService {
       }
       this.sources.set(a, source);
     }
+    // Re-wired only when the target changes: a load, or any other setting, re-asks.
+    const target = this.wantsBoost() ? boost.compressor : boost.ctx.destination;
+    if (this.routedTo.get(a) === target) return;
     source.disconnect();
-    source.connect(this.wantsBoost() ? boost.compressor : boost.ctx.destination);
+    source.connect(target);
+    this.routedTo.set(a, target);
   }
 
   /** Stop and drop an element we no longer use, and its source node with it. */
@@ -426,6 +432,7 @@ class WebPlaybackService implements PlaybackService {
     if (source) {
       source.disconnect();
       this.sources.delete(a);
+      this.routedTo.delete(a);
     }
   }
 

@@ -663,11 +663,13 @@ describe('isSameOrigin', () => {
 // --- Voice Boost over a fake Web Audio graph ------------------------------------------
 class FakeNode {
   targets: FakeNode[] = [];
+  disconnects = 0;
   connect(n: FakeNode) {
     this.targets.push(n);
     return n;
   }
   disconnect() {
+    this.disconnects++;
     this.targets = [];
   }
 }
@@ -821,6 +823,17 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
     expect(routeOf(a)).toBe('compressor');
     expect(FakeAudioContext.all).toHaveLength(1);
     expect(ctx().sources.size).toBe(1); // one source for the element's whole life
+  });
+
+  it('leaves the wiring alone when another setting changes (no glitch mid-book)', async () => {
+    await svc.configure(config(true));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    const source = ctx().sources.get(el())!;
+    const before = source.disconnects;
+    await svc.configure({ ...config(true), jumpForward: 45 });
+    expect(source.disconnects).toBe(before);
+    expect(routeOf(el())).toBe('compressor');
   });
 
   it('never makes a graph while the boost is off', async () => {
