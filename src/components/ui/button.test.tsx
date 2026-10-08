@@ -26,6 +26,14 @@ describe('Button', () => {
     expect(String(screen.getByText('Listen').props.className)).toContain('text-primary-foreground');
   });
 
+  it('labels the destructive button in its own foreground token, not a fixed white', async () => {
+    // White on the dark theme's coral was 3.2:1 (src/theme/contrast.test.ts).
+    await mount(<Button variant="destructive" title="Sign out device" />);
+    const label = String(screen.getByText('Sign out device').props.className);
+    expect(label).toContain('text-destructive-foreground');
+    expect(label).not.toContain('text-white');
+  });
+
   it('hands its label style to composed children', async () => {
     await mount(
       <Button variant="destructive-outline">

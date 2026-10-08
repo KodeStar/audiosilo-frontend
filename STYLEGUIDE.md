@@ -220,6 +220,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--success` | `#0d7f5a` | `#3cc994` | Finished, downloaded, synced (always with an icon and a word) |
 | `--warning` | `#a86206` | `#f0b04d` | Offline banner, "Spoilers shown", star ratings |
 | `--destructive` | `#c42b3c` | `#f0606e` | Sign out, remove server, failed download |
+| `--destructive-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid destructive fill (white on the dark coral was 3.2:1; `src/theme/contrast.test.ts` keeps it at 4.5:1) |
 | `--info` | `#2c56c9` | `#7d9bf2` | "On Maya's Shelf" (a friend's server), "Also on ..." |
 | `--seq-0..5` | pink ramp | pink ramp | Listening calendar heatmap only |
 | `--chart-1..5` | fixed order | fixed order | Storage per server, any categorical chart. A sixth series folds into "Other". Where the view already has its pink thing (the Downloads page), start at `chart-2` and use `chart-1` last. |
@@ -654,7 +655,7 @@ Older servers lack these; the UI degrades quietly (Maya's Shelf on 1.12.3 shows 
 | `--muted / --muted-foreground` | `bg-muted text-muted-foreground` | Skeleton, tracks, captions |
 | `--accent` | `bg-accent` | Hover/pressed ghost items |
 | `--border / --input / --ring` | `border-border ring-ring` | Hairlines, Input, focus |
-| `--destructive` | `bg-destructive` | Sign out, delete |
+| `--destructive / --destructive-foreground` | `bg-destructive text-destructive-foreground` | Sign out, delete |
 | `--chart-1..5` | `fill-chart-1` | categorical chart series |
 | `--seq-0..5` | `bg-seq-3` | Listening calendar |
 | `--brand / --brand-ink / --brand-soft` | `bg-brand text-brand-ink` | Progress, ribbon, selection (custom) |

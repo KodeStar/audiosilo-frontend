@@ -133,8 +133,8 @@ export default function ScanScreen() {
       <SafeAreaView className="flex-1" pointerEvents="box-none">
         <View className="flex-1 items-end justify-end p-8" pointerEvents="box-none">
           <Text
-            className={`w-full rounded-lg px-4 py-3 text-center text-white ${
-              error ? 'bg-destructive/90' : 'bg-black/60'
+            className={`w-full rounded-lg px-4 py-3 text-center ${
+              error ? 'bg-destructive text-destructive-foreground' : 'bg-black/60 text-white'
             }`}
           >
             {error ?? t('connect.scan.aimHint')}

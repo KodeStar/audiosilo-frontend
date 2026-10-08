@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Platform, Pressable, type PressableProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
-import { colors, type ThemeColors } from '@/theme/tokens';
+import type { ThemeColors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
@@ -59,7 +59,7 @@ const buttonTextVariants = cva('font-sans-semibold text-sm', {
       outline: 'text-foreground',
       secondary: 'text-secondary-foreground',
       ghost: 'text-foreground',
-      destructive: 'text-white',
+      destructive: 'text-destructive-foreground',
       'destructive-outline': 'text-destructive',
       link: 'text-brand-ink',
     },
@@ -81,7 +81,7 @@ function iconColor(variant: Variant, themed: ThemeColors): string {
     case 'secondary':
       return themed.secondaryForeground;
     case 'destructive':
-      return colors.white;
+      return themed.destructiveForeground;
     case 'destructive-outline':
       return themed.destructive;
     case 'link':
