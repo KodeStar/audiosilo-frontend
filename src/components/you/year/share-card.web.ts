@@ -21,9 +21,9 @@ import {
  * chunk, out of the main bundle).
  *
  * It works under the server's `/web` CSP (`connect-src 'self'`, `img-src 'self' data:
- * blob:`): the fonts and covers it inlines are same-origin `fetch()`es (the story's
- * covers are plain URLs on the web, `story-cover.web.tsx`, never `blob:` ones, which
- * `connect-src 'self'` would refuse), it never fetches a `data:` URL (it keeps those as
+ * blob:`): the fonts and covers it inlines are same-origin `fetch()`es (covers are
+ * plain URLs on the web, `BookCover`, never `blob:` ones, which `connect-src 'self'`
+ * would refuse), it never fetches a `data:` URL (it keeps those as
  * they are), the drawing is a `data:` SVG image, and the PNG comes out of
  * `canvas.toBlob`. A cover it can't fetch is left blank rather than failing the card.
  *

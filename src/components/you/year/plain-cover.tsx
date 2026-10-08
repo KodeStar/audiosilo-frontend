@@ -4,7 +4,7 @@ import { Cover } from '@/components/ui/cover';
 
 import type { StoryCover } from './year-model';
 
-/** What a story card's cover takes (`story-cover.tsx`, `story-cover.web.tsx`). */
+/** What a story card's cover takes (`story-cover.tsx`). */
 export type StoryCoverProps = {
   connectionId: string;
   book: StoryCover;
