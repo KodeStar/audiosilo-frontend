@@ -67,6 +67,7 @@
         }
       ],
       "expo-localization",
+      "./plugins/withCarPlay",
       "./plugins/withXcode26SwiftUICoreFix",
       [
         "expo-build-properties",
