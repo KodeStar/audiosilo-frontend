@@ -328,14 +328,16 @@ export type BookSort = 'author' | 'title' | 'recent';
 export type BookPage = { books: Book[]; next_cursor?: string };
 
 /** One distinct author or narrator in a library, with their book count and total
- * `duration` (seconds). `name` is the whole field value: a "Kramer & Reading"
- * credit is one entry, matching the exact `author=`/`narrator=` books filter. */
+ * `duration` (seconds). `name` is one person: a "Kramer & Reading" credit counts
+ * for each of them, and the `author=`/`narrator=` books filter finds a book by
+ * its whole credit or any one of its people (an older server lists and matches
+ * whole credits only). */
 export type PersonCount = { name: string; books: number; duration: number };
 
 /** GET /libraries/{id}/authors or /narrators (capability `browse_people`),
  * normalized by the client: `people` is the `authors`/`narrators` array (sorted
- * case-insensitively by the server), `unknown` the number of books with the field
- * blank (or only spaces). `unknown` is a count only: an empty filter value is no
+ * case-insensitively by the server), `unknown` the number of books whose credit
+ * names nobody (blank, only spaces or only joiners). `unknown` is a count only: an empty filter value is no
  * filter on GET /libraries/{id}/books, so those books cannot be listed. Counts cover
  * only books inside the caller's share scope. */
 export type PeopleList = { people: PersonCount[]; unknown: number };
