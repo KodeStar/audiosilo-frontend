@@ -5,7 +5,6 @@ import Svg, { Line } from 'react-native-svg';
 
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
-import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import type { NamedChapter } from '@/lib/chapter-label';
@@ -344,21 +343,6 @@ export function EntryList({
           </View>
         );
       })}
-    </View>
-  );
-}
-
-/** Where the series data comes from (the community's series data is CC0, so this is a
- * credit, not a licence notice; CC BY-SA content carries the server's own text). */
-export function SourceLine() {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
-  return (
-    <View className="mt-3 flex-row items-center gap-1.5">
-      <Icon name="globe" size={13} color={themed.community} />
-      <Text variant="caption" className="text-subtle-foreground">
-        {t('series.source')}
-      </Text>
     </View>
   );
 }

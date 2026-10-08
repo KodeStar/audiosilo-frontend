@@ -114,11 +114,13 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       // Key on the entry's own connection-scoped id (stale un-scoped entries from before
       // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
       const key = downloadKey(e.connectionId, e.libraryId, e.path);
-      if (revived) {
+      if (revived?.status === 'downloaded') {
+        // A chapters answer can reach the cache before this read the registry.
+        const manifest = withCachedChapters(e.connectionId, e.libraryId, e.path, revived.manifest);
+        cleaned[key] = manifest === revived.manifest ? revived : { ...revived, manifest };
+        seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
+      } else if (revived) {
         cleaned[key] = revived;
-        if (revived.status === 'downloaded') {
-          seedQueryCache(e.connectionId, e.libraryId, e.path, e.manifest);
-        }
       } else {
         void engine.removeBook(e.connectionId, e.libraryId, e.path);
       }
@@ -362,7 +364,8 @@ export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntr
  * it was downloaded (a rescan, a community chapter list fitted onto its audio, the admin
  * switching it back), and offline it plays and lists what the manifest holds. Only the
  * chapters move: when the fresh answer's audio files are not the ones on the device (the
- * same paths in the same order, `bookFileSpecs` as the download read them), the local
+ * same paths in the same order, `bookFileSpecs` as the download read them, and the same
+ * sizes where both answers know them: a file replaced in place keeps its path), the local
  * audio no longer matches and that is a new download, so nothing changes. Null too when
  * nothing differs.
  */
@@ -370,13 +373,41 @@ export function refreshedChapters(
   manifest: DownloadManifest,
   fresh: ChaptersResponse,
 ): DownloadManifest | null {
-  const want = bookFileSpecs(manifest.book, fresh).map((s) => s.path);
-  const have = manifest.files.map((f) => f.relPath);
-  if (want.length !== have.length || want.some((p, i) => p !== have[i])) return null;
   // An unchanged refetch hands back the same object (structural sharing): skip the compare.
   if (fresh === manifest.chapters) return null;
+  const want = bookFileSpecs(manifest.book, fresh);
+  // The files as the download read them (sizes 0 when only the chapters named them).
+  const read = bookFileSpecs(manifest.book, manifest.chapters ?? undefined);
+  const have = manifest.files;
+  const same =
+    want.length === have.length &&
+    want.every((s, i) => {
+      if (s.path !== have[i].relPath) return false;
+      const was = read[i];
+      return was?.path !== s.path || !(was.size > 0 && s.size > 0) || was.size === s.size;
+    });
+  if (!same) return null;
   if (JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
   return { ...manifest, chapters: fresh };
+}
+
+/**
+ * `manifest` with the chapters answer the cache already holds for its book, when
+ * `refreshedChapters` takes it. `startChapterRefresh` only sees answers that land while the
+ * book is downloaded; this takes one that landed before, while it was downloading or before
+ * the launch's `hydrate` read the registry. That answer is the one the download was given
+ * or a newer one (the callers read it from the same cache entry).
+ */
+function withCachedChapters(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  manifest: DownloadManifest,
+): DownloadManifest {
+  const cached = queryClient.getQueryData<ChaptersResponse>(
+    qk.chapters(connectionId, libraryId, path),
+  );
+  return (cached && refreshedChapters(manifest, cached)) || manifest;
 }
 
 /**
@@ -759,12 +790,13 @@ async function runOne(key: string) {
       }
     }
 
-    const manifest: DownloadManifest = {
+    // With the server's chapters answer when one landed while the files did.
+    const manifest = withCachedChapters(connectionId, libraryId, path, {
       ...entry.manifest,
       files,
       coverUri,
       savedAt: new Date().toISOString(),
-    };
+    });
 
     // Don't claim "downloaded" unless the file can really be played back offline.
     // On web the bytes are cached but only playable once the service worker controls

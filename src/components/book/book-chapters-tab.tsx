@@ -3,6 +3,7 @@ import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import { SourceLine } from '@/components/library/source-line';
 import { BookTimeline } from '@/components/player/book-timeline';
 import { timelinePosition } from '@/components/player/book-timeline-model';
 import {
@@ -78,7 +79,6 @@ export function BookChaptersTab({
   onJump,
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
-  const themed = useThemeColors();
   const starts = useMemo(() => timelineStarts(list.rows), [list.rows]);
   const labels = useMemo(
     () => list.rows.map((r) => rowLabel(r, list.kind, t)),
@@ -133,12 +133,11 @@ export function BookChaptersTab({
         ))}
       </View>
       {fromCommunity ? (
-        <View testID="book-chapters-community" className="flex-row items-center gap-1.5 px-2.5">
-          <Icon name="globe" size={12} color={themed.subtleForeground} />
-          <Text variant="caption" className="shrink text-subtle-foreground">
-            {t('book.chapters.community')}
-          </Text>
-        </View>
+        <SourceLine
+          testID="book-chapters-community"
+          label={t('book.chapters.community')}
+          className="px-2.5"
+        />
       ) : null}
     </View>
   );
