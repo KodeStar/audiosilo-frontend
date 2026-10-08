@@ -1988,5 +1988,9 @@
         "thumb": "Ton année"
       }
     }
+  },
+  "widgets": {
+    "empty": "Lancez un livre et il apparaîtra ici.",
+    "sleepTimer": "Minuteur"
   }
 }

@@ -1988,5 +1988,9 @@
         "thumb": "Il tuo anno"
       }
     }
+  },
+  "widgets": {
+    "empty": "Avvia un libro e comparirà qui.",
+    "sleepTimer": "Timer di spegnimento"
   }
 }

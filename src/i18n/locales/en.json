@@ -1988,5 +1988,9 @@
         "thumb": "Your year"
       }
     }
+  },
+  "widgets": {
+    "empty": "Play a book and it shows up here.",
+    "sleepTimer": "Sleep timer"
   }
 }
