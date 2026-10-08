@@ -104,11 +104,11 @@ it('says where the listener was: the newest book in progress, its chapter and pe
     ],
   });
   const result = await mount();
-  await waitFor(() => expect(result.current.place?.chapter).toBe(2));
+  await waitFor(() => expect(result.current.place?.chapter?.number).toBe(2));
   expect(result.current.place).toEqual({
     book: { connectionId: 'c1', libraryId: 1, path: 'kings' },
     title: 'The Way of Kings',
-    chapter: 2,
+    chapter: { number: 2, title: 'Two' },
     percent: 38,
   });
 });
@@ -137,10 +137,10 @@ it("names the loaded book's chapter and percent from the same place, the player'
   // Loaded here and paused at 120 s: the chapter said 1 while the percent said 38.
   mockLoaded = { key: contentKey('c1', 1, 'kings'), position: 120 };
   const result = await mount();
-  await waitFor(() => expect(result.current.place?.chapter).toBe(1));
+  await waitFor(() => expect(result.current.place?.chapter?.number).toBe(1));
   expect(result.current.place).toMatchObject({
     title: 'The Way of Kings',
-    chapter: 1,
+    chapter: { number: 1, title: 'One' },
     percent: 12,
   });
 });

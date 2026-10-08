@@ -41,7 +41,12 @@ beforeEach(() => {
     line: { kind: 'booksIn', books: 3249, names: ['Fiction', 'Non-fiction', 'Kids'] },
     failed: false,
     books: [book('One', 1), book('Two', 2)],
-    place: { book: KINGS, title: 'The Way of Kings', chapter: 23, percent: 38 },
+    place: {
+      book: KINGS,
+      title: 'The Way of Kings',
+      chapter: { number: 23, title: 'Chapter 23' },
+      percent: 38,
+    },
   };
 });
 
@@ -55,6 +60,18 @@ it('says the server is connected, the counts, and where the place came from', as
     ),
   ).toBeTruthy();
   expect(screen.getByLabelText('Step 3 of 3')).toBeTruthy();
+});
+
+it("names the chapter by its title when the book's numbering contradicts it", async () => {
+  // A book that opens with a Prologue: its 11th chapter is "Chapter 10".
+  mockSummary = {
+    ...mockSummary,
+    place: { ...mockSummary.place!, chapter: { number: 11, title: 'Chapter 10' } },
+  };
+  await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
+  expect(
+    screen.getByText(/Your place in The Way of Kings came with you: Chapter 10, 38% in\./),
+  ).toBeTruthy();
 });
 
 it('says nothing about a place the listener does not have', async () => {

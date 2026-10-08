@@ -8,6 +8,7 @@ import { GhostCover } from '@/components/library/ghost-cover';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
+import type { NamedChapter } from '@/lib/chapter-label';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -132,7 +133,7 @@ export function ShelfCaption({
   current: boolean;
   /** This connection's name ("Not on Home Library, but ..."). */
   here: string;
-  resumeChapter?: number;
+  resumeChapter?: NamedChapter;
 }) {
   const { t } = useTranslation();
   const wide = useLayout() !== 'phone';

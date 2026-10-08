@@ -408,7 +408,8 @@
       "placeChapter": "O teu ponto em {{title}} veio contigo: capítulo {{chapter}}, {{percent}}% ouvido.",
       "place": "O teu ponto em {{title}} veio contigo: {{percent}}% ouvido.",
       "start": "Começar a ouvir",
-      "browse": "Explorar a biblioteca"
+      "browse": "Explorar a biblioteca",
+      "placeTitled": "O teu ponto em {{title}} veio contigo: {{chapter}}, {{percent}}% ouvido."
     }
   },
   "home": {
@@ -455,7 +456,9 @@
       "whosWho": "Quem é quem",
       "whosWhoLabel_one": "Quem é quem, {{count}} personagem conhecida até agora",
       "whosWhoLabel_other": "Quem é quem, {{count}} personagens conhecidas até agora",
-      "storySoFar": "A história até agora"
+      "storySoFar": "A história até agora",
+      "resumeTitled": "Retomar {{title}}",
+      "countOf": "{{chapter}} de {{total}}"
     },
     "week": {
       "title": "Esta semana",
@@ -1119,7 +1122,9 @@
       "resume": "Retomar",
       "resumeChapter": "Retomar o capítulo {{chapter}}",
       "again": "Ouvir outra vez",
-      "pause": "Pausa"
+      "pause": "Pausa",
+      "resumeTitled": "Retomar {{title}}",
+      "titledOf": "{{title}} · {{chapter}} de {{total}}"
     },
     "upNext": {
       "label": "A seguir para {{title}}",
@@ -1701,7 +1706,8 @@
       "emptyAction": "Ver os livros",
       "errorTitle": "Não foi possível carregar as séries"
     },
-    "keepAhead": "Adiantar offline"
+    "keepAhead": "Adiantar offline",
+    "resumeTitled": "Retomar {{title}}"
   },
   "people": {
     "author": "Autor",

@@ -62,7 +62,8 @@ jest.mock('@/components/library/use-queue-actions', () => ({
 }));
 const mockPlay = jest.fn(() => Promise.resolve());
 jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
-jest.mock('./use-resume-chapter', () => ({ useResumeChapter: () => 7 }));
+let mockResumeChapter = { number: 7, title: 'Chapter 7' };
+jest.mock('./use-resume-chapter', () => ({ useResumeChapter: () => mockResumeChapter }));
 // The keep-ahead shortcut has its own tests (it reads the downloads and settings stores).
 jest.mock('./keep-ahead-card', () => ({ KeepAheadCard: () => null }));
 
@@ -247,6 +248,17 @@ describe('SeriesPage, community rail', () => {
       expect.objectContaining({ connectionId: 'home', libraryId: 1, path: cw.rel_path }),
     );
     expect(screen.getByText('40% into book 2 · 26h of listening ahead')).toBeTruthy();
+  });
+
+  it("names the chapter by its title when the book's numbering contradicts it", async () => {
+    // After a Prologue, the 7th chapter is titled "Chapter 6": the player says so too.
+    mockResumeChapter = { number: 7, title: 'Chapter 6' };
+    try {
+      await render(<SeriesPage libraryId={1} name="The Expanse" />);
+      expect(screen.getByRole('button', { name: "Resume Chapter 6, Caliban's War" })).toBeTruthy();
+    } finally {
+      mockResumeChapter = { number: 7, title: 'Chapter 7' };
+    }
   });
 
   it('waits for the rail before laying out, instead of reflowing from the local series', async () => {

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { contradictedTitle } from '@/lib/chapter-label';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 
@@ -134,11 +135,19 @@ function lineText(line: ReadyLine, server: string, t: T): string {
 
 /** "Your place in <book> came with you: chapter 23, 38% in." */
 function placeLine(place: ReadyPlace, t: T): string {
-  return place.chapter
-    ? t('onboarding.ready.placeChapter', {
+  if (!place.chapter) {
+    return t('onboarding.ready.place', { title: place.title, percent: place.percent });
+  }
+  const titled = contradictedTitle(place.chapter);
+  return titled
+    ? t('onboarding.ready.placeTitled', {
         title: place.title,
-        chapter: place.chapter,
+        chapter: titled,
         percent: place.percent,
       })
-    : t('onboarding.ready.place', { title: place.title, percent: place.percent });
+    : t('onboarding.ready.placeChapter', {
+        title: place.title,
+        chapter: place.chapter.number,
+        percent: place.percent,
+      });
 }

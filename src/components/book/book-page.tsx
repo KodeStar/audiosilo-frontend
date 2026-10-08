@@ -391,7 +391,7 @@ function BookPage() {
             ? {
                 percent,
                 fraction: progressFractionRemaining(position, total).fraction,
-                line: placeLine(t, list.kind, current, list.rows.length),
+                line: placeLine(t, list.kind, current, list.rows.length, list.rows[current]?.title),
                 timeLeft,
               }
             : null
@@ -423,6 +423,7 @@ function BookPage() {
                 list.kind === 'chapters' && list.rows.length > 1 && current >= 0
                   ? current + 1
                   : undefined,
+              chapterTitle: list.rows[current]?.title,
             })}
             onPrimary={() => play({ toggle: true })}
             stacked={!layout.heroSide}

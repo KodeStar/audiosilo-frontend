@@ -6,6 +6,7 @@ import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { useResumePosition } from '@/components/player/use-listening-position';
 import { useResumeChapter } from '@/components/series/use-resume-chapter';
+import type { NamedChapter } from '@/lib/chapter-label';
 import { percentHeard } from '@/lib/progress-view';
 
 import { bookTotal, latestPlace, readyLine, type ReadyLine } from './connect-model';
@@ -15,7 +16,12 @@ const SHELF_BOOKS = 24;
 
 /** Where the listener's place came from: the book (`book`, to play it), its title, its
  * chapter (when it has chapters) and how far in. */
-export type ReadyPlace = { book: PlayTarget; title: string; chapter?: number; percent: number };
+export type ReadyPlace = {
+  book: PlayTarget;
+  title: string;
+  chapter?: NamedChapter;
+  percent: number;
+};
 
 export type ReadySummary = {
   /** The library sentence; null while it is loading. */

@@ -408,7 +408,8 @@
       "placeChapter": "Deine Stelle in {{title}} ist mitgekommen: Kapitel {{chapter}}, {{percent}} % gehört.",
       "place": "Deine Stelle in {{title}} ist mitgekommen: {{percent}} % gehört.",
       "start": "Loslegen",
-      "browse": "Bibliothek durchsuchen"
+      "browse": "Bibliothek durchsuchen",
+      "placeTitled": "Deine Stelle in {{title}} ist mitgekommen: {{chapter}}, {{percent}} % gehört."
     }
   },
   "home": {
@@ -455,7 +456,9 @@
       "whosWho": "Wer ist wer",
       "whosWhoLabel_one": "Wer ist wer, {{count}} Figur bisher kennengelernt",
       "whosWhoLabel_other": "Wer ist wer, {{count}} Figuren bisher kennengelernt",
-      "storySoFar": "Bisher geschehen"
+      "storySoFar": "Bisher geschehen",
+      "resumeTitled": "{{title}} fortsetzen",
+      "countOf": "{{chapter}} von {{total}}"
     },
     "week": {
       "title": "Diese Woche",
@@ -1119,7 +1122,9 @@
       "resume": "Fortsetzen",
       "resumeChapter": "Kapitel {{chapter}} fortsetzen",
       "again": "Noch einmal hören",
-      "pause": "Pause"
+      "pause": "Pause",
+      "resumeTitled": "{{title}} fortsetzen",
+      "titledOf": "{{title}} · {{chapter}} von {{total}}"
     },
     "upNext": {
       "label": "Als Nächstes für {{title}}",
@@ -1701,7 +1706,8 @@
       "emptyAction": "Bücher durchsehen",
       "errorTitle": "Die Reihen konnten nicht geladen werden"
     },
-    "keepAhead": "Offline vorausladen"
+    "keepAhead": "Offline vorausladen",
+    "resumeTitled": "{{title}} fortsetzen"
   },
   "people": {
     "author": "Autor",

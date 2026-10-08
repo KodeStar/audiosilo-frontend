@@ -408,7 +408,8 @@
       "placeChapter": "Il tuo punto in {{title}} è venuto con te: capitolo {{chapter}}, {{percent}}% ascoltato.",
       "place": "Il tuo punto in {{title}} è venuto con te: {{percent}}% ascoltato.",
       "start": "Inizia ad ascoltare",
-      "browse": "Sfoglia la biblioteca"
+      "browse": "Sfoglia la biblioteca",
+      "placeTitled": "Il tuo punto in {{title}} è venuto con te: {{chapter}}, {{percent}}% ascoltato."
     }
   },
   "home": {
@@ -455,7 +456,9 @@
       "whosWho": "Chi è chi",
       "whosWhoLabel_one": "Chi è chi, {{count}} personaggio incontrato finora",
       "whosWhoLabel_other": "Chi è chi, {{count}} personaggi incontrati finora",
-      "storySoFar": "La storia finora"
+      "storySoFar": "La storia finora",
+      "resumeTitled": "Riprendi {{title}}",
+      "countOf": "{{chapter}} di {{total}}"
     },
     "week": {
       "title": "Questa settimana",
@@ -1119,7 +1122,9 @@
       "resume": "Riprendi",
       "resumeChapter": "Riprendi il capitolo {{chapter}}",
       "again": "Ascolta di nuovo",
-      "pause": "Pausa"
+      "pause": "Pausa",
+      "resumeTitled": "Riprendi {{title}}",
+      "titledOf": "{{title}} · {{chapter}} di {{total}}"
     },
     "upNext": {
       "label": "Prossimo per {{title}}",
@@ -1701,7 +1706,8 @@
       "emptyAction": "Sfoglia i libri",
       "errorTitle": "Impossibile caricare le serie"
     },
-    "keepAhead": "Portati avanti offline"
+    "keepAhead": "Portati avanti offline",
+    "resumeTitled": "Riprendi {{title}}"
   },
   "people": {
     "author": "Autore",

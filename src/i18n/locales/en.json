@@ -408,7 +408,8 @@
       "placeChapter": "Your place in {{title}} came with you: chapter {{chapter}}, {{percent}}% in.",
       "place": "Your place in {{title}} came with you: {{percent}}% in.",
       "start": "Start listening",
-      "browse": "Browse the library"
+      "browse": "Browse the library",
+      "placeTitled": "Your place in {{title}} came with you: {{chapter}}, {{percent}}% in."
     }
   },
   "home": {
@@ -455,7 +456,9 @@
       "whosWho": "Who's who",
       "whosWhoLabel_one": "Who's who, {{count}} character met so far",
       "whosWhoLabel_other": "Who's who, {{count}} characters met so far",
-      "storySoFar": "Story so far"
+      "storySoFar": "Story so far",
+      "resumeTitled": "Resume {{title}}",
+      "countOf": "{{chapter}} of {{total}}"
     },
     "week": {
       "title": "This week",
@@ -1119,7 +1122,9 @@
       "resume": "Resume",
       "resumeChapter": "Resume chapter {{chapter}}",
       "again": "Listen again",
-      "pause": "Pause"
+      "pause": "Pause",
+      "resumeTitled": "Resume {{title}}",
+      "titledOf": "{{title}} · {{chapter}} of {{total}}"
     },
     "upNext": {
       "label": "Up next for {{title}}",
@@ -1701,7 +1706,8 @@
       "emptyAction": "Browse books",
       "errorTitle": "Couldn't load the series"
     },
-    "keepAhead": "Keep ahead offline"
+    "keepAhead": "Keep ahead offline",
+    "resumeTitled": "Resume {{title}}"
   },
   "people": {
     "author": "Author",
