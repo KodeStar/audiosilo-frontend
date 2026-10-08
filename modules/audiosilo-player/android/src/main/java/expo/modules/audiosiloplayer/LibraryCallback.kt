@@ -35,12 +35,20 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
   /**
    * Grants the custom commands (so the skip and bookmark buttons are enabled) to every
    * controller; SET_EFFECTS only to the app's own controller. Notes an Android Auto controller.
+   *
+   * Search is NOT granted: the session has no `onSearch`/`onGetSearchResult` (car search is
+   * not built, Phase 6 contract decision 12), and a legacy browser's root hints say
+   * `BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED` exactly when the controller holds
+   * `COMMAND_CODE_LIBRARY_SEARCH` (MediaLibraryServiceLegacyStub.onGetRoot), so granting it
+   * (the default command set does) showed Android Auto a search button that found nothing.
    */
   override fun onConnect(
     session: MediaSession,
     controller: MediaSession.ControllerInfo,
   ): MediaSession.ConnectionResult {
     val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+      .remove(SessionCommand.COMMAND_CODE_LIBRARY_SEARCH)
+      .remove(SessionCommand.COMMAND_CODE_LIBRARY_GET_SEARCH_RESULT)
       .add(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
       .add(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
       .add(SessionCommand(CMD_BOOKMARK, Bundle.EMPTY))
