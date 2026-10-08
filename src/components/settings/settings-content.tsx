@@ -1,11 +1,10 @@
 import { Fragment, type ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, type ScrollView, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { useConnectionRemoval } from '@/components/account/connections-section';
-import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { TAB_BAR_SCROLL_INSETS } from '@/components/shell/scroll-insets';
+import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
@@ -78,7 +77,6 @@ export function SettingsContent({
   }
   const [width, setWidth] = useState(0);
   const layout = settingsLayout(width, phone);
-  const paddingBottom = useMiniPlayerInset();
   // The remove-connection confirm dialog's state lives here (see the hook).
   const removal = useConnectionRemoval();
 
@@ -105,13 +103,7 @@ export function SettingsContent({
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
       {layout === 'split' ? (
-        <ScrollView
-          testID="settings-scroll"
-          className="flex-1"
-          contentContainerClassName="gap-6 p-4 lg:px-8"
-          contentContainerStyle={{ paddingBottom }}
-          {...TAB_BAR_SCROLL_INSETS}
-        >
+        <TabPageScroll testID="settings-scroll" contentContainerClassName="gap-6">
           {heading}
           <View className="flex-row items-start gap-8">
             <View className="w-[220px] gap-4">
@@ -125,14 +117,13 @@ export function SettingsContent({
               <SettingsPaneBody pane={pane} onRemoveConnection={removal.onRemove} />
             </View>
           </View>
-        </ScrollView>
+        </TabPageScroll>
       ) : (
         <StackedPanes
           groups={groups}
           scrollTo={asked}
           heading={heading}
           footer={version}
-          paddingBottom={paddingBottom}
           onRemoveConnection={removal.onRemove}
         />
       )}
@@ -212,14 +203,12 @@ function StackedPanes({
   scrollTo,
   heading,
   footer,
-  paddingBottom,
   onRemoveConnection,
 }: {
   groups: readonly SettingsGroup[];
   scrollTo: SettingsPane;
   heading: ReactNode;
   footer: ReactNode;
-  paddingBottom: number;
   onRemoveConnection: Parameters<typeof SettingsPaneBody>[0]['onRemoveConnection'];
 }) {
   const { t } = useTranslation();
@@ -233,16 +222,7 @@ function StackedPanes({
     ref.current?.scrollTo({ y: Math.max(0, y - 8), animated: !reduced });
   };
   return (
-    <ScrollView
-      ref={ref}
-      testID="settings-scroll"
-      className="flex-1"
-      contentContainerClassName="gap-3 p-4 lg:px-8"
-      contentContainerStyle={{ paddingBottom }}
-      keyboardShouldPersistTaps="handled"
-      // Under the You hub's segmented control, iOS would not inset it for the tab bar.
-      {...TAB_BAR_SCROLL_INSETS}
-    >
+    <TabPageScroll ref={ref} testID="settings-scroll" contentContainerClassName="gap-3">
       {heading}
       {groups.map((g) => (
         <Fragment key={g.key}>
@@ -265,6 +245,6 @@ function StackedPanes({
         </Fragment>
       ))}
       <View className="mt-4">{footer}</View>
-    </ScrollView>
+    </TabPageScroll>
   );
 }

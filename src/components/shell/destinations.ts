@@ -1,10 +1,11 @@
-import { router, useNavigationContainerRef, useSegments, type Href } from 'expo-router';
+import { useNavigationContainerRef, useSegments, type Href } from 'expo-router';
 import type { MaterialIcon, SFSymbolIcon } from 'expo-router/unstable-native-tabs';
 import { useCallback } from 'react';
 
 import { LIBRARY_ROOT_PARAMS } from '@/components/library/library-modes';
 import type { IconName } from '@/components/ui/icon';
 import { engine } from '@/downloads/engine';
+import { popTabToRoot } from '@/lib/root-stack';
 
 /**
  * The app's destinations, in ONE table every piece of chrome reads: the native tab bar
@@ -178,18 +179,15 @@ export function useActiveTab(): TabName | null {
  * Tab presses from OUR chrome (the web tab bar, the tablet/desktop top bar - all outside
  * the tab navigator). Another tab: dispatch JUMP_TO, which restores that tab's stack. A
  * href can't do it: `router.navigate('/(home)')` resolves to `/` and pops Home to its
- * root. The active tab again: pop its stack to the root, which keeps the root's own params
- * (Library's mode, the You hub's section). Not a navigate to the root's href: a navigate
- * is a push in this router, so it stacked a second copy of the root over the pages.
+ * root. The active tab again: pop its stack to the root (`popTabToRoot`).
  */
 export function useTabPress() {
   const ref = useNavigationContainerRef();
   const active = useActiveTab();
   const press = useCallback(
     (name: TabName) => {
-      if (active === name) {
-        if (router.canDismiss()) router.dismissAll();
-      } else ref.dispatch({ type: 'JUMP_TO', payload: { name } });
+      if (active === name) popTabToRoot(name);
+      else ref.dispatch({ type: 'JUMP_TO', payload: { name } });
     },
     [active, ref],
   );

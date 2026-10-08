@@ -1,7 +1,7 @@
 import type { MyDevice } from '@/api/types';
 import type { IconName } from '@/components/ui/icon';
 import { parseYouSection, youTitleKey } from '@/components/you/you-model';
-import { hashString } from '@/lib/monogram';
+import type { NavRoute } from '@/lib/root-stack';
 
 /**
  * The pure parts of a server's account page (`AccountSection`): which server it shows,
@@ -14,15 +14,11 @@ import { hashString } from '@/lib/monogram';
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 
 /** Whole seconds left before a code that expires at `expiresAt` (epoch ms) stops working;
- * 0 once it has. Rounded up, so the last second reads 0:01, not 0:00. */
+ * 0 once it has. Rounded up, so the last second reads 0:01, not 0:00. Never more than the
+ * code's 10 minutes: a `now` read before the code arrived (the clock ticks only while a
+ * code shows) reads as a fresh code. */
 export function pairingSecondsLeft(expiresAt: number, now: number): number {
-  return Math.max(0, Math.ceil((expiresAt - now) / 1000));
-}
-
-/** A countdown as `m:ss` (`9:05`, `0:42`). */
-export function formatCountdown(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return Math.min(PAIRING_TTL_MS / 1000, Math.max(0, Math.ceil((expiresAt - now) / 1000)));
 }
 
 /**
@@ -57,7 +53,8 @@ export function signedInSessions(devices: readonly MyDevice[] | undefined): MyDe
  * Whether a device row may be signed out through `useRevokeMyDevice`. Never the device
  * the listener is on: revoking its own token would kill it before the app's sign-out
  * teardown (save the final position, flush the queued progress) could run. That device
- * signs out through `useSignOut`, from the page's sign-out action.
+ * signs out through `useSignOut`, from the page's "Sign out of <server>". Its row offers
+ * no sign-out, and the devices list's confirm checks this again.
  */
 export function canRevoke(device: Pick<MyDevice, 'current'>): boolean {
   return !device.current;
@@ -120,21 +117,11 @@ export function deviceGlyph(device: {
   return /\b(iphone|phone|pixel|galaxy|android)\b/i.test(name) ? 'mobile' : 'hard-drive';
 }
 
-/** The two hues of a person's gradient monogram (STYLEGUIDE section 8, "Avatar"), from
- * their name: the same person always gets the same colours. */
-export function avatarHues(name: string): [number, number] {
-  const h = hashString(name.trim().toLowerCase()) % 360;
-  return [h, (h + 50) % 360];
-}
-
-/** A route in the Account page's stack (React Navigation's `{ name, params }`). */
-export type StackRoute = { name: string; params?: object };
-
 /**
  * The route the Account page sits on: the one under the LAST `account` route of its stack
  * (the page is on top when it mounts), or undefined for a cold link.
  */
-export function routeUnderAccount(routes: readonly StackRoute[]): StackRoute | undefined {
+export function routeUnderAccount(routes: readonly NavRoute[]): NavRoute | undefined {
   const at = routes.map((r) => r.name).lastIndexOf('account');
   return at > 0 ? routes[at - 1] : undefined;
 }
@@ -145,7 +132,7 @@ export function routeUnderAccount(routes: readonly StackRoute[]): StackRoute | u
  * the hub's sections. Null for anything else (the profile menu over any page, a cold
  * link): the chrome's own Back covers it.
  */
-export function accountParentKey(parent: StackRoute | undefined) {
+export function accountParentKey(parent: NavRoute | undefined) {
   if (parent?.name === 'settings') return 'settings.title' as const;
   if (parent?.name === 'you') {
     const section = (parent.params as { section?: string } | undefined)?.section;

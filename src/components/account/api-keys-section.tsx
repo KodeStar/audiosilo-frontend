@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -13,21 +14,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Icon } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Notice } from '@/components/ui/notice';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { touchTarget } from '@/components/ui/touch-target';
 import { formatRelative } from '@/lib/format';
-import { cn } from '@/lib/utils';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { AccountListRow } from './account-list-row';
 import { AccountSectionHead } from './section-head';
 import type { ApiKeysManager } from './use-api-keys-manager';
 
-/** A small button's drawn height in rem (`h-[30px]` on the web's 16 px rem). */
-const SM_BUTTON_REM = 30 / 16;
+/** "Created 3 days ago · Last used 2 hours ago". */
+function keyDetail(k: ApiKey, t: TFunction): string {
+  const used = k.last_seen
+    ? t('settings.apiKeys.lastUsed', { when: formatRelative(k.last_seen) })
+    : t('settings.apiKeys.neverUsed');
+  return `${t('settings.apiKeys.created', { when: formatRelative(k.created_at) })} · ${used}`;
+}
 
 /**
  * "Personal API keys": this connection's keys with when each was made and last used,
@@ -73,11 +76,17 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
           </Text>
         ) : (
           manager.keys.map((k, i) => (
-            <ApiKeyRow
+            <AccountListRow
               key={k.id}
-              apiKey={k}
+              icon="key"
+              title={k.label}
+              detail={keyDetail(k, t)}
               first={i === 0}
-              onRevoke={() => manager.requestRevoke(k)}
+              action={{
+                title: t('settings.apiKeys.revokeShort'),
+                accessibilityLabel: t('settings.apiKeys.revoke', { name: k.label }),
+                onPress: () => manager.requestRevoke(k),
+              }}
             />
           ))
         )}
@@ -102,50 +111,6 @@ export function ApiKeysUnavailable({ serverName }: { serverName: string }) {
         icon="circle-info"
         title={t('settings.apiKeys.unavailable.title', { server: serverName })}
         body={t('settings.apiKeys.unavailable.body')}
-      />
-    </View>
-  );
-}
-
-function ApiKeyRow({
-  apiKey,
-  first,
-  onRevoke,
-}: {
-  apiKey: ApiKey;
-  first: boolean;
-  onRevoke: () => void;
-}) {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
-  const target = touchTarget(SM_BUTTON_REM);
-  return (
-    <View
-      className={cn('flex-row items-center gap-3 px-4 py-3', !first && 'border-t border-border')}
-    >
-      <View className="h-9 w-9 items-center justify-center rounded-[11px] bg-muted">
-        <Icon name="key" size={17} color={themed.mutedForeground} />
-      </View>
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="label" numberOfLines={1}>
-          {apiKey.label}
-        </Text>
-        <Text variant="caption" numberOfLines={2}>
-          {t('settings.apiKeys.created', { when: formatRelative(apiKey.created_at) })}
-          {' · '}
-          {apiKey.last_seen
-            ? t('settings.apiKeys.lastUsed', { when: formatRelative(apiKey.last_seen) })
-            : t('settings.apiKeys.neverUsed')}
-        </Text>
-      </View>
-      <Button
-        size="sm"
-        variant="ghost"
-        title={t('settings.apiKeys.revokeShort')}
-        accessibilityLabel={t('settings.apiKeys.revoke', { name: apiKey.label })}
-        hitSlop={target.hitSlop}
-        className={target.frameClass}
-        onPress={onRevoke}
       />
     </View>
   );

@@ -263,7 +263,7 @@ describe('buildGoToItems', () => {
     { name: '(offline)', labelKey: 'nav.downloads', icon: 'download' },
     { name: '(me)', labelKey: 'nav.me', icon: 'user' },
   ] as const;
-  const runs = () => ({ tab: jest.fn(), you: jest.fn(), journal: jest.fn(), settings: jest.fn() });
+  const runs = () => ({ tab: jest.fn(), you: jest.fn(), settings: jest.fn() });
 
   it("lists the destinations, then You's sections, the Journal and Settings", () => {
     const items = buildGoToItems(tabs, runs(), i18n.t);
@@ -286,8 +286,8 @@ describe('buildGoToItems', () => {
     byId['go:year'].run();
     expect(r.you).toHaveBeenCalledWith('year');
     byId['go:journal'].run();
+    expect(r.you).toHaveBeenLastCalledWith('journal');
     byId['go:settings'].run();
-    expect(r.journal).toHaveBeenCalledTimes(1);
     expect(r.settings).toHaveBeenCalledTimes(1);
   });
 

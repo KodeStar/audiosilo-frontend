@@ -18,4 +18,19 @@ describe('useNow', () => {
     });
     expect(result.current).toBe(1_015_000);
   });
+
+  it('stands still while disabled, and ticks again once enabled', async () => {
+    const { result, rerender } = await renderHook(({ on }: { on: boolean }) => useNow(1000, on), {
+      initialProps: { on: false },
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(result.current).toBe(1_000_000);
+    await rerender({ on: true });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(result.current).toBe(1_006_000);
+  });
 });

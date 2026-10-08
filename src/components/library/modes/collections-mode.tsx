@@ -1,10 +1,10 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useCollections, useFavouritesAll } from '@/api/hooks';
-import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
@@ -33,7 +33,6 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
   const { t } = useTranslation();
   const layout = useLayout();
   const gutter = pageGutter(layout);
-  const paddingBottom = useMiniPlayerInset();
   const { openCollection } = useOpen();
   const { data, isLoading, error, refetch } = useCollections(connectionId);
   const { favourites } = useFavouritesAll();
@@ -44,10 +43,10 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
   const favouriteBooks = favourites.filter((f) => f.is_book).slice(0, 3);
 
   return (
-    <ScrollView
-      className="flex-1"
+    <TabPageScroll
+      gutter={false}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: 20, paddingBottom }}
+      contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: 20 }}
     >
       {error && !data ? (
         <View className="pb-6">
@@ -105,6 +104,6 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
           onSaved={(c) => openCollection(connectionId, c.id)}
         />
       ) : null}
-    </ScrollView>
+    </TabPageScroll>
   );
 }

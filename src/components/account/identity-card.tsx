@@ -2,11 +2,10 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import type { User } from '@/api/types';
+import { Portrait } from '@/components/series/portrait';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
-
-import { Avatar } from './avatar';
 
 /**
  * Who is signed in on this server (the prototype's account card): the monogram, the
@@ -43,7 +42,7 @@ export function IdentityCard({
         : [`${who} · ${t('account.identity.devices', { count: deviceCount })}`];
   return (
     <Card className="flex-row flex-wrap items-center gap-x-4 gap-y-3">
-      <Avatar name={name} size={64} />
+      <Portrait name={name} kind="user" size={64} />
       <View className="min-w-[160px] flex-1 gap-1">
         <Text variant="display" numberOfLines={1} className="text-2xl leading-7">
           {name}

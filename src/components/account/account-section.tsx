@@ -13,6 +13,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
+import { hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { APP_VERSION } from '@/lib/version';
 import { useSession } from '@/stores/session';
@@ -86,7 +87,7 @@ export function AccountSection({ connectionId }: { connectionId?: string }) {
           className="max-w-full self-start"
         />
         <Text variant="caption" numberOfLines={1} className="shrink">
-          {connection.serverUrl.replace(/^https?:\/\//, '')}
+          {hostOf(connection.serverUrl)}
         </Text>
       </View>
     ) : null;
@@ -118,7 +119,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
   const password = usePasswordEditor(cid);
   // The guarded sign-out, scoped to this connection: the only way this device signs out
-  // (never `useRevokeMyDevice` on its own row).
+  // (see `canRevoke`).
   const signOut = useSignOut(cid);
 
   // API keys: only where the server advertises them, and never for demo accounts (the

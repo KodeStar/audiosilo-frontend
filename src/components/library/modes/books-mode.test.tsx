@@ -43,6 +43,7 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 // view change asks of the list.
 const mockScrollToOffset = jest.fn();
 let mockKeyOf: ((item: unknown, index: number) => string) | undefined;
+let mockListProps: Record<string, unknown> = {};
 jest.mock('@shopify/flash-list', () => {
   const actual = jest.requireActual('@shopify/flash-list');
   const { useImperativeHandle, useRef } = jest.requireActual('react');
@@ -52,6 +53,7 @@ jest.mock('@shopify/flash-list', () => {
       const inner = useRef(null);
       useImperativeHandle(ref, () => ({ scrollToOffset: mockScrollToOffset }));
       mockKeyOf = props.keyExtractor;
+      mockListProps = props;
       return <actual.FlashList {...props} ref={inner} />;
     },
   };
@@ -134,6 +136,14 @@ describe('BooksMode', () => {
     expect(screen.getByRole('checkbox', { name: 'In progress, 1' })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: 'Finished, 1' })).toBeTruthy();
     expect(screen.getByText('Dune')).toBeTruthy();
+  });
+
+  it('insets its scroller for the iOS tab bar itself (under the sections)', async () => {
+    // The phone's segmented control is the page's first ScrollView, so react-native-screens
+    // never insets the grid: its last row scrolled under the tab bar.
+    await mount();
+    expect(mockListProps.contentInsetAdjustmentBehavior).toBe('automatic');
+    expect(mockListProps.keyboardShouldPersistTaps).toBe('handled');
   });
 
   it('filters from the URL and writes a chip back to it', async () => {

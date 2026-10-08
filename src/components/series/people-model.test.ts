@@ -109,4 +109,11 @@ describe('portrait colours', () => {
     expect(luminance(a.ink)).toBeLessThan(0.1);
     expect(portraitColors('Jim Butcher', 'narrator').ink).toBe('#ffffff');
   });
+
+  it('gives the listener a vivid disc with white initials, the same for the same name', () => {
+    const u = portraitColors('chris', 'user');
+    expect(u.ink).toBe('#ffffff');
+    expect(luminance(u.to)).toBeLessThan(0.5);
+    expect(portraitColors('chris', 'user')).toEqual(u);
+  });
 });

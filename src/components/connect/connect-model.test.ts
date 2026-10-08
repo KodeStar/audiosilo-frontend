@@ -2,7 +2,6 @@ import type { PeopleList, Progress } from '@/api/types';
 
 import {
   bookTotal,
-  hostOf,
   isFirstConnection,
   joinList,
   knownToOffer,
@@ -124,11 +123,6 @@ describe('looksLikeHomeAddress', () => {
   ])('%s -> %s', (url, home) => {
     expect(looksLikeHomeAddress(url)).toBe(home);
   });
-});
-
-it('hostOf: host and port without scheme or path', () => {
-  expect(hostOf('https://books.example.com:8443/base')).toBe('books.example.com:8443');
-  expect(hostOf(HOME)).toBe('192.168.1.20:8080');
 });
 
 it('knownToOffer: only servers this device is not signed in to', () => {

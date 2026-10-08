@@ -3,10 +3,8 @@ import type { MyDevice } from '@/api/types';
 import {
   accountParentKey,
   ACTIVE_NOW_MS,
-  avatarHues,
   canRevoke,
   deviceGlyph,
-  formatCountdown,
   knownPlatform,
   lastSeen,
   PAIRING_TTL_MS,
@@ -41,12 +39,8 @@ describe('pairing countdown', () => {
     expect(pairingSecondsLeft(expiresAt, expiresAt + 5000)).toBe(0);
   });
 
-  it('formats m:ss', () => {
-    expect(formatCountdown(600)).toBe('10:00');
-    expect(formatCountdown(545)).toBe('9:05');
-    expect(formatCountdown(42)).toBe('0:42');
-    expect(formatCountdown(0)).toBe('0:00');
-    expect(formatCountdown(-3)).toBe('0:00');
+  it('reads a clock from before the code arrived as a fresh code', () => {
+    expect(pairingSecondsLeft(NOW + PAIRING_TTL_MS, NOW - 42_000)).toBe(600);
   });
 });
 
@@ -184,15 +178,5 @@ describe('the Account page crumb', () => {
     expect(accountParentKey({ name: 'you' })).toBe('you.titles.stats');
     expect(accountParentKey({ name: 'book/[libraryId]' })).toBeNull();
     expect(accountParentKey(undefined)).toBeNull();
-  });
-});
-
-describe('avatarHues', () => {
-  it('gives a name the same two hues every time, ignoring case and spaces', () => {
-    const [a, b] = avatarHues('Chris');
-    expect(avatarHues(' chris ')).toEqual([a, b]);
-    expect(a).toBeGreaterThanOrEqual(0);
-    expect(a).toBeLessThan(360);
-    expect(b).toBe((a + 50) % 360);
   });
 });

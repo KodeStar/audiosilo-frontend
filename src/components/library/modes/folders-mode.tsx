@@ -1,9 +1,9 @@
 import { Link } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
-import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
@@ -50,7 +50,6 @@ export function FoldersMode() {
   const { t } = useTranslation();
   const { libraries, isLoading, error } = useLibrariesAll();
   const { openLibrary } = useOpen();
-  const paddingBottom = useMiniPlayerInset();
 
   // Group libraries by their server (connection), preserving connection order.
   const groups: { id: string; name: string; libs: SourcedLibrary[] }[] = [];
@@ -65,11 +64,7 @@ export function FoldersMode() {
   const showServerHeaders = groups.length > 1;
 
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerClassName="gap-0 p-4 lg:px-8"
-      contentContainerStyle={{ paddingBottom }}
-    >
+    <TabPageScroll contentContainerClassName="gap-0">
       {isLoading ? <RowSkeletonList /> : null}
       {error ? <ErrorNote message={t('library.list.loadLibrariesError')} /> : null}
 
@@ -107,6 +102,6 @@ export function FoldersMode() {
           hint={t('library.list.noLibrariesHint')}
         />
       ) : null}
-    </ScrollView>
+    </TabPageScroll>
   );
 }

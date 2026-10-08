@@ -113,11 +113,6 @@ export function looksLikeHomeAddress(url: string): boolean {
   return /\.(local|lan|home\.arpa)$/.test(host) || !host.includes('.');
 }
 
-/** The host (and port) of an address, for an eyebrow ("Hearthside · books.example.com"). */
-export function hostOf(url: string): string {
-  return url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '') || url;
-}
-
 /** The remembered servers the connect screen offers to reconnect to: those this device
  * is not signed in to now. */
 export function knownToOffer(
