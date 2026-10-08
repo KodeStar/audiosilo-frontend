@@ -256,6 +256,13 @@ describe('JournalScreen: the Diary', () => {
     });
     expect(a.fetchNextPage).toHaveBeenCalled();
   });
+
+  it('insets its list for the iOS tab bar itself (under the You hub control)', async () => {
+    await mount();
+    expect(screen.getByTestId('journal-list').props.contentInsetAdjustmentBehavior).toBe(
+      'automatic',
+    );
+  });
 });
 
 describe('JournalScreen: bookmarks and notes', () => {

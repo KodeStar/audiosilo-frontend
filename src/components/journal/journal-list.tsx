@@ -1,6 +1,7 @@
 import { ActivityIndicator } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { TAB_BAR_SCROLL_INSETS } from '@/components/shell/scroll-insets';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -25,6 +26,9 @@ export function useJournalListProps() {
     contentContainerStyle: { paddingBottom: paddingBottom + 24 },
     keyboardShouldPersistTaps: 'handled' as const,
     onEndReachedThreshold: 0.6,
+    // In the You hub the list sits under the segmented control, where iOS would not
+    // inset it for the tab bar by itself.
+    ...TAB_BAR_SCROLL_INSETS,
   };
 }
 

@@ -157,4 +157,21 @@ describe('SettingsContent, stacked', () => {
     await render(<SettingsContent />);
     expect(screen.getByText(/^AudioSilo v/)).toBeTruthy();
   });
+
+  it('insets its scroller for the iOS tab bar itself, stacked and split', async () => {
+    // In the You hub it sits under the segmented control, so react-native-screens does
+    // not find it: "Add a server" and the version line scrolled under the tab bar.
+    await render(<SettingsContent embedded />);
+    await layOut(390);
+    expect(screen.getByTestId('settings-scroll').props.contentInsetAdjustmentBehavior).toBe(
+      'automatic',
+    );
+    mockLayout = 'desktop';
+    await render(<SettingsContent />);
+    await layOut(1200);
+    expect(screen.getByTestId('settings-nav')).toBeTruthy();
+    expect(screen.getByTestId('settings-scroll').props.contentInsetAdjustmentBehavior).toBe(
+      'automatic',
+    );
+  });
 });

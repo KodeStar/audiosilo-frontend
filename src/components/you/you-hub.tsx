@@ -7,6 +7,7 @@ import { AccountSection } from '@/components/account/account-section';
 import { JournalScreen } from '@/components/journal/journal-screen';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { SettingsContent } from '@/components/settings/settings-content';
+import { TAB_BAR_SCROLL_INSETS } from '@/components/shell/scroll-insets';
 import { SubNavSections } from '@/components/shell/tab-root-nav';
 import { StatsSection } from '@/components/you/stats/stats-section';
 import { YearSection } from '@/components/you/year/year-section';
@@ -95,10 +96,16 @@ export function YouHub() {
         body
       ) : (
         <ScrollView
+          // A new section starts at its top, not at the offset the last one was left at
+          // (one shared scroller would keep it).
+          key={section}
+          testID="you-hub-scroll"
           className="flex-1"
           contentContainerClassName="gap-6 p-4 lg:px-8"
           contentContainerStyle={{ paddingBottom }}
           keyboardShouldPersistTaps="handled"
+          // Under the segmented control, so iOS would not inset it for the tab bar itself.
+          {...TAB_BAR_SCROLL_INSETS}
         >
           {body}
         </ScrollView>

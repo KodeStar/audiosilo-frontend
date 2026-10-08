@@ -105,6 +105,31 @@ describe('YouHub on a phone', () => {
   });
 });
 
+describe('YouHub scrolling', () => {
+  it.each(['stats', 'year', 'account'])(
+    "insets the %s section's scroller for the iOS tab bar itself",
+    async (section) => {
+      // The scroller sits under the segmented control, where react-native-screens'
+      // first-descendant search never finds it: without this the end of the page (Add a
+      // server, the version line) scrolled under the tab bar.
+      await mount({ section });
+      expect(screen.getByTestId('you-hub-scroll').props.contentInsetAdjustmentBehavior).toBe(
+        'automatic',
+      );
+    },
+  );
+
+  it('starts a new section at its top (a fresh scroller), keeping the same one otherwise', async () => {
+    await mount({ section: 'account' });
+    const first = screen.getByTestId('you-hub-scroll');
+    await screen.rerender(<YouHub />);
+    expect(screen.getByTestId('you-hub-scroll')).toBe(first);
+    mockParams = { section: 'stats' };
+    await screen.rerender(<YouHub />);
+    expect(screen.getByTestId('you-hub-scroll')).not.toBe(first);
+  });
+});
+
 describe('YouHub on tablet and desktop', () => {
   it('publishes Stats, Year in listening and Journal to the sub-nav', async () => {
     mockLayout = 'desktop';

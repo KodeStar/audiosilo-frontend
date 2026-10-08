@@ -5,6 +5,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { useConnectionRemoval } from '@/components/account/connections-section';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { TAB_BAR_SCROLL_INSETS } from '@/components/shell/scroll-insets';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
@@ -105,9 +106,11 @@ export function SettingsContent({
     >
       {layout === 'split' ? (
         <ScrollView
+          testID="settings-scroll"
           className="flex-1"
           contentContainerClassName="gap-6 p-4 lg:px-8"
           contentContainerStyle={{ paddingBottom }}
+          {...TAB_BAR_SCROLL_INSETS}
         >
           {heading}
           <View className="flex-row items-start gap-8">
@@ -232,10 +235,13 @@ function StackedPanes({
   return (
     <ScrollView
       ref={ref}
+      testID="settings-scroll"
       className="flex-1"
       contentContainerClassName="gap-3 p-4 lg:px-8"
       contentContainerStyle={{ paddingBottom }}
       keyboardShouldPersistTaps="handled"
+      // Under the You hub's segmented control, iOS would not inset it for the tab bar.
+      {...TAB_BAR_SCROLL_INSETS}
     >
       {heading}
       {groups.map((g) => (
