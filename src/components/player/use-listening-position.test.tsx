@@ -14,8 +14,8 @@ import { contentKey } from '@/lib/content-key';
 import { usePlayer } from '@/playback/store';
 
 import {
+  useBookPlace,
   useListeningChapter,
-  useListeningPosition,
   useLivePosition,
   useResumePosition,
 } from './use-listening-position';
@@ -25,10 +25,10 @@ const target = { connectionId: 'c', libraryId: 1, path: 'Book' };
 const setPlayer = (s: { key: string | null; position: number; loadingBook?: string | null }) =>
   act(() => (usePlayer as unknown as { setState: (p: object) => void }).setState(s));
 
-describe('useListeningPosition', () => {
-  it('is the saved place, or the live one (rounded down, never below the saved) while loaded', async () => {
+describe('useBookPlace', () => {
+  it('listening is the saved place, or the live one (rounded down, never below the saved) while loaded', async () => {
     await setPlayer({ key: null, position: 0 });
-    const { result } = await renderHook(() => useListeningPosition(target, 100, 15));
+    const { result } = await renderHook(() => useBookPlace(target, 100, 15).listening);
     expect(result.current).toBe(100);
 
     await setPlayer({ key: contentKey('c', 1, 'Book'), position: 250 });
@@ -39,6 +39,12 @@ describe('useListeningPosition', () => {
 
     await setPlayer({ key: contentKey('c', 1, 'Other'), position: 999 });
     expect(result.current).toBe(100);
+  });
+
+  it('reads both places from one live position', async () => {
+    await setPlayer({ key: contentKey('c', 1, 'Book'), position: 250 });
+    const { result } = await renderHook(() => useBookPlace(target, 1000, 15));
+    expect(result.current).toEqual({ listening: 1000, resume: 240 });
   });
 });
 
