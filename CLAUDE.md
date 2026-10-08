@@ -984,7 +984,8 @@ offline queue length without changing progress-sync (decision 7).
 
 **Your listening** (`src/components/you/stats/`, rules in `stats-model.ts`): `StatsSection` is the
 You hub's Stats section. It shows one server's own listening in that server's time (the default
-connection, or a picker when two or more signed-in servers have `user_stats`, `statsServerChoice`;
+connection, or a picker when two or more signed-in servers have `user_stats`: `useStatsServer`, on
+`statsServerChoice`, shared with Year;
 a server without the flag gets a Notice). It reads `useMyListening('1y')` (header, week, streak,
 calendar, weekly bars) and `useMyStats('year')` (longest streak, daily average, clock, rank lists,
 finished shelf, the Year banner), and saves the goal through `useSetListeningGoal` /
@@ -1002,8 +1003,9 @@ from `src/lib/paths.ts`; its params back through `parseYearParams`). The cards c
 server's own stats in server time (`useYearStory`: `useMyStats(range)` for the year, `range=year`
 this year or `YYYY`; for this year also the running streak from `useMyListening('1y')` and the
 goal). The pure `buildYearCards` leaves out any card without data, and a year under an hour with no
-book finished is a calm empty state. Earlier years are found by `useStoryYears`, asking back year by
-year. `StoryCard` is the ONE renderer: the stage lays the bars and tap zones over it, and a share
+book finished is a calm empty state. Earlier years come from one query, `useStoryYears` (the pure
+`findStoryYears`, asking back year by year; past years are kept for the session). The section and the
+full-screen story share `useStoryStage`. `StoryCard` is the ONE renderer: the stage lays the bars and tap zones over it, and a share
 captures it (`share-card.ts`: react-native-view-shot to a 1080x1920 PNG, then expo-sharing;
 `share-card.web.ts`: html-to-image, lazy-loaded, then the Web Share API or a download, CSP-safe
 because covers are plain `?token=` URLs on the web, `BookCover`, never `blob:`). A
