@@ -2,6 +2,8 @@ import type { TFunction } from 'i18next';
 
 import { chapterLabel } from '@/lib/chapter-label';
 import { contentKey } from '@/lib/content-key';
+import { playerParams } from '@/lib/paths';
+import { progressFractionRemaining } from '@/lib/progress-view';
 import { wallClockSeconds } from '@/playback/rate';
 import type { SleepTimerState } from '@/playback/sleep-timer';
 import {
@@ -70,14 +72,12 @@ export type SleepTimerActivityProps = {
 };
 
 /** `audiosilo://player?connection=..&libraryId=..&path=..`: the player route with the
- * book's identity (`playerHref`'s params), so a cold launch from the widget opens THIS
- * book rather than an empty player. */
+ * book's identity (`playerParams`, the params `playerHref` routes with), so a cold launch
+ * from the widget opens THIS book rather than an empty player. */
 export function playerDeepLink(connectionId: string, libraryId: number, path: string): string {
-  const q = [
-    `connection=${encodeURIComponent(connectionId)}`,
-    `libraryId=${libraryId}`,
-    `path=${encodeURIComponent(path)}`,
-  ].join('&');
+  const q = Object.entries(playerParams(connectionId, libraryId, path))
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
   return `${APP_SCHEME}://player?${q}`;
 }
 
@@ -112,7 +112,7 @@ export function continueListeningProps(
     chapterTitle: currentChapterTitle(player, t),
     coverFile,
     timeLeft: left || undefined,
-    progress: total > 0 ? Math.min(1, Math.max(0, position / total)) : undefined,
+    progress: total > 0 ? progressFractionRemaining(position, total).fraction : undefined,
     isPlaying: selectIsTransportLive(player),
     deepLink: playerDeepLink(np.connectionId, np.libraryId, np.path),
     connectionId: np.connectionId,
@@ -245,17 +245,15 @@ export function sameTiming(a: SleepTiming, b: SleepTiming): boolean {
   return Math.abs(a.endsAt - b.endsAt) <= TIMING_TOLERANCE_MS;
 }
 
-/** The Live Activity's props, or null when there should be none. */
+/** The Live Activity's props for a countdown (`sleepTiming`), or null with no book. */
 export function sleepActivityProps(
-  timer: Pick<SleepTimerState, 'phase' | 'endsAt' | 'frozenAt' | 'pauseAtPosition' | 'bookKey'>,
+  timing: SleepTiming,
   player: PlayerState,
-  now: number,
   t: TFunction,
   coverFile: string | undefined,
 ): SleepTimerActivityProps | null {
-  const timing = sleepTiming(timer, player, now);
   const np = player.nowPlaying;
-  if (!timing || !np) return null;
+  if (!np) return null;
   return compact({
     title: np.title,
     chapterTitle: currentChapterTitle(player, t),
