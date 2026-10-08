@@ -247,7 +247,6 @@ function SeriesShelf({
         accessibilityLabel={series}
         renderItem={(b, width) => (
           <CoverTile
-            onShelf
             connectionId={cid}
             libraryId={b.library_id}
             path={b.rel_path}

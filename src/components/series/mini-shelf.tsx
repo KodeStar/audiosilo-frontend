@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import { Ledge } from '@/components/library/shelf-row';
 import { Skeleton } from '@/components/ui/skeleton';
 import { hashString } from '@/lib/monogram';
+import { useDomId } from '@/lib/use-dom-id';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { SeriesEntry } from './series-model';
 import { Spine } from './spine';
@@ -81,12 +83,41 @@ export function MiniShelfSkeleton({
   );
 }
 
+const LEDGE = 8;
+const LEDGE_SHADOW = 12;
+
+/**
+ * The plank the spines stand on: 8px of `shelf-edge` with a light top edge and a darker
+ * foot, and a soft shadow under it. Decorative (`ShelfFrame` hides it from assistive tech).
+ */
+function Ledge({ top }: { top: number }) {
+  const themed = useThemeColors();
+  const id = useDomId('ledge');
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top }}>
+      <View
+        className="border-b-2 border-t border-b-foreground/10 border-t-card/70 bg-shelf-edge"
+        style={{ height: LEDGE }}
+      />
+      <Svg width="100%" height={LEDGE_SHADOW}>
+        <Defs>
+          <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset={0} stopColor={themed.shelfShadow} />
+            <Stop offset={1} stopColor={themed.shelfShadow} stopOpacity={0} />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height={LEDGE_SHADOW} fill={`url(#${id})`} />
+      </Svg>
+    </View>
+  );
+}
+
 function ShelfFrame({ height, children }: { height: number; children: React.ReactNode }) {
-  // Room above the tallest spine, then the plank's 8 and its shadow below.
+  // Room above the tallest spine, then the plank and its shadow below.
   const room = Math.round(height * 1.12);
   return (
     <View
-      style={{ height: room + 20 }}
+      style={{ height: room + LEDGE + LEDGE_SHADOW }}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >

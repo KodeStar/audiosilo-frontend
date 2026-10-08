@@ -67,7 +67,6 @@ export function ProgressTile({
       width={width}
       server={server}
       book={book}
-      onShelf
     />
   );
 }
