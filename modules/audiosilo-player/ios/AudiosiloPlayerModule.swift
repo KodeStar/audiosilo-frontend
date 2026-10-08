@@ -5,10 +5,9 @@ import MediaPlayer
 import UIKit
 
 // The engine lives in AudioEngine.swift (transport, queue, remote commands, Now Playing),
-// with ChapterClips.swift (lock-screen chapter maths), SmartSpeed.swift +
-// SmartSpeedPlanner.swift (silence trimming for downloaded books), VoiceBoostTap.swift (the
-// speech compressor) and AudioEngine+CarPlay.swift (what the CarPlay templates read). This file
-// is the JS bridge only.
+// with ChapterClips.swift (lock-screen chapter maths), VoiceBoostTap.swift + VoiceBoostDSP.swift
+// (the speech compressor) and AudioEngine+CarPlay.swift (what the CarPlay templates read). This
+// file is the JS bridge only.
 
 // MARK: - Records
 
@@ -27,8 +26,8 @@ struct ConfigRecord: Record {
   @Field var autoRewindMax: Double = 0
   @Field var jumpForward: Double = 30
   @Field var jumpBackward: Double = 15
-  /// Phase 6. Trim silences; on iOS only a downloaded book (every track a file:// URL) is
-  /// trimmed. Absent from an older JS bundle: off.
+  /// Phase 6. Trim silences: Android only. iOS accepts and ignores it (Smart Speed was
+  /// withdrawn on iOS, see AudioEngine.swift). Kept so the record matches the JS config.
   @Field var smartSpeed: Bool = false
   /// Phase 6. The speech compressor (VoiceBoostTap.swift). Absent from an older JS bundle: off.
   @Field var voiceBoost: Bool = false
