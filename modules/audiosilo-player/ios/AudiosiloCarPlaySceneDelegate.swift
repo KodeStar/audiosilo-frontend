@@ -44,21 +44,25 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   /// (id, title) of each tab shown, to tell an in-place refresh from a new set of tabs.
   private var shownTabs: [(id: String, title: String)] = []
   private var listTemplates: [CPListTemplate] = []
-  /// Items currently shown, by car item id (one book can be in several tabs).
-  private var itemsById: [String: [CPListItem]] = [:]
+  /// Items currently shown, by book (one book can be in several tabs). Items without a `book`
+  /// (an older snapshot) are left out: they never show as playing.
+  private var itemsByBook: [CarSnapshot.Book: [CPListItem]] = [:]
   private var chapterList: CPListTemplate?
   private var bookmarkFilled = false
   private var bookmarkGeneration = 0
   /// A tapped book waiting for JS to start it: its spinner runs until the engine reports the
   /// book (or 10 s pass).
-  private var pendingTap: (id: String, completion: () -> Void, generation: Int)?
+  private var pendingTap: (book: CarSnapshot.Book?, completion: () -> Void, generation: Int)?
   private var tapGeneration = 0
   /// Last player state the templates reflect, so a notification that changed nothing visible
   /// does not rebuild anything.
-  private var shownPlaying: (id: String?, playing: Bool) = (nil, false)
+  private var shownPlaying: (book: CarSnapshot.Book?, playing: Bool) = (nil, false)
   private var shownChapter: (count: Int, index: Int?) = (0, nil)
   private let covers = NSCache<NSString, UIImage>()
   private let coverQueue = DispatchQueue(label: "audiosilo.car-covers", qos: .userInitiated)
+  /// Covers being decoded, with the items waiting for each: a book in several tabs, or a
+  /// snapshot refresh while the first decode runs, decodes its file once.
+  private var coverWaiters: [String: [CPListItem]] = [:]
 
   /// The bookmark button's fill lasts this long after a press.
   private static let bookmarkFeedback: TimeInterval = 2
@@ -73,7 +77,8 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
     super.init()
   }
 
-  private var player: CarPlayPlayerAccess? { CarPlayPlayer.current }
+  /// The engine the module created; nil before JS called `setup`.
+  private var player: AudioEngine? { AudioEngine.shared }
   private var snapshot: CarSnapshot? { AudiosiloCarSnapshotStore.shared.snapshot }
 
   func start() {
@@ -125,10 +130,10 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
 
   /// One list per snapshot tab (capped at the car's tab and item limits). Before any snapshot,
   /// or signed out, a single list whose empty text is the snapshot's own label (never "use your
-  /// phone": Apple's CarPlay guideline). Rebuilding `itemsById` here is safe: the in-place
+  /// phone": Apple's CarPlay guideline). Rebuilding `itemsByBook` here is safe: the in-place
   /// refresh moves the new items into the shown templates.
   private func makeListTemplates() -> ([(id: String, title: String)], [CPListTemplate]) {
-    itemsById = [:]
+    itemsByBook = [:]
     guard let snap = snapshot else {
       let empty = CPListTemplate(title: "AudioSilo", sections: [])
       empty.tabTitle = "AudioSilo"
@@ -167,20 +172,25 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   }
 
   private func makeItem(_ book: CarSnapshot.Item) -> CPListItem {
-    let item = CPListItem(text: book.title, detailText: book.subtitle,
-                          image: cover(book.artwork) ?? Self.placeholder)
+    let cached = cover(book.artwork)
+    let item = CPListItem(text: book.title, detailText: book.subtitle, image: cached ?? Self.placeholder)
     item.userInfo = book.id
     item.playbackProgress = CGFloat(book.finished == true ? 1 : min(1, max(0, book.progress ?? 0)))
     item.playingIndicatorLocation = .trailing
-    item.isPlaying = book.id == shownPlaying.id && shownPlaying.playing
+    item.isPlaying = isShownPlaying(book.book)
     item.handler = { [weak self] _, completion in
-      self?.tapped(book.id, completion: completion)
+      self?.tapped(book, completion: completion)
     }
-    itemsById[book.id, default: []].append(item)
-    if cover(book.artwork) == nil, let path = book.artwork {
+    if let ref = book.book { itemsByBook[ref, default: []].append(item) }
+    if cached == nil, let path = book.artwork {
       loadCover(path, into: item)
     }
     return item
+  }
+
+  /// Whether a list item for `book` shows the playing indicator.
+  private func isShownPlaying(_ book: CarSnapshot.Book?) -> Bool {
+    book != nil && book == shownPlaying.book && shownPlaying.playing
   }
 
   // MARK: Covers
@@ -193,23 +203,39 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   }
 
   /// Decode + scale the snapshot's JPEG off the main thread (a tab can hold 50 books), then set
-  /// it on the item. Covers are files the app wrote (`file://` URIs); nothing is fetched.
+  /// it on every item waiting for it. Covers are files the app wrote (`file://` URIs); nothing
+  /// is fetched. A path already decoding only adds the item to its waiters.
   private func loadCover(_ path: String, into item: CPListItem) {
+    if coverWaiters[path] != nil {
+      coverWaiters[path]?.append(item)
+      return
+    }
+    coverWaiters[path] = [item]
     let size = CPListItem.maximumImageSize
     let scale = interfaceController.carTraitCollection.displayScale
+    // NSCache is thread-safe (Apple's NSCache docs), though not marked Sendable: a cover cached
+    // since this was queued isn't decoded again.
+    nonisolated(unsafe) let covers = self.covers
     coverQueue.async { [weak self] in
-      guard let url = URL(string: path), url.isFileURL,
-            let source = UIImage(contentsOfFile: url.path) else { return }
-      let format = UIGraphicsImageRendererFormat()
-      format.scale = scale > 0 ? scale : 2
-      let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-        source.draw(in: Self.aspectFill(source.size, in: size))
-      }
+      let image = covers.object(forKey: path as NSString) ?? Self.decodeCover(path, size: size, scale: scale)
       DispatchQueue.main.async {
         guard let self = self else { return }
+        let waiting = self.coverWaiters.removeValue(forKey: path) ?? []
+        guard let image = image else { return }
         self.covers.setObject(image, forKey: path as NSString)
-        item.setImage(image)
+        waiting.forEach { $0.setImage(image) }
       }
+    }
+  }
+
+  /// The cover file scaled to fill the list item's image box. Off the main thread.
+  private nonisolated static func decodeCover(_ path: String, size: CGSize, scale: CGFloat) -> UIImage? {
+    guard let url = URL(string: path), url.isFileURL,
+          let source = UIImage(contentsOfFile: url.path) else { return nil }
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = scale > 0 ? scale : 2
+    return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+      source.draw(in: Self.aspectFill(source.size, in: size))
     }
   }
 
@@ -227,19 +253,19 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   /// and the queue rules. The item's spinner runs until the engine has the book, then Now
   /// Playing is pushed. After 10 s the spinner stops and the list stays (nothing is playing,
   /// so an empty Now Playing would only mislead).
-  private func tapped(_ id: String, completion: @escaping () -> Void) {
+  private func tapped(_ book: CarSnapshot.Item, completion: @escaping () -> Void) {
     finishTap(push: false)
-    if let p = player, p.loadedBookId == id {
+    if let ref = book.book, let p = player, p.loadedBook == ref {
       // Already the loaded book: JS resumes it; show Now Playing at once.
-      AudiosiloCarEvents.shared.send("onCarPlayRequest", ["id": id])
+      AudiosiloCarEvents.shared.send("onCarPlayRequest", ["id": book.id])
       completion()
       pushNowPlaying()
       return
     }
     tapGeneration += 1
     let generation = tapGeneration
-    pendingTap = (id: id, completion: completion, generation: generation)
-    AudiosiloCarEvents.shared.send("onCarPlayRequest", ["id": id])
+    pendingTap = (book: book.book, completion: completion, generation: generation)
+    AudiosiloCarEvents.shared.send("onCarPlayRequest", ["id": book.id])
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.tapTimeout) { [weak self] in
       guard let self = self, self.pendingTap?.generation == generation else { return }
       self.finishTap(push: false)
@@ -266,15 +292,19 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   // MARK: Player changes
 
   @objc private func playerChanged() {
-    if let tap = pendingTap, let p = player, p.hasLoadedBook,
-       p.loadedBookId == tap.id || (p.loadedBookId == nil && p.isPlaying) {
-      finishTap(push: true)
+    // The tapped book is loaded. Without a book on one side (an older bundle's load, or an
+    // older snapshot's item), the first loaded book that plays ends the spinner.
+    if let tap = pendingTap, let p = player, p.hasLoadedBook {
+      let loaded = p.loadedBook
+      if (tap.book != nil && loaded == tap.book) || ((tap.book == nil || loaded == nil) && p.isPlaying) {
+        finishTap(push: true)
+      }
     }
     let before = (shownPlaying, shownChapter)
     rememberPlayerState()
-    if before.0.id != shownPlaying.id || before.0.playing != shownPlaying.playing {
-      for (id, items) in itemsById {
-        let playing = id == shownPlaying.id && shownPlaying.playing
+    if before.0.book != shownPlaying.book || before.0.playing != shownPlaying.playing {
+      for (book, items) in itemsByBook {
+        let playing = isShownPlaying(book)
         items.forEach { $0.isPlaying = playing }
       }
     }
@@ -286,8 +316,8 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
 
   private func rememberPlayerState() {
     let p = player
-    shownPlaying = (p?.loadedBookId, p?.isPlaying ?? false)
-    shownChapter = (p?.chapterTitles.count ?? 0, p?.currentChapterIndex)
+    shownPlaying = (p?.loadedBook, p?.isPlaying ?? false)
+    shownChapter = (p?.chapterCount ?? 0, p?.currentChapterIndex)
   }
 
   // MARK: Now Playing
@@ -295,7 +325,7 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   private func configureNowPlaying() {
     let nowPlaying = CPNowPlayingTemplate.shared
     nowPlaying.upNextTitle = snapshot?.labels.chapters ?? ""
-    nowPlaying.isUpNextButtonEnabled = (player?.chapterTitles.count ?? 0) >= 2
+    nowPlaying.isUpNextButtonEnabled = (player?.chapterCount ?? 0) >= 2
     nowPlaying.isAlbumArtistButtonEnabled = false
     updateNowPlayingButtons()
   }
@@ -314,7 +344,7 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   /// same rate cycling as the `changePlaybackRateCommand`). The engine applies it and tells JS.
   private func cycleRate() {
     guard let p = player else { return }
-    let next = Self.rates.first { $0 > p.rate + 0.01 } ?? Self.rates[0]
+    let next = Self.rates.first { $0 > Double(p.rate) + 0.01 } ?? Self.rates[0]
     p.setRateFromRemote(next)
   }
 

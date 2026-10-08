@@ -8,6 +8,13 @@ fileprivate extension Array {
   }
 }
 
+/// Run `work` on the main thread: now when already there, else async. AVFoundation,
+/// MPRemoteCommandCenter and CarPlay live there, and AVFoundation's completion handlers (seeks)
+/// don't promise a queue. The module's one copy.
+func onMain(_ work: @escaping () -> Void) {
+  if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+}
+
 // MARK: - Engine
 
 /// Whole-book gapless playback via AVQueuePlayer, plus background audio session,
@@ -22,7 +29,8 @@ fileprivate extension Array {
 /// No Smart Speed on iOS (withdrawn in Phase 6 after a device test): the design raised
 /// `player.rate` inside silences and put it back before the next word, and every AVPlayer rate
 /// change while playing is an audible dropout on a real iPhone, so it stuttered at every pause.
-/// `config.smartSpeed` is accepted and ignored; `onProgress` carries no `silenceSaved`.
+/// `config.smartSpeed` is ignored (`ConfigRecord` doesn't declare it); `onProgress` carries no
+/// `silenceSaved`.
 final class AudioEngine: NSObject {
   /// The engine the module created (there is one per module instance). Weak: the module owns
   /// it. CarPlay (AudioEngine+CarPlay.swift) reaches the loaded book through this.
@@ -34,8 +42,7 @@ final class AudioEngine: NSObject {
   private var queued: [(index: Int, item: AVPlayerItem)] = []
   private(set) var currentIndex = 0
   /// The listener's speed: what `player.rate` is set to whenever we play.
-  /// Named `baseRate` (not `rate`): CarPlay reads the speed through `CarPlayPlayerAccess.rate`.
-  private(set) var baseRate: Float = 1.0
+  private(set) var rate: Float = 1.0
   /// Output gain (0...1) last asked for by JS - the sleep timer's fade-out. Held here
   /// (not just on the player) because the queue is torn down and rebuilt on every
   /// load/skip/retry; without re-applying it, a fade-in-progress would jump back to
@@ -84,7 +91,7 @@ final class AudioEngine: NSObject {
   /// with 2+ clips; otherwise every path below keeps the whole-file behaviour.
   private(set) var clips = ChapterClips()
   /// `load`'s 5th argument: which book the queue is (nil from an older JS bundle). CarPlay
-  /// names the loaded book with it (`loadedBookId`); cleared by `reset`.
+  /// matches its items against it (`loadedBook`); cleared by `reset`.
   private(set) var book: BookRecord?
   /// The clip Now Playing currently shows (nil in whole-file mode). Changes post
   /// `.audiosiloPlayerDidChange`.
@@ -272,12 +279,12 @@ final class AudioEngine: NSObject {
     let target = pendingSeek
     pendingSeek = 0
     item.seek(to: CMTime(seconds: target, preferredTimescale: 1000)) { [weak self] finished in
-      Self.onMain {
+      onMain {
         guard let self = self else { return }
         // Start playback only now, so audio begins at the resumed position not at 0.
         if self.wantsPlay {
           self.wantsPlay = false
-          self.player.rate = self.baseRate
+          self.player.rate = self.rate
         }
         self.sendProgress(self.player.currentTime().seconds)
         self.updateNowPlayingInfo()
@@ -294,7 +301,7 @@ final class AudioEngine: NSObject {
   /// AVPlayer can silently drop a `rate` set on a not-yet-ready item back to 1.0 once
   /// that item becomes ready - which made the chosen speed revert to 1x when a
   /// mid-playback download swap replaced the streaming item with the local file (the
-  /// JS state still showed the old speed because the engine never reads `rate` back).
+  /// JS state still showed the old speed because the engine never reads `player.rate` back).
   /// Watch the freshly-current item and re-assert the intended rate once it's ready.
   private func reassertRateWhenReady() {
     itemStatusObs?.invalidate()
@@ -303,8 +310,8 @@ final class AudioEngine: NSObject {
     itemStatusObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
       guard let self = self, item.status == .readyToPlay else { return }
       DispatchQueue.main.async {
-        if self.player.rate != 0, self.player.rate != self.baseRate {
-          self.player.rate = self.baseRate
+        if self.player.rate != 0, self.player.rate != self.rate {
+          self.player.rate = self.rate
         }
       }
     }
@@ -353,7 +360,7 @@ final class AudioEngine: NSObject {
   /// toggles, even when iOS's idea of our state is stale. A pending resume seek
   /// (wantsPlay) counts as "playing" so the press pauses it.
   private func togglePlayback() {
-    if player.timeControlStatus != .paused || wantsPlay {
+    if isPlaying {
       pause()
     } else {
       play()
@@ -385,7 +392,7 @@ final class AudioEngine: NSObject {
       updateNowPlayingInfo()
       return
     }
-    player.rate = baseRate
+    player.rate = rate
     updateNowPlayingInfo()
   }
 
@@ -401,7 +408,7 @@ final class AudioEngine: NSObject {
   /// `onProgress`.
   func seek(to seconds: Double, remote: Bool = false) {
     player.seek(to: CMTime(seconds: max(0, seconds), preferredTimescale: 1000)) { [weak self] finished in
-      Self.onMain {
+      onMain {
         guard let self = self else { return }
         self.sendProgress(self.player.currentTime().seconds)
         self.updateNowPlayingInfo()
@@ -411,36 +418,39 @@ final class AudioEngine: NSObject {
     }
   }
 
-  func seek(by delta: Double, remote: Bool = false) {
-    seek(to: player.currentTime().seconds + delta, remote: remote)
+  /// The skip forward / back commands: always a remote move.
+  private func remoteSeek(by delta: Double) {
+    seek(to: player.currentTime().seconds + delta, remote: true)
   }
 
   /// Jump to a file at a position. `remote`: see `seek(to:remote:)`; a non-zero target lands
   /// only once the rebuilt item is ready, so the event waits for the deferred seek.
   func skip(to index: Int, position: Double, remote: Bool = false) {
     guard index >= 0, index < tracks.count else { return }
-    let wasPlaying = player.timeControlStatus != .paused || wantsPlay
+    let wasPlaying = isPlaying
     rebuildQueue(from: index, position: position, remote: remote)
     // Route through play() so a non-zero target waits for the deferred seek before
     // starting, instead of beginning at 0 on the freshly-rebuilt (not-ready) item.
     if wasPlaying { play() }
   }
 
-  func skipToNext(remote: Bool = false) {
-    if currentIndex + 1 < tracks.count { skip(to: currentIndex + 1, position: 0, remote: remote) }
+  /// The next file, as a remote move (the lock screen's next without chapters).
+  private func remoteSkipToNext() {
+    if currentIndex + 1 < tracks.count { skip(to: currentIndex + 1, position: 0, remote: true) }
   }
 
-  func skipToPrevious(remote: Bool = false) {
+  /// The previous file (the first file: its start), as a remote move.
+  private func remoteSkipToPrevious() {
     if currentIndex - 1 >= 0 {
-      skip(to: currentIndex - 1, position: 0, remote: remote)
+      skip(to: currentIndex - 1, position: 0, remote: true)
     } else {
-      seek(to: 0, remote: remote)
+      seek(to: 0, remote: true)
     }
   }
 
   func setRate(_ r: Double) {
-    baseRate = Float(r)
-    if player.rate != 0 { player.rate = baseRate }
+    rate = Float(r)
+    if player.rate != 0 { player.rate = rate }
     updateNowPlayingInfo()
   }
 
@@ -510,11 +520,6 @@ final class AudioEngine: NSObject {
   func emitRemoteBookmark() {
     guard !tracks.isEmpty else { return }
     send("onRemoteBookmark", ["trackIndex": currentIndex, "position": currentPosition()])
-  }
-
-  /// Run on the main thread: AVFoundation's seek completion handlers don't promise a queue.
-  private static func onMain(_ work: @escaping () -> Void) {
-    if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
   }
 
   // MARK: Observers
@@ -611,7 +616,7 @@ final class AudioEngine: NSObject {
     switch type {
     case .began:
       // Capture intent *before* pausing (pause() clears wantsPlay).
-      wasPlayingBeforeInterruption = player.timeControlStatus != .paused || wantsPlay
+      wasPlayingBeforeInterruption = isPlaying
       pause()
     case .ended:
       // Only auto-resume if we were actually playing when the interruption began.
@@ -666,13 +671,13 @@ final class AudioEngine: NSObject {
     cc.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForward)]
     addCommand(cc.skipForwardCommand) { [weak self] event in
       guard let self = self else { return .commandFailed }
-      self.seek(by: (event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpForward, remote: true)
+      self.remoteSeek(by: (event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpForward)
       return .success
     }
     cc.skipBackwardCommand.preferredIntervals = [NSNumber(value: jumpBackward)]
     addCommand(cc.skipBackwardCommand) { [weak self] event in
       guard let self = self else { return .commandFailed }
-      self.seek(by: -((event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpBackward), remote: true)
+      self.remoteSeek(by: -((event as? MPSkipIntervalCommandEvent)?.interval ?? self.jumpBackward))
       return .success
     }
     addCommand(cc.changePlaybackPositionCommand) { [weak self] event in
@@ -735,7 +740,7 @@ final class AudioEngine: NSObject {
 
   /// Next chapter (the last chapter: nothing), or the next file without chapters.
   private func remoteNext() {
-    guard let ci = currentClip() else { skipToNext(remote: true); return }
+    guard let ci = currentClip() else { remoteSkipToNext(); return }
     guard let target = clips.next(from: ci) else { return }
     moveRemotely(to: target)
   }
@@ -743,7 +748,7 @@ final class AudioEngine: NSObject {
   /// Previous chapter, or this chapter's start when more than 3 s in; the previous file
   /// without chapters.
   private func remotePrevious() {
-    guard let ci = currentClip() else { skipToPrevious(remote: true); return }
+    guard let ci = currentClip() else { remoteSkipToPrevious(); return }
     guard let target = clips.previous(from: ci, position: currentPosition()) else { return }
     moveRemotely(to: target)
   }
@@ -751,7 +756,7 @@ final class AudioEngine: NSObject {
   // MARK: Now Playing
 
   /// Now Playing's rate: the listener's speed while playing, 0 while paused.
-  private var nowPlayingRate: Float { player.rate != 0 ? baseRate : 0 }
+  private var nowPlayingRate: Float { player.rate != 0 ? rate : 0 }
 
   private func updateNowPlayingInfo() {
     guard currentIndex < tracks.count else { return }
@@ -786,7 +791,7 @@ final class AudioEngine: NSObject {
     info[MPNowPlayingInfoPropertyPlaybackRate] = nowPlayingRate
     // The listener's speed even while paused: CarPlay's rate button reads it (without it the
     // button shows 0x while paused, since PlaybackRate is 0 then).
-    info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = baseRate
+    info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = rate
     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     syncPlaybackState()
     loadArtwork(t.artwork, headers: t.headers)
@@ -806,9 +811,10 @@ final class AudioEngine: NSObject {
   }
 
   /// The 1 s tick: elapsed (and rate) only, unless the playhead crossed into another chapter,
-  /// which needs the whole info (title, duration, number).
+  /// which needs the whole info (title, duration, number). Still inside the shown clip (nearly
+  /// every tick): no search through the book's clips.
   private func updateNowPlayingElapsed(_ pos: Double) {
-    if clips.isActive {
+    if clips.isActive, !clips.contains(clip: nowPlayingClip, fileIndex: currentIndex, position: pos) {
       let ci = clips.index(fileIndex: currentIndex, position: pos)
       if ci != nowPlayingClip {
         updateNowPlayingInfo()
@@ -822,7 +828,7 @@ final class AudioEngine: NSObject {
       info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = pos
     }
     info[MPNowPlayingInfoPropertyPlaybackRate] = nowPlayingRate
-    info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = baseRate
+    info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = rate
     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
   }
 

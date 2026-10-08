@@ -4,30 +4,37 @@ import Foundation
 
 /// The car snapshot JS writes through `setCarSnapshot` (Phase 6 contract, section 3). Native
 /// has no strings of its own: every label comes from here, localized by JS. Decoding is
-/// lenient (a missing field never drops the whole snapshot); `play` is Android's and ignored
-/// here (iOS always lets JS start a book).
+/// lenient (a missing field never drops the whole snapshot; undeclared keys are ignored, so
+/// only what iOS reads is declared); `play` is Android's and ignored here (iOS always lets JS
+/// start a book).
 struct CarSnapshot: Decodable {
+  /// The labels the CarPlay templates show (JS sends more; the rest are Android's).
   struct Labels: Decodable {
     var `continue`: String?
-    var upNext: String?
-    var downloads: String?
-    var library: String?
     var chapters: String?
-    var bookmark: String?
-    var bookmarkSaved: String?
     var empty: String?
     var signedOut: String?
-    var unavailable: String?
+  }
+
+  /// Which book an item is: the engine's loaded book compares against it (`loadedBook`) for
+  /// the "playing" indicator and the end of a tapped book's spinner.
+  struct Book: Decodable, Hashable {
+    var connectionId: String
+    var libraryId: Int
+    var path: String
   }
 
   struct Item: Decodable {
+    /// Opaque to iOS: sent back to JS in `onCarPlayRequest`.
     var id: String
     var title: String
     var subtitle: String?
     var progress: Double?
     var finished: Bool?
-    var downloaded: Bool?
     var artwork: String?
+    /// Absent from a snapshot an older bundle wrote (still on disk at a CarPlay-first launch):
+    /// then no item shows as playing until JS writes the next one.
+    var book: Book?
   }
 
   struct Tab: Decodable {
@@ -40,24 +47,6 @@ struct CarSnapshot: Decodable {
   var labels: Labels
   var signedIn: Bool
   var tabs: [Tab]
-}
-
-enum CarItemId {
-  /// `carItemId(ref)` of the JS car model: 'book:' + encodeURIComponent of each of
-  /// connectionId, libraryId, path, joined by ':'. For the engine to name its loaded book in
-  /// the same terms as the snapshot's items (the CarPlay "playing" indicator).
-  static func make(connectionId: String, libraryId: Int, path: String) -> String {
-    "book:" + [connectionId, String(libraryId), path].map(encodeURIComponent).joined(separator: ":")
-  }
-
-  /// JavaScript's `encodeURIComponent`: everything except A-Z a-z 0-9 - _ . ! ~ * ' ( ) is
-  /// percent-encoded as UTF-8. (CharacterSet.alphanumerics would keep non-ASCII letters.)
-  private static let unreserved = CharacterSet(
-    charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
-
-  static func encodeURIComponent(_ s: String) -> String {
-    s.addingPercentEncoding(withAllowedCharacters: unreserved) ?? s
-  }
 }
 
 // MARK: - Store
@@ -173,9 +162,5 @@ final class AudiosiloCarEvents {
         self.pending[name] = body
       }
     }
-  }
-
-  private func onMain(_ work: @escaping () -> Void) {
-    if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
   }
 }
