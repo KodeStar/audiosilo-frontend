@@ -133,7 +133,7 @@ export async function reconcileLoadedPlace(reason: ReconcileReason): Promise<voi
   }
 }
 
-/** "Picked up your place from another device: Chapter 12, 1:02:13" with Undo, shown
+/** "Picked up your place from another device: Chapter 12, 2:13" (into the chapter) with Undo, shown
  * once the app is in front (a lock-screen play moves the book in the background). */
 function tell(bookKey: string, from: number, to: number) {
   whenActive(() => {
@@ -142,19 +142,21 @@ function tell(bookKey: string, from: number, to: number) {
     const chapters = player.nowPlaying.queue.chapters;
     let index = -1;
     for (let i = 0; i < chapters.length; i++) if (to >= chapters[i].book_offset) index = i;
-    const time = formatClock(to);
+    const inChapter = chapters.length > 1 && index >= 0;
+    // Beside a chapter's name, the time INTO that chapter: "Chapter 13, 1:22:00" (the book's
+    // time) read as an impossible place in a six-minute chapter.
+    const time = formatClock(inChapter ? to - chapters[index].book_offset : to);
     // Named like the Resume labels: by place, or by the title when the place would
     // contradict it (a Prologue first makes the 4th chapter "Chapter 3").
     const titled =
       index >= 0 ? contradictedTitle({ number: index + 1, title: chapters[index].title }) : null;
     toast({
       title: t('player.placeMoved.title'),
-      description:
-        chapters.length > 1 && index >= 0
-          ? titled
-            ? t('player.placeMoved.titledAt', { title: titled, time })
-            : t('player.placeMoved.chapterAt', { chapter: index + 1, time })
-          : t('player.placeMoved.at', { time }),
+      description: inChapter
+        ? titled
+          ? t('player.placeMoved.titledAt', { title: titled, time })
+          : t('player.placeMoved.chapterAt', { chapter: index + 1, time })
+        : t('player.placeMoved.at', { time }),
       action: { label: t('player.placeMoved.undo'), onPress: () => undoMove(bookKey, from) },
     });
   });

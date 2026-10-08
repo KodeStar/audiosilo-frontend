@@ -313,7 +313,9 @@ describe('a loaded book another device has moved on', () => {
     expect(saved()).toEqual([105, 110]);
   });
 
-  it('names the chapter when the book has chapters', async () => {
+  it('names the chapter, with the time into that chapter, when the book has chapters', async () => {
+    // The device pass: "Chapter 13, 1:22:00" (the book's time beside a chapter's name) read
+    // as an impossible place in a six-minute chapter. 400 s is 1:40 into Chapter 2 (300-600).
     const chapters = [0, 300, 600].map((start, i) => ({
       index: i,
       title: `Ch ${i + 1}`,
@@ -330,7 +332,7 @@ describe('a loaded book another device has moved on', () => {
     await settle();
     await backInFront();
     expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ description: 'Chapter 2, 6:40' }),
+      expect.objectContaining({ description: 'Chapter 2, 1:40' }),
     );
   });
 
@@ -353,10 +355,10 @@ describe('a loaded book another device has moved on', () => {
     await settle();
     await backInFront();
     expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ description: 'Chapter 3, 6:40' }),
+      expect.objectContaining({ description: 'Chapter 3, 0:40' }),
     );
     expect(mockToast).not.toHaveBeenCalledWith(
-      expect.objectContaining({ description: 'Chapter 4, 6:40' }),
+      expect.objectContaining({ description: 'Chapter 4, 0:40' }),
     );
   });
 
