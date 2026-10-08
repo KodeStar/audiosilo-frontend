@@ -5,6 +5,7 @@ import { Platform, View } from 'react-native';
 
 import { ApiClient, ApiError } from '@/api/client';
 import { probeServerId } from '@/api/server-id-probe';
+import type { ServerInfo } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
@@ -22,7 +23,12 @@ import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pa
 import { useSession } from '@/stores/session';
 
 import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from './connect-frame';
-import { knownToOffer, looksLikeHomeAddress, reconnectAddress } from './connect-model';
+import {
+  httpFallback,
+  knownToOffer,
+  looksLikeHomeAddress,
+  reconnectAddress,
+} from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
@@ -32,7 +38,9 @@ import { useLinkPairing } from './use-pairing';
  * The first step of onboarding (`/connect`): "Your audiobooks, from your own server."
  * The address field asks the server who it is (`GET /server`) and says what it found
  * ("Found Hearthside, AudioSilo 1.17.0") or why it couldn't reach it, with Sign in and,
- * when the server runs a demo, Try the demo. Scan a QR code (native) or paste a pairing
+ * when the server runs a demo, Try the demo. An address typed without a scheme is tried
+ * over https, then once over plain http when https could not connect (`httpFallback`);
+ * a server found over http is named as unencrypted. Scan a QR code (native) or paste a pairing
  * link (web), and one-tap "Reconnect to <server>" rows for remembered servers.
  *
  * A pairing link or QR opens this screen with its `token` (and on native the `server` it
@@ -110,14 +118,29 @@ export function ConnectStart() {
     }
     setBusy(tag);
     try {
-      const info = await new ApiClient(normalized).serverInfo();
-      await setPendingServerUrl(normalized);
+      let base = normalized;
+      let info: ServerInfo;
+      try {
+        info = await new ApiClient(base).serverInfo();
+      } catch (e) {
+        // Typed without a scheme, and https could not connect (not a server's error):
+        // try plain http once, as a server at home often serves only that.
+        const http = tag === 'manual' && !(e instanceof ApiError) ? httpFallback(target) : null;
+        if (!http) throw e;
+        info = await new ApiClient(http).serverInfo().catch((e2: unknown) => {
+          throw e2 instanceof ApiError ? e2 : e;
+        });
+        base = http;
+        setUrl(http);
+      }
+      await setPendingServerUrl(base);
       const found: Probe = {
         kind: 'found',
-        base: normalized,
+        base,
         name: info.name,
         version: info.version,
         demo: !!info.demo?.enabled,
+        unencrypted: base.startsWith('http://'),
       };
       if (tag !== 'manual' && !found.demo) goSignIn(info.name);
       else setProbe(found);

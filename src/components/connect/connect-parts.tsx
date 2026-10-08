@@ -18,7 +18,15 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** What the first step learned about the address it was given. */
 export type Probe =
-  | { kind: 'found'; base: string; name: string; version: string; demo: boolean }
+  | {
+      kind: 'found';
+      base: string;
+      name: string;
+      version: string;
+      demo: boolean;
+      /** It answered over plain http (said in the notice, with the address). */
+      unencrypted?: boolean;
+    }
   | { kind: 'unreachable'; address: string; home: boolean }
   | { kind: 'error'; message: string };
 
@@ -76,6 +84,11 @@ export function ProbeNotice({
         <View className="min-w-0 flex-1 gap-0.5">
           <Text variant="label">{title}</Text>
           <Text variant="muted">{body}</Text>
+          {probe.kind === 'found' && probe.unencrypted ? (
+            <Text variant="muted" testID="probe-unencrypted">
+              {t('connect.probe.unencrypted', { address: probe.base })}
+            </Text>
+          ) : null}
         </View>
       </View>
       {probe.kind === 'found' ? (

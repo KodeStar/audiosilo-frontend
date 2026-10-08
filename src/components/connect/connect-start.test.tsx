@@ -177,6 +177,69 @@ describe('the address field', () => {
     expect(screen.getByText(/home-network address/)).toBeTruthy();
   });
 
+  it('tries plain http once when an address typed without a scheme cannot connect over https', async () => {
+    // The device pass: "mac-studio-3.local:18571" became https://..., and a plain-http home
+    // server read as "Couldn't reach ... home-network address".
+    mockApi.serverInfo
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(info());
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'mac-studio-3.local:18571');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
+    expect(mockBases).toEqual([
+      'https://mac-studio-3.local:18571',
+      'http://mac-studio-3.local:18571',
+    ]);
+    expect(
+      screen.getByText(
+        'This server uses an unencrypted connection: http://mac-studio-3.local:18571',
+      ),
+    ).toBeTruthy();
+    expect(useSession.getState().pendingServerUrl).toBe('http://mac-studio-3.local:18571');
+    expect(screen.getByLabelText('Server address').props.value).toBe(
+      'http://mac-studio-3.local:18571',
+    );
+  });
+
+  it('says nothing about encryption for an https server', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'books.example.com');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
+    expect(screen.queryByTestId('probe-unencrypted')).toBeNull();
+  });
+
+  it('reports the https address when plain http does not answer either', async () => {
+    mockApi.serverInfo.mockRejectedValue(new TypeError('Network request failed'));
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'mac-studio-3.local:18571');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText("Couldn't reach mac-studio-3.local:18571")).toBeTruthy();
+    expect(mockBases).toHaveLength(2);
+    expect(useSession.getState().pendingServerUrl).toBeNull();
+  });
+
+  it('does not try http when a scheme was typed, or when the server answered with an error', async () => {
+    mockApi.serverInfo.mockRejectedValue(new TypeError('Network request failed'));
+    await render(<ConnectStart />);
+    await fireEvent.changeText(
+      screen.getByLabelText('Server address'),
+      'https://mac-studio-3.local:18571',
+    );
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText("Couldn't reach mac-studio-3.local:18571")).toBeTruthy();
+    expect(mockBases).toEqual(['https://mac-studio-3.local:18571']);
+
+    mockBases.length = 0;
+    mockApi.serverInfo.mockRejectedValue(new ApiError(500, 'boom'));
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'books.example.com');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('The server answered with an error')).toBeTruthy();
+    expect(mockBases).toEqual(['https://books.example.com']);
+  });
+
   it('asks for an address when there is none', async () => {
     await render(<ConnectStart />);
     await fireEvent.press(screen.getByText('Continue'));

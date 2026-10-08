@@ -1,6 +1,6 @@
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
 import type { KnownServer } from '@/lib/known-servers';
-import type { PairingScan } from '@/lib/pairing';
+import { normalizeUrl, type PairingScan } from '@/lib/pairing';
 import {
   type AddressedConnection,
   isOwnAddress,
@@ -124,6 +124,18 @@ export function looksLikeHomeAddress(url: string): boolean {
   if (isPrivateV4(host) || isPrivateV6(host)) return true;
   if (/^\d+(\.\d+){3}$/.test(host) || host.includes(':')) return false;
   return /\.(local|lan|home\.arpa)$/.test(host) || !host.includes('.');
+}
+
+/**
+ * The plain-http address to try once when the listener typed an address WITHOUT a
+ * scheme and its https probe (`normalizeUrl` adds https) could not connect: a server at
+ * home often answers plain http only ("mac-studio.local:18571"). Null when a scheme
+ * was typed (the listener said which) or the address is not valid.
+ */
+export function httpFallback(typed: string): string | null {
+  const raw = typed.trim();
+  if (!raw || /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return null;
+  return normalizeUrl(`http://${raw}`) || null;
 }
 
 /** The remembered servers the connect screen offers to reconnect to: those this device

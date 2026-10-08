@@ -358,6 +358,7 @@
     "probe": {
       "found": "{{name}} trouvé",
       "version": "AudioSilo {{version}}",
+      "unencrypted": "Ce serveur utilise une connexion non chiffrée : {{address}}",
       "signIn": "Se connecter",
       "signInTo": "Se connecter à {{name}}",
       "unreachable": "Impossible de joindre {{address}}",

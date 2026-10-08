@@ -1,6 +1,7 @@
 import type { PeopleList, Progress } from '@/api/types';
 
 import {
+  httpFallback,
   bookTotal,
   isFirstConnection,
   joinList,
@@ -116,6 +117,21 @@ describe('reconnectAddress', () => {
     await expect(reconnectAddress(home, probe, true)).resolves.toBe(AWAY);
     await expect(reconnectAddress(entry, probe, false)).resolves.toBe(AWAY);
     expect(probe).not.toHaveBeenCalled();
+  });
+});
+
+describe('httpFallback', () => {
+  it('offers plain http for an address typed without a scheme', () => {
+    expect(httpFallback('mac-studio-3.local:18571')).toBe('http://mac-studio-3.local:18571');
+    expect(httpFallback(' 192.168.1.20:8080/ ')).toBe('http://192.168.1.20:8080');
+    expect(httpFallback('books.example.com/audiosilo')).toBe('http://books.example.com/audiosilo');
+  });
+
+  it('offers nothing when a scheme was typed, or for no address', () => {
+    expect(httpFallback('https://mac-studio-3.local:18571')).toBeNull();
+    expect(httpFallback('HTTP://books.example.com')).toBeNull();
+    expect(httpFallback('')).toBeNull();
+    expect(httpFallback('   ')).toBeNull();
   });
 });
 
