@@ -86,31 +86,69 @@ const ApiContext = createContext<ApiRegistry>({
 /** A connection paired with its API client. */
 export type ApiConnection = { connection: Connection; client: ApiClient };
 
+/** A connection's client and the address and token it was built with. */
+type BuiltClient = { url: string; token: string; client: ApiClient };
+
+/**
+ * Each connection's client on the address it uses now (`pickedUrl`), reusing the one in
+ * `previous` while its address and token are unchanged, so a switch of one connection's
+ * address (home / away) rebuilds only that connection's client: every memo keyed on
+ * another connection's client (the Journal's per-server queries, a capability query's
+ * function) and its in-flight reachability probe survive.
+ */
+export function buildClients(
+  connections: readonly Connection[],
+  picks: Record<string, string>,
+  previous: ReadonlyMap<string, BuiltClient>,
+): Map<string, BuiltClient> {
+  const built = new Map<string, BuiltClient>();
+  for (const c of connections) {
+    const url = pickedUrl(c, picks[c.id]);
+    const kept = previous.get(c.id);
+    built.set(
+      c.id,
+      kept && kept.url === url && kept.token === c.token
+        ? kept
+        : {
+            url,
+            token: c.token,
+            // Inject the dead-token callback so a 401 on ANY request through this client
+            // (query OR mutation) flags this connection for reconnect - the client is the
+            // one choke point every request path shares. Built on the address in use now
+            // (`resolveClient` does the same), never straight from `serverUrl`.
+            client: new ApiClient(url, c.token, undefined, () =>
+              useSession.getState().markNeedsReconnect(c.id, 'auth'),
+            ),
+          },
+    );
+  }
+  return built;
+}
+
+/** The clients built last, by connection id: a cache (a client is a stateless holder of
+ * its address and token, so handing the same one to another provider is harmless). */
+const lastBuilt = new Map<string, BuiltClient>();
+
+/** `buildClients` against the clients built last, which it then replaces. */
+function connectionClients(
+  connections: readonly Connection[],
+  picks: Record<string, string>,
+): Map<string, ApiClient> {
+  const built = buildClients(connections, picks, lastBuilt);
+  lastBuilt.clear();
+  for (const [id, b] of built) lastBuilt.set(id, b);
+  return new Map([...built].map(([id, b]) => [id, b.client]));
+}
+
 export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
   // Which of each connection's addresses (home / away) requests go to right now.
   const picks = useAddressRoute((s) => s.picks);
 
-  // Build the clients only when the connections or the picked addresses change -
-  // re-rendering for an unrelated reason must not tear down and recreate every
-  // ApiClient (it would drop in-flight reachability probes and force-refetch every
-  // query).
-  const clients = useMemo<Map<string, ApiClient>>(() => {
-    const map = new Map<string, ApiClient>();
-    for (const c of connections) {
-      // Inject the dead-token callback so a 401 on ANY request through this client
-      // (query OR mutation) flags this connection for reconnect - the client is the one
-      // choke point every request path shares. Built on the address in use now
-      // (`resolveClient` does the same), never straight from `serverUrl`.
-      map.set(
-        c.id,
-        new ApiClient(pickedUrl(c, picks[c.id]), c.token, undefined, () =>
-          useSession.getState().markNeedsReconnect(c.id, 'auth'),
-        ),
-      );
-    }
-    return map;
-  }, [connections, picks]);
+  // Build the clients only when the connections or the picked addresses change, and then
+  // only the ones whose address or token moved (`buildClients`) - re-creating a client
+  // drops its in-flight reachability probe and force-refetches its queries.
+  const clients = useMemo(() => connectionClients(connections, picks), [connections, picks]);
 
   const registry = useMemo<ApiRegistry>(() => ({ clients, connections }), [clients, connections]);
 
