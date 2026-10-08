@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowDimensions, View } from 'react-native';
 
@@ -17,6 +17,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { GhostSpines } from '@/components/ui/ghost-art';
 import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
@@ -320,15 +321,19 @@ function StatsContent({
       </View>
 
       <Card className="gap-4">
-        <View className="flex-row flex-wrap items-start justify-between gap-2">
-          <SectionTitle title={t('stats.calendar.title')} sub={t('stats.calendar.sub')} />
-          <View className="flex-row items-center gap-1.5">
-            <Icon name="cloud" size={12} color={themed.subtleForeground} />
-            <Text className="font-sans text-[11px] text-subtle-foreground">
-              {t('stats.calendar.everyDevice')}
-            </Text>
-          </View>
-        </View>
+        <SectionTitle
+          title={t('stats.calendar.title')}
+          sub={t('stats.calendar.sub')}
+          className="items-start gap-x-2"
+          action={
+            <View className="flex-row items-center gap-1.5">
+              <Icon name="cloud" size={12} color={themed.subtleForeground} />
+              <Text className="font-sans text-[11px] text-subtle-foreground">
+                {t('stats.calendar.everyDevice')}
+              </Text>
+            </View>
+          }
+        />
         <ListeningCalendar days={listening.days} today={today} width={width - CARD_INSET * 2} />
       </Card>
 
@@ -380,21 +385,22 @@ function StatsContent({
       ) : null}
 
       <Card className="gap-3">
-        <View className="flex-row flex-wrap items-start justify-between gap-2">
-          <SectionTitle
-            title={t('stats.finished.title')}
-            sub={
-              stats.totals.finished > 0
-                ? t('stats.finished.count', { count: stats.totals.finished })
-                : t('stats.finished.none')
-            }
-          />
-          {/* Ink, not a pink link: the page's pink is the clock and this week's bar. */}
-          <Button variant="ghost" size="sm" onPress={() => open.openJournal()}>
-            <Text>{t('stats.finished.journal')}</Text>
-            <Icon name="chevron-right" size={14} color={themed.foreground} />
-          </Button>
-        </View>
+        <SectionTitle
+          title={t('stats.finished.title')}
+          sub={
+            stats.totals.finished > 0
+              ? t('stats.finished.count', { count: stats.totals.finished })
+              : t('stats.finished.none')
+          }
+          className="items-start gap-x-2"
+          action={
+            // Ink, not a pink link: the page's pink is the clock and this week's bar.
+            <Button variant="ghost" size="sm" onPress={() => open.openJournal()}>
+              <Text>{t('stats.finished.journal')}</Text>
+              <Icon name="chevron-right" size={14} color={themed.foreground} />
+            </Button>
+          }
+        />
         {stats.finished_books.length ? (
           <FinishedShelf
             books={stats.finished_books}
@@ -412,21 +418,6 @@ function StatsContent({
         })}
         onPress={openYear}
       />
-    </View>
-  );
-}
-
-function SectionTitle({ title, sub, small }: { title: string; sub: ReactNode; small?: boolean }) {
-  return (
-    <View className="min-w-0 shrink gap-0.5">
-      <Text variant={small ? 'title' : 'heading'} accessibilityRole="header">
-        {title}
-      </Text>
-      {sub ? (
-        <Text variant={small ? 'caption' : 'muted'} style={tabularNums}>
-          {sub}
-        </Text>
-      ) : null}
     </View>
   );
 }

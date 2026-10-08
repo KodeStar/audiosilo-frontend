@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Icon } from '@/components/ui/icon';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
@@ -20,7 +21,6 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { canRevoke, deviceGlyph, knownPlatform, lastSeen, signedInSessions } from './account-model';
-import { AccountSectionHead } from './section-head';
 
 /** A small button's drawn height in rem (`h-[30px]` on the web's 16 px rem), for its
  * 44 pt frame on native. */
@@ -118,7 +118,7 @@ export function DevicesSection({
 
   return (
     <View className="gap-3">
-      <AccountSectionHead title={t('account.devices.title')} sub={t('account.devices.sub')} />
+      <SectionTitle title={t('account.devices.title')} sub={t('account.devices.sub')} />
       <Card className="overflow-hidden p-0">
         {devices.isError ? (
           <View className="gap-3 p-5">

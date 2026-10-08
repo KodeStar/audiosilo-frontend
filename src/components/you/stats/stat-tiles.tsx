@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { nextGoal, suggestedGoal } from './stats-model';
+import { GOAL_MAX, GOAL_MIN, nextGoal, suggestedGoal } from './stats-model';
 
 /** A stat value's figure and unit ("23" "days"), the unit set small: right after the
  * figure ("11h"), or after a space when it is a word (`spaced`: "23 days", "19 of 30"). */
@@ -174,8 +174,8 @@ export function GoalTile({
   const percent = Math.round(progress.fraction * 100);
   const buttons = (
     <View className="flex-row items-center gap-1">
-      {step(-1, 'minus', t('stats.goal.lower'), progress.goal <= 1)}
-      {step(1, 'plus', t('stats.goal.raise'), progress.goal >= 1000)}
+      {step(-1, 'minus', t('stats.goal.lower'), progress.goal <= GOAL_MIN)}
+      {step(1, 'plus', t('stats.goal.raise'), progress.goal >= GOAL_MAX)}
       <Button
         variant="ghost"
         size="sm"
