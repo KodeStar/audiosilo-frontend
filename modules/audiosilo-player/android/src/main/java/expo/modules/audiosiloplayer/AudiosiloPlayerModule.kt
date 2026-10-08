@@ -194,14 +194,20 @@ class AudiosiloPlayerModule : Module() {
       // too. The jump intervals feed the lock-screen skip buttons - the seek amount is read
       // live in the service's custom-command handler; the notification glyphs pick up a
       // changed value on the next service start (nearest predefined ICON_SKIP_*).
-      PlayerConfig.autoRewindMaxMs = (config.autoRewindMax * 1000).toLong()
-      PlayerConfig.jumpForwardMs = (config.jumpForward * 1000).toLong()
-      PlayerConfig.jumpBackwardMs = (config.jumpBackward * 1000).toLong()
+      // Persisted too, for a service started without JS (the car, playback resumption).
+      PlayerConfig.update(
+        appContext.reactContext,
+        autoRewindMaxMs = (config.autoRewindMax * 1000).toLong(),
+        jumpForwardMs = (config.jumpForward * 1000).toLong(),
+        jumpBackwardMs = (config.jumpBackward * 1000).toLong(),
+      )
       // Smart Speed + Voice Boost run in the service's audio chain: a custom session command
-      // applies them there (and the service keeps them for a start without JS).
+      // applies them there (and the service keeps them for a start without JS). JS calls
+      // setConfig on every settings change, so only a changed pair is sent.
       if (config.smartSpeed != null || config.voiceBoost != null) {
         val effects = Pair(config.smartSpeed ?: false, config.voiceBoost ?: false)
         handler.post {
+          if (effects == lastEffects) return@post
           lastEffects = effects
           controller?.let { sendEffects(it, effects) }
         }
@@ -416,7 +422,7 @@ class AudiosiloPlayerModule : Module() {
         attachListener(c)
         // The service may already hold a queue (the car started it, or JS restarted):
         // read its mapping from the items, not from a load this module never made.
-        timelineMap = timelineOf((0 until c.mediaItemCount).map { c.getMediaItemAt(it) })
+        timelineMap = timelineOf(c.mediaItems())
         // The loop is play-state-driven (onIsPlayingChanged). If we reconnected to a
         // service that is already playing, kick it off now since no transition will fire.
         if (c.isPlaying) startProgressLoop()
@@ -458,8 +464,10 @@ class AudiosiloPlayerModule : Module() {
       override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = emitState()
       override fun onTimelineChanged(timeline: Timeline, reason: Int) {
         // A queue set by anyone (this module, the car, playback resumption): its items carry
-        // their file mapping.
-        timelineMap = timelineOf((0 until c.mediaItemCount).map { c.getMediaItemAt(it) })
+        // their file mapping. A SOURCE_UPDATE (a duration resolved) leaves the items, and so the
+        // mapping, as they were.
+        if (reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
+        timelineMap = timelineOf(c.mediaItems())
       }
       override fun onPositionDiscontinuity(
         oldPosition: Player.PositionInfo,
@@ -517,21 +525,15 @@ class AudiosiloPlayerModule : Module() {
     val c = controller ?: return
     if (c.mediaItemCount == 0) return
     val map = timelineMap
-    val silenceSaved = AudioEffects.silenceSavedSeconds
-    if (map.clipped) {
-      // Translate the engine's clip position back to a file-relative position +
-      // the FILE duration, so the JS store's file-based timeline math is unchanged.
-      val (fileIndex, fileSec) = map.itemToFile(c.currentMediaItemIndex, c.currentPosition)
-      val dur = map.fileDurationAt(c.currentMediaItemIndex)
-      sendEvent(
-        "onProgress",
-        mapOf("position" to fileSec, "duration" to dur, "silenceSaved" to silenceSaved),
-      )
-    } else {
-      val pos = c.currentPosition / 1000.0
-      val dur = if (c.duration > 0) c.duration / 1000.0 else map.fileDurationAt(c.currentMediaItemIndex)
-      sendEvent("onProgress", mapOf("position" to pos, "duration" to dur, "silenceSaved" to silenceSaved))
-    }
+    val item = c.currentMediaItemIndex
+    // Clips: translate the engine's clip position back to a file-relative position + the FILE
+    // duration, so the JS store's file-based timeline math is unchanged.
+    val position = if (map.clipped) map.itemToFile(item, c.currentPosition).second else c.currentPosition / 1000.0
+    val duration = if (!map.clipped && c.duration > 0) c.duration / 1000.0 else map.fileDurationAt(item)
+    sendEvent(
+      "onProgress",
+      mapOf("position" to position, "duration" to duration, "silenceSaved" to AudioEffects.silenceSavedSeconds),
+    )
   }
 
   private fun startProgressLoop() {

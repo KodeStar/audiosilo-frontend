@@ -54,14 +54,15 @@ class ArtworkProvider : ContentProvider() {
   companion object {
     fun authority(context: Context) = "${context.packageName}.audiosilo.artwork"
 
-    /** The content URI for a snapshot's artwork file, or null when there is none. */
-    fun uriFor(context: Context, artwork: String?): Uri? {
-      val file = CarSnapshot.artworkFile(artwork) ?: return null
+    /** The content URI for a snapshot item's artwork key ([CarItem.artworkKey]), or null when
+     * it has none. */
+    fun uriFor(context: Context, artworkKey: String?): Uri? {
+      artworkKey ?: return null
       return Uri.Builder()
         .scheme("content")
         .authority(authority(context))
         .appendPath("art")
-        .appendPath(CarSnapshot.artworkKey(file))
+        .appendPath(artworkKey)
         .build()
     }
 

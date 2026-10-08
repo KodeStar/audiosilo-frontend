@@ -32,11 +32,10 @@
  *  - onFlush(StreamMetadata) -> onFlush(): 1.5.1's BaseAudioProcessor has no StreamMetadata.
  *  - Util.EMPTY_BYTE_ARRAY -> a local empty array (keeps Util's static init out of JVM tests).
  *  - Narration defaults (see the companion) instead of Media3's podcast-ish ones.
- *  - A monotonic count of skipped input frames ([totalSkippedFrames]) and of the book time they
- *    were worth ([savedUs], optionally shared process-wide), incremented wherever [skippedFrames]
- *    grows. [skippedFrames] itself still resets on every flush: DefaultAudioSink's position maths
- *    (applySkipping) adds it to the playout position since the last flush, so it must not be
- *    made monotonic.
+ *  - A monotonic count of the book time the skipped frames were worth ([savedUs], optionally
+ *    shared process-wide), incremented wherever [skippedFrames] grows. [skippedFrames] itself
+ *    still resets on every flush: DefaultAudioSink's position maths (applySkipping) adds it to the
+ *    playout position since the last flush, so it must not be made monotonic.
  *  - The deprecated (minimumSilenceDurationUs, paddingSilenceUs, threshold) constructor is gone.
  */
 package expo.modules.audiosiloplayer.effects
@@ -90,9 +89,6 @@ class NarrationSilenceProcessor(
   /** Frames skipped since the last flush (the sink's position maths reads this). */
   @Volatile private var skippedFrames = 0L
 
-  /** Frames skipped since this processor was created; never reset. */
-  private val totalSkippedFramesCounter = AtomicLong()
-
   /** The frames of silence output since the last noise. Enforces [maxSilenceToKeepDurationUs]. */
   private var outputSilenceFramesSinceNoise = 0
 
@@ -125,14 +121,6 @@ class NarrationSilenceProcessor(
 
   /** Input frames skipped as silence since the last flush (resets on flush, like Media3's). */
   fun getSkippedFrames(): Long = skippedFrames
-
-  /** Input frames skipped as silence since this processor was created. Monotonic. */
-  val totalSkippedFrames: Long
-    get() = totalSkippedFramesCounter.get()
-
-  /** Book seconds removed by this processor (or every processor sharing [savedUs]). Monotonic. */
-  val savedSeconds: Double
-    get() = savedUs.get() / 1_000_000.0
 
   override fun onConfigure(
     inputFormat: AudioProcessor.AudioFormat,
@@ -325,7 +313,6 @@ class NarrationSilenceProcessor(
       val skipped = ((bytesConsumed - bytesToOutput) / bytesPerFrame).toLong()
       if (skipped > 0) {
         skippedFrames += skipped
-        totalSkippedFramesCounter.addAndGet(skipped)
         savedUs.addAndGet(skipped * C.MICROS_PER_SECOND / inputAudioFormat.sampleRate)
       }
     }

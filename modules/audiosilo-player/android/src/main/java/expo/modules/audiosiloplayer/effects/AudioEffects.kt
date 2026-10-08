@@ -7,6 +7,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import expo.modules.audiosiloplayer.AudiosiloPlayerService.Companion.PREFS
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -19,7 +20,6 @@ import java.util.concurrent.atomic.AtomicLong
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 object AudioEffects {
-  private const val PREFS = "audiosilo.player" // AudiosiloPlayerService.PREFS
   private const val KEY_SMART = "effects.smart"
   private const val KEY_BOOST = "effects.boost"
 
@@ -52,8 +52,8 @@ object AudioEffects {
     get() = silenceSavedUs.get() / 1_000_000.0
 
   /**
-   * Last applied switches, persisted in SharedPreferences "audiosilo.player" (keys effects.smart,
-   * effects.boost) so a service started without JS applies them. Default off.
+   * Last applied switches, persisted in the player's SharedPreferences ([PREFS], keys
+   * effects.smart, effects.boost) so a service started without JS applies them. Default off.
    */
   fun load(context: Context): Pair<Boolean, Boolean> {
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

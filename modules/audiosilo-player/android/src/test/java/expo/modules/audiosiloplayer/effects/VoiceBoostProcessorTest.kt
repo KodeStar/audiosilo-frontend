@@ -161,6 +161,41 @@ class VoiceBoostProcessorTest {
   }
 
   @Test
+  fun optimisedGainMatchesTheExactReferenceWithin005Db() {
+    // Levels across the curve (under the knee, in it, above it), loud onsets for the limiter,
+    // words with quiet tails, and a toggle off and on again (the ramp both ways).
+    val b = PcmBuilder(rate, channels).floor(100.0)
+    for (db in doubleArrayOf(-40.0, -30.0, -24.0, -21.0, -18.0, -12.0, -6.0, -1.0)) {
+      b.tone(250.0, 220.0, dbfs(db)).word().floor(120.0)
+    }
+    b.tone(200.0, 300.0, 60000.0).floor(80.0).word(voicedMs = 400.0)
+    val input = b.build()
+    val offAt = 60 * chunk
+    val onAt = 90 * chunk
+    fun run(epsilonDb: Double): ShortArray {
+      val switch = AtomicBoolean(true)
+      val p = VoiceBoostProcessor(switch, gainEpsilonDb = epsilonDb)
+      p.configure(pcm16(rate, channels))
+      p.flush()
+      return runProcessor(p, input, channels, chunk) { frame -> switch.set(frame !in offAt until onAt) }
+    }
+    val reference = run(0.0) // an exp of the smoothed gain on every frame, as before
+    val optimised = run(VoiceBoostProcessor.GAIN_EPSILON_DB)
+    assertEquals(reference.size, optimised.size)
+    val ratio = Math.pow(10.0, 0.05 / 20.0) - 1.0
+    var worstDb = 0.0
+    for (i in reference.indices) {
+      val r = reference[i].toInt()
+      val o = optimised[i].toInt()
+      // 0.05 dB of the sample, plus one step of rounding to 16 bits.
+      assertTrue("sample $i: $o vs reference $r", abs(o - r) <= abs(r) * ratio + 1.0)
+      if (abs(r) >= 4096) worstDb = maxOf(worstDb, abs(20.0 * log10(o.toDouble() / r)))
+    }
+    println("Voice Boost optimised vs exact: worst %.4f dB".format(worstDb))
+    assertTrue("worst $worstDb dB", worstDb <= 0.05)
+  }
+
+  @Test
   fun compressorCurve() {
     assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-40.0), 1e-9)
     assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-23.0), 1e-9) // knee starts
