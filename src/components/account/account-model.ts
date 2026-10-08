@@ -104,7 +104,9 @@ export function knownPlatform(platform: string | undefined): KnownPlatform | nul
 
 /** A device row's glyph: an API key is a key; a browser is a laptop; an app is a phone,
  * or a tablet when its name says so ("iPad", "Galaxy Tab", "Pixel Tablet"). The platform
- * header doesn't tell a phone from a tablet, so the name the device signed in with does. */
+ * header doesn't tell a phone from a tablet, so the name the device signed in with does.
+ * A device that hasn't said which app it is ("App not reported yet") is a phone or a
+ * tablet only when its name says so, else a neutral drive, not a guessed phone. */
 export function deviceGlyph(device: {
   kind?: MyDevice['kind'];
   name?: string;
@@ -112,7 +114,10 @@ export function deviceGlyph(device: {
 }): IconName {
   if (device.kind === 'api') return 'key';
   if (device.client?.platform === 'web') return 'laptop';
-  return /\b(ipad|tablet|tab)\b/i.test(device.name ?? '') ? 'tablet' : 'mobile';
+  const name = device.name ?? '';
+  if (/\b(ipad|tablet|tab)\b/i.test(name)) return 'tablet';
+  if (knownPlatform(device.client?.platform)) return 'mobile';
+  return /\b(iphone|phone|pixel|galaxy|android)\b/i.test(name) ? 'mobile' : 'hard-drive';
 }
 
 /** The two hues of a person's gradient monogram (STYLEGUIDE section 8, "Avatar"), from

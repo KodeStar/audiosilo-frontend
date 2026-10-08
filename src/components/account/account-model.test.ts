@@ -153,8 +153,14 @@ describe('platforms and glyphs', () => {
     expect(deviceGlyph({ kind: 'session', name: "Chris's iPad", client: ios })).toBe('tablet');
     expect(deviceGlyph({ kind: 'session', name: 'Galaxy Tab S9', client: null })).toBe('tablet');
     expect(deviceGlyph({ kind: 'session', name: 'iPhone 15', client: ios })).toBe('mobile');
-    // "Tabby's phone" is not a tablet; an app that hasn't said yet is a phone.
+    // "Tabby's phone" is not a tablet; an app that hasn't said yet is what its name says.
     expect(deviceGlyph({ kind: 'session', name: "Tabby's phone", client: null })).toBe('mobile');
+    expect(deviceGlyph({ kind: 'session', name: "Alex's Pixel 8", client: null })).toBe('mobile');
+    // Nothing says what it is ("Fixture web", "App not reported yet"): a neutral glyph.
+    expect(deviceGlyph({ kind: 'session', name: 'Fixture web', client: null })).toBe('hard-drive');
+    expect(deviceGlyph({ kind: 'session', name: 'Kitchen', client: undefined })).toBe('hard-drive');
+    // A reported app is a phone whatever its name.
+    expect(deviceGlyph({ kind: 'session', name: 'Kitchen', client: ios })).toBe('mobile');
   });
 });
 
