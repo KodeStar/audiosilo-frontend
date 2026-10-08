@@ -3,7 +3,7 @@ import { foldAccents } from '@/lib/names';
 import { firstParam, type JournalTab } from '@/lib/paths';
 
 /**
- * The Journal's route rules (`/journal?tab=diary|bookmarks|notes`, `journalHref`): pure,
+ * The Journal's route rules (`/you?section=journal&tab=`, `/journal?tab=`): pure,
  * so the tab a link opens and the search filter are tested apart from the screen.
  */
 

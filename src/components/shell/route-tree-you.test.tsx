@@ -1,8 +1,9 @@
 import { store } from 'expo-router/build/global-state/router-store';
 import { renderRouter } from 'expo-router/testing-library';
 
-import { openJournal, openSettings, openYou, pushInShell } from '@/lib/open';
-import { journalHref, playerHref } from '@/lib/paths';
+import { openJournal, openSettings, openYou } from '@/lib/open';
+import { playerHref } from '@/lib/paths';
+import { popTabToRoot } from '@/lib/root-stack';
 import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
 
 // The You hub is the Me tab's ROOT: every way in (the palette, the profile menu, a book
@@ -63,8 +64,9 @@ it("pops the hub's stack to the root on a second press of its tab, keeping the s
   // second hub over the pages).
   await mount('/you?section=year');
   await nav(() => router.push('/account?connection=c'));
-  expect(router.canDismiss()).toBe(true);
-  await nav(() => router.dismissAll());
+  await nav(() => popTabToRoot('(me)'));
+  // On the root already: nothing to pop.
+  await nav(() => popTabToRoot('(me)'));
   expect(tabStack('(me)')).toEqual(['you']);
   expect(routeInfo().params).toEqual({ section: 'year' });
 });
@@ -72,8 +74,8 @@ it("pops the hub's stack to the root on a second press of its tab, keeping the s
 it('opens the hub from over the full player in the one shell underneath', async () => {
   await mount('/library');
   await nav(() => router.push(playerHref('c', 1, 'x')));
-  // A book section's "See all in your journal" goes through pushInShell.
-  await nav(() => pushInShell(journalHref('bookmarks')));
+  // A book section's "See all in your journal".
+  await nav(() => openJournal('bookmarks'));
   expect(rootRoutes()).toEqual(['(app)']);
   expect(routeInfo().segments).toEqual(['(app)', '(me)', 'you']);
   expect(routeInfo().params).toEqual({ section: 'journal', tab: 'bookmarks' });

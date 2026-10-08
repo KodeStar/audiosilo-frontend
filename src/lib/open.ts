@@ -1,5 +1,4 @@
 import { type Href, router } from 'expo-router';
-import { store } from 'expo-router/build/global-state/router-store';
 
 import {
   authorHref,
@@ -15,11 +14,16 @@ import {
   type SeriesRef,
   settingsHref,
   type SettingsSection,
-  YOU_PATHNAME,
   youHref,
   type YouSection,
 } from '@/lib/paths';
-import { currentNavState, focusedRoute, type NavState, shellUnderTop } from '@/lib/root-stack';
+import {
+  currentNavState,
+  focusedRoute,
+  type NavState,
+  popTabToRoot,
+  shellUnderTop,
+} from '@/lib/root-stack';
 
 /** `href` inside the tab group `tab` (`/book/1` -> `/(library)/book/1`). */
 function inTab(href: Href, tab: string): Href {
@@ -37,10 +41,6 @@ function inTab(href: Href, tab: string): Href {
  * none (it would land in Home).
  */
 export function pushInShell(href: Href, state: NavState | undefined = currentNavState()) {
-  if (pathnameOf(href) === YOU_PATHNAME) {
-    openTabRoot(href, ME_TAB, state);
-    return;
-  }
   const shell = shellUnderTop(state);
   if (!shell || shell.above === 0) {
     router.push(href);
@@ -54,27 +54,6 @@ export function pushInShell(href: Href, state: NavState | undefined = currentNav
 /** The Me tab's group: its root is the You hub. */
 const ME_TAB = '(me)';
 
-/** An href's pathname (`/you` from `/you?section=year` or `{ pathname: '/you' }`). */
-function pathnameOf(href: Href): string {
-  const path = typeof href === 'string' ? href : href.pathname;
-  return path.split('?')[0];
-}
-
-type KeyedState = NavState & {
-  key?: string;
-  routes: (NavState['routes'][number] & { state?: KeyedState })[];
-};
-
-/** The stack state of tab `tab` (its routes, its navigator key), anywhere in `state`. */
-function tabStackState(state: KeyedState | undefined, tab: string): KeyedState | null {
-  for (const r of state?.routes ?? []) {
-    if (r.name === tab) return r.state ?? null;
-    const found = tabStackState(r.state, tab);
-    if (found) return found;
-  }
-  return null;
-}
-
 /**
  * Open `href`, a tab's ROOT with its params (the You hub on a section), as THAT tab's root:
  * close the full player or the credits over the shell, pop the tab's stack back to its
@@ -86,10 +65,7 @@ function tabStackState(state: KeyedState | undefined, tab: string): KeyedState |
 function openTabRoot(href: Href, tab: string, state: NavState | undefined) {
   const shell = shellUnderTop(state);
   if (shell && shell.above > 0) router.dismiss(shell.above);
-  const stack = tabStackState(state as KeyedState | undefined, tab);
-  if (stack?.key && stack.routes.length > 1) {
-    store.navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
-  }
+  popTabToRoot(tab, state);
   router.navigate(href);
 }
 

@@ -2,6 +2,7 @@ import type { MyDevice } from '@/api/types';
 import type { IconName } from '@/components/ui/icon';
 import { parseYouSection, youTitleKey } from '@/components/you/you-model';
 import { hashString } from '@/lib/monogram';
+import type { NavRoute } from '@/lib/root-stack';
 
 /**
  * The pure parts of a server's account page (`AccountSection`): which server it shows,
@@ -127,14 +128,11 @@ export function avatarHues(name: string): [number, number] {
   return [h, (h + 50) % 360];
 }
 
-/** A route in the Account page's stack (React Navigation's `{ name, params }`). */
-export type StackRoute = { name: string; params?: object };
-
 /**
  * The route the Account page sits on: the one under the LAST `account` route of its stack
  * (the page is on top when it mounts), or undefined for a cold link.
  */
-export function routeUnderAccount(routes: readonly StackRoute[]): StackRoute | undefined {
+export function routeUnderAccount(routes: readonly NavRoute[]): NavRoute | undefined {
   const at = routes.map((r) => r.name).lastIndexOf('account');
   return at > 0 ? routes[at - 1] : undefined;
 }
@@ -145,7 +143,7 @@ export function routeUnderAccount(routes: readonly StackRoute[]): StackRoute | u
  * the hub's sections. Null for anything else (the profile menu over any page, a cold
  * link): the chrome's own Back covers it.
  */
-export function accountParentKey(parent: StackRoute | undefined) {
+export function accountParentKey(parent: NavRoute | undefined) {
   if (parent?.name === 'settings') return 'settings.title' as const;
   if (parent?.name === 'you') {
     const section = (parent.params as { section?: string } | undefined)?.section;

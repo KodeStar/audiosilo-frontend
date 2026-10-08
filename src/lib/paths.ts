@@ -208,9 +208,9 @@ export type JournalTab = 'diary' | 'bookmarks' | 'notes';
  * from the top bar's gear and profile menu (an old link to them still renders). */
 export type YouSection = 'stats' | 'year' | 'journal' | 'settings' | 'account';
 
-/** The You hub's pathname: the Me tab's ROOT, so `pushInShell` opens it as the tab root
- * (`src/lib/open.ts`), never as a page pushed on another tab. */
-export const YOU_PATHNAME = '/you';
+/** The You hub's pathname: the Me tab's ROOT, opened with `openYou` / `openJournal`
+ * (`src/lib/open.ts`), never pushed as a page on another tab. */
+const YOU_PATHNAME = '/you';
 
 /** The You hub on `section` (Stats is the plain `/you`), with the Journal's `tab` when
  * the section is the Journal and the tab isn't the Diary. */
@@ -218,12 +218,6 @@ export function youHref(section?: YouSection, journalTab?: JournalTab): Href {
   if (!section || section === 'stats') return YOU_PATHNAME;
   const tab = section === 'journal' && journalTab && journalTab !== 'diary' ? journalTab : null;
   return { pathname: YOU_PATHNAME, params: tab ? { section, tab } : { section } };
-}
-
-/** The Journal, on `tab` when given: the You hub's Journal section. (`/journal?tab=` is
- * still a route, for links made before the hub.) */
-export function journalHref(tab?: JournalTab): Href {
-  return youHref('journal', tab);
 }
 
 /** What the full-screen Year in listening story (`/year`) shows. */
