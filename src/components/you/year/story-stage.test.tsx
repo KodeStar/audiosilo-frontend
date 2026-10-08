@@ -160,4 +160,30 @@ describe('StoryStage', () => {
     await act(async () => rerender(<StoryStage {...props} player={player(1)} />));
     expect(announce).toHaveBeenCalledWith(expect.stringMatching(/^Card 2 of 8\. Books finished/));
   });
+
+  it('draws a long name breakable inside itself, its comma with it, and reads it plain', async () => {
+    const LONG = 'demo_cb805a73d8a4';
+    const longCopies = cards.map((c) =>
+      cardCopy(c, { year: '2026', userName: LONG, serverName: 'Hearthside' }, i18n.t),
+    );
+    await render(
+      <StoryStage
+        cards={cards}
+        copies={longCopies}
+        width={360}
+        connectionId="a"
+        cardRef={{ current: null }}
+        plainCovers={false}
+        screenReader={false}
+        onHold={jest.fn()}
+        player={player(0)}
+      />,
+    );
+    const heading = screen.getByText(/here's your 2026 in listening/, {
+      includeHiddenElements: true,
+    });
+    const text = [heading.props.children].flat().join('');
+    expect(text.startsWith(`${Array.from(LONG).join('\u200B')}, here's`)).toBe(true);
+    expect(screen.getByLabelText(new RegExp(`^Card 1 of 8\\. .*${LONG}, here's`))).toBeTruthy();
+  });
 });

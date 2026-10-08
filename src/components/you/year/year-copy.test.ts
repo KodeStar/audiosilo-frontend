@@ -1,6 +1,13 @@
 import i18n from '@/i18n';
 
-import { cardCopy, cardSpeech, listenTime, yearStateCopy } from './year-copy';
+import {
+  breakableName,
+  cardCopy,
+  cardSpeech,
+  listenTime,
+  LONG_NAME,
+  yearStateCopy,
+} from './year-copy';
 import { yearStats } from './year-fixture';
 import { buildYearCards, type YearCard } from './year-model';
 
@@ -127,5 +134,43 @@ describe('yearStateCopy', () => {
       yearStateCopy({ status: 'empty', serverName: 'Hearthside', year: '2026', current: true }, t)
         .body,
     ).not.toBe(past.body);
+  });
+});
+
+describe('a long name on the first card', () => {
+  // The device pass: "demo_cb805a73d8a4" fitted one line and its comma did not, so the
+  // comma started the next line alone (", here's your 2026...").
+  const LONG = 'demo_cb805a73d8a4';
+  const hours = cards.find((c) => c.kind === 'hours')!;
+
+  it('gives a long name room to break inside itself, and leaves a short one alone', () => {
+    expect(breakableName('alex')).toBe('alex');
+    expect(breakableName('x'.repeat(LONG_NAME))).toBe('x'.repeat(LONG_NAME));
+    expect(breakableName(LONG)).toBe(Array.from(LONG).join('\u200B'));
+    // Accents written as combining marks, and joined emoji, are never split.
+    expect(breakableName('Zoe\u0301_abcdefghijklm')).toContain('e\u0301');
+    expect(breakableName('Zoe\u0301_abcdefghijklm')).not.toContain('\u200B\u0301');
+    expect(breakableName('abcdefghijklm\u{1F469}\u200D\u{1F4BB}')).toContain(
+      '\u{1F469}\u200D\u{1F4BB}',
+    );
+  });
+
+  it.each(['en', 'de', 'fr', 'es', 'it', 'pt'])(
+    'keeps the comma on the name in %s, and the heard title plain',
+    (lng) => {
+      const copy = cardCopy(hours, { ...ctx, userName: LONG }, i18n.getFixedT(lng));
+      expect(copy.title).toContain(`${LONG},`);
+      expect(copy.title).not.toContain('\u200B');
+      expect(copy.titleShown).toBeDefined();
+      // Drawn: breakable inside the name, never between its last character and the comma.
+      expect(copy.titleShown).toContain('a\u200B4,');
+      expect(copy.titleShown).not.toContain('\u200B,');
+      expect(copy.titleShown!.replace(/\u200B/g, '')).toBe(copy.title);
+      expect(cardSpeech(copy)).not.toContain('\u200B');
+    },
+  );
+
+  it('draws a short name as it is', () => {
+    expect(copyOf('hours').titleShown).toBeUndefined();
   });
 });

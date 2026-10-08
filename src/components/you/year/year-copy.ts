@@ -22,8 +22,11 @@ export type CopyContext = {
 export type CardCopy = {
   /** The small caps line at the top. */
   kicker: string;
-  /** A heading (Bricolage). */
+  /** A heading (Bricolage), as heard and as plain text. */
   title?: string;
+  /** The heading as drawn, when it differs from `title`: a long name with room to break
+   * inside itself (`breakableName`). */
+  titleShown?: string;
   /** The big figure, and the words under it. */
   big?: string;
   unit?: string;
@@ -38,6 +41,30 @@ export type CardCopy = {
   /** The thumbnail's label. */
   thumb: string;
 };
+
+/** A name longer than this may not fit one line of a card's heading. */
+export const LONG_NAME = 12;
+const ZWSP = '\u200B';
+/** Marks and joiners that belong to the character before them: never split from it. */
+const JOINS_BACK = /[\p{M}\u200D\uFE0E\uFE0F]/u;
+
+/**
+ * A long name with a break opportunity (a zero-width space) between its characters, so a
+ * name wider than the card breaks inside itself and its comma stays on its last line. A
+ * name with no room to break (a login like "demo_cb805a73d8a4") was broken by the text
+ * engine at the last place that fitted, which put the comma alone at the start of the
+ * next line. A name that fits is untouched, and so is a short one.
+ */
+export function breakableName(name: string): string {
+  if (Array.from(name).length <= LONG_NAME) return name;
+  let out = '';
+  for (const ch of name) {
+    if (out && !JOINS_BACK.test(ch) && !out.endsWith('\u200D') && ch !== ' ' && !out.endsWith(' '))
+      out += ZWSP;
+    out += ch;
+  }
+  return out;
+}
 
 /** "36 hours", or "1h 20m" under two hours (a rounded "1 hour" would overstate it). */
 export function listenTime(seconds: number, t: TFunction): string {
@@ -72,6 +99,16 @@ export function cardCopy(card: YearCard, ctx: CopyContext, t: TFunction): CardCo
         title: ctx.userName
           ? t('year.card.hours.leadNamed', { name: ctx.userName, year: ctx.year })
           : t('year.card.hours.lead', { year: ctx.year }),
+        // Every locale writes the comma straight after the name ("{{name}}, ..."), so it
+        // stays with the name's last character.
+        ...(ctx.userName && breakableName(ctx.userName) !== ctx.userName
+          ? {
+              titleShown: t('year.card.hours.leadNamed', {
+                name: breakableName(ctx.userName),
+                year: ctx.year,
+              }),
+            }
+          : {}),
         big: formatCount(hours),
         unit: t('year.card.hours.unit', { count: hours }),
         body,

@@ -81,7 +81,7 @@ function CardBody({
     case 'hours':
       return (
         <View style={{ marginTop: 'auto', gap: 6 * u }}>
-          {copy.title ? <Heading u={u}>{copy.title}</Heading> : null}
+          {copy.title ? <Heading u={u}>{copy.titleShown ?? copy.title}</Heading> : null}
           <View style={{ marginTop: 10 * u }}>
             <Big u={u}>{copy.big}</Big>
             <Heading u={u} size={22}>
