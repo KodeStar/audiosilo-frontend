@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Icon } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Notice } from '@/components/ui/notice';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +21,7 @@ import { Text } from '@/components/ui/text';
 import { touchTarget } from '@/components/ui/touch-target';
 import { formatRelative } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { AccountSectionHead } from './section-head';
 import type { ApiKeysManager } from './use-api-keys-manager';
@@ -115,11 +117,15 @@ function ApiKeyRow({
   onRevoke: () => void;
 }) {
   const { t } = useTranslation();
+  const themed = useThemeColors();
   const target = touchTarget(SM_BUTTON_REM);
   return (
     <View
       className={cn('flex-row items-center gap-3 px-4 py-3', !first && 'border-t border-border')}
     >
+      <View className="h-9 w-9 items-center justify-center rounded-[11px] bg-muted">
+        <Icon name="key" size={17} color={themed.mutedForeground} />
+      </View>
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="label" numberOfLines={1}>
           {apiKey.label}

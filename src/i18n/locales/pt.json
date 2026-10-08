@@ -24,7 +24,6 @@
       "description": "O idioma da aplicação. Sistema segue este dispositivo."
     },
     "playback": {
-      "label": "Reprodução",
       "skipBack": "Recuar",
       "skipForward": "Avançar",
       "defaultSpeed": "Velocidade predefinida",
@@ -33,7 +32,6 @@
       "off": "Desligado"
     },
     "sleep": {
-      "label": "Temporizador",
       "auto": {
         "label": "Temporizador automático",
         "description": "Inicia automaticamente um temporizador para as reproduções que começam entre estas horas."
@@ -61,7 +59,6 @@
       }
     },
     "upNext": {
-      "label": "A seguir",
       "autoPlay": {
         "label": "Reproduzir automaticamente o livro seguinte",
         "description": "Quando um livro termina, inicia o primeiro de A seguir, ou o seguinte da série."
@@ -127,7 +124,6 @@
       "revokeShort": "Revogar"
     },
     "support": {
-      "label": "Apoiar",
       "intro": "O AudioSilo é auto-hospedado e gratuito. Se quiser apoiar o seu desenvolvimento, pode contribuir no GitHub Sponsors.",
       "cta": "Apoiar o AudioSilo"
     },
@@ -163,7 +159,6 @@
   },
   "account": {
     "connections": {
-      "label": "Servidores",
       "manage": "Gerir {{name}}",
       "remove": "Remover {{name}}",
       "add": "Adicionar um servidor",
@@ -211,6 +206,9 @@
       "copy": "Copiar ligação",
       "qr": "Código de associação para {{server}}",
       "error": "Não foi possível contactar {{server}}. Nenhum código foi criado, tente novamente."
+    },
+    "addresses": {
+      "body": "As apps usam o endereço de casa na tua rede doméstica e o endereço fora de casa em qualquer outro lado."
     },
     "devices": {
       "title": "Dispositivos com sessão iniciada",
@@ -389,10 +387,7 @@
     },
     "anotherServer": "Outro servidor",
     "addresses": {
-      "title": "Em casa e fora",
-      "body": "{{name}} tem dois endereços. O AudioSilo usa o rápido em casa e muda sozinho quando sais.",
-      "home": "Em casa",
-      "away": "Fora"
+      "body": "{{name}} tem dois endereços. O AudioSilo usa o rápido em casa e muda sozinho quando sais."
     },
     "panel": {
       "title": "Todos os livros da casa, em todos os dispositivos.",
@@ -1460,8 +1455,7 @@
       "journal": "Diário",
       "settings": "Definições",
       "account": "Conta"
-    },
-    "placeholder": "Esta parte chega em breve."
+    }
   },
   "ui": {
     "error": "Algo correu mal.",
@@ -1855,9 +1849,11 @@
     }
   },
   "addresses": {
+    "title": "Em casa e fora",
     "home": "Endereço de casa",
     "away": "Endereço fora de casa",
     "paired": "Endereço do servidor",
+    "inUse": "Em uso",
     "usingHome": "A usar o teu endereço de casa",
     "usingAway": "A usar o teu endereço fora de casa",
     "usingPaired": "A usar o endereço com que te ligaste",
@@ -1885,7 +1881,6 @@
     "close": "Fechar a história",
     "previous": "Cartão anterior",
     "next": "Cartão seguinte",
-    "story": "O teu ano de audição",
     "cardOf": "Cartão {{n}} de {{total}}",
     "thumbLabel": "Cartão {{n}}: {{label}}",
     "thumbKicker": "Cartão {{n}}",

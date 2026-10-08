@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import type { ServerAddresses } from '@/api/types';
+import { AddressesCard } from '@/components/layout/addresses-card';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Button } from '@/components/ui/button';
 import { SkeletonText } from '@/components/ui/skeleton';
@@ -12,7 +13,6 @@ import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 
 import { joinList, type ReadyLine } from './connect-model';
-import { AddressesCard } from './connect-parts';
 import { ConnectFrame, StepDots } from './connect-frame';
 import { ReadyShelf } from './ready-shelf';
 import { type ReadyPlace, useReadySummary } from './use-ready-summary';
@@ -69,7 +69,7 @@ export function ReadyScreen({
         )}
       </View>
       {addresses?.home && addresses.away ? (
-        <AddressesCard name={name} addresses={addresses} />
+        <AddressesCard addresses={addresses} body={t('onboarding.addresses.body', { name })} />
       ) : null}
       <View className="w-full flex-row flex-wrap justify-center gap-2">
         <Button

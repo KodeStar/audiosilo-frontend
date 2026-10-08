@@ -1,8 +1,11 @@
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
-import { useMyDevices, useServerInfo } from '@/api/hooks';
+import { useActiveAddress } from '@/api/address-route';
+import { useMyDevices, useServerAddresses, useServerInfo } from '@/api/hooks';
+import type { Capabilities } from '@/api/types';
+import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -10,6 +13,8 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
+import { cleanAddresses } from '@/lib/pairing';
+import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { APP_VERSION } from '@/lib/version';
 import { useSession } from '@/stores/session';
 
@@ -147,10 +152,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         />
       </View>
 
-      {/* At home and away addresses: workstream C1's `useActiveAddress(cid)` card goes
-          here at integration (this server's home and away addresses and which one this
-          device is using). */}
-      <AddressesCardSlot />
+      <AccountAddresses cid={cid} caps={caps} />
 
       {caps?.my_devices === true ? (
         <DevicesSection connectionId={cid} serverName={serverName} />
@@ -212,8 +214,30 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   );
 }
 
-/** Where the "At home and away" addresses card lands at integration (workstream C1
- * builds `useActiveAddress(cid)` in parallel). Renders nothing until then. */
-function AddressesCardSlot() {
-  return null;
+/**
+ * "At home and away" (capability `addresses`): this server's home and away addresses,
+ * what the device keeps (`connection.addresses`, which the native address runner
+ * refreshes) merged with what the server says now (`useServerAddresses`; on the web it
+ * is the only refresh), and on native which one this device is using now. Web never
+ * switches (the served player stays on its own origin), so it shows no "in use" line.
+ * Nothing for a server without the capability or with no address to show.
+ */
+function AccountAddresses({ cid, caps }: { cid: string; caps: Capabilities | undefined }) {
+  const { t } = useTranslation();
+  const kept = useSession((s) => s.connections.find((c) => c.id === cid)?.addresses);
+  const { data: fresh } = useServerAddresses(cid);
+  const active = useActiveAddress(cid);
+  if (caps?.addresses !== true) return null;
+  const addresses = mergeAddresses(kept, cleanAddresses(fresh));
+  if (!addresses) return null;
+  // Named against what the card shows (the server may have just told us an address the
+  // device hasn't stored yet).
+  const inUse = addressKind(active.url, { id: cid, serverUrl: active.url, addresses });
+  return (
+    <AddressesCard
+      addresses={addresses}
+      body={t('account.addresses.body')}
+      inUse={Platform.OS === 'web' ? undefined : inUse}
+    />
+  );
 }

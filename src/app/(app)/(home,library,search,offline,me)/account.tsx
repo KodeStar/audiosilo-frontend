@@ -1,8 +1,10 @@
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import { useScopedCid } from '@/api/provider';
+import { accountParentKey, routeUnderAccount } from '@/components/account/account-model';
 import { AccountSection } from '@/components/account/account-section';
 import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -11,9 +13,10 @@ import { useSession } from '@/stores/session';
 
 /**
  * Per-connection account screen (`/account?connection=<cid>`), reached from Settings'
- * servers list and the profile menu. The body is `AccountSection`, which the phone You
- * hub's Account segment renders too; this route adds the breadcrumbs back to Settings
- * and the scroll.
+ * servers list (the Settings page, or the phone You hub's Settings section) and the
+ * profile menu. The body is `AccountSection`, which the phone You hub's Account segment
+ * renders too; this route adds the scroll and a breadcrumb back to the page it was
+ * opened from (`accountParentKey`: Settings, a hub section, else a plain Back).
  *
  * The `?connection=` scope comes from this route's OWN local param (reliable on a cold
  * deep link; `ContentScope` redirects home for a server that isn't signed in), read via
@@ -33,9 +36,14 @@ function AccountContent() {
   const cid = useScopedCid();
   const name = useSession((s) => s.connections.find((c) => c.id === cid)?.name);
   const paddingBottom = useMiniPlayerInset();
+  const navigation = useNavigation();
+  // Read once: the page is on top of its stack when it mounts.
+  const [parentKey] = useState(() =>
+    accountParentKey(routeUnderAccount(navigation.getState()?.routes ?? [])),
+  );
 
   const crumbs: Crumb[] = [
-    { label: t('settings.title'), onPress: () => router.back() },
+    { label: t(parentKey), onPress: () => router.back() },
     { label: name ?? t('settings.account.label'), active: true },
   ];
 

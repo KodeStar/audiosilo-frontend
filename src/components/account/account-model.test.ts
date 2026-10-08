@@ -1,6 +1,7 @@
 import type { MyDevice } from '@/api/types';
 
 import {
+  accountParentKey,
   ACTIVE_NOW_MS,
   avatarHues,
   canRevoke,
@@ -11,6 +12,7 @@ import {
   PAIRING_TTL_MS,
   pairingSecondsLeft,
   resolveAccountCid,
+  routeUnderAccount,
   signedInSessions,
 } from './account-model';
 
@@ -143,10 +145,39 @@ describe('platforms and glyphs', () => {
     expect(knownPlatform(undefined)).toBeNull();
   });
 
-  it('draws a browser as the globe and anything else as a personal device', () => {
-    expect(deviceGlyph('web')).toBe('globe');
-    expect(deviceGlyph('ios')).toBe('user');
-    expect(deviceGlyph(undefined)).toBe('user');
+  it('draws a key, a laptop, a tablet or a phone', () => {
+    const web = { app: 'audiosilo-web', version: '1', platform: 'web' };
+    const ios = { app: 'audiosilo', version: '1', platform: 'ios' };
+    expect(deviceGlyph({ kind: 'api', name: 'Heimdall', client: web })).toBe('key');
+    expect(deviceGlyph({ kind: 'session', name: 'Firefox', client: web })).toBe('laptop');
+    expect(deviceGlyph({ kind: 'session', name: "Chris's iPad", client: ios })).toBe('tablet');
+    expect(deviceGlyph({ kind: 'session', name: 'Galaxy Tab S9', client: null })).toBe('tablet');
+    expect(deviceGlyph({ kind: 'session', name: 'iPhone 15', client: ios })).toBe('mobile');
+    // "Tabby's phone" is not a tablet; an app that hasn't said yet is a phone.
+    expect(deviceGlyph({ kind: 'session', name: "Tabby's phone", client: null })).toBe('mobile');
+  });
+});
+
+describe('the Account page crumb', () => {
+  const tabRoot = { name: 'library/index' };
+  it('finds the route the page was pushed over', () => {
+    expect(routeUnderAccount([tabRoot, { name: 'settings' }, { name: 'account' }])).toEqual({
+      name: 'settings',
+    });
+    expect(routeUnderAccount([{ name: 'account' }])).toBeUndefined();
+    expect(routeUnderAccount([tabRoot])).toBeUndefined();
+  });
+
+  it('names Settings, the hub section, or says Back', () => {
+    expect(accountParentKey({ name: 'settings', params: { section: 'accounts' } })).toBe(
+      'settings.title',
+    );
+    expect(accountParentKey({ name: 'you', params: { section: 'settings' } })).toBe(
+      'you.titles.settings',
+    );
+    expect(accountParentKey({ name: 'you' })).toBe('you.titles.stats');
+    expect(accountParentKey({ name: 'book/[libraryId]' })).toBe('nav.back');
+    expect(accountParentKey(undefined)).toBe('nav.back');
   });
 });
 

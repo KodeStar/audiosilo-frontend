@@ -1,5 +1,6 @@
 import type { MyDevice } from '@/api/types';
 import type { IconName } from '@/components/ui/icon';
+import { parseYouSection, youTitleKey } from '@/components/you/you-model';
 import { hashString } from '@/lib/monogram';
 
 /**
@@ -101,11 +102,17 @@ export function knownPlatform(platform: string | undefined): KnownPlatform | nul
   return platform === 'ios' || platform === 'android' || platform === 'web' ? platform : null;
 }
 
-/** A device row's glyph: a browser is the globe; an app on a phone or tablet (or an app
- * that hasn't said yet) is the person's own device. The vendored set has no phone or
- * laptop glyph. */
-export function deviceGlyph(platform: string | undefined): IconName {
-  return platform === 'web' ? 'globe' : 'user';
+/** A device row's glyph: an API key is a key; a browser is a laptop; an app is a phone,
+ * or a tablet when its name says so ("iPad", "Galaxy Tab", "Pixel Tablet"). The platform
+ * header doesn't tell a phone from a tablet, so the name the device signed in with does. */
+export function deviceGlyph(device: {
+  kind?: MyDevice['kind'];
+  name?: string;
+  client?: { platform: string } | null;
+}): IconName {
+  if (device.kind === 'api') return 'key';
+  if (device.client?.platform === 'web') return 'laptop';
+  return /\b(ipad|tablet|tab)\b/i.test(device.name ?? '') ? 'tablet' : 'mobile';
 }
 
 /** The two hues of a person's gradient monogram (STYLEGUIDE section 8, "Avatar"), from
@@ -113,4 +120,31 @@ export function deviceGlyph(platform: string | undefined): IconName {
 export function avatarHues(name: string): [number, number] {
   const h = hashString(name.trim().toLowerCase()) % 360;
   return [h, (h + 50) % 360];
+}
+
+/** A route in the Account page's stack (React Navigation's `{ name, params }`). */
+export type StackRoute = { name: string; params?: object };
+
+/**
+ * The route the Account page sits on: the one under the LAST `account` route of its stack
+ * (the page is on top when it mounts), or undefined for a cold link.
+ */
+export function routeUnderAccount(routes: readonly StackRoute[]): StackRoute | undefined {
+  const at = routes.map((r) => r.name).lastIndexOf('account');
+  return at > 0 ? routes[at - 1] : undefined;
+}
+
+/**
+ * The Account page's first crumb, naming the page it was opened from: Settings (the page,
+ * or the phone You hub's Settings section, both list the signed-in servers), another of
+ * the hub's sections, else (the profile menu, over any page, or a cold link) a plain
+ * Back.
+ */
+export function accountParentKey(parent: StackRoute | undefined) {
+  if (parent?.name === 'settings') return 'settings.title' as const;
+  if (parent?.name === 'you') {
+    const section = (parent.params as { section?: string } | undefined)?.section;
+    return youTitleKey(parseYouSection(section));
+  }
+  return 'nav.back' as const;
 }

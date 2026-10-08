@@ -62,7 +62,7 @@ export function ApiKeyCreatedModal({
           <Button title={t('common.done')} variant="ghost" onPress={close} />
           <Button
             title={copied ? t('common.copied') : t('settings.apiKeys.createdModal.copy')}
-            icon={copied ? 'check' : undefined}
+            icon={copied ? 'check' : 'copy'}
             onPress={onCopy}
           />
         </DialogFooter>

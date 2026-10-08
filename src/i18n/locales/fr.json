@@ -24,7 +24,6 @@
       "description": "La langue de l'application. Système suit cet appareil."
     },
     "playback": {
-      "label": "Lecture",
       "skipBack": "Reculer",
       "skipForward": "Avancer",
       "defaultSpeed": "Vitesse par défaut",
@@ -33,7 +32,6 @@
       "off": "Désactivé"
     },
     "sleep": {
-      "label": "Minuteur de veille",
       "auto": {
         "label": "Minuteur de veille automatique",
         "description": "Démarre automatiquement un minuteur pour les lectures qui commencent entre ces heures."
@@ -61,7 +59,6 @@
       }
     },
     "upNext": {
-      "label": "À suivre",
       "autoPlay": {
         "label": "Lire automatiquement le livre suivant",
         "description": "À la fin d'un livre, démarre le premier livre de la file À suivre, ou le suivant de la série."
@@ -127,7 +124,6 @@
       "revokeShort": "Révoquer"
     },
     "support": {
-      "label": "Soutenir",
       "intro": "AudioSilo est auto-hébergé et gratuit. Si vous souhaitez soutenir son développement, vous pouvez contribuer via GitHub Sponsors.",
       "cta": "Soutenir AudioSilo"
     },
@@ -163,7 +159,6 @@
   },
   "account": {
     "connections": {
-      "label": "Serveurs",
       "manage": "Gérer {{name}}",
       "remove": "Supprimer {{name}}",
       "add": "Ajouter un serveur",
@@ -211,6 +206,9 @@
       "copy": "Copier le lien",
       "qr": "Code d'association pour {{server}}",
       "error": "Impossible de joindre {{server}}. Aucun code n'a été créé, réessayez."
+    },
+    "addresses": {
+      "body": "Les applications utilisent l'adresse à la maison sur votre réseau domestique et l'adresse à l'extérieur partout ailleurs."
     },
     "devices": {
       "title": "Appareils connectés",
@@ -389,10 +387,7 @@
     },
     "anotherServer": "Un autre serveur",
     "addresses": {
-      "title": "À la maison et à l'extérieur",
-      "body": "{{name}} a deux adresses. AudioSilo utilise la plus rapide à la maison et change tout seul quand vous sortez.",
-      "home": "À la maison",
-      "away": "À l'extérieur"
+      "body": "{{name}} a deux adresses. AudioSilo utilise la plus rapide à la maison et change tout seul quand vous sortez."
     },
     "panel": {
       "title": "Chaque livre de la maison, sur chaque appareil.",
@@ -1460,8 +1455,7 @@
       "journal": "Journal",
       "settings": "Réglages",
       "account": "Compte"
-    },
-    "placeholder": "Cette partie arrive bientôt."
+    }
   },
   "ui": {
     "error": "Une erreur s'est produite.",
@@ -1855,9 +1849,11 @@
     }
   },
   "addresses": {
+    "title": "À la maison et à l'extérieur",
     "home": "Adresse à la maison",
     "away": "Adresse à l'extérieur",
     "paired": "Adresse du serveur",
+    "inUse": "Utilisée",
     "usingHome": "Utilise votre adresse à la maison",
     "usingAway": "Utilise votre adresse à l'extérieur",
     "usingPaired": "Utilise l'adresse avec laquelle vous vous êtes connecté",
@@ -1885,7 +1881,6 @@
     "close": "Fermer l’histoire",
     "previous": "Carte précédente",
     "next": "Carte suivante",
-    "story": "Ton année d’écoute",
     "cardOf": "Carte {{n}} sur {{total}}",
     "thumbLabel": "Carte {{n}} : {{label}}",
     "thumbKicker": "Carte {{n}}",

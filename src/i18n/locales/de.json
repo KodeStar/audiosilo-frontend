@@ -24,7 +24,6 @@
       "description": "Die Sprache der App. System folgt diesem Gerät."
     },
     "playback": {
-      "label": "Wiedergabe",
       "skipBack": "Zurückspringen",
       "skipForward": "Vorwärtsspringen",
       "defaultSpeed": "Standardgeschwindigkeit",
@@ -33,7 +32,6 @@
       "off": "Aus"
     },
     "sleep": {
-      "label": "Sleep-Timer",
       "auto": {
         "label": "Automatischer Sleep-Timer",
         "description": "Startet automatisch einen Sleep-Timer für Wiedergaben, die zwischen diesen Zeiten beginnen."
@@ -61,7 +59,6 @@
       }
     },
     "upNext": {
-      "label": "Als Nächstes",
       "autoPlay": {
         "label": "Nächstes Buch automatisch abspielen",
         "description": "Wenn ein Buch endet, startet das erste Buch in Als Nächstes oder das nächste der Reihe."
@@ -127,7 +124,6 @@
       "revokeShort": "Widerrufen"
     },
     "support": {
-      "label": "Unterstützen",
       "intro": "AudioSilo wird selbst gehostet und ist kostenlos. Wenn du die Entwicklung unterstützen möchtest, kannst du über GitHub Sponsors beitragen.",
       "cta": "AudioSilo unterstützen"
     },
@@ -163,7 +159,6 @@
   },
   "account": {
     "connections": {
-      "label": "Server",
       "manage": "{{name}} verwalten",
       "remove": "{{name}} entfernen",
       "add": "Server hinzufügen",
@@ -211,6 +206,9 @@
       "copy": "Link kopieren",
       "qr": "Kopplungscode für {{server}}",
       "error": "{{server}} war nicht erreichbar. Es wurde kein Code erstellt, versuch es noch einmal."
+    },
+    "addresses": {
+      "body": "Die Apps nutzen in deinem Heimnetz die Heimadresse und überall sonst die Adresse für unterwegs."
     },
     "devices": {
       "title": "Angemeldete Geräte",
@@ -389,10 +387,7 @@
     },
     "anotherServer": "Anderer Server",
     "addresses": {
-      "title": "Zu Hause und unterwegs",
-      "body": "{{name}} hat zwei Adressen. AudioSilo nutzt zu Hause die schnelle und wechselt von selbst, wenn du gehst.",
-      "home": "Zu Hause",
-      "away": "Unterwegs"
+      "body": "{{name}} hat zwei Adressen. AudioSilo nutzt zu Hause die schnelle und wechselt von selbst, wenn du gehst."
     },
     "panel": {
       "title": "Jedes Buch im Haus, auf jedem Gerät.",
@@ -1460,8 +1455,7 @@
       "journal": "Journal",
       "settings": "Einstellungen",
       "account": "Konto"
-    },
-    "placeholder": "Dieser Bereich kommt bald."
+    }
   },
   "ui": {
     "error": "Etwas ist schiefgelaufen.",
@@ -1855,9 +1849,11 @@
     }
   },
   "addresses": {
+    "title": "Zu Hause und unterwegs",
     "home": "Heimadresse",
     "away": "Adresse unterwegs",
     "paired": "Serveradresse",
+    "inUse": "Aktiv",
     "usingHome": "Verwendet die Heimadresse",
     "usingAway": "Verwendet die Adresse für unterwegs",
     "usingPaired": "Verwendet die Adresse, mit der du verbunden hast",
@@ -1885,7 +1881,6 @@
     "close": "Geschichte schließen",
     "previous": "Vorherige Karte",
     "next": "Nächste Karte",
-    "story": "Dein Hörjahr",
     "cardOf": "Karte {{n}} von {{total}}",
     "thumbLabel": "Karte {{n}}: {{label}}",
     "thumbKicker": "Karte {{n}}",

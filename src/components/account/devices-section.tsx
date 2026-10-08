@@ -192,11 +192,7 @@ function DeviceRow({
       className={cn('flex-row items-center gap-3 px-4 py-3', !first && 'border-t border-border')}
     >
       <View className="h-9 w-9 items-center justify-center rounded-[11px] bg-muted">
-        <Icon
-          name={deviceGlyph(device.client?.platform)}
-          size={17}
-          color={themed.mutedForeground}
-        />
+        <Icon name={deviceGlyph(device)} size={17} color={themed.mutedForeground} />
       </View>
       <View className="min-w-0 flex-1 gap-0.5">
         <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">

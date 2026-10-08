@@ -46,6 +46,7 @@ export function PasswordCard({
       </Text>
       <Button
         variant="outline"
+        icon="key"
         className="self-start"
         title={set ? t('settings.account.password.change') : t('settings.account.password.setNew')}
         onPress={editor.openEditor}

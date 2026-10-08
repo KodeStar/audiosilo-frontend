@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import type { ServerAddresses } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -170,53 +169,13 @@ function ServerMark({ name }: { name: string }) {
   );
 }
 
-/**
- * "At home and away": the server has a home-network address and one that works from
- * anywhere, and the app switches between them by itself. Both addresses in mono.
- */
-export function AddressesCard({ name, addresses }: { name: string; addresses: ServerAddresses }) {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
-  if (!addresses.home || !addresses.away) return null;
-  return (
-    <Card testID="addresses-card" className="w-full gap-2.5 p-4">
-      <View className="flex-row items-center gap-2">
-        <Icon name="wifi" size={16} color={themed.foreground} />
-        <Text variant="title">{t('onboarding.addresses.title')}</Text>
-      </View>
-      <Text variant="muted">{t('onboarding.addresses.body', { name })}</Text>
-      <AddressLine label={t('onboarding.addresses.home')} url={addresses.home} />
-      <AddressLine label={t('onboarding.addresses.away')} url={addresses.away} />
-    </Card>
-  );
-}
-
-function AddressLine({ label, url }: { label: string; url: string }) {
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${label}: ${url}`}
-      className="flex-row flex-wrap items-baseline gap-x-4 gap-y-0.5"
-    >
-      <Text variant="caption" className="w-20">
-        {label}
-      </Text>
-      <Text variant="mono" className="min-w-0 flex-1" selectable>
-        {url}
-      </Text>
-    </View>
-  );
-}
-
 /** "Another server": back to the first step. */
 export function BackToStart({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   return (
     <Button variant="ghost" onPress={onPress} className="self-start">
-      <View style={{ transform: [{ rotate: '180deg' }] }}>
-        <Icon name="chevron-right" size={16} color={themed.foreground} />
-      </View>
+      <Icon name="arrow-left" size={16} color={themed.foreground} />
       <Text>{t('onboarding.anotherServer')}</Text>
     </Button>
   );

@@ -86,7 +86,7 @@ export function PairDeviceCard({
               ) : Platform.OS === 'web' ? (
                 <Button
                   variant="outline"
-                  icon={copied ? 'check' : undefined}
+                  icon={copied ? 'check' : 'copy'}
                   title={copied ? t('common.copied') : t('account.pair.copy')}
                   onPress={() => void copy()}
                 />

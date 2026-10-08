@@ -1,11 +1,12 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
-import type { Capabilities, MyDevice, User } from '@/api/types';
+import type { Capabilities, MyDevice, ServerAddresses, User } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 // Each server's /server answer, by connection id (undefined: not known yet).
 let mockCaps: Record<string, Partial<Capabilities> | undefined>;
 let mockDevices: Record<string, MyDevice[]>;
+let mockAddresses: Record<string, ServerAddresses | undefined>;
 const mockRevoke = jest.fn();
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
@@ -20,6 +21,10 @@ jest.mock('@/api/hooks', () => {
         ? { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true }
         : { data: undefined, isPending: true, isError: false, isSuccess: false },
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
+    // Gated like the real hook: nothing without the flag.
+    useServerAddresses: (cid: string) => ({
+      data: mockCaps[cid]?.addresses ? mockAddresses[cid] : undefined,
+    }),
     useApiKeys: (enabled: boolean) => ({ data: enabled ? [] : undefined, isLoading: false }),
     useCreateApiKey: () => ({ mutateAsync: jest.fn(), isPending: false }),
     useRevokeApiKey: () => ({ mutate: jest.fn() }),
@@ -31,7 +36,13 @@ jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ logout: mockLogout, me: jest.fn(), pair: jest.fn() }),
 }));
 
-type Conn = { id: string; name: string; serverUrl: string; user: User };
+type Conn = {
+  id: string;
+  name: string;
+  serverUrl: string;
+  user: User;
+  addresses?: ServerAddresses;
+};
 let mockSession: {
   connections: Conn[];
   defaultConnectionId: string | null;
@@ -50,6 +61,9 @@ jest.mock('@/downloads/store', () => ({
 }));
 
 /* eslint-disable import/first */
+import { Platform } from 'react-native';
+
+import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 
 import { AccountSection } from './account-section';
@@ -79,8 +93,16 @@ const session = (id: number, current = false): MyDevice => ({
 
 const FULL: Partial<Capabilities> = { my_devices: true, api_keys: true };
 
+const os = Platform.OS;
+afterAll(() => {
+  Platform.OS = os;
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
+  Platform.OS = 'ios';
+  useAddressRoute.setState({ picks: {} });
+  mockAddresses = {};
   mockCaps = { c1: FULL, c2: { my_devices: false, api_keys: false } };
   mockDevices = {
     c1: [
@@ -103,6 +125,57 @@ beforeEach(() => {
     setConnectionUser: jest.fn(async () => {}),
     removeConnection: jest.fn(async () => {}),
   };
+});
+
+describe('AccountSection: at home and away', () => {
+  const HOME = 'http://192.168.1.20:8080';
+  const AWAY = 'https://books.example';
+  const withAddresses = (addresses?: ServerAddresses) => {
+    mockCaps.c1 = { ...FULL, addresses: true };
+    mockSession.connections[0].serverUrl = AWAY;
+    mockSession.connections[0].addresses = addresses;
+  };
+
+  it('shows both addresses and the one this device uses now (native)', async () => {
+    withAddresses({ home: HOME, away: AWAY });
+    setAddressPick('c1', HOME);
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('At home and away')).toBeTruthy();
+    expect(screen.getByLabelText(`Home address: ${HOME}, In use`)).toBeTruthy();
+    expect(screen.getByLabelText(`Away address: ${AWAY}`)).toBeTruthy();
+    expect(
+      screen.getByText('Using your home address The app switches between them by itself.'),
+    ).toBeTruthy();
+  });
+
+  it('adds what the server says now to what the device kept', async () => {
+    withAddresses({ home: HOME });
+    // Read through the away address: the answer can't know home.
+    mockAddresses.c1 = { away: AWAY };
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByLabelText(`Home address: ${HOME}`)).toBeTruthy();
+    expect(screen.getByLabelText(`Away address: ${AWAY}, In use`)).toBeTruthy();
+    expect(screen.getByText(/^Using your away address/)).toBeTruthy();
+  });
+
+  it('shows the addresses without an "in use" line on the web (it never switches)', async () => {
+    Platform.OS = 'web';
+    withAddresses({ home: HOME, away: AWAY });
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByTestId('addresses-card')).toBeTruthy();
+    expect(screen.getByLabelText(`Away address: ${AWAY}`)).toBeTruthy();
+    expect(screen.queryByTestId('address-in-use')).toBeNull();
+    expect(screen.queryByText('In use')).toBeNull();
+  });
+
+  it('is hidden without the capability, or with nothing known', async () => {
+    mockSession.connections[0].addresses = { home: HOME, away: AWAY };
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.queryByTestId('addresses-card')).toBeNull();
+    withAddresses(undefined);
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.queryByTestId('addresses-card')).toBeNull();
+  });
 });
 
 describe('AccountSection', () => {

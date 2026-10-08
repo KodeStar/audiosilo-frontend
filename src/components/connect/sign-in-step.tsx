@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { ApiClient, ApiError } from '@/api/client';
+import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
@@ -13,7 +14,7 @@ import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { hostOf, pairingAddresses } from './connect-model';
-import { AddressesCard, BackToStart } from './connect-parts';
+import { BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 
 type Mode = 'code' | 'password';
@@ -157,7 +158,12 @@ export function SignInStep({
         </View>
       )}
 
-      {known?.home && known.away ? <AddressesCard name={name ?? host} addresses={known} /> : null}
+      {known?.home && known.away ? (
+        <AddressesCard
+          addresses={known}
+          body={t('onboarding.addresses.body', { name: name ?? host })}
+        />
+      ) : null}
 
       {error ? (
         <Text variant="caption" className="text-destructive" role="alert">
