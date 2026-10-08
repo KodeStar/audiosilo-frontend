@@ -114,6 +114,10 @@ import { useSettings } from '@/stores/settings';
 import { flushConnection } from './progress-sync';
 import { AutoplayBlockedError } from './types';
 import {
+  holdSaves,
+  LONG_PAUSE_MS,
+  localMoveCount,
+  onPickedUpAgain,
   selectBookKey,
   selectIsPlaying,
   selectIsTransportLive,
@@ -1445,64 +1449,129 @@ describe('loadingBook', () => {
   });
 });
 
-// --- Another device moves the place of a book this one holds loaded and paused ----------
-//
-// Known gap (2026-10-08 resume investigation), pinned with `it.failing`: each test states
-// the behaviour we WANT and fails today. When the store learns to pick up a newer place
-// from another device, these start passing, Jest reports the `failing` test as broken,
-// and the fix drops the `.failing`.
-//
-// The scenario: this app loaded a book (resumed at 40 s) and paused at 45 s. Another
-// device (or the other AudioSilo app on the same phone, which keeps its own engine,
-// mirror and queue) then played on to 80 s and saved that to the server. Back here the
-// book is still `nowPlaying`, so every Play press (Home's Now card and the book page
-// toggle, the mini player, the lock screen) is a `toggle()`: `svc.play()` at the
-// ENGINE's 45 s. Nothing asks the server. Then the save loop writes ~45 s with a newer
-// `updated_at`, and the server's last-write-wins drops the other device's 80 s for good.
-describe('a loaded, paused book that another device has moved on', () => {
-  const OTHER_DEVICE_SAVE = makeProgress({
-    position: 80,
-    device_id: 'other-device',
-    updated_at: '2099-01-01T00:00:00Z',
+// --- The hooks `place-reconcile.ts` uses (picking up a place another device moved on) ---
+
+describe('holdSaves', () => {
+  /** The positions saved since the last clear. */
+  const saved = () =>
+    mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position);
+
+  it('saves nothing while held, then the place once on release', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    mockSaveProgress.mockClear();
+    const release = holdSaves();
+    pushSnapshot(snap('paused', 45));
+    await usePlayer.getState().setRate(1.5);
+    await flushMicrotasks();
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+    release();
+    await flushMicrotasks();
+    expect(saved()).toEqual([45]);
   });
 
-  async function loadedAndPausedAt45() {
-    mockLoadInitialProgress.mockResolvedValueOnce({
-      kind: 'progress',
-      progress: makeProgress({ position: 40 }),
-    });
-    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+  it('saves nothing on a release without a flush (the hold ended in a move)', async () => {
+    await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 40));
     pushSnapshot(snap('paused', 45));
     await flushMicrotasks();
-    // The other device plays on to 80 s; the server (and a fresh lookup) now says so.
-    mockLoadInitialProgress.mockResolvedValue({ kind: 'progress', progress: OTHER_DEVICE_SAVE });
-    (mockSvc.load as jest.Mock).mockClear();
-    (mockSvc.seekTo as jest.Mock).mockClear();
     mockSaveProgress.mockClear();
-  }
-
-  afterEach(() => {
-    mockLoadInitialProgress.mockReset();
-    mockLoadInitialProgress.mockResolvedValue({ kind: 'empty' });
-  });
-
-  it.failing('a Play press moves the engine to the newer place before it plays', async () => {
-    await loadedAndPausedAt45();
-    await usePlayer.getState().toggle();
-    const seeks = (mockSvc.seekTo as jest.Mock).mock.calls.map((c) => c[0]);
-    const loads = (mockSvc.load as jest.Mock).mock.calls.map((c) => c[2]);
-    expect([...seeks, ...loads]).toContain(80);
-  });
-
-  it.failing("the stale engine place never overwrites the other device's save", async () => {
-    await loadedAndPausedAt45();
-    await usePlayer.getState().toggle();
-    pushSnapshot(snap('playing', 46));
-    jest.advanceTimersByTime(15_000);
+    const release = holdSaves();
+    release({ flush: false });
     await flushMicrotasks();
-    const saved = mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position);
-    expect(saved.every((p) => p >= 80)).toBe(true);
-    expect(saved.length).toBeGreaterThan(0);
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+    // Released all the same: the next save goes through.
+    pushSnapshot(snap('playing', 45));
+    pushSnapshot(snap('paused', 50));
+    await flushMicrotasks();
+    expect(saved()).toEqual([50]);
+  });
+
+  it('releases itself after 5 seconds, saving what was held', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    mockSaveProgress.mockClear();
+    holdSaves();
+    pushSnapshot(snap('paused', 45));
+    await flushMicrotasks();
+    jest.advanceTimersByTime(4_999);
+    await flushMicrotasks();
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    await flushMicrotasks();
+    expect(saved()).toEqual([45]);
+  });
+
+  it('never holds a finish', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    mockSaveProgress.mockClear();
+    const release = holdSaves();
+    usePlayer.getState().finishBook();
+    await flushMicrotasks();
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ finished: true });
+    release({ flush: false });
+  });
+});
+
+describe('onPickedUpAgain', () => {
+  let calls = 0;
+  let stop: () => void = () => {};
+  beforeEach(() => {
+    calls = 0;
+    stop = onPickedUpAgain(() => calls++);
+  });
+  afterEach(() => stop());
+
+  it('tells on a play after a long pause, from any source, before the play saves', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    pushSnapshot(snap('paused', 45));
+    jest.advanceTimersByTime(LONG_PAUSE_MS);
+    // The listener holds saves; a save in the same turn would show it came too late.
+    stop();
+    stop = onPickedUpAgain(() => {
+      calls++;
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+    });
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 45)); // a lock-screen play: no store action
+    expect(calls).toBe(1);
+  });
+
+  it('stays quiet after a short pause, a stall, or the first play of a book just started', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 40));
+    pushSnapshot(snap('paused', 45));
+    jest.advanceTimersByTime(LONG_PAUSE_MS - 1);
+    pushSnapshot(snap('playing', 45));
+    // A mid-play stall is not a pause.
+    pushSnapshot(snap('loading', 50));
+    jest.advanceTimersByTime(LONG_PAUSE_MS);
+    pushSnapshot(snap('playing', 50));
+    // Paused long ago, then a book started: its place was just looked up.
+    pushSnapshot(snap('paused', 50));
+    jest.advanceTimersByTime(LONG_PAUSE_MS * 2);
+    await startBook(makeBook({ rel_path: 'B/Other.m4b' }), 0);
+    pushSnapshot(snap('playing', 0));
+    expect(calls).toBe(0);
+  });
+});
+
+describe('localMoveCount', () => {
+  it("counts the listener's seeks, track jumps and book starts, not play or pause", async () => {
+    await startBook(makeBook(), 0);
+    const start = localMoveCount();
+    await usePlayer.getState().seekBook(20);
+    await usePlayer.getState().seekInTrack(30);
+    await usePlayer.getState().goToTrack(0);
+    await usePlayer.getState().skipSeconds(10);
+    expect(localMoveCount()).toBe(start + 4);
+    await usePlayer.getState().toggle();
+    await usePlayer.getState().pause();
+    expect(localMoveCount()).toBe(start + 4);
+    await startBook(makeBook({ rel_path: 'B/Other.m4b' }), 0);
+    expect(localMoveCount()).toBe(start + 5);
   });
 });
