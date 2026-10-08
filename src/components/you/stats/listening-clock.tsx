@@ -10,7 +10,13 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { ChartPointer } from './chart-pointer';
 import { formatHour } from './stats-format';
-import { type ClockSummary, clockGeometry, petalAt, petalPath } from './stats-model';
+import {
+  type ClockSummary,
+  clockCentreWidth,
+  clockGeometry,
+  petalAt,
+  petalPath,
+} from './stats-model';
 
 /** The words for a clock's peak windows ("07:00-09:00 and 22:00-23:00"), or null without
  * listening. */
@@ -38,6 +44,8 @@ export function ListeningClock({ summary, size }: { summary: ClockSummary; size:
   const { c, r0, r1 } = clockGeometry(size);
   const peaks = usePeakWords(summary);
   const shown = hour ?? summary.busiest;
+  // Every centre line gets the same definite width (see `clockCentreWidth`).
+  const line = { width: clockCentreWidth(size), textAlign: 'center' } as const;
   const petals = useMemo(
     () => summary.hours.map((v, i) => petalPath(size, i, v, summary.max)),
     [summary, size],
@@ -95,18 +103,20 @@ export function ListeningClock({ summary, size }: { summary: ClockSummary; size:
         style={{ left: c - r0, top: c - r0, width: r0 * 2, height: r0 * 2 }}
       >
         {shown === null ? (
-          <Text variant="caption" className="text-center">
+          <Text variant="caption" style={line} numberOfLines={3} testID="clock-caption">
             {t('stats.clock.none')}
           </Text>
         ) : (
           <>
             <Text
               className="font-display text-foreground"
-              style={[tabularNums, { fontSize: size * 0.075, lineHeight: size * 0.085 }]}
+              style={[tabularNums, line, { fontSize: size * 0.075, lineHeight: size * 0.085 }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
             >
               {formatHour(shown)}
             </Text>
-            <Text variant="caption" className="text-center" numberOfLines={2}>
+            <Text variant="caption" style={line} numberOfLines={2} testID="clock-caption">
               {hour === null
                 ? t('stats.clock.busiest')
                 : t('stats.clock.hourTotal', {

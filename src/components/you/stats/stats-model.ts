@@ -219,6 +219,19 @@ export function clockGeometry(size: number) {
   return { c: size / 2, r0: size * 0.22, r1: size * 0.42 };
 }
 
+/** The smallest the stats page draws the clock. */
+export const CLOCK_MIN_SIZE = 180;
+
+/**
+ * The width the clock's centre lines (the hour, "your busiest hour") are laid out in:
+ * the inner circle less a small inset, whole points. A definite width, not the text's
+ * own: Android sized a shrink-wrapped caption to one line and then drew it wrapped,
+ * clipping the second line ("your busiest" without "hour").
+ */
+export function clockCentreWidth(size: number): number {
+  return Math.floor(clockGeometry(size).r0 * 2) - 6;
+}
+
 /** The hour petal under a point of the clock, or null in the middle or outside it. */
 export function petalAt(size: number, x: number, y: number): number | null {
   const { c, r0, r1 } = clockGeometry(size);

@@ -36,6 +36,7 @@ import { RankList } from './rank-list';
 import { GoalTile, StatTile } from './stat-tiles';
 import { durationParts } from './stats-format';
 import {
+  CLOCK_MIN_SIZE,
   clockSummary,
   columnWidth,
   dailyAverage,
@@ -354,7 +355,10 @@ function StatsContent({
           <View className="items-center">
             <ListeningClock
               summary={clock}
-              size={Math.max(180, Math.min(compact ? 250 : 280, chartW - CARD_INSET * 2))}
+              size={Math.max(
+                CLOCK_MIN_SIZE,
+                Math.min(compact ? 250 : 280, chartW - CARD_INSET * 2),
+              )}
             />
           </View>
         </Card>
