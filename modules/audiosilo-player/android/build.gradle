@@ -26,4 +26,7 @@ dependencies {
   // StandaloneDatabaseProvider for the streaming SimpleCache (transitive via exoplayer,
   // declared explicitly so the cache classes resolve regardless of resolution order).
   implementation "androidx.media3:media3-database:${media3Version}"
+
+  // JVM unit tests for the effects processors (effects/), fed synthetic PCM.
+  testImplementation 'junit:junit:4.13.2'
 }
