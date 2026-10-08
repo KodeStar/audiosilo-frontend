@@ -1801,5 +1801,129 @@
       "jumpLabel": "Jump to {{time}}",
       "span": "{{from}} to {{to}}"
     }
+  },
+  "year": {
+    "eyebrow": "Year in listening",
+    "title": "Your {{year}}, as a story",
+    "howTo": "Tap the right side of a card for the next one, the left side to go back.",
+    "howToKeys": "Tap the right side of a card for the next one, the left side to go back. The arrow keys work too.",
+    "privacy": "Made on {{server}} from your own listening. Nothing leaves the server unless you share a card.",
+    "share": "Share this card",
+    "shareTitle": "My {{year}} in listening",
+    "shareFailed": "Couldn't make the image",
+    "shareFailedBody": "Nothing was shared. Try again in a moment.",
+    "saved": "Image saved",
+    "savedBody": "{{name}} is in your downloads.",
+    "play": "Play the story",
+    "ready": "Ready when you are",
+    "bannerTitle": "Your {{year}} in listening",
+    "bannerCards_one": "{{count}} card, made from your own listening.",
+    "bannerCards_other": "{{count}} cards, made from your own listening.",
+    "years": "Year",
+    "servers": "Server",
+    "close": "Close the story",
+    "previous": "Previous card",
+    "next": "Next card",
+    "story": "Your year in listening",
+    "cardOf": "Card {{n}} of {{total}}",
+    "thumbLabel": "Card {{n}}: {{label}}",
+    "thumbKicker": "Card {{n}}",
+    "hoursLong_one": "{{count}} hour",
+    "hoursLong_other": "{{count}} hours",
+    "booksCount_one": "{{count}} book",
+    "booksCount_other": "{{count}} books",
+    "sessionsCount_one": "{{count}} session",
+    "sessionsCount_other": "{{count}} sessions",
+    "loading": "Gathering your year",
+    "empty": {
+      "title": "Not much of a story yet",
+      "current": "Listen a little more this year and your story will be here: the hours, the books, your busiest hour and more.",
+      "past": "There was too little listening on {{server}} in {{year}} to tell a story."
+    },
+    "unsupported": {
+      "title": "No listening stats on this server yet",
+      "body": "{{server}} doesn't keep listening stats yet. Once it is updated, your year in listening appears here."
+    },
+    "error": {
+      "title": "Couldn't load your year",
+      "body": "{{server}} didn't answer. Nothing is lost; try again in a moment."
+    },
+    "card": {
+      "hours": {
+        "kicker": "AudioSilo · {{server}}",
+        "lead": "Here's your {{year}} in listening.",
+        "leadNamed": "{{name}}, here's your {{year}} in listening.",
+        "unit_one": "hour",
+        "unit_other": "hours",
+        "days_one": "That's a whole day with a book in your ears.",
+        "days_other": "That's {{count}} whole days with a book in your ears.",
+        "spread": "Across {{sessions}} and {{books}}.",
+        "estimated": "About {{duration}} of it is estimated, from before {{server}} kept sessions."
+      },
+      "books": {
+        "kicker": "Books finished",
+        "unit_one": "book finished",
+        "unit_other": "books finished",
+        "goalBehind_one": "{{count}} more to reach your goal of {{goal}}.",
+        "goalBehind_other": "{{count}} more to reach your goal of {{goal}}.",
+        "goalReached": "Your goal was {{goal}}. Done.",
+        "tower": "Each spine is a book you finished."
+      },
+      "book": {
+        "kicker": "Your book of the year",
+        "by": "By {{author}}.",
+        "time": "{{duration}} of listening, more than any other book.",
+        "thumb": "Book of the year"
+      },
+      "voice": {
+        "kicker": "Your voice of the year",
+        "title": "{{duration}} with {{name}}",
+        "thenOne": "Then {{a}} ({{aTime}}).",
+        "thenTwo": "Then {{a}} ({{aTime}}) and {{b}} ({{bTime}}).",
+        "thumb": "Voice of the year"
+      },
+      "clock": {
+        "kicker": "When you listen",
+        "part": {
+          "morning": "A morning listener.",
+          "afternoon": "An afternoon listener.",
+          "evening": "An evening listener.",
+          "night": "A night owl."
+        },
+        "peak": "You listened most around {{time}}.",
+        "caption": "your busiest hour",
+        "thumb": "Your clock"
+      },
+      "streak": {
+        "kicker": "Longest streak",
+        "unit_one": "day in a row",
+        "unit_other": "days in a row",
+        "going": "And it's still going.",
+        "current_one": "You're on day {{count}} of a new one right now.",
+        "current_other": "You're on day {{count}} of a new one right now.",
+        "thumb_one": "{{count}}-day streak",
+        "thumb_other": "{{count}}-day streak"
+      },
+      "people": {
+        "kicker": "Who you kept coming back to",
+        "author": "Author of the year",
+        "series": "Series of the year",
+        "detail": "{{duration}} across {{books}}"
+      },
+      "summary": {
+        "kicker": "{{year}} in listening",
+        "kickerNamed": "{{year}} · {{name}}",
+        "hours_one": "hour listened",
+        "hours_other": "hours listened",
+        "listened": "listened",
+        "finished_one": "book finished",
+        "finished_other": "books finished",
+        "streak_one": "day streak",
+        "streak_other": "day streak",
+        "books_one": "book listened to",
+        "books_other": "books listened to",
+        "thumb": "Your year"
+      }
+    }
   }
 }

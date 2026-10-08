@@ -1,3 +1,5 @@
+import { downloadBlob } from '@/lib/download-blob';
+
 import type { ExportFile } from './export-save';
 
 export type { ExportFile };
@@ -12,15 +14,5 @@ export async function saveExport(
   onReady?: () => void,
 ): Promise<void> {
   onReady?.();
-  const blob = new Blob([file.content], { type: `${file.mimeType};charset=utf-8` });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = file.name;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  // Revoked on the next turn: some browsers start the download after the click returns.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  downloadBlob(new Blob([file.content], { type: `${file.mimeType};charset=utf-8` }), file.name);
 }

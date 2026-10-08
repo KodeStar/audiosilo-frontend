@@ -51,6 +51,7 @@ function RootNavigator() {
         <Stack.Screen name="(app)" />
         <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="finished" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="year" options={{ presentation: 'fullScreenModal' }} />
       </Stack>
       {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
           end-of-book flow when a book reaches its natural end. */}

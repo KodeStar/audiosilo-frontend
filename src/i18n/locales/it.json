@@ -1801,5 +1801,129 @@
       "jumpLabel": "Vai a {{time}}",
       "span": "da {{from}} a {{to}}"
     }
+  },
+  "year": {
+    "eyebrow": "Il tuo anno di ascolto",
+    "title": "Il tuo {{year}}, come una storia",
+    "howTo": "Tocca il lato destro di una scheda per la successiva, il sinistro per tornare indietro.",
+    "howToKeys": "Tocca il lato destro di una scheda per la successiva, il sinistro per tornare indietro. Funzionano anche i tasti freccia.",
+    "privacy": "Creata su {{server}} dal tuo ascolto. Nulla lascia il server, a meno che tu non condivida una scheda.",
+    "share": "Condividi questa scheda",
+    "shareTitle": "Il mio anno di ascolto {{year}}",
+    "shareFailed": "Impossibile creare l’immagine",
+    "shareFailedBody": "Non è stato condiviso nulla. Riprova tra un momento.",
+    "saved": "Immagine salvata",
+    "savedBody": "{{name}} è nei tuoi download.",
+    "play": "Guarda la storia",
+    "ready": "Pronta quando lo sei tu",
+    "bannerTitle": "Il tuo anno di ascolto {{year}}",
+    "bannerCards_one": "{{count}} scheda, creata dal tuo ascolto.",
+    "bannerCards_other": "{{count}} schede, create dal tuo ascolto.",
+    "years": "Anno",
+    "servers": "Server",
+    "close": "Chiudi la storia",
+    "previous": "Scheda precedente",
+    "next": "Scheda successiva",
+    "story": "Il tuo anno di ascolto",
+    "cardOf": "Scheda {{n}} di {{total}}",
+    "thumbLabel": "Scheda {{n}}: {{label}}",
+    "thumbKicker": "Scheda {{n}}",
+    "hoursLong_one": "{{count}} ora",
+    "hoursLong_other": "{{count}} ore",
+    "booksCount_one": "{{count}} libro",
+    "booksCount_other": "{{count}} libri",
+    "sessionsCount_one": "{{count}} sessione",
+    "sessionsCount_other": "{{count}} sessioni",
+    "loading": "Sto preparando il tuo anno",
+    "empty": {
+      "title": "Ancora poco da raccontare",
+      "current": "Ascolta ancora un po’ quest’anno e qui troverai la tua storia: le ore, i libri, la tua ora preferita e altro.",
+      "past": "Nel {{year}} su {{server}} hai ascoltato troppo poco per raccontare una storia."
+    },
+    "unsupported": {
+      "title": "Questo server non tiene ancora statistiche di ascolto",
+      "body": "{{server}} non tiene ancora statistiche di ascolto. Dopo un aggiornamento, qui comparirà il tuo anno di ascolto."
+    },
+    "error": {
+      "title": "Impossibile caricare il tuo anno",
+      "body": "{{server}} non ha risposto. Non si è perso nulla; riprova tra un momento."
+    },
+    "card": {
+      "hours": {
+        "kicker": "AudioSilo · {{server}}",
+        "lead": "Ecco il tuo anno di ascolto {{year}}.",
+        "leadNamed": "{{name}}, ecco il tuo anno di ascolto {{year}}.",
+        "unit_one": "ora",
+        "unit_other": "ore",
+        "days_one": "È un giorno intero con un libro nelle orecchie.",
+        "days_other": "Sono {{count}} giorni interi con un libro nelle orecchie.",
+        "spread": "In {{sessions}} e {{books}}.",
+        "estimated": "Circa {{duration}} sono stimate, da prima che {{server}} registrasse le sessioni."
+      },
+      "books": {
+        "kicker": "Libri finiti",
+        "unit_one": "libro finito",
+        "unit_other": "libri finiti",
+        "goalBehind_one": "Ancora {{count}} per il tuo obiettivo di {{goal}}.",
+        "goalBehind_other": "Ancora {{count}} per il tuo obiettivo di {{goal}}.",
+        "goalReached": "Il tuo obiettivo era {{goal}}. Fatto.",
+        "tower": "Ogni dorso è un libro che hai finito."
+      },
+      "book": {
+        "kicker": "Il tuo libro dell’anno",
+        "by": "Di {{author}}.",
+        "time": "{{duration}} di ascolto, più di qualsiasi altro libro.",
+        "thumb": "Libro dell’anno"
+      },
+      "voice": {
+        "kicker": "La tua voce dell’anno",
+        "title": "{{duration}} con {{name}}",
+        "thenOne": "Poi {{a}} ({{aTime}}).",
+        "thenTwo": "Poi {{a}} ({{aTime}}) e {{b}} ({{bTime}}).",
+        "thumb": "Voce dell’anno"
+      },
+      "clock": {
+        "kicker": "Quando ascolti",
+        "part": {
+          "morning": "Uno da ascolto mattutino.",
+          "afternoon": "Uno da ascolto pomeridiano.",
+          "evening": "Uno da ascolto serale.",
+          "night": "Un nottambulo."
+        },
+        "peak": "Hai ascoltato soprattutto verso le {{time}}.",
+        "caption": "la tua ora preferita",
+        "thumb": "Il tuo orologio"
+      },
+      "streak": {
+        "kicker": "Serie più lunga",
+        "unit_one": "giorno di fila",
+        "unit_other": "giorni di fila",
+        "going": "E continua ancora.",
+        "current_one": "Ora sei al giorno {{count}} di una nuova serie.",
+        "current_other": "Ora sei al giorno {{count}} di una nuova serie.",
+        "thumb_one": "{{count}} giorno di fila",
+        "thumb_other": "{{count}} giorni di fila"
+      },
+      "people": {
+        "kicker": "Da chi sei tornato più spesso",
+        "author": "Autore dell’anno",
+        "series": "Serie dell’anno",
+        "detail": "{{duration}} in {{books}}"
+      },
+      "summary": {
+        "kicker": "Anno di ascolto {{year}}",
+        "kickerNamed": "{{year}} · {{name}}",
+        "hours_one": "ora ascoltata",
+        "hours_other": "ore ascoltate",
+        "listened": "di ascolto",
+        "finished_one": "libro finito",
+        "finished_other": "libri finiti",
+        "streak_one": "giorno di fila",
+        "streak_other": "giorni di fila",
+        "books_one": "libro ascoltato",
+        "books_other": "libri ascoltati",
+        "thumb": "Il tuo anno"
+      }
+    }
   }
 }

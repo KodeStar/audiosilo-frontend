@@ -1801,5 +1801,129 @@
       "jumpLabel": "Ir a {{time}}",
       "span": "{{from}} a {{to}}"
     }
+  },
+  "year": {
+    "eyebrow": "Tu año de escucha",
+    "title": "Tu {{year}}, como una historia",
+    "howTo": "Toca el lado derecho de una tarjeta para pasar a la siguiente y el izquierdo para volver.",
+    "howToKeys": "Toca el lado derecho de una tarjeta para pasar a la siguiente y el izquierdo para volver. Las flechas del teclado también sirven.",
+    "privacy": "Hecho en {{server}} a partir de lo que tú escuchas. Nada sale del servidor a menos que compartas una tarjeta.",
+    "share": "Compartir esta tarjeta",
+    "shareTitle": "Mi año de escucha {{year}}",
+    "shareFailed": "No se pudo crear la imagen",
+    "shareFailedBody": "No se compartió nada. Vuelve a intentarlo en un momento.",
+    "saved": "Imagen guardada",
+    "savedBody": "{{name}} está en tus descargas.",
+    "play": "Ver la historia",
+    "ready": "Lista cuando tú lo estés",
+    "bannerTitle": "Tu año de escucha {{year}}",
+    "bannerCards_one": "{{count}} tarjeta, hecha con lo que escuchaste.",
+    "bannerCards_other": "{{count}} tarjetas, hechas con lo que escuchaste.",
+    "years": "Año",
+    "servers": "Servidor",
+    "close": "Cerrar la historia",
+    "previous": "Tarjeta anterior",
+    "next": "Tarjeta siguiente",
+    "story": "Tu año de escucha",
+    "cardOf": "Tarjeta {{n}} de {{total}}",
+    "thumbLabel": "Tarjeta {{n}}: {{label}}",
+    "thumbKicker": "Tarjeta {{n}}",
+    "hoursLong_one": "{{count}} hora",
+    "hoursLong_other": "{{count}} horas",
+    "booksCount_one": "{{count}} libro",
+    "booksCount_other": "{{count}} libros",
+    "sessionsCount_one": "{{count}} sesión",
+    "sessionsCount_other": "{{count}} sesiones",
+    "loading": "Preparando tu año",
+    "empty": {
+      "title": "Todavía no hay mucho que contar",
+      "current": "Escucha un poco más este año y tu historia estará aquí: las horas, los libros, tu hora favorita y más.",
+      "past": "En {{year}} se escuchó muy poco en {{server}} para contar una historia."
+    },
+    "unsupported": {
+      "title": "Este servidor aún no guarda estadísticas de escucha",
+      "body": "{{server}} aún no guarda estadísticas de escucha. Cuando se actualice, tu año de escucha aparecerá aquí."
+    },
+    "error": {
+      "title": "No se pudo cargar tu año",
+      "body": "{{server}} no respondió. No se ha perdido nada; vuelve a intentarlo en un momento."
+    },
+    "card": {
+      "hours": {
+        "kicker": "AudioSilo · {{server}}",
+        "lead": "Este fue tu año de escucha {{year}}.",
+        "leadNamed": "{{name}}, este fue tu año de escucha {{year}}.",
+        "unit_one": "hora",
+        "unit_other": "horas",
+        "days_one": "Eso es un día entero con un libro en los oídos.",
+        "days_other": "Eso son {{count}} días enteros con un libro en los oídos.",
+        "spread": "En {{sessions}} y {{books}}.",
+        "estimated": "Unas {{duration}} son una estimación, de antes de que {{server}} guardara las sesiones."
+      },
+      "books": {
+        "kicker": "Libros terminados",
+        "unit_one": "libro terminado",
+        "unit_other": "libros terminados",
+        "goalBehind_one": "Te falta {{count}} para tu objetivo de {{goal}}.",
+        "goalBehind_other": "Te faltan {{count}} para tu objetivo de {{goal}}.",
+        "goalReached": "Tu objetivo era {{goal}}. Conseguido.",
+        "tower": "Cada lomo es un libro que terminaste."
+      },
+      "book": {
+        "kicker": "Tu libro del año",
+        "by": "De {{author}}.",
+        "time": "{{duration}} de escucha, más que cualquier otro libro.",
+        "thumb": "Libro del año"
+      },
+      "voice": {
+        "kicker": "Tu voz del año",
+        "title": "{{duration}} con {{name}}",
+        "thenOne": "Después, {{a}} ({{aTime}}).",
+        "thenTwo": "Después, {{a}} ({{aTime}}) y {{b}} ({{bTime}}).",
+        "thumb": "Voz del año"
+      },
+      "clock": {
+        "kicker": "Cuándo escuchas",
+        "part": {
+          "morning": "De los que escuchan por la mañana.",
+          "afternoon": "De los que escuchan por la tarde.",
+          "evening": "De los que escuchan al anochecer.",
+          "night": "Un ave nocturna."
+        },
+        "peak": "Escuchaste sobre todo hacia las {{time}}.",
+        "caption": "tu hora favorita",
+        "thumb": "Tu reloj"
+      },
+      "streak": {
+        "kicker": "Racha más larga",
+        "unit_one": "día seguido",
+        "unit_other": "días seguidos",
+        "going": "Y sigue en marcha.",
+        "current_one": "Ahora mismo llevas {{count}} día de una nueva.",
+        "current_other": "Ahora mismo llevas {{count}} días de una nueva.",
+        "thumb_one": "Racha de {{count}} día",
+        "thumb_other": "Racha de {{count}} días"
+      },
+      "people": {
+        "kicker": "A quién volviste una y otra vez",
+        "author": "Autor del año",
+        "series": "Serie del año",
+        "detail": "{{duration}} en {{books}}"
+      },
+      "summary": {
+        "kicker": "Año de escucha {{year}}",
+        "kickerNamed": "{{year}} · {{name}}",
+        "hours_one": "hora escuchada",
+        "hours_other": "horas escuchadas",
+        "listened": "de escucha",
+        "finished_one": "libro terminado",
+        "finished_other": "libros terminados",
+        "streak_one": "día de racha",
+        "streak_other": "días de racha",
+        "books_one": "libro escuchado",
+        "books_other": "libros escuchados",
+        "thumb": "Tu año"
+      }
+    }
   }
 }

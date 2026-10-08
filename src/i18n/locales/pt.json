@@ -1801,5 +1801,129 @@
       "jumpLabel": "Ir para {{time}}",
       "span": "{{from}} a {{to}}"
     }
+  },
+  "year": {
+    "eyebrow": "O teu ano de audição",
+    "title": "O teu {{year}}, como uma história",
+    "howTo": "Toca no lado direito de um cartão para o seguinte e no esquerdo para voltar.",
+    "howToKeys": "Toca no lado direito de um cartão para o seguinte e no esquerdo para voltar. As setas do teclado também funcionam.",
+    "privacy": "Feito em {{server}} a partir da tua própria audição. Nada sai do servidor, a não ser que partilhes um cartão.",
+    "share": "Partilhar este cartão",
+    "shareTitle": "O meu ano de audição {{year}}",
+    "shareFailed": "Não foi possível criar a imagem",
+    "shareFailedBody": "Nada foi partilhado. Tenta de novo daqui a pouco.",
+    "saved": "Imagem guardada",
+    "savedBody": "{{name}} está nas tuas transferências.",
+    "play": "Ver a história",
+    "ready": "Pronta quando estiveres",
+    "bannerTitle": "O teu ano de audição {{year}}",
+    "bannerCards_one": "{{count}} cartão, feito a partir da tua audição.",
+    "bannerCards_other": "{{count}} cartões, feitos a partir da tua audição.",
+    "years": "Ano",
+    "servers": "Servidor",
+    "close": "Fechar a história",
+    "previous": "Cartão anterior",
+    "next": "Cartão seguinte",
+    "story": "O teu ano de audição",
+    "cardOf": "Cartão {{n}} de {{total}}",
+    "thumbLabel": "Cartão {{n}}: {{label}}",
+    "thumbKicker": "Cartão {{n}}",
+    "hoursLong_one": "{{count}} hora",
+    "hoursLong_other": "{{count}} horas",
+    "booksCount_one": "{{count}} livro",
+    "booksCount_other": "{{count}} livros",
+    "sessionsCount_one": "{{count}} sessão",
+    "sessionsCount_other": "{{count}} sessões",
+    "loading": "A preparar o teu ano",
+    "empty": {
+      "title": "Ainda há pouco para contar",
+      "current": "Ouve mais um pouco este ano e a tua história vai estar aqui: as horas, os livros, a tua hora preferida e mais.",
+      "past": "Em {{year}} ouviu-se muito pouco em {{server}} para contar uma história."
+    },
+    "unsupported": {
+      "title": "Este servidor ainda não guarda estatísticas de audição",
+      "body": "{{server}} ainda não guarda estatísticas de audição. Depois de uma atualização, o teu ano de audição aparece aqui."
+    },
+    "error": {
+      "title": "Não foi possível carregar o teu ano",
+      "body": "{{server}} não respondeu. Nada se perdeu; tenta de novo daqui a pouco."
+    },
+    "card": {
+      "hours": {
+        "kicker": "AudioSilo · {{server}}",
+        "lead": "Este foi o teu ano de audição {{year}}.",
+        "leadNamed": "{{name}}, este foi o teu ano de audição {{year}}.",
+        "unit_one": "hora",
+        "unit_other": "horas",
+        "days_one": "É um dia inteiro com um livro nos ouvidos.",
+        "days_other": "São {{count}} dias inteiros com um livro nos ouvidos.",
+        "spread": "Em {{sessions}} e {{books}}.",
+        "estimated": "Cerca de {{duration}} são uma estimativa, de antes de {{server}} guardar as sessões."
+      },
+      "books": {
+        "kicker": "Livros terminados",
+        "unit_one": "livro terminado",
+        "unit_other": "livros terminados",
+        "goalBehind_one": "Falta {{count}} para o teu objetivo de {{goal}}.",
+        "goalBehind_other": "Faltam {{count}} para o teu objetivo de {{goal}}.",
+        "goalReached": "O teu objetivo era {{goal}}. Conseguido.",
+        "tower": "Cada lombada é um livro que terminaste."
+      },
+      "book": {
+        "kicker": "O teu livro do ano",
+        "by": "De {{author}}.",
+        "time": "{{duration}} de audição, mais do que qualquer outro livro.",
+        "thumb": "Livro do ano"
+      },
+      "voice": {
+        "kicker": "A tua voz do ano",
+        "title": "{{duration}} com {{name}}",
+        "thenOne": "Depois, {{a}} ({{aTime}}).",
+        "thenTwo": "Depois, {{a}} ({{aTime}}) e {{b}} ({{bTime}}).",
+        "thumb": "Voz do ano"
+      },
+      "clock": {
+        "kicker": "Quando ouves",
+        "part": {
+          "morning": "Ouves sobretudo de manhã.",
+          "afternoon": "Ouves sobretudo à tarde.",
+          "evening": "Ouves sobretudo ao fim do dia.",
+          "night": "Uma ave noturna."
+        },
+        "peak": "Ouviste mais por volta das {{time}}.",
+        "caption": "a tua hora preferida",
+        "thumb": "O teu relógio"
+      },
+      "streak": {
+        "kicker": "Maior sequência",
+        "unit_one": "dia seguido",
+        "unit_other": "dias seguidos",
+        "going": "E continua.",
+        "current_one": "Neste momento vais no dia {{count}} de uma nova.",
+        "current_other": "Neste momento vais no dia {{count}} de uma nova.",
+        "thumb_one": "{{count}} dia seguido",
+        "thumb_other": "{{count}} dias seguidos"
+      },
+      "people": {
+        "kicker": "A quem voltaste vezes sem conta",
+        "author": "Autor do ano",
+        "series": "Série do ano",
+        "detail": "{{duration}} em {{books}}"
+      },
+      "summary": {
+        "kicker": "Ano de audição {{year}}",
+        "kickerNamed": "{{year}} · {{name}}",
+        "hours_one": "hora ouvida",
+        "hours_other": "horas ouvidas",
+        "listened": "de audição",
+        "finished_one": "livro terminado",
+        "finished_other": "livros terminados",
+        "streak_one": "dia seguido",
+        "streak_other": "dias seguidos",
+        "books_one": "livro ouvido",
+        "books_other": "livros ouvidos",
+        "thumb": "O teu ano"
+      }
+    }
   }
 }
