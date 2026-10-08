@@ -26,9 +26,8 @@ struct ConfigRecord: Record {
   @Field var autoRewindMax: Double = 0
   @Field var jumpForward: Double = 30
   @Field var jumpBackward: Double = 15
-  /// Phase 6. Trim silences: Android only. iOS accepts and ignores it (Smart Speed was
-  /// withdrawn on iOS, see AudioEngine.swift). Kept so the record matches the JS config.
-  @Field var smartSpeed: Bool = false
+  // No `smartSpeed`: Android only (withdrawn on iOS, see AudioEngine.swift). A record ignores
+  // keys it doesn't declare.
   /// Phase 6. The speech compressor (VoiceBoostTap.swift). Absent from an older JS bundle: off.
   @Field var voiceBoost: Bool = false
 }
@@ -44,7 +43,7 @@ struct ChapterRecord: Record {
 }
 
 /// `load`'s optional 5th argument (Phase 6): which book the queue is. Android keeps it in the
-/// service's media items (`getLoadedBook`); iOS keeps it for CarPlay (`loadedBookId`).
+/// service's media items (`getLoadedBook`); iOS keeps it for CarPlay (`loadedBook`).
 struct BookRecord: Record {
   @Field var connectionId: String = ""
   @Field var libraryId: Int = 0
@@ -78,40 +77,40 @@ public class AudiosiloPlayerModule: Module {
     Function("consumeTaskRemoved") { () -> Bool in false }
 
     AsyncFunction("setup") { [weak self] in
-      self?.onMain { self?.ensureEngine() }
+      onMain { self?.ensureEngine() }
     }
 
     AsyncFunction("setConfig") { [weak self] (config: ConfigRecord) in
-      self?.onMain { self?.ensureEngine().setConfig(config) }
+      onMain { self?.ensureEngine().setConfig(config) }
     }
 
     // The 4th arg (chapters) drives the iOS chapter lock screen (and Android's clipped items).
     // The 5th (book) names the loaded book: Android's getLoadedBook, and on iOS CarPlay's
-    // "playing" indicator and the end of a tapped book's spinner (`loadedBookId`). Both are optional trailing
+    // "playing" indicator and the end of a tapped book's spinner (`loadedBook`). Both are optional trailing
     // arguments: Expo accepts 3, 4 or 5 arguments and passes nil for the missing ones, so an
     // older JS bundle that sends 4 still works (and a newer one sending 5 to this binary no
     // longer fails the argument count).
     AsyncFunction("load") {
       [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord]?, book: BookRecord?) in
-      self?.onMain {
+      onMain {
         self?.ensureEngine().load(tracks: tracks, startIndex: startIndex, position: position,
                                   chapters: chapters ?? [], book: book)
       }
     }
 
-    AsyncFunction("play") { [weak self] in self?.onMain { self?.engine?.play() } }
-    AsyncFunction("pause") { [weak self] in self?.onMain { self?.engine?.pause() } }
-    AsyncFunction("seekTo") { [weak self] (seconds: Double) in self?.onMain { self?.engine?.seek(to: seconds) } }
+    AsyncFunction("play") { [weak self] in onMain { self?.engine?.play() } }
+    AsyncFunction("pause") { [weak self] in onMain { self?.engine?.pause() } }
+    AsyncFunction("seekTo") { [weak self] (seconds: Double) in onMain { self?.engine?.seek(to: seconds) } }
     AsyncFunction("skipToTrack") { [weak self] (index: Int, seconds: Double) in
-      self?.onMain { self?.engine?.skip(to: index, position: seconds) }
+      onMain { self?.engine?.skip(to: index, position: seconds) }
     }
-    AsyncFunction("setRate") { [weak self] (rate: Double) in self?.onMain { self?.engine?.setRate(rate) } }
+    AsyncFunction("setRate") { [weak self] (rate: Double) in onMain { self?.engine?.setRate(rate) } }
     // Engine gain (0...1) for the sleep-timer fade - NOT the device volume. No-ops before
     // the engine exists (nothing is playing to fade), like the other transport commands.
     AsyncFunction("setVolume") { [weak self] (volume: Double) in
-      self?.onMain { self?.engine?.setVolume(volume) }
+      onMain { self?.engine?.setVolume(volume) }
     }
-    AsyncFunction("reset") { [weak self] in self?.onMain { self?.engine?.reset() } }
+    AsyncFunction("reset") { [weak self] in onMain { self?.engine?.reset() } }
 
     // Opens the AirPlay route sheet so the user can send audio to a HomePod / AirPlay
     // speaker. AVQueuePlayer follows the chosen route automatically (the audio session is
@@ -119,7 +118,7 @@ public class AudiosiloPlayerModule: Module {
     // Uses a Promise so it resolves AFTER the main-thread hop (AVRoutePickerView is UIKit).
     AsyncFunction("showRoutePicker") { [weak self] (promise: Promise) in
       guard let self = self else { promise.resolve(false); return }
-      self.onMain { promise.resolve(self.presentRoutePicker()) }
+      onMain { promise.resolve(self.presentRoutePicker()) }
     }
 
     // Phase 6, Android's: the book a service started without JS. iOS never plays without the
@@ -149,16 +148,11 @@ public class AudiosiloPlayerModule: Module {
     }
 
     OnDestroy { [weak self] in
-      self?.onMain {
+      onMain {
         self?.engine?.reset()
         self?.engine = nil
       }
     }
-  }
-
-  /// AVFoundation / MPRemoteCommandCenter must be touched on the main thread.
-  private func onMain(_ work: @escaping () -> Void) {
-    if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
   }
 
   /// Trigger the AirPlay route picker. AVRoutePickerView exposes no programmatic

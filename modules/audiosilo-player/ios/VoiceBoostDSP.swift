@@ -57,6 +57,11 @@ struct VoiceBoostDSP {
   /// Limiter gain (linear, <= 1): instant attack, smoothed release.
   private var limGain: Float = 1
   private var limReleaseCoef: Float = 0
+  /// The linear compressor + make-up gain and the `gainDb` it was computed at: `powf` runs only
+  /// when the smoothed gain moved by more than `gainEpsilonDb` since (between syllables and in
+  /// steady speech it barely moves), so the gain applied is never more than that off.
+  private var gain: Float = 1
+  private var gainAtDb: Float = .infinity
   // The preset, copied in `prepare`: reading a Swift static from the render thread can run its
   // lazy initialiser (swift_once, a lock) the first time.
   private var thresholdDb: Float = 0
@@ -64,6 +69,12 @@ struct VoiceBoostDSP {
   private var slope: Float = 0
   private var makeupDb: Float = 0
   private var ceiling: Float = 1
+  /// The knee's lower edge as a linear peak: below it the compressor wants 0 dB, so the
+  /// per-sample `log10f` is skipped.
+  private var kneeStart: Float = 0
+  /// How far the smoothed gain may move before `powf` recomputes the linear gain (dB). An
+  /// instance constant, not a static, for the same render-thread reason as the preset copies.
+  private let gainEpsilonDb: Float = 0.01
 
   /// The only sample format `render` processes: 32-bit float linear PCM (what an
   /// MTAudioProcessingTap gets from AVPlayer for AAC, MP3 and every other decoded source).
@@ -98,8 +109,10 @@ struct VoiceBoostDSP {
     slope = 1 / VoiceBoostPreset.ratio - 1
     makeupDb = VoiceBoostPreset.makeupDb
     ceiling = powf(10, VoiceBoostPreset.ceilingDb / 20)
+    kneeStart = powf(10, (thresholdDb - kneeDb / 2) / 20)
     mix = 0
     gainDb = 0
+    gainAtDb = .infinity
     limGain = 1
     ready = true
     return true
@@ -125,6 +138,7 @@ struct VoiceBoostDSP {
     if mix == 0 && target == 0 {
       // Off and fully ramped down: untouched audio, and a clean start next time it is enabled.
       gainDb = 0
+      gainAtDb = .infinity
       limGain = 1
       hp.update(repeating: 0, count: channels * 2)
       return
@@ -150,8 +164,12 @@ struct VoiceBoostDSP {
     let slope = self.slope
     let makeup = makeupDb
     let ceiling = self.ceiling
+    let kneeStart = self.kneeStart
+    let epsilon = gainEpsilonDb
     var gainDb = self.gainDb
     var limGain = self.limGain
+    var g = self.gain
+    var gainAtDb = self.gainAtDb
 
     for f in 0..<frames {
       // Pass 1: high-pass each sample (state per channel) and find the frame's peak.
@@ -171,19 +189,24 @@ struct VoiceBoostDSP {
           ch += 1
         }
       }
-      // Soft-knee gain computer (Giannoulis, Massberg and Reiss 2012), in dB.
-      let level = 20 * log10f(max(peak, 1e-9))
-      let over = level - threshold
+      // Soft-knee gain computer (Giannoulis, Massberg and Reiss 2012), in dB. Below the knee
+      // (most samples: pauses, quiet speech) it wants 0 dB, with no log needed.
       var want: Float = 0
-      if 2 * over > knee {
-        want = slope * over
-      } else if 2 * abs(over) <= knee {
-        let k = over + knee / 2
-        want = slope * k * k / (2 * knee)
+      if peak > kneeStart {
+        let over = 20 * log10f(peak) - threshold
+        if 2 * over > knee {
+          want = slope * over
+        } else if 2 * abs(over) <= knee {
+          let k = over + knee / 2
+          want = slope * k * k / (2 * knee)
+        }
       }
       // Attack when the gain must drop, release when it may rise.
       gainDb = want < gainDb ? attack * gainDb + (1 - attack) * want : release * gainDb + (1 - release) * want
-      let g = powf(10, (gainDb + makeup) / 20)
+      if abs(gainDb - gainAtDb) > epsilon {
+        g = powf(10, (gainDb + makeup) / 20)
+        gainAtDb = gainDb
+      }
       // Peak limiter: instant attack (never above the ceiling), 50 ms release.
       let out = peak * g
       if out * limGain > ceiling {
@@ -213,5 +236,7 @@ struct VoiceBoostDSP {
     self.mix = mix
     self.gainDb = gainDb
     self.limGain = limGain
+    self.gain = g
+    self.gainAtDb = gainAtDb
   }
 }
