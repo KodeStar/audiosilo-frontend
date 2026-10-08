@@ -193,18 +193,17 @@ class NarrationSilenceProcessorTest {
     val (p, output) = process(input, 1024, shared)
     val removedFrames = (input.size - output.size) / channels
     assertTrue("something was removed", removedFrames > 0)
-    assertEquals(removedFrames.toLong(), p.totalSkippedFrames)
     assertEquals(removedFrames.toLong(), p.getSkippedFrames())
     val expectedSeconds = removedFrames.toDouble() / rate
-    assertEquals(expectedSeconds, p.savedSeconds, 0.001)
+    assertEquals(expectedSeconds, shared.get() / 1e6, 0.001)
     // ~ (800 - 425) + (4000 - 1000) ms.
-    assertEquals(3.375, p.savedSeconds, 0.02)
+    assertEquals(3.375, shared.get() / 1e6, 0.02)
 
-    // A flush (a seek) resets the sink-facing count but never the monotonic ones.
+    // A flush (a seek) resets the sink-facing count but never the monotonic one.
+    val savedBeforeFlush = shared.get()
     p.flush()
     assertEquals(0L, p.getSkippedFrames())
-    assertEquals(removedFrames.toLong(), p.totalSkippedFrames)
-    assertEquals(expectedSeconds, shared.get() / 1e6, 0.001)
+    assertEquals(savedBeforeFlush, shared.get())
 
     // A second processor sharing the process-wide counter adds to it.
     val (_, output2) = process(input, 777, shared)

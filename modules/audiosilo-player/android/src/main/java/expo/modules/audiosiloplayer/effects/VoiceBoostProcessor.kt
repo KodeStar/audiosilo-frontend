@@ -37,7 +37,9 @@ import kotlin.math.sqrt
  * hears exactly what they heard before it existed.
  *
  * Real-time rules: [queueInput] runs on the playback thread and never allocates (beyond the base
- * class's reusable output buffer) or locks; per-channel state is sized in [onFlush].
+ * class's reusable output buffer) or locks; per-channel state is sized in [onFlush]. Per frame it
+ * skips the log below the knee (the static curve is 0 dB there) and only recomputes the
+ * compressor's linear gain (an exp) once the smoothed gain moved by more than [gainEpsilonDb].
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 class VoiceBoostProcessor(
@@ -45,6 +47,9 @@ class VoiceBoostProcessor(
   private val switch: AtomicBoolean = AtomicBoolean(false),
   /** Apply the 80 Hz high-pass on the wet path. */
   private val highPass: Boolean = true,
+  /** How far (dB) the smoothed compressor gain may drift before its linear gain is recomputed;
+   * 0 recomputes on every change (the exact reference the tests compare against). */
+  private val gainEpsilonDb: Double = GAIN_EPSILON_DB,
 ) : BaseAudioProcessor() {
 
   /** Whether the boost is (or is ramping to) on. Safe from any thread. */
@@ -63,12 +68,17 @@ class VoiceBoostProcessor(
   private var hpA2 = 0.0
   private var hpZ1 = DoubleArray(0)
   private var hpZ2 = DoubleArray(0)
+  // One frame's input samples and their high-passed values (scratch, sized in configureDsp).
+  private var dryFrame = ShortArray(0)
   private var frame = DoubleArray(0)
 
-  // Compressor: smoothed gain change in dB (<= 0).
+  // Compressor: smoothed gain change in dB (<= 0), and the linear gain (make-up included) last
+  // computed from it, at [compGainAtDb].
   private var compAttack = 0.0
   private var compRelease = 0.0
   private var compGainDb = 0.0
+  private var compGainAtDb = 0.0
+  private var compGain = MAKEUP_GAIN
 
   // Limiter: peak envelope (linear).
   private var limAttack = 0.0
@@ -128,6 +138,7 @@ class VoiceBoostProcessor(
     hpA2 = (1.0 - alpha) / a0
     hpZ1 = DoubleArray(channelCount)
     hpZ2 = DoubleArray(channelCount)
+    dryFrame = ShortArray(channelCount)
     frame = DoubleArray(channelCount)
 
     compAttack = timeCoefficient(COMP_ATTACK_S, fs)
@@ -142,6 +153,8 @@ class VoiceBoostProcessor(
     hpZ1.fill(0.0)
     hpZ2.fill(0.0)
     compGainDb = 0.0
+    compGainAtDb = 0.0
+    compGain = MAKEUP_GAIN
     limEnvelope = 0.0
   }
 
@@ -181,7 +194,9 @@ class VoiceBoostProcessor(
       // High-pass (or not) and find the frame's peak for the linked detector.
       var peak = 0.0
       for (ch in 0 until channels) {
-        val x = inputBuffer.getShort(p + ch * 2) / FULL_SCALE
+        val sample = inputBuffer.getShort(p + ch * 2)
+        dryFrame[ch] = sample
+        val x = sample / FULL_SCALE
         val y =
           if (highPass) {
             val out = hpB0 * x + hpZ1[ch]
@@ -196,16 +211,19 @@ class VoiceBoostProcessor(
         if (a > peak) peak = a
       }
 
-      // Compressor: static curve with a soft knee, then attack/release smoothing in dB.
-      val levelDb = DB_PER_LN * ln(max(peak, MIN_LEVEL))
-      val targetGainDb = compressorGainDb(levelDb)
+      // Compressor: static curve with a soft knee (0 dB below it, so no log there), then
+      // attack/release smoothing in dB.
+      val targetGainDb = if (peak < KNEE_START) 0.0 else compressorGainDb(DB_PER_LN * ln(peak))
       compGainDb =
         if (targetGainDb < compGainDb) {
           compAttack * compGainDb + (1.0 - compAttack) * targetGainDb
         } else {
           compRelease * compGainDb + (1.0 - compRelease) * targetGainDb
         }
-      val compGain = exp((compGainDb + MAKEUP_DB) / DB_PER_LN)
+      if (abs(compGainDb - compGainAtDb) > gainEpsilonDb) {
+        compGainAtDb = compGainDb
+        compGain = exp((compGainDb + MAKEUP_DB) / DB_PER_LN)
+      }
 
       // Limiter: peak envelope of the compressed frame; gain pulls it to the ceiling.
       val compressedPeak = peak * compGain
@@ -219,7 +237,7 @@ class VoiceBoostProcessor(
       val wetGain = compGain * limGain
 
       for (ch in 0 until channels) {
-        val dry = inputBuffer.getShort(p + ch * 2)
+        val dry = dryFrame[ch]
         if (mix <= 0.0) {
           output.putShort(dry)
           continue
@@ -239,7 +257,6 @@ class VoiceBoostProcessor(
     private const val FULL_SCALE = 32768.0
     private const val SHORT_MIN = Short.MIN_VALUE.toInt()
     private const val SHORT_MAX = Short.MAX_VALUE.toInt()
-    private const val MIN_LEVEL = 1e-6 // -120 dBFS: keeps ln() finite on digital silence
     private val DB_PER_LN = 20.0 / ln(10.0)
 
     const val HIGH_PASS_HZ = 80.0
@@ -258,6 +275,17 @@ class VoiceBoostProcessor(
     const val LIMIT_ATTACK_S = 0.001
     const val LIMIT_RELEASE_S = 0.080
     const val RAMP_S = 0.020
+
+    /** 0.01 dB (0.1%): far below hearing, and the smoothed gain settles between onsets, so the
+     * exp runs on a fraction of the frames. */
+    const val GAIN_EPSILON_DB = 0.01
+
+    /** The make-up gain as a linear amplitude (the compressor's gain at 0 dB of reduction). */
+    private val MAKEUP_GAIN = exp(MAKEUP_DB / DB_PER_LN)
+
+    /** Where the knee starts (THRESHOLD_DB - KNEE_DB / 2) as a linear peak: below it the static
+     * curve is 0 dB. */
+    private val KNEE_START = exp((THRESHOLD_DB - KNEE_DB / 2.0) / DB_PER_LN)
 
     /** The limiter ceiling as a linear amplitude (-1 dBFS ~ 0.891). */
     val CEILING = exp(CEILING_DB / (20.0 / ln(10.0)))
