@@ -631,7 +631,14 @@ describe('bookmarks from outside the app', () => {
     mockClients.c1 = fakeClient({});
     stop = startCarSync();
     await settle();
-    remoteBookmark({ connectionId: 'c1', libraryId: 2, path: 'A/Book.m4b', position: 123.6 });
+    remoteBookmark({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book.m4b',
+      trackIndex: 0,
+      positionInTrack: 0,
+      bookPosition: 123.6,
+    });
     await settle();
     expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 124);
   });
@@ -642,7 +649,14 @@ describe('bookmarks from outside the app', () => {
     stop = startCarSync();
     await settle();
     mockAddBookmark.mockRejectedValueOnce(new TypeError('Network request failed'));
-    remoteBookmark({ connectionId: 'c1', libraryId: 2, path: 'A/Book.m4b', position: 50 });
+    remoteBookmark({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book.m4b',
+      trackIndex: 0,
+      positionInTrack: 0,
+      bookPosition: 50,
+    });
     await settle();
     expect(await getItem('audiosilo.carBookmarks')).toHaveLength(1);
 
@@ -662,7 +676,14 @@ describe('bookmarks from outside the app', () => {
     await settle();
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockAddBookmark.mockRejectedValueOnce(new ApiError(404, 'gone'));
-    remoteBookmark({ connectionId: 'c1', libraryId: 2, path: 'A/Book.m4b', position: 50 });
+    remoteBookmark({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book.m4b',
+      trackIndex: 0,
+      positionInTrack: 0,
+      bookPosition: 50,
+    });
     await settle();
     expect((await getItem<unknown[]>('audiosilo.carBookmarks')) ?? []).toHaveLength(0);
     warn.mockRestore();

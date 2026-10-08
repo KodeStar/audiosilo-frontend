@@ -678,7 +678,7 @@ export function startCarSync(): () => void {
           connectionId: r.connectionId,
           libraryId: r.libraryId,
           path: r.path,
-          position: r.position,
+          position: r.bookPosition,
           at: new Date().toISOString(),
         },
       ]);
