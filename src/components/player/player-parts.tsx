@@ -316,7 +316,7 @@ export function PlayerActions({ wide, upNext }: { wide: boolean; upNext: boolean
 
 /**
  * Smart Speed / Voice Boost's state (STYLEGUIDE section 8 "Full player": "Saved 2h 11m"
- * native, "Voice boost" web), shown only while one is on; it opens the speed sheet, where
+ * Android, "Voice boost" web and iOS), shown only while one is on; it opens the speed sheet, where
  * their switches are. Tablet and desktop only: on a phone the row already holds five
  * pills, and a running sleep countdown would push a sixth onto a second line.
  * The guide's `wave` glyph isn't vendored (adding one needs the FontAwesome generator),

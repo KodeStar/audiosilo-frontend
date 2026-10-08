@@ -1,3 +1,5 @@
+import { sameOrigin } from '@/lib/same-origin';
+
 /**
  * Client identification: every API request tells the server which app made it, so
  * the server can record it against the session token. Pure helpers; `ApiClient`
@@ -31,10 +33,5 @@ export function shouldIdentify(
   pageOrigin: string | null,
 ): boolean {
   if (platform !== 'web') return true;
-  if (!pageOrigin) return false;
-  try {
-    return new URL(baseUrl).origin === pageOrigin;
-  } catch {
-    return false;
-  }
+  return sameOrigin(baseUrl, pageOrigin ? { origin: pageOrigin } : null);
 }

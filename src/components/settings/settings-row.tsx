@@ -27,7 +27,8 @@ export function SettingsCard({ children, testID }: { children: ReactNode; testID
 }
 
 /**
- * One setting: its label, an optional one-line description, and its control.
+ * One setting: its label, an optional description, and its control. A string
+ * description is one caption line; pass nodes for several (each its own caption `Text`).
  * - `compact` (a stepper, a select): always beside the label.
  * - `wide` (a segmented control): beside it in a wide card, under it in a narrow one.
  * - `block` (a wrapping list, a status line): always under it, full width.
@@ -42,7 +43,7 @@ export function SettingRow({
   testID,
 }: {
   label: string;
-  description?: string;
+  description?: ReactNode;
   control?: 'compact' | 'wide' | 'block';
   first?: boolean;
   children?: ReactNode;
@@ -61,7 +62,11 @@ export function SettingRow({
     >
       <View className={cn('gap-0.5', inline && 'min-w-0 shrink')}>
         <Text>{label}</Text>
-        {description ? <Text variant="caption">{description}</Text> : null}
+        {typeof description === 'string' && description ? (
+          <Text variant="caption">{description}</Text>
+        ) : (
+          description || null
+        )}
       </View>
       {children ? (
         <View className={control === 'wide' && inline ? 'w-[280px] shrink-0' : undefined}>

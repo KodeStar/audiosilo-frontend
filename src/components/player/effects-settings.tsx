@@ -1,10 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import { SettingRow } from '@/components/settings/settings-row';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import { supportsVoiceBoost } from '@/playback/effects';
 import { useTimeSaved } from '@/playback/time-saved';
 import { useSettings } from '@/stores/settings';
@@ -39,8 +39,8 @@ function voiceBoostSupported(): boolean {
 /**
  * The Smart Speed and Voice Boost switches, bound to the one `smartSpeed` / `voiceBoost`
  * settings: the speed sheet and Settings > Listening > Playback both show THIS component,
- * so each setting lives in one place. Rows look like Settings' own (`SettingRow`): label
- * and captions on the left, the switch on the right, a hairline above unless `first`.
+ * so each setting lives in one place. Each is a Settings `SettingRow`: label and captions
+ * on the left, the switch on the right, a hairline above unless `first`.
  */
 export function EffectsSettings({ first = false }: { first?: boolean }) {
   const { t } = useTranslation();
@@ -98,21 +98,13 @@ function EffectSwitchRow<Line extends string>({
   first?: boolean;
   testID: string;
 }) {
+  const captions = row.lines.map((line) => (
+    <Text key={line} variant="caption" style={line === 'saved' ? tabularNums : undefined}>
+      {words(line)}
+    </Text>
+  ));
   return (
-    <View
-      className={cn(
-        'flex-row items-center justify-between gap-4 py-3.5',
-        !first && 'border-t border-border',
-      )}
-    >
-      <View className="min-w-0 shrink gap-0.5">
-        <Text>{label}</Text>
-        {row.lines.map((line) => (
-          <Text key={line} variant="caption" style={line === 'saved' ? tabularNums : undefined}>
-            {words(line)}
-          </Text>
-        ))}
-      </View>
+    <SettingRow label={label} description={captions} first={first}>
       <Switch
         checked={row.checked}
         onCheckedChange={onChange}
@@ -122,7 +114,7 @@ function EffectSwitchRow<Line extends string>({
         accessibilityHint={row.lines.map(words).join('. ')}
         testID={testID}
       />
-    </View>
+    </SettingRow>
   );
 }
 

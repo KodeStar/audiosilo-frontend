@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import i18next from 'i18next';
 
 import type { Chapter } from '@/api/types';
+import { playerHref } from '@/lib/paths';
 import { playerStoreMock, type MockNowPlaying } from '@/testing/player-store-mock';
 
 // The model reads the player through the store's selectors; the shared double is a real
@@ -72,6 +73,14 @@ describe('playerDeepLink', () => {
   it('carries the book identity as the player route params, encoded', () => {
     expect(playerDeepLink('srv 1', 3, 'Author/Book & Co')).toBe(
       'audiosilo://player?connection=srv%201&libraryId=3&path=Author%2FBook%20%26%20Co',
+    );
+  });
+
+  it("carries exactly the params the app's own player route uses", () => {
+    const link = new URL(playerDeepLink('srv 1', 3, 'Author/Book & Co'));
+    expect(link.host).toBe('player');
+    expect(Object.fromEntries(link.searchParams)).toEqual(
+      (playerHref('srv 1', 3, 'Author/Book & Co') as { params: Record<string, string> }).params,
     );
   });
 });
@@ -258,7 +267,8 @@ describe('sleepActivityProps', () => {
       pauseAtPosition: null,
       bookKey: 'srv 1:3:Author/Book One',
     } as const;
-    const props = sleepActivityProps(timer, state(), NOW, t, 'file:///g/cover-1-a.jpg')!;
+    const timing = sleepTiming(timer, state(), NOW)!;
+    const props = sleepActivityProps(timing, state(), t, 'file:///g/cover-1-a.jpg')!;
     expect(props).toEqual({
       title: 'Book One',
       chapterTitle: 'Opening',

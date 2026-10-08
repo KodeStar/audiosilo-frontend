@@ -109,18 +109,26 @@ export function playerHref(
   relPath: string,
   place: BookPlace = {},
 ): Href {
+  return { pathname: '/player', params: playerParams(connectionId, libraryId, relPath, place) };
+}
+
+/** `playerHref`'s route params, for a link built outside Expo Router (the iOS widget's
+ * deep link), so a renamed param can't leave that link behind. */
+export function playerParams(
+  connectionId: string,
+  libraryId: number,
+  relPath: string,
+  place: BookPlace = {},
+): Record<string, string> {
   return {
-    pathname: '/player',
-    params: {
-      connection: connectionId,
-      libraryId: String(libraryId),
-      path: relPath,
-      // Whole seconds: the route param is a string the player parses back.
-      ...(place.position !== undefined
-        ? { position: String(Math.max(0, Math.round(place.position))) }
-        : {}),
-      ...(place.track !== undefined ? { track: String(place.track) } : {}),
-    },
+    connection: connectionId,
+    libraryId: String(libraryId),
+    path: relPath,
+    // Whole seconds: the route param is a string the player parses back.
+    ...(place.position !== undefined
+      ? { position: String(Math.max(0, Math.round(place.position))) }
+      : {}),
+    ...(place.track !== undefined ? { track: String(place.track) } : {}),
   };
 }
 

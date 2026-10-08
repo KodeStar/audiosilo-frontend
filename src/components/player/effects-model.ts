@@ -67,8 +67,9 @@ export function effectsPill(input: {
   savedSeconds: number;
 }): EffectsPill | null {
   const { platform, smartSpeed, voiceBoost, voiceBoostSupported, savedSeconds } = input;
-  if (platform === 'web') return voiceBoost && voiceBoostSupported ? { kind: 'voiceBoost' } : null;
-  if (!smartSpeedApplies(platform)) return voiceBoost ? { kind: 'voiceBoost' } : null;
+  if (!smartSpeedApplies(platform)) {
+    return voiceBoost && voiceBoostSupported ? { kind: 'voiceBoost' } : null;
+  }
   if (smartSpeed && hasSaved(savedSeconds)) return { kind: 'saved', seconds: savedSeconds };
   if (voiceBoost) return { kind: 'voiceBoost' };
   if (smartSpeed) return { kind: 'smartSpeed' };

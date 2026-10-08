@@ -21,13 +21,51 @@ jest.mock('@/stores/session', () => ({
     return () => mockRemoval.fns.delete(fn);
   },
 }));
-jest.mock('expo-file-system', () => ({ Directory: class {}, File: class {} }));
+// A file system of names in a set: enough for `prepareCovers` (the sync itself takes its
+// covers injected).
+const mockFiles = new Map<string, Uint8Array>();
+jest.mock('expo-file-system', () => {
+  class Directory {
+    uri = 'file:///group';
+    exists = true;
+    list() {
+      return [];
+    }
+  }
+  class File {
+    uri: string;
+    constructor(dirOrUri: Directory | string, name?: string) {
+      this.uri = typeof dirOrUri === 'string' ? dirOrUri : `${dirOrUri.uri}/${name}`;
+    }
+    get exists() {
+      return mockFiles.has(this.uri);
+    }
+    write(bytes: Uint8Array) {
+      mockFiles.set(this.uri, bytes);
+    }
+    bytes() {
+      return Promise.resolve(mockFiles.get(this.uri)!);
+    }
+  }
+  return { Directory, File };
+});
+const mockCoverSizes: { value: boolean | undefined } = { value: undefined };
+jest.mock('@/api/hooks', () => ({ cachedCapability: () => mockCoverSizes.value }));
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: () => ({
+    coverUrl: (_lib: number, _path: string, opts?: { size?: number }) =>
+      `https://s/cover?size=${opts?.size}`,
+  }),
+}));
 
 /* eslint-disable import/first */
+import { Directory } from 'expo-file-system';
+
+import type { NowPlaying } from '@/playback/store';
 import { useSleepTimer } from '@/playback/sleep-timer';
 
 import type { ContinueListeningProps, SleepTimerActivityProps } from './widget-model';
-import { runWidgetSync, type Covers, type WidgetSyncDeps } from './widget-sync.ios';
+import { prepareCovers, runWidgetSync, type Covers, type WidgetSyncDeps } from './widget-sync.ios';
 /* eslint-enable import/first */
 
 const player = playerStoreMock();
@@ -321,5 +359,102 @@ describe('the sleep timer Live Activity', () => {
     h.foreground.fire();
     expect(h.started).toHaveLength(1);
     warn.mockRestore();
+  });
+
+  it('rebuilds its words only when the chapter or the cover changes, not on a tick', async () => {
+    const h = harness();
+    const tFor = jest.fn(() => t);
+    h.deps.t = tFor;
+    run(h);
+    loadBook(100);
+    setTimer({ phase: 'running', endsAt: now + 600_000, bookKey: KEY });
+    expect(h.started).toHaveLength(1);
+    tFor.mockClear();
+    setTimer({ remaining: 599 }); // a tick: same book, chapter, cover and end
+    player.usePlayer.setState({ bookPosition: 110 });
+    expect(tFor).not.toHaveBeenCalled();
+    expect(h.updates).not.toHaveBeenCalled();
+    player.usePlayer.setState({ bookPosition: 700 }); // chapter Two, same end
+    expect(h.updates).toHaveBeenLastCalledWith(expect.objectContaining({ chapterTitle: 'Two' }));
+    h.resolveCovers({ activity: 'file:///group/a.jpg' });
+    await flush();
+    expect(h.updates).toHaveBeenLastCalledWith(
+      expect.objectContaining({ coverFile: 'file:///group/a.jpg' }),
+    );
+  });
+});
+
+describe('prepareCovers', () => {
+  /** A JPEG header (SOI, APP0, SOF0) of a `width` x `height` image. */
+  const jpeg = (width: number, height: number) =>
+    new Uint8Array([
+      0xff,
+      0xd8,
+      0xff,
+      0xe0,
+      0x00,
+      0x04,
+      0x00,
+      0x00,
+      0xff,
+      0xc0,
+      0x00,
+      0x11,
+      0x08,
+      height >> 8,
+      height & 0xff,
+      width >> 8,
+      width & 0xff,
+      0x03,
+      0,
+      0,
+      0,
+      0,
+    ]);
+  const np = (cover: string) =>
+    ({ connectionId: 'srv', libraryId: 1, path: 'Book', cover }) as NowPlaying;
+  const fetched: string[] = [];
+  const bodies = new Map<string, Uint8Array>();
+
+  beforeEach(() => {
+    jest.useRealTimers();
+    mockFiles.clear();
+    mockCoverSizes.value = undefined;
+    fetched.length = 0;
+    bodies.clear();
+    globalThis.fetch = jest.fn(async (url: string) => {
+      fetched.push(url);
+      const body = bodies.get(url);
+      return {
+        ok: !!body,
+        arrayBuffer: async () => body!.buffer,
+      } as Response;
+    }) as unknown as typeof fetch;
+  });
+
+  it("writes the server's thumbnails, both at once", async () => {
+    bodies.set('https://s/cover?size=320', jpeg(320, 320));
+    bodies.set('https://s/cover?size=160', jpeg(160, 160));
+    const covers = await prepareCovers(new Directory('x'), np(''));
+    expect(covers.widget).toMatch(/^file:\/\/\/group\/cover-[0-9a-f]{8}-w\.jpg$/);
+    expect(covers.activity).toMatch(/-a\.jpg$/);
+    expect(fetched.sort()).toEqual(['https://s/cover?size=160', 'https://s/cover?size=320']);
+  });
+
+  it("reads the player's cover once for both, and skips sizes a server lacks", async () => {
+    mockCoverSizes.value = false;
+    bodies.set('https://s/full.jpg', jpeg(150, 150));
+    const covers = await prepareCovers(new Directory('x'), np('https://s/full.jpg'));
+    expect(covers.widget).toBeDefined();
+    expect(covers.activity).toBeDefined();
+    expect(fetched).toEqual(['https://s/full.jpg']);
+  });
+
+  it('leaves out a cover nothing small enough was found for', async () => {
+    bodies.set('https://s/cover?size=320', jpeg(320, 320));
+    bodies.set('https://s/cover?size=160', jpeg(2000, 2000)); // a size the server ignored
+    const covers = await prepareCovers(new Directory('x'), np(''));
+    expect(covers.widget).toBeDefined();
+    expect(covers).not.toHaveProperty('activity');
   });
 });
