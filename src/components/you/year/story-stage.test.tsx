@@ -3,7 +3,11 @@ import { AccessibilityInfo, Platform, type View } from 'react-native';
 
 import i18n from '@/i18n';
 
-jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
+jest.mock('@/components/library/book-cover', () => ({
+  BookCover: () => null,
+  coverSizeFor: () => 640,
+  MAX_COVER_SIZE: 640,
+}));
 
 /* eslint-disable import/first */
 import { StoryStage } from './story-stage';

@@ -23,6 +23,8 @@ jest.mock('@/stores/session', () => ({
 }));
 // A cover needs the server's flags and the downloads registry; the card only places it.
 jest.mock('@/components/library/book-cover', () => ({
+  coverSizeFor: () => 640,
+  MAX_COVER_SIZE: 640,
   BookCover: ({ title }: { title: string }) => {
     const { Text } = jest.requireActual('react-native');
     return <Text>{`cover: ${title}`}</Text>;
