@@ -1,12 +1,11 @@
 import { t } from 'i18next';
-import { AppState } from 'react-native';
 
 import { resolveClient } from '@/api/connection-clients';
 import { isReachable, onReconnect } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
-import { whenActive } from '@/lib/when-active';
+import { onForeground, whenActive } from '@/lib/when-active';
 
 import { selectUndoFor, undoJump, useJumpUndo } from './jump-undo';
 import { getDeviceId, readMirror, type ProgressSave } from './progress-sync';
@@ -20,8 +19,7 @@ import {
 } from './store';
 
 /**
- * Picking a loaded book up again where ANOTHER device left it (the 2026-10 resume
- * investigation). A book this device holds loaded resumes from its engine's place on every
+ * Picking a loaded book up again where ANOTHER device left it. A book this device holds loaded resumes from its engine's place on every
  * Play (a press, the lock screen, earbuds): nothing asks the server. If another device (or
  * the other AudioSilo app on the same phone, which keeps its own engine, mirror and queue)
  * played on meanwhile, the listener heard the old place AND this device's next save, newer
@@ -46,7 +44,7 @@ import {
  *
  * A finished record moves nothing: like `playBook`, its position is not a place to resume
  * (it is the end), and restarting a book the listener is in the middle of here would be
- * worse. This device's next save then records the book unfinished again, as today.
+ * worse. This device's next save then records the book unfinished again.
  */
 
 /** A smaller difference is not worth moving the listener (auto-rewind is up to 30 s). */
@@ -168,13 +166,7 @@ export function undoMove(bookKey: string, from: number): void {
 export function startPlaceReconcile(): () => void {
   const stops: (() => void)[] = [];
   stops.push(onPickedUpAgain(() => void reconcileLoadedPlace('picked-up')));
-  let appState = AppState.currentState;
-  const sub = AppState.addEventListener('change', (next) => {
-    const wasAway = appState !== 'active';
-    appState = next;
-    if (next === 'active' && wasAway) void reconcileLoadedPlace('foreground');
-  });
-  stops.push(() => sub.remove());
+  stops.push(onForeground(() => void reconcileLoadedPlace('foreground')));
   stops.push(
     onReconnect((cid) => {
       if (usePlayer.getState().nowPlaying?.connectionId === cid) {
