@@ -491,7 +491,7 @@ per-book list (the client still reads an older server's `null` as none).
 
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
-from **ONE whole-book POSITION** (`useListeningPosition`, also Search's and the series
+from **ONE whole-book POSITION** (`useBookPlace`'s `listening`, also Search's and the series
 page's) - the player's live position when this book is loaded (never below the saved one;
 and only once its engine load has landed, `selectPlacedBookKey`: until then the snapshot is
 still the PREVIOUS book's place, the store's `loadingBook`),
