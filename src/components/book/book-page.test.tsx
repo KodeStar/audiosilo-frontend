@@ -359,6 +359,25 @@ describe('book page chapters tab', () => {
     expect(mockPlayBook).not.toHaveBeenCalled();
   });
 
+  it('says the chapters come from the community only when the server says so', async () => {
+    await mountAt('desktop');
+    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+    expect(screen.queryByText('Chapters from the AudioSilo community database')).toBeNull();
+
+    mockChapters = { ...CHAPTERS, chapters_source: 'community' };
+    await mountAt('desktop');
+    expect(screen.getByText('Chapters from the AudioSilo community database')).toBeTruthy();
+    // The rows are the chapters as ever.
+    expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
+
+    // Parts the player makes are not the community's list: no caption under them.
+    mockBook = { ...BOOK, duration: 2 * 3600 };
+    mockChapters = { ...CHAPTERS, duration: 2 * 3600, chapters: [], chapters_source: 'community' };
+    await mountAt('desktop');
+    expect(screen.getByText('This book has no chapter marks')).toBeTruthy();
+    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+  });
+
   it('lists a long chapterless file in parts, and says why', async () => {
     mockBook = { ...BOOK, duration: 2 * 3600 };
     mockChapters = { ...CHAPTERS, duration: 2 * 3600, chapters: [] };

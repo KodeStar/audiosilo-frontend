@@ -1145,7 +1145,8 @@
       "here": "vous êtes ici",
       "heard": "écouté",
       "hasBookmark": "contient un signet",
-      "startsAt": "commence à {{time}}"
+      "startsAt": "commence à {{time}}",
+      "community": "Chapitres issus de la base de données communautaire d’AudioSilo"
     },
     "details": {
       "title": "Détails",

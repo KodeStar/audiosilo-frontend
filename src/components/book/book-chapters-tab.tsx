@@ -3,6 +3,7 @@ import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import { SourceLine } from '@/components/library/source-line';
 import { BookTimeline } from '@/components/player/book-timeline';
 import { timelinePosition } from '@/components/player/book-timeline-model';
 import {
@@ -50,6 +51,9 @@ export type BookChaptersTabProps = {
   roomy: boolean;
   /** The part length, seconds (the parts notice says it). */
   interval: number;
+  /** The chapters are a community recording's list fitted onto this audio
+   * (`chapters_source`), not the files' own: a quiet line under the rows says so. */
+  fromCommunity: boolean;
   onJump: (jump: Jump) => void;
 };
 
@@ -59,7 +63,7 @@ export type BookChaptersTabProps = {
  * a tap on a book that isn't playing starts it there), then the rows: the current one
  * marked, the ones behind ticked, a bookmark glyph on a chapter holding one, the start
  * time on wide layouts. A chapterless file lists the player's parts, with a notice
- * saying why.
+ * saying why; community chapters end with a line saying where they came from.
  */
 export function BookChaptersTab({
   list,
@@ -71,6 +75,7 @@ export function BookChaptersTab({
   pins,
   roomy,
   interval,
+  fromCommunity,
   onJump,
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
@@ -127,6 +132,13 @@ export function BookChaptersTab({
           />
         ))}
       </View>
+      {fromCommunity ? (
+        <SourceLine
+          testID="book-chapters-community"
+          label={t('book.chapters.community')}
+          className="px-2.5"
+        />
+      ) : null}
     </View>
   );
 }

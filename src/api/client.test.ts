@@ -396,6 +396,55 @@ describe('ApiClient', () => {
     expect(book.cover_version).toBe('ab12cd34ef');
   });
 
+  // --- Community chapters (chapters_source) ----------------------------------
+
+  const chaptersBody = {
+    library_id: 2,
+    path: 'Myths/Mythos',
+    duration: 3600,
+    is_folder: false,
+    files: [
+      { rel_path: 'Myths/Mythos/Mythos.m4b', seq: 0, duration: 3600, format: 'm4b', size: 1 },
+    ],
+    chapters: [
+      {
+        index: 0,
+        title: 'Chaos',
+        file_index: 0,
+        file_path: 'Myths/Mythos/Mythos.m4b',
+        start: 0,
+        end: 1800,
+        book_offset: 0,
+      },
+    ],
+  };
+
+  it('passes chapters_source through on the chapters and item envelopes', async () => {
+    const fetchMock = installFetch((url) => ({
+      status: 200,
+      body: url.includes('/chapters')
+        ? { ...chaptersBody, chapters_source: 'community' }
+        : { id: 9, rel_path: 'Myths/Mythos', chapters_source: 'community' },
+    }));
+    const c = new ApiClient('https://h', 'tok');
+    const data = await c.chapters(2, 'Myths/Mythos');
+    expect(String(fetchMock.mock.calls[0][0])).toContain(
+      '/libraries/2/chapters?path=Myths%2FMythos',
+    );
+    // Typed reads, so a misnamed mirror field fails the type check, not only a match.
+    expect(data.chapters_source).toBe('community');
+    expect(data.chapters[0].title).toBe('Chaos');
+    const book = await c.item(2, 'Myths/Mythos');
+    expect(book.chapters_source).toBe('community');
+  });
+
+  it('leaves chapters_source undefined when the server sends none (files or older server)', async () => {
+    installFetch(() => ({ status: 200, body: chaptersBody }));
+    const data = await new ApiClient('https://h', 'tok').chapters(2, 'Myths/Mythos');
+    expect(data.chapters_source).toBeUndefined();
+    expect(data.chapters).toHaveLength(1);
+  });
+
   // --- Browse lists & books filter -------------------------------------------
 
   it('lists books with filters, cursor and sort encoded, and returns the page', async () => {

@@ -13,6 +13,7 @@ import { useCid } from '@/api/provider';
 import type { BookRef } from '@/api/types';
 import { CoverWash } from '@/components/library/cover-wash';
 import { GhostCover } from '@/components/library/ghost-cover';
+import { SourceLine } from '@/components/library/source-line';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { SectionHeader } from '@/components/ui/section-header';
@@ -51,14 +52,7 @@ import {
   trackSegments,
   typicalSeconds,
 } from './series-model';
-import {
-  EntryList,
-  ProgressTrack,
-  ShelfCaption,
-  ShelfLegend,
-  SourceLine,
-  statsLine,
-} from './series-parts';
+import { EntryList, ProgressTrack, ShelfCaption, ShelfLegend, statsLine } from './series-parts';
 import { spineDims } from './spine-fit';
 import { useResumeChapter } from './use-resume-chapter';
 import { useElsewhereBooks, usePlacedBooks } from './use-series-data';
@@ -297,7 +291,7 @@ export function SeriesPage({
           </View>
           <EntryList entries={entries} currentKey={current?.key} />
           <KeepAheadCard />
-          {rail ? <SourceLine /> : null}
+          {rail ? <SourceLine label={t('series.source')} className="mt-3" /> : null}
         </View>
       </View>
     </ScrollView>

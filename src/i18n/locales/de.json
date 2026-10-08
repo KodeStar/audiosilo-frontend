@@ -1145,7 +1145,8 @@
       "here": "du bist hier",
       "heard": "gehört",
       "hasBookmark": "mit Lesezeichen",
-      "startsAt": "beginnt bei {{time}}"
+      "startsAt": "beginnt bei {{time}}",
+      "community": "Kapitel aus der Community-Datenbank von AudioSilo"
     },
     "details": {
       "title": "Details",

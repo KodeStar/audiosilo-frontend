@@ -14,7 +14,7 @@ import { ShellToastHost } from '@/components/shell/shell-toast-host';
 import { RootInsetsProvider } from '@/components/ui/overlay';
 import { engine } from '@/downloads/engine';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
-import { useDownloads } from '@/downloads/store';
+import { startChapterRefresh, useDownloads } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
@@ -125,6 +125,10 @@ export default function RootLayout() {
   // "Keep the next books ready" (downloads the books after the loaded one when the
   // listener opted in). Framework-free like the auto sleep timer; see the controller.
   useEffect(() => startKeepAhead(), []);
+
+  // A downloaded book takes the server's changed chapters (a rescan, community chapters)
+  // whenever they arrive online, while its audio files are unchanged; see the store.
+  useEffect(() => startChapterRefresh(), []);
 
   // Undo jump: remembers where the listener was after any jump of more than a minute
   // (scrub, chapter tap, lock-screen seek...) for the "Back to 17:26:50" chip. Watches the

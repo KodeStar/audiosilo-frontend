@@ -296,6 +296,11 @@ export type Book = {
    * image overwritten in place keeps its token until a thumbnail reads the new art.
    * Absent on older servers. */
   cover_version?: string;
+  /** `"community"` when the book's chapters are a community recording's list (from
+   * the metadata service) fitted onto its audio, rather than the files' own. Only
+   * GET /libraries/{id}/item sends it; absent means the files' own chapters, and on
+   * older servers. */
+  chapters_source?: 'community';
 };
 
 /** Colours derived from a book's cover art, all lowercase "#rrggbb". `bg` is the
@@ -397,6 +402,10 @@ export type ChaptersResponse = {
   codec?: string;
   /** Whether the codec plays natively in browsers (see Book.direct_playable). */
   direct_playable?: boolean;
+  /** `"community"` when `chapters` are a community recording's list fitted onto the
+   * book's audio (see Book.chapters_source); absent means the files' own chapters,
+   * and on older servers. The chapters themselves have the same shape either way. */
+  chapters_source?: 'community';
 };
 
 // --- Enriched metadata (community meta service, via /libraries/{id}/meta) -----

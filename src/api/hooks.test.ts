@@ -50,6 +50,7 @@ import {
   fetchCapabilities,
   flattenPages,
   historyQuery,
+  chaptersKeyParts,
   isQueueKey,
   isSearchKey,
   META_STALE_MS,
@@ -200,6 +201,12 @@ describe('key predicates', () => {
   it('match their own key families', () => {
     expect(isQueueKey(qk.queue('c'))).toBe(true);
     expect(isQueueKey(qk.collections('c'))).toBe(false);
+    expect(chaptersKeyParts(qk.chapters('c', 2, 'A/Book'))).toEqual({
+      cid: 'c',
+      libraryId: 2,
+      path: 'A/Book',
+    });
+    expect(chaptersKeyParts(qk.item('c', 2, 'A/Book'))).toBeNull();
     expect(isSearchKey(qk.search('c', 'dune'), 'dune')).toBe(true);
     expect(isSearchKey(qk.search('c', 'dun'), 'dune')).toBe(false);
     expect(qk.allProgress('c').slice(0, 2)).toEqual([...qk.allProgressAll()]);

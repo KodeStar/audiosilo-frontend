@@ -1145,7 +1145,8 @@
       "here": "estás aquí",
       "heard": "escuchado",
       "hasBookmark": "tiene un marcador",
-      "startsAt": "empieza en {{time}}"
+      "startsAt": "empieza en {{time}}",
+      "community": "Capítulos de la base de datos de la comunidad de AudioSilo"
     },
     "details": {
       "title": "Detalles",

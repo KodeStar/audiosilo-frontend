@@ -131,6 +131,15 @@ export const qk = {
 /** Whether a query key is a connection's Up next queue (`qk.queue`). */
 export const isQueueKey = (key: readonly unknown[]): boolean => key[0] === 'queue';
 
+/** The book a chapters query key names (`qk.chapters`), or null for any other key. */
+export function chaptersKeyParts(
+  key: readonly unknown[],
+): { cid: string; libraryId: number; path: string } | null {
+  const [kind, cid, libraryId, path] = key;
+  if (kind !== 'chapters' || typeof cid !== 'string' || typeof libraryId !== 'number') return null;
+  return typeof path === 'string' ? { cid, libraryId, path } : null;
+}
+
 /** Whether a query key is a book search for `q` on any connection (`qk.search`). */
 export const isSearchKey = (key: readonly unknown[], q: string): boolean =>
   key[0] === 'search' && key[2] === q;

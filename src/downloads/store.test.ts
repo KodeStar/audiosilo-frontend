@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
-import type { Book } from '@/api/types';
+import type { Book, ChaptersResponse } from '@/api/types';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 
 // The store resolves its file storage from './engine' (Metro picks the per-platform
@@ -89,8 +89,16 @@ const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
 const mockFetchQuery = jest.fn((_o: { queryKey: unknown[] }): Promise<unknown> =>
   Promise.reject(new Error('not mocked')),
 );
+// The query cache's listeners (`startChapterRefresh` subscribes one).
+const mockCacheListeners = new Set<(event: unknown) => void>();
 jest.mock('@/api/provider', () => ({
   queryClient: {
+    getQueryCache: () => ({
+      subscribe: (l: (event: unknown) => void) => {
+        mockCacheListeners.add(l);
+        return () => mockCacheListeners.delete(l);
+      },
+    }),
     setQueryData: jest.fn(),
     invalidateQueries: jest.fn(),
     getQueryData: (...a: unknown[]) => mockGetQueryData(...a),
@@ -115,6 +123,9 @@ jest.mock('@/api/hooks', () => ({
   chaptersQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
     queryKey: ['chapters', cid, lib, path],
   }),
+  // The real helper's reading of `qk.chapters` (hooks.test.ts covers it).
+  chaptersKeyParts: ([kind, cid, libraryId, path]: unknown[]) =>
+    kind === 'chapters' ? { cid, libraryId, path } : null,
 }));
 
 // Imported after the mocks so the store binds to the fakes above.
@@ -125,7 +136,9 @@ import {
   downloadedCountFor,
   downloadKey,
   isDeclined,
+  refreshedChapters,
   reviveEntry,
+  startChapterRefresh,
   useDownloads,
 } from '@/downloads/store';
 import { onConnectionRemoved } from '@/stores/session';
@@ -471,6 +484,189 @@ describe('reviveEntry', () => {
     const none = failed();
     none.manifest.files = [];
     expect(reviveEntry(none, true)).toBeNull();
+  });
+});
+
+describe("refreshing a downloaded book's chapters", () => {
+  // The two files `downloadedEntry` lists, as the server's chapters answer names them.
+  const fresh = (
+    paths = ['A/Book/01.mp3', 'A/Book/02.mp3'],
+    over: Partial<ChaptersResponse> = {},
+  ): ChaptersResponse => ({
+    library_id: 2,
+    path: 'A/Book',
+    duration: 120,
+    is_folder: true,
+    files: paths.map((rel_path, seq) => ({ rel_path, seq, duration: 60, format: 'mp3', size: 1 })),
+    chapters: paths.map((file_path, index) => ({
+      index,
+      title: `Chapter ${index + 1}`,
+      file_index: index,
+      file_path,
+      start: 0,
+      end: 60,
+      book_offset: index * 60,
+    })),
+    chapters_source: 'community',
+    ...over,
+  });
+
+  describe('refreshedChapters', () => {
+    it('takes the fresh chapters when the audio files are the same', () => {
+      const e = downloadedEntry();
+      const next = refreshedChapters(e.manifest, fresh());
+      expect(next?.chapters?.chapters_source).toBe('community');
+      // Only the chapters move: the local audio and the rest stay as they were.
+      expect(next).toEqual({ ...e.manifest, chapters: fresh() });
+      expect(next?.files).toBe(e.manifest.files);
+    });
+
+    it('leaves the manifest alone when the files differ (a re-download)', () => {
+      const e = downloadedEntry();
+      expect(refreshedChapters(e.manifest, fresh(['A/Book/01.mp3']))).toBeNull();
+      expect(refreshedChapters(e.manifest, fresh(['A/Book/02.mp3', 'A/Book/01.mp3']))).toBeNull();
+      expect(refreshedChapters(e.manifest, fresh(['A/Book/01.mp3', 'A/Book/03.mp3']))).toBeNull();
+    });
+
+    it('leaves the manifest alone when a file at the same path changed size (replaced in place)', () => {
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh(undefined, { chapters_source: undefined });
+      const replaced = fresh();
+      replaced.files = replaced.files.map((f, i) => (i === 1 ? { ...f, size: 2 } : f));
+      expect(refreshedChapters(e.manifest, replaced)).toBeNull();
+      // The same sizes: the community chapters are taken.
+      expect(refreshedChapters(e.manifest, fresh())?.chapters?.chapters_source).toBe('community');
+    });
+
+    it('reads the files from the chapters when the answer lists none', () => {
+      const e = downloadedEntry();
+      expect(refreshedChapters(e.manifest, fresh(undefined, { files: [] }))).not.toBeNull();
+    });
+
+    it('changes nothing when the saved chapters are already these', () => {
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh();
+      expect(refreshedChapters(e.manifest, fresh())).toBeNull();
+      // An unchanged refetch hands back the very same object.
+      expect(refreshedChapters(e.manifest, e.manifest.chapters)).toBeNull();
+    });
+  });
+
+  describe('startChapterRefresh', () => {
+    const answer = (data: unknown, manual?: boolean, key = ['chapters', 'c1', 2, 'A/Book']) => {
+      for (const l of mockCacheListeners) {
+        l({ type: 'updated', query: { queryKey: key }, action: { type: 'success', data, manual } });
+      }
+    };
+    let stop: () => void = () => {};
+    // Fake timers, so the save `persistSoon` holds runs here and never leaks into the
+    // next test (it would hold that test's save behind its own).
+    beforeEach(() => {
+      jest.useFakeTimers();
+      stop = startChapterRefresh();
+    });
+    afterEach(() => {
+      stop();
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    });
+
+    it("saves the server's new chapters for a downloaded book with the same files", async () => {
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [downloadKey('c1', 2, 'A/Book')]: e } });
+      answer(fresh());
+      const now = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+      expect(now.manifest.chapters).toEqual(fresh());
+      expect(now.manifest.files).toBe(e.manifest.files);
+    });
+
+    it('saves a burst of answers once, a moment later', async () => {
+      // Each book with its own two files, answered with its own.
+      const bFiles = ['B/Book/01.mp3', 'B/Book/02.mp3'];
+      const a = downloadedEntry();
+      const b = downloadedEntry({ path: 'B/Book' });
+      b.manifest = {
+        ...b.manifest,
+        book: makeBook({ rel_path: 'B/Book' }),
+        files: bFiles.map((relPath, i) => ({ relPath, localUri: `stale:b${i}` })),
+      };
+      useDownloads.setState({
+        entries: { [downloadKey('c1', 2, 'A/Book')]: a, [downloadKey('c1', 2, 'B/Book')]: b },
+      });
+      // The in-memory AsyncStorage's setItem is a jest.fn (jest.setup.ts): count its calls.
+      const save = AsyncStorage.setItem as jest.Mock;
+      save.mockClear();
+      answer(fresh());
+      answer(fresh(bFiles, { path: 'B/Book' }), false, ['chapters', 'c1', 2, 'B/Book']);
+      expect(save).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(2000);
+      expect(save).toHaveBeenCalledTimes(1);
+      const saved = await readPersisted();
+      for (const k of Object.keys(saved)) {
+        expect(saved[k].manifest.chapters?.chapters_source).toBe('community');
+      }
+      expect(Object.keys(saved)).toHaveLength(2);
+    });
+
+    it('leaves it alone when the files differ, the answer is a seed, or the book is not downloaded', () => {
+      const e = downloadedEntry();
+      const key = downloadKey('c1', 2, 'A/Book');
+      useDownloads.setState({ entries: { [key]: e } });
+      answer(fresh(['A/Book/01.mp3', 'A/Book/09.mp3']));
+      answer(fresh(), true);
+      answer(fresh(), false, ['item', 'c1', 2, 'A/Book']);
+      answer(fresh(), false, ['chapters', 'c2', 2, 'A/Book']);
+      expect(useDownloads.getState().entries[key]).toBe(e);
+      const queued = downloadedEntry({ status: 'queued' });
+      useDownloads.setState({ entries: { [key]: queued } });
+      answer(fresh());
+      expect(useDownloads.getState().entries[key]).toBe(queued);
+    });
+
+    it('stops listening once unsubscribed', () => {
+      const e = downloadedEntry();
+      const key = downloadKey('c1', 2, 'A/Book');
+      useDownloads.setState({ entries: { [key]: e } });
+      stop();
+      answer(fresh());
+      expect(useDownloads.getState().entries[key]).toBe(e);
+    });
+  });
+
+  // `startChapterRefresh` sees only answers for a book already downloaded: one that landed
+  // before (while the files did, or before launch read the registry) is taken from the cache.
+  describe('an answer that landed before the book was downloaded', () => {
+    const key = downloadKey('c1', 2, 'A/Book');
+    const cacheHolds = (data: ChaptersResponse) =>
+      mockGetQueryData.mockImplementation((k: unknown) =>
+        Array.isArray(k) && k[0] === 'chapters' && k[3] === 'A/Book' ? data : undefined,
+      );
+    afterEach(() => mockGetQueryData.mockReset());
+
+    it('is taken when the download finishes', async () => {
+      mockResolveClient.mockReturnValue({
+        coverUrl: () => 'cover',
+        streamUrl: (_lib: number, p: string) => `stream:${p}`,
+      } as unknown as ApiClient);
+      mockEngine.downloadFile.mockImplementation(
+        async (_c, _l, _p, name: string) => `local:${name}`,
+      );
+      const before = fresh(undefined, { chapters_source: undefined });
+      cacheHolds(fresh());
+      useDownloads.getState().download('c1', 2, makeBook({ files: before.files }), before);
+      await new Promise((r) => setTimeout(r, 0));
+      const done = useDownloads.getState().entries[key];
+      expect(done?.status).toBe('downloaded');
+      expect(done?.manifest.chapters).toEqual(fresh());
+    });
+
+    it('is taken when launch reads the registry, and saved', async () => {
+      await seed({ [key]: downloadedEntry() });
+      cacheHolds(fresh());
+      await useDownloads.getState().hydrate();
+      expect(useDownloads.getState().entries[key]?.manifest.chapters).toEqual(fresh());
+      expect((await readPersisted())[key]?.manifest.chapters).toEqual(fresh());
+    });
   });
 });
 

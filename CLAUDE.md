@@ -354,7 +354,9 @@ the same entries the Bookmarks and Notes tabs write). The active tab's panel is 
 `BookTimeline` for ANY book, pins from `useBookAnnotations`, which `usePlayingPins` reads for
 the playing book; the rows' place is `rowAt`, previous/next for a book not playing the player's
 own `nextSegmentStart`/`previousSegmentStart`) then the rows (`chapterList`: the real chapters at their corrected starts, a
-long chapterless file's 30-minute parts as the player makes them, else the files). Bookmarks and
+long chapterless file's 30-minute parts as the player makes them, else the files), ending with a
+quiet globe caption ("Chapters from the AudioSilo community database") only when the chapters
+answer says `chapters_source: "community"` and the rows are those chapters (not parts or files). Bookmarks and
 Notes are the shared `AnnotationSection` (below), History is `HistorySection` over the shared
 listening sessions. Details (`book-details-tab.tsx`): a `Notice` (`ui/notice.tsx`) saying direct
 play / converted for this browser (web, `useNeedsWebTranscode`) / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
@@ -1112,6 +1114,15 @@ are asked, at most 10,000 rows.
   after the page's load event (before, offline web playback never worked), and the download-support
   probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).
 - Removing a download asks first everywhere (`RemoveDownloadConfirm`, with the room it frees).
+- **Changed chapters**: a book's chapters can change on the server after it was downloaded (a
+  rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (root
+  layout) watches the query cache: a server answer for a downloaded book's chapters replaces
+  `manifest.chapters` when its audio files are the ones on the device (`refreshedChapters`: same
+  paths, same order, same sizes where both answers know them); otherwise the manifest stays (that
+  is a new download). An answer that reached the cache before the book was downloaded (while its
+  files did, or before launch's `hydrate`) is taken as it becomes downloaded (`withCachedChapters`).
+  The audio is never touched, and a queue already playing keeps its chapters until the book is
+  next started.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
   metadata (the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
