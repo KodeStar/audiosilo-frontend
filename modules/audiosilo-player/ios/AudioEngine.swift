@@ -856,7 +856,9 @@ final class AudioEngine: NSObject {
 
   deinit {
     if let timeObserver = timeObserver { player.removeTimeObserver(timeObserver) }
-    smart.reset()
+    // No smart.reset() here: `smart` is lazy and holds `self` weakly, and forming a weak
+    // reference to an object in deinit traps. Its observers live on `player`, which dies with
+    // us, and its timers hold it weakly.
     statusObs?.invalidate()
     itemObs?.invalidate()
     itemStatusObs?.invalidate()
