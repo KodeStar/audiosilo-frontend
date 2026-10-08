@@ -414,6 +414,14 @@ describe('the periodic save while JS timers are paused (Android in the backgroun
     expect(saved()).toEqual([40]);
   });
 
+  it('ends a hold whose 5 s release timer never fired, and saves', async () => {
+    await startPlaying();
+    holdSaves(); // the check's answer never comes, and its 5 s timer is paused too
+    inBackground(15, 10);
+    await flushMicrotasks();
+    expect(saved()).toEqual([25]);
+  });
+
   it("saves a seek at once and keeps the periodic save's own cadence", async () => {
     await startPlaying(40);
     inBackground(5, 40);
