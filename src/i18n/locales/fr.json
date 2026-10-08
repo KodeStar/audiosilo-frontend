@@ -1859,9 +1859,9 @@
     "away": "Adresse à l'extérieur",
     "paired": "Adresse du serveur",
     "inUse": "Utilisée",
-    "usingHome": "Utilise votre adresse à la maison",
-    "usingAway": "Utilise votre adresse à l'extérieur",
-    "usingPaired": "Utilise l'adresse avec laquelle vous vous êtes connecté",
+    "usingHome": "Utilise votre adresse à la maison.",
+    "usingAway": "Utilise votre adresse à l'extérieur.",
+    "usingPaired": "Utilise l'adresse avec laquelle vous vous êtes connecté.",
     "switches": "L'application passe de l'une à l'autre toute seule."
   },
   "year": {

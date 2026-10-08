@@ -1859,9 +1859,9 @@
     "away": "Indirizzo fuori casa",
     "paired": "Indirizzo del server",
     "inUse": "In uso",
-    "usingHome": "Usa il tuo indirizzo di casa",
-    "usingAway": "Usa il tuo indirizzo fuori casa",
-    "usingPaired": "Usa l'indirizzo con cui ti sei connesso",
+    "usingHome": "Usa il tuo indirizzo di casa.",
+    "usingAway": "Usa il tuo indirizzo fuori casa.",
+    "usingPaired": "Usa l'indirizzo con cui ti sei connesso.",
     "switches": "L'app passa dall'uno all'altro da sola."
   },
   "year": {

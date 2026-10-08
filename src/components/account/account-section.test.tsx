@@ -144,7 +144,7 @@ describe('AccountSection: at home and away', () => {
     expect(screen.getByLabelText(`Home address: ${HOME}, In use`)).toBeTruthy();
     expect(screen.getByLabelText(`Away address: ${AWAY}`)).toBeTruthy();
     expect(
-      screen.getByText('Using your home address The app switches between them by itself.'),
+      screen.getByText('Using your home address. The app switches between them by itself.'),
     ).toBeTruthy();
   });
 

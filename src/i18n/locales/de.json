@@ -1859,9 +1859,9 @@
     "away": "Adresse unterwegs",
     "paired": "Serveradresse",
     "inUse": "Aktiv",
-    "usingHome": "Verwendet die Heimadresse",
-    "usingAway": "Verwendet die Adresse für unterwegs",
-    "usingPaired": "Verwendet die Adresse, mit der du verbunden hast",
+    "usingHome": "Verwendet die Heimadresse.",
+    "usingAway": "Verwendet die Adresse für unterwegs.",
+    "usingPaired": "Verwendet die Adresse, mit der du verbunden hast.",
     "switches": "Die App wechselt selbst zwischen beiden."
   },
   "year": {
