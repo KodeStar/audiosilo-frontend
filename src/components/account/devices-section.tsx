@@ -10,21 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Icon } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { touchTarget } from '@/components/ui/touch-target';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { AccountListRow } from './account-list-row';
 import { canRevoke, deviceGlyph, knownPlatform, lastSeen, signedInSessions } from './account-model';
 import { AccountSectionHead } from './section-head';
-
-/** A small button's drawn height in rem (`h-[30px]` on the web's 16 px rem), for its
- * 44 pt frame on native. */
-const SM_BUTTON_REM = 30 / 16;
 
 /** The name a device row shows: the one it sent at sign-in, else "Unnamed device". */
 function deviceName(d: MyDevice, t: TFunction): string {
@@ -58,12 +52,7 @@ function deviceDetail(d: MyDevice, t: TFunction, now: number): string {
  * server has it): the account's sessions, this device first and marked, each with its
  * app, platform and when it was last seen. Another device signs out after a
  * confirmation (`useRevokeMyDevice`) and a toast says so, or what went wrong and that
- * nothing changed.
- *
- * The device the listener is on offers NOTHING here: revoking its own token through
- * `useRevokeMyDevice` would kill it before the sign-out teardown (save the final
- * position, flush the queued progress) runs. It signs out from the page's "Sign out of
- * <server>", which goes through `useSignOut`.
+ * nothing changed. The device the listener is on offers no sign-out (`canRevoke`).
  */
 export function DevicesSection({
   connectionId,
@@ -84,8 +73,6 @@ export function DevicesSection({
   const confirm = async () => {
     const device = pending;
     setPending(null);
-    // Never this device (see above); its row has no sign-out to reach here, and this
-    // guard keeps it that way.
     if (!device || !canRevoke(device)) return;
     const name = deviceName(device, t);
     setBusyId(device.id);
@@ -133,17 +120,36 @@ export function DevicesSection({
         ) : devices.isPending ? (
           <DevicesSkeleton />
         ) : (
-          rows.map((d, i) => (
-            <DeviceRow
-              key={d.id}
-              device={d}
-              first={i === 0}
-              detail={deviceDetail(d, t, now)}
-              name={deviceName(d, t)}
-              busy={busyId === d.id}
-              onSignOut={() => setPending(d)}
-            />
-          ))
+          rows.map((d, i) => {
+            const name = deviceName(d, t);
+            return (
+              <AccountListRow
+                key={d.id}
+                testID={`device-${d.id}`}
+                icon={deviceGlyph(d)}
+                title={name}
+                badge={
+                  d.current ? (
+                    <Badge variant="success">
+                      <Text>{t('account.devices.thisDevice')}</Text>
+                    </Badge>
+                  ) : null
+                }
+                detail={deviceDetail(d, t, now)}
+                first={i === 0}
+                action={
+                  canRevoke(d)
+                    ? {
+                        title: t('account.devices.signOut'),
+                        accessibilityLabel: t('account.devices.signOutLabel', { name }),
+                        loading: busyId === d.id,
+                        onPress: () => setPending(d),
+                      }
+                    : undefined
+                }
+              />
+            );
+          })
         )}
       </Card>
       {devices.isSuccess && rows.length <= 1 ? (
@@ -164,63 +170,6 @@ export function DevicesSection({
         onConfirm={() => void confirm()}
         onCancel={() => setPending(null)}
       />
-    </View>
-  );
-}
-
-function DeviceRow({
-  device,
-  name,
-  detail,
-  first,
-  busy,
-  onSignOut,
-}: {
-  device: MyDevice;
-  name: string;
-  detail: string;
-  first: boolean;
-  busy: boolean;
-  onSignOut: () => void;
-}) {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
-  const target = touchTarget(SM_BUTTON_REM);
-  return (
-    <View
-      testID={`device-${device.id}`}
-      className={cn('flex-row items-center gap-3 px-4 py-3', !first && 'border-t border-border')}
-    >
-      <View className="h-9 w-9 items-center justify-center rounded-[11px] bg-muted">
-        <Icon name={deviceGlyph(device)} size={17} color={themed.mutedForeground} />
-      </View>
-      <View className="min-w-0 flex-1 gap-0.5">
-        <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-          <Text variant="label" numberOfLines={1} className="shrink">
-            {name}
-          </Text>
-          {device.current ? (
-            <Badge variant="success">
-              <Text>{t('account.devices.thisDevice')}</Text>
-            </Badge>
-          ) : null}
-        </View>
-        <Text variant="caption" numberOfLines={2}>
-          {detail}
-        </Text>
-      </View>
-      {canRevoke(device) ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          title={t('account.devices.signOut')}
-          accessibilityLabel={t('account.devices.signOutLabel', { name })}
-          loading={busy}
-          hitSlop={target.hitSlop}
-          className={target.frameClass}
-          onPress={onSignOut}
-        />
-      ) : null}
     </View>
   );
 }

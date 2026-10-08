@@ -53,7 +53,8 @@ export function signedInSessions(devices: readonly MyDevice[] | undefined): MyDe
  * Whether a device row may be signed out through `useRevokeMyDevice`. Never the device
  * the listener is on: revoking its own token would kill it before the app's sign-out
  * teardown (save the final position, flush the queued progress) could run. That device
- * signs out through `useSignOut`, from the page's sign-out action.
+ * signs out through `useSignOut`, from the page's "Sign out of <server>". Its row offers
+ * no sign-out, and the devices list's confirm checks this again.
  */
 export function canRevoke(device: Pick<MyDevice, 'current'>): boolean {
   return !device.current;

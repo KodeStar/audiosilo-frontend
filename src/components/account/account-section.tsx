@@ -119,7 +119,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
   const password = usePasswordEditor(cid);
   // The guarded sign-out, scoped to this connection: the only way this device signs out
-  // (never `useRevokeMyDevice` on its own row).
+  // (see `canRevoke`).
   const signOut = useSignOut(cid);
 
   // API keys: only where the server advertises them, and never for demo accounts (the
