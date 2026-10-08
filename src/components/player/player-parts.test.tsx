@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
+import { Platform } from 'react-native';
 
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/playback/store', () =>
@@ -172,9 +173,13 @@ describe('PlayerActions', () => {
   });
 
   describe('the effects state', () => {
+    const realOS = Platform.OS;
     beforeEach(() => {
       useSettings.setState({ smartSpeed: false, voiceBoost: false });
       useTimeSavedStore.setState({ lifetime: 0, books: {} });
+    });
+    afterEach(() => {
+      Platform.OS = realOS;
     });
 
     it('is not there while both effects are off', async () => {
@@ -183,6 +188,7 @@ describe('PlayerActions', () => {
     });
 
     it('reads the time Smart Speed saved and opens the speed sheet, where its switch is', async () => {
+      Platform.OS = 'android'; // Smart Speed runs on Android only
       useSettings.setState({ smartSpeed: true });
       useTimeSavedStore.setState({ lifetime: 7860, books: {} });
       await mount(<PlayerActions wide upNext />);

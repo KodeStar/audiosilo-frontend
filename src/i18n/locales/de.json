@@ -1998,7 +1998,7 @@
       "label": "Pausen kürzen",
       "hint": "Kürzt die Stille zwischen den Wörtern",
       "notInBrowser": "Im Browser nicht verfügbar",
-      "downloadedOnly": "Auf dem iPhone für heruntergeladene Bücher"
+      "notOnIphone": "Auf dem iPhone noch nicht verfügbar"
     },
     "voiceBoost": {
       "label": "Stimme verstärken",

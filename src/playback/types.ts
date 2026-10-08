@@ -197,7 +197,7 @@ export interface PlaybackService {
   /** Native: book seconds Smart Speed has removed since the engine was created (monotonic
    * while that engine lives; a new engine starts again at 0), reported with the engine's
    * progress ticks. Not playback state, so not in the snapshot. Optional, and never called
-   * by a binary that predates Smart Speed. */
+   * by a binary that predates Smart Speed, nor on iOS (no Smart Speed there). */
   onSilenceSaved?(handler: ((totalSeconds: number) => void) | null): void;
   /**
    * Phase 6 (the store's `adoptLoaded`): where an engine this bridge did NOT load is now (a

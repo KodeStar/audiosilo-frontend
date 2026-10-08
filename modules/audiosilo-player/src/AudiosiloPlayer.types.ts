@@ -26,9 +26,9 @@ export type NativeChapter = {
 export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 export type StateEvent = { state: NativeState };
-/** Position/duration within the current track, in seconds. `silenceSaved`: book seconds
- * removed by Smart Speed since the engine was created, monotonic while the engine lives (a new
- * engine starts again at 0). Absent on binaries older than Phase 6. */
+/** Position/duration within the current track, in seconds. `silenceSaved` (Android only):
+ * book seconds removed by Smart Speed since the engine was created, monotonic while the engine
+ * lives (a new engine starts again at 0). Absent on iOS and on binaries older than Phase 6. */
 export type ProgressEvent = { position: number; duration: number; silenceSaved?: number };
 export type TrackChangeEvent = { index: number };
 
@@ -76,7 +76,7 @@ export type PlayerConfig = {
   jumpForward: number;
   /** Lock-screen skip-backward interval (seconds). */
   jumpBackward: number;
-  /** Trim silences (Android: every book; iOS: downloaded books only). Default false. Ignored by
+  /** Trim silences (Android only; iOS accepts and ignores it). Default false. Ignored by
    * binaries older than Phase 6. */
   smartSpeed?: boolean;
   /** Compress and lift speech. Default false. Ignored by binaries older than Phase 6. */

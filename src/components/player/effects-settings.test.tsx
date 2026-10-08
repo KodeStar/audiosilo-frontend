@@ -1,12 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
-import { playerStoreMock } from '@/testing/player-store-mock';
-
-jest.mock('@/playback/store', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@/testing/player-store-mock').createPlayerStoreMock(),
-);
 // The browser rule is the effects module's own (tested there); here it is a switch.
 const mockSupportsVoiceBoost = jest.fn(() => true);
 jest.mock('@/playback/effects', () => ({
@@ -21,23 +15,9 @@ import { useSettings } from '@/stores/settings';
 import { EffectsSettings } from './effects-settings';
 /* eslint-enable import/first */
 
-const player = playerStoreMock();
 const realOS = Platform.OS;
 
-/** A loaded book whose files are `urls`. */
-function loaded(urls: string[]) {
-  player.patch({
-    nowPlaying: {
-      connectionId: 'c1',
-      libraryId: 1,
-      path: 'b',
-      queue: { chapters: [], total: 100, tracks: urls.map((url) => ({ url })) },
-    } as never,
-  });
-}
-
 beforeEach(() => {
-  player.reset();
   useSettings.setState({ smartSpeed: false, voiceBoost: false });
   useTimeSavedStore.setState({ lifetime: 0, books: {} });
   mockSupportsVoiceBoost.mockReturnValue(true);
@@ -64,15 +44,19 @@ describe('EffectsSettings', () => {
     expect(screen.getByText('Saved 2h 11m')).toBeTruthy();
   });
 
-  it('on an iPhone, says Smart Speed is for downloaded books while a stream is loaded', async () => {
+  it('on an iPhone, Smart Speed is disabled and says why, with the setting kept', async () => {
     Platform.OS = 'ios';
     useSettings.setState({ smartSpeed: true });
-    loaded(['https://s/1.mp3']);
-    const { rerender } = await render(<EffectsSettings />);
-    expect(screen.getByText('For downloaded books on iPhone')).toBeTruthy();
-    loaded(['file:///d/1.mp3']);
-    await rerender(<EffectsSettings />);
-    expect(screen.queryByText('For downloaded books on iPhone')).toBeNull();
+    useTimeSavedStore.setState({ lifetime: 7860, books: {} });
+    await render(<EffectsSettings />);
+    const sw = screen.getByLabelText('Smart speed');
+    expect(sw).toBeDisabled();
+    expect(sw).not.toBeChecked();
+    expect(screen.getByText('Not available on iPhone yet')).toBeTruthy();
+    expect(screen.queryByText('Saved 2h 11m')).toBeNull();
+    expect(screen.getByLabelText('Voice boost')).not.toBeDisabled();
+    // Android still reads the setting: iOS doesn't clear it.
+    expect(useSettings.getState().smartSpeed).toBe(true);
   });
 
   it('on the web, Smart Speed is disabled and says why', async () => {

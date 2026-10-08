@@ -1,11 +1,8 @@
 import { effectsPill, smartSpeedRow, voiceBoostRow } from './effects-model';
 
-const local = { tracks: [{ url: 'file:///d/1.mp3' }] };
-const streaming = { tracks: [{ url: 'https://s/1.mp3' }] };
-
 describe('smartSpeedRow', () => {
   it('is off and disabled on the web, saying why', () => {
-    expect(smartSpeedRow({ platform: 'web', on: true, savedSeconds: 500, queue: local })).toEqual({
+    expect(smartSpeedRow({ platform: 'web', on: true, savedSeconds: 500 })).toEqual({
       checked: false,
       disabled: true,
       lines: ['notInBrowser'],
@@ -13,21 +10,23 @@ describe('smartSpeedRow', () => {
   });
 
   it('says what it does, and the time saved once there is some', () => {
-    expect(
-      smartSpeedRow({ platform: 'android', on: true, savedSeconds: 0.4, queue: null }),
-    ).toEqual({ checked: true, disabled: false, lines: ['hint'] });
-    expect(
-      smartSpeedRow({ platform: 'android', on: false, savedSeconds: 7860, queue: null }).lines,
-    ).toEqual(['hint', 'saved']);
+    expect(smartSpeedRow({ platform: 'android', on: true, savedSeconds: 0.4 })).toEqual({
+      checked: true,
+      disabled: false,
+      lines: ['hint'],
+    });
+    expect(smartSpeedRow({ platform: 'android', on: false, savedSeconds: 7860 }).lines).toEqual([
+      'hint',
+      'saved',
+    ]);
   });
 
-  it('on an iPhone, with it on, flags a book that is not all on the device', () => {
-    const row = (on: boolean, queue: typeof local | null) =>
-      smartSpeedRow({ platform: 'ios', on, savedSeconds: 0, queue }).lines;
-    expect(row(true, streaming)).toEqual(['hint', 'downloadedOnly']);
-    expect(row(true, null)).toEqual(['hint', 'downloadedOnly']);
-    expect(row(true, local)).toEqual(['hint']);
-    expect(row(false, streaming)).toEqual(['hint']);
+  it('is off and disabled on an iPhone, saying why, even with the setting on', () => {
+    expect(smartSpeedRow({ platform: 'ios', on: true, savedSeconds: 7860 })).toEqual({
+      checked: false,
+      disabled: true,
+      lines: ['notOnIphone'],
+    });
   });
 });
 
@@ -72,6 +71,12 @@ describe('effectsPill', () => {
     expect(effectsPill({ ...base, voiceBoost: true, savedSeconds: 7860 })).toEqual({
       kind: 'voiceBoost',
     });
+  });
+
+  it('on an iPhone, reads only Voice boost (no Smart Speed there)', () => {
+    const ios = { ...base, platform: 'ios', smartSpeed: true, savedSeconds: 7860 };
+    expect(effectsPill(ios)).toBeNull();
+    expect(effectsPill({ ...ios, voiceBoost: true })).toEqual({ kind: 'voiceBoost' });
   });
 
   it('reads Voice boost on the web, only where it runs', () => {

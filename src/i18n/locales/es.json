@@ -1998,7 +1998,7 @@
       "label": "Velocidad inteligente",
       "hint": "Acorta los silencios entre palabras",
       "notInBrowser": "No disponible en el navegador",
-      "downloadedOnly": "Para libros descargados en el iPhone"
+      "notOnIphone": "Aún no disponible en el iPhone"
     },
     "voiceBoost": {
       "label": "Realce de voz",
