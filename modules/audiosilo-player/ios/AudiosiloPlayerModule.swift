@@ -661,6 +661,26 @@ public class AudiosiloPlayerModule: Module {
       self.onMain { promise.resolve(self.presentRoutePicker()) }
     }
 
+    // Phase 6 (CarPlay): the car snapshot JS builds (labels, tabs, books). Kept on disk so the
+    // car shows it at once on the next connect; refreshes the templates on screen.
+    AsyncFunction("setCarSnapshot") { (json: String) in
+      AudiosiloCarSnapshotStore.shared.set(json: json)
+    }
+
+    // Car events wait for a JS listener (a CarPlay-first launch connects before JS listens).
+    OnStartObserving("onCarConnection") { [weak self] in
+      if let self = self { AudiosiloCarEvents.shared.startObserving("onCarConnection", module: self) }
+    }
+    OnStopObserving("onCarConnection") { [weak self] in
+      if let self = self { AudiosiloCarEvents.shared.stopObserving("onCarConnection", module: self) }
+    }
+    OnStartObserving("onCarPlayRequest") { [weak self] in
+      if let self = self { AudiosiloCarEvents.shared.startObserving("onCarPlayRequest", module: self) }
+    }
+    OnStopObserving("onCarPlayRequest") { [weak self] in
+      if let self = self { AudiosiloCarEvents.shared.stopObserving("onCarPlayRequest", module: self) }
+    }
+
     OnDestroy { [weak self] in
       self?.onMain {
         self?.engine?.reset()
