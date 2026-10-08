@@ -193,9 +193,7 @@ export interface PlaybackService {
   onRateChange?(handler: ((rate: number) => void) | null): void;
   /** Native: a bookmark button outside the app was pressed (CarPlay, the Android
    * notification / Android Auto), at `(trackIndex, positionInTrack)`. Optional. */
-  onRemoteBookmark?(
-    handler: ((trackIndex: number, positionInTrack: number) => void) | null,
-  ): void;
+  onRemoteBookmark?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
   /** Native: book seconds Smart Speed has removed since the engine was created (monotonic
    * while that engine lives; a new engine starts again at 0), reported with the engine's
    * progress ticks. Not playback state, so not in the snapshot. Optional, and never called

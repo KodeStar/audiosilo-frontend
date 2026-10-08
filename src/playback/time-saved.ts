@@ -63,11 +63,14 @@ export function mergeSaved(a: TimeSavedDoc, b: TimeSavedDoc): TimeSavedDoc {
  * `contentKey`s, which start with it). The lifetime total stays: it is this device's. */
 export function withoutConnection(doc: TimeSavedDoc, connectionId: string): TimeSavedDoc {
   const prefix = `${connectionId}:`;
-  const books = Object.fromEntries(Object.entries(doc.books).filter(([k]) => !k.startsWith(prefix)));
+  const books = Object.fromEntries(
+    Object.entries(doc.books).filter(([k]) => !k.startsWith(prefix)),
+  );
   return { lifetime: doc.lifetime, books };
 }
 
-const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+const count = (v: unknown): number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
 
 /** A stored value read back: anything that isn't a count is dropped. */
 export function parseTimeSaved(raw: unknown): Partial<TimeSavedDoc> {

@@ -29,9 +29,7 @@ function currentBrowserEnv(): BrowserEnv {
  * browsers are Chromium; Firefox on the desktop is Gecko.
  */
 export function isWebKitOnly(userAgent: string): boolean {
-  return (
-    /AppleWebKit/.test(userAgent) && !/(Chrome|Chromium|Edg|OPR)\/|Android/.test(userAgent)
-  );
+  return /AppleWebKit/.test(userAgent) && !/(Chrome|Chromium|Edg|OPR)\/|Android/.test(userAgent);
 }
 
 /**
