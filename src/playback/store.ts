@@ -376,11 +376,38 @@ async function knownSpeed(connectionId: string, libraryId: number, path: string)
   return newest?.playback_speed ?? 0;
 }
 
+/**
+ * The periodic save has two clocks, and this is the one moment they share: when it last
+ * ran (`Date.now()`). The interval below is the obvious one, but Android pauses every JS
+ * timer while the activity is paused (React Native's `JavaTimerManager.onHostPause`), so
+ * with the screen off or another app in front it never fires: on a Pixel, two minutes of
+ * background listening saved nothing, and another device picking the book up got a stale
+ * place. The engine's own events still reach JS there (the native module's 1 s progress
+ * loop is a native handler), so its ticks drive the save too (`saveIfDue`, from the
+ * engine subscription). Whichever comes first saves and resets this, so the two never
+ * both save within one interval. iOS keeps JS timers running in the background (RCTTiming
+ * moves them to an NSTimer) and its periodic time observer keeps ticking, so there both
+ * clocks run and this keeps them to one save; the web's `timeupdate` keeps ticking in a
+ * hidden tab whose timers the browser throttles. Only the periodic save moves it: a
+ * seek's or a pause's own save leaves the cadence where it was, as before.
+ */
+let periodicSaveAt = 0;
+
+/** Run the periodic save when one is due: the save loop is running (the book reached
+ * `playing` and has not settled since; `playBook` stops it before a book switch, so a
+ * late tick of the old book can never save under the new one) and `SAVE_INTERVAL_MS`
+ * has passed since the last one. `persist` keeps every guard it has (the save hold, no
+ * server, the resume floor). */
+function saveIfDue() {
+  if (!saveTimer || Date.now() - periodicSaveAt < SAVE_INTERVAL_MS) return;
+  periodicSaveAt = Date.now();
+  void persist();
+}
+
 function startSaveLoop() {
   stopSaveLoop();
-  saveTimer = setInterval(() => {
-    void persist();
-  }, SAVE_INTERVAL_MS);
+  periodicSaveAt = Date.now();
+  saveTimer = setInterval(saveIfDue, SAVE_INTERVAL_MS);
 }
 function stopSaveLoop() {
   if (saveTimer) {
@@ -591,6 +618,9 @@ async function ensureService(): Promise<PlaybackService> {
         haltAndPersist();
       }
     }
+    // The engine's ticks keep the periodic save going where the interval can't fire
+    // (Android, app in the background): see `periodicSaveAt`.
+    if (snapshot.state === 'playing') saveIfDue();
   });
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
