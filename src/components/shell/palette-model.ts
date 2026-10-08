@@ -152,7 +152,7 @@ export function buildGoToItems(
         icon: d.icon,
         run: () => run.tab(d.name),
       })),
-    { id: 'go:stats', title: t('you.titles.stats'), icon: 'clock', run: () => run.you('stats') },
+    { id: 'go:stats', title: t('you.titles.stats'), icon: 'chart', run: () => run.you('stats') },
     { id: 'go:year', title: t('you.titles.year'), icon: 'sparkles', run: () => run.you('year') },
     { id: 'go:journal', title: t('journal.title'), icon: 'history', run: run.journal },
     {

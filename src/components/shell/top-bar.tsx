@@ -18,7 +18,7 @@ import { useSearchStore } from '@/stores/search';
 import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { TOP_BAR_TABS, useTabPress, wideLabelKey } from './destinations';
+import { TOP_BAR_TABS, useTabPress, wideIcon, wideLabelKey } from './destinations';
 import { shortcutHint } from './palette-model';
 import { usePalette } from './palette-store';
 import { ProfileMenu } from './profile-menu';
@@ -174,7 +174,7 @@ export function TopBar() {
                   className={cn(topBarItemClass(selected), 'min-w-[44px] flex-row gap-2 px-3')}
                 >
                   <Icon
-                    name={d.icon}
+                    name={wideIcon(d)}
                     size={18}
                     color={selected ? themed.brand : themed.mutedForeground}
                   />

@@ -16,6 +16,7 @@ import {
   tabOfSegments,
   tabStackListeners,
   TOP_BAR_TABS,
+  wideIcon,
   wideLabelKey,
 } from './destinations';
 import { OMNISEARCH_MIN, omnisearchFits, serverLine } from './top-bar';
@@ -170,6 +171,10 @@ describe('derived destination lists', () => {
     expect(me.labelKey).toBe('nav.me');
     expect(wideLabelKey(me)).toBe('nav.you');
     expect(wideLabelKey(TABS[0])).toBe('nav.home');
+    // The phone tab is a person; the top bar's You is a chart beside the profile button.
+    expect(me.icon).toBe('user');
+    expect(wideIcon(me)).toBe('chart');
+    expect(wideIcon(TABS[0])).toBe('home');
   });
 });
 

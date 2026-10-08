@@ -44,6 +44,10 @@ export type Destination = {
   titleKey: TitleKey;
   /** Our vendored glyph (web chrome, top bar). */
   icon: IconName;
+  /** The tablet/desktop top bar's glyph when it differs from the tab bar's (the phone's
+   * "Me" is a person; the top bar's "You" is your listening, beside the profile button's
+   * person). */
+  wideIcon?: IconName;
   /** SF Symbol for the iOS native tab bar. */
   sf: SFSymbolIcon['sf'];
   /** Material Symbol for the Android native tab bar. */
@@ -109,6 +113,7 @@ export const TABS: readonly Destination[] = [
     wideLabelKey: 'nav.you',
     titleKey: 'nav.you',
     icon: 'user',
+    wideIcon: 'chart',
     sf: 'person.crop.circle',
     md: 'person',
     // The hub's section, and the Journal section's own tab.
@@ -133,6 +138,9 @@ export const TOP_BAR_TABS: readonly Destination[] = TABS.filter(
 
 /** A destination's label in the tablet/desktop top bar (and the palette). */
 export const wideLabelKey = (d: Destination): LabelKey => d.wideLabelKey ?? d.labelKey;
+
+/** A destination's glyph in the tablet/desktop top bar. */
+export const wideIcon = (d: Destination): IconName => d.wideIcon ?? d.icon;
 
 export function destination(name: TabName): Destination {
   return TABS.find((t) => t.name === name) ?? TABS[0];
