@@ -110,7 +110,7 @@ import { AppState } from 'react-native';
 import { useSettings } from '@/stores/settings';
 
 import { placeToMoveTo, startPlaceReconcile } from './place-reconcile';
-import { LONG_PAUSE_MS, usePlayer } from './store';
+import { LONG_PAUSE_MS, selectBookPosition, selectIsPlaying, usePlayer } from './store';
 /* eslint-enable import/first */
 
 const BOOK: Book = {
@@ -358,6 +358,42 @@ describe('a loaded book another device has moved on', () => {
     expect(mockToast).not.toHaveBeenCalledWith(
       expect.objectContaining({ description: 'Chapter 4, 6:40' }),
     );
+  });
+
+  it('a paused book moved across a file boundary stays paused, with no save loop', async () => {
+    // The device pass: after a pick-up moved a paused book on the Pixel, the mini player
+    // showed Pause for 20+ s. The store side of that: a paused move into another file
+    // (`skipToTrack`, which Android reports as a buffer and then a pause) must settle on
+    // `paused`, so the play button reads Play and nothing saves on a timer.
+    const files = ['A/1.mp3', 'A/2.mp3'].map((rel_path, seq) => ({
+      rel_path,
+      seq,
+      duration: 500,
+      format: 'mp3',
+      size: 1,
+    }));
+    (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(
+      async (trackIndex: number, position: number) => {
+        pushSnapshot({ ...mockPlayerSnapshot(), trackIndex, position, state: 'loading' });
+        pushSnapshot({ ...mockPlayerSnapshot(), trackIndex, position, state: 'paused' });
+      },
+    );
+    mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'empty' });
+    await usePlayer.getState().playBook('c1', 2, { ...BOOK, files }, undefined);
+    pushSnapshot(snap('playing', 100));
+    pushSnapshot(snap('paused', 105));
+    await settle();
+    mockServer = async () => record({ position: 700 });
+    jest.clearAllMocks();
+    await backInFront();
+    expect(mockSvc.skipToTrack).toHaveBeenCalledWith(1, 200);
+    const now = usePlayer.getState();
+    expect(now.snapshot.state).toBe('paused');
+    expect(selectIsPlaying(now)).toBe(false);
+    expect(selectBookPosition(now)).toBe(700);
+    jest.advanceTimersByTime(60_000);
+    await settle();
+    expect(saved()).toEqual([]);
   });
 
   it("on the book's server coming back, moves a paused book there", async () => {

@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { AppState, Platform, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -14,6 +14,7 @@ import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
+import { onForeground } from '@/lib/when-active';
 import { selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -45,8 +46,25 @@ const SIZES: Record<
 /** Duration of the play/pause morph. */
 const MORPH_MS = 140;
 
-/** Play and pause crossfading and scaling (0.8 to 1) into each other. Reduced motion:
- * an instant swap. */
+/** Bumped each time the app comes back to the foreground (see `PlayPauseGlyph`). */
+function useForegroundTurn(): number {
+  const [turn, setTurn] = useState(0);
+  useEffect(() => onForeground(() => setTurn((n) => n + 1)), []);
+  return turn;
+}
+
+/**
+ * Play and pause crossfading and scaling (0.8 to 1) into each other. Reduced motion:
+ * an instant swap.
+ *
+ * Away from the foreground it swaps instantly too, and its host remounts it on the way
+ * back (`useForegroundTurn` as its key): on the Pixel a book paused from the shade, then
+ * moved by a pick-up, left the floating mini player drawing Pause for 20+ s while the
+ * store, the full player and the media session all said paused (remounting it, by
+ * opening the full player, put it right). The morph's props are applied outside React's
+ * tree by frames that do not run while the app is away, so a morph started then can be
+ * lost, and nothing redraws a settled glyph; a fresh one starts from `playing`.
+ */
 function PlayPauseGlyph({
   playing,
   size,
@@ -60,7 +78,8 @@ function PlayPauseGlyph({
   const p = useSharedValue(playing ? 1 : 0);
   useEffect(() => {
     const to = playing ? 1 : 0;
-    p.set(reduced ? to : withTiming(to, { duration: MORPH_MS, easing: Easing.out(Easing.ease) }));
+    const instant = reduced || AppState.currentState !== 'active';
+    p.set(instant ? to : withTiming(to, { duration: MORPH_MS, easing: Easing.out(Easing.ease) }));
   }, [playing, reduced, p]);
   const playStyle = useAnimatedStyle(() => ({
     opacity: 1 - p.get(),
@@ -71,12 +90,19 @@ function PlayPauseGlyph({
     transform: [{ scale: 0.8 + 0.2 * p.get() }],
   }));
   return (
-    <View style={{ width: size, height: size }} className="items-center justify-center">
+    <View
+      testID="play-pause-glyph"
+      style={{ width: size, height: size }}
+      className="items-center justify-center"
+    >
       {/* The play glyph sits a touch right of centre so it LOOKS centred. */}
-      <Animated.View style={[{ position: 'absolute', left: size * 0.06 }, playStyle]}>
+      <Animated.View
+        testID="play-glyph"
+        style={[{ position: 'absolute', left: size * 0.06 }, playStyle]}
+      >
         <Icon name="play" size={size} color={color} />
       </Animated.View>
-      <Animated.View style={[{ position: 'absolute' }, pauseStyle]}>
+      <Animated.View testID="pause-glyph" style={[{ position: 'absolute' }, pauseStyle]}>
         <Icon name="pause" size={size} color={color} />
       </Animated.View>
     </View>
@@ -102,6 +128,7 @@ export function PlayButton({
   const playing = usePlayer(selectIsPlaying);
   const toggle = usePlayer((s) => s.toggle);
   const retry = usePlayer((s) => s.retry);
+  const turn = useForegroundTurn();
   const d = SIZES[size];
   const isError = state === 'error';
   const label = isError
@@ -135,6 +162,7 @@ export function PlayButton({
         <Icon name="rotate" size={d.playIcon} color={color} />
       ) : (
         <PlayPauseGlyph
+          key={turn}
           playing={playing}
           size={plain ? d.playIcon + 4 : d.playIcon}
           color={color}
