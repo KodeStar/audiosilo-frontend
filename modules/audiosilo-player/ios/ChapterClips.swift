@@ -62,6 +62,16 @@ struct ChapterClips {
     return candidate
   }
 
+  /// Whether clip `i` (of `fileIndex`) holds the position: the 1 s tick's check that the
+  /// playhead is still in the clip Now Playing shows, before the linear `index` search. Clips
+  /// don't overlap, so a true here means `index` would return `i`.
+  func contains(clip i: Int?, fileIndex: Int, position: Double) -> Bool {
+    guard let i = i, clips.indices.contains(i) else { return false }
+    let c = clips[i]
+    guard c.fileIndex == fileIndex, position >= c.startInFile else { return false }
+    return c.runsToFileEnd || position < c.endInFile
+  }
+
   /// Chapter-relative scrubber time (`MPChangePlaybackPositionCommandEvent.positionTime`) to a
   /// file position, clamped inside the clip so a drag to the far end can't land in the next
   /// chapter (one millisecond short of a bounded clip's end).
