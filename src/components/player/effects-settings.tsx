@@ -6,7 +6,6 @@ import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { supportsVoiceBoost } from '@/playback/effects';
-import { usePlayer } from '@/playback/store';
 import { useTimeSaved } from '@/playback/time-saved';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -24,7 +23,7 @@ import {
 /** Each switch's caption keys, by line (`saved` carries the time, so it is worded apart). */
 const SMART_SPEED_LINES = {
   hint: 'effects.smartSpeed.hint',
-  downloadedOnly: 'effects.smartSpeed.downloadedOnly',
+  notOnIphone: 'effects.smartSpeed.notOnIphone',
   notInBrowser: 'effects.smartSpeed.notInBrowser',
 } as const satisfies Record<Exclude<SmartSpeedLine, 'saved'>, string>;
 const VOICE_BOOST_LINES = {
@@ -49,15 +48,9 @@ export function EffectsSettings({ first = false }: { first?: boolean }) {
   const voiceBoost = useSettings((s) => s.voiceBoost);
   const setSmartSpeed = useSettings((s) => s.setSmartSpeed);
   const setVoiceBoost = useSettings((s) => s.setVoiceBoost);
-  const queue = usePlayer((s) => s.nowPlaying?.queue ?? null);
   const saved = useTimeSaved();
 
-  const smart = smartSpeedRow({
-    platform: Platform.OS,
-    on: smartSpeed,
-    savedSeconds: saved,
-    queue,
-  });
+  const smart = smartSpeedRow({ platform: Platform.OS, on: smartSpeed, savedSeconds: saved });
   const boost = voiceBoostRow({
     platform: Platform.OS,
     on: voiceBoost,

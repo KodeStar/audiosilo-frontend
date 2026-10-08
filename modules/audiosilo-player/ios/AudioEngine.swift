@@ -16,8 +16,13 @@ fileprivate extension Array {
 ///
 /// Phase 6 additions: chapter-relative Now Playing + chapter next/previous when `load` got 2+
 /// chapter clips (ChapterClips.swift), `onRemoteMove` for every move the JS API did not ask
-/// for, the rate command, Voice Boost (VoiceBoostTap.swift) and Smart Speed (SmartSpeed.swift).
-/// The CarPlay side reads this engine through AudioEngine+CarPlay.swift.
+/// for, the rate command and Voice Boost (VoiceBoostTap.swift). The CarPlay side reads this
+/// engine through AudioEngine+CarPlay.swift.
+///
+/// No Smart Speed on iOS (withdrawn in Phase 6 after a device test): the design raised
+/// `player.rate` inside silences and put it back before the next word, and every AVPlayer rate
+/// change while playing is an audible dropout on a real iPhone, so it stuttered at every pause.
+/// `config.smartSpeed` is accepted and ignored; `onProgress` carries no `silenceSaved`.
 final class AudioEngine: NSObject {
   /// The engine the module created (there is one per module instance). Weak: the module owns
   /// it. CarPlay (AudioEngine+CarPlay.swift) reaches the loaded book through this.
@@ -28,10 +33,9 @@ final class AudioEngine: NSObject {
   /// Items currently in the player, paired with their index in `tracks`.
   private var queued: [(index: Int, item: AVPlayerItem)] = []
   private(set) var currentIndex = 0
-  /// The listener's speed (the BASE rate). Smart Speed boosts on top of it (`effectiveRate`);
-  /// Now Playing always shows this one.
+  /// The listener's speed: what `player.rate` is set to whenever we play.
   /// Named `baseRate` (not `rate`): CarPlay reads the speed through `CarPlayPlayerAccess.rate`.
-  private var baseRate: Float = 1.0
+  private(set) var baseRate: Float = 1.0
   /// Output gain (0...1) last asked for by JS - the sleep timer's fade-out. Held here
   /// (not just on the player) because the queue is torn down and rebuilt on every
   /// load/skip/retry; without re-applying it, a fade-in-progress would jump back to
@@ -89,19 +93,9 @@ final class AudioEngine: NSObject {
   /// its deferred start seek: `onRemoteMove` goes out once that seek lands, not before (JS
   /// would otherwise save the pre-seek 0). Cleared by any newer rebuild.
   private var remoteMovePending = false
-  /// Seeks issued and not yet completed. While non-zero the playhead isn't settled, so Smart
-  /// Speed neither boosts nor trusts `currentTime()` (boundary observers don't fire on seeks).
-  /// Only Smart Speed reads it. A rebuild zeroes it and bumps `seekGeneration`, so a
-  /// completion that never comes (a seek on an item torn down) can't hold it up for longer
-  /// than until the next load or skip.
-  private var seeksInFlight = 0
-  private var seekGeneration = 0
-  /// Voice Boost taps are attached to items only once the switch has been on in this engine's
-  /// life: a listener who never enables it keeps the exact pre-Phase-6 audio path (no audio
-  /// mix on any item). Once attached, a tap stays and is bypassed inside (`VoiceBoost.isEnabled`),
-  /// so toggling never rebuilds or re-mixes an item.
-  private var voiceBoostAttached = false
-  private lazy var smart = SmartSpeed(host: self)
+  /// Items a Voice Boost tap was requested for (see `attachVoiceBoostTaps`). Cleared with the
+  /// queue on every rebuild, so an identifier is never compared against a freed item.
+  private var tapRequested = Set<ObjectIdentifier>()
 
   init(send: @escaping (String, [String: Any]) -> Void) {
     // Every onState also tells the CarPlay templates (`.audiosiloPlayerDidChange`, the one
@@ -138,14 +132,9 @@ final class AudioEngine: NSObject {
     let cc = MPRemoteCommandCenter.shared()
     cc.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForward)]
     cc.skipBackwardCommand.preferredIntervals = [NSNumber(value: jumpBackward)]
-    // Voice Boost: flip the flag every tap reads (ramped inside the tap). The first enable
-    // attaches taps to the items already queued; later items get one in makeItem.
+    // Voice Boost: only flip the flag every tap reads (the tap ramps toward it). Every item
+    // already carries its tap (`attachVoiceBoostTaps`), so a toggle never touches `audioMix`.
     VoiceBoost.isEnabled = c.voiceBoost
-    if c.voiceBoost && !voiceBoostAttached {
-      voiceBoostAttached = true
-      for q in queued { VoiceBoost.attach(to: q.item) { _ in } }
-    }
-    smart.setEnabled(c.smartSpeed)
   }
 
   // MARK: Queue
@@ -164,10 +153,31 @@ final class AudioEngine: NSObject {
     }
     let item = AVPlayerItem(asset: asset)
     item.audioTimePitchAlgorithm = .timeDomain // pitch-corrected speed for speech
-    // The tap attaches asynchronously once the asset's tracks load; the item plays meanwhile
-    // (it never waits for the tap).
-    if voiceBoostAttached { VoiceBoost.attach(to: item) { _ in } }
     return item
+  }
+
+  /// Give the current item and the two after it their Voice Boost tap, whatever the switch
+  /// (bypassed inside while it is off). Why every item, switch on or not: setting `audioMix` on
+  /// an item that is PLAYING rebuilds its render chain, an audible ~1 s dropout on a device
+  /// (found on an iPhone Air when the switch only attached taps on its first enable). So the
+  /// mix is set while an item is still waiting (the asset's tracks load before the item can
+  /// play, and the first item's resume seek waits for readiness too), and a toggle afterwards
+  /// only flips `VoiceBoost.isEnabled`.
+  ///
+  /// Why a window and not the whole queue: `loadTracks` on a streamed asset reads the file's
+  /// header over HTTP, and a book can be a hundred files. Two ahead means the next item got its
+  /// tap a whole file earlier, before AVQueuePlayer prerolls it for the gapless hand-over.
+  /// Playback never waits for a tap: an item whose tracks are slow to load plays untapped
+  /// meanwhile (`VoiceBoost.attach` is asynchronous).
+  private func attachVoiceBoostTaps() {
+    guard let cur = player.currentItem,
+          let start = queued.firstIndex(where: { $0.item === cur }) else { return }
+    for q in queued[start..<min(queued.count, start + 3)] {
+      let id = ObjectIdentifier(q.item)
+      guard !tapRequested.contains(id) else { continue }
+      tapRequested.insert(id)
+      VoiceBoost.attach(to: q.item)
+    }
   }
 
   func load(tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord], book: BookRecord?) {
@@ -175,7 +185,6 @@ final class AudioEngine: NSObject {
     self.book = book
     clips = Self.validClips(chapters, trackCount: tracks.count)
     nowPlayingClip = nil
-    smart.load(trackURLs: tracks.map { URL(string: $0.url) })
     rebuildQueue(from: max(0, min(startIndex, tracks.count - 1)), position: position)
     send("onState", ["state": "ready"])
   }
@@ -202,14 +211,12 @@ final class AudioEngine: NSObject {
   private func rebuildQueue(from startIndex: Int, position: Double, remote: Bool = false) {
     rebuilding = true
     remoteMovePending = false
-    seeksInFlight = 0
-    seekGeneration += 1
-    smart.cancelBoost(restoreRate: false)
     startObs?.invalidate()
     startObs = nil
     player.pause()
     player.removeAllItems()
     queued.removeAll()
+    tapRequested.removeAll()
     guard startIndex < tracks.count else { rebuilding = false; pendingSeek = 0; return }
     for i in startIndex..<tracks.count {
       guard let item = makeItem(tracks[i]) else { continue }
@@ -217,6 +224,7 @@ final class AudioEngine: NSObject {
       player.insert(item, after: nil)
     }
     currentIndex = startIndex
+    attachVoiceBoostTaps()
     // Re-assert the intended gain on the rebuilt queue. Today the AVQueuePlayer instance
     // itself is reused (only its items are swapped), so this is belt-and-braces - but if
     // it is ever recreated here, a fade must not silently reset to full volume.
@@ -234,7 +242,6 @@ final class AudioEngine: NSObject {
     send("onTrackChange", ["index": currentIndex])
     sendProgress(position)
     if remote && !remoteMovePending && pendingSeek == 0 { emitRemoteMove() }
-    smart.playheadMoved()
   }
 
   /// Apply the queued start position once the current item can honor it. If it's
@@ -264,15 +271,13 @@ final class AudioEngine: NSObject {
     guard pendingSeek > 0 else { return }
     let target = pendingSeek
     pendingSeek = 0
-    let done = beginSeek()
     item.seek(to: CMTime(seconds: target, preferredTimescale: 1000)) { [weak self] finished in
       Self.onMain {
         guard let self = self else { return }
-        done()
         // Start playback only now, so audio begins at the resumed position not at 0.
         if self.wantsPlay {
           self.wantsPlay = false
-          self.player.rate = self.effectiveRate
+          self.player.rate = self.baseRate
         }
         self.sendProgress(self.player.currentTime().seconds)
         self.updateNowPlayingInfo()
@@ -282,19 +287,7 @@ final class AudioEngine: NSObject {
           self.remoteMovePending = false
           if finished { self.emitRemoteMove() }
         }
-        self.smart.playheadMoved()
       }
-    }
-  }
-
-  /// Count a seek in flight for Smart Speed; the returned closure ends it (main thread). A
-  /// rebuild in between makes it a no-op (see `seekGeneration`).
-  private func beginSeek() -> () -> Void {
-    seeksInFlight += 1
-    let generation = seekGeneration
-    return { [weak self] in
-      guard let self = self, self.seekGeneration == generation else { return }
-      self.seeksInFlight = max(0, self.seeksInFlight - 1)
     }
   }
 
@@ -310,8 +303,8 @@ final class AudioEngine: NSObject {
     itemStatusObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
       guard let self = self, item.status == .readyToPlay else { return }
       DispatchQueue.main.async {
-        if self.player.rate != 0, self.player.rate != self.effectiveRate {
-          self.player.rate = self.effectiveRate
+        if self.player.rate != 0, self.player.rate != self.baseRate {
+          self.player.rate = self.baseRate
         }
       }
     }
@@ -355,11 +348,6 @@ final class AudioEngine: NSObject {
 
   // MARK: Transport
 
-  /// The rate the player should run at: the base rate, or Smart Speed's boost while the
-  /// playhead is inside a known silence. Every path that starts or re-asserts playback uses
-  /// this, so a boost is applied on top of the base and dropped with it.
-  private var effectiveRate: Float { smart.boostedRate ?? baseRate }
-
   /// Flip playback from the *real* transport state. All remote play/pause/toggle
   /// commands route here (see setupRemoteCommands) so a single earbud press always
   /// toggles, even when iOS's idea of our state is stale. A pending resume seek
@@ -376,20 +364,13 @@ final class AudioEngine: NSObject {
     // Reclaim the audio session so we're the active Now Playing app when (re)starting
     // - another app may have taken it since we last played.
     try? AVAudioSession.sharedInstance().setActive(true)
-    smart.cancelBoost(restoreRate: false)
     if autoRewindMax > 0, let p = pausedAt, let item = player.currentItem {
       let elapsed = Date().timeIntervalSince(p)
       let rewind = min(autoRewindMax, elapsed)
       if rewind > 0.5 {
         // Auto-rewind is the engine's own move, never a remote one: no onRemoteMove.
         let target = max(0, item.currentTime().seconds - rewind)
-        let done = beginSeek()
-        item.seek(to: CMTime(seconds: target, preferredTimescale: 1000)) { [weak self] _ in
-          Self.onMain {
-            done()
-            self?.smart.playheadMoved()
-          }
-        }
+        item.seek(to: CMTime(seconds: target, preferredTimescale: 1000))
       }
     }
     pausedAt = nil
@@ -406,14 +387,10 @@ final class AudioEngine: NSObject {
     }
     player.rate = baseRate
     updateNowPlayingInfo()
-    smart.evaluate()
   }
 
   func pause() {
     wantsPlay = false
-    // Close any Smart Speed boost first: it counts the time saved up to the pause, and the
-    // next play() starts from the base rate.
-    smart.cancelBoost(restoreRate: false)
     player.pause()
     pausedAt = Date()
     updateNowPlayingInfo()
@@ -423,17 +400,13 @@ final class AudioEngine: NSObject {
   /// (never the JS API): `onRemoteMove` goes out once the seek has landed, after its
   /// `onProgress`.
   func seek(to seconds: Double, remote: Bool = false) {
-    smart.cancelBoost(restoreRate: true)
-    let done = beginSeek()
     player.seek(to: CMTime(seconds: max(0, seconds), preferredTimescale: 1000)) { [weak self] finished in
       Self.onMain {
         guard let self = self else { return }
-        done()
         self.sendProgress(self.player.currentTime().seconds)
         self.updateNowPlayingInfo()
         // A superseded seek (finished == false) didn't land: the newer one reports.
         if remote && finished { self.emitRemoteMove() }
-        self.smart.playheadMoved()
       }
     }
   }
@@ -466,12 +439,9 @@ final class AudioEngine: NSObject {
   }
 
   func setRate(_ r: Double) {
-    // Close a boost measured against the old base; re-evaluated against the new one below.
-    smart.cancelBoost(restoreRate: false)
     baseRate = Float(r)
     if player.rate != 0 { player.rate = baseRate }
     updateNowPlayingInfo()
-    smart.evaluate()
   }
 
   /// Set the player's own output gain (0...1). This is AVPlayer.volume - our audio,
@@ -493,10 +463,10 @@ final class AudioEngine: NSObject {
     pendingSeek = 0
     wantsPlay = false
     remoteMovePending = false
-    smart.reset()
     player.pause()
     player.removeAllItems()
     queued.removeAll()
+    tapRequested.removeAll()
     tracks = []
     book = nil
     clips = ChapterClips()
@@ -505,6 +475,7 @@ final class AudioEngine: NSObject {
     pausedAt = nil
     artworkURL = nil
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    syncPlaybackState()
     send("onState", ["state": "idle"])
   }
 
@@ -525,7 +496,7 @@ final class AudioEngine: NSObject {
   var isPlaying: Bool { player.timeControlStatus != .paused || wantsPlay }
 
   private func sendProgress(_ position: Double) {
-    send("onProgress", ["position": position, "duration": currentDuration(), "silenceSaved": smart.silenceSaved])
+    send("onProgress", ["position": position, "duration": currentDuration()])
   }
 
   /// `onRemoteMove` with where the engine now is (file index + seconds in that file).
@@ -569,9 +540,6 @@ final class AudioEngine: NSObject {
           // promotes a stall that doesn't recover within its grace to 'error'.
           state = "loading"
         case .paused:
-          // Paused from outside our pause() (the queue ended, a route change, the OS):
-          // close any Smart Speed boost so the next play starts at the base rate.
-          self.smart.cancelBoost(restoreRate: false)
           // A failed item also parks the player at .paused - keep reporting 'loading'
           // there so the JS watchdog treats it as a dead stream, not a user pause.
           if p.currentItem?.status == .failed {
@@ -582,6 +550,7 @@ final class AudioEngine: NSObject {
         @unknown default:
           state = "paused"
         }
+        self.syncPlaybackState()
         self.send("onState", ["state": state])
       }
     }
@@ -590,14 +559,14 @@ final class AudioEngine: NSObject {
         guard let self = self, !self.rebuilding else { return }
         if let cur = p.currentItem, let match = self.queued.first(where: { $0.item === cur }) {
           self.observeItemFailure() // re-attach to the now-current item
+          // Slide the Voice Boost window: the item two ahead gets its tap now, a whole file
+          // before it plays.
+          self.attachVoiceBoostTaps()
           if match.index != self.currentIndex {
-            // A natural file advance: never a remote move. A boost from the previous file's
-            // last silence must not carry into the next file's first words.
-            self.smart.cancelBoost(restoreRate: true)
+            // A natural file advance: never a remote move.
             self.currentIndex = match.index
             self.updateNowPlayingInfo()
             self.send("onTrackChange", ["index": self.currentIndex])
-            self.smart.playheadMoved()
           }
         } else if p.currentItem == nil && !self.tracks.isEmpty {
           self.send("onState", ["state": "ended"])
@@ -620,7 +589,6 @@ final class AudioEngine: NSObject {
       let pos = time.seconds.isFinite ? time.seconds : 0
       self.sendProgress(pos)
       self.updateNowPlayingElapsed(pos)
-      self.smart.tick()
     }
   }
 
@@ -782,8 +750,7 @@ final class AudioEngine: NSObject {
 
   // MARK: Now Playing
 
-  /// Now Playing's rate: the listener's speed while playing (never Smart Speed's boost, which
-  /// would make the lock screen's clock race through a silence), 0 while paused.
+  /// Now Playing's rate: the listener's speed while playing, 0 while paused.
   private var nowPlayingRate: Float { player.rate != 0 ? baseRate : 0 }
 
   private func updateNowPlayingInfo() {
@@ -821,7 +788,21 @@ final class AudioEngine: NSObject {
     // button shows 0x while paused, since PlaybackRate is 0 then).
     info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = baseRate
     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    syncPlaybackState()
     loadArtwork(t.artwork, headers: t.headers)
+  }
+
+  /// Tell Now Playing whether we play. On a device iOS ignores this (it reads the audio
+  /// session: MPNowPlayingInfoCenter.h, "This only applies on macOS"), but the iOS SIMULATOR is
+  /// macOS underneath: without it mediaremoted keeps the app "Paused" forever (its log shows only
+  /// `PlaybackState changed from Unknown to Paused`, on the pre-Phase-6 engine too), so CarPlay's
+  /// Now Playing window showed a play button, a frozen 0:00 and a "0x" rate while the book
+  /// played. Setting it there flips mediaremoted to Playing (checked in the Simulator). From the
+  /// real transport state, so it can't disagree with the earbud toggle either.
+  private func syncPlaybackState() {
+    let state: MPNowPlayingPlaybackState = tracks.isEmpty ? .stopped : (isPlaying ? .playing : .paused)
+    let center = MPNowPlayingInfoCenter.default()
+    if center.playbackState != state { center.playbackState = state }
   }
 
   /// The 1 s tick: elapsed (and rate) only, unless the playhead crossed into another chapter,
@@ -870,9 +851,6 @@ final class AudioEngine: NSObject {
 
   deinit {
     if let timeObserver = timeObserver { player.removeTimeObserver(timeObserver) }
-    // No smart.reset() here: `smart` is lazy and holds `self` weakly, and forming a weak
-    // reference to an object in deinit traps. Its observers live on `player`, which dies with
-    // us, and its timers hold it weakly.
     statusObs?.invalidate()
     itemObs?.invalidate()
     itemStatusObs?.invalidate()
@@ -881,21 +859,5 @@ final class AudioEngine: NSObject {
     for (command, target) in commandTargets { command.removeTarget(target) }
     commandTargets.removeAll()
     NotificationCenter.default.removeObserver(self)
-  }
-}
-
-// MARK: - Smart Speed host
-
-extension AudioEngine: SmartSpeedHost {
-  var smartSpeedPlayer: AVQueuePlayer { player }
-  var smartSpeedBaseRate: Float { baseRate }
-
-  func smartSpeedPlayhead() -> (fileIndex: Int, time: Double, item: AVPlayerItem)? {
-    guard !rebuilding, pendingSeek == 0, seeksInFlight == 0,
-          let item = player.currentItem, item.status == .readyToPlay,
-          let match = queued.first(where: { $0.item === item }) else { return nil }
-    let t = item.currentTime().seconds
-    guard t.isFinite else { return nil }
-    return (match.index, t, item)
   }
 }

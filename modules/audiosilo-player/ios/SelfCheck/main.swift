@@ -1,8 +1,9 @@
 // Host self-check for the pure Swift parts of the iOS engine (no simulator needed):
 //   modules/audiosilo-player/ios/SelfCheck/run.sh
-// Compiled with swiftc together with ../SmartSpeedPlanner.swift and ../ChapterClips.swift.
+// Compiled with swiftc together with ../ChapterClips.swift and ../VoiceBoostDSP.swift.
 // Excluded from the pod (AudiosiloPlayer.podspec `exclude_files`). Exits non-zero on failure.
 
+import AVFoundation
 import Foundation
 
 var failures = 0
@@ -18,150 +19,152 @@ func check(_ cond: @autoclosure () -> Bool, _ what: String, line: Int = #line) {
 
 func near(_ a: Double, _ b: Double, _ eps: Double = 1e-6) -> Bool { abs(a - b) <= eps }
 
-// MARK: - SilenceDetector
+// MARK: - VoiceBoostDSP
 
-/// Interleaved stereo PCM: `loud` seconds of a 1000-amplitude square, then `quiet` seconds at
-/// amplitude 100 (below the 330 threshold), per segment.
-func pcm(_ segments: [(loud: Bool, seconds: Double)], rate: Double, channels: Int = 2) -> [Int16] {
-  var out: [Int16] = []
-  for s in segments {
-    let frames = Int((s.seconds * rate).rounded())
-    for f in 0..<frames {
-      let v: Int16 = s.loud ? (f % 2 == 0 ? 1000 : -1000) : (f % 2 == 0 ? 100 : -100)
-      for _ in 0..<channels { out.append(v) }
+/// Non-interleaved channels through the DSP in 512-frame calls (the tap's layout: one buffer per
+/// channel), or one interleaved buffer when `interleaved`.
+func boost(_ input: [[Float]], sampleRate: Double, enabled: Bool = true, interleaved: Bool = false) -> [[Float]] {
+  var dsp = VoiceBoostDSP()
+  precondition(dsp.prepare(sampleRate: sampleRate, channels: input.count))
+  defer { dsp.release() }
+  var out = input
+  let nch = input.count
+  let chunk = 512
+  let abl = AudioBufferList.allocate(maximumBuffers: interleaved ? 1 : nch)
+  defer { free(abl.unsafeMutablePointer) }
+  let scratch = UnsafeMutablePointer<Float>.allocate(capacity: chunk * nch)
+  defer { scratch.deallocate() }
+  var start = 0
+  while start < input[0].count {
+    let n = min(chunk, input[0].count - start)
+    for c in 0..<nch { for j in 0..<n { scratch[interleaved ? j * nch + c : c * chunk + j] = out[c][start + j] } }
+    if interleaved {
+      abl[0] = AudioBuffer(mNumberChannels: UInt32(nch), mDataByteSize: UInt32(n * nch * 4), mData: scratch)
+    } else {
+      for c in 0..<nch { abl[c] = AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(n * 4), mData: scratch + c * chunk) }
     }
+    dsp.render(abl.unsafeMutablePointer, frames: n, enabled: enabled)
+    for c in 0..<nch { for j in 0..<n { out[c][start + j] = scratch[interleaved ? j * nch + c : c * chunk + j] } }
+    start += n
   }
   return out
 }
 
-do {
-  let rate = 1000.0
-  let samples = pcm([(true, 1), (false, 0.5), (true, 1), (false, 0.2), (true, 1)], rate: rate)
-  var d = SilenceDetector(sampleRate: rate, channels: 2, from: 0)
-  let found = samples.withUnsafeBufferPointer { d.consume($0, at: 0) }
-  check(found.count == 1, "one silence >= 300 ms (the 200 ms pause is a word gap): \(found)")
-  if let s = found.first {
-    check(near(s.start, 1.0, 0.002) && near(s.end, 1.5, 0.002), "silence spans 1.0...1.5: \(s)")
+func dbfs(_ x: Double) -> Double { 20 * log10(max(x, 1e-12)) }
+
+/// RMS over the 50 ms windows where `gate` (the input) is above -50 dBFS: the level of the
+/// speech itself, not diluted by its pauses.
+func activeRMS(_ x: [[Float]], gate: [[Float]], sampleRate: Double) -> Double {
+  let w = Int(sampleRate * 0.05)
+  var sum = 0.0, n = 0
+  for i in 0..<(x[0].count / w) {
+    var g = 0.0, s = 0.0
+    for c in 0..<x.count {
+      for j in (i * w)..<((i + 1) * w) { g += Double(gate[c][j] * gate[c][j]); s += Double(x[c][j] * x[c][j]) }
+    }
+    if dbfs(sqrt(g / Double(w * x.count))) > -50 { sum += s; n += w * x.count }
   }
-  check(d.finish() == nil, "no open run at the end (audio ended loud)")
+  return sqrt(sum / Double(max(n, 1)))
 }
 
-do {
-  // A silence straddling two chunks is reported once, whole.
-  let rate = 1000.0
-  let a = pcm([(true, 1), (false, 0.4)], rate: rate)
-  let b = pcm([(false, 0.4), (true, 0.5)], rate: rate)
-  var d = SilenceDetector(sampleRate: rate, channels: 2, from: 0)
-  let first = a.withUnsafeBufferPointer { d.consume($0, at: 0) }
-  check(first.isEmpty, "nothing reported while the run is still open")
-  let second = b.withUnsafeBufferPointer { d.consume($0, at: 1.4) }
-  check(second.count == 1, "the straddling silence is reported in the second chunk")
-  if let s = second.first {
-    check(near(s.start, 1.0, 0.002) && near(s.end, 1.8, 0.002), "straddling silence 1.0...1.8: \(s)")
+func peakOf(_ x: [[Float]]) -> Float { x.flatMap { $0 }.reduce(0) { max($0, abs($1)) } }
+
+/// A speech-like test signal: a 180 Hz voice with harmonics, in 250 ms "syllables" (raised
+/// cosine) with 150 ms gaps, scaled to `peakDb`.
+func syllables(seconds: Double, sampleRate: Double, peakDb: Double) -> [Float] {
+  let n = Int(seconds * sampleRate)
+  var x = [Float](repeating: 0, count: n)
+  for i in 0..<n {
+    let t = Double(i) / sampleRate
+    let phase = t.truncatingRemainder(dividingBy: 0.4)
+    guard phase < 0.25 else { continue }
+    let env = 0.5 - 0.5 * cos(2 * Double.pi * phase / 0.25)
+    let v = sin(2 * Double.pi * 180 * t) + 0.5 * sin(2 * Double.pi * 360 * t) + 0.25 * sin(2 * Double.pi * 720 * t)
+    x[i] = Float(env * v / 1.75)
   }
+  let g = Float(pow(10, peakDb / 20)) / x.reduce(0) { max($0, abs($1)) }
+  return x.map { $0 * g }
 }
 
 do {
-  // Overlap from a decoder re-read is skipped, not double-counted.
-  let rate = 1000.0
-  let a = pcm([(true, 1), (false, 0.5)], rate: rate)
-  var d = SilenceDetector(sampleRate: rate, channels: 2, from: 0)
-  _ = a.withUnsafeBufferPointer { d.consume($0, at: 0) }
-  // Re-read from 1.2 (already seen) through more silence then sound.
-  let b = pcm([(false, 0.5), (true, 0.2)], rate: rate)
-  let found = b.withUnsafeBufferPointer { d.consume($0, at: 1.2) }
-  check(found.count == 1, "overlapped re-read still reports one silence: \(found)")
-  if let s = found.first { check(near(s.start, 1.0, 0.002), "start kept from the first read: \(s)") }
+  let sr = 44_100.0
+  let ceiling = Float(pow(10, Double(VoiceBoostPreset.ceilingDb) / 20))
+  var fmt = AudioStreamBasicDescription(
+    mSampleRate: sr, mFormatID: kAudioFormatLinearPCM,
+    mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved,
+    mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 2, mBitsPerChannel: 32, mReserved: 0)
+  check(VoiceBoostDSP.accepts(fmt), "float32 PCM (what AVPlayer hands a tap) is processed")
+  fmt.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
+  fmt.mBitsPerChannel = 16
+  check(!VoiceBoostDSP.accepts(fmt), "16-bit integer PCM passes through")
+
+  let quiet = syllables(seconds: 3, sampleRate: sr, peakDb: -26)
+  let off = boost([quiet, quiet], sampleRate: sr, enabled: false)
+  check(off[0] == quiet && off[1] == quiet, "switch off: the audio is untouched, bit for bit")
+
+  let on = boost([quiet, quiet], sampleRate: sr)
+  let lift = dbfs(activeRMS(on, gate: [quiet, quiet], sampleRate: sr)) - dbfs(activeRMS([quiet, quiet], gate: [quiet, quiet], sampleRate: sr))
+  check(lift > 8, "quiet speech comes up by more than 8 dB: \(lift)")
+  check(on[0] == on[1], "a linked detector keeps identical channels identical")
+
+  let loud = syllables(seconds: 3, sampleRate: sr, peakDb: -0.5)
+  let limited = boost([loud], sampleRate: sr)
+  check(peakOf(limited) <= ceiling + 1e-6, "never above the -1 dBFS ceiling: \(dbfs(Double(peakOf(limited))))")
+
+  let a = boost([quiet, loud], sampleRate: sr)
+  let b = boost([quiet, loud], sampleRate: sr, interleaved: true)
+  check(a == b, "interleaved and one-buffer-per-channel layouts give the same output")
+
+  // The switch ramps: the first frames after enabling are still mostly dry.
+  let ramp = boost([quiet], sampleRate: sr)
+  let first = Int(sr * 0.002)
+  var maxDiff: Float = 0
+  for i in 0..<first { maxDiff = max(maxDiff, abs(ramp[0][i] - quiet[i])) }
+  check(maxDiff < 0.2 * peakOf([quiet]), "no jump when switched on (20 ms ramp): \(maxDiff)")
+
+  // A buffer that doesn't match the prepared layout passes through.
+  var dsp = VoiceBoostDSP()
+  _ = dsp.prepare(sampleRate: sr, channels: 2)
+  var mono = Array(quiet.prefix(256))
+  let before = mono
+  mono.withUnsafeMutableBufferPointer { p in
+    var list = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 1, mDataByteSize: 256 * 4, mData: p.baseAddress))
+    dsp.render(&list, frames: 256, enabled: true)
+  }
+  dsp.release()
+  check(mono == before, "a layout other than the prepared one passes through")
 }
 
+// Real speech (macOS `say`), at three levels: the figures the preset is chosen by. Skipped where
+// `say` can't run.
 do {
-  // A single loud channel makes the frame loud (peak across channels).
-  var samples: [Int16] = []
-  for _ in 0..<500 { samples.append(0); samples.append(0) }
-  samples.append(0); samples.append(2000)
-  for _ in 0..<500 { samples.append(0); samples.append(0) }
-  var d = SilenceDetector(sampleRate: 1000, channels: 2, from: 0)
-  let found = samples.withUnsafeBufferPointer { d.consume($0, at: 0) }
-  check(found.count == 1 && near(found[0].end, 0.5, 0.002), "a loud right channel ends the run: \(found)")
-  let tail = d.finish()
-  check(tail != nil && near(tail!.start, 0.501, 0.002) && near(tail!.end, 1.001, 0.002), "trailing silence closes at EOF: \(String(describing: tail))")
-}
-
-do {
-  // Int16.min must not overflow the magnitude check.
-  let samples: [Int16] = [Int16.min, Int16.min]
-  var d = SilenceDetector(sampleRate: 1000, channels: 2, from: 0)
-  _ = samples.withUnsafeBufferPointer { d.consume($0, at: 0) }
-  check(d.runStart == nil, "Int16.min is loud")
-}
-
-do {
-  // A gap in the data closes the run where the data stopped.
-  let rate = 1000.0
-  var d = SilenceDetector(sampleRate: rate, channels: 2, from: 0)
-  let a = pcm([(true, 0.1), (false, 0.5)], rate: rate)
-  _ = a.withUnsafeBufferPointer { d.consume($0, at: 0) }
-  let b = pcm([(true, 0.1)], rate: rate)
-  let found = b.withUnsafeBufferPointer { d.consume($0, at: 5) }
-  check(found.count == 1 && near(found[0].end, 0.6, 0.002), "gap closes the run at 0.6: \(found)")
-}
-
-// MARK: - SmartSpeedPlanner
-
-do {
-  let s = SmartSpeedPlanner.span(for: Silence(start: 10, end: 11))
-  check(s != nil && near(s!.start, 10.15) && near(s!.end, 10.8), "1 s silence -> 10.15...10.80 (150 ms kept + 50 ms lead): \(String(describing: s))")
-  check(SmartSpeedPlanner.span(for: Silence(start: 0, end: 0.4)) == nil, "a 400 ms silence leaves a 50 ms middle: skipped")
-  let ok = SmartSpeedPlanner.span(for: Silence(start: 0, end: 0.45))
-  check(ok != nil && near(ok!.end - ok!.start, 0.1), "a 450 ms silence leaves exactly the 100 ms minimum")
-
-  let spans = [BoostSpan(start: 1, end: 2), BoostSpan(start: 5, end: 6), BoostSpan(start: 9, end: 9.5)]
-  check(SmartSpeedPlanner.spanIndex(containing: 0.5, in: spans) == nil, "before every span")
-  check(SmartSpeedPlanner.spanIndex(containing: 1.5, in: spans) == 0, "inside the first")
-  check(SmartSpeedPlanner.spanIndex(containing: 0.99, in: spans) == 0, "a hair early counts (tolerance)")
-  check(SmartSpeedPlanner.spanIndex(containing: 2.0, in: spans) == nil, "end is exclusive")
-  check(SmartSpeedPlanner.spanIndex(containing: 5.99, in: spans) == 1, "inside the second")
-  check(SmartSpeedPlanner.spanIndex(containing: 7, in: spans) == nil, "between spans")
-  check(SmartSpeedPlanner.spanIndex(containing: 9.2, in: spans) == 2, "inside the last")
-  check(SmartSpeedPlanner.spanIndex(containing: 1, in: []) == nil, "no spans")
-
-  check(SmartSpeedPlanner.boostedRate(base: 1, canPlayFastForward: true) == 3, "1x -> 3x")
-  check(SmartSpeedPlanner.boostedRate(base: 2.5, canPlayFastForward: true) == 6, "2.5x caps at 6x")
-  check(SmartSpeedPlanner.boostedRate(base: 1, canPlayFastForward: false) == 2, "no fast-forward caps at 2x")
-  check(SmartSpeedPlanner.boostedRate(base: 2, canPlayFastForward: false) == nil, "2x without fast-forward: no boost")
-  check(SmartSpeedPlanner.boostedRate(base: 5.8, canPlayFastForward: true) == nil, "near the cap: no boost")
-  check(SmartSpeedPlanner.boostedRate(base: 0, canPlayFastForward: true) == nil, "paused: no boost")
-}
-
-// MARK: - SavedTimeMeter
-
-do {
-  var m = SavedTimeMeter()
-  // 1x base, 3x boost: 0.9 s of book in 0.3 s of wall saves 0.6 s.
-  m.begin(bookTime: 10, wallTime: 100, baseRate: 1, boostedRate: 3)
-  let a = m.end(bookTime: 10.9, wallTime: 100.3)
-  check(near(a, 0.6, 1e-9), "0.9 s at 3x saves 0.6 s: \(a)")
-  // 1.5x base, 4.5x boost: 0.9 s of book in 0.2 s wall; base would cover 0.3 s -> 0.6 saved.
-  m.begin(bookTime: 20, wallTime: 200, baseRate: 1.5, boostedRate: 4.5)
-  let b = m.end(bookTime: 20.9, wallTime: 200.2)
-  check(near(b, 0.6, 1e-9), "speed itself is not counted: \(b)")
-  check(near(m.total, 1.2, 1e-9), "total accumulates: \(m.total)")
-  // A slow boost (latency) saves less, honestly.
-  m.begin(bookTime: 30, wallTime: 300, baseRate: 1, boostedRate: 3)
-  let c = m.end(bookTime: 30.9, wallTime: 300.5)
-  check(near(c, 0.4, 1e-9), "a late boost saves only what it saved: \(c)")
-  // A backwards clock (seek back) adds nothing; the total never goes down.
-  let before = m.total
-  m.begin(bookTime: 40, wallTime: 400, baseRate: 1, boostedRate: 3)
-  check(m.end(bookTime: 39, wallTime: 400.1) == 0 && m.total == before, "a backwards move adds nothing")
-  // A missed boundary can't inflate the saving past what 3x could save.
-  m.begin(bookTime: 50, wallTime: 500, baseRate: 1, boostedRate: 3)
-  let d = m.end(bookTime: 60, wallTime: 500.1)
-  check(d <= 10 * (2.0 / 3.0) + 0.011, "clamped to the boost's ceiling: \(d)")
-  check(m.end(bookTime: 70, wallTime: 600) == 0, "end without begin adds nothing")
-  m.begin(bookTime: 1, wallTime: 1, baseRate: 1, boostedRate: 3)
-  m.discard()
-  check(!m.isOpen && m.end(bookTime: 5, wallTime: 1.1) == 0, "a discarded span adds nothing")
+  let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vb-selfcheck-\(getpid())")
+  try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: dir) }
+  let file = dir.appendingPathComponent("speech.aiff")
+  let say = Process()
+  say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+  say.arguments = ["-o", file.path, "The art of war is of vital importance to the State. It is a matter of life and death, a road either to safety or to ruin."]
+  if (try? say.run()) != nil, ({ say.waitUntilExit(); return say.terminationStatus == 0 })(),
+     let f = try? AVAudioFile(forReading: file),
+     let buf = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)),
+     (try? f.read(into: buf)) != nil, let data = buf.floatChannelData {
+    let sr = f.processingFormat.sampleRate
+    let speech = Array(UnsafeBufferPointer(start: data[0], count: Int(buf.frameLength)))
+    let level = activeRMS([speech], gate: [speech], sampleRate: sr)
+    let peak = Double(peakOf([speech]))
+    var lifts: [Double] = []
+    for target in [-32.0, -22.0, -17.0] {
+      let g = Float(min(pow(10, (target - dbfs(level)) / 20), pow(10, -0.5 / 20) / peak))
+      let x = speech.map { $0 * g }
+      let y = boost([x], sampleRate: sr)
+      lifts.append(dbfs(activeRMS(y, gate: [x], sampleRate: sr)) - dbfs(activeRMS([x], gate: [x], sampleRate: sr)))
+    }
+    print(String(format: "Voice Boost on `say` speech: quiet %+.1f dB, normal %+.1f dB, loud %+.1f dB", lifts[0], lifts[1], lifts[2]))
+    check(lifts[0] > 8 && lifts[1] > 6 && lifts[2] > 3, "speech comes up audibly at every level: \(lifts)")
+  } else {
+    print("(skipped the speech measurement: `say` unavailable)")
+  }
 }
 
 // MARK: - ChapterClips

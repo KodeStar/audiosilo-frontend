@@ -22,8 +22,8 @@ extension AudioEngine: CarPlayPlayerAccess {
     return CarItemId.make(connectionId: b.connectionId, libraryId: b.libraryId, path: b.path)
   }
 
-  /// The listener's speed (never a Smart Speed boost).
-  var rate: Double { Double(smartSpeedBaseRate) }
+  /// The listener's speed.
+  var rate: Double { Double(baseRate) }
 
   /// Jump to a chapter's start, as a remote move (CarPlay's chapter list): the store lowers
   /// the resume floor when `onRemoteMove` arrives. Doesn't change play/pause.

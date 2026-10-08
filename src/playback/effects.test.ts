@@ -41,24 +41,10 @@ describe('supportsVoiceBoost', () => {
 });
 
 describe('smartSpeedApplies', () => {
-  const local = { tracks: [{ url: 'file:///d/1.mp3' }, { url: 'file:///d/2.mp3' }] };
-  const mixed = { tracks: [{ url: 'file:///d/1.mp3' }, { url: 'https://s/2.mp3' }] };
-  const streaming = { tracks: [{ url: 'https://s/1.mp3' }] };
-
-  it('applies to every book on Android', () => {
-    expect(smartSpeedApplies('android', streaming)).toBe(true);
-    expect(smartSpeedApplies('android', local)).toBe(true);
-  });
-
-  it('applies on iOS only when every file is on the device', () => {
-    expect(smartSpeedApplies('ios', local)).toBe(true);
-    expect(smartSpeedApplies('ios', mixed)).toBe(false);
-    expect(smartSpeedApplies('ios', streaming)).toBe(false);
-    expect(smartSpeedApplies('ios', { tracks: [] })).toBe(false);
-    expect(smartSpeedApplies('ios', null)).toBe(false);
-  });
-
-  it('never applies on the web', () => {
-    expect(smartSpeedApplies('web', local)).toBe(false);
+  it('applies on Android only', () => {
+    expect(smartSpeedApplies('android')).toBe(true);
+    // Withdrawn on iOS (rate changes stutter on a device), never built for the web.
+    expect(smartSpeedApplies('ios')).toBe(false);
+    expect(smartSpeedApplies('web')).toBe(false);
   });
 });

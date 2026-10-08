@@ -73,8 +73,8 @@ export type PlaybackSettings = {
   shakeToExtend: boolean;
   /** How hard that shake has to be. */
   shakeSensitivity: ShakeSensitivity;
-  /** Smart Speed: trim the silences between words (Android every book, iOS downloaded
-   * books only, never the web). Device-wide, not per book. */
+  /** Smart Speed: trim the silences between words (Android only: withdrawn on iOS, never
+   * the web; kept on iOS so a shared value isn't lost). Device-wide, not per book. */
   smartSpeed: boolean;
   /** Voice Boost: compress and lift speech (native, and the web outside Safari).
    * Device-wide, not per book. */

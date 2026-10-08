@@ -45,18 +45,11 @@ export function supportsVoiceBoost(env: BrowserEnv = currentBrowserEnv()): boole
 }
 
 /**
- * Does Smart Speed actually trim THIS book on this platform? Android trims every book; iOS
- * only a book whose every file is on the device (it looks ahead through the local file to
- * find the silences, which a stream can't offer), so a streaming book there gets "For
- * downloaded books on iPhone"; the web never does. An empty queue (nothing loaded) reads
- * as not applying.
+ * Does Smart Speed trim silences on this platform? Android only (every book). The web has no
+ * engine for it, and iOS withdrew it after a device test: the iOS design changed AVPlayer's
+ * rate inside each silence, and every rate change while playing is an audible dropout, so
+ * narration stuttered at every pause. The setting stays (Android reads it); iOS ignores it.
  */
-export function smartSpeedApplies(
-  platform: string,
-  queue: { tracks: readonly { url: string }[] } | null | undefined,
-): boolean {
-  if (platform === 'android') return true;
-  if (platform !== 'ios') return false;
-  const tracks = queue?.tracks ?? [];
-  return tracks.length > 0 && tracks.every((t) => t.url.startsWith('file://'));
+export function smartSpeedApplies(platform: string): boolean {
+  return platform === 'android';
 }
