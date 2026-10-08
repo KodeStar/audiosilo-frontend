@@ -341,6 +341,105 @@ describe('save loop lifecycle', () => {
   });
 });
 
+// --- the periodic save driven by the engine's ticks ------------------------
+// Android pauses every JS timer while the activity is paused (screen off, another app in
+// front), so the 15 s interval never fires there; the engine's progress ticks still
+// arrive. `inBackground` moves the clock without running a single timer and pushes one
+// tick a second, which is exactly what JS sees in that state.
+
+describe('the periodic save while JS timers are paused (Android in the background)', () => {
+  /** The positions saved since the last clear. */
+  const saved = () =>
+    mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position);
+
+  /** `seconds` of engine ticks, one a second, from `from` on, with no timer firing. */
+  function inBackground(seconds: number, from: number, state: PlaybackState = 'playing') {
+    for (let i = 1; i <= seconds; i++) {
+      jest.setSystemTime(Date.now() + 1_000);
+      pushSnapshot(snap(state, from + i));
+    }
+  }
+
+  /** A book started and playing at `at`, with nothing saved yet. */
+  async function startPlaying(at = 10) {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', at));
+    mockSaveProgress.mockClear();
+  }
+
+  it("saves every 15 s of playing from the engine's ticks, and stops on a pause", async () => {
+    await startPlaying();
+    inBackground(45, 10);
+    await flushMicrotasks();
+    expect(saved()).toEqual([25, 40, 55]);
+
+    // A pause (the notification shade) saves once; a paused engine's ticks never do.
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('paused', 55));
+    inBackground(45, 55, 'paused');
+    await flushMicrotasks();
+    expect(saved()).toEqual([55]);
+  });
+
+  it('never saves twice in one interval when the interval and the ticks both run', async () => {
+    await startPlaying();
+    // In front: the interval fires AND the ticks arrive, offset so a tick lands just
+    // before each of the interval's turns.
+    jest.advanceTimersByTime(500);
+    for (let i = 1; i <= 45; i++) {
+      jest.advanceTimersByTime(1_000);
+      pushSnapshot(snap('playing', 10 + i));
+    }
+    await flushMicrotasks();
+    expect(saved()).toHaveLength(3);
+
+    // Sent to the background mid-interval: the ticks carry on where the interval left off.
+    mockSaveProgress.mockClear();
+    inBackground(30, 55);
+    await flushMicrotasks();
+    expect(saved()).toHaveLength(2);
+  });
+
+  it("holds the ticks' saves while a place check is out, then carries on", async () => {
+    await startPlaying();
+    inBackground(12, 10);
+    const release = holdSaves();
+    inBackground(4, 22); // the save due at 15 s falls inside the hold
+    await flushMicrotasks();
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+    release({ flush: false }); // the check answered (a fetch resolves in the background)
+    inBackground(15, 26);
+    await flushMicrotasks();
+    // The held turn still took its turn, as the interval's would: the next is 15 s on.
+    expect(saved()).toEqual([40]);
+  });
+
+  it('ends a hold whose 5 s release timer never fired, and saves', async () => {
+    await startPlaying();
+    holdSaves(); // the check's answer never comes, and its 5 s timer is paused too
+    inBackground(15, 10);
+    await flushMicrotasks();
+    expect(saved()).toEqual([25]);
+  });
+
+  it("saves a seek at once and keeps the periodic save's own cadence", async () => {
+    await startPlaying(40);
+    inBackground(5, 40);
+    // A seek back from the notification: saved straight away (the floor comes down with
+    // it), and the next periodic save is still due 15 s after the loop started, not 15 s
+    // after the seek.
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(async (p: number) =>
+      pushSnapshot(snap('playing', p)),
+    );
+    await usePlayer.getState().seekBook(10);
+    await flushMicrotasks();
+    expect(saved()).toEqual([10]);
+    inBackground(10, 10);
+    await flushMicrotasks();
+    expect(saved()).toEqual([10, 20]);
+  });
+});
+
 // --- stall watchdog (a 'loading' that never resolves becomes an 'error') ----
 // Moved out of the iOS native module into shared JS so iOS/Android/web behave the
 // same off the `loading` signal every engine emits.

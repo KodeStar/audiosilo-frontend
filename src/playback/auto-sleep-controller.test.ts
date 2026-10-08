@@ -26,6 +26,7 @@ function load() {
   const settings = require('@/stores/settings') as typeof import('@/stores/settings');
   const controller =
     require('@/playback/auto-sleep-controller') as typeof import('@/playback/auto-sleep-controller');
+  const ticks = require('@/playback/engine-ticks') as typeof import('@/playback/engine-ticks');
   /* eslint-enable @typescript-eslint/no-require-imports */
   return {
     player,
@@ -33,6 +34,7 @@ function load() {
     GRACE_SECONDS: timer.GRACE_SECONDS,
     useSettings: settings.useSettings,
     startAutoSleep: controller.startAutoSleep,
+    engineTick: ticks.engineTick,
   };
 }
 
@@ -155,6 +157,23 @@ describe('auto sleep controller', () => {
 
     // The poll runs a minute later, by which time the window has opened.
     jest.advanceTimersByTime(60_000);
+    expect(phase()).toBe('running');
+  });
+
+  it('arms mid-listen from engine events alone when JS timers are paused (screen off)', () => {
+    start();
+    playing(); // 21:59:30 - too early, nothing armed
+    // Android with the screen off: no timer fires, the engine's events (one a second)
+    // arrive. The poll still checks once a minute, so the window opening is noticed.
+    const screenOff = (seconds: number) => {
+      for (let i = 0; i < seconds; i++) {
+        jest.setSystemTime(Date.now() + 1_000);
+        ctx.engineTick();
+      }
+    };
+    screenOff(59);
+    expect(phase()).toBe('idle'); // the window is open, but the minute's check is not due
+    screenOff(1);
     expect(phase()).toBe('running');
   });
 

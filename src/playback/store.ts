@@ -13,6 +13,7 @@ import { canAutoDownload } from '@/lib/network';
 import { useSettings } from '@/stores/settings';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
+import { engineTick, engineTicker } from './engine-ticks';
 import {
   flushConnection,
   flushQueue,
@@ -83,7 +84,6 @@ function localFromManifest(manifest: DownloadManifest): {
 let service: PlaybackService | null = null;
 let apiRef: ApiClient | null = null;
 let deviceId = '';
-let saveTimer: ReturnType<typeof setInterval> | null = null;
 let historyStart: { position: number; at: number } | null = null;
 /** Do we intend to be playing right now? Gates the stall watchdog so an idle/paused
  * buffer never surfaces as an error. Set by the play/pause actions and kept in sync
@@ -126,7 +126,7 @@ let outputVolume = 1;
  * device's newer one (the server is last-write-wins). A hold always ends: released by
  * its owner, or by itself after `SAVE_HOLD_MAX_MS` (a slow check never loses listening).
  */
-let saveHold: { timer: ReturnType<typeof setTimeout> } | null = null;
+let saveHold: { timer: ReturnType<typeof setTimeout>; expiresAt: number } | null = null;
 const SAVE_HOLD_MAX_MS = 5_000;
 /** When the transport last settled out of `playing` (a pause, from any source), else
  * null. A play after `LONG_PAUSE_MS` of it is a book picked up again, which is when
@@ -279,6 +279,12 @@ async function persist(opts?: { forceFinished?: boolean }) {
   if (!apiRef || !nowPlaying) return;
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
+  // Past its deadline the hold is over even when its timer has not fired (Android pauses
+  // JS timers in the background): end it here, and this save is the flush it owed.
+  if (saveHold && Date.now() >= saveHold.expiresAt) {
+    clearTimeout(saveHold.timer);
+    saveHold = null;
+  }
   if (saveHold && !forceFinished) return;
   const total = nowPlaying.queue.total;
   let position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
@@ -376,17 +382,17 @@ async function knownSpeed(connectionId: string, libraryId: number, path: string)
   return newest?.playback_speed ?? 0;
 }
 
+/** The 15 s periodic save. An `engineTicker`, so the engine's events keep it going where
+ * Android has paused the interval (screen off, app in the background). `playBook` stops
+ * it before a book switch, so a late event of the old book never saves under the new one. */
+const saveLoop = engineTicker(() => void persist(), SAVE_INTERVAL_MS);
+/** Re-based on every start: the first save comes 15 s after playing starts. */
 function startSaveLoop() {
-  stopSaveLoop();
-  saveTimer = setInterval(() => {
-    void persist();
-  }, SAVE_INTERVAL_MS);
+  saveLoop.stop();
+  saveLoop.start();
 }
 function stopSaveLoop() {
-  if (saveTimer) {
-    clearInterval(saveTimer);
-    saveTimer = null;
-  }
+  saveLoop.stop();
 }
 
 /** Capture the current position then stop the periodic save loop - shared by the
@@ -591,6 +597,9 @@ async function ensureService(): Promise<PlaybackService> {
         haltAndPersist();
       }
     }
+    // The engine's events drive the periodic work (the save, the sleep timer) where
+    // Android has paused the JS timers: see `engineTicker`.
+    engineTick();
   });
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
@@ -959,12 +968,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
  * the place once on release, so listening done while held is not lost; pass false when
  * the hold ended in a move to another device's place (that place is already saved, and
  * the engine may not have reported the move yet). Ends by itself after
- * `SAVE_HOLD_MAX_MS`, flushing. A second hold replaces the first.
+ * `SAVE_HOLD_MAX_MS`, flushing: by its timer, or by the next save past that deadline when
+ * the timer cannot fire (see `persist`). A second hold replaces the first.
  */
 export function holdSaves(): (opts?: { flush?: boolean }) => void {
   if (saveHold) clearTimeout(saveHold.timer);
   const hold = {
     timer: setTimeout(() => release(), SAVE_HOLD_MAX_MS),
+    expiresAt: Date.now() + SAVE_HOLD_MAX_MS,
   };
   saveHold = hold;
   function release(opts?: { flush?: boolean }) {

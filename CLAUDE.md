@@ -642,7 +642,12 @@ media GETs only.
   suspended app doesn't wake to a countdown that already ran out.
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
   server reconciles) with an offline replay queue; `store.ts` saves every 15s while
-  playing and on pause/seek/rate/stop/ended.
+  playing and on pause/seek/rate/stop/ended. Android pauses every JS timer with the screen
+  off, so the periodic work that must run while a book plays there (the 15 s save, the sleep
+  timer's countdown and fade, auto sleep's poll) is an `engineTicker` (`engine-ticks.ts`):
+  its interval OR the engine's own events (the store calls `engineTick` on every snapshot),
+  whichever comes first, at most once per period. A new periodic job that must survive the
+  screen being off uses it rather than a bare `setInterval`/`ticker`.
 - **Never restart an in-progress book from 0.** `loadInitialProgress` returns a
   discriminated `ResumeLookup` (`progress`/`empty`/`failed`) reconciling the server, a
   **durable local mirror** (`writeMirror`, never pruned on sync - survives a flaky resume
