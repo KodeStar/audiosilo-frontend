@@ -53,6 +53,8 @@ final class SmartSpeed {
   private var nextToken = 0
   private let queue = DispatchQueue(label: "app.audiosilo.player.smartspeed", qos: .utility)
   private var boundaryObserver: Any?
+  /// The file the boundary observer was registered for (nil = none registered).
+  private var observedFile: Int?
   private var restoreWork: DispatchWorkItem?
   private var meter = SavedTimeMeter()
   /// The rate while boosting, else nil. The engine plays `boostedRate ?? base`.
@@ -125,6 +127,9 @@ final class SmartSpeed {
   func tick() {
     guard isActive else { return }
     ensureLookAhead()
+    // A file that became current while unsettled (its item not ready yet when the engine
+    // reported the move) never had its boundaries registered: do it now.
+    if let head = host?.smartSpeedPlayhead(), observedFile != head.fileIndex { registerBoundaries() }
     evaluate()
   }
 
@@ -180,6 +185,7 @@ final class SmartSpeed {
   private func removeBoundaryObserver() {
     if let obs = boundaryObserver, let host = host { host.smartSpeedPlayer.removeTimeObserver(obs) }
     boundaryObserver = nil
+    observedFile = nil
   }
 
   /// Boundary observers for the current file's upcoming spans (start and end of each). They
@@ -188,8 +194,9 @@ final class SmartSpeed {
   /// boundary fired (AVPlayer doesn't say).
   private func registerBoundaries() {
     removeBoundaryObserver()
-    guard let host = host, let head = host.smartSpeedPlayhead(),
-          let spans = files[head.fileIndex]?.spans else { return }
+    guard let host = host, let head = host.smartSpeedPlayhead() else { return }
+    observedFile = head.fileIndex
+    guard let spans = files[head.fileIndex]?.spans else { return }
     var times: [NSValue] = []
     var count = 0
     for s in spans where s.end > head.time {
@@ -210,7 +217,9 @@ final class SmartSpeed {
     guard let host = host, let head = host.smartSpeedPlayhead() else { return }
     let f = head.fileIndex
     let t = head.time
-    if let a = files[f], t >= a.from - 0.5, t <= a.until + 5 {
+    // Inside the mapped range, or ahead of it by less than the look-ahead (the reader catches
+    // up sequentially; restarting there would throw away a chunk still in flight).
+    if let a = files[f], t >= a.from - 0.5, t <= a.until + Self.lookAhead {
       advance(file: f, playhead: t)
       if a.eof, f + 1 < fileURLs.count, files[f + 1] == nil {
         let duration = head.item.duration.seconds
