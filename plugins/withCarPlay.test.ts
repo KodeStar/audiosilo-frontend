@@ -36,7 +36,7 @@ describe('withCarPlay: Info.plist scene manifest', () => {
 describe('withCarPlay: AppDelegate', () => {
   it('replaces the window creation with the stored scene starter', () => {
     const out = patchAppDelegate(template);
-    expect(out).toContain('import ReactAppDependencyProvider\nimport AudiosiloPlayer');
+    expect(out).toContain('\ninternal import AudiosiloPlayer');
     expect(out).toContain('AudiosiloScenes.configure(');
     expect(out).toContain('mirrorWindow: { [weak self] window in self?.window = window }');
     expect(out).not.toContain('UIWindow(frame: UIScreen.main.bounds)');

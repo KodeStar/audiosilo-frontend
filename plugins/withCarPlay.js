@@ -113,7 +113,12 @@ function patchAppDelegate(contents) {
     if (!re.test(contents)) throw mismatch(`no ${re.source.replace(/\\/g, '')}`);
   }
   return contents
-    .replace(TEMPLATE_IMPORT, 'import ReactAppDependencyProvider\nimport AudiosiloPlayer')
+    .replace(
+      TEMPLATE_IMPORT,
+      'import ReactAppDependencyProvider\n' +
+        '// internal, like the generated ExpoModulesProvider.swift imports it (one access level per module).\n' +
+        'internal import AudiosiloPlayer',
+    )
     .replace(TEMPLATE_WINDOW, STARTER);
 }
 
