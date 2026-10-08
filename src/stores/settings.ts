@@ -73,6 +73,12 @@ export type PlaybackSettings = {
   shakeToExtend: boolean;
   /** How hard that shake has to be. */
   shakeSensitivity: ShakeSensitivity;
+  /** Smart Speed: trim the silences between words (Android every book, iOS downloaded
+   * books only, never the web). Device-wide, not per book. */
+  smartSpeed: boolean;
+  /** Voice Boost: compress and lift speech (native, and the web outside Safari).
+   * Device-wide, not per book. */
+  voiceBoost: boolean;
 };
 
 const DEFAULTS: PlaybackSettings = {
@@ -91,6 +97,8 @@ const DEFAULTS: PlaybackSettings = {
   autoSleepType: 'chapter',
   shakeToExtend: true,
   shakeSensitivity: 'medium',
+  smartSpeed: false,
+  voiceBoost: false,
 };
 
 // A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all.
@@ -115,6 +123,8 @@ type SettingsState = PlaybackSettings & {
   setAutoSleepType: (type: AutoSleepType) => void;
   setShakeToExtend: (on: boolean) => void;
   setShakeSensitivity: (sensitivity: ShakeSensitivity) => void;
+  setSmartSpeed: (on: boolean) => void;
+  setVoiceBoost: (on: boolean) => void;
 };
 
 /** The persisted settings, under the shared hydration rule (`persistedDocument`): a
@@ -140,6 +150,10 @@ export const useSettings = create<SettingsState>()((set, get) => {
           keepAhead: toKeepAhead(doc.keepAhead),
           shakeToExtend: doc.shakeToExtend !== false,
           shakeSensitivity: toShakeSensitivity(doc.shakeSensitivity),
+          // Off unless the stored value says on (a document from before they existed has
+          // none; anything that isn't `true` is not a listener's choice).
+          smartSpeed: doc.smartSpeed === true,
+          voiceBoost: doc.voiceBoost === true,
         }),
       ),
     setSkipForward: (skipForward) => update({ skipForward }),
@@ -157,5 +171,7 @@ export const useSettings = create<SettingsState>()((set, get) => {
     setAutoSleepType: (autoSleepType) => update({ autoSleepType }),
     setShakeToExtend: (shakeToExtend) => update({ shakeToExtend }),
     setShakeSensitivity: (shakeSensitivity) => update({ shakeSensitivity }),
+    setSmartSpeed: (smartSpeed) => update({ smartSpeed }),
+    setVoiceBoost: (voiceBoost) => update({ voiceBoost }),
   };
 });

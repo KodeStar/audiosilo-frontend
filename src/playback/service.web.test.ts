@@ -253,7 +253,7 @@ describe('WebPlaybackService (transcoded tracks)', () => {
   });
 
   it('a new load forgets the pause before it: no early start, no extra request', async () => {
-    await svc.configure({ autoRewindMax: 30, jumpForward: 30, jumpBackward: 15 });
+    await svc.configure({ autoRewindMax: 30, jumpForward: 30, jumpBackward: 15, smartSpeed: false, voiceBoost: false });
     await startPlaying(200);
     await svc.pause();
     now += 10 * 60_000; // long enough to read as a stale transcode
@@ -305,7 +305,7 @@ describe('WebPlaybackService (transcoded tracks)', () => {
   });
 
   it('auto-rewind on resume re-requests further back', async () => {
-    await svc.configure({ autoRewindMax: 30, jumpForward: 30, jumpBackward: 15 });
+    await svc.configure({ autoRewindMax: 30, jumpForward: 30, jumpBackward: 15, smartSpeed: false, voiceBoost: false });
     await startPlaying(200);
     el().currentTime = 10;
     el().emit('timeupdate'); // at 210
@@ -597,7 +597,7 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
     const svc = createPlaybackService();
     const storeSeek = jest.fn();
     svc.onRemoteSeek!(storeSeek);
-    await svc.configure({ autoRewindMax: 0, jumpForward: 30, jumpBackward: 15 });
+    await svc.configure({ autoRewindMax: 0, jumpForward: 30, jumpBackward: 15, smartSpeed: false, voiceBoost: false });
     await svc.load(transcodedTracks, 0, 250);
     const src = el().src;
     (handlers.get('seekto') as (d: { seekTime?: number }) => void)({ seekTime: 20 });
