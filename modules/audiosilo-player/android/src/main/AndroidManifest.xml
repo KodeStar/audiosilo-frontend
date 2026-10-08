@@ -3,14 +3,52 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+  <!-- Android 11+ package visibility: read the Android Auto host's car connection state
+       (CarConnectionMonitor, the same provider androidx.car.app's CarConnection queries). -->
+  <queries>
+    <provider android:authorities="androidx.car.app.connection" />
+  </queries>
+
   <application>
+    <!-- Android Auto: a media app. -->
+    <meta-data
+      android:name="com.google.android.gms.car.application"
+      android:resource="@xml/automotive_app_desc" />
+    <!-- The small icon Android Auto shows beside the app's media (tinted by the car). -->
+    <meta-data
+      android:name="androidx.car.app.TintableAttributionIcon"
+      android:resource="@drawable/ic_notification" />
+
+    <!-- A MediaLibraryService (Android Auto browses it) that is also the session service the
+         module and the lock screen use. MediaBrowserService is the action Android Auto and the
+         system's playback resumption bind to. -->
     <service
       android:name="expo.modules.audiosiloplayer.AudiosiloPlayerService"
       android:exported="true"
       android:foregroundServiceType="mediaPlayback">
       <intent-filter>
+        <action android:name="androidx.media3.session.MediaLibraryService" />
         <action android:name="androidx.media3.session.MediaSessionService" />
+        <action android:name="android.media.browse.MediaBrowserService" />
       </intent-filter>
     </service>
+
+    <!-- Playback resumption (a Bluetooth / car play with no session running), guarded so it
+         only starts the service when there is a downloaded book to resume. -->
+    <receiver
+      android:name="expo.modules.audiosiloplayer.ResumptionReceiver"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MEDIA_BUTTON" />
+      </intent-filter>
+    </receiver>
+
+    <!-- Car cover art: serves only files the current car snapshot names; read access is
+         granted per URI to the browsing app. -->
+    <provider
+      android:name="expo.modules.audiosiloplayer.ArtworkProvider"
+      android:authorities="${applicationId}.audiosilo.artwork"
+      android:exported="false"
+      android:grantUriPermissions="true" />
   </application>
 </manifest>

@@ -20,10 +20,15 @@ android {
 }
 
 dependencies {
+  // ReactHost + HeadlessJsTaskContext: the service boots JS without an activity (JsRuntime).
+  // Version from the app's React Native (the RN Gradle plugin resolves it), like expo's own modules.
+  implementation 'com.facebook.react:react-android'
   implementation "androidx.media3:media3-exoplayer:${media3Version}"
   implementation "androidx.media3:media3-session:${media3Version}"
   implementation "androidx.media3:media3-datasource:${media3Version}"
   // StandaloneDatabaseProvider for the streaming SimpleCache (transitive via exoplayer,
   // declared explicitly so the cache classes resolve regardless of resolution order).
   implementation "androidx.media3:media3-database:${media3Version}"
+
+  testImplementation 'junit:junit:4.13.2'
 }
