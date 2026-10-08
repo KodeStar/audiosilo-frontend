@@ -45,7 +45,7 @@ struct ChapterRecord: Record {
 }
 
 /// `load`'s optional 5th argument (Phase 6): which book the queue is. Android keeps it in the
-/// service's media items (`getLoadedBook`); iOS accepts it for arity parity and ignores it.
+/// service's media items (`getLoadedBook`); iOS keeps it for CarPlay (`loadedBookId`).
 struct BookRecord: Record {
   @Field var connectionId: String = ""
   @Field var libraryId: Int = 0
@@ -65,7 +65,8 @@ public class AudiosiloPlayerModule: Module {
     Name("AudiosiloPlayer")
 
     // The full Phase 6 event list (contract section 1). onCarConnection / onCarPlayRequest are
-    // sent by the CarPlay scene code; an event JS doesn't listen to is simply dropped.
+    // sent by the CarPlay scene code through AudiosiloCarEvents, which holds them until JS
+    // listens (below); every other event JS doesn't listen to is simply dropped.
     Events(
       "onState", "onProgress", "onTrackChange",
       "onRemoteMove", "onRateChange", "onRemoteBookmark",
@@ -86,14 +87,16 @@ public class AudiosiloPlayerModule: Module {
     }
 
     // The 4th arg (chapters) drives the iOS chapter lock screen (and Android's clipped items).
-    // The 5th (book) is Android's (getLoadedBook); iOS ignores it. Both are optional trailing
+    // The 5th (book) names the loaded book: Android's getLoadedBook, and on iOS CarPlay's
+    // "playing" indicator and the end of a tapped book's spinner (`loadedBookId`). Both are optional trailing
     // arguments: Expo accepts 3, 4 or 5 arguments and passes nil for the missing ones, so an
     // older JS bundle that sends 4 still works (and a newer one sending 5 to this binary no
     // longer fails the argument count).
     AsyncFunction("load") {
-      [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord]?, _: BookRecord?) in
+      [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord]?, book: BookRecord?) in
       self?.onMain {
-        self?.ensureEngine().load(tracks: tracks, startIndex: startIndex, position: position, chapters: chapters ?? [])
+        self?.ensureEngine().load(tracks: tracks, startIndex: startIndex, position: position,
+                                  chapters: chapters ?? [], book: book)
       }
     }
 

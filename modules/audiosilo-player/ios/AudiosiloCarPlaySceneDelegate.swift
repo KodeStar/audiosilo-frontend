@@ -64,9 +64,9 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
   private static let bookmarkFeedback: TimeInterval = 2
   /// A tapped book's spinner gives up after this long (JS never started it).
   private static let tapTimeout: TimeInterval = 10
-  /// The rates CarPlay's rate button cycles through (the same list the engine registers as
-  /// `changePlaybackRateCommand.supportedPlaybackRates`).
-  private static let rates: [Double] = [0.75, 1, 1.25, 1.5, 1.75, 2]
+  /// The rates CarPlay's rate button cycles through: the list the engine registers as
+  /// `changePlaybackRateCommand.supportedPlaybackRates`.
+  private static let rates: [Double] = AudioEngine.supportedRates.map(\.doubleValue)
 
   init(interfaceController: CPInterfaceController) {
     self.interfaceController = interfaceController

@@ -30,7 +30,8 @@ final class AudioEngine: NSObject {
   private(set) var currentIndex = 0
   /// The listener's speed (the BASE rate). Smart Speed boosts on top of it (`effectiveRate`);
   /// Now Playing always shows this one.
-  private var rate: Float = 1.0
+  /// Named `baseRate` (not `rate`): CarPlay reads the speed through `CarPlayPlayerAccess.rate`.
+  private var baseRate: Float = 1.0
   /// Output gain (0...1) last asked for by JS - the sleep timer's fade-out. Held here
   /// (not just on the player) because the queue is torn down and rebuilt on every
   /// load/skip/retry; without re-applying it, a fade-in-progress would jump back to
@@ -78,8 +79,11 @@ final class AudioEngine: NSObject {
   /// The loaded book's chapter clips (the same ones Android plays as clipped items). Active
   /// with 2+ clips; otherwise every path below keeps the whole-file behaviour.
   private(set) var clips = ChapterClips()
+  /// `load`'s 5th argument: which book the queue is (nil from an older JS bundle). CarPlay
+  /// names the loaded book with it (`loadedBookId`); cleared by `reset`.
+  private(set) var book: BookRecord?
   /// The clip Now Playing currently shows (nil in whole-file mode). Changes post
-  /// `AudioEngine.chaptersDidChange`.
+  /// `.audiosiloPlayerDidChange`.
   private(set) var nowPlayingClip: Int?
   /// A remote move (lock screen, headset, CarPlay) that rebuilt the queue and is waiting for
   /// its deferred start seek: `onRemoteMove` goes out once that seek lands, not before (JS
@@ -100,14 +104,11 @@ final class AudioEngine: NSObject {
   private lazy var smart = SmartSpeed(host: self)
 
   init(send: @escaping (String, [String: Any]) -> Void) {
-    // Every onState also reaches the CarPlay side (AudioEngine.playbackStateDidChange), on main
-    // like the JS event.
+    // Every onState also tells the CarPlay templates (`.audiosiloPlayerDidChange`, the one
+    // engine -> CarPlay notification; the play state is read back from the engine).
     self.send = { name, body in
       send(name, body)
-      guard name == "onState" else { return }
-      DispatchQueue.main.async {
-        NotificationCenter.default.post(name: AudioEngine.playbackStateDidChange, object: nil, userInfo: body)
-      }
+      if name == "onState" { AudioEngine.postPlayerDidChange() }
     }
     super.init()
     configureSession()
@@ -169,14 +170,14 @@ final class AudioEngine: NSObject {
     return item
   }
 
-  func load(tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord]) {
+  func load(tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord], book: BookRecord?) {
     self.tracks = tracks
+    self.book = book
     clips = Self.validClips(chapters, trackCount: tracks.count)
     nowPlayingClip = nil
     smart.load(trackURLs: tracks.map { URL(string: $0.url) })
     rebuildQueue(from: max(0, min(startIndex, tracks.count - 1)), position: position)
     send("onState", ["state": "ready"])
-    postChaptersDidChange()
   }
 
   /// The clips `load` received, or none when any is unusable (a file index outside the
@@ -357,7 +358,7 @@ final class AudioEngine: NSObject {
   /// The rate the player should run at: the base rate, or Smart Speed's boost while the
   /// playhead is inside a known silence. Every path that starts or re-asserts playback uses
   /// this, so a boost is applied on top of the base and dropped with it.
-  private var effectiveRate: Float { smart.boostedRate ?? rate }
+  private var effectiveRate: Float { smart.boostedRate ?? baseRate }
 
   /// Flip playback from the *real* transport state. All remote play/pause/toggle
   /// commands route here (see setupRemoteCommands) so a single earbud press always
@@ -403,7 +404,7 @@ final class AudioEngine: NSObject {
       updateNowPlayingInfo()
       return
     }
-    player.rate = rate
+    player.rate = baseRate
     updateNowPlayingInfo()
     smart.evaluate()
   }
@@ -467,8 +468,8 @@ final class AudioEngine: NSObject {
   func setRate(_ r: Double) {
     // Close a boost measured against the old base; re-evaluated against the new one below.
     smart.cancelBoost(restoreRate: false)
-    rate = Float(r)
-    if player.rate != 0 { player.rate = rate }
+    baseRate = Float(r)
+    if player.rate != 0 { player.rate = baseRate }
     updateNowPlayingInfo()
     smart.evaluate()
   }
@@ -497,6 +498,7 @@ final class AudioEngine: NSObject {
     player.removeAllItems()
     queued.removeAll()
     tracks = []
+    book = nil
     clips = ChapterClips()
     nowPlayingClip = nil
     currentIndex = 0
@@ -504,7 +506,6 @@ final class AudioEngine: NSObject {
     artworkURL = nil
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     send("onState", ["state": "idle"])
-    postChaptersDidChange()
   }
 
   private func currentDuration() -> Double {
@@ -531,6 +532,13 @@ final class AudioEngine: NSObject {
   private func emitRemoteMove() {
     guard !tracks.isEmpty else { return }
     send("onRemoteMove", ["trackIndex": currentIndex, "position": currentPosition()])
+  }
+
+  /// CarPlay's bookmark button: `onRemoteBookmark` with the file and position right now (a
+  /// pending start seek's target while one is waiting).
+  func emitRemoteBookmark() {
+    guard !tracks.isEmpty else { return }
+    send("onRemoteBookmark", ["trackIndex": currentIndex, "position": currentPosition()])
   }
 
   /// Run on the main thread: AVFoundation's seek completion handlers don't promise a queue.
@@ -713,10 +721,17 @@ final class AudioEngine: NSObject {
     addCommand(cc.changePlaybackRateCommand) { [weak self] event in
       guard let self = self, let e = event as? MPChangePlaybackRateCommandEvent,
             e.playbackRate > 0 else { return .commandFailed }
-      self.setRate(Double(e.playbackRate))
-      self.send("onRateChange", ["rate": Double(e.playbackRate)])
+      self.setRateFromRemote(Double(e.playbackRate))
       return .success
     }
+  }
+
+  /// A speed chosen outside the app (the rate command, CarPlay's rate button): apply it, then
+  /// send `onRateChange` once so the store's speed follows (the store doesn't call setRate back).
+  func setRateFromRemote(_ r: Double) {
+    guard r > 0, r.isFinite else { return }
+    setRate(r)
+    send("onRateChange", ["rate": r])
   }
 
   /// The clip the playhead is in (nil in whole-file mode).
@@ -769,7 +784,7 @@ final class AudioEngine: NSObject {
 
   /// Now Playing's rate: the listener's speed while playing (never Smart Speed's boost, which
   /// would make the lock screen's clock race through a silence), 0 while paused.
-  private var nowPlayingRate: Float { player.rate != 0 ? rate : 0 }
+  private var nowPlayingRate: Float { player.rate != 0 ? baseRate : 0 }
 
   private func updateNowPlayingInfo() {
     guard currentIndex < tracks.count else { return }
@@ -802,6 +817,9 @@ final class AudioEngine: NSObject {
       setNowPlayingClip(nil)
     }
     info[MPNowPlayingInfoPropertyPlaybackRate] = nowPlayingRate
+    // The listener's speed even while paused: CarPlay's rate button reads it (without it the
+    // button shows 0x while paused, since PlaybackRate is 0 then).
+    info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = baseRate
     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     loadArtwork(t.artwork, headers: t.headers)
   }
@@ -823,13 +841,14 @@ final class AudioEngine: NSObject {
       info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = pos
     }
     info[MPNowPlayingInfoPropertyPlaybackRate] = nowPlayingRate
+    info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = baseRate
     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
   }
 
   private func setNowPlayingClip(_ ci: Int?) {
     guard ci != nowPlayingClip else { return }
     nowPlayingClip = ci
-    postChaptersDidChange()
+    Self.postPlayerDidChange()
   }
 
   private func loadArtwork(_ urlString: String?, headers: [String: String]?) {
@@ -847,11 +866,6 @@ final class AudioEngine: NSObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
       }
     }.resume()
-  }
-
-  /// Send an event to JS (used by the CarPlay side for its bookmark event).
-  func emit(_ name: String, _ body: [String: Any]) {
-    send(name, body)
   }
 
   deinit {
@@ -874,7 +888,7 @@ final class AudioEngine: NSObject {
 
 extension AudioEngine: SmartSpeedHost {
   var smartSpeedPlayer: AVQueuePlayer { player }
-  var smartSpeedBaseRate: Float { rate }
+  var smartSpeedBaseRate: Float { baseRate }
 
   func smartSpeedPlayhead() -> (fileIndex: Int, time: Double, item: AVPlayerItem)? {
     guard !rebuilding, pendingSeek == 0, seeksInFlight == 0,

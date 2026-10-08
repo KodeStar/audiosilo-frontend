@@ -27,8 +27,15 @@ protocol CarPlayPlayerAccess: AnyObject {
   func emitRemoteBookmark()
 }
 
+/// The engine CarPlay talks to: the one the module created (AudioEngine+CarPlay.swift has the
+/// conformance), nil before JS called `setup`.
+enum CarPlayPlayer {
+  static var current: CarPlayPlayerAccess? { AudioEngine.shared }
+}
+
 extension Notification.Name {
-  /// Posted by the engine on the main thread when the loaded book, the play state or the
-  /// current chapter changes. The CarPlay templates refresh on it.
+  /// Posted by the engine on the main thread (`AudioEngine.postPlayerDidChange`) with every
+  /// `onState` (which covers a load and a reset) and when the chapter Now Playing shows changes.
+  /// The CarPlay templates refresh on it, reading the state back from `CarPlayPlayer.current`.
   static let audiosiloPlayerDidChange = Notification.Name("AudiosiloPlayerDidChange")
 }
