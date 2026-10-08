@@ -11,13 +11,20 @@ jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => mockLayout,
 }));
-jest.mock('@/api/provider', () => ({ useCid: (id?: string) => id ?? 'a' }));
 let mockConnections = [{ id: 'a', name: 'Hearthside', user: { username: 'alex' } }];
+jest.mock('@/api/provider', () => ({
+  useCid: (id?: string) => id ?? 'a',
+  useApis: () => mockConnections.map((connection) => ({ connection, client: {} })),
+}));
+let mockYears: number[] = [];
+jest.mock('./year-probes', () => ({ useStoryYears: () => mockYears }));
 jest.mock('@/stores/session', () => ({
   useSession: (sel: (s: object) => unknown) => sel({ connections: mockConnections }),
 }));
 // A cover needs the server's flags and the downloads registry; the card only places it.
 jest.mock('@/components/library/book-cover', () => ({
+  coverSizeFor: () => 640,
+  MAX_COVER_SIZE: 640,
   BookCover: ({ title }: { title: string }) => {
     const { Text } = jest.requireActual('react-native');
     return <Text>{`cover: ${title}`}</Text>;
@@ -74,6 +81,7 @@ beforeEach(() => {
   mockConnections = [{ id: 'a', name: 'Hearthside', user: { username: 'alex' } }];
   mockCaps = { a: { user_stats: true } };
   mockInfoError = false;
+  mockYears = [2025];
   mockStats = {
     year: { data: yearStats() },
     '2025': {
@@ -124,13 +132,7 @@ describe('YearSection', () => {
   });
 
   it('has no year picker while only this year has a story', async () => {
-    mockStats['2025'] = {
-      data: yearStats({
-        range: '2025',
-        totals: { listened: 0, sessions: 0, books: 0, finished: 0 },
-        previous: { listened: 0, sessions: 0, books: 0, finished: 0 },
-      }),
-    };
+    mockYears = [];
     await mount();
     expect(screen.queryByRole('checkbox', { name: '2026' })).toBeNull();
   });
@@ -151,10 +153,23 @@ describe('YearSection', () => {
     mockLayout = 'phone';
     await mount(390);
     expect(screen.getByText('Your 2026 in listening')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Play the story' }));
+    await fireEvent.press(
+      screen.getByRole('button', { name: /^Your 2026 in listening\. 8 cards/ }),
+    );
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/year', params: {} });
     await fireEvent.press(screen.getByRole('button', { name: 'Card 4: Voice of the year' }));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/year', params: { card: '3' } });
+  });
+
+  it('shows the first server that keeps stats when the default keeps none', async () => {
+    mockConnections = [
+      { id: 'a', name: 'Old box', user: { username: 'alex' } },
+      { id: 'b', name: "Maya's Shelf", user: { username: 'alex' } },
+    ];
+    mockCaps = { a: { user_stats: false }, b: { user_stats: true } };
+    await mount();
+    expect(screen.queryByText('No listening stats on this server yet')).toBeNull();
+    expect(screen.getByText('Your 2026, as a story')).toBeTruthy();
   });
 
   it('says calmly when the server keeps no stats', async () => {

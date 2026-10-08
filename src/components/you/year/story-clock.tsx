@@ -1,17 +1,15 @@
 import { View } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
 
+import { ClockFace } from '@/components/you/stats/clock-face';
+import { clockAxis, clockGeometry } from '@/components/you/stats/stats-model';
 import { colors } from '@/theme/tokens';
 
 import { StoryText } from './story-text';
-import { clockPetals, clockRadii, hourAngle } from './story-clock-model';
-
-const AXIS = [0, 6, 12, 18] as const;
 
 /**
  * The listening clock drawn light on a story card's dark ground (STYLEGUIDE section 8):
- * 24 petals from 00 at the top, the busiest hours white, the rest translucent, the
- * busiest hour in the centre. Decorative: the card says the same in words.
+ * the stats page's clock (`ClockFace`), its busiest hours white and the rest
+ * translucent, the busiest hour in the centre. Decorative: the card says the same in words.
  */
 export function StoryClock({
   size,
@@ -25,55 +23,39 @@ export function StoryClock({
   value: string;
   caption: string;
 }) {
-  const c = size / 2;
-  const { inner, outer } = clockRadii(size);
-  const petals = clockPetals(hours, size);
+  const { c, r0 } = clockGeometry(size);
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={{ width: size, height: size }}
     >
-      <Svg width={size} height={size}>
-        {[outer, inner + (outer - inner) / 2].map((r) => (
-          <Circle
-            key={r}
-            cx={c}
-            cy={c}
-            r={r}
-            fill="none"
-            stroke={colors.white}
-            strokeOpacity={0.16}
-            strokeDasharray="2 4"
-          />
-        ))}
-        {petals.map((p) => (
-          <Path key={p.hour} d={p.d} fill={colors.white} fillOpacity={p.peak ? 1 : 0.45} />
-        ))}
-      </Svg>
-      {AXIS.map((hour) => {
-        const a = hourAngle(hour);
-        const r = outer + size * 0.055;
-        return (
-          <StoryText
-            key={hour}
-            className="absolute text-center font-sans-semibold"
-            style={{
-              width: 28,
-              left: c + Math.cos(a) * r - 14,
-              top: c + Math.sin(a) * r - 7,
-              fontSize: 10,
-              lineHeight: 14,
-              opacity: 0.8,
-            }}
-          >
-            {String(hour).padStart(2, '0')}
-          </StoryText>
-        );
-      })}
+      <ClockFace
+        size={size}
+        hours={hours}
+        ring={colors.white}
+        ringOpacity={0.16}
+        fill={(p) => ({ color: colors.white, opacity: p.peak ? 1 : 0.45 })}
+      />
+      {clockAxis(size).map(({ hour, x, y }) => (
+        <StoryText
+          key={hour}
+          className="absolute text-center font-sans-semibold"
+          style={{
+            width: 28,
+            left: x - 14,
+            top: y - 7,
+            fontSize: 10,
+            lineHeight: 14,
+            opacity: 0.8,
+          }}
+        >
+          {String(hour).padStart(2, '0')}
+        </StoryText>
+      ))}
       <View
         className="absolute items-center justify-center"
-        style={{ left: c - inner, top: c - inner, width: inner * 2, height: inner * 2 }}
+        style={{ left: c - r0, top: c - r0, width: r0 * 2, height: r0 * 2 }}
       >
         <StoryText
           className="font-display"

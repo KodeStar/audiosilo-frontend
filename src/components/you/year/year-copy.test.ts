@@ -1,6 +1,6 @@
 import i18n from '@/i18n';
 
-import { cardCopy, cardSpeech, listenTime } from './year-copy';
+import { cardCopy, cardSpeech, listenTime, yearStateCopy } from './year-copy';
 import { yearStats } from './year-fixture';
 import { buildYearCards, type YearCard } from './year-model';
 
@@ -105,5 +105,27 @@ describe('cardSpeech', () => {
       'Who you kept coming back to. Author of the year: Brandon Sanderson, 90 hours across 5 books. Series of the year: The Stormlight Archive, 70 hours across 3 books.',
     );
     expect(cardSpeech(copyOf('hours'))).toContain('412 hours.');
+  });
+});
+
+describe('yearStateCopy', () => {
+  it('says why there is no story, naming the server and the year', () => {
+    const t = i18n.t;
+    expect(yearStateCopy({ status: 'unsupported', serverName: 'Hearthside' }, t).body).toMatch(
+      /Hearthside/,
+    );
+    expect(
+      yearStateCopy({ status: 'error', serverName: 'Hearthside', retry: () => {} }, t).title,
+    ).toBe("Couldn't load your year");
+    const past = yearStateCopy(
+      { status: 'empty', serverName: 'Hearthside', year: '2024', current: false },
+      t,
+    );
+    expect(past.title).toBe('Not much of a story yet');
+    expect(past.body).toMatch(/2024/);
+    expect(
+      yearStateCopy({ status: 'empty', serverName: 'Hearthside', year: '2026', current: true }, t)
+        .body,
+    ).not.toBe(past.body);
   });
 });

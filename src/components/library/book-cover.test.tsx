@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { PixelRatio } from 'react-native';
+import { PixelRatio, Platform } from 'react-native';
 
 // A host stand-in for expo-image, so the test can read the source and fire its error.
 jest.mock('expo-image', () => {
@@ -113,6 +113,22 @@ describe('BookCover', () => {
     expect(screen.queryByTestId('cover-image')).toBeNull();
     // An empty frame, not the title fallback.
     expect(screen.queryByText('Dune')).toBeNull();
+  });
+
+  it('hands the web the plain URL, whose query carries the token (no blob: copy)', async () => {
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      await render(<BookCover {...props} />);
+      expect(source()).toBe('https://s/libraries/1/cover?path=A/B&size=320');
+    } finally {
+      Platform.OS = os;
+    }
+  });
+
+  it('asks for the thumbnail it is given instead of the one for its width', async () => {
+    await render(<BookCover {...props} thumbnail={640} />);
+    expect(source().uri).toBe('https://s/libraries/1/cover?path=A/B&size=640');
   });
 
   it('takes an unreachable server as one without thumbnails', async () => {

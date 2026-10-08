@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
 
@@ -7,6 +8,7 @@ import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
 import { StoryBackground } from './story-background';
+import type { StoryTheme } from './story-themes';
 import { StoryText } from './story-text';
 import type { CardCopy } from './year-copy';
 import type { YearCard } from './year-model';
@@ -41,48 +43,73 @@ export function YearThumbs({
   width: number;
   onSelect: (index: number) => void;
 }) {
-  const { t } = useTranslation();
   const { size } = thumbLayout(width);
   return (
     <View className="flex-row flex-wrap" style={{ gap: THUMB_GAP }}>
-      {cards.map((card, i) => {
-        const on = i === current;
-        return (
-          <Pressable
-            key={`${card.kind}-${i}`}
-            role="button"
-            accessibilityLabel={t('year.thumbLabel', { n: i + 1, label: copies[i]?.thumb ?? '' })}
-            accessibilityState={{ selected: on }}
-            aria-current={on ? 'true' : undefined}
-            onPress={() => onSelect(i)}
-            className={cn(
-              'justify-end overflow-hidden rounded-card border-2 p-3.5',
-              on ? 'border-brand' : 'border-transparent',
-              Platform.select({ web: `cursor-pointer ${FOCUS_RING_OFFSET_CLASS}` }),
-            )}
-            style={{ width: size, height: Math.round(size * 1.25) }}
-          >
-            <StoryBackground theme={card.theme} />
-            <StoryText
-              className="font-sans-bold uppercase"
-              style={{ fontSize: 10.5, lineHeight: 14, letterSpacing: 0.8, opacity: 0.8 }}
-              numberOfLines={1}
-            >
-              {t('year.thumbKicker', { n: i + 1 })}
-            </StoryText>
-            <StoryText
-              className="font-display"
-              style={{ fontSize: 15, lineHeight: 17, letterSpacing: -0.3 }}
-              numberOfLines={3}
-            >
-              {copies[i]?.thumb}
-            </StoryText>
-          </Pressable>
-        );
-      })}
+      {cards.map((card, i) => (
+        <YearThumb
+          key={`${card.kind}-${i}`}
+          index={i}
+          theme={card.theme}
+          label={copies[i]?.thumb ?? ''}
+          on={i === current}
+          size={size}
+          onSelect={onSelect}
+        />
+      ))}
     </View>
   );
 }
+
+/** One thumbnail, redrawn only when it changes (not on every card the story moves to). */
+const YearThumb = memo(function YearThumb({
+  index,
+  theme,
+  label,
+  on,
+  size,
+  onSelect,
+}: {
+  index: number;
+  theme: StoryTheme;
+  label: string;
+  on: boolean;
+  size: number;
+  onSelect: (index: number) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      role="button"
+      accessibilityLabel={t('year.thumbLabel', { n: index + 1, label })}
+      accessibilityState={{ selected: on }}
+      aria-current={on ? 'true' : undefined}
+      onPress={() => onSelect(index)}
+      className={cn(
+        'justify-end overflow-hidden rounded-card border-2 p-3.5',
+        on ? 'border-brand' : 'border-transparent',
+        Platform.select({ web: `cursor-pointer ${FOCUS_RING_OFFSET_CLASS}` }),
+      )}
+      style={{ width: size, height: Math.round(size * 1.25) }}
+    >
+      <StoryBackground theme={theme} />
+      <StoryText
+        className="font-sans-bold uppercase"
+        style={{ fontSize: 10.5, lineHeight: 14, letterSpacing: 0.8, opacity: 0.8 }}
+        numberOfLines={1}
+      >
+        {t('year.thumbKicker', { n: index + 1 })}
+      </StoryText>
+      <StoryText
+        className="font-display"
+        style={{ fontSize: 15, lineHeight: 17, letterSpacing: -0.3 }}
+        numberOfLines={3}
+      >
+        {label}
+      </StoryText>
+    </Pressable>
+  );
+});
 
 /**
  * The pickers above a story: the server (only with more than one that keeps stats) and

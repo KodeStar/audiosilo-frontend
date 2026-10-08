@@ -36,28 +36,38 @@ export function weeklyTotals(
   });
 }
 
-/** This week against last week: `delta` is this minus last, in seconds. */
-export function weekComparison(days: readonly ListeningDay[], today: string) {
-  const [last, now] = weeklyTotals(days, today, 2);
+/** This week against last week, from `weeklyTotals` (the last two windows): `delta` is
+ * this minus last, in seconds. */
+export function weekComparison(weeks: readonly number[]) {
+  const now = weeks.at(-1) ?? 0;
+  const last = weeks.at(-2) ?? 0;
   return { thisWeek: now, lastWeek: last, delta: now - last };
 }
 
 // --- Streaks and averages --------------------------------------------------------------
 
 /** The longest run of consecutive days with any listening in `days` (oldest first, every
- * day present, as the server sends them). */
-export function longestStreak(days: readonly ListeningDay[]): number {
-  let best = 0;
+ * day present, as the server sends them), and the day it ended on (the first such run on
+ * a tie; null without one). */
+export function longestStreak(days: readonly ListeningDay[]): {
+  length: number;
+  end: string | null;
+} {
+  let length = 0;
+  let end: string | null = null;
   let run = 0;
   let prev: string | null = null;
   for (const d of days) {
     // A day missing from the list breaks the run, like a day without listening.
     const follows = prev !== null && addDays(prev, 1) === d.date;
     run = d.listened > 0 ? (follows ? run + 1 : 1) : 0;
-    best = Math.max(best, run);
+    if (run > length) {
+      length = run;
+      end = d.date;
+    }
     prev = d.date;
   }
-  return best;
+  return { length, end };
 }
 
 /** Average seconds a day over `days` (zeros included), or 0 without days. */
@@ -84,12 +94,17 @@ export type CalendarCell = {
   today: boolean;
 };
 
+/** A cell's place in the calendar: column (week) and row (weekday, Monday 0). */
+export type CalendarSlot = { c: number; r: number };
+
 export type CalendarGrid = {
   /** `CALENDAR_WEEKS` columns of 7 (Monday first); null for days after today or before
    * the period. */
   columns: (CalendarCell | null)[][];
   /** A month label per column where that month's first day falls, `month` 0-11. */
   months: { column: number; month: number }[];
+  /** Where today is (null when it is not in the period). */
+  today: CalendarSlot | null;
 };
 
 /**
@@ -117,6 +132,7 @@ export function calendarGrid(days: readonly ListeningDay[], today: string): Cale
   const start = addDays(today, -weekdayOf(today) - (CALENDAR_WEEKS - 1) * 7);
   const columns: (CalendarCell | null)[][] = [];
   const months: { column: number; month: number }[] = [];
+  let todaySlot: CalendarSlot | null = null;
   for (let c = 0; c < CALENDAR_WEEKS; c++) {
     const column: (CalendarCell | null)[] = [];
     for (let r = 0; r < 7; r++) {
@@ -127,6 +143,7 @@ export function calendarGrid(days: readonly ListeningDay[], today: string): Cale
       }
       const v = listened.get(date) ?? 0;
       column.push({ date, listened: v, level: level(v), today: date === today });
+      if (date === today) todaySlot = { c, r };
       if (date.endsWith('-01')) {
         const prev = months[months.length - 1];
         // Keep labels three columns apart, and none on the last column (no room).
@@ -137,10 +154,10 @@ export function calendarGrid(days: readonly ListeningDay[], today: string): Cale
     }
     columns.push(column);
   }
-  return { columns, months };
+  return { columns, months, today: todaySlot };
 }
 
-/** The cell under a point of the calendar's grid (cells `cell` wide with `gap` between),
+/** The slot under a point of the calendar's grid (cells `cell` wide with `gap` between),
  * or null past its edges or on an empty slot. */
 export function calendarCellAt(
   grid: CalendarGrid,
@@ -148,21 +165,21 @@ export function calendarCellAt(
   y: number,
   cell: number,
   gap: number,
-): CalendarCell | null {
+): CalendarSlot | null {
   const pitch = cell + gap;
   const c = Math.floor(x / pitch);
   const r = Math.floor(y / pitch);
   if (c < 0 || r < 0 || c >= grid.columns.length || r >= 7) return null;
-  return grid.columns[c][r] ?? null;
+  return grid.columns[c][r] ? { c, r } : null;
 }
 
 // --- The listening clock ---------------------------------------------------------------
 
 /** Seconds listened in each hour of the day (0-23), summed over the weekdays of
- * `hour_weekday` (7 rows of 24). */
-export function hourTotals(hourWeekday: readonly (readonly number[])[]): number[] {
+ * `hour_weekday` (7 rows of 24). A short or missing row counts as none. */
+export function hourTotals(hourWeekday: readonly (readonly number[])[] | undefined): number[] {
   return Array.from({ length: 24 }, (_, h) =>
-    hourWeekday.reduce((sum, row) => sum + (row?.[h] ?? 0), 0),
+    (hourWeekday ?? []).reduce((sum, row) => sum + Math.max(0, row?.[h] ?? 0), 0),
   );
 }
 
@@ -179,7 +196,9 @@ export type ClockSummary = {
   windows: { from: number; to: number }[];
 };
 
-export function clockSummary(hourWeekday: readonly (readonly number[])[]): ClockSummary {
+export function clockSummary(
+  hourWeekday: readonly (readonly number[])[] | undefined,
+): ClockSummary {
   const hours = hourTotals(hourWeekday);
   const max = Math.max(0, ...hours);
   const busiest = max > 0 ? hours.indexOf(max) : null;
@@ -254,6 +273,36 @@ export function petalPath(size: number, i: number, value: number, max: number): 
   const p = (a: number, r: number) =>
     `${(c + Math.cos(a) * r).toFixed(1)} ${(c + Math.sin(a) * r).toFixed(1)}`;
   return `M${p(a0, r0)} L${p(a0, rr)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 0 1 ${p(a1, rr)} L${p(a1, r0)} A${r0.toFixed(1)} ${r0.toFixed(1)} 0 0 0 ${p(a0, r0)}Z`;
+}
+
+export type ClockPetal = { hour: number; d: string; peak: boolean };
+
+/** Every hour's petal at `size`, each as long as its share of the busiest hour (an hour
+ * without listening a short stub), the peaks (`PEAK_SHARE`) marked. */
+export function clockPetals(hours: readonly number[], size: number): ClockPetal[] {
+  const max = Math.max(0, ...hours);
+  return hours.map((v, hour) => ({
+    hour,
+    d: petalPath(size, hour, v, max),
+    peak: max > 0 && v >= max * PEAK_SHARE,
+  }));
+}
+
+/** The radii of the clock's two dashed rings: the petals' reach and half of it. */
+export function clockRings(size: number): [number, number] {
+  const { r0, r1 } = clockGeometry(size);
+  return [r1, r0 + (r1 - r0) * 0.5];
+}
+
+/** The hours the clock labels, and where each label's centre sits (just outside the
+ * petals, kept inside the clock's box). */
+export function clockAxis(size: number): { hour: number; x: number; y: number }[] {
+  const { c, r1 } = clockGeometry(size);
+  const r = Math.min(r1 + 12, c - 8);
+  return [0, 6, 12, 18].map((hour) => {
+    const a = ((hour / 24) * 360 - 90) * (Math.PI / 180);
+    return { hour, x: c + Math.cos(a) * r, y: c + Math.sin(a) * r };
+  });
 }
 
 // --- Hours per week ------------------------------------------------------------------
@@ -367,6 +416,28 @@ export function statsColumns(width: number): { tiles: number; charts: number; ra
 /** The width of one of `n` columns across `width` with `gap` between them. */
 export function columnWidth(width: number, n: number, gap: number): number {
   return Math.max(0, Math.floor((width - gap * (n - 1)) / n));
+}
+
+/** The gap between the stats page's cards. */
+export const STATS_GAP = 16;
+/** Under this measured width the stats page is compact (smaller tiles, tighter gaps). */
+const COMPACT_BELOW = 640;
+
+/** The stats page's grid at a measured content `width`, for the page and its skeleton
+ * alike (so the data lands without a shift): columns per block, whether it is compact,
+ * the tiles' gap, and a tile's, a chart card's and a rank card's width. */
+export function statsGrid(width: number) {
+  const cols = statsColumns(width);
+  const compact = width < COMPACT_BELOW;
+  const tileGap = compact ? 10 : STATS_GAP;
+  return {
+    cols,
+    compact,
+    tileGap,
+    tileW: columnWidth(width, cols.tiles, tileGap),
+    chartW: columnWidth(width, cols.charts, STATS_GAP),
+    rankW: columnWidth(width, cols.ranks, STATS_GAP),
+  };
 }
 
 /**

@@ -7,7 +7,7 @@
  * deep ground (AA for the body copy; the glows sit behind the big numbers and headings).
  */
 
-export type StoryTheme = 'dusk' | 'navy' | 'sky' | 'rose' | 'teal' | 'amber' | 'violet';
+export type StoryTheme = 'dusk' | 'navy' | 'sky' | 'rose' | 'teal' | 'amber' | 'violet' | 'ink';
 
 /** A radial glow in the card's box (0..1 units): centre, radii, where it fades out. */
 export type RadialLayer = {
@@ -95,4 +95,11 @@ export const STORY_THEMES: Record<StoryTheme, StoryBackdrop> = {
   amber: { base: '#2b1608', layers: [radial('#f0b04d', 0, 1, 1, 0.7, 0.7, 0.55)] },
   // radial-gradient(90% 70% at 50% 0%, #7c3aed, transparent 70%), #140b2b
   violet: { base: '#140b2b', layers: [radial('#7c3aed', 0.5, 0, 0.9, 0.7, 0.7, 0.8)] },
+  // No card's: the Year banner's ground on Your listening, whose one pink thing is the
+  // clock. The light theme's ink (`primary`) washed with its violet and blue chart colours
+  // (`chart5`, `chart2`) from opposite corners.
+  ink: {
+    base: '#15203d',
+    layers: [radial('#7c3aed', 0, 0, 0.8, 1.2, 1, 0.75), radial('#3b5bdb', 1, 1, 0.7, 1, 1, 0.75)],
+  },
 };

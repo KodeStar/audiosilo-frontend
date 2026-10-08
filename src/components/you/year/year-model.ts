@@ -1,5 +1,12 @@
 import type { BookRef, ListeningDay, StatsTopBook, StatsTopName, UserStats } from '@/api/types';
+import { addDays, weekdayOf } from '@/components/home/listening';
 import { hslHex, portraitHue } from '@/components/series/people-model';
+import {
+  clockSummary,
+  levelScale,
+  longestStreak,
+  rankRows,
+} from '@/components/you/stats/stats-model';
 import { hashString } from '@/lib/monogram';
 
 import type { StoryTheme } from './story-themes';
@@ -15,8 +22,8 @@ import type { StoryTheme } from './story-themes';
 export const MIN_STORY_SECONDS = 3600;
 /** The most spines the books card stacks (`finished_books` holds at most 100). */
 export const MAX_TOWER = 48;
-/** Days the streak card's little calendar shows: 12 weeks. */
-export const STREAK_GRID_DAYS = 84;
+/** Weeks the streak card's little calendar shows at most. */
+export const STREAK_GRID_WEEKS = 12;
 /** A streak shorter than this is not a story. */
 const MIN_STREAK = 2;
 /** The oldest year the server accepts as a `range` (`StatsRange`). */
@@ -42,7 +49,15 @@ export type YearCard =
   | Card<'book', { book: StatsTopBook }>
   | Card<'voice', { narrator: StatsTopName; runnersUp: StatsTopName[] }>
   | Card<'clock', { hours: number[]; peak: number; part: DayPart }>
-  | Card<'streak', { longest: number; current: number | null; grid: number[] }>
+  | Card<
+      'streak',
+      {
+        longest: number;
+        current: number | null;
+        /** Monday-first weeks of 0-5 levels (`levelScale`), null outside the period. */
+        grid: (number | null)[][];
+      }
+    >
   | Card<'people', { author: StatsTopName | null; series: StatsTopName | null }>
   | Card<
       'summary',
@@ -63,9 +78,11 @@ export type YearInput = {
   goal: number | null;
 };
 
-/** Whether a year has enough listening for a story (else the calm empty state). */
-export function yearHasStory(stats: Pick<UserStats, 'totals'>): boolean {
-  return stats.totals.listened >= MIN_STORY_SECONDS || stats.totals.finished > 0;
+/** Whether a year's totals (its own, or the `previous` ones of the year after it) have
+ * enough listening for a story (else the calm empty state, and no place in the year
+ * picker). */
+export function yearHasStory(totals: Pick<UserStats['totals'], 'listened' | 'finished'>): boolean {
+  return totals.listened >= MIN_STORY_SECONDS || totals.finished > 0;
 }
 
 /** Whole hours, rounded ("412 hours"): the story's big number. */
@@ -73,66 +90,27 @@ export function roundHours(seconds: number): number {
   return Math.round(Math.max(0, seconds) / 3600);
 }
 
-/** The longest run of consecutive days with any listening in `days` (every day of the
- * period, oldest first, as the wire sends them), and the date it ended on. */
-export function longestStreak(days: readonly ListeningDay[]): {
-  length: number;
-  end: string | null;
-} {
-  let best = 0;
-  let end: string | null = null;
-  let run = 0;
-  let prev: string | null = null;
-  for (const d of days) {
-    if (d.listened > 0) {
-      run = prev !== null && isNextDay(prev, d.date) ? run + 1 : 1;
-      prev = d.date;
-      if (run > best) {
-        best = run;
-        end = d.date;
-      }
-    } else {
-      run = 0;
-      prev = null;
-    }
-  }
-  return { length: best, end };
-}
-
-/** Whether `b` is the day after `a` (`YYYY-MM-DD`): a gap in the list breaks a streak. */
-function isNextDay(a: string, b: string): boolean {
-  return Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`) === 86_400_000;
-}
-
-/** The 12 weeks of listening (seconds per day, oldest first) the streak card draws: the
- * days up to `end` (the last day of the period when it is still running, else the end of
- * the longest streak), at most `STREAK_GRID_DAYS`. */
-export function streakGrid(days: readonly ListeningDay[], end: string | null): number[] {
+/** The streak card's little calendar: up to `STREAK_GRID_WEEKS` Monday-first weeks
+ * ending with the week of `end` (the last day of the period when the streak is still
+ * running, else the end of the longest streak), each day's level on the stats
+ * calendar's own scale (`levelScale`), null outside the period. Weeks wholly before the
+ * period are left out. */
+export function streakGrid(days: readonly ListeningDay[], end: string | null): (number | null)[][] {
   if (days.length === 0) return [];
-  const at = end ? days.findIndex((d) => d.date === end) : -1;
-  const last = at >= 0 ? at : days.length - 1;
-  return days
-    .slice(Math.max(0, last - STREAK_GRID_DAYS + 1), last + 1)
-    .map((d) => Math.max(0, d.listened));
-}
-
-/** Seconds listened in each hour of the day (0-23), summed over the weekdays of the
- * wire's `hour_weekday` (7 rows of 24). A short or missing row counts as none. */
-export function hourTotals(hourWeekday: readonly (readonly number[])[] | undefined): number[] {
-  const hours = Array.from({ length: 24 }, () => 0);
-  for (const row of hourWeekday ?? []) {
-    for (let h = 0; h < 24; h++) hours[h] += Math.max(0, row?.[h] ?? 0);
+  const level = levelScale(days);
+  const listened = new Map(days.map((d) => [d.date, d.listened]));
+  const first = days[0].date;
+  const last = end ?? days[days.length - 1].date;
+  const start = addDays(last, -weekdayOf(last) - (STREAK_GRID_WEEKS - 1) * 7);
+  const weeks: (number | null)[][] = [];
+  for (let w = 0; w < STREAK_GRID_WEEKS; w++) {
+    const week = Array.from({ length: 7 }, (_, d) => {
+      const date = addDays(start, w * 7 + d);
+      return date > last || date < first ? null : level(listened.get(date) ?? 0);
+    });
+    if (weeks.length > 0 || week.some((v) => v !== null)) weeks.push(week);
   }
-  return hours;
-}
-
-/** The busiest hour (0-23; the earliest of a tie), or null without any listening. */
-export function busiestHour(hours: readonly number[]): number | null {
-  let peak: number | null = null;
-  hours.forEach((v, h) => {
-    if (v > 0 && (peak === null || v > hours[peak])) peak = h;
-  });
-  return peak;
+  return weeks;
 }
 
 /** The part of the day an hour falls in: 5-11 morning, 12-16 afternoon, 17-21 evening,
@@ -180,9 +158,6 @@ export function storyCovers(stats: UserStats, max = 6): StoryCover[] {
   return out;
 }
 
-const named = (rows: readonly StatsTopName[]) =>
-  rows.filter((r) => r.name.trim() !== '' && r.listened > 0);
-
 /**
  * The story of a year, in order: hours, books finished, book of the year, voice of the
  * year, when you listen, longest streak, author and series, then the summary to share.
@@ -190,7 +165,7 @@ const named = (rows: readonly StatsTopName[]) =>
  */
 export function buildYearCards(input: YearInput): YearCard[] {
   const { stats, current } = input;
-  if (!yearHasStory(stats)) return [];
+  if (!yearHasStory(stats.totals)) return [];
   const cards: YearCard[] = [];
   const { totals } = stats;
 
@@ -219,7 +194,7 @@ export function buildYearCards(input: YearInput): YearCard[] {
   const book = stats.top_books.find((b) => b.listened > 0);
   if (book) cards.push({ kind: 'book', theme: 'sky', book });
 
-  const narrators = named(stats.top_narrators);
+  const narrators = rankRows(stats.top_narrators, 3);
   if (narrators.length > 0) {
     cards.push({
       kind: 'voice',
@@ -229,8 +204,7 @@ export function buildYearCards(input: YearInput): YearCard[] {
     });
   }
 
-  const hours = hourTotals(stats.hour_weekday);
-  const peak = busiestHour(hours);
+  const { hours, busiest: peak } = clockSummary(stats.hour_weekday);
   if (peak !== null) cards.push({ kind: 'clock', theme: 'teal', hours, peak, part: dayPart(peak) });
 
   const streak = longestStreak(stats.days);
@@ -247,8 +221,8 @@ export function buildYearCards(input: YearInput): YearCard[] {
     });
   }
 
-  const author = named(stats.top_authors)[0] ?? null;
-  const series = named(stats.top_series)[0] ?? null;
+  const author = rankRows(stats.top_authors, 1)[0] ?? null;
+  const series = rankRows(stats.top_series, 1)[0] ?? null;
   if (author || series) cards.push({ kind: 'people', theme: 'violet', author, series });
 
   cards.push({
@@ -261,13 +235,6 @@ export function buildYearCards(input: YearInput): YearCard[] {
     covers: storyCovers(stats),
   });
   return cards;
-}
-
-/** Whether a probed year counts as having data, for the year picker: the same bar as a
- * story (`yearHasStory`), applied to a year's own totals or to the `previous` totals of
- * the year after it. */
-export function hasData(totals: Pick<UserStats['totals'], 'listened' | 'finished'>): boolean {
-  return totals.listened >= MIN_STORY_SECONDS || totals.finished > 0;
 }
 
 /** A shared card's file name: `audiosilo-2026-01-hours.png`. */

@@ -109,8 +109,6 @@ export function StoryStage({
       pointer.current = false;
       setHolds((h) => ({ ...h, press: false }));
     },
-    onHoverIn: () => setHolds((h) => ({ ...h, hover: true })),
-    onHoverOut: () => setHolds((h) => ({ ...h, hover: false })),
     // Only the keyboard's focus holds: a click focuses the button too (the press comes
     // first), and the story should move on once the pointer leaves.
     onFocus: () => {
@@ -122,6 +120,10 @@ export function StoryStage({
   return (
     <View
       {...keys}
+      // The pointer over the stage holds it: on the stage, not on each tap zone, so
+      // moving from Previous to Next isn't a let go and take hold again.
+      onPointerEnter={() => setHolds((h) => (h.hover ? h : { ...h, hover: true }))}
+      onPointerLeave={() => setHolds((h) => (h.hover ? { ...h, hover: false } : h))}
       style={{
         width,
         height: cardHeight(width),
@@ -129,6 +131,7 @@ export function StoryStage({
         boxShadow: rounded ? '0px 30px 70px -20px rgba(14, 22, 48, 0.5)' : undefined,
       }}
       className="overflow-hidden bg-black"
+      testID="year-story-stage"
     >
       <View
         ref={cardRef}
@@ -209,7 +212,15 @@ function StoryBars({
   );
 }
 
+/** The current card's bar: full width, scaled from its left edge (a transform, so the
+ * fill costs no layout pass a frame). */
 function CurrentBar({ progress }: { progress: SharedValue<number> }) {
-  const style = useAnimatedStyle(() => ({ width: `${Math.round(progress.value * 1000) / 10}%` }));
-  return <Animated.View className="h-full bg-white" style={style} />;
+  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: progress.value }] }));
+  return (
+    <Animated.View
+      className="h-full w-full bg-white"
+      style={[{ transformOrigin: 'left' }, style]}
+      testID="story-bar-current"
+    />
+  );
 }

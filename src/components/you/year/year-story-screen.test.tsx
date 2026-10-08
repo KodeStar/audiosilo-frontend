@@ -36,7 +36,11 @@ jest.mock('@/stores/session', () => ({
   useSession: (sel: (s: object) => unknown) =>
     sel({ connections: [{ id: 'a', name: 'Hearthside', user: { username: 'alex' } }] }),
 }));
-jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
+jest.mock('@/components/library/book-cover', () => ({
+  BookCover: () => null,
+  coverSizeFor: () => 640,
+  MAX_COVER_SIZE: 640,
+}));
 const mockShare = jest.fn(async (..._a: unknown[]) => undefined);
 jest.mock('./use-share-card', () => ({
   useShareCard: () => ({ busy: false, coversOff: false, share: mockShare }),

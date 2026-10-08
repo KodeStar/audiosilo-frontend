@@ -1006,7 +1006,7 @@ book finished is a calm empty state. Earlier years are found by `useStoryYears`,
 year. `StoryCard` is the ONE renderer: the stage lays the bars and tap zones over it, and a share
 captures it (`share-card.ts`: react-native-view-shot to a 1080x1920 PNG, then expo-sharing;
 `share-card.web.ts`: html-to-image, lazy-loaded, then the Web Share API or a download, CSP-safe
-because the web cards' covers are plain `?token=` URLs, `story-cover.web.tsx`, never `blob:`). A
+because covers are plain `?token=` URLs on the web, `BookCover`, never `blob:`). A
 failed capture is retried once with plain covers. There is no share link (it would need a server
 endpoint). The story clock is `useStoryPlayer`: a plain timer for the advance plus a Reanimated bar;
 it is held by a share (one that leaves the app holds it until the app is active again), a native

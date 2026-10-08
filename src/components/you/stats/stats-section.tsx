@@ -1,16 +1,14 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowDimensions, View } from 'react-native';
 
 import {
-  useCapabilitiesAll,
   useCapability,
   useLibrariesAll,
   useListeningGoal,
   useMyListening,
   useMyStats,
 } from '@/api/hooks';
-import { useApis, useCid } from '@/api/provider';
 import type { ListeningGoalStatus, MyListening, UserStats } from '@/api/types';
 import { listeningStreak, serverToday } from '@/components/home/listening';
 import { Button } from '@/components/ui/button';
@@ -19,9 +17,11 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { GhostSpines } from '@/components/ui/ghost-art';
 import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { YearBanner } from '@/components/you/year/year-banner';
 import { formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -38,24 +38,22 @@ import { durationParts } from './stats-format';
 import {
   CLOCK_MIN_SIZE,
   clockSummary,
-  columnWidth,
   dailyAverage,
   libraryForName,
   longestStreak,
   type RankKind,
   type RankRow,
   rankRows,
-  statsColumns,
-  statsServerChoice,
+  STATS_GAP,
+  statsGrid,
   weekComparison,
   weeklyTotals,
 } from './stats-model';
+import { useStatsServer } from './use-stats-server';
 import { WeeklyBars } from './weekly-bars';
-import { YearBanner } from './year-banner';
 
 /** A card's border and padding, each side (Card: `p-5` + a 1px hairline). */
 const CARD_INSET = 21;
-const GAP = 16;
 
 /**
  * Your listening (the You hub's Stats section, STYLEGUIDE section 8 "Stat tile, listening
@@ -66,25 +64,11 @@ const GAP = 16;
  */
 export function StatsSection() {
   const { t } = useTranslation();
-  const apis = useApis();
-  const caps = useCapabilitiesAll();
-  const defaultId = useCid();
   const [picked, setPicked] = useState<string | null>(null);
+  const { cid, name: server, choices } = useStatsServer(picked);
   const window = useWindowDimensions();
   const [measured, setMeasured] = useState<number | null>(null);
   const width = measured ?? Math.max(0, Math.min(window.width - 32, 1480));
-
-  const ids = apis.map((a) => a.connection.id);
-  const userStats = Object.fromEntries(
-    ids.map((id) => [id, caps[id] ? !!caps[id]?.user_stats : undefined]),
-  );
-  const { cid, choices } = statsServerChoice({
-    connectionIds: ids,
-    userStats,
-    defaultId,
-    picked,
-  });
-  const nameOf = (id: string) => apis.find((a) => a.connection.id === id)?.connection.name ?? '';
 
   return (
     <View className="gap-4" onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}>
@@ -92,13 +76,13 @@ export function StatsSection() {
         <SegmentedControl
           scrollable
           accessibilityLabel={t('stats.server.pick')}
-          options={choices.map((id) => ({ value: id, label: nameOf(id) }))}
+          options={choices.map((c) => ({ value: c.id, label: c.name }))}
           value={cid}
           onChange={setPicked}
           className="self-start"
         />
       ) : null}
-      {cid ? <StatsBody key={cid} cid={cid} server={nameOf(cid)} width={width} /> : null}
+      {cid ? <StatsBody key={cid} cid={cid} server={server} width={width} /> : null}
     </View>
   );
 }
@@ -180,10 +164,17 @@ function StatsContent({
   const open = useOpen();
   const wide = useLayout() !== 'phone';
   const libraries = useLibrariesAll().groups.find((g) => g.connectionId === cid)?.libraries;
-  const compact = width < 640;
-  const cols = statsColumns(width);
-  const weeks = useMemo(() => weeklyTotals(listening.days, today), [listening.days, today]);
-  const week = weekComparison(listening.days, today);
+  const { cols, compact, tileGap, tileW, chartW, rankW } = statsGrid(width);
+  const { weeks, week, streak, longest, average } = useMemo(() => {
+    const totals = weeklyTotals(listening.days, today);
+    return {
+      weeks: totals,
+      week: weekComparison(totals),
+      streak: listeningStreak(listening.days, today),
+      longest: longestStreak(stats.days).length,
+      average: dailyAverage(stats.days),
+    };
+  }, [listening.days, stats.days, today]);
   const clock = useMemo(() => clockSummary(stats.hour_weekday), [stats.hour_weekday]);
   const peaks = usePeakWords(clock);
   const year = /^\d{4}$/.test(stats.range) ? stats.range : today.slice(0, 4);
@@ -226,11 +217,6 @@ function StatsContent({
     );
   }
 
-  const tileGap = compact ? 10 : GAP;
-  const tileW = columnWidth(width, cols.tiles, tileGap);
-  const streak = listeningStreak(listening.days, today);
-  const longest = longestStreak(stats.days);
-  const average = dailyAverage(stats.days);
   const deltaText =
     week.delta === 0
       ? t('stats.tiles.deltaSame')
@@ -240,8 +226,6 @@ function StatsContent({
   const thisWeekValue = formatDurationOrZero(week.thisWeek);
   const averageValue = formatDurationOrZero(average);
 
-  const chartW = columnWidth(width, cols.charts, GAP);
-  const rankW = columnWidth(width, cols.ranks, GAP);
   const firstLibrary = libraries?.[0]?.id ?? null;
   const openRank = (kind: RankKind) => (row: RankRow) => {
     const lib = libraryForName(stats, kind, row.name) ?? firstLibrary;
@@ -337,19 +321,23 @@ function StatsContent({
       </View>
 
       <Card className="gap-4">
-        <View className="flex-row flex-wrap items-start justify-between gap-2">
-          <SectionTitle title={t('stats.calendar.title')} sub={t('stats.calendar.sub')} />
-          <View className="flex-row items-center gap-1.5">
-            <Icon name="cloud" size={12} color={themed.subtleForeground} />
-            <Text className="font-sans text-[11px] text-subtle-foreground">
-              {t('stats.calendar.everyDevice')}
-            </Text>
-          </View>
-        </View>
+        <SectionTitle
+          title={t('stats.calendar.title')}
+          sub={t('stats.calendar.sub')}
+          className="items-start gap-x-2"
+          action={
+            <View className="flex-row items-center gap-1.5">
+              <Icon name="cloud" size={12} color={themed.subtleForeground} />
+              <Text className="font-sans text-[11px] text-subtle-foreground">
+                {t('stats.calendar.everyDevice')}
+              </Text>
+            </View>
+          }
+        />
         <ListeningCalendar days={listening.days} today={today} width={width - CARD_INSET * 2} />
       </Card>
 
-      <View className="flex-row flex-wrap" style={{ gap: GAP }}>
+      <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
         <Card className="gap-3" style={{ width: chartW }}>
           <SectionTitle title={t('stats.clock.title')} sub={peaks ?? t('stats.clock.none')} />
           <View className="items-center">
@@ -374,7 +362,7 @@ function StatsContent({
       </View>
 
       {shownRanks.length ? (
-        <View className="flex-row flex-wrap" style={{ gap: GAP }}>
+        <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
           {shownRanks.map((r, i) => (
             <Card
               key={r.kind}
@@ -397,21 +385,22 @@ function StatsContent({
       ) : null}
 
       <Card className="gap-3">
-        <View className="flex-row flex-wrap items-start justify-between gap-2">
-          <SectionTitle
-            title={t('stats.finished.title')}
-            sub={
-              stats.totals.finished > 0
-                ? t('stats.finished.count', { count: stats.totals.finished })
-                : t('stats.finished.none')
-            }
-          />
-          {/* Ink, not a pink link: the page's pink is the clock and this week's bar. */}
-          <Button variant="ghost" size="sm" onPress={() => open.openJournal()}>
-            <Text>{t('stats.finished.journal')}</Text>
-            <Icon name="chevron-right" size={14} color={themed.foreground} />
-          </Button>
-        </View>
+        <SectionTitle
+          title={t('stats.finished.title')}
+          sub={
+            stats.totals.finished > 0
+              ? t('stats.finished.count', { count: stats.totals.finished })
+              : t('stats.finished.none')
+          }
+          className="items-start gap-x-2"
+          action={
+            // Ink, not a pink link: the page's pink is the clock and this week's bar.
+            <Button variant="ghost" size="sm" onPress={() => open.openJournal()}>
+              <Text>{t('stats.finished.journal')}</Text>
+              <Icon name="chevron-right" size={14} color={themed.foreground} />
+            </Button>
+          }
+        />
         {stats.finished_books.length ? (
           <FinishedShelf
             books={stats.finished_books}
@@ -422,6 +411,7 @@ function StatsContent({
 
       <YearBanner
         year={year}
+        theme="ink"
         summary={t('stats.year.summary', {
           duration: formatDurationOrZero(stats.totals.listened),
           count: stats.totals.finished,
@@ -432,29 +422,10 @@ function StatsContent({
   );
 }
 
-function SectionTitle({ title, sub, small }: { title: string; sub: ReactNode; small?: boolean }) {
-  return (
-    <View className="min-w-0 shrink gap-0.5">
-      <Text variant={small ? 'title' : 'heading'} accessibilityRole="header">
-        {title}
-      </Text>
-      {sub ? (
-        <Text variant={small ? 'caption' : 'muted'} style={tabularNums}>
-          {sub}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 /** The loading state: placeholders shaped like the header, the tiles, the calendar and
  * the two charts, at their sizes (no shift when the data lands). */
 function StatsSkeleton({ width }: { width: number }) {
-  const cols = statsColumns(width);
-  const compact = width < 640;
-  const tileGap = compact ? 10 : GAP;
-  const tileW = columnWidth(width, cols.tiles, tileGap);
-  const chartW = columnWidth(width, cols.charts, GAP);
+  const { tileGap, tileW, chartW } = statsGrid(width);
   return (
     <View className="gap-4" testID="stats-skeleton">
       <View className="gap-2">
@@ -469,7 +440,7 @@ function StatsSkeleton({ width }: { width: number }) {
         ))}
       </View>
       <Skeleton className="h-[230px] rounded-card" />
-      <View className="flex-row flex-wrap" style={{ gap: GAP }}>
+      <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
         {[0, 1].map((i) => (
           <View key={i} style={{ width: chartW }}>
             <Skeleton className="h-[330px] rounded-card" />

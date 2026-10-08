@@ -1,8 +1,7 @@
 import { router } from 'expo-router';
-import { type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { Platform, View } from 'react-native';
 
 import { useMyStats } from '@/api/hooks';
 import { useCid } from '@/api/provider';
@@ -10,21 +9,23 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Notice } from '@/components/ui/notice';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
-import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { Text } from '@/components/ui/text';
+import { useStatsServer } from '@/components/you/stats/use-stats-server';
 import { useLayout } from '@/lib/layout';
 import { yearHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import { colors } from '@/theme/tokens';
 
-import { StoryBackground } from './story-background';
 import { cardHeight } from './card-size';
 import { StoryStage } from './story-stage';
-import { StoryText } from './story-text';
-import { useScreenReaderEnabled } from './use-screen-reader';
-import { useShareCard } from './use-share-card';
-import { useStoryPlayer } from './use-story-player';
-import { type YearRange, type YearStory, useStatsServers, useYearStory } from './use-year-story';
-import { shareFileName } from './year-model';
+import { useStoryStage } from './use-story-stage';
+import {
+  type ReadyYearStory,
+  type YearRange,
+  type YearStory,
+  useYearStory,
+} from './use-year-story';
+import { YearBanner } from './year-banner';
+import { yearStateCopy } from './year-copy';
 import { YearPickers, YearThumbs } from './year-parts';
 import { useStoryYears } from './year-probes';
 
@@ -33,8 +34,6 @@ const STAGE_WIDTH = 360;
 /** From this measured width the column sits beside the stage, not under it. */
 const SIDE_BY_SIDE_MIN = 720;
 const SIDE_GAP = 48;
-
-type Ready = Extract<YearStory, { status: 'ready' }>;
 
 /**
  * Year in listening (STYLEGUIDE section 8), the You hub's Year section: the listener's
@@ -49,8 +48,9 @@ type Ready = Extract<YearStory, { status: 'ready' }>;
  * - **Phone**: an intro (the year banner, the thumbnails) whose "Play the story" (or a
  *   thumbnail) opens the full-screen story (`/year`, `yearHref`).
  *
- * The server picker shows with more than one server that keeps stats; the year picker once
- * an earlier year has a story too (`useStoryYears`). A server without `user_stats` gets a
+ * The server picker shows with more than one server that keeps stats (the same choice as
+ * Your listening, `useStatsServer`); the year picker once an earlier year has a story too
+ * (`useStoryYears`). A server without `user_stats` gets a
  * calm notice, a year with too little listening a calm empty state, never empty cards.
  * Shares are images (`useShareCard`); there is no share link.
  */
@@ -58,15 +58,14 @@ export function YearSection() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const defaultCid = useCid();
-  const servers = useStatsServers();
   const [picked, setPicked] = useState<string | null>(null);
-  const cid = picked && servers.some((s) => s.id === picked) ? picked : defaultCid;
+  const { cid, choices: servers } = useStatsServer(picked);
   const [range, setRange] = useState<YearRange>('year');
   const story = useYearStory(cid, range);
   // This year's number (server time), whichever year is on show.
   const thisYearRange = useMyStats('year', cid).data?.range;
   const thisYear = thisYearRange ? Number(thisYearRange) : null;
-  const { past, probe } = useStoryYears(cid, thisYear);
+  const past = useStoryYears(cid, thisYear);
   const shownYear = range === 'year' ? thisYear : Number(range);
   const [width, setWidth] = useState(0);
 
@@ -129,7 +128,6 @@ export function YearSection() {
       testID="year-section"
     >
       {body}
-      {probe}
     </View>
   );
 }
@@ -138,37 +136,26 @@ export function YearSection() {
 function YearState({ story, phone, width }: { story: YearStory; phone: boolean; width: number }) {
   const { t } = useTranslation();
   switch (story.status) {
-    case 'unsupported':
-      return (
-        <Notice
-          icon="circle-info"
-          title={t('year.unsupported.title')}
-          body={t('year.unsupported.body', { server: story.serverName })}
-        />
-      );
-    case 'error':
+    case 'unsupported': {
+      const copy = yearStateCopy(story, t);
+      return <Notice icon="circle-info" title={copy.title} body={copy.body} />;
+    }
+    case 'error': {
+      const copy = yearStateCopy(story, t);
       return (
         <EmptyState
           variant="card"
           icon="circle-exclamation"
-          title={t('year.error.title')}
-          hint={t('year.error.body', { server: story.serverName })}
+          title={copy.title}
+          hint={copy.body}
           action={{ label: t('common.retry'), onPress: story.retry, icon: 'rotate' }}
         />
       );
-    case 'empty':
-      return (
-        <EmptyState
-          variant="card"
-          icon="sparkles"
-          title={t('year.empty.title')}
-          hint={
-            story.current
-              ? t('year.empty.current')
-              : t('year.empty.past', { server: story.serverName, year: story.year })
-          }
-        />
-      );
+    }
+    case 'empty': {
+      const copy = yearStateCopy(story, t);
+      return <EmptyState variant="card" icon="sparkles" title={copy.title} hint={copy.body} />;
+    }
     default: {
       // Loading (or the first layout): the stage's shapes, no layout shift.
       const stage = Math.min(STAGE_WIDTH, width || STAGE_WIDTH);
@@ -203,44 +190,24 @@ function YearStage({
   pickers,
   privacy,
 }: {
-  story: Ready;
+  story: ReadyYearStory;
   cid: string;
   width: number;
   pickers: ReactNode;
   privacy: string;
 }) {
   const { t } = useTranslation();
-  const reduced = useReducedMotion();
-  const screenReader = useScreenReaderEnabled();
-  const share = useShareCard();
-  const [held, setHeld] = useState(false);
-  const player = useStoryPlayer(story.cards.length, {
-    held: held || share.busy || screenReader,
-    still: reduced,
-  });
-  const cardRef = useRef<View>(null);
+  const { player, sharing, shareCard, stage } = useStoryStage(story, cid);
   const side = width >= SIDE_BY_SIDE_MIN;
   const stageWidth = Math.min(STAGE_WIDTH, width);
   const column = side ? width - stageWidth - SIDE_GAP : width;
-  const card = story.cards[player.index];
 
   return (
     <View
       className={side ? 'flex-row items-start' : 'items-center'}
       style={{ gap: side ? SIDE_GAP : 24 }}
     >
-      <StoryStage
-        cards={story.cards}
-        copies={story.copies}
-        player={player}
-        width={stageWidth}
-        connectionId={cid}
-        cardRef={cardRef}
-        plainCovers={share.coversOff}
-        screenReader={screenReader}
-        still={reduced}
-        onHold={setHeld}
-      />
+      <StoryStage {...stage} width={stageWidth} />
       <View style={{ width: column }} className="gap-5">
         <View className="gap-2">
           <Text variant="eyebrow">{t('year.eyebrow')}</Text>
@@ -262,15 +229,9 @@ function YearStage({
         <Button
           title={t('year.share')}
           icon="share"
-          loading={share.busy}
+          loading={sharing}
           className="self-start"
-          onPress={() =>
-            card &&
-            void share.share(cardRef, {
-              fileName: shareFileName(story.year, player.index, card.kind),
-              title: t('year.shareTitle', { year: story.year }),
-            })
-          }
+          onPress={shareCard}
         />
       </View>
     </View>
@@ -285,7 +246,7 @@ function YearIntro({
   privacy,
   onOpen,
 }: {
-  story: Ready;
+  story: ReadyYearStory;
   width: number;
   pickers: ReactNode;
   privacy: string;
@@ -294,37 +255,12 @@ function YearIntro({
   const { t } = useTranslation();
   return (
     <View className="gap-5">
-      <View className="overflow-hidden rounded-sheet p-[22px]" style={{ gap: 6 }}>
-        <StoryBackground theme="dusk" />
-        <StoryText
-          className="font-sans-bold uppercase"
-          style={{ fontSize: 12, lineHeight: 16, letterSpacing: 1.2, opacity: 0.8 }}
-        >
-          {t('year.ready')}
-        </StoryText>
-        <StoryText
-          className="font-display"
-          style={{ fontSize: 28, lineHeight: 30, letterSpacing: -0.8 }}
-          accessibilityRole="header"
-        >
-          {t('year.bannerTitle', { year: story.year })}
-        </StoryText>
-        <StoryText style={{ fontSize: 14, lineHeight: 20, opacity: 0.85 }}>
-          {t('year.bannerCards', { count: story.cards.length })}
-        </StoryText>
-        <Pressable
-          role="button"
-          onPress={() => onOpen(0)}
-          className={cn(
-            'mt-3 h-[46px] flex-row items-center self-start rounded-xl bg-white px-5 active:opacity-90',
-            Platform.select({ web: `cursor-pointer ${FOCUS_RING_OFFSET_CLASS}` }),
-          )}
-        >
-          <Text className="font-sans-semibold text-base" style={{ color: colors.light.foreground }}>
-            {t('year.play')}
-          </Text>
-        </Pressable>
-      </View>
+      <YearBanner
+        year={story.year}
+        theme="dusk"
+        summary={t('year.bannerCards', { count: story.cards.length })}
+        onPress={() => onOpen(0)}
+      />
       {pickers}
       <YearThumbs cards={story.cards} copies={story.copies} width={width} onSelect={onOpen} />
       <Text variant="caption">{privacy}</Text>

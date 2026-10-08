@@ -639,9 +639,6 @@
       "spineLabel": "{{title}} von {{author}}, beendet {{date}}"
     },
     "year": {
-      "eyebrow": "Bereit, wenn du es bist",
-      "title": "Dein Hörjahr {{year}}",
-      "play": "Geschichte abspielen",
       "summary_one": "Bisher {{duration}} gehört und {{count}} Buch beendet.",
       "summary_other": "Bisher {{duration}} gehört und {{count}} Bücher beendet."
     }

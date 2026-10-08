@@ -639,9 +639,6 @@
       "spineLabel": "{{title}} de {{author}}, terminado a {{date}}"
     },
     "year": {
-      "eyebrow": "Quando quiseres",
-      "title": "O teu {{year}} em audição",
-      "play": "Ver a história",
       "summary_one": "{{duration}} de audição e {{count}} livro terminado até agora.",
       "summary_other": "{{duration}} de audição e {{count}} livros terminados até agora."
     }

@@ -1,8 +1,8 @@
 /**
  * The story's rules (STYLEGUIDE section 6 "Story bars", section 8 "Year in listening"),
  * pure: each card shows for `CARD_MS` and then the next one comes up, unless the story is
- * held (reduced motion, a screen reader, a share in progress, a finger or pointer on the
- * card, the keyboard focus in it). The last card stays up. Next on the last card goes
+ * held (a screen reader, a share in progress, a finger or pointer on the card, the
+ * keyboard focus in it: `useStoryStage`) or still (reduced motion). The last card stays up. Next on the last card goes
  * back to the first; previous on the first restarts it.
  */
 
@@ -22,24 +22,4 @@ export function stepCard(index: number, delta: 1 | -1, count: number): number {
   const at = clampCard(index, count);
   if (delta === 1) return at === count - 1 ? 0 : at + 1;
   return Math.max(0, at - 1);
-}
-
-/** Why the story would hold its card, all of which stop the auto-advance. */
-export type StoryHolds = {
-  reducedMotion: boolean;
-  screenReader: boolean;
-  sharing: boolean;
-  /** A finger or the pointer on the card, or the keyboard focus in it. */
-  held: boolean;
-};
-
-/** Whether the card is frozen where it is (the bar stops, no advance). Reduced motion is
- * not a hold: it shows each card still, with its bar full (`isStill`). */
-export function isHeld(holds: StoryHolds): boolean {
-  return holds.screenReader || holds.sharing || holds.held;
-}
-
-/** Whether the story never moves by itself: reduced motion. */
-export function isStill(holds: Pick<StoryHolds, 'reducedMotion'>): boolean {
-  return holds.reducedMotion;
 }

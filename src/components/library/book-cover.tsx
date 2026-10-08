@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PixelRatio, View } from 'react-native';
+import { PixelRatio, Platform, View } from 'react-native';
 
 import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
@@ -12,6 +12,8 @@ import { CoverFrame } from './cover-frame';
 
 /** The thumbnail sizes the server makes (`cover_sizes`), smallest first. */
 const COVER_SIZES: readonly CoverSize[] = [160, 320, 640];
+/** The largest thumbnail the server makes. */
+export const MAX_COVER_SIZE: CoverSize = 640;
 
 /**
  * The smallest thumbnail that covers a cover drawn `width` points wide on a screen of
@@ -62,6 +64,9 @@ export type BookCoverProps = {
   shadow?: 'xs' | 'lg';
   /** Layout classes for the frame (margins, self-alignment). */
   className?: string;
+  /** The thumbnail to ask for instead of the one that covers `width` on this screen (a
+   * story card asks for its 1080-wide share image's). */
+  thumbnail?: CoverSize;
 };
 
 /**
@@ -73,6 +78,12 @@ export type BookCoverProps = {
  * thumbnail 404 means the server can't make one). `cover_version` rides along as the
  * cache buster. With no art at all it shows the title and author. While the server's
  * flags are unknown it shows an empty frame rather than fetching the full art first.
+ *
+ * A cover URL carries the media token (`?token=`), so the web hands the browser the plain
+ * URL: it caches it like any image, and a story card's share (html-to-image, which inlines
+ * images with a same-origin `fetch()` under the CSP's `connect-src 'self'`) can read it.
+ * With a header too, expo-image fetches it itself into a `blob:` URL that the CSP
+ * refuses. iOS and Android send the token as a header as well.
  */
 export function BookCover({
   connectionId,
@@ -84,6 +95,7 @@ export function BookCover({
   author,
   shadow = 'xs',
   className,
+  thumbnail,
 }: BookCoverProps) {
   const api = useOptionalApi(connectionId);
   const info = useServerInfo(connectionId);
@@ -99,14 +111,15 @@ export function BookCover({
     local,
     thumbnails: api ? thumbnails : false,
     url: (size) => (api ? api.coverUrl(libraryId, path, { size, version: coverVersion }) : null),
-    size: coverSizeFor(width, PixelRatio.get()),
+    size: thumbnail ?? coverSizeFor(width, PixelRatio.get()),
   });
   // URIs that failed to load. Keyed by URI, not reset: a recycled list cell moving to
   // another book gets new URIs, which none of these match.
   const [failed, setFailed] = useState<readonly string[]>([]);
   const uri = candidates.find((c) => !failed.includes(c));
   const pending = !uri && thumbnails === undefined && !!api;
-  const source = uri ? (uri === local ? uri : { uri, headers: api?.authHeaders() }) : null;
+  const plain = uri === local || Platform.OS === 'web';
+  const source = uri ? (plain ? uri : { uri, headers: api?.authHeaders() }) : null;
 
   return (
     <CoverFrame size={shadow} className={cn('rounded-cover', className)}>

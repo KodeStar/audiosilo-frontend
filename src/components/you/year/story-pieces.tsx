@@ -44,11 +44,23 @@ export function Tower({ spines, unit }: { spines: readonly TowerSpine[]; unit: n
   );
 }
 
-/** Listening per day as a little calendar: one column per week, a warm square per day
- * with listening (stronger for more), a faint one without. */
-export function StreakGrid({ days, unit }: { days: readonly number[]; unit: number }) {
-  const weeks: number[][] = [];
-  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+/** A level's warm square (1-5, the stats calendar's scale), a faint one for a day
+ * without listening (0), nothing outside the period (null). */
+function streakColor(level: number | null): string {
+  if (level === null) return 'transparent';
+  if (level <= 0) return 'rgba(255, 255, 255, 0.08)';
+  return `rgba(255, 214, 140, ${(0.25 + ((Math.min(5, level) - 1) / 4) * 0.75).toFixed(2)})`;
+}
+
+/** Listening per day as a little calendar (`streakGrid`): one column per week, Monday at
+ * the top, a warm square per day with listening (stronger for more), a faint one without. */
+export function StreakGrid({
+  weeks,
+  unit,
+}: {
+  weeks: readonly (readonly (number | null)[])[];
+  unit: number;
+}) {
   const gap = 4 * unit;
   return (
     <View
@@ -59,17 +71,11 @@ export function StreakGrid({ days, unit }: { days: readonly number[]; unit: numb
     >
       {weeks.map((week, w) => (
         <View key={w} className="flex-1" style={{ gap }}>
-          {week.map((seconds, d) => (
+          {week.map((level, d) => (
             <View
               key={d}
               className="aspect-square w-full"
-              style={{
-                borderRadius: 3 * unit,
-                backgroundColor:
-                  seconds > 0
-                    ? `rgba(255, 214, 140, ${(0.25 + Math.min(1, seconds / 10_800) * 0.75).toFixed(2)})`
-                    : 'rgba(255, 255, 255, 0.08)',
-              }}
+              style={{ borderRadius: 3 * unit, backgroundColor: streakColor(level) }}
             />
           ))}
         </View>

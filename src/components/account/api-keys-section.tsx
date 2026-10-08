@@ -16,12 +16,12 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Notice } from '@/components/ui/notice';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
 
 import { AccountListRow } from './account-list-row';
-import { AccountSectionHead } from './section-head';
 import type { ApiKeysManager } from './use-api-keys-manager';
 
 /** "Created 3 days ago · Last used 2 hours ago". */
@@ -47,7 +47,7 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
   const [creating, setCreating] = useState(false);
   return (
     <View className="gap-3">
-      <AccountSectionHead
+      <SectionTitle
         title={t('settings.apiKeys.label')}
         sub={t('settings.apiKeys.sub')}
         action={
@@ -106,7 +106,7 @@ export function ApiKeysUnavailable({ serverName }: { serverName: string }) {
   const { t } = useTranslation();
   return (
     <View className="gap-3">
-      <AccountSectionHead title={t('settings.apiKeys.label')} sub={t('settings.apiKeys.sub')} />
+      <SectionTitle title={t('settings.apiKeys.label')} sub={t('settings.apiKeys.sub')} />
       <Notice
         icon="circle-info"
         title={t('settings.apiKeys.unavailable.title', { server: serverName })}

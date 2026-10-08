@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
-  useCapabilitiesAll,
   useCapability,
   useListeningGoal,
   useMyListening,
@@ -18,25 +17,28 @@ import { buildYearCards, type YearCard } from './year-model';
 /** The year a story is for: this year (`year`, the server's own) or a past `YYYY`. */
 export type YearRange = 'year' | `${number}`;
 
+export type ReadyYearStory = {
+  status: 'ready';
+  serverName: string;
+  year: string;
+  current: boolean;
+  cards: YearCard[];
+  copies: CardCopy[];
+};
+
 export type YearStory =
   | { status: 'loading'; serverName: string }
   | { status: 'unsupported'; serverName: string }
   | { status: 'error'; serverName: string; retry: () => void }
   | { status: 'empty'; serverName: string; year: string; current: boolean }
-  | {
-      status: 'ready';
-      serverName: string;
-      year: string;
-      current: boolean;
-      cards: YearCard[];
-      copies: CardCopy[];
-    };
+  | ReadyYearStory;
 
 /**
  * The story of one year on one server (STYLEGUIDE section 8, "Year in listening"), from
  * the listener's own stats in that server's time: `/me/stats` for the year, plus, for
  * this year, the streak running today (`/me/listening?range=1y`, the cache Home's This
- * week card reads) and the goal (`/me/goal`). A server without `user_stats` is
+ * week card reads) and the goal (`/me/goal`), neither asked for a past year, whose stats
+ * are kept for the session (they never change). A server without `user_stats` is
  * `unsupported` (never an error), one whose `/server` doesn't answer is an `error`, and a
  * year with too little listening is `empty`.
  */
@@ -45,9 +47,9 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
   const info = useServerInfo(cid);
   const supported = useCapability('user_stats', cid);
   const current = range === 'year';
-  const stats = useMyStats(range, cid);
-  const listening = useMyListening('1y', cid);
-  const goal = useListeningGoal(cid);
+  const stats = useMyStats(range, cid, current ? {} : { staleTime: Infinity });
+  const listening = useMyListening('1y', cid, { ready: current });
+  const goal = useListeningGoal(cid, { ready: current });
   const connection = useSession((s) => s.connections.find((c) => c.id === cid));
   const serverName = connection?.name || info.data?.name || '';
   const userName = connection?.user?.username;
@@ -84,16 +86,4 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
     return { status: 'empty', serverName, year: built.year, current };
   }
   return { status: 'ready', serverName, current, ...built };
-}
-
-/** The signed-in servers that keep listening stats, in the listener's order, for the
- * server picker (shown only with more than one). */
-export function useStatsServers(): { id: string; name: string }[] {
-  const caps = useCapabilitiesAll();
-  const connections = useSession((s) => s.connections);
-  return useMemo(
-    () =>
-      connections.filter((c) => caps[c.id]?.user_stats).map((c) => ({ id: c.id, name: c.name })),
-    [connections, caps],
-  );
 }

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
@@ -18,7 +19,6 @@ import { cn } from '@/lib/utils';
 
 import { AccountListRow } from './account-list-row';
 import { canRevoke, deviceGlyph, knownPlatform, lastSeen, signedInSessions } from './account-model';
-import { AccountSectionHead } from './section-head';
 
 /** The name a device row shows: the one it sent at sign-in, else "Unnamed device". */
 function deviceName(d: MyDevice, t: TFunction): string {
@@ -105,7 +105,7 @@ export function DevicesSection({
 
   return (
     <View className="gap-3">
-      <AccountSectionHead title={t('account.devices.title')} sub={t('account.devices.sub')} />
+      <SectionTitle title={t('account.devices.title')} sub={t('account.devices.sub')} />
       <Card className="overflow-hidden p-0">
         {devices.isError ? (
           <View className="gap-3 p-5">

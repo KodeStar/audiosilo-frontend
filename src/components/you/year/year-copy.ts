@@ -1,7 +1,8 @@
 import type { TFunction } from 'i18next';
 
-import { formatCount, formatDurationOrZero, formatTimeOfDay } from '@/lib/format';
+import { formatCount, formatDurationOrZero, formatHour } from '@/lib/format';
 
+import type { YearStory } from './use-year-story';
 import { roundHours, type YearCard } from './year-model';
 
 /**
@@ -42,11 +43,6 @@ export type CardCopy = {
 export function listenTime(seconds: number, t: TFunction): string {
   if (seconds >= 7200) return t('year.hoursLong', { count: roundHours(seconds) });
   return formatDurationOrZero(seconds);
-}
-
-/** "22:00" / "10:00 PM": an hour of the day in the reader's clock. */
-export function hourLabel(hour: number): string {
-  return formatTimeOfDay(`${String(hour).padStart(2, '0')}:00`);
 }
 
 const books = (n: number, t: TFunction) => t('year.booksCount', { count: n });
@@ -134,7 +130,7 @@ export function cardCopy(card: YearCard, ctx: CopyContext, t: TFunction): CardCo
       };
     }
     case 'clock': {
-      const time = hourLabel(card.peak);
+      const time = formatHour(card.peak);
       return {
         kicker: t('year.card.clock.kicker'),
         title: t(`year.card.clock.part.${card.part}`),
@@ -235,4 +231,26 @@ export function cardSpeech(copy: CardCopy): string {
     .filter((p): p is string => !!p && p.trim() !== '')
     .map(sentence)
     .join(' ');
+}
+
+/** What a story that can't be told says instead (the section's calm states, the
+ * full-screen story's message): a server without stats, a failed read, a quiet year. */
+export function yearStateCopy(
+  story: Exclude<YearStory, { status: 'ready' | 'loading' }>,
+  t: TFunction,
+): { title: string; body: string } {
+  const server = story.serverName;
+  switch (story.status) {
+    case 'unsupported':
+      return { title: t('year.unsupported.title'), body: t('year.unsupported.body', { server }) };
+    case 'error':
+      return { title: t('year.error.title'), body: t('year.error.body', { server }) };
+    case 'empty':
+      return {
+        title: t('year.empty.title'),
+        body: story.current
+          ? t('year.empty.current')
+          : t('year.empty.past', { server, year: story.year }),
+      };
+  }
 }

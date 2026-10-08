@@ -164,7 +164,7 @@ function CardBody({
             </Heading>
           </View>
           <View style={{ marginTop: 'auto', gap: 12 * u }}>
-            <StreakGrid days={card.grid} unit={u} />
+            <StreakGrid weeks={card.grid} unit={u} />
             <Lines u={u} lines={copy.body} />
           </View>
         </>

@@ -1,16 +1,12 @@
 import { yearDays, yearStats } from './year-fixture';
 import {
   buildYearCards,
-  busiestHour,
   dayPart,
-  hasData,
-  hourTotals,
-  longestStreak,
   MAX_TOWER,
   roundHours,
   shareFileName,
   storyCovers,
-  STREAK_GRID_DAYS,
+  STREAK_GRID_WEEKS,
   streakGrid,
   towerSpines,
   type YearCard,
@@ -57,7 +53,7 @@ describe('buildYearCards', () => {
 
   it('has no story for a year with too little listening (the calm empty state)', () => {
     const stats = yearStats({ totals: { listened: 1200, sessions: 2, books: 1, finished: 0 } });
-    expect(yearHasStory(stats)).toBe(false);
+    expect(yearHasStory(stats.totals)).toBe(false);
     expect(buildYearCards({ stats, current: false, currentStreak: null, goal: null })).toEqual([]);
   });
 
@@ -112,64 +108,46 @@ describe('buildYearCards', () => {
       'streak',
     );
     expect(running?.longest).toBe(38);
-    expect(running?.grid).toHaveLength(STREAK_GRID_DAYS);
-    // The last square is today (2026-10-08, day 280: listened, an even index).
-    expect(running?.grid.at(-1)).toBe(stats.days.at(-1)?.listened);
+    expect(running?.grid).toHaveLength(STREAK_GRID_WEEKS);
+    // Today (2026-10-08, a Thursday, listened) is the last week's fourth day, the rest of
+    // that week is still to come.
+    expect(running?.grid.at(-1)).toEqual([
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      null,
+      null,
+      null,
+    ]);
+    expect(running?.grid.at(-1)?.[3]).toBeGreaterThan(0);
     const old = card(
       buildYearCards({ stats, current: false, currentStreak: null, goal: null }),
       'streak',
     );
-    // The 38-day streak ended on 7 Feb: the grid is the year's first 38 days.
-    expect(old?.grid).toHaveLength(38);
-    expect(old?.grid.every((s) => s > 0)).toBe(true);
+    // The 38-day streak ended on Sat 7 Feb: the weeks from the year's first (1 Jan is a
+    // Thursday) to that one, every day of the streak listened.
+    expect(old?.grid).toHaveLength(6);
+    expect(old?.grid[0].slice(0, 3)).toEqual([null, null, null]);
+    expect(old?.grid.flat().filter((l) => l !== null)).toHaveLength(38);
+    expect(old?.grid.flat().every((l) => l === null || l > 0)).toBe(true);
   });
 });
 
-describe('streaks', () => {
-  it('finds the longest run of listening days and where it ended', () => {
-    const days = yearDays(2026, (_, i) => ([0, 1, 4, 5, 6, 9].includes(i) ? 60 : 0), '2026-01-12');
-    expect(longestStreak(days)).toEqual({ length: 3, end: '2026-01-07' });
-  });
-
-  it('breaks a streak at a gap in the dates, not only at a zero day', () => {
-    const days = [
-      { date: '2026-01-01', listened: 60 },
-      { date: '2026-01-02', listened: 60 },
-      { date: '2026-01-05', listened: 60 },
-    ];
-    expect(longestStreak(days)).toEqual({ length: 2, end: '2026-01-02' });
-  });
-
-  it('is nothing without listening', () => {
-    expect(longestStreak(yearDays(2026, () => 0, '2026-01-31'))).toEqual({ length: 0, end: null });
-  });
-
-  it('cuts the grid to twelve weeks ending at the given day', () => {
+describe('the streak grid', () => {
+  it('lays twelve Monday-first weeks out, ending with the given day', () => {
     const days = yearDays(2026, (_, i) => i, '2026-12-31');
-    const grid = streakGrid(days, '2026-06-30');
-    expect(grid).toHaveLength(STREAK_GRID_DAYS);
-    expect(grid.at(-1)).toBe(180); // 30 June is day 180 (0-based)
-    expect(streakGrid(days, null).at(-1)).toBe(364);
+    const grid = streakGrid(days, '2026-06-30'); // a Tuesday
+    expect(grid).toHaveLength(STREAK_GRID_WEEKS);
+    // Monday 29 and Tuesday 30 June on the year's own scale (the 95th percentile is 346).
+    expect(grid.at(-1)).toEqual([3, 3, null, null, null, null, null]);
+    expect(grid.flat().every((l) => l === null || (l >= 0 && l <= 5))).toBe(true);
+    expect(streakGrid(days, null).at(-1)?.[3]).toBe(5); // 31 Dec, a Thursday
     expect(streakGrid([], null)).toEqual([]);
   });
 });
 
 describe('the listening clock', () => {
-  it('sums the weekdays per hour and tolerates short rows', () => {
-    const hours = hourTotals([[1, 2], [3], []]);
-    expect(hours).toHaveLength(24);
-    expect(hours.slice(0, 3)).toEqual([4, 2, 0]);
-    expect(hourTotals(undefined)).toEqual(Array.from({ length: 24 }, () => 0));
-  });
-
-  it('picks the earliest of the busiest hours, or none', () => {
-    const hours = Array.from({ length: 24 }, () => 0);
-    hours[7] = 5;
-    hours[21] = 5;
-    expect(busiestHour(hours)).toBe(7);
-    expect(busiestHour(Array.from({ length: 24 }, () => 0))).toBeNull();
-  });
-
   it('names the part of the day', () => {
     expect([5, 11, 12, 16, 17, 21, 22, 4].map(dayPart)).toEqual([
       'morning',
@@ -217,9 +195,9 @@ describe('helpers', () => {
     expect(shareFileName('2025', 11, 'summary')).toBe('audiosilo-2025-12-summary.png');
   });
 
-  it('counts a year as having data on the story’s own bar', () => {
-    expect(hasData({ listened: 3600, finished: 0 })).toBe(true);
-    expect(hasData({ listened: 10, finished: 1 })).toBe(true);
-    expect(hasData({ listened: 3599, finished: 0 })).toBe(false);
+  it('counts a year as having a story on its totals', () => {
+    expect(yearHasStory({ listened: 3600, finished: 0 })).toBe(true);
+    expect(yearHasStory({ listened: 10, finished: 1 })).toBe(true);
+    expect(yearHasStory({ listened: 3599, finished: 0 })).toBe(false);
   });
 });
