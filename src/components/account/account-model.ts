@@ -1,7 +1,6 @@
 import type { MyDevice } from '@/api/types';
 import type { IconName } from '@/components/ui/icon';
 import { parseYouSection, youTitleKey } from '@/components/you/you-model';
-import { hashString } from '@/lib/monogram';
 import type { NavRoute } from '@/lib/root-stack';
 
 /**
@@ -115,13 +114,6 @@ export function deviceGlyph(device: {
   if (/\b(ipad|tablet|tab)\b/i.test(name)) return 'tablet';
   if (knownPlatform(device.client?.platform)) return 'mobile';
   return /\b(iphone|phone|pixel|galaxy|android)\b/i.test(name) ? 'mobile' : 'hard-drive';
-}
-
-/** The two hues of a person's gradient monogram (STYLEGUIDE section 8, "Avatar"), from
- * their name: the same person always gets the same colours. */
-export function avatarHues(name: string): [number, number] {
-  const h = hashString(name.trim().toLowerCase()) % 360;
-  return [h, (h + 50) % 360];
 }
 
 /**

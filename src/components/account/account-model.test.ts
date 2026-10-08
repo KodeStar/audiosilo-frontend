@@ -3,7 +3,6 @@ import type { MyDevice } from '@/api/types';
 import {
   accountParentKey,
   ACTIVE_NOW_MS,
-  avatarHues,
   canRevoke,
   deviceGlyph,
   knownPlatform,
@@ -179,15 +178,5 @@ describe('the Account page crumb', () => {
     expect(accountParentKey({ name: 'you' })).toBe('you.titles.stats');
     expect(accountParentKey({ name: 'book/[libraryId]' })).toBeNull();
     expect(accountParentKey(undefined)).toBeNull();
-  });
-});
-
-describe('avatarHues', () => {
-  it('gives a name the same two hues every time, ignoring case and spaces', () => {
-    const [a, b] = avatarHues('Chris');
-    expect(avatarHues(' chris ')).toEqual([a, b]);
-    expect(a).toBeGreaterThanOrEqual(0);
-    expect(a).toBeLessThan(360);
-    expect(b).toBe((a + 50) % 360);
   });
 });
