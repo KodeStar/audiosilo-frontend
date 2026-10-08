@@ -27,10 +27,9 @@ document in action. Build it with `python3 build.py` from its `src/`. Where the 
 
 1. **Covers lead, chrome recedes.** Every list of books shows covers first. Chrome is flat with 1px hairlines.
    Only covers, spines and floating layers (dock, sheets, menus, toasts) cast shadows.
-2. **The shelf is the metaphor.** Rows of covers stand on a ledge. A series is a row of spines whose width is
-   the listening length; the book you chose is taken off the shelf and turned face-out. Missing books are
-   dashed ghost spines with their real titles. A finished year is a stack. If it can be shown as a physical
-   object, it is.
+2. **The shelf is the metaphor.** A series is a row of spines whose width is the listening length; the book you
+   chose is taken off the shelf and turned face-out. Missing books are dashed ghost spines with their real titles.
+   A finished year is a stack. If it can be shown as a physical object, it is.
 3. **Your place is sacred.** Never restart a book from 0. After any jump over a minute, offer "Back to
    12:41:07" for 10 seconds. Always say where progress lives: "Synced 2 min ago" or "Saved on this device,
    will sync". Spoilers never appear past the listener's own position.
@@ -368,10 +367,10 @@ varies a little per title. States: finished (green check at the foot), reading (
 peeking out above its top edge), ghost (above). **Ribbons never sit over cover or spine typography**: they are
 layered behind the book and only the part above the top edge shows.
 
-### Shelf row with ledge *custom*
-Horizontal snap-scrolling row of cover tiles (FlashList horizontal). A 8 px ledge with a soft shadow sits
-**directly under the covers** (drawn as the row's background at `tile + 6px`, attached to the scroll content);
-titles and meta hang below the ledge.
+### Shelf row *custom*
+Horizontal snap-scrolling row of cover tiles (FlashList horizontal), titles and meta under each cover. **No
+ledge** under the covers (dropped 2026-10: the bar read as chrome, not a shelf); planks stay on the spine
+shelves (series cards, the series hero, empty shelves).
 
 ### Series shelf *custom, signature*
 The series page hero. Spines stand on a plank in the chosen reading order; the selected entry is **taken off the
@@ -728,7 +727,7 @@ The covers and shelves of section 8 live in `src/components/library/`: `BookCove
 pixels when the server has `cover_sizes`, falling back to the full art; `ui/cover.tsx` draws the no-art
 fallback, the title and author, or under 72 points a two-letter monogram on the title's cloth colour,
 `src/lib/monogram.ts`), `CoverTile` (long-press / right-click opens the book actions, `TileActions`),
-`GhostCover`, `ShelfRow` (FlashList, the ledge), `CoverGrid` / `CoverGridSkeleton` / `CoverListRow`
+`GhostCover`, `ShelfRow` (FlashList), `CoverGrid` / `CoverGridSkeleton` / `CoverListRow`
 (sizes in `cover-layout.ts`), `QueueButton` + `useQueueActions`, `CoverWash`, the book actions
 (`books/book-actions.tsx`: `BookActionsMenu`, `BookActionsButton`), the A-Z rail (`books/az-rail.tsx`),
 `LibraryPicker` and the collection cards and dialogs (`collections/`); `FilterChip` / `ChipRow` are in

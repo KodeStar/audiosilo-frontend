@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
-import { CoverTile } from '@/components/library/cover-tile';
+import { CoverTile, TileCaption } from '@/components/library/cover-tile';
 import { GhostCover } from '@/components/library/ghost-cover';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -93,7 +93,6 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
           coverVersion={b.cover_version}
           server={server}
           width={width}
-          onShelf
         />
         {tag}
       </View>
@@ -110,16 +109,7 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
         className="gap-2.5 rounded-cover"
       >
         <GhostCover title={w.title} position={w.position} width={width} />
-        <View className="gap-0.5 pt-3">
-          <Text variant="label" numberOfLines={2}>
-            {w.title}
-          </Text>
-          {authors ? (
-            <Text variant="caption" numberOfLines={1}>
-              {authors}
-            </Text>
-          ) : null}
-        </View>
+        <TileCaption title={w.title} caption={authors} />
       </AnimatedPressable>
       {tag}
     </View>

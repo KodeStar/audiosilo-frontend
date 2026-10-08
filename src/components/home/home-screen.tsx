@@ -251,7 +251,6 @@ export function HomeScreen() {
                       coverVersion={b.cover_version}
                       server={serverLabel(b.connectionId)}
                       width={width}
-                      onShelf
                     />
                   );
                 }}
@@ -295,7 +294,6 @@ export function HomeScreen() {
                   caption={f.author}
                   server={serverLabel(f.connectionId)}
                   width={width}
-                  onShelf
                 />
               )}
             />

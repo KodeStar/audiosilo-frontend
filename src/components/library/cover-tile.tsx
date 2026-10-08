@@ -35,6 +35,24 @@ function Flag({ children, className }: { children: ReactNode; className?: string
   );
 }
 
+/** A tile's words under its cover: the title (two lines), then one caption line. Shared
+ * with the tiles that stand beside a `CoverTile` (a ghost in Next in your series), so a
+ * row's titles line up. */
+export function TileCaption({ title, caption }: { title: string; caption?: string }) {
+  return (
+    <View className="gap-0.5">
+      <Text variant="label" numberOfLines={2}>
+        {title}
+      </Text>
+      {caption ? (
+        <Text variant="caption" numberOfLines={1}>
+          {caption}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** What a tile's state adds to its accessible name, in order. */
 function tileStateLabels(opts: {
   progress?: number;
@@ -84,8 +102,6 @@ export type CoverTileProps = {
   finished?: boolean;
   /** A friend's (non-default) server it lives on: the "Maya" flag. */
   server?: string;
-  /** Standing on a shelf ledge (`ShelfRow`): the titles hang below the ledge. */
-  onShelf?: boolean;
   /** Defaults to opening the book page (in the current tab). */
   onPress?: () => void;
   /** The book's list row when the screen has it: the actions menu needs it, and
@@ -117,7 +133,6 @@ export function CoverTile({
   progress: givenProgress,
   finished: givenFinished,
   server,
-  onShelf,
   onPress,
   book,
   className,
@@ -221,16 +236,7 @@ export function CoverTile({
           />
         ) : null}
       </View>
-      <View className={cn('gap-0.5', onShelf && 'pt-3')}>
-        <Text variant="label" numberOfLines={2}>
-          {title}
-        </Text>
-        {caption ? (
-          <Text variant="caption" numberOfLines={1}>
-            {caption}
-          </Text>
-        ) : null}
-      </View>
+      <TileCaption title={title} caption={caption} />
     </AnimatedPressable>
   );
 }
