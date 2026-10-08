@@ -475,6 +475,7 @@ final class AudioEngine: NSObject {
     pausedAt = nil
     artworkURL = nil
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    syncPlaybackState()
     send("onState", ["state": "idle"])
   }
 
@@ -549,6 +550,7 @@ final class AudioEngine: NSObject {
         @unknown default:
           state = "paused"
         }
+        self.syncPlaybackState()
         self.send("onState", ["state": state])
       }
     }
@@ -786,7 +788,21 @@ final class AudioEngine: NSObject {
     // button shows 0x while paused, since PlaybackRate is 0 then).
     info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = baseRate
     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    syncPlaybackState()
     loadArtwork(t.artwork, headers: t.headers)
+  }
+
+  /// Tell Now Playing whether we play. On a device iOS ignores this (it reads the audio
+  /// session: MPNowPlayingInfoCenter.h, "This only applies on macOS"), but the iOS SIMULATOR is
+  /// macOS underneath: without it mediaremoted keeps the app "Paused" forever (its log shows only
+  /// `PlaybackState changed from Unknown to Paused`, on the pre-Phase-6 engine too), so CarPlay's
+  /// Now Playing window showed a play button, a frozen 0:00 and a "0x" rate while the book
+  /// played. Setting it there flips mediaremoted to Playing (checked in the Simulator). From the
+  /// real transport state, so it can't disagree with the earbud toggle either.
+  private func syncPlaybackState() {
+    let state: MPNowPlayingPlaybackState = tracks.isEmpty ? .stopped : (isPlaying ? .playing : .paused)
+    let center = MPNowPlayingInfoCenter.default()
+    if center.playbackState != state { center.playbackState = state }
   }
 
   /// The 1 s tick: elapsed (and rate) only, unless the playhead crossed into another chapter,
