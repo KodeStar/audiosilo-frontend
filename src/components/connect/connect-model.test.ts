@@ -12,6 +12,7 @@ import {
   reconnectAddress,
   repairPlan,
   revealOffset,
+  revealSpan,
   scanParams,
 } from './connect-model';
 
@@ -117,6 +118,30 @@ describe('reconnectAddress', () => {
     await expect(reconnectAddress(home, probe, true)).resolves.toBe(AWAY);
     await expect(reconnectAddress(entry, probe, false)).resolves.toBe(AWAY);
     expect(probe).not.toHaveBeenCalled();
+  });
+});
+
+describe('revealSpan', () => {
+  it('runs from the focused field to the lowest notice under it', () => {
+    // The Pixel: tapping the field again brought the keyboard up over the notice.
+    expect(revealSpan({ top: 300, bottom: 350 }, [{ top: 370, bottom: 520 }])).toEqual({
+      top: 300,
+      bottom: 520,
+    });
+    expect(revealSpan({ top: 300, bottom: 350 }, [])).toEqual({ top: 300, bottom: 350 });
+    expect(revealSpan(null, [{ top: 370, bottom: 520 }])).toEqual({ top: 370, bottom: 520 });
+    expect(revealSpan(null, [])).toBeNull();
+  });
+
+  it('keeps the field in view first when the span is taller than the room', () => {
+    const span = revealSpan({ top: 300, bottom: 350 }, [{ top: 370, bottom: 900 }])!;
+    const to = revealOffset({
+      fieldTop: span.top,
+      fieldBottom: span.bottom,
+      scrollY: 0,
+      viewport: 400,
+    });
+    expect(to).toBe(300 - 24);
   });
 });
 

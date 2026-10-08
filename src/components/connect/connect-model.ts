@@ -188,6 +188,22 @@ export function revealOffset(input: {
   return Math.max(0, Math.min(target, fieldTop - margin));
 }
 
+/** A box in the connect column's content, top and bottom. */
+export type Span = { top: number; bottom: number };
+
+/**
+ * What a reveal brings into view: the focused field with whatever is showing under it to
+ * keep in view too (the probe's notice, `ConnectReveal`), from the field's top to the
+ * lowest bottom. `revealOffset` never scrolls past the span's top, so the field stays in
+ * view first. Without a field, the shown boxes alone; null with nothing.
+ */
+export function revealSpan(field: Span | null, shown: readonly Span[]): Span | null {
+  if (!field && !shown.length) return null;
+  const top = field ? field.top : Math.min(...shown.map((s) => s.top));
+  const bottom = Math.max(field?.bottom ?? -Infinity, ...shown.map((s) => s.bottom));
+  return { top, bottom };
+}
+
 /**
  * The number of books across a server's libraries, from each library's authors list
  * (capability `browse_people`): every book is counted once, under its one author value
