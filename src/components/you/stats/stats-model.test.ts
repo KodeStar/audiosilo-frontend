@@ -24,6 +24,7 @@ import {
   petalPath,
   rankRows,
   statsColumns,
+  statsGrid,
   statsServerChoice,
   suggestedGoal,
   weekComparison,
@@ -55,7 +56,7 @@ describe('weeklyTotals', () => {
 
   it('compares this week with last week', () => {
     const days = run(TODAY, 14, (i) => (i < 7 ? 3600 : 1800));
-    expect(weekComparison(days, TODAY)).toEqual({
+    expect(weekComparison(weeklyTotals(days, TODAY))).toEqual({
       thisWeek: 7 * 1800,
       lastWeek: 7 * 3600,
       delta: -7 * 1800,
@@ -132,7 +133,9 @@ describe('calendarGrid', () => {
       TODAY,
     );
     // Cells 10 wide with a 2 gap: column 52, row 3 is today.
-    expect(calendarCellAt(grid, 52 * 12 + 4, 3 * 12 + 4, 10, 2)?.date).toBe(TODAY);
+    expect(calendarCellAt(grid, 52 * 12 + 4, 3 * 12 + 4, 10, 2)).toEqual({ c: 52, r: 3 });
+    expect(grid.today).toEqual({ c: 52, r: 3 });
+    expect(grid.columns[52][3]?.date).toBe(TODAY);
     expect(calendarCellAt(grid, 52 * 12 + 4, 5 * 12 + 4, 10, 2)).toBeNull(); // the future
     expect(calendarCellAt(grid, -4, 4, 10, 2)).toBeNull();
     expect(calendarCellAt(grid, 4, 8 * 12, 10, 2)).toBeNull();
@@ -316,6 +319,17 @@ describe('layout and servers', () => {
     expect(statsColumns(760)).toEqual({ tiles: 2, charts: 2, ranks: 2 });
     expect(statsColumns(1100)).toEqual({ tiles: 4, charts: 2, ranks: 3 });
     expect(columnWidth(100, 2, 10)).toBe(45);
+  });
+
+  it('lays the page out once for the content and its skeleton', () => {
+    expect(statsGrid(360)).toMatchObject({ compact: true, tileGap: 10, tileW: 175, chartW: 360 });
+    expect(statsGrid(1100)).toMatchObject({
+      compact: false,
+      tileGap: 16,
+      tileW: 263,
+      chartW: 542,
+      rankW: 356,
+    });
   });
 
   const ids = ['a', 'b', 'c'];

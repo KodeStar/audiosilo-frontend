@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
@@ -12,7 +12,8 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { ChartPointer, ChartTip, TipText } from './chart-pointer';
 import {
   CALENDAR_WEEKS,
-  type CalendarCell,
+  type CalendarGrid,
+  type CalendarSlot,
   calendarCellAt,
   calendarGrid,
   daysWithListening,
@@ -46,7 +47,7 @@ export function ListeningCalendar({
 }) {
   const { t } = useTranslation();
   const grid = useMemo(() => calendarGrid(days, today), [days, today]);
-  const [tip, setTip] = useState<CalendarCell | null>(null);
+  const [tip, setTip] = useState<CalendarSlot | null>(null);
   const scroller = useRef<ScrollView>(null);
   const room = Math.max(0, width - DAYS_COLUMN);
   const cell = Math.max(
@@ -59,12 +60,7 @@ export function ListeningCalendar({
   const months = t('stats.calendar.months').split(',');
   const weekdays = t('stats.calendar.weekdays').split(',');
   const listenedDays = daysWithListening(days);
-  const place = (c: CalendarCell) => {
-    const i = grid.columns.findIndex((col) => col.includes(c));
-    const r = grid.columns[i].indexOf(c);
-    return { x: i * pitch, y: r * pitch };
-  };
-  const todayCell = grid.columns.flat().find((c) => c?.today) ?? null;
+  const tipCell = tip ? grid.columns[tip.c][tip.r] : null;
 
   const body = (
     <View style={{ width: gridWidth, height: MONTHS_ROW + gridHeight }}>
@@ -77,30 +73,14 @@ export function ListeningCalendar({
           {months[m.month] ?? ''}
         </Text>
       ))}
-      <View
-        pointerEvents="none"
-        className="absolute flex-row"
-        style={{ top: MONTHS_ROW, gap: GAP }}
-      >
-        {grid.columns.map((col, c) => (
-          <View key={c} style={{ gap: GAP }}>
-            {col.map((d, r) => (
-              <View
-                key={r}
-                className={cn('rounded-[3px]', d ? SEQ[d.level] : undefined)}
-                style={{ width: cell, height: cell }}
-              />
-            ))}
-          </View>
-        ))}
-      </View>
-      {todayCell ? (
+      <CalendarCells grid={grid} cell={cell} />
+      {grid.today ? (
         <View
           pointerEvents="none"
           className="absolute rounded-[5px] border-2 border-foreground"
           style={{
-            left: place(todayCell).x - 3,
-            top: MONTHS_ROW + place(todayCell).y - 3,
+            left: grid.today.c * pitch - 3,
+            top: MONTHS_ROW + grid.today.r * pitch - 3,
             width: cell + 6,
             height: cell + 6,
           }}
@@ -111,18 +91,26 @@ export function ListeningCalendar({
         top={MONTHS_ROW}
         width={gridWidth}
         height={gridHeight}
-        onPoint={(p) => setTip(p ? calendarCellAt(grid, p.x, p.y, cell, GAP) : null)}
+        onPoint={(p) => {
+          const next = p ? calendarCellAt(grid, p.x, p.y, cell, GAP) : null;
+          // The same day under the pointer again: no redraw.
+          setTip((prev) => (prev && next && prev.c === next.c && prev.r === next.r ? prev : next));
+        }}
       />
-      {tip ? (
+      {tip && tipCell ? (
         <ChartTip
           testID="calendar-tip"
-          x={place(tip).x + cell / 2}
-          y={MONTHS_ROW + place(tip).y}
+          x={tip.c * pitch + cell / 2}
+          y={MONTHS_ROW + tip.r * pitch}
           boundsWidth={gridWidth}
         >
           <TipText
-            value={tip.listened > 0 ? formatDurationOrZero(tip.listened) : t('stats.calendar.none')}
-            label={formatServerShortDay(tip.date)}
+            value={
+              tipCell.listened > 0
+                ? formatDurationOrZero(tipCell.listened)
+                : t('stats.calendar.none')
+            }
+            label={formatServerShortDay(tipCell.date)}
           />
         </ChartTip>
       ) : null}
@@ -183,3 +171,29 @@ export function ListeningCalendar({
     </View>
   );
 }
+
+/** The 371 squares, apart from the tooltip and the today outline, so the pointer moving
+ * from day to day redraws only those. */
+const CalendarCells = memo(function CalendarCells({
+  grid,
+  cell,
+}: {
+  grid: CalendarGrid;
+  cell: number;
+}) {
+  return (
+    <View pointerEvents="none" className="absolute flex-row" style={{ top: MONTHS_ROW, gap: GAP }}>
+      {grid.columns.map((col, c) => (
+        <View key={c} style={{ gap: GAP }}>
+          {col.map((d, r) => (
+            <View
+              key={r}
+              className={cn('rounded-[3px]', d ? SEQ[d.level] : undefined)}
+              style={{ width: cell, height: cell }}
+            />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+});

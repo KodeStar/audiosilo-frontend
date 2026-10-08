@@ -110,10 +110,28 @@ describe('StoryStage', () => {
     expect(onHold).toHaveBeenLastCalledWith(true);
     await fireEvent(next, 'pressOut');
     expect(onHold).toHaveBeenLastCalledWith(false);
-    await fireEvent(next, 'hoverIn');
+  });
+
+  it('holds while the pointer is over the stage, across both tap zones', async () => {
+    const onHold = jest.fn();
+    await mount(player(0), { onHold });
+    const stage = screen.getByTestId('year-story-stage');
+    await fireEvent(stage, 'pointerEnter');
     expect(onHold).toHaveBeenLastCalledWith(true);
-    await fireEvent(next, 'hoverOut');
+    const calls = onHold.mock.calls.length;
+    // Over the Next zone after the Previous one: still held, nothing reported.
+    await fireEvent(screen.getByRole('button', { name: 'Next card' }), 'hoverIn');
+    expect(onHold.mock.calls.length).toBe(calls);
+    await fireEvent(stage, 'pointerLeave');
     expect(onHold).toHaveBeenLastCalledWith(false);
+  });
+
+  it('fills the current bar with a transform, not its width', async () => {
+    await mount(player(0));
+    const bar = screen.getByTestId('story-bar-current', { includeHiddenElements: true });
+    const style = Object.assign({}, ...[bar.props.style].flat(Infinity));
+    expect(style.width).toBeUndefined();
+    expect(style.transformOrigin).toBe('left');
   });
 
   it('holds for the keyboard focus, not for the focus a click gives', async () => {

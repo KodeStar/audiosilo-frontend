@@ -36,9 +36,11 @@ export function weeklyTotals(
   });
 }
 
-/** This week against last week: `delta` is this minus last, in seconds. */
-export function weekComparison(days: readonly ListeningDay[], today: string) {
-  const [last, now] = weeklyTotals(days, today, 2);
+/** This week against last week, from `weeklyTotals` (the last two windows): `delta` is
+ * this minus last, in seconds. */
+export function weekComparison(weeks: readonly number[]) {
+  const now = weeks.at(-1) ?? 0;
+  const last = weeks.at(-2) ?? 0;
   return { thisWeek: now, lastWeek: last, delta: now - last };
 }
 
@@ -92,12 +94,17 @@ export type CalendarCell = {
   today: boolean;
 };
 
+/** A cell's place in the calendar: column (week) and row (weekday, Monday 0). */
+export type CalendarSlot = { c: number; r: number };
+
 export type CalendarGrid = {
   /** `CALENDAR_WEEKS` columns of 7 (Monday first); null for days after today or before
    * the period. */
   columns: (CalendarCell | null)[][];
   /** A month label per column where that month's first day falls, `month` 0-11. */
   months: { column: number; month: number }[];
+  /** Where today is (null when it is not in the period). */
+  today: CalendarSlot | null;
 };
 
 /**
@@ -125,6 +132,7 @@ export function calendarGrid(days: readonly ListeningDay[], today: string): Cale
   const start = addDays(today, -weekdayOf(today) - (CALENDAR_WEEKS - 1) * 7);
   const columns: (CalendarCell | null)[][] = [];
   const months: { column: number; month: number }[] = [];
+  let todaySlot: CalendarSlot | null = null;
   for (let c = 0; c < CALENDAR_WEEKS; c++) {
     const column: (CalendarCell | null)[] = [];
     for (let r = 0; r < 7; r++) {
@@ -135,6 +143,7 @@ export function calendarGrid(days: readonly ListeningDay[], today: string): Cale
       }
       const v = listened.get(date) ?? 0;
       column.push({ date, listened: v, level: level(v), today: date === today });
+      if (date === today) todaySlot = { c, r };
       if (date.endsWith('-01')) {
         const prev = months[months.length - 1];
         // Keep labels three columns apart, and none on the last column (no room).
@@ -145,10 +154,10 @@ export function calendarGrid(days: readonly ListeningDay[], today: string): Cale
     }
     columns.push(column);
   }
-  return { columns, months };
+  return { columns, months, today: todaySlot };
 }
 
-/** The cell under a point of the calendar's grid (cells `cell` wide with `gap` between),
+/** The slot under a point of the calendar's grid (cells `cell` wide with `gap` between),
  * or null past its edges or on an empty slot. */
 export function calendarCellAt(
   grid: CalendarGrid,
@@ -156,12 +165,12 @@ export function calendarCellAt(
   y: number,
   cell: number,
   gap: number,
-): CalendarCell | null {
+): CalendarSlot | null {
   const pitch = cell + gap;
   const c = Math.floor(x / pitch);
   const r = Math.floor(y / pitch);
   if (c < 0 || r < 0 || c >= grid.columns.length || r >= 7) return null;
-  return grid.columns[c][r] ?? null;
+  return grid.columns[c][r] ? { c, r } : null;
 }
 
 // --- The listening clock ---------------------------------------------------------------
@@ -407,6 +416,28 @@ export function statsColumns(width: number): { tiles: number; charts: number; ra
 /** The width of one of `n` columns across `width` with `gap` between them. */
 export function columnWidth(width: number, n: number, gap: number): number {
   return Math.max(0, Math.floor((width - gap * (n - 1)) / n));
+}
+
+/** The gap between the stats page's cards. */
+export const STATS_GAP = 16;
+/** Under this measured width the stats page is compact (smaller tiles, tighter gaps). */
+const COMPACT_BELOW = 640;
+
+/** The stats page's grid at a measured content `width`, for the page and its skeleton
+ * alike (so the data lands without a shift): columns per block, whether it is compact,
+ * the tiles' gap, and a tile's, a chart card's and a rank card's width. */
+export function statsGrid(width: number) {
+  const cols = statsColumns(width);
+  const compact = width < COMPACT_BELOW;
+  const tileGap = compact ? 10 : STATS_GAP;
+  return {
+    cols,
+    compact,
+    tileGap,
+    tileW: columnWidth(width, cols.tiles, tileGap),
+    chartW: columnWidth(width, cols.charts, STATS_GAP),
+    rankW: columnWidth(width, cols.ranks, STATS_GAP),
+  };
 }
 
 /**

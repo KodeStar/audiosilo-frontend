@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -9,8 +10,9 @@ import { STORY_THEMES, type StoryTheme } from './story-themes';
  * A story card's ground: its theme's base colour and glows (`story-themes.ts`), drawn
  * with react-native-svg on every platform (no CSS gradients on the web), so the share
  * image rasterises the same drawing. Fills its parent; decorative and touch-through.
+ * Memoised: it only changes with its theme, and a story re-renders every card.
  */
-export function StoryBackground({ theme }: { theme: StoryTheme }) {
+export const StoryBackground = memo(function StoryBackground({ theme }: { theme: StoryTheme }) {
   const id = useDomId('story');
   const { base, layers } = STORY_THEMES[theme];
   return (
@@ -62,4 +64,4 @@ export function StoryBackground({ theme }: { theme: StoryTheme }) {
       </Svg>
     </View>
   );
-}
+});

@@ -37,14 +37,14 @@ import { durationParts } from './stats-format';
 import {
   CLOCK_MIN_SIZE,
   clockSummary,
-  columnWidth,
   dailyAverage,
   libraryForName,
   longestStreak,
   type RankKind,
   type RankRow,
   rankRows,
-  statsColumns,
+  STATS_GAP,
+  statsGrid,
   weekComparison,
   weeklyTotals,
 } from './stats-model';
@@ -53,7 +53,6 @@ import { WeeklyBars } from './weekly-bars';
 
 /** A card's border and padding, each side (Card: `p-5` + a 1px hairline). */
 const CARD_INSET = 21;
-const GAP = 16;
 
 /**
  * Your listening (the You hub's Stats section, STYLEGUIDE section 8 "Stat tile, listening
@@ -164,10 +163,17 @@ function StatsContent({
   const open = useOpen();
   const wide = useLayout() !== 'phone';
   const libraries = useLibrariesAll().groups.find((g) => g.connectionId === cid)?.libraries;
-  const compact = width < 640;
-  const cols = statsColumns(width);
-  const weeks = useMemo(() => weeklyTotals(listening.days, today), [listening.days, today]);
-  const week = weekComparison(listening.days, today);
+  const { cols, compact, tileGap, tileW, chartW, rankW } = statsGrid(width);
+  const { weeks, week, streak, longest, average } = useMemo(() => {
+    const totals = weeklyTotals(listening.days, today);
+    return {
+      weeks: totals,
+      week: weekComparison(totals),
+      streak: listeningStreak(listening.days, today),
+      longest: longestStreak(stats.days).length,
+      average: dailyAverage(stats.days),
+    };
+  }, [listening.days, stats.days, today]);
   const clock = useMemo(() => clockSummary(stats.hour_weekday), [stats.hour_weekday]);
   const peaks = usePeakWords(clock);
   const year = /^\d{4}$/.test(stats.range) ? stats.range : today.slice(0, 4);
@@ -210,11 +216,6 @@ function StatsContent({
     );
   }
 
-  const tileGap = compact ? 10 : GAP;
-  const tileW = columnWidth(width, cols.tiles, tileGap);
-  const streak = listeningStreak(listening.days, today);
-  const longest = longestStreak(stats.days).length;
-  const average = dailyAverage(stats.days);
   const deltaText =
     week.delta === 0
       ? t('stats.tiles.deltaSame')
@@ -224,8 +225,6 @@ function StatsContent({
   const thisWeekValue = formatDurationOrZero(week.thisWeek);
   const averageValue = formatDurationOrZero(average);
 
-  const chartW = columnWidth(width, cols.charts, GAP);
-  const rankW = columnWidth(width, cols.ranks, GAP);
   const firstLibrary = libraries?.[0]?.id ?? null;
   const openRank = (kind: RankKind) => (row: RankRow) => {
     const lib = libraryForName(stats, kind, row.name) ?? firstLibrary;
@@ -333,7 +332,7 @@ function StatsContent({
         <ListeningCalendar days={listening.days} today={today} width={width - CARD_INSET * 2} />
       </Card>
 
-      <View className="flex-row flex-wrap" style={{ gap: GAP }}>
+      <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
         <Card className="gap-3" style={{ width: chartW }}>
           <SectionTitle title={t('stats.clock.title')} sub={peaks ?? t('stats.clock.none')} />
           <View className="items-center">
@@ -358,7 +357,7 @@ function StatsContent({
       </View>
 
       {shownRanks.length ? (
-        <View className="flex-row flex-wrap" style={{ gap: GAP }}>
+        <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
           {shownRanks.map((r, i) => (
             <Card
               key={r.kind}
@@ -435,11 +434,7 @@ function SectionTitle({ title, sub, small }: { title: string; sub: ReactNode; sm
 /** The loading state: placeholders shaped like the header, the tiles, the calendar and
  * the two charts, at their sizes (no shift when the data lands). */
 function StatsSkeleton({ width }: { width: number }) {
-  const cols = statsColumns(width);
-  const compact = width < 640;
-  const tileGap = compact ? 10 : GAP;
-  const tileW = columnWidth(width, cols.tiles, tileGap);
-  const chartW = columnWidth(width, cols.charts, GAP);
+  const { tileGap, tileW, chartW } = statsGrid(width);
   return (
     <View className="gap-4" testID="stats-skeleton">
       <View className="gap-2">
@@ -454,7 +449,7 @@ function StatsSkeleton({ width }: { width: number }) {
         ))}
       </View>
       <Skeleton className="h-[230px] rounded-card" />
-      <View className="flex-row flex-wrap" style={{ gap: GAP }}>
+      <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
         {[0, 1].map((i) => (
           <View key={i} style={{ width: chartW }}>
             <Skeleton className="h-[330px] rounded-card" />
