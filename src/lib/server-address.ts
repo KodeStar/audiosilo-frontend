@@ -1,13 +1,13 @@
 import type { ServerAddresses } from '@/api/types';
 
 /**
- * Home and away addresses (capability `addresses`, player redesign Phase 5): which of a
- * server's addresses the player talks to right now. Pure, so every rule is tested here;
+ * Home and away addresses (capability `addresses`): which of a server's addresses the
+ * player talks to right now. Pure, so every rule is tested here;
  * the store and the runner that apply it are `src/api/address-route.ts` and
  * `src/api/address-runner.ts`.
  *
  * - `serverUrl` is what the listener paired with or typed. It is never rewritten.
- * - With no `home`, the player uses `serverUrl` (exactly as before addresses existed).
+ * - With no `home`, the player uses `serverUrl`.
  * - With a `home`, the player asks `GET <home>/api/v1/server` WITHOUT a token and uses
  *   `home` only when it answers with this connection's own `server_id`. Another box at
  *   the same private IP on someone else's network must never receive the token.
@@ -27,7 +27,8 @@ export type AddressedConnection = {
 };
 
 /** Asks `GET <url>/api/v1/server` with no token and resolves the `server_id` it
- * answered, or null when nothing answered (unreachable, timed out, not a server). */
+ * answered, or null when nothing answered (unreachable, timed out, not a server). It
+ * never rejects. */
 export type ServerIdProbe = (url: string) => Promise<string | null>;
 
 const trimSlashes = (url: string) => url.replace(/\/+$/, '');
@@ -47,7 +48,7 @@ export function sameAddresses(
 }
 
 /**
- * What the device keeps after the server told it `fresh` (already cleaned), given what
+ * What the device keeps after the server told it `fresh`, given what
  * it kept before. `undefined` fresh = nothing was said (a pairing without the field):
  * keep `prior`. Otherwise `away` is the server's configuration and the answer is
  * authoritative (absent = none), while `home` falls back to `prior`: when no home
@@ -95,24 +96,17 @@ export function chooseAddress(c: AddressedConnection, homeServerId: string | nul
 }
 
 /** Pick the address for a connection now: probes its home address (when it has one)
- * through `probe`, then applies `chooseAddress`. */
+ * through `probe` (which never throws), then applies `chooseAddress`. */
 export async function pickAddress(c: AddressedConnection, probe: ServerIdProbe): Promise<string> {
   const home = c.addresses?.home;
-  if (!home) return c.serverUrl;
-  let answered: string | null = null;
-  try {
-    answered = await probe(home);
-  } catch {
-    answered = null;
-  }
-  return chooseAddress(c, answered);
+  return home ? chooseAddress(c, await probe(home)) : c.serverUrl;
 }
 
-/** Which address `url` is for this connection. Home wins over away when the server
- * reports one URL as both (it never should). */
-export function addressKind(url: string, c: AddressedConnection): AddressKind {
-  if (c.addresses?.home && sameUrl(url, c.addresses.home)) return 'home';
-  if (c.addresses?.away && sameUrl(url, c.addresses.away)) return 'away';
+/** Which of `addresses` `url` is ('paired': neither). Home wins over away when the
+ * server reports one URL as both (it never should). */
+export function addressKind(url: string, addresses: ServerAddresses | undefined): AddressKind {
+  if (addresses?.home && sameUrl(url, addresses.home)) return 'home';
+  if (addresses?.away && sameUrl(url, addresses.away)) return 'away';
   return 'paired';
 }
 

@@ -13,7 +13,7 @@ import { useLayout } from '@/lib/layout';
 import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
-import { hostOf, pairingAddresses } from './connect-model';
+import { hostOf } from './connect-model';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 
@@ -69,7 +69,7 @@ export function SignInStep({
         await finishConnect({
           serverUrl: server,
           session,
-          addresses: pairingAddresses(payload.addresses, session.addresses),
+          linkAddresses: payload.addresses,
           name: payload.server_name || serverName,
           reconnectId,
         });
@@ -78,7 +78,6 @@ export function SignInStep({
         await finishConnect({
           serverUrl: server,
           session,
-          addresses: pairingAddresses(undefined, session.addresses),
           name: serverName,
           reconnectId,
         });

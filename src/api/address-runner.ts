@@ -1,17 +1,17 @@
 import * as Network from 'expo-network';
-import { AppState, type AppStateStatus, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { startBookInPlace } from '@/components/player/start-book';
-import { cleanAddresses } from '@/lib/pairing';
 import {
   fallbackAddress,
-  mergeAddresses,
   pickAddress,
   sameAddresses,
   sameUrl,
   type ServerIdProbe,
   streamBase,
 } from '@/lib/server-address';
+import { ticker } from '@/lib/ticker';
+import { onForeground } from '@/lib/when-active';
 import { type NowPlaying, selectBookPosition, usePlayer } from '@/playback/store';
 import { type Connection, useSession } from '@/stores/session';
 
@@ -21,15 +21,14 @@ import { addressesQuery, fetchCapabilities, fetchFailFast } from './hooks';
 import { onReconnect, useReachability } from './reachability';
 import { probeServerId } from './server-id-probe';
 
-export { PROBE_TIMEOUT_MS, probeServerId } from './server-id-probe';
-
 /**
  * The home/away address runner (native only; the web player keeps its own origin).
  * Framework-free, started once from the root layout like the other controllers
  * (`startAddressRouting`). It:
  * - re-picks each connection's address (`pickAddress`: probe home without a token, use
  *   it only on a matching `server_id`) at launch, when the app comes to the foreground,
- *   when the network changes, when a connection's URL or addresses change, and at once
+ *   when the network changes (at once for a move, else once a burst of events settles,
+ *   `NETWORK_SETTLE_MS`), when a connection's URL or addresses change, and at once
  *   when the reachability tracker marks a connection offline (its 20 s probe then runs
  *   through the client built on the new address), and every `HOME_RECHECK_MS` while
  *   the app is in the foreground for a connection away from its home address (walking
@@ -43,7 +42,7 @@ export { PROBE_TIMEOUT_MS, probeServerId } from './server-id-probe';
  * - keeps the playing book playing when its connection switches address: a streamed
  *   book's track URLs are baked in at load, so when it plays (or tries to) from an
  *   address its connection no longer uses, it is started again in place, at its
- *   position and speed, through `startBookInPlace` (no playback internals changed).
+ *   position and speed, through `startBookInPlace`.
  */
 
 let probe: ServerIdProbe = probeServerId;
@@ -83,7 +82,15 @@ export async function repick(connectionId: string): Promise<void> {
   setAddressPick(connectionId, sameUrl(url, now.serverUrl) ? null : url);
 }
 
+/** How long a network change that keeps the device where it is waits for the next one
+ * before every connection is re-picked: Android reports capability changes as network
+ * events, often in bursts, and each re-pick asks home again. A move doesn't wait. */
+export const NETWORK_SETTLE_MS = 1_000;
+let settling: ReturnType<typeof setTimeout> | null = null;
+
 function repickAll(): void {
+  if (settling) clearTimeout(settling);
+  settling = null;
   for (const c of useSession.getState().connections) void repick(c.id);
 }
 
@@ -125,28 +132,30 @@ export function movedNetwork(state: Network.NetworkState): boolean {
   return previous !== undefined && state.type !== undefined && state.type !== previous;
 }
 
+/** A network event: a move drops home and re-picks at once; any other change re-picks
+ * once the events settle (a newer re-pick still supersedes a probe in flight, so a home
+ * address checked before the change is never used after it). */
 function onNetwork(state: Network.NetworkState): void {
-  if (movedNetwork(state)) leaveHome();
-  repickAll();
+  if (movedNetwork(state)) {
+    leaveHome();
+    repickAll();
+    return;
+  }
+  if (settling) clearTimeout(settling);
+  settling = setTimeout(repickAll, NETWORK_SETTLE_MS);
 }
 
 /** Read `GET /addresses` from a server that has `addresses` and keep what it says
- * (merged: an answer read away from home can't know the home address). Quiet on any
- * failure: the next launch or reconnect asks again. */
+ * (`learnAddresses`: an answer read away from home can't know the home address). Quiet
+ * on any failure: the next launch or reconnect asks again. */
 export async function refreshAddresses(connectionId: string): Promise<void> {
   const client = resolveClient(connectionId);
   if (!client) return;
   try {
     const caps = await fetchCapabilities(connectionId, client);
     if (!caps.addresses) return;
-    const answer = await fetchFailFast({
-      ...addressesQuery(connectionId, client, true),
-      staleTime: 0,
-    });
-    const conn = connectionOf(connectionId);
-    if (!conn) return;
-    const next = mergeAddresses(conn.addresses, cleanAddresses(answer) ?? {});
-    await useSession.getState().setConnectionAddresses(connectionId, next);
+    const answer = await fetchFailFast({ ...addressesQuery(connectionId, client), staleTime: 0 });
+    await useSession.getState().learnAddresses(connectionId, answer);
   } catch {
     // Unreachable or refused: keep what the device knows.
   }
@@ -157,6 +166,30 @@ export async function refreshAddresses(connectionId: string): Promise<void> {
  * every player tick. */
 let restart: { nowPlaying: NowPlaying; url: string } | null = null;
 let restarting = false;
+
+/** The playing book's last address check, for one book load, connection list and set of
+ * picks: the address it should move to, or null (downloaded, or already on the address
+ * in use). Worked out again only when one of the three changes, so a player tick costs
+ * three comparisons. */
+let follow: {
+  nowPlaying: NowPlaying;
+  connections: Connection[];
+  picks: Record<string, string>;
+  moveTo: string | null;
+} | null = null;
+
+function addressToFollow(np: NowPlaying): string | null {
+  const { connections } = useSession.getState();
+  const { picks } = useAddressRoute.getState();
+  if (follow?.nowPlaying === np && follow.connections === connections && follow.picks === picks)
+    return follow.moveTo;
+  const base = np.queue.tracks[0] ? streamBase(np.queue.tracks[0].url) : null; // null: downloaded
+  const conn = base ? connections.find((c) => c.id === np.connectionId) : undefined;
+  const url = conn ? effectiveUrl(conn) : null;
+  const moveTo = base && url && !sameUrl(base, url) ? url : null;
+  follow = { nowPlaying: np, connections, picks, moveTo };
+  return moveTo;
+}
 
 /**
  * Keep the playing book on its connection's address. Only a streamed book that is
@@ -171,12 +204,8 @@ export function followPlayingBook(): void {
   if (!np || player.loadingBook) return;
   const { state } = player.snapshot;
   if (state !== 'playing' && state !== 'loading') return;
-  const base = np.queue.tracks[0] ? streamBase(np.queue.tracks[0].url) : null;
-  if (!base) return; // downloaded: plays from the device
-  const conn = connectionOf(np.connectionId);
-  if (!conn) return;
-  const url = effectiveUrl(conn);
-  if (sameUrl(base, url)) return;
+  const url = addressToFollow(np);
+  if (!url) return;
   const position = selectBookPosition(player);
   if (!(position > 0)) return;
   if (restart?.nowPlaying === np && restart.url === url) return;
@@ -243,28 +272,27 @@ export function startAddressRouting(opts: { probe?: ServerIdProbe } = {}): () =>
   // (`useAppResume`) does not wait for it: a suspended move to a network with a box at
   // the same home IP is the one window left open.
   const readNetwork = () =>
-    Network.getNetworkStateAsync().then(onNetwork, () => {
-      repickAll();
-    });
+    Network.getNetworkStateAsync().then(
+      (state) => {
+        if (movedNetwork(state)) leaveHome();
+        repickAll();
+      },
+      () => repickAll(),
+    );
   // The re-check of home runs only in the foreground.
-  let recheck: ReturnType<typeof setInterval> | null = null;
-  const setRecheck = (on: boolean) => {
-    if (on && !recheck) recheck = setInterval(recheckHome, HOME_RECHECK_MS);
-    if (!on && recheck) {
-      clearInterval(recheck);
-      recheck = null;
-    }
-  };
-  let appState: AppStateStatus = AppState.currentState;
-  setRecheck(appState !== 'background' && appState !== 'inactive');
-  const appSub = AppState.addEventListener('change', (next) => {
-    const wasAway = appState !== 'active';
-    appState = next;
-    setRecheck(next === 'active');
-    if (next === 'active' && wasAway) void readNetwork();
-  });
-  stops.push(() => appSub.remove());
-  stops.push(() => setRecheck(false));
+  const recheck = ticker(recheckHome, HOME_RECHECK_MS);
+  if (AppState.currentState !== 'background' && AppState.currentState !== 'inactive')
+    recheck.start();
+  stops.push(
+    onForeground(
+      () => {
+        recheck.start();
+        void readNetwork();
+      },
+      () => recheck.stop(),
+    ),
+  );
+  stops.push(() => recheck.stop());
 
   // Network changes (native only; the runner never runs on web). Seeded with the current
   // type so the first change can be told from a move.
@@ -300,6 +328,9 @@ export function startAddressRouting(opts: { probe?: ServerIdProbe } = {}): () =>
     for (const stop of stops) stop();
     probe = probeServerId;
     restart = null;
+    follow = null;
+    if (settling) clearTimeout(settling);
+    settling = null;
     probing.clear();
   };
 }

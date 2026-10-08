@@ -104,7 +104,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
       // (`resolveClient` does the same), never straight from `serverUrl`.
       map.set(
         c.id,
-        new ApiClient(pickedUrl(c, picks), c.token, undefined, () =>
+        new ApiClient(pickedUrl(c, picks[c.id]), c.token, undefined, () =>
           useSession.getState().markNeedsReconnect(c.id, 'auth'),
         ),
       );

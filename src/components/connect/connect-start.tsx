@@ -22,13 +22,7 @@ import { cleanAddresses, normalizeUrl, parsePairingScan } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 
 import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from './connect-frame';
-import {
-  hostOf,
-  knownToOffer,
-  looksLikeHomeAddress,
-  pairingAddresses,
-  reconnectAddress,
-} from './connect-model';
+import { hostOf, knownToOffer, looksLikeHomeAddress, reconnectAddress } from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
@@ -164,7 +158,6 @@ export function ConnectStart() {
       await finishConnect({
         serverUrl: base,
         session: demo,
-        addresses: pairingAddresses(undefined, demo.addresses),
         name,
       });
     } catch (e) {

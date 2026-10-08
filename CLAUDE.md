@@ -253,10 +253,12 @@ and routes into the EXISTING connect → sign-in screens to re-enter a code/pass
 "Reconnect to <server>" shortcuts (with a per-entry forget).
 
 **Home and away addresses (Phase 5, capability `addresses`).** A connection keeps the server's
-`addresses: { home?, away? }` (persisted with its metadata, no storage-version bump). `setSession`
-merges what a pairing link, redeem payload, exchange or login says and keeps the prior value when
-absent; `mergeAddresses` (`src/lib/server-address.ts`) keeps a known `home` an answer lacks, because
-the server derives home from the request (an answer read through the away address can't know it).
+`addresses: { home?, away? }` (persisted with its metadata, no storage-version bump). Addresses are
+cleaned once where they arrive (`parsePairingScan`, and the `ApiClient` methods that return them);
+`setSession` merges what a pairing link, redeem payload, exchange or login says and keeps the prior
+value when absent, and `learnAddresses` does the same for a `GET /addresses` answer;
+`mergeAddresses` (`src/lib/server-address.ts`) keeps a known `home` an answer lacks, because the
+server derives home from the request (an answer read through the away address can't know it).
 `serverUrl` stays what the user paired with and is never rewritten. Which address requests go to is
 an in-memory pick (`src/api/address-route.ts`: `useAddressRoute`, `effectiveUrl(c)`, and
 `useActiveAddress(cid)` plus `ADDRESS_KIND_LABEL`/`ADDRESS_IN_USE_LABEL` for UI); `ApiProvider` and
@@ -271,8 +273,8 @@ home pick at once when the device moves network, refreshes `GET /addresses` (`us
 is the hook form), and restarts a streamed book still playing from a previous address in place
 through `startBookInPlace` (never a paused one). `parsePairingScan` returns `addresses` from
 `home=`/`away=` on both link carriers. The known-servers entry keeps the addresses too
-(`remember` merges them, `setConnectionAddresses` updates them, and `setSession` falls back to them
-when signing in again after signing out), and a "Reconnect to <server>" row on native signs in
+(the session hands `remember` / `rememberAddresses` what it merged, and `setSession` falls back to
+them when signing in again after signing out), and a "Reconnect to <server>" row on native signs in
 through the home address when it answers as that server (`reconnectAddress`). The "At home and
 away" card is ONE component, `AddressesCard` (`src/components/layout/addresses-card.tsx`): connect
 shows it when the server has both addresses, Account shows whichever it knows and, on native, the
@@ -280,9 +282,9 @@ one in use (`inUse`); the web passes no `inUse` and says only what the addresses
 
 **Connect and onboarding** (`src/components/connect/`, routes `src/app/connect/{index,sign-in,ready,scan}.tsx`):
 every way in (pairing link or QR, invite code, password, demo) ends in `finishConnect`, which
-stores the connection with the server's name and the addresses the link and the answer taught
-(`pairingAddresses`) and shows `/connect/ready?connection=` ("Your library is ready.") only for
-the device's first connection; an added server goes back with `leaveOnboarding()`. `repairPlan`: a
+stores the connection with the server's name and the addresses the link (`linkAddresses`) and the
+answer taught, merged there once, and shows `/connect/ready?connection=` ("Your library is
+ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
 banner signs in through `effectiveUrl` and passes `reconnect=<cid>`, so a reset server reached
 through its away address still retires its dead identity. `/connect` decides its "nothing to add"

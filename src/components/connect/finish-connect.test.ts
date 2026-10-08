@@ -51,7 +51,7 @@ it('ends the first sign-in on "Your library is ready." for the new connection', 
   await finishConnect({
     serverUrl: AWAY,
     session: session('srv-1'),
-    addresses: { home: HOME, away: AWAY },
+    linkAddresses: { home: HOME, away: AWAY },
     name: 'Hearthside',
   });
   expect(mockReplace).toHaveBeenCalledWith({
@@ -83,12 +83,11 @@ it('a reconnect through the away address keeps the address the server was paired
   await finishConnect({
     serverUrl: HOME,
     session: session('srv-1'),
-    addresses: { home: HOME, away: AWAY },
+    linkAddresses: { home: HOME, away: AWAY },
   });
   await finishConnect({
     serverUrl: AWAY,
-    session: session('srv-1', { token: 'fresh' }),
-    addresses: { away: AWAY },
+    session: session('srv-1', { token: 'fresh', addresses: { away: AWAY } }),
     reconnectId: 'srv-1',
   });
   expect(useSession.getState().connections).toHaveLength(1);
@@ -103,13 +102,12 @@ it('a reset server reached through its away address retires the dead identity', 
   await finishConnect({
     serverUrl: HOME,
     session: session('old'),
-    addresses: { home: HOME, away: AWAY },
+    linkAddresses: { home: HOME, away: AWAY },
   });
   useSession.getState().markNeedsReconnect('old', 'server-reset');
   await finishConnect({
     serverUrl: AWAY,
-    session: session('new'),
-    addresses: { away: AWAY },
+    session: session('new', { addresses: { away: AWAY } }),
     reconnectId: 'old',
   });
   const ids = useSession.getState().connections.map((c) => c.id);
@@ -117,5 +115,37 @@ it('a reset server reached through its away address retires the dead identity', 
   expect(conn('new')).toMatchObject({
     serverUrl: HOME,
     addresses: { home: HOME, away: AWAY },
+  });
+});
+
+describe('the addresses a pairing taught (link merged with the answer, once)', () => {
+  const addressesAfter = async (link?: object, answer?: object) => {
+    await finishConnect({
+      serverUrl: AWAY,
+      session: session('srv-1', answer ? { addresses: answer } : {}),
+      linkAddresses: link,
+    });
+    return conn('srv-1')?.addresses;
+  };
+
+  it('keeps the home address a link carried when the answer (read through away) has none', async () => {
+    expect(await addressesAfter({ home: HOME, away: AWAY }, { away: AWAY })).toEqual({
+      home: HOME,
+      away: AWAY,
+    });
+  });
+
+  it("takes the answer's away address over the link's", async () => {
+    expect(await addressesAfter({ away: 'https://old.example.com' }, { away: AWAY })).toEqual({
+      away: AWAY,
+    });
+  });
+
+  it('keeps what the link said when the answer says nothing (an older server)', async () => {
+    expect(await addressesAfter({ home: HOME }, undefined)).toEqual({ home: HOME });
+  });
+
+  it('stores none when neither said anything', async () => {
+    expect(await addressesAfter(undefined, undefined)).toBeUndefined();
   });
 });

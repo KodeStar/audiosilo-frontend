@@ -92,20 +92,18 @@ describe('pickAddress', () => {
     expect(await pickAddress(conn({ addresses: { away: AWAY } }), probe)).toBe(AWAY);
     expect(probe).not.toHaveBeenCalled();
   });
-  it('treats a throwing probe as no answer', async () => {
-    const probe = jest.fn(async (): Promise<string | null> => {
-      throw new Error('boom');
-    });
-    expect(await pickAddress(conn(), probe)).toBe(AWAY);
+  it('uses away when home does not answer', async () => {
+    expect(await pickAddress(conn(), async () => null)).toBe(AWAY);
   });
 });
 
 describe('addressKind / isOwnAddress', () => {
   it('names the address in use', () => {
-    expect(addressKind(HOME, conn())).toBe('home');
-    expect(addressKind(`${AWAY}/`, conn())).toBe('away');
-    expect(addressKind('https://paired', conn({ serverUrl: 'https://paired' }))).toBe('paired');
-    expect(addressKind(AWAY, conn({ addresses: undefined }))).toBe('paired');
+    const { addresses } = conn();
+    expect(addressKind(HOME, addresses)).toBe('home');
+    expect(addressKind(`${AWAY}/`, addresses)).toBe('away');
+    expect(addressKind('https://paired', addresses)).toBe('paired');
+    expect(addressKind(AWAY, undefined)).toBe('paired');
   });
   it('knows the connection own addresses', () => {
     const c = conn({ serverUrl: 'https://paired' });

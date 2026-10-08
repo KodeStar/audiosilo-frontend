@@ -13,7 +13,6 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-import { cleanAddresses } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { APP_VERSION } from '@/lib/version';
 import { useSession } from '@/stores/session';
@@ -228,11 +227,11 @@ function AccountAddresses({ cid, caps }: { cid: string; caps: Capabilities | und
   const { data: fresh } = useServerAddresses(cid);
   const active = useActiveAddress(cid);
   if (caps?.addresses !== true) return null;
-  const addresses = mergeAddresses(kept, cleanAddresses(fresh));
+  const addresses = mergeAddresses(kept, fresh);
   if (!addresses) return null;
   // Named against what the card shows (the server may have just told us an address the
   // device hasn't stored yet).
-  const inUse = addressKind(active.url, { id: cid, serverUrl: active.url, addresses });
+  const inUse = addressKind(active.url, addresses);
   return (
     <AddressesCard
       addresses={addresses}
