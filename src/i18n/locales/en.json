@@ -1989,6 +1989,10 @@
       }
     }
   },
+  "widgets": {
+    "empty": "Play a book and it shows up here.",
+    "sleepTimer": "Sleep timer"
+  },
   "effects": {
     "smartSpeed": {
       "label": "Smart speed",

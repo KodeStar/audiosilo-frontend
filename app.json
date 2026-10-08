@@ -69,12 +69,30 @@
       "expo-localization",
       "./plugins/withCarPlay",
       "./plugins/withXcode26SwiftUICoreFix",
+      "./plugins/withWidgetsNoPush",
       [
         "expo-build-properties",
         {
           "ios": {
             "buildReactNativeFromSource": true
           }
+        }
+      ],
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "app.audiosilo.widget",
+          "groupIdentifier": "group.app.audiosilo",
+          "widgets": [
+            {
+              "name": "ContinueListening",
+              "displayName": "Continue listening",
+              "description": "The book you are listening to, its chapter and the time left.",
+              "ios": {
+                "supportedFamilies": ["systemSmall", "systemMedium"]
+              }
+            }
+          ]
         }
       ]
     ],

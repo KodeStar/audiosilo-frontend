@@ -1989,6 +1989,10 @@
       }
     }
   },
+  "widgets": {
+    "empty": "Spiel ein Buch ab, dann erscheint es hier.",
+    "sleepTimer": "Sleep-Timer"
+  },
   "effects": {
     "smartSpeed": {
       "label": "Pausen kürzen",

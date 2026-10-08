@@ -1989,6 +1989,10 @@
       }
     }
   },
+  "widgets": {
+    "empty": "Reproduza um livro e ele aparecerá aqui.",
+    "sleepTimer": "Temporizador"
+  },
   "effects": {
     "smartSpeed": {
       "label": "Velocidade inteligente",

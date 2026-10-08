@@ -35,6 +35,7 @@ import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { ThemeProvider } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { startWidgetSync } from '@/widgets/widget-sync';
 
 export const unstable_settings = {
   anchor: '(app)',
@@ -143,6 +144,10 @@ export default function RootLayout() {
   // Home and away addresses: picks the address each server is reached at (native only)
   // and keeps the playing book on it. Framework-free like the others; see the module.
   useEffect(() => startAddressRouting(), []);
+
+  // iOS: the Continue listening widget and the sleep timer Live Activity follow the player
+  // and the sleep timer (a no-op elsewhere). Framework-free like the others; see the module.
+  useEffect(() => startWidgetSync(), []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.
