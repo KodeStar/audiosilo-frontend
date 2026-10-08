@@ -1,6 +1,6 @@
 import { type RefObject, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { View } from 'react-native';
+import { AppState, type AppStateStatus, type View } from 'react-native';
 
 import { toast } from '@/components/ui/toast';
 
@@ -16,8 +16,25 @@ function nextFrames(): Promise<void> {
   });
 }
 
+/** Resolves once the app is in the foreground again (at once when it is). Android's
+ * share sheet answers as soon as a target is picked, while that app (Files, a chat) is
+ * still open over this one; the story must stay held until the listener is back. */
+export function untilAppActive(): Promise<void> {
+  const away = (s: AppStateStatus | null) => s === 'background' || s === 'inactive';
+  if (!away(AppState.currentState)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (away(s)) return;
+      sub.remove();
+      resolve();
+    });
+  });
+}
+
 export type ShareCardState = {
-  /** A share is being made: the story holds its card (no auto-advance) meanwhile. */
+  /** A share is being made: the story holds its card (no auto-advance) meanwhile, from
+   * the press until the capture and the share sheet have settled and the app is back in
+   * the foreground (`untilAppActive`). */
   busy: boolean;
   /** The card draws its covers as plain title blocks: the second try of a capture that
    * failed with covers (an image the capture could not read). */
@@ -67,8 +84,9 @@ export function useShareCard(): ShareCardState {
         console.warn('[year] card share failed', e);
         toast({ title: t('year.shareFailed'), description: t('year.shareFailedBody') });
       } finally {
-        running.current = false;
         setCoversOff(false);
+        await untilAppActive();
+        running.current = false;
         setBusy(false);
       }
     },

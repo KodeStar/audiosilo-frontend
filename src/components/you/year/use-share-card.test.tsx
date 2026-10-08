@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
-import type { View } from 'react-native';
+import { AppState, type AppStateStatus, type View } from 'react-native';
 
 const mockCapture = jest.fn();
 const mockDeliver = jest.fn();
@@ -42,6 +42,41 @@ describe('useShareCard', () => {
     });
     expect(result.current.busy).toBe(false);
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('stays busy (the story held) until the app is back from the app shared to', async () => {
+    // Android's share sheet answers once a target is picked, while Files is still open
+    // over the app: the story kept advancing behind it.
+    const app = AppState as { currentState: AppStateStatus };
+    const was = app.currentState;
+    app.currentState = 'background';
+    const listeners: ((s: AppStateStatus) => void)[] = [];
+    const remove = jest.fn();
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, fn) => {
+      listeners.push(fn as (s: AppStateStatus) => void);
+      return { remove } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    const { result } = await renderHook(() => useShareCard());
+    let done: Promise<void> = Promise.resolve();
+    await act(async () => {
+      done = result.current.share(card, opts);
+    });
+    expect(mockDeliver).toHaveBeenCalled();
+    expect(result.current.busy).toBe(true);
+    // Still away: a second change to background keeps it held.
+    await act(async () => listeners.forEach((l) => l('background')));
+    expect(result.current.busy).toBe(true);
+    // A second press meanwhile does nothing.
+    await act(async () => result.current.share(card, opts));
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    app.currentState = 'active';
+    await act(async () => {
+      listeners.forEach((l) => l('active'));
+      await done;
+    });
+    expect(result.current.busy).toBe(false);
+    expect(remove).toHaveBeenCalled();
+    app.currentState = was;
   });
 
   it('tries the capture once more with plain covers, never the share sheet twice', async () => {
