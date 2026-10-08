@@ -3,6 +3,7 @@ import { skipToken, useQueries, useQuery } from '@tanstack/react-query';
 import { allProgressQuery, qk, useBook, useCapability, useChapters } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { Book } from '@/api/types';
+import { useResumePosition } from '@/components/player/use-listening-position';
 import { useResumeChapter } from '@/components/series/use-resume-chapter';
 import { percentHeard } from '@/lib/progress-view';
 
@@ -73,11 +74,14 @@ export function useReadySummary(connectionId: string): ReadySummary {
   const { data: chapters } = useChapters(at?.library_id ?? 0, at?.path ?? '', connectionId, {
     enabled: !!at,
   });
+  // The chapter and the percent from ONE place: the player's when this book is loaded
+  // (a press plays it from there), else the saved one.
   const chapter = useResumeChapter(target, at?.position);
+  const position = useResumePosition(target, at?.position, 60) ?? 0;
   const total = chapters?.duration || at?.duration || book?.duration || 0;
   const place: ReadyPlace | null =
     at && book
-      ? { title: book.title, chapter, percent: percentHeard(at.position, total, false) }
+      ? { title: book.title, chapter, percent: percentHeard(position, total, false) }
       : null;
 
   return {
