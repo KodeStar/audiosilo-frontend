@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ApiError } from '@/api/client';
 import { useOptionalApi } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
+import { useNow } from '@/lib/use-now';
 
 import { PAIRING_TTL_MS, pairingSecondsLeft } from './account-model';
 
@@ -22,18 +23,16 @@ export function usePairing(connectionId: string, serverName: string) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  // A one-second tick only while a live code shows. It reads the clock, not a counter,
+  // so a phone that slept through the countdown wakes to the right time.
+  const [ticking, setTicking] = useState(false);
+  const now = useNow(1000, ticking);
 
   const secondsLeft = pairing ? pairingSecondsLeft(pairing.expiresAt, now) : 0;
   const expired = pairing !== null && secondsLeft === 0;
-
-  // A one-second tick while a live code shows. It reads the clock, not a counter, so a
-  // phone that slept through the countdown wakes to the right time.
-  useEffect(() => {
-    if (!pairing || expired) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [pairing, expired]);
+  const live = pairing !== null && !expired;
+  // Follows the code during render (React's way to keep state in step with other state).
+  if (ticking !== live) setTicking(live);
 
   const create = useCallback(async () => {
     if (!api || loading) return;
@@ -41,9 +40,7 @@ export function usePairing(connectionId: string, serverName: string) {
     setLoading(true);
     try {
       const payload = await api.pair();
-      const at = Date.now();
-      setNow(at);
-      setPairing({ payload, expiresAt: at + PAIRING_TTL_MS });
+      setPairing({ payload, expiresAt: Date.now() + PAIRING_TTL_MS });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('account.pair.error', { server: serverName }));
     } finally {

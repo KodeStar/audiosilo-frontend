@@ -15,15 +15,11 @@ import type { NavRoute } from '@/lib/root-stack';
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 
 /** Whole seconds left before a code that expires at `expiresAt` (epoch ms) stops working;
- * 0 once it has. Rounded up, so the last second reads 0:01, not 0:00. */
+ * 0 once it has. Rounded up, so the last second reads 0:01, not 0:00. Never more than the
+ * code's 10 minutes: a `now` read before the code arrived (the clock ticks only while a
+ * code shows) reads as a fresh code. */
 export function pairingSecondsLeft(expiresAt: number, now: number): number {
-  return Math.max(0, Math.ceil((expiresAt - now) / 1000));
-}
-
-/** A countdown as `m:ss` (`9:05`, `0:42`). */
-export function formatCountdown(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return Math.min(PAIRING_TTL_MS / 1000, Math.max(0, Math.ceil((expiresAt - now) / 1000)));
 }
 
 /**

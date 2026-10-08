@@ -9,10 +9,14 @@ import { AppState } from 'react-native';
  * that. The foreground refresh matters because a suspended app runs no timers: a screen
  * kept alive across a warm resume days later would otherwise read the clock it was
  * suspended with until the next period.
+ *
+ * `enabled: false` stops the ticks (a countdown with nothing to count): the value stays
+ * what it last read until it is enabled again and the next period passes.
  */
-export function useNow(periodMs: number): number {
+export function useNow(periodMs: number, enabled = true): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!enabled) return;
     const timer = setInterval(() => setNow(Date.now()), periodMs);
     const appState = AppState.addEventListener('change', (state) => {
       if (state === 'active') setNow(Date.now());
@@ -21,6 +25,6 @@ export function useNow(periodMs: number): number {
       clearInterval(timer);
       appState?.remove();
     };
-  }, [periodMs]);
+  }, [periodMs, enabled]);
   return now;
 }

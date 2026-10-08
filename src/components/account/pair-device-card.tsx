@@ -7,10 +7,10 @@ import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { copyText } from '@/lib/clipboard';
 import { shareText } from '@/lib/share';
+import { formatClock } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
-import { formatCountdown } from './account-model';
 import { usePairing } from './use-pairing';
 
 /** The drawn QR code's side, in points. */
@@ -70,7 +70,7 @@ export function PairDeviceCard({
               <>
                 <Text variant="muted">{t('account.pair.body')}</Text>
                 <Text variant="label" style={tabularNums} testID="pair-countdown">
-                  {t('account.pair.expiresIn', { time: formatCountdown(pairing.secondsLeft) })}
+                  {t('account.pair.expiresIn', { time: formatClock(pairing.secondsLeft) })}
                 </Text>
               </>
             )}

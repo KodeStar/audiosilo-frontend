@@ -6,7 +6,6 @@ import {
   avatarHues,
   canRevoke,
   deviceGlyph,
-  formatCountdown,
   knownPlatform,
   lastSeen,
   PAIRING_TTL_MS,
@@ -41,12 +40,8 @@ describe('pairing countdown', () => {
     expect(pairingSecondsLeft(expiresAt, expiresAt + 5000)).toBe(0);
   });
 
-  it('formats m:ss', () => {
-    expect(formatCountdown(600)).toBe('10:00');
-    expect(formatCountdown(545)).toBe('9:05');
-    expect(formatCountdown(42)).toBe('0:42');
-    expect(formatCountdown(0)).toBe('0:00');
-    expect(formatCountdown(-3)).toBe('0:00');
+  it('reads a clock from before the code arrived as a fresh code', () => {
+    expect(pairingSecondsLeft(NOW + PAIRING_TTL_MS, NOW - 42_000)).toBe(600);
   });
 });
 
