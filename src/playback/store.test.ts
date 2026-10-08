@@ -360,10 +360,15 @@ describe('the periodic save while JS timers are paused (Android in the backgroun
     }
   }
 
-  it("saves every 15 s of playing from the engine's ticks, and stops on a pause", async () => {
+  /** A book started and playing at `at`, with nothing saved yet. */
+  async function startPlaying(at = 10) {
     await startBook(makeBook(), 0);
-    pushSnapshot(snap('playing', 10));
+    pushSnapshot(snap('playing', at));
     mockSaveProgress.mockClear();
+  }
+
+  it("saves every 15 s of playing from the engine's ticks, and stops on a pause", async () => {
+    await startPlaying();
     inBackground(45, 10);
     await flushMicrotasks();
     expect(saved()).toEqual([25, 40, 55]);
@@ -377,9 +382,7 @@ describe('the periodic save while JS timers are paused (Android in the backgroun
   });
 
   it('never saves twice in one interval when the interval and the ticks both run', async () => {
-    await startBook(makeBook(), 0);
-    pushSnapshot(snap('playing', 10));
-    mockSaveProgress.mockClear();
+    await startPlaying();
     // In front: the interval fires AND the ticks arrive, offset so a tick lands just
     // before each of the interval's turns.
     jest.advanceTimersByTime(500);
@@ -398,25 +401,21 @@ describe('the periodic save while JS timers are paused (Android in the backgroun
   });
 
   it("holds the ticks' saves while a place check is out, then carries on", async () => {
-    await startBook(makeBook(), 0);
-    pushSnapshot(snap('playing', 10));
-    mockSaveProgress.mockClear();
+    await startPlaying();
+    inBackground(12, 10);
     const release = holdSaves();
-    inBackground(20, 10); // the hold's own 5 s release is a timer too, so it waits
+    inBackground(4, 22); // the save due at 15 s falls inside the hold
     await flushMicrotasks();
     expect(mockSaveProgress).not.toHaveBeenCalled();
     release({ flush: false }); // the check answered (a fetch resolves in the background)
-    inBackground(15, 30);
+    inBackground(15, 26);
     await flushMicrotasks();
-    // The held turn (at 15 s) still took its turn, as the interval's would: the next is
-    // 15 s after it.
+    // The held turn still took its turn, as the interval's would: the next is 15 s on.
     expect(saved()).toEqual([40]);
   });
 
   it("saves a seek at once and keeps the periodic save's own cadence", async () => {
-    await startBook(makeBook(), 0);
-    pushSnapshot(snap('playing', 40));
-    mockSaveProgress.mockClear();
+    await startPlaying(40);
     inBackground(5, 40);
     // A seek back from the notification: saved straight away (the floor comes down with
     // it), and the next periodic save is still due 15 s after the loop started, not 15 s

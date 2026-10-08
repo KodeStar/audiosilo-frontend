@@ -13,6 +13,7 @@ import { canAutoDownload } from '@/lib/network';
 import { useSettings } from '@/stores/settings';
 
 import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
+import { engineTick, engineTicker } from './engine-ticks';
 import {
   flushConnection,
   flushQueue,
@@ -83,7 +84,6 @@ function localFromManifest(manifest: DownloadManifest): {
 let service: PlaybackService | null = null;
 let apiRef: ApiClient | null = null;
 let deviceId = '';
-let saveTimer: ReturnType<typeof setInterval> | null = null;
 let historyStart: { position: number; at: number } | null = null;
 /** Do we intend to be playing right now? Gates the stall watchdog so an idle/paused
  * buffer never surfaces as an error. Set by the play/pause actions and kept in sync
@@ -376,44 +376,17 @@ async function knownSpeed(connectionId: string, libraryId: number, path: string)
   return newest?.playback_speed ?? 0;
 }
 
-/**
- * The periodic save has two clocks, and this is the one moment they share: when it last
- * ran (`Date.now()`). The interval below is the obvious one, but Android pauses every JS
- * timer while the activity is paused (React Native's `JavaTimerManager.onHostPause`), so
- * with the screen off or another app in front it never fires: on a Pixel, two minutes of
- * background listening saved nothing, and another device picking the book up got a stale
- * place. The engine's own events still reach JS there (the native module's 1 s progress
- * loop is a native handler), so its ticks drive the save too (`saveIfDue`, from the
- * engine subscription). Whichever comes first saves and resets this, so the two never
- * both save within one interval. iOS keeps JS timers running in the background (RCTTiming
- * moves them to an NSTimer) and its periodic time observer keeps ticking, so there both
- * clocks run and this keeps them to one save; the web's `timeupdate` keeps ticking in a
- * hidden tab whose timers the browser throttles. Only the periodic save moves it: a
- * seek's or a pause's own save leaves the cadence where it was, as before.
- */
-let periodicSaveAt = 0;
-
-/** Run the periodic save when one is due: the save loop is running (the book reached
- * `playing` and has not settled since; `playBook` stops it before a book switch, so a
- * late tick of the old book can never save under the new one) and `SAVE_INTERVAL_MS`
- * has passed since the last one. `persist` keeps every guard it has (the save hold, no
- * server, the resume floor). */
-function saveIfDue() {
-  if (!saveTimer || Date.now() - periodicSaveAt < SAVE_INTERVAL_MS) return;
-  periodicSaveAt = Date.now();
-  void persist();
-}
-
+/** The 15 s periodic save. An `engineTicker`, so the engine's events keep it going where
+ * Android has paused the interval (screen off, app in the background). `playBook` stops
+ * it before a book switch, so a late event of the old book never saves under the new one. */
+const saveLoop = engineTicker(() => void persist(), SAVE_INTERVAL_MS);
+/** Re-based on every start: the first save comes 15 s after playing starts. */
 function startSaveLoop() {
-  stopSaveLoop();
-  periodicSaveAt = Date.now();
-  saveTimer = setInterval(saveIfDue, SAVE_INTERVAL_MS);
+  saveLoop.stop();
+  saveLoop.start();
 }
 function stopSaveLoop() {
-  if (saveTimer) {
-    clearInterval(saveTimer);
-    saveTimer = null;
-  }
+  saveLoop.stop();
 }
 
 /** Capture the current position then stop the periodic save loop - shared by the
@@ -618,9 +591,9 @@ async function ensureService(): Promise<PlaybackService> {
         haltAndPersist();
       }
     }
-    // The engine's ticks keep the periodic save going where the interval can't fire
-    // (Android, app in the background): see `periodicSaveAt`.
-    if (snapshot.state === 'playing') saveIfDue();
+    // The engine's events drive the periodic work (the save, the sleep timer) where
+    // Android has paused the JS timers: see `engineTicker`.
+    engineTick();
   });
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
