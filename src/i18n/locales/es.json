@@ -325,7 +325,8 @@
       "demoError": "No se pudo iniciar la demostración: {{message}}",
       "demoReachError": "No se pudo contactar con el servidor de demostración.",
       "tryDemo": "Probar la demostración",
-      "scanQr": "Escanear un código QR"
+      "scanQr": "Escanear un código QR",
+      "cancelAdd": "Cancelar añadir un servidor"
     },
     "signIn": {
       "title": "Iniciar sesión",

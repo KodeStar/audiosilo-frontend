@@ -325,7 +325,8 @@
       "demoError": "Die Demo konnte nicht gestartet werden: {{message}}",
       "demoReachError": "Der Demo-Server konnte nicht erreicht werden.",
       "tryDemo": "Demo ausprobieren",
-      "scanQr": "QR-Code scannen"
+      "scanQr": "QR-Code scannen",
+      "cancelAdd": "Hinzufügen eines Servers abbrechen"
     },
     "signIn": {
       "title": "Anmelden",

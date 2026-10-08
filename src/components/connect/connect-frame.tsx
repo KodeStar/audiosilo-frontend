@@ -29,6 +29,8 @@ import { CoverCascadePanel } from './cover-cascade';
  */
 
 type Reveal = () => void;
+/** Scroll a view of the column into what the keyboard leaves of it. */
+type RevealView = (view: HostInstance | null) => void;
 
 /** How the steps and the cascade panel share the width, per form factor. */
 const SHARE = {
@@ -38,6 +40,29 @@ const SHARE = {
 } as const;
 
 const RevealContext = createContext<Reveal>(() => {});
+export const RevealViewContext = createContext<RevealView>(() => {});
+
+/**
+ * Something that appears in a connect column under a field the keyboard is up for (the
+ * address probe's "Found Hearthside" with its Sign in): once laid out, it is scrolled into
+ * what the keyboard leaves, as a focused field is. Without it the notice's button sat
+ * half under the iOS keyboard.
+ */
+export function ConnectReveal({ children, testID }: { children: ReactNode; testID?: string }) {
+  const revealView = useContext(RevealViewContext);
+  const ref = useRef<View>(null);
+  return (
+    <View
+      ref={ref}
+      testID={testID}
+      onLayout={() =>
+        requestAnimationFrame(() => revealView(ref.current as unknown as HostInstance | null))
+      }
+    >
+      {children}
+    </View>
+  );
+}
 
 /** A connect screen's text field: an `Input` that, when it takes the focus, is scrolled
  * into the part of the frame the keyboard leaves (`ConnectFrame`). */
@@ -109,25 +134,31 @@ function KeyboardColumn({
   const scrollY = useRef(0);
   const viewport = useRef(0);
 
+  // Scroll `target` (a field, a notice) into the part of the column left visible.
+  const revealView = useCallback<RevealView>(
+    (target) => {
+      const content = inner.current as unknown as HostInstance | null;
+      if (!native || !target || !content) return;
+      target.measureLayout(
+        content,
+        (_x, top, _w, height) => {
+          const to = revealOffset({
+            fieldTop: top,
+            fieldBottom: top + height,
+            scrollY: scrollY.current,
+            viewport: viewport.current,
+          });
+          if (to !== null) scroll.current?.scrollTo({ y: to, animated: true });
+        },
+        () => {},
+      );
+    },
+    [native],
+  );
+
   const reveal = useCallback(() => {
-    if (!native) return;
-    const field = TextInput.State.currentlyFocusedInput?.() as HostInstance | null;
-    const content = inner.current as unknown as HostInstance | null;
-    if (!field || !content) return;
-    field.measureLayout(
-      content,
-      (_x, top, _w, height) => {
-        const to = revealOffset({
-          fieldTop: top,
-          fieldBottom: top + height,
-          scrollY: scrollY.current,
-          viewport: viewport.current,
-        });
-        if (to !== null) scroll.current?.scrollTo({ y: to, animated: true });
-      },
-      () => {},
-    );
-  }, [native]);
+    revealView(TextInput.State.currentlyFocusedInput?.() as HostInstance | null);
+  }, [revealView]);
 
   // A field focused while the keyboard is already up (the password after the username):
   // the view has its size, so reveal on the next frame.
@@ -137,29 +168,34 @@ function KeyboardColumn({
 
   return (
     <RevealContext.Provider value={revealSoon}>
-      <View style={{ flex: 1, paddingBottom: pad }}>
-        <ScrollView
-          ref={scroll}
-          innerViewRef={inner as React.RefObject<View>}
-          keyboardShouldPersistTaps="handled"
-          scrollEventThrottle={32}
-          onScroll={(e) => {
-            scrollY.current = e.nativeEvent.contentOffset.y;
-          }}
-          onLayout={(e) => {
-            viewport.current = e.nativeEvent.layout.height;
-            // The keyboard just shortened the view: bring the focused field up.
-            if (pad > 0) reveal();
-          }}
-          contentContainerClassName={cn('grow justify-center', wide ? 'px-12 py-12' : 'px-5 py-6')}
-        >
-          <View
-            className={cn('w-full max-w-[560px] gap-6 self-center', centered && 'items-center')}
+      <RevealViewContext.Provider value={revealView}>
+        <View style={{ flex: 1, paddingBottom: pad }}>
+          <ScrollView
+            ref={scroll}
+            innerViewRef={inner as React.RefObject<View>}
+            keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={32}
+            onScroll={(e) => {
+              scrollY.current = e.nativeEvent.contentOffset.y;
+            }}
+            onLayout={(e) => {
+              viewport.current = e.nativeEvent.layout.height;
+              // The keyboard just shortened the view: bring the focused field up.
+              if (pad > 0) reveal();
+            }}
+            contentContainerClassName={cn(
+              'grow justify-center',
+              wide ? 'px-12 py-12' : 'px-5 py-6',
+            )}
           >
-            {children}
-          </View>
-        </ScrollView>
-      </View>
+            <View
+              className={cn('w-full max-w-[560px] gap-6 self-center', centered && 'items-center')}
+            >
+              {children}
+            </View>
+          </ScrollView>
+        </View>
+      </RevealViewContext.Provider>
     </RevealContext.Provider>
   );
 }

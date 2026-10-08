@@ -325,7 +325,8 @@
       "demoError": "Could not start the demo: {{message}}",
       "demoReachError": "Could not reach the demo server.",
       "tryDemo": "Try the demo",
-      "scanQr": "Scan a QR code"
+      "scanQr": "Scan a QR code",
+      "cancelAdd": "Cancel adding a server"
     },
     "signIn": {
       "title": "Sign in",

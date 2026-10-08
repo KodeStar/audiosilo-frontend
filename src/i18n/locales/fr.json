@@ -325,7 +325,8 @@
       "demoError": "Impossible de démarrer la démo : {{message}}",
       "demoReachError": "Impossible de joindre le serveur de démonstration.",
       "tryDemo": "Essayer la démo",
-      "scanQr": "Scanner un code QR"
+      "scanQr": "Scanner un code QR",
+      "cancelAdd": "Annuler l’ajout d’un serveur"
     },
     "signIn": {
       "title": "Connexion",

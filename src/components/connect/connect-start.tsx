@@ -7,6 +7,7 @@ import { ApiClient, ApiError } from '@/api/client';
 import { probeServerId } from '@/api/server-id-probe';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
+import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { webOrigin } from '@/lib/base-url';
@@ -20,7 +21,7 @@ import { useLayout } from '@/lib/layout';
 import { cleanAddresses, normalizeUrl, parsePairingScan } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 
-import { BrandLockup, ConnectFrame, ConnectInput, StepDots } from './connect-frame';
+import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from './connect-frame';
 import {
   hostOf,
   knownToOffer,
@@ -95,6 +96,9 @@ export function ConnectStart() {
       cancelled = true;
     };
   }, []);
+
+  // Back to where the listener came from (Settings, the profile menu), else the app.
+  const closeAdd = () => (router.canGoBack() ? router.back() : leaveOnboarding());
 
   const goSignIn = (name: string) =>
     router.push({ pathname: '/connect/sign-in', params: { serverName: name } });
@@ -201,6 +205,21 @@ export function ConnectStart() {
 
   return (
     <ConnectFrame testID="connect-start">
+      {/* Adding a server (a connection already exists): a way back to the app. The first
+          run has nowhere to go back to. */}
+      {connectionIds ? (
+        <View className="flex-row justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="close"
+            title={t('common.cancel')}
+            accessibilityLabel={t('connect.server.cancelAdd')}
+            onPress={closeAdd}
+            testID="connect-cancel"
+          />
+        </View>
+      ) : null}
       {phone ? <CoverFan /> : null}
       <BrandLockup />
       <StepDots step={0} />
@@ -256,12 +275,15 @@ export function ConnectStart() {
           </View>
         </View>
         {probe ? (
-          <ProbeNotice
-            probe={probe}
-            onSignIn={() => probe.kind === 'found' && goSignIn(probe.name)}
-            onDemo={() => probe.kind === 'found' && onTryDemo(probe.base, probe.name)}
-            demoLoading={demoLoading}
-          />
+          // Scrolled into view when it appears: the keyboard is usually still up.
+          <ConnectReveal testID="probe-reveal">
+            <ProbeNotice
+              probe={probe}
+              onSignIn={() => probe.kind === 'found' && goSignIn(probe.name)}
+              onDemo={() => probe.kind === 'found' && onTryDemo(probe.base, probe.name)}
+              demoLoading={demoLoading}
+            />
+          </ConnectReveal>
         ) : null}
         {demoError ? (
           <Text variant="caption" className="text-destructive" role="alert">

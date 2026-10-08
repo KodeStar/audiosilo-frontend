@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
@@ -12,12 +12,16 @@ import { renderConnect as render } from './connect-testing';
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
+const mockBack = jest.fn();
+let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
   router: {
     push: (h: unknown) => mockPush(h),
     replace: (h: unknown) => mockReplace(h),
     dismissTo: (h: unknown) => mockDismissTo(h),
+    back: () => mockBack(),
+    canGoBack: () => mockCanGoBack,
   },
   useLocalSearchParams: () => mockParams,
 }));
@@ -76,6 +80,7 @@ beforeEach(async () => {
   mockBases.length = 0;
   mockParams = {};
   mockLayout = 'phone';
+  mockCanGoBack = true;
   Platform.OS = 'ios';
   useSession.setState({
     status: 'unauthenticated',
@@ -153,6 +158,8 @@ describe('the address field', () => {
     await fireEvent.press(screen.getByText('Continue'));
     expect(await screen.findByText('Found Hearthside')).toBeTruthy();
     expect(screen.getByText('AudioSilo 1.17.0')).toBeTruthy();
+    // Scrolled into view when it appears (the keyboard is usually up): see ConnectReveal.
+    expect(within(screen.getByTestId('probe-reveal')).getByText('Found Hearthside')).toBeTruthy();
     expect(useSession.getState().pendingServerUrl).toBe(AWAY);
     await fireEvent.press(screen.getByLabelText('Sign in to Hearthside'));
     expect(mockPush).toHaveBeenCalledWith({
@@ -248,6 +255,37 @@ describe('remembered servers', () => {
     await render(<ConnectStart />);
     await act(async () => {});
     expect(screen.queryByLabelText('Reconnect to Hearthside')).toBeNull();
+  });
+});
+
+describe('adding a server', () => {
+  const signIn = () =>
+    useSession
+      .getState()
+      .setSession({ serverUrl: AWAY, serverId: 'srv-1', token: 't', user, name: 'Hearthside' });
+
+  it('has no Cancel on the first run', async () => {
+    await render(<ConnectStart />);
+    expect(screen.queryByTestId('connect-cancel')).toBeNull();
+  });
+
+  it('cancels back to where the listener came from', async () => {
+    await signIn();
+    mockParams = { add: '1' };
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByLabelText('Cancel adding a server'));
+    expect(mockBack).toHaveBeenCalled();
+    expect(mockDismissTo).not.toHaveBeenCalled();
+  });
+
+  it('cancels to the app when there is nothing to go back to (a cold link)', async () => {
+    await signIn();
+    mockCanGoBack = false;
+    mockParams = { add: '1' };
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByLabelText('Cancel adding a server'));
+    expect(mockDismissTo).toHaveBeenCalledWith('/');
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });
 
