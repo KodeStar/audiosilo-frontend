@@ -1410,6 +1410,12 @@
       "show": "Afficher",
       "noServerTitle": "Le serveur de ce livre n'est pas connecté",
       "noServerHint": "Les signets, les notes et l'historique reviendront dès qu'il le sera."
+    },
+    "placeMoved": {
+      "title": "Reprise là où vous en étiez sur un autre appareil",
+      "chapterAt": "Chapitre {{chapter}}, {{time}}",
+      "at": "À {{time}}",
+      "undo": "Annuler"
     }
   },
   "reconnect": {

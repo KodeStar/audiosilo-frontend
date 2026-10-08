@@ -1410,6 +1410,12 @@
       "show": "Mostra",
       "noServerTitle": "Il server di questo libro non è connesso",
       "noServerHint": "Segnalibri, note e cronologia torneranno appena lo sarà."
+    },
+    "placeMoved": {
+      "title": "Posizione ripresa da un altro dispositivo",
+      "chapterAt": "Capitolo {{chapter}}, {{time}}",
+      "at": "A {{time}}",
+      "undo": "Annulla"
     }
   },
   "reconnect": {
