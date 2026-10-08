@@ -79,19 +79,32 @@ class VoiceBoostProcessorTest {
   @Test
   fun quietSpeechIsLiftedAndLoudSpeechIsTamed() {
     val second = rate
-    // -36 dBFS: under the knee, so only the +6 dB make-up applies.
+    // -36 dBFS: under the knee (-33 to -27), so only the +9 dB make-up applies.
     val quiet = PcmBuilder(rate, channels).tone(1000.0, 1000.0, dbfs(-36.0)).build()
     val (p1, _) = boost(on = true)
     val quietOut = runProcessor(p1, quiet, channels, chunk)
     val lift = rmsDb(quietOut, second / 2, second) - rmsDb(quiet, second / 2, second)
-    assertEquals("quiet speech lifted by the make-up gain", 6.0, lift, 0.5)
+    assertEquals("quiet speech lifted by the make-up gain", 9.0, lift, 0.5)
 
-    // -6 dBFS peak: 18 dB over the threshold -> 3:1 takes 12 dB, make-up gives 6 back.
+    // -6 dBFS peak: 24 dB over the threshold -> 3:1 takes 16 dB, make-up gives 9 back.
     val loud = PcmBuilder(rate, channels).tone(1000.0, 1000.0, dbfs(-6.0)).build()
     val (p2, _) = boost(on = true)
     val loudOut = runProcessor(p2, loud, channels, chunk)
     val change = rmsDb(loudOut, second / 2, second) - rmsDb(loud, second / 2, second)
-    assertEquals("loud speech brought down", -6.0, change, 0.75)
+    assertEquals("loud speech brought down", -7.0, change, 0.75)
+  }
+
+  @Test
+  fun liftAtTheThresholdIsAboutNineDb() {
+    // The preset's headline number: speech peaking at the -30 dBFS threshold comes out ~8.5 dB
+    // louder (+9 make-up, minus the knee's 0.5 dB).
+    val second = rate
+    val atThreshold = PcmBuilder(rate, channels).tone(1000.0, 1000.0, dbfs(-30.0)).build()
+    val (p, _) = boost(on = true)
+    val out = runProcessor(p, atThreshold, channels, chunk)
+    val lift = rmsDb(out, second / 2, second) - rmsDb(atThreshold, second / 2, second)
+    println("Voice Boost lift at -30 dBFS: %.2f dB".format(lift))
+    assertEquals("lift at the threshold", 8.5, lift, 0.5)
   }
 
   @Test
@@ -115,7 +128,7 @@ class VoiceBoostProcessorTest {
   @Test
   fun togglingRampsWithoutAClick() {
     // A steady -12 dBFS tone: its own largest sample-to-sample step is A x 2 pi f / fs. An
-    // instant switch would jump by |x| x (gain - 1), up to thousands at the +6 dB start.
+    // instant switch would jump by |x| x (gain - 1), up to thousands at the +9 dB start.
     val amplitude = dbfs(-12.0)
     val hz = 220.0
     val input = PcmBuilder(rate, channels).tone(3000.0, hz, amplitude).build()
@@ -142,9 +155,9 @@ class VoiceBoostProcessorTest {
   @Test
   fun compressorCurve() {
     assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-40.0), 1e-9)
-    assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-27.0), 1e-9) // knee starts
-    assertEquals(-0.5, VoiceBoostProcessor.compressorGainDb(-24.0), 1e-9) // mid-knee
-    assertEquals(-4.0, VoiceBoostProcessor.compressorGainDb(-18.0), 1e-9) // 6 over, 3:1
-    assertEquals(-16.0, VoiceBoostProcessor.compressorGainDb(0.0), 1e-9)
+    assertEquals(0.0, VoiceBoostProcessor.compressorGainDb(-33.0), 1e-9) // knee starts
+    assertEquals(-0.5, VoiceBoostProcessor.compressorGainDb(-30.0), 1e-9) // mid-knee
+    assertEquals(-4.0, VoiceBoostProcessor.compressorGainDb(-24.0), 1e-9) // 6 over, 3:1
+    assertEquals(-20.0, VoiceBoostProcessor.compressorGainDb(0.0), 1e-9)
   }
 }

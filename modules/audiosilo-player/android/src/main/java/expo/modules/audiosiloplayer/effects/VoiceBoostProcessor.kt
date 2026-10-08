@@ -24,8 +24,8 @@ import kotlin.math.sqrt
  * real time. 16-bit PCM in and out (the sink's float output is off, so the chain is always
  * 16-bit). Every channel shares one gain (stereo-linked), so the image never shifts.
  *
- * The wet path: an optional 80 Hz high-pass (rumble, handling noise), a compressor (-24 dBFS,
- * 3:1, 6 dB soft knee, 10 ms attack, 200 ms release, +6 dB make-up), a peak limiter (ceiling
+ * The wet path: an optional 80 Hz high-pass (rumble, handling noise), a compressor (-30 dBFS,
+ * 3:1, 6 dB soft knee, 10 ms attack, 200 ms release, +9 dB make-up), a peak limiter (ceiling
  * -1 dBFS, ~1 ms attack, 80 ms release) and a final clip at the ceiling, which only the first
  * millisecond of a sudden loud onset can reach (the limiter has no look-ahead, so it adds no
  * latency and holds no audio across a drain or a flush).
@@ -243,12 +243,14 @@ class VoiceBoostProcessor(
     private val DB_PER_LN = 20.0 / ln(10.0)
 
     const val HIGH_PASS_HZ = 80.0
-    const val THRESHOLD_DB = -24.0
+    // The stronger preset (device pass, 2026-10-08): -24 dBFS / +6 dB was hard to hear on a
+    // phone speaker. Quiet speech now gains 9 dB; at -30 dBFS 8.5 dB (the knee takes 0.5).
+    const val THRESHOLD_DB = -30.0
     const val RATIO = 3.0
     const val KNEE_DB = 6.0
     const val COMP_ATTACK_S = 0.010
     const val COMP_RELEASE_S = 0.200
-    const val MAKEUP_DB = 6.0
+    const val MAKEUP_DB = 9.0
     const val CEILING_DB = -1.0
     const val LIMIT_ATTACK_S = 0.001
     const val LIMIT_RELEASE_S = 0.080
