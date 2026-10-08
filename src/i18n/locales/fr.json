@@ -214,30 +214,22 @@
   },
   "connect": {
     "server": {
-      "subtitle": "Connectez-vous à votre serveur de livres audio",
       "connecting": "Connexion de votre appareil…",
       "addressLabel": "Adresse du serveur",
-      "connect": "Se connecter",
       "enterAddress": "Saisissez l'adresse de votre serveur",
       "missingAddress": "Ce lien d'association ne comporte pas l'adresse du serveur. Saisissez-la ci-dessous.",
       "pairingFailed": "Échec de l'association : {{message}}. Vous pouvez aussi vous connecter en saisissant votre code d'invitation sur l'écran de connexion.",
       "pairingReachError": "Impossible de joindre le serveur pour terminer l'association.",
-      "serverError": "Le serveur a répondu par une erreur : {{message}}",
-      "reachError": "Impossible de joindre ce serveur. Vérifiez l'adresse et qu'il est en ligne.",
       "demoError": "Impossible de démarrer la démo : {{message}}",
       "demoReachError": "Impossible de joindre le serveur de démonstration.",
-      "demoDivider": "serveur de démo",
-      "demoIntro": "Ce serveur propose une démo invité, sans compte requis.",
       "tryDemo": "Essayer la démo",
-      "signInInstead": "Se connecter à la place",
-      "or": "ou",
-      "scanQr": "Scanner le code QR"
+      "scanQr": "Scanner un code QR"
     },
     "signIn": {
       "title": "Connexion",
       "mode": {
-        "code": "Code",
-        "password": "Mot de passe"
+        "code": "Code d'invitation",
+        "password": "Nom d'utilisateur et mot de passe"
       },
       "codeLabel": "Code d'invitation",
       "codePlaceholder": "Saisissez votre code d'invitation",
@@ -245,7 +237,6 @@
       "usernamePlaceholder": "Nom d'utilisateur",
       "passwordLabel": "Mot de passe",
       "passwordPlaceholder": "Mot de passe",
-      "connect": "Se connecter",
       "submit": "Se connecter",
       "failed": "Échec de la connexion. Veuillez réessayer.",
       "modeLabel": "Mode de connexion"
@@ -258,6 +249,66 @@
       "tryAgain": "Réessayer",
       "openSettings": "Ouvrir les réglages",
       "aimHint": "Pointez votre caméra vers le code QR d'association sur la page de connexion de votre serveur."
+    },
+    "probe": {
+      "found": "{{name}} trouvé",
+      "version": "AudioSilo {{version}}",
+      "signIn": "Se connecter",
+      "signInTo": "Se connecter à {{name}}",
+      "unreachable": "Impossible de joindre {{address}}",
+      "hint": "Vérifiez l'orthographe et que le serveur est en ligne. Une adresse à la maison comme 192.168.1.20:8080 ne fonctionne que sur le même réseau que le serveur.",
+      "homeHint": "C'est une adresse du réseau de la maison : elle ne répond que sur le même réseau que le serveur. Vérifiez que cet appareil est sur ce réseau, et l'orthographe.",
+      "errorTitle": "Le serveur a répondu par une erreur",
+      "errorBody": "Message : {{message}}"
+    },
+    "link": {
+      "open": "J'ai un lien d'appairage",
+      "label": "Lien d'appairage",
+      "connect": "Se connecter",
+      "invalid": "Ce n'est pas un lien d'appairage AudioSilo. Ces liens ressemblent à https://<serveur>/web/connect?token=... ou audiosilo://connect?..."
+    }
+  },
+  "onboarding": {
+    "step": "Étape {{step}} sur {{count}}",
+    "start": {
+      "title": "Vos livres audio, depuis votre propre serveur.",
+      "lead": "Saisissez l'adresse que votre administrateur vous a donnée, ou scannez le code affiché sur son écran.",
+      "leadWeb": "Saisissez l'adresse que votre administrateur vous a donnée, ou collez le lien d'appairage qu'il vous a envoyé.",
+      "continue": "Continuer"
+    },
+    "signIn": {
+      "eyebrow": "{{name}} · {{host}}",
+      "codeHint": "Tiré de l'invitation de votre administrateur."
+    },
+    "anotherServer": "Un autre serveur",
+    "addresses": {
+      "title": "À la maison et à l'extérieur",
+      "body": "{{name}} a deux adresses. AudioSilo utilise la plus rapide à la maison et change tout seul quand vous sortez.",
+      "home": "À la maison",
+      "away": "À l'extérieur"
+    },
+    "panel": {
+      "title": "Chaque livre de la maison, sur chaque appareil.",
+      "body": "Une progression qui ne revient jamais à zéro. Des téléchargements qui se lisent sans connexion. Les livres qui manquent dans une série, visibles sur l'étagère."
+    },
+    "ready": {
+      "connected": "{{name}} est connecté",
+      "title": "Votre bibliothèque est prête.",
+      "and": "{{rest}} et {{last}}",
+      "booksIn_one": "{{books}} livre dans {{list}}.",
+      "booksIn_other": "{{books}} livres dans {{list}}.",
+      "booksAcross_one": "{{books}} livre dans {{libraries}} bibliothèques.",
+      "booksAcross_other": "{{books}} livres dans {{libraries}} bibliothèques.",
+      "librariesIn_one": "Votre bibliothèque : {{list}}.",
+      "librariesIn_other": "Vos bibliothèques : {{list}}.",
+      "librariesCount_one": "{{count}} bibliothèque est prête.",
+      "librariesCount_other": "{{count}} bibliothèques sont prêtes.",
+      "empty": "{{name}} n'a pas encore de livres. Ils apparaîtront ici dès que votre administrateur en ajoutera.",
+      "loadError": "Vos bibliothèques n'ont pas pu être lues pour l'instant. Elles apparaîtront dans l'application dès que le serveur répondra.",
+      "placeChapter": "Votre position dans {{title}} vous a suivi : chapitre {{chapter}}, {{percent}} % écouté.",
+      "place": "Votre position dans {{title}} vous a suivi : {{percent}} % écouté.",
+      "start": "Commencer l'écoute",
+      "browse": "Parcourir la bibliothèque"
     }
   },
   "home": {
@@ -1148,7 +1199,8 @@
     "banner": {
       "auth": "Se reconnecter à {{name}}",
       "serverReset": "{{name}} a été réinitialisé - réappairez pour continuer",
-      "more": "+{{count}} autre(s)"
+      "more": "+{{count}} autre(s)",
+      "hint": "Ouvre la connexion à ce serveur"
     },
     "connect": {
       "heading": "Se reconnecter",

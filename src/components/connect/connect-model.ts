@@ -1,0 +1,237 @@
+import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
+import type { KnownServer } from '@/lib/known-servers';
+import { cleanAddresses, type PairingScan } from '@/lib/pairing';
+import { type AddressedConnection, isOwnAddress, mergeAddresses } from '@/lib/server-address';
+import { isInProgress } from '@/lib/progress-view';
+
+/**
+ * The connect flow's rules (onboarding: connect, sign in, "Your library is ready."),
+ * pure so each is tested. The screens are `src/app/connect/*`; their pieces live beside
+ * this file.
+ */
+
+/** The onboarding steps the step indicator counts (profiles, "Who's listening?", arrive
+ * with households). */
+export const CONNECT_STEPS = 3;
+export type ConnectStep = 0 | 1 | 2;
+
+/**
+ * The addresses a pairing taught the device: what the link carried (`home=` / `away=`)
+ * merged with what the server answered (the redeem payload, the exchange or login
+ * answer). Both are cleaned first (anything can arrive in a link). The answer's `away` is
+ * authoritative; a `home` the link knew is kept when the answer lacks one (an answer read
+ * through the away address cannot know it). Undefined when neither said anything.
+ */
+export function pairingAddresses(
+  fromLink: { home?: unknown; away?: unknown } | null | undefined,
+  fromAnswer: { home?: unknown; away?: unknown } | null | undefined,
+): ServerAddresses | undefined {
+  return mergeAddresses(cleanAddresses(fromLink), cleanAddresses(fromAnswer));
+}
+
+/** The part of a connection a re-pair reads. */
+export type RepairConnection = AddressedConnection & { needsReconnect?: string };
+
+/**
+ * What a sign-in stores, given the address it signed in through (`pending`), the
+ * `server_id` that answered, the device's connections, and the connection a reconnect
+ * was started for (`reconnectId`, from the reconnect banner):
+ *
+ * - **The same connection again** (its `server_id` answered, through one of its own
+ *   addresses: the reconnect banner signs in through the address in use now, which away
+ *   from home is the away address): keep its `serverUrl`, the address it was paired
+ *   with. `serverUrl` is never rewritten by the address switching, and the switching
+ *   picks the right address by itself.
+ * - **A server that was reset** (the banner's connection, reached through one of its own
+ *   addresses, answered with a NEW `server_id`): store the old connection's `serverUrl`,
+ *   so the session store retires the dead identity (it drops another id at the same
+ *   `serverUrl`), and carry its addresses over (the home address is probed against the
+ *   new id before it is used, so this never sends a token to another box).
+ * - Anything else: the address signed in through, as typed or linked.
+ *
+ * `addresses` is what to hand `setSession` (it merges with what the connection kept).
+ */
+export function repairPlan(input: {
+  pending: string;
+  serverId: string;
+  connections: readonly RepairConnection[];
+  reconnectId?: string;
+  answer?: ServerAddresses;
+}): { serverUrl: string; addresses: ServerAddresses | undefined } {
+  const { pending, serverId, connections, reconnectId, answer } = input;
+  const same = connections.find((c) => c.id === serverId);
+  if (same && isOwnAddress(pending, same)) {
+    return { serverUrl: same.serverUrl, addresses: answer };
+  }
+  const target = reconnectId ? connections.find((c) => c.id === reconnectId) : undefined;
+  if (!same && target && isOwnAddress(pending, target)) {
+    return {
+      serverUrl: target.serverUrl,
+      addresses: mergeAddresses(cleanAddresses(target.addresses), answer),
+    };
+  }
+  return { serverUrl: pending, addresses: answer };
+}
+
+/** Whether a sign-in is the device's first: no connection before it. Only then does the
+ * flow end on "Your library is ready."; an added server goes straight back. */
+export function isFirstConnection(connections: readonly unknown[]): boolean {
+  return connections.length === 0;
+}
+
+/** RFC 1918 and link-local IPv4. */
+function isPrivateV4(host: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if ([a, b, Number(m[3]), Number(m[4])].some((n) => n > 255)) return false;
+  return (
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+}
+
+/** Unique local and link-local IPv6. */
+function isPrivateV6(host: string): boolean {
+  const h = host.toLowerCase();
+  if (!h.includes(':')) return false;
+  // fc00::/7 (unique local) and fe80::/10 (link-local).
+  return /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h);
+}
+
+/**
+ * Whether an address is a home-network address: one that answers only on the server's
+ * own network (a private or link-local IP, a `.local`, `.lan` or `.home.arpa` name, or a
+ * single-label name). Loopback is not: no other device can reach it anyway. The same
+ * rule the server uses to derive a home address. For the "Couldn't reach" hint.
+ */
+export function looksLikeHomeAddress(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname;
+  } catch {
+    return false;
+  }
+  host = host.replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host || host === 'localhost' || host === '::1' || /^127\./.test(host)) return false;
+  if (isPrivateV4(host) || isPrivateV6(host)) return true;
+  if (/^\d+(\.\d+){3}$/.test(host) || host.includes(':')) return false;
+  return /\.(local|lan|home\.arpa)$/.test(host) || !host.includes('.');
+}
+
+/** The host (and port) of an address, for an eyebrow ("Hearthside · books.example.com"). */
+export function hostOf(url: string): string {
+  return url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '') || url;
+}
+
+/** The remembered servers the connect screen offers to reconnect to: those this device
+ * is not signed in to now. */
+export function knownToOffer(
+  known: readonly KnownServer[],
+  connectionIds: readonly string[],
+): KnownServer[] {
+  return known.filter((k) => !connectionIds.includes(k.serverId));
+}
+
+/**
+ * Where to scroll so a focused field shows above the keyboard, or null when it already
+ * does: the field's top and bottom in the scroll content, the content offset now, and
+ * the visible height (the scroll view, already shortened by the keyboard). Keeps
+ * `margin` clear below the field; a field taller than the view aligns its top.
+ */
+export function revealOffset(input: {
+  fieldTop: number;
+  fieldBottom: number;
+  scrollY: number;
+  viewport: number;
+  margin?: number;
+}): number | null {
+  const { fieldTop, fieldBottom, scrollY, viewport } = input;
+  const margin = input.margin ?? 24;
+  if (viewport <= 0) return null;
+  if (fieldTop >= scrollY && fieldBottom + margin <= scrollY + viewport) return null;
+  if (fieldTop < scrollY) return Math.max(0, fieldTop - margin);
+  const target = fieldBottom + margin - viewport;
+  return Math.max(0, Math.min(target, fieldTop - margin));
+}
+
+/**
+ * The number of books across a server's libraries, from each library's authors list
+ * (capability `browse_people`): every book is counted once, under its one author value
+ * or as `unknown`. Null until every list has loaded (a partial sum would undercount).
+ */
+export function bookTotal(lists: readonly (PeopleList | undefined)[]): number | null {
+  let total = 0;
+  for (const l of lists) {
+    if (!l) return null;
+    total += l.unknown + l.people.reduce((n, p) => n + p.books, 0);
+  }
+  return total;
+}
+
+/** The book the listener was last on (newest saved progress that is started and not
+ * finished): "Your place in <book> came with you". */
+export function latestPlace(rows: readonly Progress[] | undefined): Progress | undefined {
+  let best: Progress | undefined;
+  for (const p of rows ?? []) {
+    if (!isInProgress(p)) continue;
+    if (!best || p.updated_at > best.updated_at) best = p;
+  }
+  return best;
+}
+
+/** How many library names the ready screen lists before it gives a count instead. */
+export const LISTED_LIBRARIES = 4;
+
+/** Names as one phrase: "Fiction", "Fiction and Kids", "Fiction, Kids and Podcasts", with
+ * the locale's last joiner from `and` ("{{rest}} and {{last}}"). Hermes has no
+ * `Intl.ListFormat`. */
+export function joinList(names: readonly string[], and: (rest: string, last: string) => string) {
+  if (names.length <= 1) return names[0] ?? '';
+  return and(names.slice(0, -1).join(', '), names[names.length - 1]);
+}
+
+/** What the ready screen says about the library (`onboarding.ready.<kind>`). */
+export type ReadyLine =
+  | { kind: 'booksIn'; books: number; names: string[] }
+  | { kind: 'booksAcross'; books: number; libraries: number }
+  | { kind: 'librariesIn'; libraries: number; names: string[] }
+  | { kind: 'librariesCount'; libraries: number }
+  | { kind: 'empty' };
+
+/**
+ * The ready screen's sentence about the library, from the library names (undefined while
+ * loading or after an error) and the book count (undefined while counting, null when the
+ * server can't count them: no `browse_people`, or a list failed). Null: nothing to say
+ * yet. A few libraries are named, more are counted.
+ */
+export function readyLine(input: {
+  libraries: readonly string[] | undefined;
+  books: number | null | undefined;
+}): ReadyLine | null {
+  const { libraries, books } = input;
+  if (!libraries || books === undefined) return null;
+  if (libraries.length === 0 || books === 0) return { kind: 'empty' };
+  const named = libraries.length <= LISTED_LIBRARIES;
+  if (books !== null) {
+    return named
+      ? { kind: 'booksIn', books, names: [...libraries] }
+      : { kind: 'booksAcross', books, libraries: libraries.length };
+  }
+  return named
+    ? { kind: 'librariesIn', libraries: libraries.length, names: [...libraries] }
+    : { kind: 'librariesCount', libraries: libraries.length };
+}
+
+/** A scanned pairing code as `/connect` route params: its server, token, and the
+ * server's home and away addresses when the code carries them. */
+export function scanParams(scan: PairingScan): Record<string, string> {
+  return {
+    server: scan.base,
+    token: scan.token,
+    ...(scan.addresses?.home ? { home: scan.addresses.home } : {}),
+    ...(scan.addresses?.away ? { away: scan.addresses.away } : {}),
+  };
+}

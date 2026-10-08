@@ -51,6 +51,7 @@ export default function DemoScreen() {
           serverId: demo.server_id,
           token: demo.token,
           user: demo.user,
+          addresses: demo.addresses,
         });
       } catch (e) {
         if (cancelled) return;

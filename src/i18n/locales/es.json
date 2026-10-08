@@ -214,30 +214,22 @@
   },
   "connect": {
     "server": {
-      "subtitle": "Conéctate a tu servidor de audiolibros",
       "connecting": "Conectando tu dispositivo…",
       "addressLabel": "Dirección del servidor",
-      "connect": "Conectar",
       "enterAddress": "Introduce la dirección de tu servidor",
       "missingAddress": "A este enlace de vinculación le falta la dirección del servidor. Introdúcela a continuación.",
       "pairingFailed": "Error de vinculación: {{message}}. También puedes conectarte introduciendo tu código de invitación en la pantalla de inicio de sesión.",
       "pairingReachError": "No se pudo contactar con el servidor para completar la vinculación.",
-      "serverError": "El servidor respondió con un error: {{message}}",
-      "reachError": "No se pudo contactar con ese servidor. Comprueba la dirección y que esté en línea.",
       "demoError": "No se pudo iniciar la demostración: {{message}}",
       "demoReachError": "No se pudo contactar con el servidor de demostración.",
-      "demoDivider": "servidor de demostración",
-      "demoIntro": "Este servidor ofrece una demostración para invitados, sin necesidad de cuenta.",
       "tryDemo": "Probar la demostración",
-      "signInInstead": "Iniciar sesión en su lugar",
-      "or": "o",
-      "scanQr": "Escanear código QR"
+      "scanQr": "Escanear un código QR"
     },
     "signIn": {
       "title": "Iniciar sesión",
       "mode": {
-        "code": "Código",
-        "password": "Contraseña"
+        "code": "Código de invitación",
+        "password": "Usuario y contraseña"
       },
       "codeLabel": "Código de invitación",
       "codePlaceholder": "Introduce tu código de invitación",
@@ -245,7 +237,6 @@
       "usernamePlaceholder": "Nombre de usuario",
       "passwordLabel": "Contraseña",
       "passwordPlaceholder": "Contraseña",
-      "connect": "Conectar",
       "submit": "Iniciar sesión",
       "failed": "Error al iniciar sesión. Inténtalo de nuevo.",
       "modeLabel": "Cómo iniciar sesión"
@@ -258,6 +249,66 @@
       "tryAgain": "Reintentar",
       "openSettings": "Abrir ajustes",
       "aimHint": "Apunta la cámara al código QR de vinculación en la página de conexión de tu servidor."
+    },
+    "probe": {
+      "found": "{{name}} encontrado",
+      "version": "AudioSilo {{version}}",
+      "signIn": "Iniciar sesión",
+      "signInTo": "Iniciar sesión en {{name}}",
+      "unreachable": "No se pudo conectar con {{address}}",
+      "hint": "Revisa cómo está escrito y que el servidor esté en línea. Una dirección de casa como 192.168.1.20:8080 solo funciona en la misma red que el servidor.",
+      "homeHint": "Es una dirección de la red de casa, así que solo responde en la misma red que el servidor. Comprueba que este dispositivo está en esa red, y cómo está escrita.",
+      "errorTitle": "El servidor respondió con un error",
+      "errorBody": "Mensaje: {{message}}"
+    },
+    "link": {
+      "open": "Tengo un enlace de emparejamiento",
+      "label": "Enlace de emparejamiento",
+      "connect": "Conectar",
+      "invalid": "Ese no es un enlace de emparejamiento de AudioSilo. Estos enlaces son como https://<servidor>/web/connect?token=... o audiosilo://connect?..."
+    }
+  },
+  "onboarding": {
+    "step": "Paso {{step}} de {{count}}",
+    "start": {
+      "title": "Tus audiolibros, desde tu propio servidor.",
+      "lead": "Introduce la dirección que te dio tu administrador, o escanea el código de su pantalla.",
+      "leadWeb": "Introduce la dirección que te dio tu administrador, o pega el enlace de emparejamiento que te envió.",
+      "continue": "Continuar"
+    },
+    "signIn": {
+      "eyebrow": "{{name}} · {{host}}",
+      "codeHint": "De la invitación que te envió tu administrador."
+    },
+    "anotherServer": "Otro servidor",
+    "addresses": {
+      "title": "En casa y fuera",
+      "body": "{{name}} tiene dos direcciones. AudioSilo usa la rápida en casa y cambia por sí solo cuando sales.",
+      "home": "En casa",
+      "away": "Fuera"
+    },
+    "panel": {
+      "title": "Cada libro de la casa, en cada dispositivo.",
+      "body": "Un progreso que nunca vuelve a cero. Descargas que suenan sin conexión. Los libros que faltan de una serie, a la vista en la estantería."
+    },
+    "ready": {
+      "connected": "{{name}} está conectado",
+      "title": "Tu biblioteca está lista.",
+      "and": "{{rest}} y {{last}}",
+      "booksIn_one": "{{books}} libro en {{list}}.",
+      "booksIn_other": "{{books}} libros en {{list}}.",
+      "booksAcross_one": "{{books}} libro en {{libraries}} bibliotecas.",
+      "booksAcross_other": "{{books}} libros en {{libraries}} bibliotecas.",
+      "librariesIn_one": "Tu biblioteca: {{list}}.",
+      "librariesIn_other": "Tus bibliotecas: {{list}}.",
+      "librariesCount_one": "{{count}} biblioteca está lista.",
+      "librariesCount_other": "{{count}} bibliotecas están listas.",
+      "empty": "{{name}} aún no tiene libros. Aparecerán aquí cuando tu administrador añada alguno.",
+      "loadError": "No se pudieron leer tus bibliotecas ahora mismo. Aparecerán en la app cuando el servidor responda.",
+      "placeChapter": "Tu punto en {{title}} viene contigo: capítulo {{chapter}}, {{percent}} % escuchado.",
+      "place": "Tu punto en {{title}} viene contigo: {{percent}} % escuchado.",
+      "start": "Empezar a escuchar",
+      "browse": "Explorar la biblioteca"
     }
   },
   "home": {
@@ -1148,7 +1199,8 @@
     "banner": {
       "auth": "Volver a conectar con {{name}}",
       "serverReset": "{{name}} se restableció - vuelve a emparejar para continuar",
-      "more": "+{{count}} más"
+      "more": "+{{count}} más",
+      "hint": "Abre el inicio de sesión de este servidor"
     },
     "connect": {
       "heading": "Volver a conectar",
