@@ -1444,3 +1444,65 @@ describe('loadingBook', () => {
     await started;
   });
 });
+
+// --- Another device moves the place of a book this one holds loaded and paused ----------
+//
+// Known gap (2026-10-08 resume investigation), pinned with `it.failing`: each test states
+// the behaviour we WANT and fails today. When the store learns to pick up a newer place
+// from another device, these start passing, Jest reports the `failing` test as broken,
+// and the fix drops the `.failing`.
+//
+// The scenario: this app loaded a book (resumed at 40 s) and paused at 45 s. Another
+// device (or the other AudioSilo app on the same phone, which keeps its own engine,
+// mirror and queue) then played on to 80 s and saved that to the server. Back here the
+// book is still `nowPlaying`, so every Play press (Home's Now card and the book page
+// toggle, the mini player, the lock screen) is a `toggle()`: `svc.play()` at the
+// ENGINE's 45 s. Nothing asks the server. Then the save loop writes ~45 s with a newer
+// `updated_at`, and the server's last-write-wins drops the other device's 80 s for good.
+describe('a loaded, paused book that another device has moved on', () => {
+  const OTHER_DEVICE_SAVE = makeProgress({
+    position: 80,
+    device_id: 'other-device',
+    updated_at: '2099-01-01T00:00:00Z',
+  });
+
+  async function loadedAndPausedAt45() {
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 40 }),
+    });
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+    pushSnapshot(snap('playing', 40));
+    pushSnapshot(snap('paused', 45));
+    await flushMicrotasks();
+    // The other device plays on to 80 s; the server (and a fresh lookup) now says so.
+    mockLoadInitialProgress.mockResolvedValue({ kind: 'progress', progress: OTHER_DEVICE_SAVE });
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.seekTo as jest.Mock).mockClear();
+    mockSaveProgress.mockClear();
+  }
+
+  afterEach(() => {
+    mockLoadInitialProgress.mockReset();
+    mockLoadInitialProgress.mockResolvedValue({ kind: 'empty' });
+  });
+
+  it.failing('a Play press moves the engine to the newer place before it plays', async () => {
+    await loadedAndPausedAt45();
+    await usePlayer.getState().toggle();
+    const seeks = (mockSvc.seekTo as jest.Mock).mock.calls.map((c) => c[0]);
+    const loads = (mockSvc.load as jest.Mock).mock.calls.map((c) => c[2]);
+    expect([...seeks, ...loads]).toContain(80);
+  });
+
+  it.failing("the stale engine place never overwrites the other device's save", async () => {
+    await loadedAndPausedAt45();
+    await usePlayer.getState().toggle();
+    pushSnapshot(snap('playing', 46));
+    jest.advanceTimersByTime(15_000);
+    await flushMicrotasks();
+    const saved = mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position);
+    expect(saved.every((p) => p >= 80)).toBe(true);
+    expect(saved.length).toBeGreaterThan(0);
+  });
+});
