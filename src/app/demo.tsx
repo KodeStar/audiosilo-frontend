@@ -51,6 +51,10 @@ export default function DemoScreen() {
           serverId: demo.server_id,
           token: demo.token,
           user: demo.user,
+          // Named like every other connection (`finishConnect`): by the server's name,
+          // not its address. The demo keeps its own flow (the QR stays on screen), so it
+          // signs in here rather than through `finishConnect`, which navigates away.
+          ...(demo.pairing.server_name ? { name: demo.pairing.server_name } : {}),
           addresses: demo.addresses,
         });
       } catch (e) {
