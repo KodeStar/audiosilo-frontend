@@ -7,7 +7,7 @@ jest.mock('expo-router', () => ({
 }));
 
 /* eslint-disable import/first */
-import { navigateWhenActive, whenActive } from './when-active';
+import { navigateWhenActive, onForeground, whenActive } from './when-active';
 /* eslint-enable import/first */
 
 let state: string;
@@ -55,6 +55,34 @@ describe('whenActive', () => {
     whenActive(fn)();
     emit('active');
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('onForeground', () => {
+  it('runs on each return to the foreground, and onLeave on each leave', () => {
+    const fn = jest.fn();
+    const leave = jest.fn();
+    const stop = onForeground(fn, leave);
+    emit('active'); // already there: not a return
+    expect(fn).not.toHaveBeenCalled();
+    emit('inactive');
+    emit('background');
+    expect(leave).toHaveBeenCalledTimes(2);
+    emit('active');
+    expect(fn).toHaveBeenCalledTimes(1);
+    emit('background');
+    emit('active');
+    expect(fn).toHaveBeenCalledTimes(2);
+    stop();
+    expect(listeners).toHaveLength(0);
+  });
+
+  it('counts a start in the background as away', () => {
+    state = 'background';
+    const fn = jest.fn();
+    onForeground(fn);
+    emit('active');
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 

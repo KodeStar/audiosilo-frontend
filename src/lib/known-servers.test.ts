@@ -93,19 +93,11 @@ describe('known-servers', () => {
     const HOME = 'http://192.168.1.20:8080';
     const AWAY = 'https://books.example.com';
 
-    it('keeps them, and keeps the home address when a later sign-in only knew away', async () => {
+    it('stores them as given (the session merges them before it remembers)', async () => {
       await remember({ ...mk('srv-a'), addresses: { home: HOME, away: AWAY } });
+      expect(await knownAddresses('srv-a')).toEqual({ home: HOME, away: AWAY });
       await remember({ ...mk('srv-a'), addresses: { away: 'https://new.example.com' } });
-      expect(await knownAddresses('srv-a')).toEqual({
-        home: HOME,
-        away: 'https://new.example.com',
-      });
-      // A sign-in that says nothing about them keeps them.
-      await remember(mk('srv-a'));
-      expect(await knownAddresses('srv-a')).toEqual({
-        home: HOME,
-        away: 'https://new.example.com',
-      });
+      expect(await knownAddresses('srv-a')).toEqual({ away: 'https://new.example.com' });
     });
 
     it('another server never inherits them', async () => {

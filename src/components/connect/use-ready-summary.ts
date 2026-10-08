@@ -5,7 +5,7 @@ import { useOptionalApi } from '@/api/provider';
 import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { useResumePosition } from '@/components/player/use-listening-position';
-import { useResumeChapter } from '@/components/series/use-resume-chapter';
+import { useChapterAt } from '@/components/series/use-resume-chapter';
 import type { NamedChapter } from '@/lib/chapter-label';
 import { percentHeard } from '@/lib/progress-view';
 
@@ -83,8 +83,9 @@ export function useReadySummary(connectionId: string): ReadySummary {
   });
   // The chapter and the percent from ONE place: the player's when this book is loaded
   // (a press plays it from there), else the saved one.
-  const chapter = useResumeChapter(target, at?.position);
-  const position = useResumePosition(target, at?.position, 60) ?? 0;
+  const resumeAt = useResumePosition(target, at?.position, 60);
+  const chapter = useChapterAt(target, resumeAt);
+  const position = resumeAt ?? 0;
   const total = chapters?.duration || at?.duration || book?.duration || 0;
   const place: ReadyPlace | null =
     target && book

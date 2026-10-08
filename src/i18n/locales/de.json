@@ -7,7 +7,9 @@
     "close": "Schließen",
     "copied": "Kopiert",
     "on": "Ein",
-    "off": "Aus"
+    "off": "Aus",
+    "resumeChapter": "Kapitel {{chapter}} fortsetzen",
+    "resumeTitled": "{{title}} fortsetzen"
   },
   "settings": {
     "title": "Einstellungen",
@@ -449,7 +451,6 @@
       "through": "des Buchs gehört",
       "finishPace": "fertig in deinem Tempo",
       "resume": "Fortsetzen",
-      "resumeChapter": "Kapitel {{chapter}} fortsetzen",
       "pause": "Pause",
       "resumeFailed": "Das Buch konnte nicht gestartet werden. Deine Stelle bleibt erhalten, versuche es noch einmal.",
       "openBook": "{{title}} öffnen",
@@ -457,7 +458,6 @@
       "whosWhoLabel_one": "Wer ist wer, {{count}} Figur bisher kennengelernt",
       "whosWhoLabel_other": "Wer ist wer, {{count}} Figuren bisher kennengelernt",
       "storySoFar": "Bisher geschehen",
-      "resumeTitled": "{{title}} fortsetzen",
       "countOf": "{{chapter}} von {{total}}"
     },
     "week": {
@@ -1120,10 +1120,8 @@
       "finishedOn": "Beendet am {{date}}",
       "start": "Anhören",
       "resume": "Fortsetzen",
-      "resumeChapter": "Kapitel {{chapter}} fortsetzen",
       "again": "Noch einmal hören",
       "pause": "Pause",
-      "resumeTitled": "{{title}} fortsetzen",
       "titledOf": "{{title}} · {{chapter}} von {{total}}"
     },
     "upNext": {
@@ -1661,7 +1659,6 @@
     "listening": "Hörst du · {{percent}} %",
     "listeningNow": "hörst du gerade",
     "resume": "Fortsetzen",
-    "resumeChapter": "Kapitel {{chapter}} fortsetzen",
     "play": "Abspielen",
     "details": "Details",
     "open": "Öffnen",
@@ -1706,8 +1703,7 @@
       "emptyAction": "Bücher durchsehen",
       "errorTitle": "Die Reihen konnten nicht geladen werden"
     },
-    "keepAhead": "Offline vorausladen",
-    "resumeTitled": "{{title}} fortsetzen"
+    "keepAhead": "Offline vorausladen"
   },
   "people": {
     "author": "Autor",

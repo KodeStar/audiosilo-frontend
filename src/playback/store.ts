@@ -166,6 +166,14 @@ function lowerFloorTo(bookPosition: number) {
   if (Number.isFinite(bookPosition)) resumeFloor = Math.min(resumeFloor, Math.max(0, bookPosition));
 }
 
+/** A move of the listener's own in the loaded book (a seek, a track jump, a book
+ * started): counted for the place reconcile (`localMoves`), and, given where it lands,
+ * the resume floor lowered to it (`lowerFloorTo`). */
+function userMoved(bookPosition?: number) {
+  localMoves++;
+  if (bookPosition !== undefined) lowerFloorTo(bookPosition);
+}
+
 /** Engine tunables derived from the settings store. */
 function currentConfig() {
   const s = useSettings.getState();
@@ -633,7 +641,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // engine's next `playing` transition for this book.
     stopSaveLoop();
     pausedAt = null; // a book (re)started here just had its place looked up
-    localMoves++;
+    userMoved();
     apiRef = api; // null for an offline downloaded book => persist()/history no-op (no server)
     deviceId = await getDeviceId();
     lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
@@ -825,8 +833,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         : Math.max(0, bookPosition);
     const svc = await ensureService();
     const target = locate(np.queue.offsets, clamped);
-    localMoves++;
-    lowerFloorTo(clamped); // a deliberate user seek may legitimately move backward
+    userMoved(clamped); // a deliberate user seek may legitimately move backward
     if (target.index === get().snapshot.trackIndex) {
       await svc.seekTo(target.positionInTrack);
     } else {
@@ -841,8 +848,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const pos = Math.max(0, dur > 0 ? Math.min(positionInTrack, dur) : positionInTrack);
     const svc = await ensureService();
     const np = get().nowPlaying;
-    localMoves++;
-    if (np) lowerFloorTo(toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos));
+    userMoved(np ? toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos) : undefined);
     await svc.seekTo(pos);
     void persist();
   },
@@ -852,8 +858,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     if (!np) return;
     const i = Math.max(0, Math.min(index, np.queue.tracks.length - 1));
     const svc = await ensureService();
-    localMoves++;
-    lowerFloorTo(toBookPosition(np.queue.offsets, i, 0));
+    userMoved(toBookPosition(np.queue.offsets, i, 0));
     await svc.skipToTrack(i, 0);
     void persist();
   },

@@ -45,13 +45,13 @@ describe('the pick store', () => {
   });
 
   it('ignores a pick that is no longer one of the connection addresses', () => {
-    expect(pickedUrl({ ...conn, addresses: undefined }, { 'srv-a': HOME })).toBe(AWAY);
-    expect(pickedUrl(conn, { 'srv-a': 'http://10.9.9.9' })).toBe(AWAY);
+    expect(pickedUrl({ ...conn, addresses: undefined }, HOME)).toBe(AWAY);
+    expect(pickedUrl(conn, 'http://10.9.9.9')).toBe(AWAY);
   });
 
   it('never switches on web: the served player keeps the address it was opened at', () => {
     Platform.OS = 'web';
-    expect(pickedUrl(conn, { 'srv-a': HOME })).toBe(AWAY);
+    expect(pickedUrl(conn, HOME)).toBe(AWAY);
   });
 });
 

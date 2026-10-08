@@ -7,7 +7,9 @@
     "close": "Fechar",
     "copied": "Copiado",
     "on": "Ativado",
-    "off": "Desativado"
+    "off": "Desativado",
+    "resumeChapter": "Retomar o capítulo {{chapter}}",
+    "resumeTitled": "Retomar {{title}}"
   },
   "settings": {
     "title": "Definições",
@@ -449,7 +451,6 @@
       "through": "do livro ouvido",
       "finishPace": "fim ao teu ritmo",
       "resume": "Retomar",
-      "resumeChapter": "Retomar o capítulo {{chapter}}",
       "pause": "Pausa",
       "resumeFailed": "Não foi possível iniciar este livro. A tua posição está guardada, tenta novamente.",
       "openBook": "Abrir {{title}}",
@@ -457,7 +458,6 @@
       "whosWhoLabel_one": "Quem é quem, {{count}} personagem conhecida até agora",
       "whosWhoLabel_other": "Quem é quem, {{count}} personagens conhecidas até agora",
       "storySoFar": "A história até agora",
-      "resumeTitled": "Retomar {{title}}",
       "countOf": "{{chapter}} de {{total}}"
     },
     "week": {
@@ -1120,10 +1120,8 @@
       "finishedOn": "Terminado a {{date}}",
       "start": "Começar a ouvir",
       "resume": "Retomar",
-      "resumeChapter": "Retomar o capítulo {{chapter}}",
       "again": "Ouvir outra vez",
       "pause": "Pausa",
-      "resumeTitled": "Retomar {{title}}",
       "titledOf": "{{title}} · {{chapter}} de {{total}}"
     },
     "upNext": {
@@ -1661,7 +1659,6 @@
     "listening": "A ouvir · {{percent}}%",
     "listeningNow": "a ouvir agora",
     "resume": "Retomar",
-    "resumeChapter": "Retomar o capítulo {{chapter}}",
     "play": "Reproduzir",
     "details": "Detalhes",
     "open": "Abrir",
@@ -1706,8 +1703,7 @@
       "emptyAction": "Ver os livros",
       "errorTitle": "Não foi possível carregar as séries"
     },
-    "keepAhead": "Adiantar offline",
-    "resumeTitled": "Retomar {{title}}"
+    "keepAhead": "Adiantar offline"
   },
   "people": {
     "author": "Autor",

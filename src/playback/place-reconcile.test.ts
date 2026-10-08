@@ -96,6 +96,7 @@ jest.mock('@/api/reachability', () => ({
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 jest.mock('@/lib/when-active', () => ({
+  ...jest.requireActual('@/lib/when-active'),
   whenActive: (fn: () => void) => {
     fn();
     return () => {};

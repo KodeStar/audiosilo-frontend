@@ -1,5 +1,4 @@
 import type { ServerAddresses } from '@/api/types';
-import { mergeAddresses } from '@/lib/server-address';
 import { getItem, setItem } from '@/lib/storage';
 
 /**
@@ -37,36 +36,30 @@ export async function list(): Promise<KnownServer[]> {
  * entry (same id), and a re-pair at the same address supersedes the old entry even
  * when the server minted a fresh `serverId` (a rebuilt/reset server) - otherwise
  * that address would show two identical "Reconnect to <name>" rows, one pointing at
- * a dead identity. The same server's addresses merge with what the entry knew
- * (`mergeAddresses`: an entry without them keeps the known ones, and a home address
- * survives an answer read away from home). */
+ * a dead identity. The entry is stored as given: the session merges its addresses
+ * with what the device knew before handing them over. */
 export async function remember(entry: KnownServer): Promise<void> {
   if (!entry.serverId) return;
   const current = await list();
-  const before = current.find((e) => e.serverId === entry.serverId);
-  const addresses = mergeAddresses(before?.addresses, entry.addresses);
-  const { addresses: _given, ...rest } = entry;
   const next = [
-    addresses ? { ...rest, addresses } : rest,
+    entry,
     ...current.filter((e) => e.serverId !== entry.serverId && e.serverUrl !== entry.serverUrl),
   ];
   await setItem(KEY, next);
 }
 
-/** Replace a remembered server's addresses (what the server says now), in place. A
- * no-op for a server that isn't remembered. */
+/** Replace a remembered server's addresses (the session's, already merged), in place.
+ * A no-op for a server that isn't remembered. */
 export async function rememberAddresses(
   serverId: string,
   addresses: ServerAddresses | undefined,
 ): Promise<void> {
   const current = await list();
   if (!current.some((e) => e.serverId === serverId)) return;
-  const next = current.map((e) => {
-    if (e.serverId !== serverId) return e;
-    const { addresses: _old, ...rest } = e;
-    return addresses ? { ...rest, addresses } : rest;
-  });
-  await setItem(KEY, next);
+  await setItem(
+    KEY,
+    current.map((e) => (e.serverId === serverId ? { ...e, addresses } : e)),
+  );
 }
 
 /** The addresses a remembered server had, if any. */

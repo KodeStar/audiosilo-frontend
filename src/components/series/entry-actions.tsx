@@ -123,9 +123,7 @@ export function EntryActionButton({
   switch (action.kind) {
     case 'resume':
       const label =
-        resumeChapter && !compact
-          ? resumeChapterLabel(t, resumeChapter, 'series')
-          : t('series.resume');
+        resumeChapter && !compact ? resumeChapterLabel(t, resumeChapter) : t('series.resume');
       return (
         <Button
           size={size}

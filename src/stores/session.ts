@@ -8,7 +8,6 @@ import {
   remember as rememberServer,
   rememberAddresses,
 } from '@/lib/known-servers';
-import { cleanAddresses } from '@/lib/pairing';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { mergeAddresses, sameAddresses } from '@/lib/server-address';
 import { getItem, removeItem, setItem } from '@/lib/storage';
@@ -227,9 +226,10 @@ type SessionState = {
     user: User;
     name?: string;
     /** The server's addresses from the pairing link, the redeem payload, or the exchange
-     * / login answer. Absent keeps what the connection already knew (a re-pair through
-     * an older server, or a link without them, must not erase what a newer pairing
-     * taught it); present is merged with it (`mergeAddresses`). */
+     * / login answer (cleaned where they arrived). Absent keeps what the connection
+     * already knew (a re-pair through an older server, or a link without them, must not
+     * erase what a newer pairing taught it); present is merged with it
+     * (`mergeAddresses`). */
     addresses?: ServerAddresses;
   }) => Promise<string>;
   /** Remember the server URL mid-connect, before authenticating. */
@@ -237,10 +237,11 @@ type SessionState = {
   /** Update a specific connection's user (a `/me` refresh after a password change
    * lands on the connection it was made against, not whatever is default). */
   setConnectionUser: (id: string, user: User) => Promise<void>;
-  /** Replace a connection's addresses (`undefined` = none) and persist them. A no-op
-   * for an unknown connection or the same addresses. The caller merges
-   * (`mergeAddresses`); the address runner calls it after `GET /addresses`. */
-  setConnectionAddresses: (id: string, addresses: ServerAddresses | undefined) => Promise<void>;
+  /** What the server says a connection's addresses are now (`GET /addresses`, cleaned):
+   * merged with what it kept (`mergeAddresses`: a home address survives an answer read
+   * away from home), persisted, and mirrored to the remembered server (for a reconnect
+   * after signing out). A no-op for an unknown connection or when nothing changes. */
+  learnAddresses: (id: string, fresh: ServerAddresses | undefined) => Promise<void>;
   /** Update the default connection's user (sugar over `setConnectionUser`). */
   setUser: (user: User) => Promise<void>;
   /** Remove one connection (deleting its token). Sign-out goes through this (via
@@ -344,14 +345,14 @@ export const useSession = create<SessionState>()((set, get) => ({
     // again after signing out, from the connect screen's remembered servers) the remembered
     // server's, so a sign-in through the away address doesn't forget the home one.
     const knew = prior ? prior.addresses : await knownAddresses(serverId);
-    const known = mergeAddresses(knew, cleanAddresses(addresses));
+    const known = mergeAddresses(knew, addresses);
     const conn: Connection = {
       id: serverId,
       serverUrl,
       name: name ?? prior?.name ?? hostName(serverUrl),
       token,
       user,
-      ...(known ? { addresses: known } : {}),
+      addresses: known,
     };
     const surviving = existing.filter((c) => !stale.includes(c));
     const connections = prior
@@ -364,12 +365,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     await persist(connections, serverId);
     // Remember this server durably (no token) so the connect screen can offer a one-tap
     // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
-    await rememberServer({
-      serverUrl,
-      name: conn.name,
-      serverId,
-      ...(known ? { addresses: known } : {}),
-    });
+    await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
     set({ connections, pendingServerUrl: null, ...mirror(connections, serverId) });
@@ -398,18 +394,14 @@ export const useSession = create<SessionState>()((set, get) => ({
     set({ connections: next, ...mirror(next, defaultConnectionId) });
   },
 
-  setConnectionAddresses: async (id, addresses) => {
+  learnAddresses: async (id, fresh) => {
     const { connections, defaultConnectionId } = get();
     const conn = connections.find((c) => c.id === id);
-    if (!conn || sameAddresses(conn.addresses, addresses)) return;
-    const next = connections.map((c) => {
-      if (c.id !== id) return c;
-      const { addresses: _old, ...rest } = c;
-      return addresses ? { ...rest, addresses } : rest;
-    });
-    await persist(next, defaultConnectionId);
-    // The remembered server (for a reconnect after signing out) learns them too.
-    await rememberAddresses(id, addresses);
+    if (!conn) return;
+    const addresses = mergeAddresses(conn.addresses, fresh);
+    if (sameAddresses(conn.addresses, addresses)) return;
+    const next = connections.map((c) => (c.id === id ? { ...c, addresses } : c));
+    await Promise.all([persist(next, defaultConnectionId), rememberAddresses(id, addresses)]);
     set({ connections: next, ...mirror(next, defaultConnectionId) });
   },
 

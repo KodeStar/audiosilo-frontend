@@ -526,11 +526,6 @@ describe('session store (multi-connection)', () => {
       expect(addressesOf()).toEqual({ home: HOME, away: 'https://new.example.com' });
     });
 
-    it('cleans what it is given (an invalid address is dropped)', async () => {
-      await pair({ home: 'not a url', away: `${AWAY}/` });
-      expect(addressesOf()).toEqual({ away: AWAY });
-    });
-
     it('a sign-in again after signing out keeps the home address the device remembered', async () => {
       await pair({ home: HOME, away: AWAY });
       await useSession.getState().removeConnection('srv-a');
@@ -542,26 +537,29 @@ describe('session store (multi-connection)', () => {
       expect(known[0].addresses).toEqual({ home: HOME, away: AWAY });
     });
 
-    it('the remembered server follows setConnectionAddresses', async () => {
+    it('the remembered server follows learnAddresses', async () => {
       await pair({ home: HOME, away: AWAY });
-      await useSession.getState().setConnectionAddresses('srv-a', { away: AWAY });
+      await useSession.getState().learnAddresses('srv-a', { away: 'https://new.example.com' });
       const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
-      expect(known[0].addresses).toEqual({ away: AWAY });
+      expect(known[0].addresses).toEqual({ home: HOME, away: 'https://new.example.com' });
     });
 
-    it('setConnectionAddresses replaces and persists them, and no-ops when unchanged', async () => {
+    it('learnAddresses merges and persists them, and no-ops when nothing changes', async () => {
       await pair({ home: HOME });
       const before = useSession.getState().connections;
-      await useSession.getState().setConnectionAddresses('srv-a', { home: HOME });
+      await useSession.getState().learnAddresses('srv-a', { home: HOME });
+      await useSession.getState().learnAddresses('srv-a', undefined); // nothing said
       expect(useSession.getState().connections).toBe(before); // nothing changed, no churn
-      await useSession.getState().setConnectionAddresses('srv-a', { away: AWAY });
-      expect(addressesOf()).toEqual({ away: AWAY });
-      await useSession.getState().setConnectionAddresses('srv-a', undefined);
-      expect(useSession.getState().connections[0]).not.toHaveProperty('addresses');
-      await useSession.getState().setConnectionAddresses('nope', { home: HOME }); // unknown: no-op
+      // An answer read away from home: the away address is new, the home one is kept.
+      await useSession.getState().learnAddresses('srv-a', { away: AWAY });
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      // The server has no away address any more.
+      await useSession.getState().learnAddresses('srv-a', {});
+      expect(addressesOf()).toEqual({ home: HOME });
+      await useSession.getState().learnAddresses('nope', { home: HOME }); // unknown: no-op
       reset();
       await useSession.getState().hydrate();
-      expect(addressesOf()).toBeUndefined();
+      expect(addressesOf()).toEqual({ home: HOME });
     });
   });
 });

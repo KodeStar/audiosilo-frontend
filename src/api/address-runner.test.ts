@@ -37,13 +37,9 @@ jest.mock('expo-network', () => ({
 // The reads the runner makes through the query cache go straight to the client here, so
 // every request is a real ApiClient request on the fake fetch below.
 jest.mock('@/api/hooks', () => ({
-  addressesQuery: (
-    cid: string,
-    client: { addresses: () => Promise<unknown> },
-    supported: boolean,
-  ) => ({
+  addressesQuery: (cid: string, client: { addresses: () => Promise<unknown> }) => ({
     queryKey: ['addresses', cid],
-    queryFn: supported ? () => client.addresses() : undefined,
+    queryFn: () => client.addresses(),
   }),
   fetchFailFast: (o: { queryFn: () => Promise<unknown> }) => o.queryFn(),
   fetchCapabilities: async (_cid: string, client: { serverInfo: () => Promise<any> }) =>
@@ -55,13 +51,14 @@ import { useAddressRoute } from '@/api/address-route';
 import {
   followPlayingBook,
   HOME_RECHECK_MS,
-  probeServerId,
+  NETWORK_SETTLE_MS,
   refreshAddresses,
   repick,
   startAddressRouting,
 } from '@/api/address-runner';
 import { resolveClient } from '@/api/connection-clients';
 import { noteSuccess, useReachability } from '@/api/reachability';
+import { probeServerId } from '@/api/server-id-probe';
 import { startBookInPlace } from '@/components/player/start-book';
 import { usePlayer } from '@/playback/store';
 /* eslint-enable import/first */
@@ -263,20 +260,47 @@ describe('when it re-picks', () => {
   });
 
   it('on a network change and when the app comes back to the foreground', async () => {
-    servers = { [AWAY]: { id: 'srv-a' } };
-    setConnections([mkConn()]);
-    stop = startAddressRouting();
-    await flush();
-    expect(pickOf()).toBeUndefined();
-    servers[HOME] = { id: 'srv-a' }; // arrived home
-    mockNetworkListener!({ type: 'WIFI', isConnected: true });
-    await flush();
-    expect(pickOf()).toBe(HOME);
-    delete servers[HOME];
-    appHandler!('background');
-    appHandler!('active');
-    await flush();
-    expect(pickOf()).toBeUndefined();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    try {
+      servers = { [AWAY]: { id: 'srv-a' } };
+      setConnections([mkConn()]);
+      stop = startAddressRouting();
+      await flush();
+      expect(pickOf()).toBeUndefined();
+      servers[HOME] = { id: 'srv-a' }; // arrived home
+      mockNetworkListener!({ type: 'WIFI', isConnected: true });
+      jest.advanceTimersByTime(NETWORK_SETTLE_MS);
+      await flush();
+      expect(pickOf()).toBe(HOME);
+      delete servers[HOME];
+      appHandler!('background');
+      appHandler!('active');
+      await flush();
+      expect(pickOf()).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('asks home once for a burst of changes that keep the device where it is', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    try {
+      const probe = jest.fn(async () => null);
+      setConnections([mkConn()]);
+      stop = startAddressRouting({ probe });
+      await flush();
+      expect(probe).toHaveBeenCalledTimes(1); // launch
+      for (let i = 0; i < 4; i++) {
+        mockNetworkListener!({ type: 'WIFI', isConnected: true });
+        jest.advanceTimersByTime(NETWORK_SETTLE_MS / 2);
+      }
+      expect(probe).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(NETWORK_SETTLE_MS);
+      await flush();
+      expect(probe).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('drops a home pick at once when the device moves to another network', async () => {

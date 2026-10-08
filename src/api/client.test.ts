@@ -1150,7 +1150,7 @@ describe('ApiClient user state (Phase 1b)', () => {
   });
 });
 
-describe('ApiClient addresses (Phase 5)', () => {
+describe('ApiClient addresses', () => {
   it('reads GET /addresses with the token, and {} when the server has neither', async () => {
     const both = { home: 'http://192.168.1.20:8080', away: 'https://books.example.com' };
     let fetchMock = installFetch(() => ({ status: 200, body: both }));
@@ -1160,6 +1160,20 @@ describe('ApiClient addresses (Phase 5)', () => {
       'Bearer tok',
     );
     fetchMock = installFetch(() => ({ status: 200, body: {} }));
+    await expect(new ApiClient('https://h', 'tok').addresses()).resolves.toEqual({});
+  });
+
+  it('cleans the addresses where they arrive: GET /addresses and the sign-in answers', async () => {
+    const raw = { home: 'ftp://nas', away: ' https://books.example.com/ ' };
+    const clean = { away: 'https://books.example.com' };
+    installFetch(() => ({ status: 200, body: raw }));
+    await expect(new ApiClient('https://h', 'tok').addresses()).resolves.toEqual(clean);
+    installFetch(() => ({ status: 200, body: { token: 't', server_id: 's', addresses: raw } }));
+    expect((await new ApiClient('https://h').exchange('p', 'd')).addresses).toEqual(clean);
+    expect((await new ApiClient('https://h').login('u', 'pw', 'd')).addresses).toEqual(clean);
+    expect((await new ApiClient('https://h').demoSession('d')).addresses).toEqual(clean);
+    expect((await new ApiClient('https://h').redeemCode('c')).addresses).toEqual(clean);
+    installFetch(() => ({ status: 200, body: { home: 42 } }));
     await expect(new ApiClient('https://h', 'tok').addresses()).resolves.toEqual({});
   });
 });

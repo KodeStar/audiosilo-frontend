@@ -1,6 +1,6 @@
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
 import type { KnownServer } from '@/lib/known-servers';
-import { cleanAddresses, type PairingScan } from '@/lib/pairing';
+import type { PairingScan } from '@/lib/pairing';
 import {
   type AddressedConnection,
   isOwnAddress,
@@ -20,20 +20,6 @@ import { isInProgress } from '@/lib/progress-view';
  * with households). */
 export const CONNECT_STEPS = 3;
 export type ConnectStep = 0 | 1 | 2;
-
-/**
- * The addresses a pairing taught the device: what the link carried (`home=` / `away=`)
- * merged with what the server answered (the redeem payload, the exchange or login
- * answer). Both are cleaned first (anything can arrive in a link). The answer's `away` is
- * authoritative; a `home` the link knew is kept when the answer lacks one (an answer read
- * through the away address cannot know it). Undefined when neither said anything.
- */
-export function pairingAddresses(
-  fromLink: { home?: unknown; away?: unknown } | null | undefined,
-  fromAnswer: { home?: unknown; away?: unknown } | null | undefined,
-): ServerAddresses | undefined {
-  return mergeAddresses(cleanAddresses(fromLink), cleanAddresses(fromAnswer));
-}
 
 /** The part of a connection a re-pair reads. */
 export type RepairConnection = AddressedConnection & { needsReconnect?: string };
@@ -73,7 +59,7 @@ export function repairPlan(input: {
   if (!same && target && isOwnAddress(pending, target)) {
     return {
       serverUrl: target.serverUrl,
-      addresses: mergeAddresses(cleanAddresses(target.addresses), answer),
+      addresses: mergeAddresses(target.addresses, answer),
     };
   }
   return { serverUrl: pending, addresses: answer };
@@ -153,7 +139,7 @@ export function reconnectAddress(
   probe: ServerIdProbe,
   web: boolean,
 ): Promise<string> {
-  if (web || !entry.addresses?.home) return Promise.resolve(entry.serverUrl);
+  if (web) return Promise.resolve(entry.serverUrl);
   return pickAddress(
     { id: entry.serverId, serverUrl: entry.serverUrl, addresses: entry.addresses },
     probe,

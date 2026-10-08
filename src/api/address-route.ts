@@ -39,18 +39,17 @@ export function setAddressPick(connectionId: string, url: string | null): void {
   useAddressRoute.setState({ picks: { ...picks, [connectionId]: url } });
 }
 
-/** The address a connection uses given `picks`: its pick while that is still one of
- * its own addresses (they can change under a pick), else `serverUrl`. Always
+/** The address a connection uses given its `pick`: the pick while that is still one
+ * of its own addresses (they can change under a pick), else `serverUrl`. Always
  * `serverUrl` on web. */
-export function pickedUrl(c: AddressedConnection, picks: Record<string, string>): string {
+export function pickedUrl(c: AddressedConnection, pick: string | undefined): string {
   if (Platform.OS === 'web') return c.serverUrl;
-  const pick = picks[c.id];
   return pick && isOwnAddress(pick, c) ? pick : c.serverUrl;
 }
 
 /** The address a connection's requests go to right now. */
 export function effectiveUrl(c: AddressedConnection): string {
-  return pickedUrl(c, useAddressRoute.getState().picks);
+  return pickedUrl(c, useAddressRoute.getState().picks[c.id]);
 }
 
 /** The address a connection is using now and which of its addresses that is. */
@@ -68,8 +67,8 @@ export function useActiveAddress(connectionId: string): ActiveAddress {
   const pick = useAddressRoute((s) => s.picks[connectionId]);
   return useMemo(() => {
     if (!conn) return { url: '', kind: 'paired' };
-    const url = pickedUrl(conn, pick ? { [conn.id]: pick } : {});
-    return { url, kind: addressKind(url, conn) };
+    const url = pickedUrl(conn, pick);
+    return { url, kind: addressKind(url, conn.addresses) };
   }, [conn, pick]);
 }
 

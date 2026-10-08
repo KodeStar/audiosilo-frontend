@@ -139,7 +139,7 @@ export function primaryLabel(t: TFunction, action: PrimaryAction): string {
       return t('book.hero.pause');
     case 'resume':
       return action.chapter
-        ? resumeChapterLabel(t, { number: action.chapter, title: action.title ?? '' }, 'book')
+        ? resumeChapterLabel(t, { number: action.chapter, title: action.title ?? '' })
         : t('book.hero.resume');
     case 'again':
       return t('book.hero.again');

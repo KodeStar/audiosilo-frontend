@@ -8,7 +8,6 @@ import {
   knownToOffer,
   latestPlace,
   looksLikeHomeAddress,
-  pairingAddresses,
   readyLine,
   reconnectAddress,
   repairPlan,
@@ -18,30 +17,6 @@ import {
 
 const HOME = 'http://192.168.1.20:8080';
 const AWAY = 'https://books.example.com';
-
-describe('pairingAddresses', () => {
-  it('keeps the home address a link carried when the answer (read through away) has none', () => {
-    expect(pairingAddresses({ home: HOME, away: AWAY }, { away: AWAY })).toEqual({
-      home: HOME,
-      away: AWAY,
-    });
-  });
-
-  it("takes the answer's away address over the link's", () => {
-    expect(pairingAddresses({ away: 'https://old.example.com' }, { away: AWAY })).toEqual({
-      away: AWAY,
-    });
-  });
-
-  it('keeps what the link said when the answer says nothing (an older server)', () => {
-    expect(pairingAddresses({ home: HOME }, undefined)).toEqual({ home: HOME });
-  });
-
-  it('drops malformed values and is undefined when nothing is left', () => {
-    expect(pairingAddresses({ home: 'ftp://nas', away: 42 }, {})).toBeUndefined();
-    expect(pairingAddresses(undefined, undefined)).toBeUndefined();
-  });
-});
 
 describe('repairPlan', () => {
   const conn = {

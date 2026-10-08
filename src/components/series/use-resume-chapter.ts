@@ -16,8 +16,16 @@ export function useResumeChapter(
   target: PlayTarget | undefined,
   savedPosition: number | undefined,
 ): NamedChapter | undefined {
+  return useChapterAt(target, useResumePosition(target, savedPosition, 60));
+}
+
+/** The chapter of `target` that holds `position` (`useResumeChapter`'s walk, for a caller
+ * that already reads the resume position). */
+export function useChapterAt(
+  target: PlayTarget | undefined,
+  position: number | undefined,
+): NamedChapter | undefined {
   const { data } = useChapters(target?.libraryId ?? 0, target?.path ?? '', target?.connectionId);
-  const position = useResumePosition(target, savedPosition, 60);
   const starts = useMemo(() => chapterStartsOf(data?.chapters ?? [], data?.files ?? []), [data]);
   if (!target || starts.length < 2) return undefined;
   const n = chapterNumberAt(starts, position ?? 0);
