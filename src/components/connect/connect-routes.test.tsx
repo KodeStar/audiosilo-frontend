@@ -4,14 +4,25 @@ import type { User } from '@/api/types';
 import { useSession } from '@/stores/session';
 
 let mockParams: Record<string, string> = {};
+// The last focus effect: calling it again is the screen coming back on top.
+let mockRefocus: (() => void) | null = null;
+const mockLeave = jest.fn();
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
+  useFocusEffect: (cb: () => void) => {
+    const { useEffect } = jest.requireActual('react');
+    useEffect(() => {
+      mockRefocus = cb;
+      cb();
+    }, [cb]);
+  },
   Redirect: ({ href }: { href: string }) => {
     const { Text: T } = jest.requireActual('react-native');
     return <T>{`redirect ${href}`}</T>;
   },
 }));
 jest.mock('@/components/shell/leave-onboarding', () => ({
+  leaveOnboarding: () => mockLeave(),
   LeaveOnboarding: () => {
     const { Text: T } = jest.requireActual('react-native');
     return <T>left onboarding</T>;
@@ -65,6 +76,7 @@ const signedOut = (pending: string | null = null) =>
 
 beforeEach(() => {
   mockParams = {};
+  mockLeave.mockClear();
 });
 
 describe('/connect', () => {
@@ -93,6 +105,23 @@ describe('/connect', () => {
     await render(<ConnectRoute />);
     await act(async () => signedIn(null));
     expect(screen.getByText('first step')).toBeTruthy();
+    expect(mockLeave).not.toHaveBeenCalled();
+  });
+
+  it('back on top while signed in with nothing to add (back from "ready"): leaves', async () => {
+    signedOut('https://a');
+    await render(<ConnectRoute />);
+    expect(mockLeave).not.toHaveBeenCalled();
+    await act(async () => signedIn(null));
+    await act(async () => mockRefocus?.());
+    expect(mockLeave).toHaveBeenCalledTimes(1);
+  });
+
+  it('back on top mid-way through adding a server: stays', async () => {
+    signedIn('https://b');
+    await render(<ConnectRoute />);
+    await act(async () => mockRefocus?.());
+    expect(mockLeave).not.toHaveBeenCalled();
   });
 });
 
