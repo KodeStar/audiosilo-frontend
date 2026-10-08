@@ -2,10 +2,11 @@
 // makes), so the write-once, `.part` and prune rules are tested without a device.
 const mockFiles = new Map<string, number>(); // uri -> size
 const mockDownloadedTo: string[] = [];
-const mockDownload = jest.fn(async (_url: string, to: { uri: string }) => {
+const mockWrite = async (_url: string, to: { uri: string }) => {
   mockDownloadedTo.push(to.uri);
   mockFiles.set(to.uri, 1234);
-});
+};
+const mockDownload = jest.fn(mockWrite);
 jest.mock('expo-file-system', () => {
   const join = (parts: unknown[]) =>
     parts.map((p) => (typeof p === 'string' ? p : (p as { uri: string }).uri)).join('/');
@@ -52,14 +53,22 @@ jest.mock('expo-file-system', () => {
 });
 
 /* eslint-disable import/first */
-import { artworkName, ensureArtwork, existingArtwork, pruneArtwork } from './car-artwork';
+import {
+  artworkName,
+  ensureArtwork,
+  existingArtwork,
+  MAX_RETRY_MS,
+  pruneArtwork,
+  RETRY_MS,
+} from './car-artwork';
 /* eslint-enable import/first */
 
 const DIR = 'file:///docs/car-artwork';
 
 beforeEach(() => {
   mockFiles.clear();
-  mockDownload.mockClear();
+  mockDownload.mockReset();
+  mockDownload.mockImplementation(mockWrite);
   mockDownloadedTo.length = 0;
 });
 
@@ -102,9 +111,72 @@ describe('ensureArtwork', () => {
     mockDownload.mockImplementationOnce(async (_u, to) => {
       mockFiles.set(to.uri, 0);
     });
-    expect(await ensureArtwork('d.jpg', 'u')).toBeNull();
+    expect(await ensureArtwork('d2.jpg', 'u')).toBeNull();
     expect(mockFiles.size).toBe(0);
     warn.mockRestore();
+  });
+
+  describe('a cover that failed', () => {
+    const t0 = new Date('2026-10-08T12:00:00Z').getTime();
+    let warn: jest.SpyInstance;
+    beforeEach(() => {
+      jest.useFakeTimers({ now: t0 });
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      warn.mockRestore();
+      jest.useRealTimers();
+    });
+
+    // Regression: every snapshot write asked the server again for each cover it lacked, so a
+    // library whose covers 404 logged a warning per book per write (20 per write on the
+    // device fixture).
+    it('is not asked again this session when the server has none (404), and warns once', async () => {
+      mockDownload.mockRejectedValue(
+        new Error('Unable to download a file: response has status: 404'),
+      );
+      expect(await ensureArtwork('n.jpg', 'u')).toBeNull();
+      jest.setSystemTime(t0 + 24 * 3600_000);
+      for (let i = 0; i < 5; i++) expect(await ensureArtwork('n.jpg', 'u')).toBeNull();
+      expect(mockDownload).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+      // iOS words it without the colon; a new cover version is a new name, asked at once.
+      mockDownload.mockRejectedValue(new Error('response has status 404'));
+      expect(await ensureArtwork('n-v2.jpg', 'u')).toBeNull();
+      expect(await ensureArtwork('n-v2.jpg', 'u')).toBeNull();
+      expect(mockDownload).toHaveBeenCalledTimes(2);
+    });
+
+    it('backs off any other failure (offline, 5xx), doubling, then writes it once it can', async () => {
+      mockDownload.mockRejectedValueOnce(new Error('offline'));
+      expect(await ensureArtwork('o.jpg', 'u')).toBeNull();
+      expect(await ensureArtwork('o.jpg', 'u')).toBeNull();
+      expect(mockDownload).toHaveBeenCalledTimes(1);
+
+      jest.setSystemTime(t0 + RETRY_MS);
+      mockDownload.mockRejectedValueOnce(new Error('response has status: 503'));
+      expect(await ensureArtwork('o.jpg', 'u')).toBeNull();
+      expect(mockDownload).toHaveBeenCalledTimes(2);
+      // The second failure waits twice as long.
+      jest.setSystemTime(t0 + RETRY_MS + RETRY_MS);
+      expect(await ensureArtwork('o.jpg', 'u')).toBeNull();
+      expect(mockDownload).toHaveBeenCalledTimes(2);
+      jest.setSystemTime(t0 + RETRY_MS + 2 * RETRY_MS);
+      expect(await ensureArtwork('o.jpg', 'u')).toBe(`${DIR}/o.jpg`);
+      expect(mockDownload).toHaveBeenCalledTimes(3);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('never waits longer than MAX_RETRY_MS between tries', async () => {
+      mockDownload.mockRejectedValue(new Error('offline'));
+      let now = t0;
+      for (let i = 0; i < 10; i++) {
+        await ensureArtwork('m.jpg', 'u');
+        now += MAX_RETRY_MS;
+        jest.setSystemTime(now);
+      }
+      expect(mockDownload).toHaveBeenCalledTimes(10);
+    });
   });
 });
 
