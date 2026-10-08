@@ -1,7 +1,7 @@
 import { ActivityIndicator } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
-import { TAB_BAR_SCROLL_INSETS } from '@/components/shell/scroll-insets';
+import { TAB_PAGE_GUTTER, TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -17,18 +17,16 @@ export function fetchMoreOf(sources: readonly Source<unknown>[], fetchFrom: stri
   }
 }
 
-/** The page's list frame: the header, the per-server notes, the column, the inset. */
+/** The page's list frame: the column in the tab page's gutters and scroll props, the
+ * mini-player inset. */
 export function useJournalListProps() {
   const paddingBottom = useMiniPlayerInset();
   return {
     className: 'flex-1',
-    contentContainerClassName: cn(JOURNAL_COLUMN, 'px-4 pt-4 lg:px-8'),
+    contentContainerClassName: cn(JOURNAL_COLUMN, TAB_PAGE_GUTTER),
     contentContainerStyle: { paddingBottom: paddingBottom + 24 },
-    keyboardShouldPersistTaps: 'handled' as const,
     onEndReachedThreshold: 0.6,
-    // In the You hub the list sits under the segmented control, where iOS would not
-    // inset it for the tab bar by itself.
-    ...TAB_BAR_SCROLL_INSETS,
+    ...TAB_PAGE_SCROLL_PROPS,
   };
 }
 
