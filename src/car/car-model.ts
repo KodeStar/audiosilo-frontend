@@ -65,7 +65,8 @@ export type CarItem = {
   progress: number | null;
   finished: boolean;
   downloaded: boolean;
-  /** A `file://` JPEG the app wrote under the car artwork folder, else null. */
+  /** A `file://` cover the app wrote: under the car artwork folder, or a downloaded book's own
+   * cover file. Null when there is none (yet). */
   artwork: string | null;
   /** Only for a downloaded book. */
   play?: CarPlaySpec;

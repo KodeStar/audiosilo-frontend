@@ -50,13 +50,17 @@ jest.mock('@/components/player/start-book', () => ({
 }));
 
 const mockLoadInitialProgress = jest.fn(
-  async (api: { getProgress: () => Promise<Progress | null> } | null) => {
+  async (
+    api: { getProgress: () => Promise<Progress | null> } | null,
+    ..._where: [string, number, string]
+  ) => {
     const row = api ? await api.getProgress() : null;
     return row ? { kind: 'progress', progress: row } : { kind: api ? 'empty' : 'failed' };
   },
 );
 jest.mock('@/playback/progress-sync', () => ({
-  loadInitialProgress: (...a: [never]) => mockLoadInitialProgress(...a),
+  loadInitialProgress: (...a: Parameters<typeof mockLoadInitialProgress>) =>
+    mockLoadInitialProgress(...a),
 }));
 
 // The player store, reduced to what the controller reads.
@@ -332,6 +336,7 @@ afterEach(async () => {
   stop();
   stop = () => {};
   await setItem('audiosilo.carBookmarks', []);
+  await setItem('audiosilo.carSeen', false);
   jest.clearAllTimers();
   jest.useRealTimers();
 });
@@ -417,6 +422,41 @@ describe('startCarSync', () => {
     expect(JSON.stringify(snap)).not.toMatch(/secret|https?:/);
   });
 
+  it('looks a downloaded book up again only when its row changes or it is the loaded book', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({
+      progress: [
+        makeProgress({ path: 'D', position: 130, duration: 200, updated_at: '2026-01-15' }),
+      ],
+    });
+    useDownloads.setState({
+      entries: { 'c1:2:D': downloaded('c1', 'D'), 'c1:2:E': downloaded('c1', 'E') },
+    });
+    stop = startCarSync();
+    await settle();
+    expect(mockLoadInitialProgress).toHaveBeenCalledTimes(2);
+
+    // E becomes the loaded book: only its lookup runs again (its saves move it).
+    mockLoadInitialProgress.mockClear();
+    usePlayer.setState({
+      nowPlaying: {
+        connectionId: 'c1',
+        libraryId: 2,
+        path: 'E',
+        queue: { offsets: [0, 100], total: 200 },
+      },
+      snapshot: { state: 'playing', trackIndex: 0, position: 5, duration: 100, rate: 1 },
+    });
+    await settle(MIN_GAP_MS);
+    expect(mockLoadInitialProgress.mock.calls.map((c) => c[3])).toEqual(['E']);
+
+    // E stops being the loaded book: looked up once more, with its last save in.
+    mockLoadInitialProgress.mockClear();
+    usePlayer.setState({ nowPlaying: null });
+    await settle(MIN_GAP_MS);
+    expect(mockLoadInitialProgress.mock.calls.map((c) => c[3])).toEqual(['E']);
+  });
+
   it('leaves Up next out where the default server keeps no queue', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({});
@@ -425,23 +465,48 @@ describe('startCarSync', () => {
     expect(lastSnapshot().tabs.map((t) => t.id)).toEqual(['continue', 'downloads', 'library']);
   });
 
-  it('fetches the missing covers after the snapshot, then names them in the next one', async () => {
+  it('uses a downloaded book’s own cover, and fetches no other until a car has connected', async () => {
     connect(['c1']);
     mockCaps.c1 = { cover_sizes: true };
     mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1', cover_version: 'v7' })] });
     useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
     stop = startCarSync();
     await settle();
+    expect(tab(lastSnapshot(), 'downloads')!.items[0].artwork).toBe('file:///d/cover.jpg');
     expect(tab(lastSnapshot(), 'library')!.items[0].artwork).toBeNull();
-    expect(ensureArtwork).toHaveBeenCalledWith('c1:2:L1#v7.jpg', {
-      url: 'https://srv/cover?lib=2&path=L1&size=320&token=secret',
-    });
-    // A downloaded book's cover is copied from its own file, without the network.
-    expect(ensureArtwork).toHaveBeenCalledWith('c1:2:D#.jpg', { localUri: 'file:///d/cover.jpg' });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(ensureArtwork).not.toHaveBeenCalled();
+  });
+
+  it('fetches the missing covers once a car connects, then names them in the next snapshot', async () => {
+    connect(['c1']);
+    mockCaps.c1 = { cover_sizes: true };
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1', cover_version: 'v7' })] });
+    stop = startCarSync();
+    await settle();
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(ensureArtwork).toHaveBeenCalledWith(
+      'c1:2:L1#v7.jpg',
+      'https://srv/cover?lib=2&path=L1&size=320&token=secret',
+    );
+    expect(await getItem('audiosilo.carSeen')).toBe(true);
     await settle(SETTLE_MS + MIN_GAP_MS);
     const snap = lastSnapshot();
     expect(tab(snap, 'library')!.items[0].artwork).toMatch(/^file:\/\/\/docs\/car-artwork\//);
-    expect(tab(snap, 'downloads')!.items[0].artwork).toMatch(/^file:\/\/\/docs\/car-artwork\//);
+    expect(JSON.stringify(snap)).not.toMatch(/secret|https?:/);
+  });
+
+  it('asks for the full cover from a server without thumbnails (after a car was seen)', async () => {
+    await setItem('audiosilo.carSeen', true);
+    connect(['c1']);
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1' })] });
+    stop = startCarSync();
+    await settle();
+    expect(ensureArtwork).toHaveBeenCalledWith(
+      'c1:2:L1#.jpg',
+      'https://srv/cover?lib=2&path=L1&token=secret',
+    );
   });
 
   it('writes again after a list changes, never closer than the gap, and not when nothing changed', async () => {
@@ -700,6 +765,33 @@ describe('adopting the service’s book (Android)', () => {
     });
     await settle();
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+  });
+
+  it('never brings back a book the store finished or stopped while the service was asked', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const playing = {
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0, 100] } },
+      snapshot: { state: 'playing', trackIndex: 1, position: 99, duration: 100, rate: 1 },
+    };
+    usePlayer.setState(playing);
+    stop = startCarSync();
+    await settle();
+    let answer: (v: unknown) => void = () => {};
+    mockNative.getLoadedBook.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    // The book ends (a check is asked), then finishes: the store drops it before the answer.
+    usePlayer.setState({ snapshot: { ...playing.snapshot, state: 'ended' } });
+    usePlayer.setState({
+      nowPlaying: null,
+      snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0, rate: 1 },
+    });
+    answer({ ...loaded, path: 'Other' });
+    await settle();
+    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
   });
 
   it('never asks on iOS (the service has no book of its own there)', async () => {

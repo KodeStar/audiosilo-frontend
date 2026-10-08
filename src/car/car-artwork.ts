@@ -1,7 +1,8 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 /**
- * The covers the car shows: one small JPEG per book under the app's document folder
+ * The covers the car shows for books that are not downloaded (a downloaded book's own
+ * cover file is used as it is): one small JPEG per book under the app's document folder
  * (`car-artwork/`), so CarPlay and Android Auto read FILES the app wrote (no cover URL, and
  * so no session token, ever reaches the car snapshot), and a car that connects offline still
  * has them. A file is named from a hash of the book's `contentKey` and its `cover_version`, so
@@ -55,43 +56,33 @@ export function existingArtwork(name: string): string | null {
   }
 }
 
-/** Where a car cover comes from: a URL to download (a server thumbnail), or the downloaded
- * book's own cover file to copy (no network). */
-export type ArtworkSource = { url: string } | { localUri: string };
-
 const inFlight = new Map<string, Promise<string | null>>();
 
 /**
- * Write a car cover once: `existingArtwork` when it is there; else fetch it from `source`
- * (a download lands in a `.part` file first, so a failed or interrupted one never leaves a
- * broken cover that counts as written). Resolves the file URI, or null when it couldn't be
- * written (offline, the server refused): the item then shows no cover until a later
- * snapshot tries again. A second call for the same name while one runs shares it.
+ * Write a car cover once: `existingArtwork` when it is there; else download it from `url`
+ * (a server cover; it lands in a `.part` file first, so a failed or interrupted download
+ * never leaves a broken cover that counts as written). Resolves the file URI, or null when
+ * it couldn't be written (offline, the server refused): the item then shows no cover until a
+ * later snapshot tries again. A second call for the same name while one runs shares it.
  */
-export function ensureArtwork(name: string, source: ArtworkSource): Promise<string | null> {
+export function ensureArtwork(name: string, url: string): Promise<string | null> {
   const existing = existingArtwork(name);
   if (existing) return Promise.resolve(existing);
   const running = inFlight.get(name);
   if (running) return running;
-  const job = write(name, source).finally(() => inFlight.delete(name));
+  const job = write(name, url).finally(() => inFlight.delete(name));
   inFlight.set(name, job);
   return job;
 }
 
-async function write(name: string, source: ArtworkSource): Promise<string | null> {
+async function write(name: string, url: string): Promise<string | null> {
   try {
     const dir = artworkDir();
     if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
     const dest = artworkFile(name);
     const part = new File(dir, `${name}.part`);
     if (part.exists) part.delete();
-    if ('localUri' in source) {
-      const from = new File(source.localUri);
-      if (!from.exists) return null;
-      from.copy(part);
-    } else {
-      await File.downloadFileAsync(source.url, part, { idempotent: true });
-    }
+    await File.downloadFileAsync(url, part, { idempotent: true });
     if (!part.exists || (part.size ?? 0) <= 0) {
       if (part.exists) part.delete();
       return null;

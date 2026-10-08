@@ -26,9 +26,6 @@ jest.mock('expo-file-system', () => {
     delete() {
       mockFiles.delete(this.uri);
     }
-    copy(to: MockFile) {
-      mockFiles.set(to.uri, mockFiles.get(this.uri) ?? 0);
-    }
     move(to: MockFile) {
       mockFiles.set(to.uri, mockFiles.get(this.uri) ?? 0);
       mockFiles.delete(this.uri);
@@ -79,46 +76,33 @@ describe('artworkName', () => {
 
 describe('ensureArtwork', () => {
   it('downloads a cover once, through a .part file, and reuses it after', async () => {
-    const uri = await ensureArtwork('a.jpg', { url: 'https://srv/cover?size=320' });
+    const uri = await ensureArtwork('a.jpg', 'https://srv/cover?size=320');
     expect(uri).toBe(`${DIR}/a.jpg`);
     expect(mockDownload).toHaveBeenCalledWith('https://srv/cover?size=320', expect.anything());
     expect(mockDownloadedTo).toEqual([`${DIR}/a.jpg.part`]);
     expect([...mockFiles.keys()]).toEqual([`${DIR}/a.jpg`]);
 
-    expect(await ensureArtwork('a.jpg', { url: 'https://srv/cover?size=320' })).toBe(uri);
+    expect(await ensureArtwork('a.jpg', 'https://srv/cover?size=320')).toBe(uri);
     expect(mockDownload).toHaveBeenCalledTimes(1);
     expect(existingArtwork('a.jpg')).toBe(uri);
   });
 
   it('shares one download between two callers', async () => {
-    const [x, y] = await Promise.all([
-      ensureArtwork('b.jpg', { url: 'u' }),
-      ensureArtwork('b.jpg', { url: 'u' }),
-    ]);
+    const [x, y] = await Promise.all([ensureArtwork('b.jpg', 'u'), ensureArtwork('b.jpg', 'u')]);
     expect(x).toBe(y);
     expect(mockDownload).toHaveBeenCalledTimes(1);
-  });
-
-  it('copies a downloaded book’s own cover without the network', async () => {
-    mockFiles.set('file:///docs/downloads/c1/2/book/cover.jpg', 99);
-    const uri = await ensureArtwork('c.jpg', {
-      localUri: 'file:///docs/downloads/c1/2/book/cover.jpg',
-    });
-    expect(uri).toBe(`${DIR}/c.jpg`);
-    expect(mockDownload).not.toHaveBeenCalled();
-    expect(mockFiles.has('file:///docs/downloads/c1/2/book/cover.jpg')).toBe(true);
   });
 
   it('writes nothing that counts as a cover when the fetch fails (offline)', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockDownload.mockRejectedValueOnce(new Error('offline'));
-    expect(await ensureArtwork('d.jpg', { url: 'u' })).toBeNull();
+    expect(await ensureArtwork('d.jpg', 'u')).toBeNull();
     expect(existingArtwork('d.jpg')).toBeNull();
     // An empty answer is no cover either.
     mockDownload.mockImplementationOnce(async (_u, to) => {
       mockFiles.set(to.uri, 0);
     });
-    expect(await ensureArtwork('d.jpg', { url: 'u' })).toBeNull();
+    expect(await ensureArtwork('d.jpg', 'u')).toBeNull();
     expect(mockFiles.size).toBe(0);
     warn.mockRestore();
   });

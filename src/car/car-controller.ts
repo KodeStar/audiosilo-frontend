@@ -28,7 +28,7 @@ import { contentKeyOf } from '@/lib/content-key';
 import { getItem, setItem } from '@/lib/storage';
 import { buildBookQueue, toBookPosition } from '@/playback/book-queue';
 import { noteInteraction } from '@/playback/last-interaction';
-import { loadInitialProgress } from '@/playback/progress-sync';
+import { loadInitialProgress, type ResumeLookup } from '@/playback/progress-sync';
 import {
   onRemoteBookmarkRequest,
   selectBookKey,
@@ -46,13 +46,7 @@ import type {
   PendingBookmark,
 } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
 
-import {
-  artworkName,
-  ensureArtwork,
-  existingArtwork,
-  pruneArtwork,
-  type ArtworkSource,
-} from './car-artwork';
+import { artworkName, ensureArtwork, existingArtwork, pruneArtwork } from './car-artwork';
 import {
   buildCarSnapshot,
   CAR_TAB_LIMITS,
@@ -74,9 +68,10 @@ import { carNative } from './car-native';
  * - **The car snapshot**: built (`car-model.ts`) and handed to native at start, when a car
  *   connects, when the progress lists, the Up next queue or the downloads registry change
  *   (after `SETTLE_MS`), when a book starts or pauses, and when the language changes; never
- *   more often than every `MIN_GAP_MS`. Its covers are files the app wrote
- *   (`car-artwork.ts`), fetched after the snapshot that needs them is out, so a list never
- *   waits on the network.
+ *   more often than every `MIN_GAP_MS`. Its covers are files the app wrote: a downloaded
+ *   book's own cover, else a small JPEG (`car-artwork.ts`) fetched after the snapshot that
+ *   needs it is out (a list never waits on the network), and only once a car has connected
+ *   on this device (a phone that never meets a car never downloads car covers).
  * - **Play requests** (`onCarPlayRequest`, a book native can't start alone): the loaded book
  *   plays on; any other starts through `startBookInPlace`, from its saved place. A failure
  *   is logged; native times the request out and says `labels.unavailable`.
@@ -110,6 +105,8 @@ const ARTWORK_CONCURRENCY = 3;
 const ITEM_CONCURRENCY = 4;
 /** Car bookmarks that couldn't reach their server yet (retried at the next drain). */
 const RETRY_KEY = 'audiosilo.carBookmarks';
+/** Set once a car (CarPlay or Android Auto) has connected on this device. */
+const CAR_SEEN_KEY = 'audiosilo.carSeen';
 
 /** Started (`startCarSync`), and how many callers hold it. */
 let active = false;
@@ -255,7 +252,15 @@ function listedProgress(row: Progress | null): ApiClient {
  * again). */
 let lastBody = '';
 /** Covers a written snapshot still lacks, fetched after it is out. */
-let missingArtwork = new Map<string, { name: string; source: ArtworkSource }>();
+let missingArtwork = new Map<string, { name: string; url: string }>();
+/** A car has connected on this device at least once (`CAR_SEEN_KEY`): only then are covers
+ * fetched for the car. */
+let carSeen = false;
+/** Resume lookups of the downloaded books by content key, with the server row they were
+ * made from. A book's local mirror and offline queue only change when THIS device saves it,
+ * which only the loaded book does (never kept here), so another book's lookup stands until
+ * its server row changes: no storage round trips per book per snapshot. */
+let lookups = new Map<string, { row: string; lookup: ResumeLookup }>();
 
 async function buildAndWrite(): Promise<void> {
   const t = i18n.t.bind(i18n);
@@ -319,36 +324,51 @@ async function buildAndWrite(): Promise<void> {
   }
 
   const plays = new Map<string, CarPlaySpec | undefined>();
+  const loadedKey = live ? contentKeyOf(live.ref) : null;
+  const nextLookups = new Map<string, { row: string; lookup: ResumeLookup }>();
   for (const [key, b] of all) {
     const dl = downloadedEntry(b.ref);
     if (!dl) continue;
     const { connectionId, libraryId, path } = b.ref;
-    const lookup = await loadInitialProgress(
-      known.has(connectionId) ? listedProgress(progressOf(b.ref)) : null,
-      connectionId,
-      libraryId,
-      path,
-    ).catch(() => ({ kind: 'failed' }) as const);
+    const listed = known.has(connectionId);
+    const row = progressOf(b.ref);
+    const rowKey = listed ? (row?.updated_at ?? 'none') : 'unknown';
+    const kept = lookups.get(key);
+    const lookup =
+      kept && kept.row === rowKey && key !== loadedKey
+        ? kept.lookup
+        : await loadInitialProgress(
+            listed ? listedProgress(row) : null,
+            connectionId,
+            libraryId,
+            path,
+          ).catch((): ResumeLookup => ({ kind: 'failed' }));
+    // The loaded book's is never kept: it changes with every save, and the first snapshot
+    // after it stops being the loaded book looks it up again with its last save in.
+    if (key !== loadedKey) nextLookups.set(key, { row: rowKey, lookup });
     plays.set(
       key,
       playSpec(b.ref, dl.manifest, lookup, settings.defaultRate, settings.virtualChapterInterval),
     );
   }
 
-  const names = new Map<string, string>();
+  // Covers: a downloaded book's own cover file as it is (no network, no copy); any other's
+  // a small JPEG written under the car artwork folder, fetched only once a car has connected
+  // on this device (a listener who never drives with it never downloads car covers).
+  const names = new Set<string>();
   const artwork = new Map<string, string | null>();
-  const missing = new Map<string, { name: string; source: ArtworkSource }>();
+  const missing = new Map<string, { name: string; url: string }>();
   for (const [key, b] of all) {
-    const name = artworkName(key, b.book?.cover_version);
-    names.set(key, name);
-    const uri = existingArtwork(name);
-    artwork.set(key, uri);
-    if (uri) continue;
     const local = downloadedEntry(b.ref)?.manifest.coverUri;
     if (local) {
-      missing.set(key, { name, source: { localUri: local } });
+      artwork.set(key, local);
       continue;
     }
+    const name = artworkName(key, b.book?.cover_version);
+    names.add(name);
+    const uri = existingArtwork(name);
+    artwork.set(key, uri);
+    if (uri || !carSeen) continue;
     const client = resolveClient(b.ref.connectionId);
     if (!client) continue;
     const sizes = cachedCapability(b.ref.connectionId, 'cover_sizes') === true;
@@ -358,7 +378,7 @@ async function buildAndWrite(): Promise<void> {
           version: b.book?.cover_version,
         })
       : client.coverUrl(b.ref.libraryId, b.ref.path);
-    missing.set(key, { name, source: { url } });
+    missing.set(key, { name, url });
   }
 
   const snapshot = buildCarSnapshot(
@@ -382,8 +402,9 @@ async function buildAndWrite(): Promise<void> {
   if (bodyJson !== lastBody && (await carNative.setSnapshot(JSON.stringify(snapshot)))) {
     lastBody = bodyJson;
   }
-  pruneArtwork(new Set(names.values()));
+  pruneArtwork(names);
   missingArtwork = missing;
+  lookups = nextLookups;
 }
 
 /** Write the covers the last snapshot lacked, then ask for a snapshot that names them. */
@@ -391,9 +412,7 @@ async function fetchMissingArtwork(): Promise<void> {
   const jobs = [...missingArtwork.values()];
   missingArtwork = new Map();
   if (jobs.length === 0) return;
-  const written = await inBatches(jobs, ARTWORK_CONCURRENCY, (j) =>
-    ensureArtwork(j.name, j.source),
-  );
+  const written = await inBatches(jobs, ARTWORK_CONCURRENCY, (j) => ensureArtwork(j.name, j.url));
   if (written.some(Boolean)) request(false);
 }
 
@@ -592,17 +611,20 @@ let checking: Promise<void> | null = null;
 /**
  * Android: when the playback service holds a book the player store doesn't (the car started
  * it, or it kept playing while JS restarted), adopt it. Never while a book the store started
- * is still loading (the service then still reports the previous one).
+ * is still loading (the service then still reports the previous one), and never when the
+ * store changed its book while the service was asked (a book finished or stopped: the
+ * service is about to drop the one it reported, which must not come back).
  */
 export function checkLoadedBook(): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve();
   checking ??= (async () => {
     try {
-      if (usePlayer.getState().loadingBook) return;
+      const asked = usePlayer.getState();
+      if (asked.loadingBook) return;
       const loaded = await carNative.getLoadedBook();
       if (!loaded) return;
       const player = usePlayer.getState();
-      if (player.loadingBook) return;
+      if (player.loadingBook || player.nowPlaying !== asked.nowPlaying) return;
       if (player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded)) return;
       if (await player.adoptLoaded(loaded)) request(true);
     } catch (err) {
@@ -641,6 +663,10 @@ export function startCarSync(): () => void {
   stops = [
     carNative.onConnection((connected) => {
       if (!connected) return;
+      if (!carSeen) {
+        carSeen = true;
+        void setItem(CAR_SEEN_KEY, true);
+      }
       request(true);
       void checkLoadedBook();
     }),
@@ -664,9 +690,13 @@ export function startCarSync(): () => void {
       ) {
         request(true);
       }
+      // The car can switch the service to another book while one is loaded here; it shows
+      // as the engine changing state or file. With no book loaded (one finished or stopped)
+      // nothing is asked: the service is about to drop it.
       if (
-        s.snapshot.state !== prev.snapshot.state ||
-        s.snapshot.trackIndex !== prev.snapshot.trackIndex
+        s.nowPlaying &&
+        (s.snapshot.state !== prev.snapshot.state ||
+          s.snapshot.trackIndex !== prev.snapshot.trackIndex)
       ) {
         void checkLoadedBook();
       }
@@ -711,6 +741,7 @@ export function startCarSync(): () => void {
   ready = (async () => {
     try {
       await bootstrapPlayback();
+      carSeen ||= (await getItem<boolean>(CAR_SEEN_KEY)) === true;
       if (!active) return;
       await checkLoadedBook();
       await drainCarBookmarks();
@@ -740,5 +771,7 @@ export function forgetCarSync() {
   lastWriteAt = 0;
   writing = false;
   missingArtwork = new Map();
+  lookups = new Map();
+  carSeen = false;
   checking = null;
 }
