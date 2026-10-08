@@ -20,4 +20,6 @@ Pod::Spec.new do |s|
   }
 
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  # The host self-check (swiftc on the Mac, see SelfCheck/run.sh) is not part of the app.
+  s.exclude_files = "SelfCheck/**"
 end
