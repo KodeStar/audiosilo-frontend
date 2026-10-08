@@ -16,10 +16,12 @@ import { type NowPlaying, selectBookPosition, usePlayer } from '@/playback/store
 import { type Connection, useSession } from '@/stores/session';
 
 import { effectiveUrl, setAddressPick, useAddressRoute } from './address-route';
-import { ApiClient } from './client';
 import { resolveClient } from './connection-clients';
 import { addressesQuery, fetchCapabilities, fetchFailFast } from './hooks';
 import { onReconnect, useReachability } from './reachability';
+import { probeServerId } from './server-id-probe';
+
+export { PROBE_TIMEOUT_MS, probeServerId } from './server-id-probe';
 
 /**
  * The home/away address runner (native only; the web player keeps its own origin).
@@ -39,20 +41,6 @@ import { onReconnect, useReachability } from './reachability';
  *   address its connection no longer uses, it is started again in place, at its
  *   position and speed, through `startBookInPlace` (no playback internals changed).
  */
-
-/** How long the home address gets to answer before the player uses the away one. */
-export const PROBE_TIMEOUT_MS = 2_500;
-
-/** Ask `url` who it is: `GET <url>/api/v1/server` with NO token (a bare client: no
- * Authorization header, no reconnect callback). The `server_id` it answered, or null. */
-export const probeServerId: ServerIdProbe = async (url) => {
-  try {
-    const info = await new ApiClient(url, null, PROBE_TIMEOUT_MS).serverInfo();
-    return typeof info?.server_id === 'string' ? info.server_id : null;
-  } catch {
-    return null;
-  }
-};
 
 let probe: ServerIdProbe = probeServerId;
 /** Each connection's latest re-pick: an older one still probing must not land over it. */

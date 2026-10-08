@@ -209,6 +209,37 @@ describe('remembered servers', () => {
     );
   });
 
+  it('signs in through the home address when the server answers there as itself', async () => {
+    await remember({
+      serverId: 'srv-1',
+      serverUrl: AWAY,
+      name: 'Hearthside',
+      addresses: { home: HOME, away: AWAY },
+    });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await fireEvent.press(await screen.findByLabelText('Reconnect to Hearthside'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    expect(mockBases[0]).toBe(HOME);
+    expect(useSession.getState().pendingServerUrl).toBe(HOME);
+  });
+
+  it('goes away from home when another box answers at the home address', async () => {
+    await remember({
+      serverId: 'srv-1',
+      serverUrl: AWAY,
+      name: 'Hearthside',
+      addresses: { home: HOME, away: AWAY },
+    });
+    mockApi.serverInfo
+      .mockResolvedValueOnce(info({ server_id: 'someone-else' }))
+      .mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await fireEvent.press(await screen.findByLabelText('Reconnect to Hearthside'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    expect(useSession.getState().pendingServerUrl).toBe(AWAY);
+  });
+
   it('hides a server this device is signed in to', async () => {
     await remember({ serverId: 'srv-1', serverUrl: AWAY, name: 'Hearthside' });
     await useSession

@@ -2,7 +2,12 @@ import { create } from 'zustand';
 
 import { ApiError } from '@/api/client';
 import type { ServerAddresses, User } from '@/api/types';
-import { list as listKnownServers, remember as rememberServer } from '@/lib/known-servers';
+import {
+  knownAddresses,
+  list as listKnownServers,
+  remember as rememberServer,
+  rememberAddresses,
+} from '@/lib/known-servers';
 import { cleanAddresses } from '@/lib/pairing';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { mergeAddresses, sameAddresses } from '@/lib/server-address';
@@ -335,7 +340,11 @@ export const useSession = create<SessionState>()((set, get) => ({
     // token is dead - flagged needsReconnect='server-reset'). It must be dropped here, or
     // re-pairing leaves a zombie the reconnect banner keeps re-flagging on every /server hit.
     const stale = existing.filter((c) => c.id !== serverId && sameServer(c.serverUrl, serverUrl));
-    const known = mergeAddresses(prior?.addresses, cleanAddresses(addresses));
+    // What the device knew of this server's addresses: the connection's, else (a sign-in
+    // again after signing out, from the connect screen's remembered servers) the remembered
+    // server's, so a sign-in through the away address doesn't forget the home one.
+    const knew = prior ? prior.addresses : await knownAddresses(serverId);
+    const known = mergeAddresses(knew, cleanAddresses(addresses));
     const conn: Connection = {
       id: serverId,
       serverUrl,
@@ -355,7 +364,12 @@ export const useSession = create<SessionState>()((set, get) => ({
     await persist(connections, serverId);
     // Remember this server durably (no token) so the connect screen can offer a one-tap
     // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
-    await rememberServer({ serverUrl, name: conn.name, serverId });
+    await rememberServer({
+      serverUrl,
+      name: conn.name,
+      serverId,
+      ...(known ? { addresses: known } : {}),
+    });
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
     set({ connections, pendingServerUrl: null, ...mirror(connections, serverId) });
@@ -394,6 +408,8 @@ export const useSession = create<SessionState>()((set, get) => ({
       return addresses ? { ...rest, addresses } : rest;
     });
     await persist(next, defaultConnectionId);
+    // The remembered server (for a reconnect after signing out) learns them too.
+    await rememberAddresses(id, addresses);
     set({ connections: next, ...mirror(next, defaultConnectionId) });
   },
 

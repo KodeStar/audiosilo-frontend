@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { ApiClient, ApiError } from '@/api/client';
+import { probeServerId } from '@/api/server-id-probe';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -20,7 +21,13 @@ import { cleanAddresses, normalizeUrl, parsePairingScan } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 
 import { BrandLockup, ConnectFrame, ConnectInput, StepDots } from './connect-frame';
-import { hostOf, knownToOffer, looksLikeHomeAddress, pairingAddresses } from './connect-model';
+import {
+  hostOf,
+  knownToOffer,
+  looksLikeHomeAddress,
+  pairingAddresses,
+  reconnectAddress,
+} from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
@@ -131,9 +138,13 @@ export function ConnectStart() {
     }
   };
 
-  const onReconnect = (entry: KnownServer) => {
-    setUrl(entry.serverUrl);
-    void connect(entry.serverUrl, entry.serverId);
+  // A remembered server with a home address: ask it there first (native), then go on with
+  // whichever address answered as its own.
+  const onReconnect = async (entry: KnownServer) => {
+    setBusy(entry.serverId);
+    const target = await reconnectAddress(entry, probeServerId, Platform.OS === 'web');
+    setUrl(target);
+    await connect(target, entry.serverId);
   };
 
   const onForget = async (serverId: string) => {
@@ -262,6 +273,7 @@ export function ConnectStart() {
         {isWeb ? (
           <Button
             variant="outline"
+            icon="link"
             title={t('connect.link.open')}
             aria-expanded={linkOpen}
             onPress={() => setLinkOpen((o) => !o)}
@@ -309,7 +321,7 @@ export function ConnectStart() {
               entry={entry}
               busy={busy === entry.serverId}
               disabled={busy !== null}
-              onReconnect={() => onReconnect(entry)}
+              onReconnect={() => void onReconnect(entry)}
               onForget={() => onForget(entry.serverId)}
             />
           ))}

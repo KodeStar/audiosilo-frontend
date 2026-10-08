@@ -1,7 +1,13 @@
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
 import type { KnownServer } from '@/lib/known-servers';
 import { cleanAddresses, type PairingScan } from '@/lib/pairing';
-import { type AddressedConnection, isOwnAddress, mergeAddresses } from '@/lib/server-address';
+import {
+  type AddressedConnection,
+  isOwnAddress,
+  mergeAddresses,
+  pickAddress,
+  type ServerIdProbe,
+} from '@/lib/server-address';
 import { isInProgress } from '@/lib/progress-view';
 
 /**
@@ -133,6 +139,25 @@ export function knownToOffer(
   connectionIds: readonly string[],
 ): KnownServer[] {
   return known.filter((k) => !connectionIds.includes(k.serverId));
+}
+
+/**
+ * The address a "Reconnect to <server>" row signs in through. On the web, the address it
+ * remembered (the served player stays same-origin). On native, a remembered server with
+ * a home address is asked who it is there first (`pickAddress`: no token, home only on
+ * the server's own `server_id`, so a password never goes to another box at the same
+ * private IP), else its away address, else the remembered one.
+ */
+export function reconnectAddress(
+  entry: KnownServer,
+  probe: ServerIdProbe,
+  web: boolean,
+): Promise<string> {
+  if (web || !entry.addresses?.home) return Promise.resolve(entry.serverUrl);
+  return pickAddress(
+    { id: entry.serverId, serverUrl: entry.serverUrl, addresses: entry.addresses },
+    probe,
+  );
 }
 
 /**

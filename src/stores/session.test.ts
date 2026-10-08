@@ -531,6 +531,24 @@ describe('session store (multi-connection)', () => {
       expect(addressesOf()).toEqual({ away: AWAY });
     });
 
+    it('a sign-in again after signing out keeps the home address the device remembered', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await useSession.getState().removeConnection('srv-a');
+      expect(useSession.getState().connections).toHaveLength(0);
+      // Signed in again through the away address: the answer cannot know home.
+      await pair({ away: AWAY });
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
+      expect(known[0].addresses).toEqual({ home: HOME, away: AWAY });
+    });
+
+    it('the remembered server follows setConnectionAddresses', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await useSession.getState().setConnectionAddresses('srv-a', { away: AWAY });
+      const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
+      expect(known[0].addresses).toEqual({ away: AWAY });
+    });
+
     it('setConnectionAddresses replaces and persists them, and no-ops when unchanged', async () => {
       await pair({ home: HOME });
       const before = useSession.getState().connections;

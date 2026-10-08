@@ -10,6 +10,7 @@ import {
   looksLikeHomeAddress,
   pairingAddresses,
   readyLine,
+  reconnectAddress,
   repairPlan,
   revealOffset,
   scanParams,
@@ -92,6 +93,35 @@ describe('repairPlan', () => {
 it('isFirstConnection: only with no connection before', () => {
   expect(isFirstConnection([])).toBe(true);
   expect(isFirstConnection([{}])).toBe(false);
+});
+
+describe('reconnectAddress', () => {
+  const entry = { serverId: 'srv-1', serverUrl: AWAY, name: 'Hearthside' };
+  const at = (answers: Record<string, string>) => {
+    const probe = jest.fn(async (url: string) => answers[url] ?? null);
+    return probe;
+  };
+
+  it('uses the home address only when the server answers there as itself', async () => {
+    const home = { ...entry, addresses: { home: HOME, away: AWAY } };
+    await expect(reconnectAddress(home, at({ [HOME]: 'srv-1' }), false)).resolves.toBe(HOME);
+    // Another box at the same private IP: away.
+    await expect(reconnectAddress(home, at({ [HOME]: 'other' }), false)).resolves.toBe(AWAY);
+    await expect(reconnectAddress(home, at({}), false)).resolves.toBe(AWAY);
+  });
+
+  it('falls back to the remembered address without an away one', async () => {
+    const homeOnly = { ...entry, serverUrl: 'https://paired.example', addresses: { home: HOME } };
+    await expect(reconnectAddress(homeOnly, at({}), false)).resolves.toBe('https://paired.example');
+  });
+
+  it('asks nothing on the web or without a home address', async () => {
+    const probe = at({ [HOME]: 'srv-1' });
+    const home = { ...entry, addresses: { home: HOME, away: AWAY } };
+    await expect(reconnectAddress(home, probe, true)).resolves.toBe(AWAY);
+    await expect(reconnectAddress(entry, probe, false)).resolves.toBe(AWAY);
+    expect(probe).not.toHaveBeenCalled();
+  });
 });
 
 describe('looksLikeHomeAddress', () => {
