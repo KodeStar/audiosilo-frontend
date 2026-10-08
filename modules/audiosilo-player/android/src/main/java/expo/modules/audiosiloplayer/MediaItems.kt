@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 
 /** A book's identity (path is the identity, scoped by connection; never a DB id). */
 data class BookRef(val connectionId: String, val libraryId: Long, val path: String)
@@ -184,6 +185,9 @@ object MediaItems {
   }
 }
 
+/** Every item of the player's queue, in order. */
+fun Player.mediaItems(): List<MediaItem> = List(mediaItemCount) { getMediaItemAt(it) }
+
 /**
  * Translates between the media items the engine plays and the FILE-based timeline the JS store
  * works in. The store thinks in (fileIndex, positionInFile); each engine item is one chapter clip
@@ -234,11 +238,16 @@ class TimelineMap(val entries: List<Entry>) {
   }
 
   /** (item index, item-relative ms) -> (fileIndex, seconds-within-file). */
-  fun itemToFile(itemIndex: Int, itemRelMs: Long): Pair<Int, Double> {
-    val c = entries.getOrNull(itemIndex) ?: return Pair(itemIndex, itemRelMs / 1000.0)
-    return Pair(c.fileIndex, c.startInFile + itemRelMs / 1000.0)
-  }
+  fun itemToFile(itemIndex: Int, itemRelMs: Long): Pair<Int, Double> =
+    toFile(entries.getOrNull(itemIndex), itemIndex, itemRelMs)
 
   /** The FILE duration for an item (seconds, 0 when unknown). */
   fun fileDurationAt(itemIndex: Int): Double = entries.getOrNull(itemIndex)?.fileDuration ?: 0.0
+
+  companion object {
+    /** One item's (entry, index, item-relative ms) -> (fileIndex, seconds-within-file). An item
+     * without our extras (null [entry]) is taken as a whole file at its own index. */
+    fun toFile(entry: Entry?, itemIndex: Int, itemRelMs: Long): Pair<Int, Double> =
+      if (entry == null) Pair(itemIndex, itemRelMs / 1000.0) else Pair(entry.fileIndex, entry.startInFile + itemRelMs / 1000.0)
+  }
 }

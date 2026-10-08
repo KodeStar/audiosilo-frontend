@@ -26,7 +26,7 @@ interface PlayerEventSink {
   /** True while JS listens for bookmarks (else the service stores them as pending). */
   val observingBookmarks: Boolean
 
-  /** True while JS listens for car play requests: the car controller (WS-G) is running. */
+  /** True while JS listens for car play requests: the JS car controller is running. */
   val observingCar: Boolean
 }
 

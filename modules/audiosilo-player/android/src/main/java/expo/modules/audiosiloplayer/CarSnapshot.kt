@@ -9,8 +9,11 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 
+// Data classes: the service compares a new snapshot with the last one it showed, so it only
+// tells the car about the tabs (and the button labels) that really changed.
+
 /** The play spec of a DOWNLOADED book: enough to start it with no JS (file URIs, no headers). */
-class CarPlaySpec(
+data class CarPlaySpec(
   val book: BookRef,
   val tracks: List<TrackSpec>,
   val clips: List<ClipSpec>,
@@ -19,7 +22,7 @@ class CarPlaySpec(
   val rate: Double,
 )
 
-class CarItem(
+data class CarItem(
   val id: String,
   val title: String,
   val subtitle: String,
@@ -30,12 +33,17 @@ class CarItem(
   /** A file:// URI the app wrote, or null. */
   val artwork: String?,
   val play: CarPlaySpec?,
-)
+) {
+  /** The cover file and the opaque key the artwork provider serves it under, worked out once
+   * here (a SHA-256) rather than on every browse. Derived from [artwork], so not part of equals. */
+  val artworkFile: File? = CarSnapshot.artworkFile(artwork)
+  val artworkKey: String? = artworkFile?.let { CarSnapshot.artworkKey(it) }
+}
 
-class CarTab(val id: String, val title: String, val items: List<CarItem>)
+data class CarTab(val id: String, val title: String, val items: List<CarItem>)
 
 /** The strings the car shows. Native has none of its own: JS localizes them. */
-class CarLabels(
+data class CarLabels(
   val empty: String,
   val signedOut: String,
   val unavailable: String,
@@ -54,8 +62,7 @@ class CarSnapshot(
   val artworkByKey: Map<String, File> by lazy {
     val out = HashMap<String, File>()
     for (tab in tabs) for (item in tab.items) {
-      val file = artworkFile(item.artwork) ?: continue
-      out[artworkKey(file)] = file
+      out[item.artworkKey ?: continue] = item.artworkFile ?: continue
     }
     out
   }
@@ -76,9 +83,18 @@ class CarSnapshot(
       return path?.let { File(it) }
     }
 
+    private val HEX = "0123456789abcdef".toCharArray()
+
+    /** The first 16 bytes of the path's SHA-256, as lowercase hex. */
     fun artworkKey(file: File): String {
       val digest = MessageDigest.getInstance("SHA-256").digest(file.absolutePath.toByteArray())
-      return digest.take(16).joinToString("") { "%02x".format(it) }
+      val out = CharArray(32)
+      for (i in 0 until 16) {
+        val b = digest[i].toInt() and 0xFF
+        out[2 * i] = HEX[b ushr 4]
+        out[2 * i + 1] = HEX[b and 0x0F]
+      }
+      return String(out)
     }
 
     fun parse(json: String): CarSnapshot {
@@ -174,13 +190,22 @@ class CarSnapshot(
  * Keeps the last car snapshot on disk (`filesDir/audiosilo-car-snapshot.json`) so the car shows
  * the library at once next time, even before (or without) JS running. Written atomically (a
  * temp file renamed over the old one) so a crash mid-write never leaves half a snapshot.
+ *
+ * Readers never wait for a write: the current snapshot is published through one volatile
+ * reference, read without a lock, so the main thread (the session callbacks, the button layout)
+ * and the artwork provider never block on a write's fsync. Only writers, and the one-time disk
+ * read when nothing is loaded yet, take [lock] (which keeps a slow first read from publishing an
+ * older snapshot over a newer write). The service preloads it off the main thread ([preload]).
  */
 object CarSnapshotStore {
   private const val TAG = "AudiosiloCar"
   private const val FILE = "audiosilo-car-snapshot.json"
 
-  @Volatile private var cached: CarSnapshot? = null
-  @Volatile private var loaded = false
+  /** What is loaded: null until the file was read (or written) once in this process. */
+  private class Loaded(val snapshot: CarSnapshot?)
+
+  @Volatile private var current: Loaded? = null
+  private val lock = Any()
 
   /** Application context, set by the first component that runs in the process (the artwork
    * provider's onCreate runs before any receiver), for callers without one. */
@@ -191,38 +216,58 @@ object CarSnapshotStore {
     if (appContext == null) appContext = context.applicationContext
   }
 
-  /** Validates [json], writes it atomically and makes it current. Throws on invalid JSON. */
-  @Synchronized
+  /** Validates [json], writes it atomically and makes it current. Throws on invalid JSON. Not on
+   * the main thread (it syncs the file). */
   fun write(context: Context, json: String) {
     init(context)
     val snapshot = CarSnapshot.parse(json)
-    val dir = context.filesDir
-    val tmp = File(dir, "$FILE.tmp")
-    FileOutputStream(tmp).use { out ->
-      out.write(json.toByteArray(Charsets.UTF_8))
-      out.fd.sync()
+    synchronized(lock) {
+      val dir = context.filesDir
+      val tmp = File(dir, "$FILE.tmp")
+      FileOutputStream(tmp).use { out ->
+        out.write(json.toByteArray(Charsets.UTF_8))
+        out.fd.sync()
+      }
+      if (!tmp.renameTo(File(dir, FILE))) {
+        tmp.delete()
+        throw IllegalStateException("Could not save the car snapshot")
+      }
+      current = Loaded(snapshot)
     }
-    if (!tmp.renameTo(File(dir, FILE))) {
-      tmp.delete()
-      throw IllegalStateException("Could not save the car snapshot")
-    }
-    cached = snapshot
-    loaded = true
   }
 
   /** The current snapshot (read from disk once per process), or null when JS never wrote one. */
-  @Synchronized
   fun get(context: Context): CarSnapshot? {
+    current?.let { return it.snapshot }
     init(context)
-    if (loaded) return cached
-    loaded = true
+    synchronized(lock) {
+      current?.let { return it.snapshot }
+      val loaded = Loaded(read(context))
+      current = loaded
+      return loaded.snapshot
+    }
+  }
+
+  /** The snapshot if it is already loaded, else null; never touches the disk. */
+  fun peek(): CarSnapshot? = current?.snapshot
+
+  /** Loads the snapshot on a background thread, then runs [then] (on that thread). */
+  fun preload(context: Context, then: () -> Unit) {
+    val app = context.applicationContext
+    Thread({
+      get(app)
+      then()
+    }, "AudiosiloCarSnapshot").start()
+  }
+
+  private fun read(context: Context): CarSnapshot? {
     val file = File(context.filesDir, FILE)
-    cached = if (!file.exists()) null else try {
+    if (!file.exists()) return null
+    return try {
       CarSnapshot.parse(file.readText(Charsets.UTF_8))
     } catch (e: Exception) {
       Log.w(TAG, "Ignoring an unreadable car snapshot", e)
       null
     }
-    return cached
   }
 }

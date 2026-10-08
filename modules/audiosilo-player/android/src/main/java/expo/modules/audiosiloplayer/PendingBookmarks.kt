@@ -3,10 +3,6 @@ package expo.modules.audiosiloplayer
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 
 /**
  * Bookmarks pressed (notification / Android Auto) while no JS listened, kept in the player's
@@ -31,8 +27,7 @@ object PendingBookmarks {
         .put("libraryId", book.libraryId)
         .put("path", book.path)
         .put("trackIndex", fileIndex)
-        .put("position", position)
-        .put("at", isoNow()),
+        .put("position", position),
     )
     while (arr.length() > MAX) arr.remove(0)
     // commit, not apply: the process may die right after a press with nothing else running.
@@ -60,7 +55,6 @@ object PendingBookmarks {
           "path" to o.optString("path"),
           "trackIndex" to o.optInt("trackIndex"),
           "position" to o.optDouble("position", 0.0),
-          "at" to o.optString("at"),
         ),
       )
     }
@@ -69,11 +63,4 @@ object PendingBookmarks {
 
   private fun prefs(context: Context) =
     context.getSharedPreferences(AudiosiloPlayerService.PREFS, Context.MODE_PRIVATE)
-
-  /** Fixed-width UTC with milliseconds, like the app's bookmark timestamps. */
-  private fun isoNow(): String {
-    val f = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-    f.timeZone = TimeZone.getTimeZone("UTC")
-    return f.format(Date())
-  }
 }

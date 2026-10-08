@@ -45,13 +45,66 @@ import java.util.concurrent.Executors
  * player: the auto-rewind window (read live by [AudiobookPlayer.play] so a resume from
  * anywhere, the lock screen included, rewinds by the current Settings value) and the
  * skip intervals (read live by [AudiobookPlayer.seekBack]/[AudiobookPlayer.seekForward]).
+ *
+ * Persisted in the player's prefs (beside the effects) whenever they change, and restored by the
+ * service's onCreate: a service started with no JS (Android Auto, playback resumption) used to
+ * run with the defaults (no auto-rewind, 30/15 s skips) whatever the listener had set.
  */
 object PlayerConfig {
+  private const val KEY_AUTO_REWIND = "config.autoRewindMaxMs"
+  private const val KEY_JUMP_FORWARD = "config.jumpForwardMs"
+  private const val KEY_JUMP_BACKWARD = "config.jumpBackwardMs"
+
   @Volatile var autoRewindMaxMs: Long = 0
+    private set
   // Skip amounts (ms). The seek honors these immediately; the notification glyphs
   // (nearest predefined ICON_SKIP_*) are chosen when the layout is built at start.
   @Volatile var jumpForwardMs: Long = 30_000
+    private set
   @Volatile var jumpBackwardMs: Long = 15_000
+    private set
+
+  /** Whether the persisted values were read into this process. Guarded by this object. */
+  private var restored = false
+
+  /** The module's `setConfig`: takes effect at once, and is persisted when it changed (when a
+   * [context] is at hand; the module passes its React context, absent only during teardown). */
+  @Synchronized
+  fun update(context: Context?, autoRewindMaxMs: Long, jumpForwardMs: Long, jumpBackwardMs: Long) {
+    // Read the persisted values first, so "changed" compares against what is on disk and a later
+    // restore can't overwrite what JS just set.
+    if (context != null) restoreLocked(context) else restored = true
+    if (autoRewindMaxMs == this.autoRewindMaxMs && jumpForwardMs == this.jumpForwardMs &&
+      jumpBackwardMs == this.jumpBackwardMs
+    ) {
+      return
+    }
+    this.autoRewindMaxMs = autoRewindMaxMs
+    this.jumpForwardMs = jumpForwardMs
+    this.jumpBackwardMs = jumpBackwardMs
+    if (context == null) return
+    prefs(context).edit()
+      .putLong(KEY_AUTO_REWIND, autoRewindMaxMs)
+      .putLong(KEY_JUMP_FORWARD, jumpForwardMs)
+      .putLong(KEY_JUMP_BACKWARD, jumpBackwardMs)
+      .apply()
+  }
+
+  /** The service's onCreate: the listener's last values (once per process; JS's own win). */
+  @Synchronized
+  fun restore(context: Context) = restoreLocked(context)
+
+  private fun restoreLocked(context: Context) {
+    if (restored) return
+    restored = true
+    val prefs = prefs(context)
+    autoRewindMaxMs = prefs.getLong(KEY_AUTO_REWIND, autoRewindMaxMs)
+    jumpForwardMs = prefs.getLong(KEY_JUMP_FORWARD, jumpForwardMs)
+    jumpBackwardMs = prefs.getLong(KEY_JUMP_BACKWARD, jumpBackwardMs)
+  }
+
+  private fun prefs(context: Context) =
+    context.getSharedPreferences(AudiosiloPlayerService.PREFS, Context.MODE_PRIVATE)
 }
 
 /**
@@ -96,6 +149,18 @@ class AudiosiloPlayerService : MediaLibraryService() {
   private var pendingPlay: SettableFuture<MediaItemsWithStartPosition>? = null
   private val pendingTimeout = Runnable { failPendingPlay() }
 
+  /** The snapshot the car was last told about ([onSnapshotChanged]); null before the first. */
+  private var shownSnapshot: CarSnapshot? = null
+
+  /** The labels the current button layout was built with ([mediaButtons]). */
+  private var layoutLabels: CarLabels? = null
+
+  /** (package, uri) artwork grants already made ([grantArtwork]). Main thread. */
+  private val artworkGrants = HashSet<Pair<String, Uri>>()
+
+  /** Smart Speed / Voice Boost as last saved to prefs ([applyEffects]). */
+  private var savedEffects: Pair<Boolean, Boolean>? = null
+
   /** The bookmark button shows "filled" for a moment after a press. */
   private var bookmarkFilled = false
   private val bookmarkUnfill = Runnable {
@@ -106,6 +171,12 @@ class AudiosiloPlayerService : MediaLibraryService() {
   override fun onCreate() {
     super.onCreate()
     CarSnapshotStore.init(this)
+    // The car snapshot is read off the main thread; until it is in, the buttons carry their
+    // English labels (as before the first snapshot), and the layout is re-set once it is.
+    CarSnapshotStore.preload(this) { handler.post { refreshLayout() } }
+    // A service started without JS (the car, playback resumption) uses the listener's last
+    // auto-rewind and skip intervals; the module's setConfig updates them whenever JS runs.
+    PlayerConfig.restore(this)
 
     val httpFactory = DefaultHttpDataSource.Factory()
     val upstream = DataSource.Factory {
@@ -139,6 +210,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // switches; the module's setConfig re-sends them whenever JS runs.
     val (smart, boost) = AudioEffects.load(this)
     AudioEffects.apply(exo, smart, boost)
+    savedEffects = smart to boost
     exoPlayer = exo
     exo.addListener(object : Player.Listener {
       override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -198,9 +270,13 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * two custom actions, so the phone keeps exactly today's row, while Android Auto lists every
    * custom action (the bookmark in its overflow). [NotificationProvider] leaves it out of the
    * notification's own actions so `dumpsys notification` stays at actions=5.
+   *
+   * Never reads the disk (the snapshot may still be loading): records the labels it used, so
+   * [refreshLayout] re-sets the layout once they change.
    */
   private fun mediaButtons(): List<CommandButton> {
-    val labels = snapshot()?.labels
+    val labels = CarSnapshotStore.peek()?.labels
+    layoutLabels = labels
     return listOf(
       CommandButton.Builder(skipIcon(PlayerConfig.jumpBackwardMs, forward = false))
         .setSessionCommand(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
@@ -257,9 +333,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
   private fun currentFilePosition(): Pair<Int, Double>? {
     val p = player ?: return null
     if (p.mediaItemCount == 0) return null
-    val entry = MediaItems.entryOf(p.currentMediaItem)
-    val sec = p.currentPosition / 1000.0
-    return if (entry != null) Pair(entry.fileIndex, entry.startInFile + sec) else Pair(p.currentMediaItemIndex, sec)
+    return TimelineMap.toFile(MediaItems.entryOf(p.currentMediaItem), p.currentMediaItemIndex, p.currentPosition)
   }
 
   // ---- Effects ---------------------------------------------------------------------------
@@ -267,7 +341,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
   internal fun applyEffects(smartSpeed: Boolean, voiceBoost: Boolean) {
     val exo = exoPlayer ?: return
     AudioEffects.apply(exo, smartSpeed, voiceBoost)
-    AudioEffects.save(this, smartSpeed, voiceBoost)
+    val effects = smartSpeed to voiceBoost
+    if (effects != savedEffects) {
+      savedEffects = effects
+      AudioEffects.save(this, smartSpeed, voiceBoost)
+    }
   }
 
   // ---- Bookmarks -------------------------------------------------------------------------
@@ -295,6 +373,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   internal fun onControllerConnected(controller: MediaSession.ControllerInfo) {
     if (isCarController(controller)) {
+      // A (re)connecting car may be a restarted Auto app, whose URI grants went with it.
+      artworkGrants.clear()
       carControllers.add(controller)
       updateCarConnection()
     }
@@ -319,21 +399,54 @@ class AudiosiloPlayerService : MediaLibraryService() {
     if (connected) needJs() else maybeReleaseJs()
   }
 
-  /** The snapshot changed (`setCarSnapshot`): refresh what the car shows, and the bookmark
-   * button's label. */
+  /** The snapshot changed (`setCarSnapshot`): tell the car which lists changed (JS re-sends the
+   * whole snapshot on every change, often with most tabs as they were), and re-set the buttons
+   * when their labels changed. */
   internal fun onSnapshotChanged() {
     val session = mediaSession ?: return
     val snapshot = snapshot()
-    session.notifyChildrenChanged(CarBrowseTree.ROOT, snapshot?.tabs?.size ?: 0, null)
-    snapshot?.tabs?.forEach { session.notifyChildrenChanged(CarBrowseTree.tabId(it), it.items.size, null) }
+    val previous = shownSnapshot
+    shownSnapshot = snapshot
+    if (snapshot == null || previous == null || previous.signedIn != snapshot.signedIn) {
+      // Nothing shown yet, or signing in/out: every list is new.
+      session.notifyChildrenChanged(CarBrowseTree.ROOT, snapshot?.tabs?.size ?: 0, null)
+      snapshot?.tabs?.forEach { session.notifyChildrenChanged(CarBrowseTree.tabId(it), it.items.size, null) }
+    } else {
+      if (rootChanged(previous, snapshot)) session.notifyChildrenChanged(CarBrowseTree.ROOT, snapshot.tabs.size, null)
+      for (tab in snapshot.tabs) {
+        if (tabChanged(previous, snapshot, tab)) session.notifyChildrenChanged(CarBrowseTree.tabId(tab), tab.items.size, null)
+      }
+    }
+    refreshLayout()
+  }
+
+  /** The root's children: the tabs (ids and titles), or the signed-out label. */
+  private fun rootChanged(previous: CarSnapshot, snapshot: CarSnapshot): Boolean =
+    previous.tabs.map { it.id to it.title } != snapshot.tabs.map { it.id to it.title } ||
+      previous.labels.signedOut != snapshot.labels.signedOut
+
+  /** A tab's children: its books, or the empty label. */
+  private fun tabChanged(previous: CarSnapshot, snapshot: CarSnapshot, tab: CarTab): Boolean {
+    val before = previous.tabs.firstOrNull { it.id == tab.id } ?: return true
+    return before.items != tab.items || (tab.items.isEmpty() && previous.labels.empty != snapshot.labels.empty)
+  }
+
+  /** Re-sets the button layout when the snapshot's labels differ from the ones it was built with. */
+  private fun refreshLayout() {
+    val session = mediaSession ?: return
+    if (CarSnapshotStore.peek()?.labels == layoutLabels) return
     session.setCustomLayout(mediaButtons())
   }
 
-  /** Lets the browsing app (Android Auto's package) open a cover's content URI. */
+  /** Lets the browsing app (Android Auto's package) open a cover's content URI; each (package,
+   * uri) once, since every browse of a tab asks again. */
   internal fun grantArtwork(browser: MediaSession.ControllerInfo, uri: Uri) {
+    val grant = browser.packageName to uri
+    if (!artworkGrants.add(grant)) return
     try {
       grantUriPermission(browser.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     } catch (e: Exception) {
+      artworkGrants.remove(grant)
       Log.w(TAG, "Could not grant artwork to ${browser.packageName}", e)
     }
   }
@@ -382,7 +495,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       val p = player ?: return@post
       pendingPlay = null
       handler.removeCallbacks(pendingTimeout)
-      val items = (0 until p.mediaItemCount).map { p.getMediaItemAt(it) }
+      val items = p.mediaItems()
       if (items.isEmpty()) {
         future.setException(IllegalStateException("Nothing loaded"))
         return@post

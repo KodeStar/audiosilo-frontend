@@ -43,30 +43,32 @@ object CarBrowseTree {
   fun rootChildren(snapshot: CarSnapshot?, limit: Int): List<MediaItem> {
     if (snapshot == null) return emptyList()
     if (!snapshot.signedIn) return listOf(infoItem("signedOut", snapshot.labels.signedOut))
-    val tabs = snapshot.tabs.map { tab ->
-      MediaItem.Builder()
-        .setMediaId(tabId(tab))
-        .setMediaMetadata(
-          MediaMetadata.Builder()
-            .setTitle(tab.title)
-            .setIsBrowsable(true)
-            .setIsPlayable(false)
-            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
-            .setExtras(
-              Bundle().apply {
-                putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
-              },
-            )
-            .build(),
-        )
-        .build()
-    }
-    return if (limit > 0) tabs.take(limit) else tabs
+    val tabs = if (limit > 0) snapshot.tabs.take(limit) else snapshot.tabs
+    return tabs.map(::tabItem)
   }
 
-  /** A tab's books, or one label item for an empty tab; null for an unknown parent. */
+  /** A browsable tab (its books default to grid items). */
+  private fun tabItem(tab: CarTab): MediaItem = MediaItem.Builder()
+    .setMediaId(tabId(tab))
+    .setMediaMetadata(
+      MediaMetadata.Builder()
+        .setTitle(tab.title)
+        .setIsBrowsable(true)
+        .setIsPlayable(false)
+        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+        .setExtras(
+          Bundle().apply {
+            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
+          },
+        )
+        .build(),
+    )
+    .build()
+
+  /** A tab's books, or one label item for an empty tab; null for an unknown parent (the root's
+   * children come from [rootChildren]). */
   fun children(context: Context, snapshot: CarSnapshot?, parentId: String, grant: (Uri) -> Unit): List<MediaItem>? {
-    if (snapshot == null) return if (parentId == ROOT) emptyList() else null
+    snapshot ?: return null
     val tab = snapshot.tabs.firstOrNull { tabId(it) == parentId } ?: return null
     if (tab.items.isEmpty()) return listOf(infoItem(tab.id, snapshot.labels.empty))
     return tab.items.map { bookItem(context, it, grant) }
@@ -77,9 +79,7 @@ object CarBrowseTree {
   fun item(context: Context, snapshot: CarSnapshot?, id: String, grant: (Uri) -> Unit): MediaItem? {
     if (id == ROOT) return rootItem()
     snapshot ?: return null
-    snapshot.tabs.firstOrNull { tabId(it) == id }?.let { tab ->
-      return rootChildren(snapshot, 0).firstOrNull { it.mediaId == tabId(tab) }
-    }
+    snapshot.tabs.firstOrNull { tabId(it) == id }?.let { return tabItem(it) }
     return snapshot.find(id)?.let { bookItem(context, it, grant) }
   }
 
@@ -99,7 +99,7 @@ object CarBrowseTree {
         if (item.downloaded) MediaConstants.EXTRAS_VALUE_STATUS_DOWNLOADED else MediaConstants.EXTRAS_VALUE_STATUS_NOT_DOWNLOADED,
       )
     }
-    val artwork = ArtworkProvider.uriFor(context, item.artwork)?.also(grant)
+    val artwork = ArtworkProvider.uriFor(context, item.artworkKey)?.also(grant)
     return MediaItem.Builder()
       .setMediaId(item.id)
       .setMediaMetadata(
