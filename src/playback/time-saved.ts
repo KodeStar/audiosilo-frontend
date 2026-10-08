@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
 import { create } from 'zustand';
 
 import { contentKey } from '@/lib/content-key';
 import { persistedDocument } from '@/lib/storage';
+import { onForeground } from '@/lib/when-active';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engineTicker } from './engine-ticks';
@@ -83,30 +83,36 @@ export function parseTimeSaved(raw: unknown): Partial<TimeSavedDoc> {
   return { lifetime: count(lifetime), books: parsed };
 }
 
+/**
+ * `seconds` as precise as `formatDuration` shows it: whole seconds under a minute, whole
+ * minutes from there. The hooks select this, so a screen showing the figure re-renders
+ * when the words would change, not on every silence the engine trims.
+ */
+export function savedForDisplay(seconds: number): number {
+  const whole = Math.round(seconds);
+  return whole < 60 ? whole : whole - (whole % 60);
+}
+
 const stored = persistedDocument<TimeSavedDoc>('audiosilo.timeSaved', parseTimeSaved);
 
-type TimeSavedState = TimeSavedDoc & {
-  /** The stored document has been read (and merged into what was counted before). */
-  hydrated: boolean;
-};
-
 /** The counts as the UI shows them: the stored ones plus what this run added. */
-export const useTimeSavedStore = create<TimeSavedState>()(() => ({ ...EMPTY, hydrated: false }));
+export const useTimeSavedStore = create<TimeSavedDoc>()(() => EMPTY);
 
 /** The engine total the next one is measured from (`silenceDelta`). */
 let base: number | null = null;
 /** Counts added since the last write. */
 let dirty = false;
-let appStateWatched = false;
+/** Something was counted this run: the stored counts are being read and the app's
+ * leaving the foreground flushes. */
+let counting = false;
 
-const docOf = (s: TimeSavedState): TimeSavedDoc => ({ lifetime: s.lifetime, books: s.books });
+const docOf = (s: TimeSavedDoc): TimeSavedDoc => ({ lifetime: s.lifetime, books: s.books });
 
 /** Read the stored counts once (later calls share the first read). What was counted
  * before it finished is added on top, never overwritten. */
 export function hydrateTimeSaved(): Promise<void> {
   return stored.hydrate(EMPTY, (doc) => {
-    const counted = docOf(useTimeSavedStore.getState());
-    useTimeSavedStore.setState({ ...mergeSaved(doc, counted), hydrated: true });
+    useTimeSavedStore.setState(mergeSaved(doc, docOf(useTimeSavedStore.getState())));
   });
 }
 
@@ -135,14 +141,16 @@ export function noteSilenceSaved(totalSeconds: number, bookKey: string | null): 
   if (next.delta <= 0 || !bookKey) return;
   useTimeSavedStore.setState((s) => addSaved(docOf(s), bookKey, next.delta));
   dirty = true;
-  void hydrateTimeSaved();
   flushLoop.start();
-  if (!appStateWatched) {
-    appStateWatched = true;
+  if (!counting) {
+    counting = true;
+    void hydrateTimeSaved();
     // Leaving the foreground may be the last chance: the OS can end the process there.
-    AppState.addEventListener('change', (state) => {
-      if (state !== 'active') void flushTimeSaved();
-    });
+    // For the process's life, like the counts themselves.
+    onForeground(
+      () => {},
+      () => void flushTimeSaved(),
+    );
   }
 }
 
@@ -161,14 +169,15 @@ onConnectionRemoved(async (id) => {
   stored.write(next, next);
 });
 
-/** Seconds Smart Speed saved on this device, in all (0 before any). */
+/** Seconds Smart Speed saved on this device, in all (0 before any), as precise as it is
+ * shown (`savedForDisplay`). */
 export function useTimeSaved(): number {
   useEffect(() => void hydrateTimeSaved(), []);
-  return useTimeSavedStore((s) => s.lifetime);
+  return useTimeSavedStore((s) => savedForDisplay(s.lifetime));
 }
 
 /** Seconds Smart Speed saved on one book on this device (0 before any, or without a
- * book). */
+ * book), as precise as it is shown (`savedForDisplay`). */
 export function useBookTimeSaved(
   connectionId: string | null | undefined,
   libraryId: number,
@@ -176,6 +185,8 @@ export function useBookTimeSaved(
 ): number {
   useEffect(() => void hydrateTimeSaved(), []);
   return useTimeSavedStore((s) =>
-    connectionId && path ? (s.books[contentKey(connectionId, libraryId, path)] ?? 0) : 0,
+    connectionId && path
+      ? savedForDisplay(s.books[contentKey(connectionId, libraryId, path)] ?? 0)
+      : 0,
   );
 }

@@ -4,9 +4,11 @@ import {
   addSaved,
   mergeSaved,
   parseTimeSaved,
+  savedForDisplay,
   silenceDelta,
   withoutConnection,
 } from './time-saved';
+import { formatDuration } from '@/lib/format';
 
 const KEY = 'audiosilo.timeSaved';
 
@@ -65,6 +67,21 @@ describe('the counts document', () => {
   });
 });
 
+describe('savedForDisplay', () => {
+  it('keeps whole seconds under a minute, then whole minutes', () => {
+    expect(savedForDisplay(0.4)).toBe(0);
+    expect(savedForDisplay(41.6)).toBe(42);
+    expect(savedForDisplay(59.4)).toBe(59);
+    expect(savedForDisplay(59.6)).toBe(60);
+    expect(savedForDisplay(7899)).toBe(7860);
+  });
+  it('never changes the words the figure is shown in', () => {
+    for (const s of [0.6, 12.4, 59.5, 60, 61, 119.6, 3599.5, 3600, 7899, 90061.2]) {
+      expect(formatDuration(savedForDisplay(s))).toBe(formatDuration(s));
+    }
+  });
+});
+
 describe('counting and saving', () => {
   // The module keeps its hydration and engine base as module state: a fresh registry each.
   let AsyncStorage: typeof AsyncStorageType;
@@ -76,7 +93,10 @@ describe('counting and saving', () => {
     ts = require('./time-saved');
     /* eslint-enable @typescript-eslint/no-require-imports */
   });
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
 
   const stored = async () => JSON.parse((await AsyncStorage.getItem(KEY)) ?? 'null');
 
@@ -121,6 +141,29 @@ describe('counting and saving', () => {
     jest.useRealTimers();
     await new Promise((r) => setTimeout(r, 0));
     expect(await stored()).toEqual({ lifetime: 4, books: { k: 4 } });
+  });
+
+  it('flushes when the app leaves the foreground', async () => {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { AppState } = require('react-native') as typeof import('react-native');
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    const listeners: ((s: string) => void)[] = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+      _: string,
+      l: (s: string) => void,
+    ) => {
+      listeners.push(l);
+      return { remove: () => {} };
+    }) as unknown as typeof AppState.addEventListener);
+    ts.noteSilenceSaved(0, 'k');
+    ts.noteSilenceSaved(4, 'k');
+    ts.noteSilenceSaved(5, 'k');
+    expect(listeners).toHaveLength(1); // one listener for the run, not one per count
+    await ts.hydrateTimeSaved();
+    expect(await stored()).toBeNull();
+    listeners.forEach((l) => l('background'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(await stored()).toEqual({ lifetime: 5, books: { k: 5 } });
   });
 
   it("forgets a removed connection's books", async () => {
