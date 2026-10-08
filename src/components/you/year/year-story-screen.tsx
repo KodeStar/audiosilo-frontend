@@ -23,7 +23,7 @@ import { useScreenReaderEnabled } from './use-screen-reader';
 import { useShareCard } from './use-share-card';
 import { useStoryPlayer } from './use-story-player';
 import { type YearStory, useYearStory } from './use-year-story';
-import { parseYearParams } from './year-href';
+import { parseYearParams } from './year-params';
 import { shareFileName } from './year-model';
 
 /** Room under the card for "Share this card". */

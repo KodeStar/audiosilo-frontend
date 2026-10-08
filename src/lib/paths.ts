@@ -226,6 +226,32 @@ export function journalHref(tab?: JournalTab): Href {
   return youHref('journal', tab);
 }
 
+/** What the full-screen Year in listening story (`/year`) shows. */
+export type YearStoryParams = {
+  /** A past year; absent for this year. */
+  year?: number;
+  /** A server other than the default. */
+  connection?: string;
+  /** The card to start on (0-based). */
+  card?: number;
+};
+
+/**
+ * The phone's full-screen Year in listening story, a root modal like the player: `/year`
+ * with `?year=YYYY` (absent: this year), `?connection=` (absent: the default server) and
+ * `?card=` (absent: the first). Open it with `router.push`; it never leads into the shell.
+ */
+export function yearHref(params: YearStoryParams = {}): Href {
+  return {
+    pathname: '/year',
+    params: {
+      ...(params.year !== undefined ? { year: String(params.year) } : {}),
+      ...(params.connection ? { connection: params.connection } : {}),
+      ...(params.card ? { card: String(params.card) } : {}),
+    },
+  };
+}
+
 /** The Settings panes (`/settings?section=`). `preferences` (the first pane, Playback) and
  * `accounts` (the signed-in servers) are the two the IA names; each pane can be linked to
  * directly too. Absent = `preferences`. */

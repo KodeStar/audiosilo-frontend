@@ -12,6 +12,7 @@ import { Notice } from '@/components/ui/notice';
 import { Skeleton, SkeletonText } from '@/components/ui/skeleton';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
+import { yearHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 
@@ -23,7 +24,6 @@ import { useScreenReaderEnabled } from './use-screen-reader';
 import { useShareCard } from './use-share-card';
 import { useStoryPlayer } from './use-story-player';
 import { type YearRange, type YearStory, useStatsServers, useYearStory } from './use-year-story';
-import { yearHref } from './year-href';
 import { shareFileName } from './year-model';
 import { YearPickers, YearThumbs } from './year-parts';
 import { useStoryYears } from './year-probes';

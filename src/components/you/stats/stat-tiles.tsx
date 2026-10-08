@@ -143,7 +143,7 @@ export function GoalTile({
   if (!progress) {
     return (
       <Card className={cn('gap-2', compact ? 'p-3.5' : 'px-5 py-[18px]')} style={{ width }}>
-        <TileLabel icon="circle-check" label={t('stats.goal.label')} />
+        <TileLabel icon="target" label={t('stats.goal.label')} />
         <Text variant="muted" style={tabularNums}>
           {t('stats.goal.none', { count: status.finished })}
         </Text>
@@ -216,7 +216,7 @@ export function GoalTile({
             })}
             className="gap-1"
           >
-            <TileLabel icon="circle-check" label={t('stats.goal.label')} />
+            <TileLabel icon="target" label={t('stats.goal.label')} />
             <StatValue
               parts={[
                 {

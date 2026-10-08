@@ -16,6 +16,7 @@ import {
   segmentsToPath,
   seriesHref,
   settingsHref,
+  yearHref,
   youHref,
 } from '@/lib/paths';
 
@@ -210,6 +211,17 @@ describe('youHref', () => {
       pathname: '/you',
       params: { section: 'journal', tab: 'bookmarks' },
     });
+  });
+});
+
+describe('yearHref', () => {
+  it('leaves out what is the default', () => {
+    expect(yearHref()).toEqual({ pathname: '/year', params: {} });
+    expect(yearHref({ year: 2025, connection: 'c2', card: 3 })).toEqual({
+      pathname: '/year',
+      params: { year: '2025', connection: 'c2', card: '3' },
+    });
+    expect(yearHref({ card: 0 })).toEqual({ pathname: '/year', params: {} });
   });
 });
 

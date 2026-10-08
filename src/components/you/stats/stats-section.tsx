@@ -1,4 +1,3 @@
-import { type Href, router } from 'expo-router';
 import { type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowDimensions, View } from 'react-native';
@@ -52,10 +51,6 @@ import {
 } from './stats-model';
 import { WeeklyBars } from './weekly-bars';
 import { YearBanner } from './year-banner';
-
-/** The You hub's Year in listening section. Written here (the hub owns `paths.ts`); the
- * cast is because the `/you` route lands with the hub. */
-export const YEAR_SECTION_HREF = '/you?section=year' as Href;
 
 /** A card's border and padding, each side (Card: `p-5` + a 1px hairline). */
 const CARD_INSET = 21;
@@ -191,7 +186,7 @@ function StatsContent({
   const clock = useMemo(() => clockSummary(stats.hour_weekday), [stats.hour_weekday]);
   const peaks = usePeakWords(clock);
   const year = /^\d{4}$/.test(stats.range) ? stats.range : today.slice(0, 4);
-  const openYear = () => router.navigate(YEAR_SECTION_HREF);
+  const openYear = () => open.openYou('year');
 
   const nothingYet = stats.totals.listened <= 0 && !listening.days.some((d) => d.listened > 0);
   const header = (
@@ -303,7 +298,7 @@ function StatsContent({
           }
         />
         <StatTile
-          icon="history"
+          icon="flame"
           label={t('stats.tiles.streak')}
           parts={[
             { n: String(streak), unit: t('stats.tiles.days', { count: streak }), spaced: true },
@@ -325,7 +320,7 @@ function StatsContent({
           </View>
         ) : null}
         <StatTile
-          icon="sun"
+          icon="gauge"
           label={t('stats.tiles.average')}
           parts={durationParts(average)}
           compact={compact}

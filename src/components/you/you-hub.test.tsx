@@ -32,6 +32,22 @@ jest.mock('@/components/settings/settings-content', () => {
     ),
   };
 });
+jest.mock('@/components/you/stats/stats-section', () => {
+  const { Text } = jest.requireActual('react-native');
+  return { StatsSection: () => <Text>stats-section</Text> };
+});
+jest.mock('@/components/you/year/year-section', () => {
+  const { Text } = jest.requireActual('react-native');
+  return { YearSection: () => <Text>year-section</Text> };
+});
+jest.mock('@/components/account/account-section', () => {
+  const { Text } = jest.requireActual('react-native');
+  return {
+    AccountSection: ({ connectionId }: { connectionId?: string }) => (
+      <Text>{`account-section connection=${connectionId ?? 'default'}`}</Text>
+    ),
+  };
+});
 
 /* eslint-disable import/first */
 import { useSubNav } from '@/components/shell/sub-nav-store';
@@ -59,6 +75,7 @@ describe('YouHub on a phone', () => {
     }
     expect(screen.getByLabelText('Stats')).toBeChecked();
     expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
+    expect(screen.getByText('stats-section')).toBeTruthy();
     // The large title (the stack header's) names the section.
     expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'Your listening' });
   });
@@ -78,9 +95,13 @@ describe('YouHub on a phone', () => {
     expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
   });
 
-  it('shows a calm placeholder for Account until it is wired in', async () => {
+  it("renders the Year section and the default server's Account", async () => {
+    await mount({ section: 'year' });
+    expect(screen.getByText('year-section')).toBeTruthy();
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'Year in listening' });
     await mount({ section: 'account' });
-    expect(screen.getByText('This part of You is on its way.')).toBeTruthy();
+    // No connection: the section picks the default server (with its own switcher).
+    expect(screen.getByText('account-section connection=default')).toBeTruthy();
   });
 });
 

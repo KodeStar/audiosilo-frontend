@@ -7,10 +7,7 @@ import { mountWithPortal } from '@/testing/render-overlay';
 import { nativeTarget } from '@/testing/touch-target';
 
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
-const mockNavigate = jest.fn();
-jest.mock('expo-router', () => ({
-  router: { navigate: (h: unknown) => mockNavigate(h), push: jest.fn() },
-}));
+jest.mock('expo-router', () => ({ router: { navigate: jest.fn(), push: jest.fn() } }));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
@@ -22,6 +19,7 @@ const mockOpen = {
   openSeries: jest.fn(),
   openBook: jest.fn(),
   openJournal: jest.fn(),
+  openYou: jest.fn(),
 };
 jest.mock('@/lib/open', () => ({ useOpen: () => mockOpen }));
 
@@ -71,7 +69,7 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
-import { StatsSection, YEAR_SECTION_HREF } from './stats-section';
+import { StatsSection } from './stats-section';
 /* eslint-enable import/first */
 
 /** A year of listening: an hour a day, more on Saturdays, nothing on Mondays. */
@@ -209,9 +207,9 @@ describe('StatsSection content', () => {
   it('opens the Year section from the header (tablet and desktop) and the banner', async () => {
     await mount();
     await fireEvent.press(screen.getByText('Open your 2026 story'));
-    expect(mockNavigate).toHaveBeenLastCalledWith(YEAR_SECTION_HREF);
+    expect(mockOpen.openYou).toHaveBeenLastCalledWith('year');
     await fireEvent.press(screen.getByLabelText(/^Your 2026 in listening\./));
-    expect(mockNavigate).toHaveBeenCalledTimes(2);
+    expect(mockOpen.openYou).toHaveBeenCalledTimes(2);
   });
 
   it('leaves the header button off a phone', async () => {

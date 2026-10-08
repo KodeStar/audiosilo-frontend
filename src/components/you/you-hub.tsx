@@ -3,10 +3,13 @@ import { type ReactNode, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
+import { AccountSection } from '@/components/account/account-section';
 import { JournalScreen } from '@/components/journal/journal-screen';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { SettingsContent } from '@/components/settings/settings-content';
 import { SubNavSections } from '@/components/shell/tab-root-nav';
+import { StatsSection } from '@/components/you/stats/stats-section';
+import { YearSection } from '@/components/you/year/year-section';
 import { useLayout } from '@/lib/layout';
 import type { YouSection } from '@/lib/paths';
 
@@ -17,7 +20,6 @@ import {
   youSectionsFor,
   youTitleKey,
 } from './you-model';
-import { YouSectionPlaceholder } from './you-section-placeholder';
 
 /** How the hub shows one section. */
 type SectionSpec = {
@@ -31,18 +33,17 @@ type SectionSpec = {
 };
 
 /**
- * The hub's sections. Stats, Year and Account are placeholders until their workstreams
- * land: swap in `<StatsSection />` (`@/components/you/stats/stats-section`),
- * `<YearSection />` (`@/components/you/year/year-section`) and `<AccountSection />`
- * (`@/components/account/account-section`), and set `ownScroll` to whether that
- * component brings its own ScrollView.
+ * The hub's sections. Stats, Year and Account are plain columns (no scroller, no page
+ * gutters of their own): the hub scrolls them with its gutters and the mini player's
+ * inset. Account without a `connectionId` shows the default server, with a switcher when
+ * several are signed in.
  */
 const SECTIONS: Record<YouSection, SectionSpec> = {
-  stats: { render: () => <YouSectionPlaceholder section="stats" />, ownScroll: false },
-  year: { render: () => <YouSectionPlaceholder section="year" />, ownScroll: false },
+  stats: { render: () => <StatsSection />, ownScroll: false },
+  year: { render: () => <YearSection />, ownScroll: false },
   journal: { render: ({ phone }) => <JournalScreen embedded={phone} />, ownScroll: true },
   settings: { render: ({ phone }) => <SettingsContent embedded={phone} />, ownScroll: true },
-  account: { render: () => <YouSectionPlaceholder section="account" />, ownScroll: false },
+  account: { render: () => <AccountSection />, ownScroll: false },
 };
 
 /**
@@ -97,6 +98,7 @@ export function YouHub() {
           className="flex-1"
           contentContainerClassName="gap-6 p-4 lg:px-8"
           contentContainerStyle={{ paddingBottom }}
+          keyboardShouldPersistTaps="handled"
         >
           {body}
         </ScrollView>
