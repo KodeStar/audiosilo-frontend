@@ -1415,6 +1415,7 @@
     "placeMoved": {
       "title": "Deine Stelle von einem anderen Gerät übernommen",
       "chapterAt": "Kapitel {{chapter}}, {{time}}",
+      "titledAt": "{{title}}, {{time}}",
       "at": "Bei {{time}}",
       "undo": "Rückgängig"
     }

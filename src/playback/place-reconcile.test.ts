@@ -334,6 +334,32 @@ describe('a loaded book another device has moved on', () => {
     );
   });
 
+  it('names the chapter by its title when a Prologue first makes the number contradict it', async () => {
+    // The device pass: a book opening with a Prologue said "Chapter 4" for the chapter the
+    // player shows as "Chapter 3" (the Resume labels' rule, `contradictedTitle`).
+    const chapters = ['Prologue', 'Chapter 1', 'Chapter 2', 'Chapter 3'].map((title, i) => ({
+      index: i,
+      title,
+      file_index: 0,
+      file_path: 'A/Book.m4b',
+      start: i * 120,
+      end: (i + 1) * 120,
+      book_offset: i * 120,
+    }));
+    mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'empty' });
+    await usePlayer.getState().playBook('c1', 2, { ...BOOK, chapters }, undefined);
+    pushSnapshot(snap('playing', 100));
+    pushSnapshot(snap('paused', 105));
+    await settle();
+    await backInFront();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Chapter 3, 6:40' }),
+    );
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Chapter 4, 6:40' }),
+    );
+  });
+
   it("on the book's server coming back, moves a paused book there", async () => {
     await loadedAndPaused();
     mockReconnect?.('other-server');

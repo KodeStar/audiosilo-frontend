@@ -1415,6 +1415,7 @@
     "placeMoved": {
       "title": "Posição retomada de outro dispositivo",
       "chapterAt": "Capítulo {{chapter}}, {{time}}",
+      "titledAt": "{{title}}, {{time}}",
       "at": "Em {{time}}",
       "undo": "Desfazer"
     }

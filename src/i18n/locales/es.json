@@ -1415,6 +1415,7 @@
     "placeMoved": {
       "title": "Retomado donde lo dejaste en otro dispositivo",
       "chapterAt": "Capítulo {{chapter}}, {{time}}",
+      "titledAt": "{{title}}, {{time}}",
       "at": "En {{time}}",
       "undo": "Deshacer"
     }

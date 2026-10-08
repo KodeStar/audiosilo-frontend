@@ -1415,6 +1415,7 @@
     "placeMoved": {
       "title": "Picked up your place from another device",
       "chapterAt": "Chapter {{chapter}}, {{time}}",
+      "titledAt": "{{title}}, {{time}}",
       "at": "At {{time}}",
       "undo": "Undo"
     }

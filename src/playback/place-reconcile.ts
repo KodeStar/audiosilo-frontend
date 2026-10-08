@@ -5,6 +5,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { isReachable, onReconnect } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { toast } from '@/components/ui/toast';
+import { contradictedTitle } from '@/lib/chapter-label';
 import { formatClock } from '@/lib/format';
 import { onForeground, whenActive } from '@/lib/when-active';
 
@@ -142,11 +143,17 @@ function tell(bookKey: string, from: number, to: number) {
     let index = -1;
     for (let i = 0; i < chapters.length; i++) if (to >= chapters[i].book_offset) index = i;
     const time = formatClock(to);
+    // Named like the Resume labels: by place, or by the title when the place would
+    // contradict it (a Prologue first makes the 4th chapter "Chapter 3").
+    const titled =
+      index >= 0 ? contradictedTitle({ number: index + 1, title: chapters[index].title }) : null;
     toast({
       title: t('player.placeMoved.title'),
       description:
         chapters.length > 1 && index >= 0
-          ? t('player.placeMoved.chapterAt', { chapter: index + 1, time })
+          ? titled
+            ? t('player.placeMoved.titledAt', { title: titled, time })
+            : t('player.placeMoved.chapterAt', { chapter: index + 1, time })
           : t('player.placeMoved.at', { time }),
       action: { label: t('player.placeMoved.undo'), onPress: () => undoMove(bookKey, from) },
     });

@@ -1415,6 +1415,7 @@
     "placeMoved": {
       "title": "Reprise là où vous en étiez sur un autre appareil",
       "chapterAt": "Chapitre {{chapter}}, {{time}}",
+      "titledAt": "{{title}}, {{time}}",
       "at": "À {{time}}",
       "undo": "Annuler"
     }
