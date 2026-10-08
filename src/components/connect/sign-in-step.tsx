@@ -10,10 +10,11 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
+import { hostOf } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
-import { hostOf, pairingAddresses } from './connect-model';
+import { pairingAddresses } from './connect-model';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 

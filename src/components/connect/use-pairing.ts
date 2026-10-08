@@ -9,7 +9,7 @@ import { useLatest } from '@/lib/use-latest';
 import { pairingAddresses } from './connect-model';
 import { finishConnect } from './finish-connect';
 
-export type Pairing = {
+export type LinkPairing = {
   /** A pairing token is being exchanged. */
   pairing: boolean;
   /** Why the last pairing failed, in words. */
@@ -27,7 +27,7 @@ export type Pairing = {
  * and the answer carry (`pairingAddresses`), then `finishConnect`. Resolves whether it
  * paired. Bare client: a failed exchange must never flag a reconnect.
  */
-export function usePairing(startPairing = false): Pairing {
+export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
   const [pairing, setPairing] = useState(startPairing);
   const [error, setError] = useState<string | null>(null);

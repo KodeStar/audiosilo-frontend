@@ -24,6 +24,12 @@ export function normalizeUrl(raw: string): string {
   return (parsed.origin + parsed.pathname).replace(/\/+$/, '');
 }
 
+/** A server URL's host (and port), without the scheme or a path: an eyebrow or a caption
+ * ("Hearthside · books.example.com:8443"). */
+export function hostOf(url: string): string {
+  return url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '') || url;
+}
+
 /** One address as the server sends it: an http(s) URL with its scheme (`normalizeUrl`
  * alone would read `ftp://nas` as a host and add https), normalised; '' otherwise. */
 function addressUrl(value: unknown): string {

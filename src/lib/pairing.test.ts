@@ -1,4 +1,4 @@
-import { cleanAddresses, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
 
 describe('normalizeUrl', () => {
   it('adds a default https scheme when none is given', () => {
@@ -105,5 +105,13 @@ describe('parsePairingScan with home and away addresses', () => {
       base: 'https://h',
       token: 't',
     });
+  });
+});
+
+describe('hostOf', () => {
+  it('is the host and port, without the scheme or a path', () => {
+    expect(hostOf('https://books.example.com:8443/base')).toBe('books.example.com:8443');
+    expect(hostOf('HTTP://192.168.1.20:8080')).toBe('192.168.1.20:8080');
+    expect(hostOf('books.example.com')).toBe('books.example.com');
   });
 });

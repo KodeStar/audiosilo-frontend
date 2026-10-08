@@ -18,12 +18,11 @@ import {
   type KnownServer,
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
-import { cleanAddresses, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 
 import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from './connect-frame';
 import {
-  hostOf,
   knownToOffer,
   looksLikeHomeAddress,
   pairingAddresses,
@@ -32,7 +31,7 @@ import {
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
-import { usePairing } from './use-pairing';
+import { useLinkPairing } from './use-pairing';
 
 /**
  * The first step of onboarding (`/connect`): "Your audiobooks, from your own server."
@@ -70,7 +69,7 @@ export function ConnectStart() {
   const [linkOpen, setLinkOpen] = useState(false);
   const [link, setLink] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
-  const { pairing, error: pairError, fail, pair } = usePairing(!!token);
+  const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
 
   // A pairing link's token: exchange it once (a language switch must not run it again).
   useEffect(() => {

@@ -11,11 +11,10 @@ import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import type { KnownServer } from '@/lib/known-servers';
 import { clothColor } from '@/lib/monogram';
+import { hostOf } from '@/lib/pairing';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-import { hostOf } from './connect-model';
 
 /** What the first step learned about the address it was given. */
 export type Probe =

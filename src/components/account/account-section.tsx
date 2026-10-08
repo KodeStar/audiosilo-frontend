@@ -13,7 +13,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-import { cleanAddresses } from '@/lib/pairing';
+import { cleanAddresses, hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { APP_VERSION } from '@/lib/version';
 import { useSession } from '@/stores/session';
@@ -87,7 +87,7 @@ export function AccountSection({ connectionId }: { connectionId?: string }) {
           className="max-w-full self-start"
         />
         <Text variant="caption" numberOfLines={1} className="shrink">
-          {connection.serverUrl.replace(/^https?:\/\//, '')}
+          {hostOf(connection.serverUrl)}
         </Text>
       </View>
     ) : null;
