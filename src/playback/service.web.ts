@@ -51,15 +51,25 @@ export function routePickerKind(el: {
 // every platform without importing this engine.
 export { supportsVoiceBoost };
 
-/** Voice Boost's compressor (contract decision 7): the same numbers as the native boost's
- * compressor, in the units `DynamicsCompressorNode` takes (seconds for the times). */
+/** Voice Boost's compressor (contract decision 7, the stronger preset of the Phase 6 device
+ * pass): the native boost's numbers, in the units `DynamicsCompressorNode` takes (seconds
+ * for the times). */
 export const VOICE_BOOST_COMPRESSOR = {
-  threshold: -24,
+  threshold: -30,
   knee: 6,
   ratio: 3,
-  attack: 0.005,
-  release: 0.25,
+  attack: 0.01,
+  release: 0.2,
 } as const;
+
+/**
+ * A gain after the compressor (dB) so the lift at the threshold matches the native +9 dB.
+ * `DynamicsCompressorNode` has no make-up setting: it applies its own, `(1 / curve(1.0))^0.6`
+ * (Web Audio spec, "makeup gain"; Chromium and Firefox share the curve), which for -30 / 6 /
+ * 3:1 is +10.9 dB (the curve takes 18.2 dB off a full-scale input). -1.9 lands it at +9.0;
+ * `service.web.test.ts` recomputes it from the curve, so a changed compressor fails there.
+ */
+export const VOICE_BOOST_TRIM_DB = -1.9;
 
 /**
  * Is `url` served from this page's own origin? A media element routed through Web Audio
@@ -135,7 +145,7 @@ class WebPlaybackService implements PlaybackService {
   /** Whether `configure` has run once: the first call is the store's set-up (no gesture),
    * every later one is a setting the listener changed. */
   private configured = false;
-  /** Voice Boost's Web Audio graph: ONE context and ONE compressor (-> destination),
+  /** Voice Boost's Web Audio graph: ONE context and ONE compressor (-> trim -> destination),
    * created lazily inside a listener's gesture (the switch, or a play tap with the setting
    * on) and never torn down; switching the boost off reconnects each source straight to
    * the destination. Never created where `supportsVoiceBoost` says no (Safari). */
@@ -379,7 +389,10 @@ class WebPlaybackService implements PlaybackService {
         compressor.ratio.value = VOICE_BOOST_COMPRESSOR.ratio;
         compressor.attack.value = VOICE_BOOST_COMPRESSOR.attack;
         compressor.release.value = VOICE_BOOST_COMPRESSOR.release;
-        compressor.connect(ctx.destination);
+        const trim = ctx.createGain();
+        trim.gain.value = 10 ** (VOICE_BOOST_TRIM_DB / 20);
+        compressor.connect(trim);
+        trim.connect(ctx.destination);
         this.boost = { ctx, compressor };
         // Route the playing element once the context actually runs (see `sources`).
         ctx.addEventListener('statechange', () => {

@@ -5,6 +5,7 @@ import {
   routePickerKind,
   sourceFor,
   VOICE_BOOST_COMPRESSOR,
+  VOICE_BOOST_TRIM_DB,
 } from './service.web';
 import {
   AutoplayBlockedError,
@@ -680,6 +681,9 @@ class FakeCompressor extends FakeNode {
   attack = { value: 0 };
   release = { value: 0 };
 }
+class FakeGain extends FakeNode {
+  gain = { value: 1 };
+}
 class FakeAudioContext {
   static all: FakeAudioContext[] = [];
   /** What the next `resume()` does: run (a gesture allowed it) or stay suspended. */
@@ -687,6 +691,7 @@ class FakeAudioContext {
   state = 'suspended';
   destination = new FakeNode();
   compressor: FakeCompressor | null = null;
+  gains: FakeGain[] = [];
   sources = new Map<unknown, FakeNode>();
   resumes = 0;
   private listeners: (() => void)[] = [];
@@ -696,6 +701,11 @@ class FakeAudioContext {
   createDynamicsCompressor() {
     this.compressor = new FakeCompressor();
     return this.compressor;
+  }
+  createGain() {
+    const node = new FakeGain();
+    this.gains.push(node);
+    return node;
   }
   createMediaElementSource(el: unknown) {
     if (this.sources.has(el)) throw new Error('InvalidStateError: already has a source');
@@ -798,7 +808,11 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
       attack: { value: VOICE_BOOST_COMPRESSOR.attack },
       release: { value: VOICE_BOOST_COMPRESSOR.release },
     });
-    expect(ctx().compressor!.targets).toEqual([ctx().destination]);
+    // compressor -> trim -> destination
+    const [trim] = ctx().gains;
+    expect(ctx().compressor!.targets).toEqual([trim]);
+    expect(trim.targets).toEqual([ctx().destination]);
+    expect(trim.gain.value).toBeCloseTo(10 ** (VOICE_BOOST_TRIM_DB / 20), 6);
     expect(routeOf(el())).toBe('compressor');
   });
 
@@ -905,5 +919,60 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
     await svc.configure(config(true));
     await svc.play();
     expect(FakeAudioContext.all).toHaveLength(0);
+  });
+});
+
+// --- The web Voice Boost's level, from the compressor's own curve ---------------------------
+/**
+ * `DynamicsCompressorNode`'s static curve and automatic make-up gain, as browsers compute it
+ * (Web Audio spec "DynamicsCompressorNode" processing; Chromium's DynamicsCompressorKernel,
+ * which Firefox shares): linear below the threshold, an exponential knee from the threshold to
+ * threshold + knee whose slope there meets 1/ratio, then the ratio; the make-up gain is
+ * `(1 / curve(1.0))^0.6`. Returns the net gain in dB for a steady input level.
+ */
+function webCompressorGainDb(
+  c: { threshold: number; knee: number; ratio: number },
+  levelDb: number,
+): number {
+  const toDb = (x: number) => 20 * Math.log10(x);
+  const toLin = (d: number) => 10 ** (d / 20);
+  const lt = toLin(c.threshold);
+  const kneeCurve = (x: number, k: number) => (x < lt ? x : lt + (1 - Math.exp(-k * (x - lt))) / k);
+  const slopeAt = (x: number, k: number) => {
+    const x2 = x * 1.001;
+    return (toDb(kneeCurve(x2, k)) - toDb(kneeCurve(x, k))) / (toDb(x2) - toDb(x));
+  };
+  const kneeEndDb = c.threshold + c.knee;
+  const kneeEnd = toLin(kneeEndDb);
+  let [minK, maxK, k] = [0.1, 10000, 5];
+  for (let i = 0; i < 15; i++) {
+    if (slopeAt(kneeEnd, k) < 1 / c.ratio) maxK = k;
+    else minK = k;
+    k = Math.sqrt(minK * maxK);
+  }
+  const yKneeEndDb = toDb(kneeCurve(kneeEnd, k));
+  const curve = (x: number) =>
+    x < kneeEnd ? kneeCurve(x, k) : toLin(yKneeEndDb + (toDb(x) - kneeEndDb) / c.ratio);
+  const makeupDb = 0.6 * -toDb(curve(1));
+  const x = toLin(levelDb);
+  return toDb(curve(x) / x) + makeupDb;
+}
+
+describe('the web Voice Boost level', () => {
+  const net = (levelDb: number) =>
+    webCompressorGainDb(VOICE_BOOST_COMPRESSOR, levelDb) + VOICE_BOOST_TRIM_DB;
+
+  it('lifts speech at the threshold by the native +9 dB (the browser make-up, trimmed)', () => {
+    // The browser's own make-up alone would lift it by ~10.9 dB.
+    expect(
+      webCompressorGainDb(VOICE_BOOST_COMPRESSOR, VOICE_BOOST_COMPRESSOR.threshold),
+    ).toBeCloseTo(10.9, 1);
+    expect(net(VOICE_BOOST_COMPRESSOR.threshold)).toBeCloseTo(9, 1);
+    expect(net(-40)).toBeCloseTo(9, 1); // quiet speech: the same lift
+  });
+
+  it('brings loud speech down, and keeps a full-scale peak well under 0 dBFS', () => {
+    expect(net(-6)).toBeLessThan(-4);
+    expect(net(0)).toBeLessThan(-6); // a full-scale peak comes out near -9 dBFS
   });
 });
