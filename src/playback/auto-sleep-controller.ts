@@ -1,4 +1,3 @@
-import { ticker } from '@/lib/ticker';
 import { useSettings } from '@/stores/settings';
 
 import {
@@ -8,6 +7,7 @@ import {
   recordAutoSleepOutcome,
   type AutoSleepMemory,
 } from './auto-sleep';
+import { engineTicker } from './engine-ticks';
 import { onSleepTimerEnded, useSleepTimer } from './sleep-timer';
 import { selectBookKey, selectIsPlaying, usePlayer } from './store';
 
@@ -76,8 +76,9 @@ let blocked: AutoSleepMemory = EMPTY_AUTO_SLEEP_MEMORY;
 export function startAutoSleep(): () => void {
   /** The 60s re-check while a book plays on. Idempotent to start (see `ticker`), which is
    * what this needs: several edges call for it and none of them may push the next check
-   * out. */
-  const poll = ticker(() => armIfDue(), POLL_MS);
+   * out. An `engineTicker`, so the engine's events run it where Android has paused the JS
+   * timers (screen off): the window still opens on a book playing into it. */
+  const poll = engineTicker(() => armIfDue(), POLL_MS);
 
   /** This controller's player subscription, installed only while the feature is on (see
    * `watchPlayer`). */

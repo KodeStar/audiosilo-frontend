@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 
 import type { Chapter } from '@/api/types';
-import { ticker } from '@/lib/ticker';
 
 import { nextChapterEnd } from './book-queue';
+import { engineTicker } from './engine-ticks';
 import { lastInteraction, noteInteraction, type Interaction } from './last-interaction';
 import { prettifyChapterTitle } from './prettify-title';
 import { wallClockSeconds } from './rate';
@@ -220,16 +220,22 @@ export type SleepLabel = {
 /**
  * The two tickers stay SEPARATE on purpose: folding the 1s countdown into the 250ms
  * fade would quadruple the JS wakeups for the whole timer (30 minutes) to save one
- * interval during its last 30 seconds. Both are `ticker` (`@/lib/ticker`), whose
+ * interval during its last 30 seconds. Both are `engineTicker` (`./engine-ticks`), whose
  * `start()` is idempotent - which is what lets `syncFade` be a reconcile that starts the
  * fade ticker unconditionally, including from inside that ticker's own callback, without
  * anyone having to ask first whether it is already running.
+ *
+ * `engineTicker` rather than a bare interval because Android pauses JS timers with the
+ * screen off: the engine's progress events then run them instead (about once a second,
+ * so the fade steps once a second there), and the timer still fades and pauses the book.
+ * Both callbacks read the wall clock (`endsAt`, `graceUntil`), so when they run is
+ * immaterial to what they compute.
  */
 
 /** The 1s countdown: updates `remaining`, fires, and expires the grace window. */
-const countdownTicker = ticker(() => useSleepTimer.getState().tick(), 1000);
+const countdownTicker = engineTicker(() => useSleepTimer.getState().tick(), 1000);
 /** The 250ms fade ramp; runs only while a DURATION timer is in its `ending` phase. */
-const fadeTicker = ticker(() => syncFade(), FADE_TICK_MS);
+const fadeTicker = engineTicker(() => syncFade(), FADE_TICK_MS);
 
 /**
  * Watches the player store for the transport starting/stopping, so a duration timer

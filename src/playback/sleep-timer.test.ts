@@ -24,6 +24,7 @@ const BOOK_A = () => book('author/book-a.m4b', { chapters: [], total: 0 });
 
 // Imported after the mock setup (the factory closes over the mock-prefixed vars).
 /* eslint-disable import/first */
+import { engineTick } from '@/playback/engine-ticks';
 import { noteInteraction, resetInteractions } from '@/playback/last-interaction';
 import {
   ABANDON_AFTER_PAUSE_SECONDS,
@@ -226,6 +227,63 @@ describe('sleep timer', () => {
   });
 
   // --- fade-out (duration timers only) -------------------------------------
+
+  // Android pauses every JS timer with the screen off, so neither ticker's interval fires
+  // there; the engine's progress events (one a second while playing) still arrive, and the
+  // store hands each to `engineTick`. `screenOff` moves the clock without running a single
+  // timer and delivers those events.
+  describe('with the screen off (JS timers paused, engine events only)', () => {
+    function screenOff(seconds: number) {
+      for (let i = 0; i < seconds; i++) {
+        suspendFor(1_000);
+        engineTick();
+      }
+    }
+
+    /** Count the countdown's runs: the ticker reads `tick` off the store each time. */
+    function countTicks() {
+      const real = useSleepTimer.getState().tick;
+      const tick = jest.fn(real);
+      useSleepTimer.setState({ tick });
+      return { tick, restore: () => useSleepTimer.setState({ tick: real }) };
+    }
+
+    it('reaches its ending, fades and pauses the book from the events alone', async () => {
+      useSleepTimer.getState().startDuration(1);
+      screenOff(31);
+      expect(useSleepTimer.getState().phase).toBe('ending');
+      screenOff(15);
+      expect(lastVolume()!).toBeCloseTo(0.25, 1);
+      screenOff(14);
+      await flush();
+      expect(mockPause).toHaveBeenCalledTimes(1);
+      expect(useSleepTimer.getState().phase).toBe('grace');
+      expect(lastVolume()).toBe(1); // handed back after the pause
+    });
+
+    it('counts down once a second when its ticker and the events both run', () => {
+      const { tick, restore } = countTicks();
+      useSleepTimer.getState().startDuration(5);
+      for (let i = 0; i < 10; i++) {
+        jest.advanceTimersByTime(500);
+        engineTick();
+        jest.advanceTimersByTime(500); // the ticker's own turn
+      }
+      expect(tick).toHaveBeenCalledTimes(10);
+      restore();
+    });
+
+    it('runs nothing from the events while no timer is armed', () => {
+      const { tick, restore } = countTicks();
+      screenOff(5);
+      useSleepTimer.getState().startDuration(5);
+      useSleepTimer.getState().cancel();
+      screenOff(5);
+      expect(tick).not.toHaveBeenCalled();
+      expect(mockSetVolume).not.toHaveBeenCalled();
+      restore();
+    });
+  });
 
   describe('fade-out (duration timers)', () => {
     it('is a squared curve that reaches silence', () => {
