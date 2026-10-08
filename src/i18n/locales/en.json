@@ -2004,5 +2004,18 @@
     "saved": "Saved {{time}}",
     "bookSaved": "Smart speed saved",
     "pillLabel": "Smart speed and voice boost: {{state}}"
+  },
+  "car": {
+    "continue": "Continue listening",
+    "upNext": "Up next",
+    "downloads": "Downloads",
+    "library": "Library",
+    "chapters": "Chapters",
+    "bookmark": "Bookmark",
+    "bookmarkSaved": "Bookmark saved",
+    "empty": "Nothing here yet",
+    "signedOut": "Connect a server in AudioSilo to listen in the car",
+    "unavailable": "This book can't play right now",
+    "subtitle": "{{author}} · {{left}}"
   }
 }

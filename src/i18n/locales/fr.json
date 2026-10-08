@@ -2004,5 +2004,18 @@
     "saved": "{{time}} gagnées",
     "bookSaved": "Gagné par la vitesse intelligente",
     "pillLabel": "Vitesse intelligente et voix renforcée : {{state}}"
+  },
+  "car": {
+    "continue": "Continuer l'écoute",
+    "upNext": "À suivre",
+    "downloads": "Téléchargements",
+    "library": "Bibliothèque",
+    "chapters": "Chapitres",
+    "bookmark": "Signet",
+    "bookmarkSaved": "Signet enregistré",
+    "empty": "Rien pour l'instant",
+    "signedOut": "Connectez un serveur dans AudioSilo pour écouter en voiture",
+    "unavailable": "Ce livre ne peut pas être lu pour le moment",
+    "subtitle": "{{author}} · {{left}}"
   }
 }

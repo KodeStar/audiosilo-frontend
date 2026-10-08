@@ -187,6 +187,11 @@ class NativePlaybackService implements PlaybackService {
   onSilenceSaved(handler: ((totalSeconds: number) => void) | null) {
     this.silenceSaved = handler;
   }
+  adoptPlace(snapshot: PlaybackSnapshot) {
+    // No emit: the store sets its own snapshot when it adopts; this only makes the next
+    // engine event (a progress tick carries no track or state) re-emit the right ones.
+    this.snapshot = { ...snapshot };
+  }
   getSnapshot() {
     return this.snapshot;
   }
