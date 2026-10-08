@@ -13,7 +13,9 @@ const STEP_REM = 2.25;
 
 /**
  * One − or + button of a stepper: a 36 px circle with a 44 pt target (`touchTarget`: a real
- * frame on iOS and Android, a slop on the web), named for a screen reader.
+ * frame on iOS and Android, a slop on the web), named for a screen reader. The glyph is
+ * ink, like the other secondary controls (one pink thing per view: a Settings pane has a
+ * stepper on every row); disabled, the whole button fades.
  */
 export function StepButton({
   icon,
@@ -44,7 +46,7 @@ export function StepButton({
           disabled && 'opacity-40',
         )}
       >
-        <Icon name={icon} size={14} color={themed.brand} />
+        <Icon name={icon} size={14} color={themed.foreground} />
       </View>
     </Pressable>
   );

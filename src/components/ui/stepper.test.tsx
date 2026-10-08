@@ -2,8 +2,21 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import { expectNativeTarget } from '@/testing/touch-target';
+import { colors } from '@/theme/tokens';
 
 import { Stepper } from './stepper';
+
+/** A `#rrggbb` token as react-native-svg's processed opaque ARGB number. */
+const argb = (hex: string) => 0xff000000 + parseInt(hex.slice(1), 16);
+
+/** The fills of every drawn glyph path in a rendered tree. */
+function glyphFills(node: unknown): number[] {
+  if (!node || typeof node !== 'object') return [];
+  if (Array.isArray(node)) return node.flatMap(glyphFills);
+  const n = node as { type?: string; props?: { fill?: { payload?: number } }; children?: unknown };
+  const own = n.type === 'RNSVGPath' && n.props?.fill?.payload ? [n.props.fill.payload] : [];
+  return [...own, ...glyphFills(n.children)];
+}
 
 const props = {
   value: 15,
@@ -44,5 +57,13 @@ describe('Stepper', () => {
     } finally {
       Platform.OS = prev;
     }
+  });
+
+  it('draws its glyphs in ink, never pink (one pink thing per view)', async () => {
+    // The device pass: a Settings pane has a stepper on every row, each pair pink.
+    await render(<Stepper {...props} onChange={jest.fn()} />);
+    const fills = glyphFills(screen.toJSON());
+    expect(fills.length).toBeGreaterThan(0);
+    expect(new Set(fills)).toEqual(new Set([argb(colors.light.foreground)]));
   });
 });
