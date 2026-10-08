@@ -1,7 +1,9 @@
 import type { TFunction } from 'i18next';
 
 import type { IconName } from '@/components/ui/icon';
+import { youSectionsFor, youTitleKey } from '@/components/you/you-model';
 import type { ShortcutKey } from '@/lib/keyboard';
+import type { YouSection } from '@/lib/paths';
 
 import type { Destination, TabName } from './destinations';
 
@@ -128,15 +130,23 @@ export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction):
 /** What each Go to item does (the component wires the router). */
 export type GoToRuns = {
   tab: (name: TabName) => void;
-  you: (section: 'stats' | 'year') => void;
-  journal: () => void;
+  you: (section: YouSection) => void;
   settings: () => void;
+};
+
+/** The palette's glyph for each You hub section. */
+const YOU_SECTION_ICON: Record<YouSection, IconName> = {
+  stats: 'chart',
+  year: 'sparkles',
+  journal: 'history',
+  settings: 'settings',
+  account: 'user',
 };
 
 /**
  * The palette's Go to: the top bar's destinations (`tabs`, already filtered to what this
- * browser can do) but You, which goes by its sections instead: Your listening, Year in
- * listening, the Journal; then Settings.
+ * browser can do) but You, which goes by the sections its sub-nav offers instead
+ * (`youSectionsFor`: Your listening, Year in listening, the Journal); then Settings.
  */
 export function buildGoToItems(
   tabs: readonly Pick<Destination, 'name' | 'labelKey' | 'icon'>[],
@@ -152,9 +162,12 @@ export function buildGoToItems(
         icon: d.icon,
         run: () => run.tab(d.name),
       })),
-    { id: 'go:stats', title: t('you.titles.stats'), icon: 'chart', run: () => run.you('stats') },
-    { id: 'go:year', title: t('you.titles.year'), icon: 'sparkles', run: () => run.you('year') },
-    { id: 'go:journal', title: t('journal.title'), icon: 'history', run: run.journal },
+    ...youSectionsFor('desktop').map((section): PaletteItem => ({
+      id: `go:${section}`,
+      title: t(youTitleKey(section)),
+      icon: YOU_SECTION_ICON[section],
+      run: () => run.you(section),
+    })),
     {
       id: 'go:settings',
       title: t('settings.title'),

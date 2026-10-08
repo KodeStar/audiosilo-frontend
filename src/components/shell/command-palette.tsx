@@ -130,10 +130,10 @@ function useActionItems(): PaletteItem[] {
 function useGoToItems(): PaletteItem[] {
   const { t } = useTranslation();
   const { press } = useTabPress();
-  const { openJournal, openSettings, openYou } = useOpen();
+  const { openSettings, openYou } = useOpen();
   return buildGoToItems(
     TOP_BAR_TABS,
-    { tab: press, you: openYou, journal: () => openJournal(), settings: () => openSettings() },
+    { tab: press, you: openYou, settings: () => openSettings() },
     t,
   );
 }
