@@ -51,25 +51,57 @@ export function routePickerKind(el: {
 // every platform without importing this engine.
 export { supportsVoiceBoost };
 
+/** The numbers of a `DynamicsCompressorNode`, in the units it takes (seconds for the times). */
+type CompressorSettings = {
+  threshold: number;
+  knee: number;
+  ratio: number;
+  attack: number;
+  release: number;
+};
+
 /** Voice Boost's compressor (contract decision 7, the stronger preset of the Phase 6 device
- * pass): the native boost's numbers, in the units `DynamicsCompressorNode` takes (seconds
- * for the times). */
+ * pass): the native boost's numbers. */
 export const VOICE_BOOST_COMPRESSOR = {
-  threshold: -30,
+  threshold: -20,
   knee: 6,
   ratio: 3,
   attack: 0.01,
   release: 0.2,
-} as const;
+} as const satisfies CompressorSettings;
 
 /**
- * A gain after the compressor (dB) so the lift at the threshold matches the native +9 dB.
- * `DynamicsCompressorNode` has no make-up setting: it applies its own, `(1 / curve(1.0))^0.6`
- * (Web Audio spec, "makeup gain"; Chromium and Firefox share the curve), which for -30 / 6 /
- * 3:1 is +10.9 dB (the curve takes 18.2 dB off a full-scale input). -1.9 lands it at +9.0;
- * `service.web.test.ts` recomputes it from the curve, so a changed compressor fails there.
+ * A gain between the compressor and the limiter (dB), so the web lifts narration as much as
+ * the native boost (+8 dB for -14 dBFS peaks, its make-up being +12). `DynamicsCompressorNode`
+ * has no make-up setting: it applies its own, `(1 / curve(1.0))^0.6` (Web Audio spec, "makeup
+ * gain"; Chromium and Firefox share the curve): +6.9 dB for this compressor and +1.7 dB for
+ * the limiter. Its knee runs from the threshold UP (the native knee is centred on it), so
+ * above the knee the browser's curve sits 3.3 dB under the native one: this +1.6 and the
+ * limiter's +1.7 make it up, and below the threshold the web lifts ~10.2 dB (native 12).
+ * `service.web.test.ts` recomputes the whole chain from the browser's curve.
  */
-export const VOICE_BOOST_TRIM_DB = -1.9;
+export const VOICE_BOOST_TRIM_DB = 1.6;
+
+/** The peak limiter after the trim (the native ceiling is -1 dBFS): a hard 20:1 at -3 dBFS,
+ * which with its own +1.7 dB make-up lands a full-scale input near -1.1 dBFS. Its 1 ms attack
+ * (and the browser's ~6 ms look-ahead) catches the onsets the compressor's 10 ms lets by. */
+export const VOICE_BOOST_LIMITER = {
+  threshold: -3,
+  knee: 0,
+  ratio: 20,
+  attack: 0.001,
+  release: 0.08,
+} as const satisfies CompressorSettings;
+
+function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompressorNode {
+  const node = ctx.createDynamicsCompressor();
+  node.threshold.value = c.threshold;
+  node.knee.value = c.knee;
+  node.ratio.value = c.ratio;
+  node.attack.value = c.attack;
+  node.release.value = c.release;
+  return node;
+}
 
 /**
  * Is `url` served from this page's own origin? A media element routed through Web Audio
@@ -145,9 +177,9 @@ class WebPlaybackService implements PlaybackService {
   /** Whether `configure` has run once: the first call is the store's set-up (no gesture),
    * every later one is a setting the listener changed. */
   private configured = false;
-  /** Voice Boost's Web Audio graph: ONE context and ONE compressor (-> trim -> destination),
-   * created lazily inside a listener's gesture (the switch, or a play tap with the setting
-   * on) and never torn down; switching the boost off reconnects each source straight to
+  /** Voice Boost's Web Audio graph: ONE context and ONE compressor (-> trim -> limiter ->
+   * destination), created lazily inside a listener's gesture (the switch, or a play tap with
+   * the setting on) and never torn down; switching the boost off reconnects each source straight to
    * the destination. Never created where `supportsVoiceBoost` says no (Safari). */
   private boost: { ctx: AudioContext; compressor: DynamicsCompressorNode } | null = null;
   /** Each element's source node. An element takes exactly ONE for its whole life (a second
@@ -383,16 +415,13 @@ class WebPlaybackService implements PlaybackService {
     if (!this.boost) {
       try {
         const ctx = new AudioContext();
-        const compressor = ctx.createDynamicsCompressor();
-        compressor.threshold.value = VOICE_BOOST_COMPRESSOR.threshold;
-        compressor.knee.value = VOICE_BOOST_COMPRESSOR.knee;
-        compressor.ratio.value = VOICE_BOOST_COMPRESSOR.ratio;
-        compressor.attack.value = VOICE_BOOST_COMPRESSOR.attack;
-        compressor.release.value = VOICE_BOOST_COMPRESSOR.release;
+        const compressor = makeCompressor(ctx, VOICE_BOOST_COMPRESSOR);
         const trim = ctx.createGain();
         trim.gain.value = 10 ** (VOICE_BOOST_TRIM_DB / 20);
+        const limiter = makeCompressor(ctx, VOICE_BOOST_LIMITER);
         compressor.connect(trim);
-        trim.connect(ctx.destination);
+        trim.connect(limiter);
+        limiter.connect(ctx.destination);
         this.boost = { ctx, compressor };
         // Route the playing element once the context actually runs (see `sources`).
         ctx.addEventListener('statechange', () => {
