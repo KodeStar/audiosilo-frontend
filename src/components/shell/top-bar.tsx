@@ -1,3 +1,4 @@
+import { usePathname } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
@@ -11,12 +12,13 @@ import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
 import { useLayout } from '@/lib/layout';
+import { openSettings } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { useSearchStore } from '@/stores/search';
 import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { TOP_BAR_TABS, useTabPress } from './destinations';
+import { TOP_BAR_TABS, useTabPress, wideIcon, wideLabelKey } from './destinations';
 import { shortcutHint } from './palette-model';
 import { usePalette } from './palette-store';
 import { ProfileMenu } from './profile-menu';
@@ -93,9 +95,9 @@ function topBarItemClass(selected: boolean): string {
 
 /**
  * The tablet/desktop top bar (64, STYLEGUIDE section 2): the mark with the server it
- * talks to, the destinations, the omnisearch, Up next (with its count), settings and the
- * profile button. Tablet
- * keeps the destinations as icons only.
+ * talks to, the destinations (Home, Library, Downloads, You), the omnisearch, Up next
+ * (with its count), the Settings gear (a page pushed on the current tab, `openSettings`)
+ * and the profile button. Tablet keeps the destinations as icons only.
  *
  * The omnisearch is a field-shaped button: on web it opens the command palette (⌘K);
  * on a native tablet it jumps to the Search tab and focuses its input. Where the middle
@@ -110,6 +112,7 @@ export function TopBar() {
   const insets = useSafeAreaInsets();
   const desktop = useLayout() === 'desktop';
   const { active, press } = useTabPress();
+  const onSettings = usePathname() === '/settings';
   const requestFocus = useSearchStore((s) => s.requestFocus);
   const openPalette = usePalette((s) => s.openPalette);
   const web = Platform.OS === 'web';
@@ -159,7 +162,7 @@ export function TopBar() {
           >
             {TOP_BAR_TABS.map((d) => {
               const selected = active === d.name;
-              const label = t(d.labelKey);
+              const label = t(wideLabelKey(d));
               return (
                 <AnimatedPressable
                   key={d.name}
@@ -171,7 +174,7 @@ export function TopBar() {
                   className={cn(topBarItemClass(selected), 'min-w-[44px] flex-row gap-2 px-3')}
                 >
                   <Icon
-                    name={d.icon}
+                    name={wideIcon(d)}
                     size={18}
                     color={selected ? themed.brand : themed.mutedForeground}
                   />
@@ -217,18 +220,18 @@ export function TopBar() {
           <UpNextButton variant="bar" />
           <AnimatedPressable
             testID="top-bar-settings"
-            onPress={() => press('(me)')}
+            onPress={() => openSettings()}
             accessibilityRole="button"
-            // A button outside the tablist: it marks the current destination, not a
-            // selected tab (web only; native has no aria-current).
-            aria-current={active === '(me)' ? 'page' : undefined}
+            // A button outside the tablist: it marks the current page, not a selected tab
+            // (web only; native has no aria-current).
+            aria-current={onSettings ? 'page' : undefined}
             accessibilityLabel={t('settings.title')}
-            className={cn(topBarItemClass(active === '(me)'), 'w-[38px]')}
+            className={cn(topBarItemClass(onSettings), 'w-[38px]')}
           >
             <Icon
               name="settings"
               size={19}
-              color={active === '(me)' ? themed.foreground : themed.mutedForeground}
+              color={onSettings ? themed.foreground : themed.mutedForeground}
             />
           </AnimatedPressable>
           <ProfileMenu showName={desktop} />

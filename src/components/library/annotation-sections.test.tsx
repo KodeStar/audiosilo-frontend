@@ -43,10 +43,10 @@ const mockAddHere = jest.fn((..._a: unknown[]) => Promise.resolve());
 jest.mock('@/components/player/player-shortcuts', () => ({
   addBookmarkHere: (...a: unknown[]) => mockAddHere(...a),
 }));
-const mockPushInShell = jest.fn();
+const mockOpenJournal = jest.fn();
 jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openBook: jest.fn() }),
-  pushInShell: (...a: unknown[]) => mockPushInShell(...a),
+  openJournal: (...a: unknown[]) => mockOpenJournal(...a),
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('react-native-marked', () => {
@@ -136,10 +136,7 @@ describe('BookmarksSection', () => {
   it('links to the journal where the server lists bookmarks across books', async () => {
     await render(<BookmarksSection libraryId={1} path="a/book" />);
     await fireEvent.press(screen.getByRole('button', { name: 'See all in your journal' }));
-    expect(mockPushInShell).toHaveBeenCalledWith({
-      pathname: '/journal',
-      params: { tab: 'bookmarks' },
-    });
+    expect(mockOpenJournal).toHaveBeenCalledWith('bookmarks');
   });
 
   it('has no journal link on a server without annotations', async () => {

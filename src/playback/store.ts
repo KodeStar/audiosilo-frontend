@@ -119,6 +119,25 @@ let resumeLookupFailed = false;
  * real restore into a no-op and leave the listener with a quiet book. */
 let outputVolume = 1;
 
+/**
+ * Saves are held while `place-reconcile.ts` asks the server whether another device moved
+ * this book's place on (a loaded book picked up again): `persist` writes nothing until
+ * the hold is released, so the engine's stale place can't be saved over the other
+ * device's newer one (the server is last-write-wins). A hold always ends: released by
+ * its owner, or by itself after `SAVE_HOLD_MAX_MS` (a slow check never loses listening).
+ */
+let saveHold: { timer: ReturnType<typeof setTimeout> } | null = null;
+const SAVE_HOLD_MAX_MS = 5_000;
+/** When the transport last settled out of `playing` (a pause, from any source), else
+ * null. A play after `LONG_PAUSE_MS` of it is a book picked up again, which is when
+ * another device may have moved its place on (`onPickedUpAgain`). */
+let pausedAt: number | null = null;
+export const LONG_PAUSE_MS = 60_000;
+let pickedUpAgainListener: (() => void) | null = null;
+/** Counts the listener's own moves in the loaded book (seeks, track jumps, a book
+ * started): a reconcile that sees it change while its check was out stands back. */
+let localMoves = 0;
+
 /** Captured so `retry()` can re-run the resume path after a lookup failure. */
 let lastPlayRequest: {
   connectionId: string;
@@ -145,6 +164,14 @@ const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor i
  * move (or a restart) is allowed to save instead of being blocked by the guard. */
 function lowerFloorTo(bookPosition: number) {
   if (Number.isFinite(bookPosition)) resumeFloor = Math.min(resumeFloor, Math.max(0, bookPosition));
+}
+
+/** A move of the listener's own in the loaded book (a seek, a track jump, a book
+ * started): counted for the place reconcile (`localMoves`), and, given where it lands,
+ * the resume floor lowered to it (`lowerFloorTo`). */
+function userMoved(bookPosition?: number) {
+  localMoves++;
+  if (bookPosition !== undefined) lowerFloorTo(bookPosition);
 }
 
 /** Engine tunables derived from the settings store. */
@@ -251,6 +278,8 @@ async function persist(opts?: { forceFinished?: boolean }) {
   const { nowPlaying, snapshot, rate } = usePlayer.getState();
   if (!apiRef || !nowPlaying) return;
   const forceFinished = opts?.forceFinished ?? false;
+  // Held while a reconcile check is out (a finish is the listener's own and still saves).
+  if (saveHold && !forceFinished) return;
   const total = nowPlaying.queue.total;
   let position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
   if (forceFinished) {
@@ -529,6 +558,12 @@ async function ensureService(): Promise<PlaybackService> {
         wantsPlayback = true;
         startingPlayback = false;
         cancelStallWatchdog();
+        // Picked up again after a long pause, from anywhere (a press, the lock screen,
+        // earbuds): the listener is told synchronously, so its save hold is in place
+        // before this play's first save.
+        const pickedUp = pausedAt !== null && Date.now() - pausedAt >= LONG_PAUSE_MS;
+        pausedAt = null;
+        if (pickedUp) pickedUpAgainListener?.();
         startSaveLoop();
       } else if (snapshot.state === 'loading') {
         // A mid-playback stall (or the ongoing start attempt): arm the watchdog so a
@@ -551,6 +586,7 @@ async function ensureService(): Promise<PlaybackService> {
         // state list - that list kept coming up short (an unhandled `idle` left the 15s
         // save loop re-persisting the same position forever); like the error hold above,
         // anything that isn't `playing`/`loading` settles playback.
+        pausedAt ??= Date.now();
         clearPlaybackIntent();
         haltAndPersist();
       }
@@ -604,6 +640,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // new book's path - corrupting the new book's progress. The loop restarts on the
     // engine's next `playing` transition for this book.
     stopSaveLoop();
+    pausedAt = null; // a book (re)started here just had its place looked up
+    userMoved();
     apiRef = api; // null for an offline downloaded book => persist()/history no-op (no server)
     deviceId = await getDeviceId();
     lastPlayRequest = { connectionId, libraryId, book, chapterData }; // so retry() can re-run resume
@@ -795,7 +833,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         : Math.max(0, bookPosition);
     const svc = await ensureService();
     const target = locate(np.queue.offsets, clamped);
-    lowerFloorTo(clamped); // a deliberate user seek may legitimately move backward
+    userMoved(clamped); // a deliberate user seek may legitimately move backward
     if (target.index === get().snapshot.trackIndex) {
       await svc.seekTo(target.positionInTrack);
     } else {
@@ -810,7 +848,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const pos = Math.max(0, dur > 0 ? Math.min(positionInTrack, dur) : positionInTrack);
     const svc = await ensureService();
     const np = get().nowPlaying;
-    if (np) lowerFloorTo(toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos));
+    userMoved(np ? toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos) : undefined);
     await svc.seekTo(pos);
     void persist();
   },
@@ -820,7 +858,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     if (!np) return;
     const i = Math.max(0, Math.min(index, np.queue.tracks.length - 1));
     const svc = await ensureService();
-    lowerFloorTo(toBookPosition(np.queue.offsets, i, 0));
+    userMoved(toBookPosition(np.queue.offsets, i, 0));
     await svc.skipToTrack(i, 0);
     void persist();
   },
@@ -915,6 +953,41 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     await svc.showRoutePicker?.();
   },
 }));
+
+/**
+ * Hold `persist` (see `saveHold`) and return the release. `flush` (the default) saves
+ * the place once on release, so listening done while held is not lost; pass false when
+ * the hold ended in a move to another device's place (that place is already saved, and
+ * the engine may not have reported the move yet). Ends by itself after
+ * `SAVE_HOLD_MAX_MS`, flushing. A second hold replaces the first.
+ */
+export function holdSaves(): (opts?: { flush?: boolean }) => void {
+  if (saveHold) clearTimeout(saveHold.timer);
+  const hold = {
+    timer: setTimeout(() => release(), SAVE_HOLD_MAX_MS),
+  };
+  saveHold = hold;
+  function release(opts?: { flush?: boolean }) {
+    if (saveHold !== hold) return; // already released, or replaced
+    clearTimeout(hold.timer);
+    saveHold = null;
+    if (opts?.flush ?? true) void persist();
+  }
+  return release;
+}
+
+/** The listener's own moves so far (`localMoves`). */
+export const localMoveCount = (): number => localMoves;
+
+/** Be told when the loaded book is played again after `LONG_PAUSE_MS` or more of pause
+ * (one listener: `place-reconcile.ts`). Called synchronously from the engine
+ * subscription, before the play's save loop starts. Returns the unsubscribe. */
+export function onPickedUpAgain(listener: () => void): () => void {
+  pickedUpAgainListener = listener;
+  return () => {
+    if (pickedUpAgainListener === listener) pickedUpAgainListener = null;
+  };
+}
 
 /**
  * Stop playback (persisting the final position) when the playing book was loaded

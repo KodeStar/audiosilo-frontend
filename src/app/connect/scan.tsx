@@ -11,6 +11,7 @@ import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { scanParams } from '@/components/connect/connect-model';
 import { parsePairingScan } from '@/lib/pairing';
 import { colors } from '@/theme/tokens';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
@@ -76,9 +77,9 @@ export default function ScanScreen() {
       return;
     }
     setError(null);
-    // Hand the base + token back to the connect screen, which runs the existing
-    // pairing exchange and redirects on success.
-    router.replace({ pathname: '/connect', params: { server: parsed.base, token: parsed.token } });
+    // Hand the base + token (and the server's home and away addresses, when the code
+    // carries them) back to the connect screen, which runs the pairing exchange.
+    router.replace({ pathname: '/connect', params: scanParams(parsed) });
   };
 
   // Still loading the status, or the system prompt is on screen (status stays
@@ -132,8 +133,8 @@ export default function ScanScreen() {
       <SafeAreaView className="flex-1" pointerEvents="box-none">
         <View className="flex-1 items-end justify-end p-8" pointerEvents="box-none">
           <Text
-            className={`w-full rounded-lg px-4 py-3 text-center text-white ${
-              error ? 'bg-destructive/90' : 'bg-black/60'
+            className={`w-full rounded-lg px-4 py-3 text-center ${
+              error ? 'bg-destructive text-destructive-foreground' : 'bg-black/60 text-white'
             }`}
           >
             {error ?? t('connect.scan.aimHint')}

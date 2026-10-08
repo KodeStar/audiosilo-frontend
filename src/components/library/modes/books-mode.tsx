@@ -9,6 +9,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { useAllProgressAll } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
 import { SubNavActions } from '@/components/shell/tab-root-nav';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -413,6 +414,7 @@ function BooksList({
       ListEmptyComponent={empty}
       ListFooterComponent={footer}
       contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: 4, paddingBottom }}
+      {...TAB_PAGE_SCROLL_PROPS}
     />
   );
 }

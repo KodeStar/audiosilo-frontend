@@ -62,6 +62,7 @@ function makeClient() {
     })),
     clearListeningGoal: jest.fn(async () => undefined),
     myDevices: jest.fn(async () => []),
+    addresses: jest.fn(async () => ({})),
     revokeMyDevice: jest.fn(async () => ({ current: false })),
     createApiKey: jest.fn(async () => ({ id: 13, token: 'secret' })),
     revokeApiKey: jest.fn(async () => undefined),
@@ -156,6 +157,7 @@ import {
   useRevokeApiKey,
   useRevokeMyDevice,
   useSeriesList,
+  useServerAddresses,
   useSetCollectionItems,
   useSetCollectionShares,
   useSetListeningGoal,
@@ -404,6 +406,8 @@ const ALL_1B = [
   'progress_edit',
   'user_stats',
   'my_devices',
+  // Phase 5 (the same gate, one more flag).
+  'addresses',
 ] as const;
 type Flag = (typeof ALL_1B)[number];
 /** Every Phase 1b flag on except `flag` (and every 1a flag on, too). */
@@ -490,6 +494,13 @@ const queryCases: QueryCase[] = [
     flag: 'my_devices',
     useHook: () => useMyDevices(),
     method: 'myDevices',
+    args: [],
+  },
+  {
+    name: 'useServerAddresses',
+    flag: 'addresses',
+    useHook: () => useServerAddresses(),
+    method: 'addresses',
     args: [],
   },
 ];

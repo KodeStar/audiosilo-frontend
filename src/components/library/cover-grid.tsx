@@ -3,6 +3,7 @@ import { type ReactElement, type Ref, useState } from 'react';
 import { View } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
 import { PressableRow, RowSurface } from '@/components/ui/row-surface';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -23,9 +24,10 @@ type PassThrough<T> = Pick<
  * `renderItem` the tile width - give it a `CoverTile`. It IS the page's scroller: put the
  * page's header (chips, counts) in `ListHeaderComponent`, which spans every column and,
  * like the empty state and the footer, lines up with the tiles. Padded by the page
- * gutter, and clear of the phone's mini player at the bottom. A full-width row inside the
- * grid (a letter head, `isFullRow`) takes every column; `listRef` scrolls it (an A-Z
- * rail's jump).
+ * gutter, clear of the phone's mini player at the bottom and of the iOS tab bar
+ * (`TAB_PAGE_SCROLL_PROPS`: on a Library mode it sits under the sections). A full-width
+ * row inside the grid (a letter head, `isFullRow`) takes every column; `listRef` scrolls
+ * it (an A-Z rail's jump).
  */
 export function CoverGrid<T>({
   data,
@@ -99,6 +101,7 @@ export function CoverGrid<T>({
             paddingTop,
             paddingBottom,
           }}
+          {...TAB_PAGE_SCROLL_PROPS}
           {...rest}
         />
       ) : null}

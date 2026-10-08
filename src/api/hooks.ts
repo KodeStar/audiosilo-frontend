@@ -114,9 +114,14 @@ export const qk = {
   myStats: (cid: string, range: StatsRange) => ['myStats', cid, range] as const,
   /** Prefix matching every `myStats` range of a connection (invalidation). */
   myStatsAll: (cid: string) => ['myStats', cid] as const,
+  /** The past years with a story, from the year before `current` back (Year in listening;
+   * outside `myStats` so its invalidation doesn't refetch every probed year). */
+  storyYears: (cid: string, current: number) => ['storyYears', cid, current] as const,
   myListening: (cid: string, range: StatsRange) => ['myListening', cid, range] as const,
   listeningGoal: (cid: string) => ['listeningGoal', cid] as const,
   myDevices: (cid: string) => ['myDevices', cid] as const,
+  // Home and away addresses, capability `addresses`.
+  addresses: (cid: string) => ['addresses', cid] as const,
   /** Prefix matching every connection's progress list (refetch on Home). */
   allProgressAll: () => ['progress', 'all'] as const,
   /** Prefix matching every connection's recently added list. */
@@ -207,6 +212,16 @@ export function nextBookQuery(cid: string, client: MaybeClient, libraryId: numbe
     queryKey: qk.nextBook(cid, libraryId, path),
     queryFn: client ? ({ signal }) => client.nextBook(libraryId, path, signal) : skipToken,
     staleTime: NEXT_BOOK_STALE_MS,
+  });
+}
+
+/** The server's home and away addresses (`GET /addresses`). Ask only a server with
+ * `addresses` (pass no client otherwise). Read by the address runner on launch and on
+ * reconnect (`src/api/address-runner.ts`) and by `useServerAddresses`. */
+export function addressesQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.addresses(cid),
+    queryFn: client ? ({ signal }) => client.addresses(signal) : skipToken,
   });
 }
 
@@ -1629,34 +1644,59 @@ export function useEditProgress(connectionId?: string) {
   );
 }
 
+/** What the stats hooks take besides the connection: `ready` (false: don't fetch, for a
+ * caller that only needs it sometimes) and a `staleTime` (a past year never changes). */
+type StatsQueryOpts = { ready?: boolean; staleTime?: number };
+
 /** The caller's own listening stats for a period (capability `user_stats`). */
-export function useMyStats(range: StatsRange = '30d', connectionId?: string) {
+export function useMyStats(
+  range: StatsRange = '30d',
+  connectionId?: string,
+  opts: StatsQueryOpts = {},
+) {
   return useCapabilityQuery(
     'user_stats',
     (cid) => qk.myStats(cid, range),
     (api, signal) => api.myStats(range, signal),
     connectionId,
+    opts,
   );
+}
+
+/** `/me/stats` for a period as query options, for a reader that fetches it itself (the
+ * Year section's search for earlier years): the cache entry `useMyStats` reads. The caller
+ * checks `user_stats` first. */
+export function myStatsQuery(cid: string, client: MaybeClient, range: StatsRange) {
+  return queryOptions({
+    queryKey: qk.myStats(cid, range),
+    queryFn: client ? ({ signal }) => client.myStats(range, signal) : skipToken,
+  });
 }
 
 /** The caller's listening day by day for a period, for streaks and calendars
  * (capability `user_stats`). */
-export function useMyListening(range: StatsRange = '30d', connectionId?: string) {
+export function useMyListening(
+  range: StatsRange = '30d',
+  connectionId?: string,
+  opts: StatsQueryOpts = {},
+) {
   return useCapabilityQuery(
     'user_stats',
     (cid) => qk.myListening(cid, range),
     (api, signal) => api.myListening(range, signal),
     connectionId,
+    opts,
   );
 }
 
 /** The caller's yearly goal and this year's finished books (capability `user_stats`). */
-export function useListeningGoal(connectionId?: string) {
+export function useListeningGoal(connectionId?: string, opts: StatsQueryOpts = {}) {
   return useCapabilityQuery(
     'user_stats',
     qk.listeningGoal,
     (api, signal) => api.listeningGoal(signal),
     connectionId,
+    opts,
   );
 }
 
@@ -1717,6 +1757,16 @@ export function useRevokeMyDevice(connectionId?: string) {
       void qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
     },
   );
+}
+
+/** The server's home and away addresses as it answers them now (capability
+ * `addresses`), for a screen that shows them (Account). Which address the player uses
+ * right now is `useActiveAddress` (`src/api/address-route.ts`); the addresses the
+ * device keeps are the connection's `addresses`. */
+export function useServerAddresses(connectionId?: string) {
+  const api = useOptionalApi(connectionId);
+  const supported = useCapability('addresses', connectionId) === true;
+  return useQuery(addressesQuery(useCid(connectionId), supported ? api : null));
 }
 
 // --- Cross-connection aggregation ------------------------------------------

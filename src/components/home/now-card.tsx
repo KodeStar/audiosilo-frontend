@@ -29,7 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { chapterLabel } from '@/lib/chapter-label';
+import { chapterLabel, contradictedTitle, resumeChapterLabel } from '@/lib/chapter-label';
 import { formatDayMonth, formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -140,8 +140,16 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const resumeLabel = playing
     ? t('home.now.pause')
     : place
-      ? t('home.now.resumeChapter', { chapter: place.number })
+      ? resumeChapterLabel(t, place)
       : t('home.now.resume');
+  // "Ch. 13 of 25" beside a title "Chapter 12" contradicts it: then the count alone.
+  const placeCount = !place
+    ? ''
+    : contradictedTitle(place)
+      ? t('home.now.countOf', { chapter: place.number, total: place.count })
+      : compact
+        ? t('home.now.chapterShort', { chapter: place.number, total: place.count })
+        : t('home.now.chapterOf', { chapter: place.number, total: place.count });
 
   const cover = (
     <AnimatedPressable
@@ -166,9 +174,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     <View className="flex-row items-center gap-2.5">
       <View className="rounded-md bg-muted px-[7px] py-0.5">
         <Text variant="mono" className="text-muted-foreground">
-          {compact
-            ? t('home.now.chapterShort', { chapter: place.number, total: place.count })
-            : t('home.now.chapterOf', { chapter: place.number, total: place.count })}
+          {placeCount}
         </Text>
       </View>
       <Text variant="label" className="min-w-0 flex-1 text-[15px]" numberOfLines={1}>

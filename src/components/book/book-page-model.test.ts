@@ -104,6 +104,16 @@ describe('primaryAction', () => {
   it('resumes a book in progress at its chapter: "Resume chapter N", not Listen', () => {
     const a = primaryAction({ status: 'progress', loaded: false, live: false, chapter: 23 });
     expect(primaryLabel(t, a)).toBe('Resume chapter 23');
+    // The title contradicts the number (a Prologue first): the button says the title,
+    // the name the player opens on.
+    const titled = primaryAction({
+      status: 'progress',
+      loaded: false,
+      live: false,
+      chapter: 11,
+      chapterTitle: 'Chapter 10',
+    });
+    expect(primaryLabel(t, titled)).toBe('Resume Chapter 10');
     // A chapterless book (or the place before chapter 1) just resumes.
     expect(primaryLabel(t, primaryAction({ status: 'progress', loaded: false, live: false }))).toBe(
       'Resume',
@@ -251,6 +261,9 @@ describe('the place in the list', () => {
 
   it('says "Chapter 2 of 3", or "Part 2 of 3" for parts, and nothing for files', () => {
     expect(placeLine(t, 'chapters', 1, 3)).toBe('Chapter 2 of 3');
+    expect(placeLine(t, 'chapters', 1, 3, 'Chapter 2')).toBe('Chapter 2 of 3');
+    // After a Prologue the 11th chapter is "Chapter 10": the line says its title.
+    expect(placeLine(t, 'chapters', 10, 25, 'Chapter 10')).toBe('Chapter 10 · 11 of 25');
     expect(placeLine(t, 'parts', 1, 3)).toBe('Part 2 of 3');
     expect(placeLine(t, 'files', 1, 3)).toBe('');
     expect(placeLine(t, 'chapters', -1, 3)).toBe('');

@@ -1,6 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { forget, list, remember, type KnownServer } from './known-servers';
+import {
+  forget,
+  knownAddresses,
+  list,
+  remember,
+  rememberAddresses,
+  type KnownServer,
+} from './known-servers';
 
 const KEY = 'audiosilo.knownServers';
 const mk = (id: string, url = `https://${id}`, name = id): KnownServer => ({
@@ -80,5 +87,50 @@ describe('known-servers', () => {
     const raw = (await AsyncStorage.getItem(KEY))!;
     expect(raw).not.toMatch(/token|secret/i);
     expect(Object.keys(JSON.parse(raw)[0]).sort()).toEqual(['name', 'serverId', 'serverUrl']);
+  });
+
+  describe('home and away addresses', () => {
+    const HOME = 'http://192.168.1.20:8080';
+    const AWAY = 'https://books.example.com';
+
+    it('stores them as given (the session merges them before it remembers)', async () => {
+      await remember({ ...mk('srv-a'), addresses: { home: HOME, away: AWAY } });
+      expect(await knownAddresses('srv-a')).toEqual({ home: HOME, away: AWAY });
+      await remember({ ...mk('srv-a'), addresses: { away: 'https://new.example.com' } });
+      expect(await knownAddresses('srv-a')).toEqual({ away: 'https://new.example.com' });
+    });
+
+    it('another server never inherits them', async () => {
+      await remember({ ...mk('old-id', 'https://same.example'), addresses: { home: HOME } });
+      await remember(mk('new-id', 'https://same.example'));
+      expect(await knownAddresses('new-id')).toBeUndefined();
+      expect(await knownAddresses('old-id')).toBeUndefined();
+    });
+
+    it('rememberAddresses replaces them in place, and ignores an unknown server', async () => {
+      await remember(mk('srv-a'));
+      await remember(mk('srv-b'));
+      await rememberAddresses('srv-a', { away: AWAY });
+      expect(await knownAddresses('srv-a')).toEqual({ away: AWAY });
+      expect((await list()).map((e) => e.serverId)).toEqual(['srv-b', 'srv-a']);
+      await rememberAddresses('srv-a', undefined);
+      expect((await list()).find((e) => e.serverId === 'srv-a')).not.toHaveProperty('addresses');
+      await rememberAddresses('nope', { away: AWAY });
+      expect(await list()).toHaveLength(2);
+    });
+
+    it('writes at the same time all land (each runs after the one before)', async () => {
+      await remember(mk('srv-a'));
+      await remember(mk('srv-b'));
+      await Promise.all([
+        rememberAddresses('srv-a', { home: HOME }),
+        rememberAddresses('srv-b', { away: AWAY }),
+        remember(mk('srv-c')),
+      ]);
+      const l = await list();
+      expect(l.map((e) => e.serverId)).toEqual(['srv-c', 'srv-b', 'srv-a']);
+      expect(await knownAddresses('srv-a')).toEqual({ home: HOME });
+      expect(await knownAddresses('srv-b')).toEqual({ away: AWAY });
+    });
   });
 });

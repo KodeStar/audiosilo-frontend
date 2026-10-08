@@ -200,12 +200,71 @@ export function collectionHref(connectionId: string, id: number): Href {
   return { pathname: '/collection', params: { connection: connectionId, id: String(id) } };
 }
 
-/** The Journal's tabs (`/journal?tab=diary|bookmarks|notes`). */
+/** The Journal's tabs (`?tab=diary|bookmarks|notes`, on the You hub or `/journal`). */
 export type JournalTab = 'diary' | 'bookmarks' | 'notes';
 
-/** The Journal, on `tab` when given (the Diary is the plain `/journal`). */
-export function journalHref(tab?: JournalTab): Href {
-  return tab && tab !== 'diary' ? { pathname: '/journal', params: { tab } } : '/journal';
+/** The You hub's sections (`/you?section=`, the Me tab's root; absent = `stats`). A phone
+ * offers all five; tablet and desktop offer the first three and reach Settings and Account
+ * from the top bar's gear and profile menu (an old link to them still renders). */
+export type YouSection = 'stats' | 'year' | 'journal' | 'settings' | 'account';
+
+/** The You hub's pathname: the Me tab's ROOT, opened with `openYou` / `openJournal`
+ * (`src/lib/open.ts`), never pushed as a page on another tab. */
+const YOU_PATHNAME = '/you';
+
+/** The You hub on `section` (Stats is the plain `/you`), with the Journal's `tab` when
+ * the section is the Journal and the tab isn't the Diary. */
+export function youHref(section?: YouSection, journalTab?: JournalTab): Href {
+  if (!section || section === 'stats') return YOU_PATHNAME;
+  const tab = section === 'journal' && journalTab && journalTab !== 'diary' ? journalTab : null;
+  return { pathname: YOU_PATHNAME, params: tab ? { section, tab } : { section } };
+}
+
+/** What the full-screen Year in listening story (`/year`) shows. */
+export type YearStoryParams = {
+  /** A past year; absent for this year. */
+  year?: number;
+  /** A server other than the default. */
+  connection?: string;
+  /** The card to start on (0-based). */
+  card?: number;
+};
+
+/**
+ * The phone's full-screen Year in listening story, a root modal like the player: `/year`
+ * with `?year=YYYY` (absent: this year), `?connection=` (absent: the default server) and
+ * `?card=` (absent: the first). Open it with `router.push`; it never leads into the shell.
+ */
+export function yearHref(params: YearStoryParams = {}): Href {
+  return {
+    pathname: '/year',
+    params: {
+      ...(params.year !== undefined ? { year: String(params.year) } : {}),
+      ...(params.connection ? { connection: params.connection } : {}),
+      ...(params.card ? { card: String(params.card) } : {}),
+    },
+  };
+}
+
+/** The Settings panes (`/settings?section=`). `preferences` (the first pane, Playback) and
+ * `accounts` (the signed-in servers) are the two the IA names; each pane can be linked to
+ * directly too. Absent = `preferences`. */
+export type SettingsSection =
+  | 'preferences'
+  | 'playback'
+  | 'sleep'
+  | 'downloads'
+  | 'appearance'
+  | 'language'
+  | 'household'
+  | 'accounts'
+  | 'support';
+
+/** Settings, on `section` when given (the gear in the top bar; the palette). */
+export function settingsHref(section?: SettingsSection): Href {
+  return section && section !== 'preferences'
+    ? { pathname: '/settings', params: { section } }
+    : '/settings';
 }
 
 /** A route's raw search params (Expo Router may hand back `string[]`). */

@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { startAddressRouting } from '@/api/address-runner';
 import { ApiProvider } from '@/api/provider';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
@@ -21,6 +22,7 @@ import { migrateStorage } from '@/lib/storage-migration';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { startJumpUndo } from '@/playback/jump-undo';
+import { startPlaceReconcile } from '@/playback/place-reconcile';
 import '@/lib/register-sw';
 // Web: render `role="button"` as `<div role="button">` instead of a real `<button>`
 // (which nests illegally and hits an older-Safari flex bug), and let Space activate
@@ -51,6 +53,7 @@ function RootNavigator() {
         <Stack.Screen name="(app)" />
         <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="finished" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="year" options={{ presentation: 'fullScreenModal' }} />
       </Stack>
       {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
           end-of-book flow when a book reaches its natural end. */}
@@ -127,6 +130,15 @@ export default function RootLayout() {
   // (scrub, chapter tap, lock-screen seek...) for the "Back to 17:26:50" chip. Watches the
   // player's snapshots, so it must run whatever is on screen; see the module.
   useEffect(() => startJumpUndo(), []);
+
+  // A loaded book picked up again (the app back in front, its server back, a play after
+  // a long pause) first asks its server whether another device moved its place on, and
+  // follows it with an Undo. Framework-free like the others; see the module.
+  useEffect(() => startPlaceReconcile(), []);
+
+  // Home and away addresses: picks the address each server is reached at (native only)
+  // and keeps the playing book on it. Framework-free like the others; see the module.
+  useEffect(() => startAddressRouting(), []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.

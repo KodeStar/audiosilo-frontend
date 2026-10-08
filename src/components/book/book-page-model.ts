@@ -5,6 +5,7 @@ import { chapterIndexAt } from '@/components/home/now-card-model';
 import type { BookStatus } from '@/components/library/books/books-view';
 import { listeningSummary } from '@/components/player/end-credits-logic';
 import type { IconName } from '@/components/ui/icon';
+import { contradictedTitle, resumeChapterLabel } from '@/lib/chapter-label';
 import { formatBytes, formatDuration, formatRecordDate, formatSpeed } from '@/lib/format';
 import type { LayoutClass } from '@/lib/layout';
 import { type BookPlace, pathLeaf } from '@/lib/paths';
@@ -103,7 +104,7 @@ export function titleScale(scale: TitleScale, title: string): TitleScale {
 
 export type PrimaryAction =
   | { kind: 'pause' }
-  | { kind: 'resume'; chapter?: number }
+  | { kind: 'resume'; chapter?: number; title?: string }
   | { kind: 'start' }
   | { kind: 'again' }
   /** The listener's progress is not known yet: a neutral word, no promise. */
@@ -120,10 +121,12 @@ export function primaryAction(input: {
   loaded: boolean;
   live: boolean;
   chapter?: number;
+  /** That chapter's own title (`contradictedTitle`: "Chapter 10" as the 11th chapter). */
+  chapterTitle?: string;
 }): PrimaryAction {
-  const { status, loaded, live, chapter } = input;
+  const { status, loaded, live, chapter, chapterTitle } = input;
   if (loaded && live) return { kind: 'pause' };
-  if (loaded || status === 'progress') return { kind: 'resume', chapter };
+  if (loaded || status === 'progress') return { kind: 'resume', chapter, title: chapterTitle };
   if (status === 'finished') return { kind: 'again' };
   if (status === 'new') return { kind: 'start' };
   return { kind: 'listen' };
@@ -136,7 +139,7 @@ export function primaryLabel(t: TFunction, action: PrimaryAction): string {
       return t('book.hero.pause');
     case 'resume':
       return action.chapter
-        ? t('book.hero.resumeChapter', { chapter: action.chapter })
+        ? resumeChapterLabel(t, { number: action.chapter, title: action.title ?? '' })
         : t('book.hero.resume');
     case 'again':
       return t('book.hero.again');
@@ -263,10 +266,22 @@ export function rowAt(rows: readonly ListRow[], position: number): number {
       );
 }
 
-/** "Chapter 23 of 81" / "Part 3 of 12", or '' for files or a book not started. */
-export function placeLine(t: TFunction, kind: ListKind, current: number, count: number): string {
+/** "Chapter 23 of 81" / "Part 3 of 12", or '' for files or a book not started. A
+ * chapter whose `title` contradicts its number names itself: "Chapter 10 · 11 of 25". */
+export function placeLine(
+  t: TFunction,
+  kind: ListKind,
+  current: number,
+  count: number,
+  title = '',
+): string {
   if (current < 0 || count < 2) return '';
-  if (kind === 'chapters') return t('book.hero.chapterOf', { chapter: current + 1, total: count });
+  if (kind === 'chapters') {
+    const titled = contradictedTitle({ number: current + 1, title });
+    return titled
+      ? t('book.hero.titledOf', { title: titled, chapter: current + 1, total: count })
+      : t('book.hero.chapterOf', { chapter: current + 1, total: count });
+  }
   if (kind === 'parts') return t('book.hero.partOf', { part: current + 1, total: count });
   return '';
 }

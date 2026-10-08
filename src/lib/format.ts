@@ -222,6 +222,18 @@ export function formatServerDay(day: string, locale: string = getLocale()): stri
   );
 }
 
+/** "Sat 3 Oct" for a server `YYYY-MM-DD` day, read as that calendar day (not shifted into
+ * the device's zone), like `formatServerDay`. */
+export function formatServerShortDay(day: string, locale: string = getLocale()): string {
+  return formatDate(
+    new Date(`${day}T12:00:00Z`),
+    'sShortDay',
+    { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' },
+    locale,
+    () => day,
+  );
+}
+
 /**
  * A canonical "HH:MM" rendered in the reader's own clock convention (so an en-US
  * reader sees "10:00 PM" where a de reader sees "22:00"). Falls back to the stored
@@ -248,6 +260,11 @@ export function formatTimeOfDay(hhmm: string, locale: string = getLocale()): str
   } catch {
     return hhmm;
   }
+}
+
+/** An hour of the day (0-23) on the reader's clock: "22:00", "10:00 PM". */
+export function formatHour(hour: number, locale: string = getLocale()): string {
+  return formatTimeOfDay(`${pad2(hour % 24)}:00`, locale);
 }
 
 /**

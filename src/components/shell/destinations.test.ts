@@ -16,6 +16,8 @@ import {
   tabOfSegments,
   tabStackListeners,
   TOP_BAR_TABS,
+  wideIcon,
+  wideLabelKey,
 } from './destinations';
 import { OMNISEARCH_MIN, omnisearchFits, serverLine } from './top-bar';
 /* eslint-enable import/first */
@@ -40,7 +42,12 @@ describe('destinations', () => {
 
   it('tells a tab root from a pushed page, by route name and by pathname', () => {
     expect(rootOfRoute('library/index')?.name).toBe('(library)');
-    expect(rootOfRoute('settings')?.titleKey).toBe('settings.title');
+    expect(rootOfRoute('you')?.name).toBe('(me)');
+    expect(rootOfRoute('you')?.titleKey).toBe('nav.you');
+    // Settings is a page of the array group, never a tab root.
+    expect(rootOfRoute('settings')).toBeNull();
+    expect(rootOfPathname('/you')?.name).toBe('(me)');
+    expect(rootOfPathname('/settings')).toBeNull();
     expect(rootOfRoute('book/[libraryId]')).toBeNull();
     expect(rootOfPathname('/')?.name).toBe('(home)');
     expect(rootOfPathname('/downloads')?.name).toBe('(offline)');
@@ -97,6 +104,16 @@ describe('tabStackListeners', () => {
     expect(mixed.replaced['(app)']).toEqual({});
   });
 
+  it("keeps the You hub's section and the Journal's tab", () => {
+    const { calls, replaced, navigation } = chain('you', '(me)');
+    tabStackListeners({
+      route: { name: 'you', params: { section: 'journal', tab: 'notes', connection: 'c' } },
+      navigation,
+    }).focus();
+    expect(calls).toEqual(['you', '(me)', '(app)']);
+    expect(replaced.you).toEqual({ section: 'journal', tab: 'notes' });
+  });
+
   it("does not let another root keep Library's params", () => {
     const { replaced, navigation } = chain();
     tabStackListeners({
@@ -140,13 +157,24 @@ describe('derived destination lists', () => {
       library: { initialRouteName: 'library/index' },
       search: { initialRouteName: 'search' },
       offline: { initialRouteName: 'downloads' },
-      me: { initialRouteName: 'settings' },
+      me: { initialRouteName: 'you' },
     });
   });
 
-  it('lists the top bar destinations without Search and Me', () => {
-    expect(TOP_BAR_TABS.map((t) => t.name)).toEqual(['(home)', '(library)', '(offline)']);
+  it('lists the top bar destinations without Search, You last', () => {
+    expect(TOP_BAR_TABS.map((t) => t.name)).toEqual(['(home)', '(library)', '(offline)', '(me)']);
     expect(PHONE_TABS).toHaveLength(5);
+  });
+
+  it('names the Me tab "Me" on the tab bar and "You" in the top bar', () => {
+    const me = TABS.find((t) => t.name === '(me)')!;
+    expect(me.labelKey).toBe('nav.me');
+    expect(wideLabelKey(me)).toBe('nav.you');
+    expect(wideLabelKey(TABS[0])).toBe('nav.home');
+    // The phone tab is a person; the top bar's You is a chart beside the profile button.
+    expect(me.icon).toBe('user');
+    expect(wideIcon(me)).toBe('chart');
+    expect(wideIcon(TABS[0])).toBe('home');
   });
 });
 

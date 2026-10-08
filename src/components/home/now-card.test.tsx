@@ -141,6 +141,17 @@ describe('NowCard', () => {
     expect(screen.getByText('Chapter 2')).toBeTruthy();
   });
 
+  it("says the chapter's title, not a number it contradicts (a Prologue first)", async () => {
+    // The 2nd chapter is titled "Chapter 1": "Ch. 2 of 3 · Chapter 1" and "Resume
+    // chapter 2" disagreed with the player's "Chapter 1".
+    mockSecondTitle = 'Chapter 1';
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByRole('button', { name: 'Resume Chapter 1' })).toBeTruthy();
+    expect(screen.getByText('2 of 3')).toBeTruthy();
+    expect(screen.queryByText('Chapter 2 of 3')).toBeNull();
+    expect(screen.getByText('Chapter 1')).toBeTruthy();
+  });
+
   it('stacks like the phone card when it is narrow on a desktop (the Up next drawer open)', async () => {
     await render(<NowCard at={at} saved={saved} />);
     expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();

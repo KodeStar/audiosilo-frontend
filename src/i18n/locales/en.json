@@ -7,7 +7,9 @@
     "close": "Close",
     "copied": "Copied",
     "on": "On",
-    "off": "Off"
+    "off": "Off",
+    "resumeChapter": "Resume chapter {{chapter}}",
+    "resumeTitled": "Resume {{title}}"
   },
   "settings": {
     "title": "Settings",
@@ -15,14 +17,15 @@
       "label": "Appearance",
       "light": "Light",
       "dark": "Dark",
-      "system": "System"
+      "system": "System",
+      "description": "Light, dark, or the same as this device."
     },
     "language": {
       "label": "Language",
-      "system": "System"
+      "system": "System",
+      "description": "The app's language. System follows this device."
     },
     "playback": {
-      "label": "Playback",
       "skipBack": "Skip back",
       "skipForward": "Skip forward",
       "defaultSpeed": "Default speed",
@@ -31,7 +34,6 @@
       "off": "Off"
     },
     "sleep": {
-      "label": "Sleep timer",
       "auto": {
         "label": "Auto sleep timer",
         "description": "Start a sleep timer automatically for playback that begins between these times."
@@ -59,7 +61,6 @@
       }
     },
     "upNext": {
-      "label": "Up next",
       "autoPlay": {
         "label": "Automatically play next book",
         "description": "When a book finishes, start the first book in Up next, or the next in the series."
@@ -89,16 +90,11 @@
       "signOut": "Sign out"
     },
     "devices": {
-      "label": "Devices",
-      "intro": "Pair another phone, tablet, or browser to this account.",
-      "scanHint": "On the other device, open AudioSilo and scan this code - or open the link below.",
-      "add": "Add a device",
       "share": "Share link",
-      "done": "Done",
-      "reachError": "Could not reach the server."
+      "done": "Done"
     },
     "apiKeys": {
-      "label": "API keys",
+      "label": "Personal API keys",
       "hint": "Named keys that let scripts and dashboards reach this server on your behalf. Each key acts as you and can be revoked at any time.",
       "nameLabel": "Key name",
       "namePlaceholder": "e.g. Home dashboard",
@@ -112,26 +108,59 @@
       "createError": "Could not create the API key.",
       "revokeError": "Could not revoke the API key.",
       "createdModal": {
-        "title": "API key created",
-        "description": "Copy this key now - it won't be shown again. Store it somewhere safe.",
+        "title": "Your new API key",
+        "description": "Copy it now. You won't be able to see it again.",
         "copy": "Copy key"
       },
       "revokeConfirm": {
         "title": "Revoke {{name}}?",
         "message": "Anything using this key will immediately lose access. This can't be undone.",
         "confirm": "Revoke key"
-      }
+      },
+      "sub": "For Home Assistant, dashboards and scripts",
+      "unavailable": {
+        "title": "Not available on {{server}}",
+        "body": "This server's version of AudioSilo doesn't offer API keys yet. Everything else works as usual."
+      },
+      "dialogTitle": "Create an API key",
+      "revokeShort": "Revoke"
     },
     "support": {
-      "label": "Support",
       "intro": "AudioSilo is self-hosted and free. If you'd like to support its development, you can contribute on GitHub Sponsors.",
       "cta": "Support AudioSilo"
     },
-    "version": "AudioSilo v{{version}}"
+    "version": "AudioSilo v{{version}}",
+    "sectionsLabel": "Settings sections",
+    "groups": {
+      "listening": "Listening",
+      "app": "App",
+      "servers": "Servers"
+    },
+    "sections": {
+      "playback": "Playback",
+      "sleep": "Sleep",
+      "downloads": "Up next and downloads",
+      "appearance": "Appearance",
+      "language": "Language",
+      "household": "Household and sharing",
+      "accounts": "Accounts and devices",
+      "support": "Support AudioSilo"
+    },
+    "household": {
+      "title": "Profiles arrive later",
+      "body": "Everyone in the house with their own place in every book, a kids mode and sharing come with profiles in a later update.",
+      "flag": "Arrives with profiles"
+    },
+    "accounts": {
+      "intro": "The servers this device is signed in to. Open one for its password, your devices and API keys."
+    },
+    "stepper": {
+      "less": "{{label}}, less",
+      "more": "{{label}}, more"
+    }
   },
   "account": {
     "connections": {
-      "label": "Servers",
       "manage": "Manage {{name}}",
       "remove": "Remove {{name}}",
       "add": "Add a server",
@@ -149,6 +178,81 @@
       "confirm": "Sign out anyway",
       "downloadsWarning_one": "Signing out also deletes {{count}} book downloaded from this server on this device.",
       "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device."
+    },
+    "switcher": "Server",
+    "none": "Sign in to a server to see its account.",
+    "identity": {
+      "line": "@{{user}} · {{role}} on {{server}}",
+      "devices_one": "signed in on {{count}} device",
+      "devices_other": "signed in on {{count}} devices",
+      "demo": "Demo",
+      "devicesLine_one": "Signed in on {{count}} device",
+      "devicesLine_other": "Signed in on {{count}} devices"
+    },
+    "password": {
+      "bodySet": "Sign in with it on a new device or in a browser.",
+      "bodyNotSet": "You signed in with an invite code and haven't set a password. Set one so you can sign in on a new device.",
+      "dialogSet": "At least {{count}} characters. Your other devices stay signed in.",
+      "dialogChange": "Enter your current password, then the new one. Your other devices stay signed in.",
+      "doneSet": "Password set",
+      "doneChanged": "Password changed",
+      "doneBody": "Your other devices stay signed in."
+    },
+    "pair": {
+      "title": "Pair another device",
+      "body": "Scan the code with the AudioSilo app on a phone, or open the link. It expires in 10 minutes.",
+      "show": "Show a pairing code",
+      "expiresIn": "Expires in {{time}}",
+      "expired": "This code has expired. Make a new one to pair a device.",
+      "renew": "Make a new code",
+      "copy": "Copy link",
+      "qr": "Pairing code for {{server}}",
+      "error": "Couldn't reach {{server}}. No code was made, so try again."
+    },
+    "devices": {
+      "title": "Signed-in devices",
+      "sub": "Sign out a device you've lost or sold",
+      "thisDevice": "This device",
+      "activeNow": "active now",
+      "never": "not seen since it signed in",
+      "onlyThis": "Only this device is signed in.",
+      "unknownApp": "App not reported yet",
+      "unnamed": "Unnamed device",
+      "platform": {
+        "ios": "iOS",
+        "android": "Android",
+        "web": "Browser"
+      },
+      "seen": {
+        "minute_one": "last seen {{count}} minute ago",
+        "minute_other": "last seen {{count}} minutes ago",
+        "hour_one": "last seen {{count}} hour ago",
+        "hour_other": "last seen {{count}} hours ago",
+        "day_one": "last seen {{count}} day ago",
+        "day_other": "last seen {{count}} days ago",
+        "month_one": "last seen {{count}} month ago",
+        "month_other": "last seen {{count}} months ago",
+        "year_one": "last seen {{count}} year ago",
+        "year_other": "last seen {{count}} years ago"
+      },
+      "signOut": "Sign out",
+      "signOutLabel": "Sign out {{name}}",
+      "confirm": {
+        "title": "Sign out {{name}}?",
+        "message": "{{name}} loses access to {{server}} straight away and will need to sign in again.",
+        "confirm": "Sign out device"
+      },
+      "done": "Signed out {{name}}",
+      "doneBody": "It needs to sign in again to reach {{server}}.",
+      "failed": "Couldn't sign out {{name}}",
+      "failedBody": "{{server}} didn't answer. Nothing changed, so try again.",
+      "gone": "{{name}} was already signed out",
+      "goneBody": "The list is up to date now.",
+      "loadError": "Couldn't load your devices from {{server}}."
+    },
+    "danger": {
+      "title": "Sign out of {{server}}",
+      "body": "Removes this server's downloads from this device. Your progress stays on the server."
     }
   },
   "annotations": {
@@ -214,30 +318,23 @@
   },
   "connect": {
     "server": {
-      "subtitle": "Connect to your audiobook server",
       "connecting": "Connecting your device…",
       "addressLabel": "Server address",
-      "connect": "Connect",
       "enterAddress": "Enter your server address",
       "missingAddress": "This pairing link is missing its server address. Enter it below.",
       "pairingFailed": "Pairing failed: {{message}}. You can also connect by entering your invite code on the sign-in screen.",
       "pairingReachError": "Could not reach the server to finish pairing.",
-      "serverError": "Server responded with an error: {{message}}",
-      "reachError": "Could not reach that server. Check the address and that it is online.",
       "demoError": "Could not start the demo: {{message}}",
       "demoReachError": "Could not reach the demo server.",
-      "demoDivider": "demo server",
-      "demoIntro": "This server offers a guest demo - no account needed.",
       "tryDemo": "Try the demo",
-      "signInInstead": "Sign in instead",
-      "or": "or",
-      "scanQr": "Scan QR code"
+      "scanQr": "Scan a QR code",
+      "cancelAdd": "Cancel adding a server"
     },
     "signIn": {
       "title": "Sign in",
       "mode": {
-        "code": "Code",
-        "password": "Password"
+        "code": "Invite code",
+        "password": "Username and password"
       },
       "codeLabel": "Invite code",
       "codePlaceholder": "Enter your invite code",
@@ -245,7 +342,6 @@
       "usernamePlaceholder": "Username",
       "passwordLabel": "Password",
       "passwordPlaceholder": "Password",
-      "connect": "Connect",
       "submit": "Sign in",
       "failed": "Sign in failed. Please try again.",
       "modeLabel": "How to sign in"
@@ -258,6 +354,65 @@
       "tryAgain": "Try again",
       "openSettings": "Open settings",
       "aimHint": "Point your camera at the pairing QR on your server's connect page."
+    },
+    "probe": {
+      "found": "Found {{name}}",
+      "version": "AudioSilo {{version}}",
+      "unencrypted": "This server uses an unencrypted connection: {{address}}",
+      "signIn": "Sign in",
+      "signInTo": "Sign in to {{name}}",
+      "unreachable": "Couldn't reach {{address}}",
+      "hint": "Check the spelling and that the server is online. A home address like 192.168.1.20:8080 only works on the same network as the server.",
+      "homeHint": "This is a home-network address, so it only answers on the same network as the server. Check that this device is on that network, and the spelling.",
+      "errorTitle": "The server answered with an error",
+      "errorBody": "It said: {{message}}"
+    },
+    "link": {
+      "open": "I have a pairing link",
+      "label": "Pairing link",
+      "connect": "Connect",
+      "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?..."
+    }
+  },
+  "onboarding": {
+    "step": "Step {{step}} of {{count}}",
+    "start": {
+      "title": "Your audiobooks, from your own server.",
+      "lead": "Enter the address your admin gave you, or scan the code from their screen.",
+      "leadWeb": "Enter the address your admin gave you, or paste the pairing link they sent.",
+      "continue": "Continue"
+    },
+    "signIn": {
+      "eyebrow": "{{name}} · {{host}}",
+      "codeHint": "From the invite your admin sent you."
+    },
+    "anotherServer": "Another server",
+    "addresses": {
+      "body": "{{name}} has two addresses. AudioSilo uses the fast one at home and switches by itself when you leave."
+    },
+    "panel": {
+      "title": "Every book in the house, on every device.",
+      "body": "Progress that never resets to zero. Downloads that play with no connection. The books missing from a series, shown on the shelf."
+    },
+    "ready": {
+      "connected": "{{name}} is connected",
+      "title": "Your library is ready.",
+      "and": "{{rest}} and {{last}}",
+      "booksIn_one": "{{books}} book in {{list}}.",
+      "booksIn_other": "{{books}} books in {{list}}.",
+      "booksAcross_one": "{{books}} book across {{libraries}} libraries.",
+      "booksAcross_other": "{{books}} books across {{libraries}} libraries.",
+      "librariesIn_one": "Your library: {{list}}.",
+      "librariesIn_other": "Your libraries: {{list}}.",
+      "librariesCount_one": "{{count}} library is ready.",
+      "librariesCount_other": "{{count}} libraries are ready.",
+      "empty": "{{name}} has no books yet. They appear here once your admin adds some.",
+      "loadError": "Your libraries couldn't be read just now. They appear in the app once the server answers.",
+      "placeChapter": "Your place in {{title}} came with you: chapter {{chapter}}, {{percent}}% in.",
+      "place": "Your place in {{title}} came with you: {{percent}}% in.",
+      "start": "Start listening",
+      "browse": "Browse the library",
+      "placeTitled": "Your place in {{title}} came with you: {{chapter}}, {{percent}}% in."
     }
   },
   "home": {
@@ -297,14 +452,14 @@
       "through": "through the book",
       "finishPace": "finish at your pace",
       "resume": "Resume",
-      "resumeChapter": "Resume chapter {{chapter}}",
       "pause": "Pause",
       "resumeFailed": "Couldn't start this book. Your place is kept, try again.",
       "openBook": "Open {{title}}",
       "whosWho": "Who's who",
       "whosWhoLabel_one": "Who's who, {{count}} character met so far",
       "whosWhoLabel_other": "Who's who, {{count}} characters met so far",
-      "storySoFar": "Story so far"
+      "storySoFar": "Story so far",
+      "countOf": "{{chapter}} of {{total}}"
     },
     "week": {
       "title": "This week",
@@ -372,6 +527,121 @@
       "dismiss": "Dismiss",
       "spoilerSafe": "Spoiler-safe: written up to chapter {{chapter}}.",
       "spoilerSafeStart": "Spoiler-safe: written before this book begins."
+    }
+  },
+  "stats": {
+    "server": {
+      "pick": "Server"
+    },
+    "unsupported": {
+      "title": "No listening stats here yet",
+      "body": "{{server}} doesn't keep listening stats yet. They arrive when it runs a newer AudioSilo."
+    },
+    "error": {
+      "title": "Your listening didn't load",
+      "body": "{{server}} didn't answer. Nothing is lost; try again in a moment."
+    },
+    "header": {
+      "eyebrow": "Your listening · {{server}}",
+      "thisWeek": "{{duration}} this week",
+      "openYear": "Open your {{year}} story"
+    },
+    "empty": {
+      "title": "No listening yet",
+      "body": "Play a book and your week, your streak and your year fill in here."
+    },
+    "tiles": {
+      "week": "This week",
+      "deltaUp": "{{duration}} more than last week",
+      "deltaDown": "{{duration}} less than last week",
+      "deltaSame": "The same as last week",
+      "streak": "Streak",
+      "days_one": "day",
+      "days_other": "days",
+      "streakValue_one": "{{count}} day",
+      "streakValue_other": "{{count}} days",
+      "longest_one": "Longest this year: {{count}} day",
+      "longest_other": "Longest this year: {{count}} days",
+      "average": "Daily average",
+      "books_one": "Across {{count}} book this year",
+      "books_other": "Across {{count}} books this year"
+    },
+    "goal": {
+      "label": "Goal",
+      "none_one": "{{count}} book finished this year, no goal set",
+      "none_other": "{{count}} books finished this year, no goal set",
+      "set": "Set a yearly goal",
+      "of": "of {{goal}}",
+      "percent": "{{percent}}%",
+      "a11y_one": "Goal: {{count}} of {{goal}} books finished this year, {{percent}}%",
+      "a11y_other": "Goal: {{count}} of {{goal}} books finished this year, {{percent}}%",
+      "lower": "Lower the yearly goal",
+      "raise": "Raise the yearly goal",
+      "clear": "Clear the yearly goal",
+      "saveFailed": "Your goal wasn't saved"
+    },
+    "calendar": {
+      "title": "Listening calendar",
+      "sub": "Every day you listened, darker for more",
+      "everyDevice": "From every device",
+      "months": "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
+      "weekdays": "Mon,,Wed,,Fri,,Sun",
+      "none": "No listening",
+      "label_one": "Listening calendar for the last 12 months: you listened on {{count}} day",
+      "label_other": "Listening calendar for the last 12 months: you listened on {{count}} days",
+      "days_one": "{{count}} day with listening in the last 12 months · today is outlined",
+      "days_other": "{{count}} days with listening in the last 12 months · today is outlined",
+      "less": "Less",
+      "more": "More"
+    },
+    "clock": {
+      "title": "Your listening clock",
+      "peaksOne": "Peaks at {{a}}",
+      "peaksTwo": "Peaks at {{a}} and {{b}}",
+      "allDay": "all day",
+      "label": "Listening by hour of day this year. Busiest hour {{hour}}. {{peaks}}",
+      "labelEmpty": "Listening by hour of day: none this year yet",
+      "none": "No listening this year yet",
+      "busiest": "your busiest hour",
+      "hourTotal": "{{duration}} this year"
+    },
+    "weeks": {
+      "title": "Hours per week",
+      "sub": "Last 12 weeks · {{duration}} in all",
+      "thisWeek": "this week",
+      "weeksAgo_one": "{{count}} week ago",
+      "weeksAgo_other": "{{count}} weeks ago",
+      "thisWeekShort": "This wk",
+      "agoShort_one": "{{count}} wk ago",
+      "agoShort_other": "{{count}} wk ago",
+      "label": "Hours listened per week, last 12 weeks: {{weeks}}"
+    },
+    "rank": {
+      "authors": "Top authors",
+      "authorsSub": "This year, by hours",
+      "narrators": "Top narrators",
+      "narratorsSub": "You spent {{duration}} with {{name}}",
+      "series": "Top series",
+      "seriesSub": "Series you kept coming back to",
+      "rowLabel_one": "{{rank}}. {{name}}, {{duration}}, {{count}} book",
+      "rowLabel_other": "{{rank}}. {{name}}, {{duration}}, {{count}} books",
+      "open": {
+        "author": "Opens the author",
+        "narrator": "Opens the narrator",
+        "series": "Opens the series"
+      }
+    },
+    "finished": {
+      "title": "Finished this year",
+      "count_one": "{{count}} book",
+      "count_other": "{{count}} books",
+      "none": "Nothing finished yet this year",
+      "journal": "See them in your Journal",
+      "spineLabel": "{{title}} by {{author}}, finished {{date}}"
+    },
+    "year": {
+      "summary_one": "{{duration}} of listening and {{count}} book finished so far.",
+      "summary_other": "{{duration}} of listening and {{count}} books finished so far."
     }
   },
   "library": {
@@ -848,9 +1118,9 @@
       "finishedOn": "Finished {{date}}",
       "start": "Start listening",
       "resume": "Resume",
-      "resumeChapter": "Resume chapter {{chapter}}",
       "again": "Listen again",
-      "pause": "Pause"
+      "pause": "Pause",
+      "titledOf": "{{title}} · {{chapter}} of {{total}}"
     },
     "upNext": {
       "label": "Up next for {{title}}",
@@ -1142,13 +1412,21 @@
       "show": "Show",
       "noServerTitle": "This book's server isn't connected",
       "noServerHint": "Bookmarks, notes and history come back once it is."
+    },
+    "placeMoved": {
+      "title": "Picked up your place from another device",
+      "chapterAt": "Chapter {{chapter}}, {{time}}",
+      "titledAt": "{{title}}, {{time}}",
+      "at": "At {{time}}",
+      "undo": "Undo"
     }
   },
   "reconnect": {
     "banner": {
       "auth": "Reconnect to {{name}}",
       "serverReset": "{{name}} was reset - re-pair to continue",
-      "more": "+{{count}} more"
+      "more": "+{{count}} more",
+      "hint": "Opens sign-in for this server"
     },
     "connect": {
       "heading": "Reconnect",
@@ -1164,8 +1442,26 @@
     "offline": "Offline - changes sync when reconnected",
     "someOffline": "Some servers offline",
     "me": "Me",
+    "you": "You",
     "back": "Back",
     "backTo": "Back to {{name}}"
+  },
+  "you": {
+    "sections": {
+      "label": "Sections of You",
+      "stats": "Stats",
+      "year": "Year",
+      "journal": "Journal",
+      "settings": "Settings",
+      "account": "Account"
+    },
+    "titles": {
+      "stats": "Your listening",
+      "year": "Year in listening",
+      "journal": "Journal",
+      "settings": "Settings",
+      "account": "Account"
+    }
   },
   "ui": {
     "error": "Something went wrong.",
@@ -1240,7 +1536,6 @@
     "upNext": "Open Up next",
     "upNextHint_one": "{{count}} book queued",
     "upNextHint_other": "{{count}} books queued",
-    "settings": "Go to settings",
     "settingsHint": "Servers, appearance and playback",
     "dark": "Switch to dark appearance",
     "light": "Switch to light appearance",
@@ -1363,7 +1658,6 @@
     "listening": "Listening · {{percent}}%",
     "listeningNow": "listening now",
     "resume": "Resume",
-    "resumeChapter": "Resume chapter {{chapter}}",
     "play": "Play",
     "details": "Details",
     "open": "Open",
@@ -1445,7 +1739,6 @@
   "journal": {
     "title": "Journal",
     "heading": "Everything you've marked",
-    "entryHint": "Your listening diary, bookmarks and notes",
     "tabs": {
       "label": "Journal sections",
       "diary": "Diary",
@@ -1558,6 +1851,141 @@
       "jump": "Jump",
       "jumpLabel": "Jump to {{time}}",
       "span": "{{from}} to {{to}}"
+    }
+  },
+  "addresses": {
+    "title": "At home and away",
+    "body": "The apps use the home address on your home network and the away address anywhere else.",
+    "home": "Home address",
+    "away": "Away address",
+    "paired": "Server address",
+    "inUse": "In use",
+    "usingHome": "Using your home address.",
+    "usingAway": "Using your away address.",
+    "usingPaired": "Using the address you connected with.",
+    "switches": "The app switches between them by itself."
+  },
+  "year": {
+    "eyebrow": "Year in listening",
+    "title": "Your {{year}}, as a story",
+    "howTo": "Tap the right side of a card for the next one, the left side to go back.",
+    "howToKeys": "Tap the right side of a card for the next one, the left side to go back. The arrow keys work too.",
+    "privacy": "Made on {{server}} from your own listening. Nothing leaves the server unless you share a card.",
+    "share": "Share this card",
+    "shareTitle": "My {{year}} in listening",
+    "shareFailed": "Couldn't make the image",
+    "shareFailedBody": "Nothing was shared. Try again in a moment.",
+    "saved": "Image saved",
+    "savedBody": "{{name}} is in your downloads.",
+    "play": "Play the story",
+    "ready": "Ready when you are",
+    "bannerTitle": "Your {{year}} in listening",
+    "bannerCards_one": "{{count}} card, made from your own listening.",
+    "bannerCards_other": "{{count}} cards, made from your own listening.",
+    "years": "Year",
+    "servers": "Server",
+    "close": "Close the story",
+    "previous": "Previous card",
+    "next": "Next card",
+    "cardOf": "Card {{n}} of {{total}}",
+    "thumbLabel": "Card {{n}}: {{label}}",
+    "thumbKicker": "Card {{n}}",
+    "hoursLong_one": "{{count}} hour",
+    "hoursLong_other": "{{count}} hours",
+    "booksCount_one": "{{count}} book",
+    "booksCount_other": "{{count}} books",
+    "sessionsCount_one": "{{count}} session",
+    "sessionsCount_other": "{{count}} sessions",
+    "loading": "Gathering your year",
+    "empty": {
+      "title": "Not much of a story yet",
+      "current": "Listen a little more this year and your story will be here: the hours, the books, your busiest hour and more.",
+      "past": "There was too little listening on {{server}} in {{year}} to tell a story."
+    },
+    "unsupported": {
+      "title": "No listening stats on this server yet",
+      "body": "{{server}} doesn't keep listening stats yet. Once it is updated, your year in listening appears here."
+    },
+    "error": {
+      "title": "Couldn't load your year",
+      "body": "{{server}} didn't answer. Nothing is lost; try again in a moment."
+    },
+    "card": {
+      "hours": {
+        "kicker": "AudioSilo · {{server}}",
+        "lead": "Here's your {{year}} in listening.",
+        "leadNamed": "{{name}}, here's your {{year}} in listening.",
+        "unit_one": "hour",
+        "unit_other": "hours",
+        "days_one": "That's a whole day with a book in your ears.",
+        "days_other": "That's {{count}} whole days with a book in your ears.",
+        "spread": "Across {{sessions}} and {{books}}.",
+        "estimated": "About {{duration}} of it is estimated, from before {{server}} kept sessions."
+      },
+      "books": {
+        "kicker": "Books finished",
+        "unit_one": "book finished",
+        "unit_other": "books finished",
+        "goalBehind_one": "{{count}} more to reach your goal of {{goal}}.",
+        "goalBehind_other": "{{count}} more to reach your goal of {{goal}}.",
+        "goalReached": "Your goal was {{goal}}. Done.",
+        "tower": "Each spine is a book you finished."
+      },
+      "book": {
+        "kicker": "Your book of the year",
+        "by": "By {{author}}.",
+        "time": "{{duration}} of listening, more than any other book.",
+        "thumb": "Book of the year"
+      },
+      "voice": {
+        "kicker": "Your voice of the year",
+        "title": "{{duration}} with {{name}}",
+        "thenOne": "Then {{a}} ({{aTime}}).",
+        "thenTwo": "Then {{a}} ({{aTime}}) and {{b}} ({{bTime}}).",
+        "thumb": "Voice of the year"
+      },
+      "clock": {
+        "kicker": "When you listen",
+        "part": {
+          "morning": "A morning listener.",
+          "afternoon": "An afternoon listener.",
+          "evening": "An evening listener.",
+          "night": "A night owl."
+        },
+        "peak": "You listened most around {{time}}.",
+        "caption": "your busiest hour",
+        "thumb": "Your clock"
+      },
+      "streak": {
+        "kicker": "Longest streak",
+        "unit_one": "day in a row",
+        "unit_other": "days in a row",
+        "going": "And it's still going.",
+        "current_one": "You're on day {{count}} of a new one right now.",
+        "current_other": "You're on day {{count}} of a new one right now.",
+        "thumb_one": "{{count}}-day streak",
+        "thumb_other": "{{count}}-day streak"
+      },
+      "people": {
+        "kicker": "Who you kept coming back to",
+        "author": "Author of the year",
+        "series": "Series of the year",
+        "detail": "{{duration}} across {{books}}"
+      },
+      "summary": {
+        "kicker": "{{year}} in listening",
+        "kickerNamed": "{{year}} · {{name}}",
+        "hours_one": "hour listened",
+        "hours_other": "hours listened",
+        "listened": "listened",
+        "finished_one": "book finished",
+        "finished_other": "books finished",
+        "streak_one": "day streak",
+        "streak_other": "day streak",
+        "books_one": "book listened to",
+        "books_other": "books listened to",
+        "thumb": "Your year"
+      }
     }
   }
 }

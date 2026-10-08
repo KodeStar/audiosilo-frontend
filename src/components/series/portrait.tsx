@@ -6,25 +6,18 @@ import { hashString } from '@/lib/monogram';
 import { initials } from '@/lib/names';
 import { useDomId } from '@/lib/use-dom-id';
 
-import { portraitColors } from './people-model';
+import { portraitColors, type PortraitKind } from './people-model';
 
 const BARS = 24;
 
 /**
- * An author or narrator portrait (STYLEGUIDE section 8, "Avatar, portrait"): no photos,
- * a monogram on colours from the name. An author is a pale gradient disc with deep
- * initials; a narrator a rounded square in a deeper gradient with white initials over a
- * faint waveform. Decorative: the name is always written beside it.
+ * A person's portrait (STYLEGUIDE section 8, "Avatar, portrait"): no photos, a monogram
+ * on colours from the name. An author is a pale gradient disc with deep initials; a
+ * narrator a rounded square in a deeper gradient with white initials over a faint
+ * waveform; the listener (`user`, the account page's avatar) a vivid gradient disc with
+ * white initials. Decorative: the name is always written beside it.
  */
-export function Portrait({
-  name,
-  kind,
-  size,
-}: {
-  name: string;
-  kind: 'author' | 'narrator';
-  size: number;
-}) {
+export function Portrait({ name, kind, size }: { name: string; kind: PortraitKind; size: number }) {
   const id = useDomId('pt');
   const c = portraitColors(name, kind);
   const narrator = kind === 'narrator';

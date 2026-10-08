@@ -15,7 +15,7 @@ a real player at every size, and physical shelf metaphors that make a household'
 
 Target stack: **Expo SDK 56 + React Native 0.85 + React 19 + Expo Router**, **react-native-reusables**
 (shadcn/ui "new-york" on `@rn-primitives`), styled with **Uniwind** (Tailwind v4 tokens; confirmed by the Phase 0a
-spike, which moved the app off NativeWind v4, so NativeWind is no longer a fallback). Companions: `@expo/ui` bottom sheet (vaul on web), FlashList v2, react-native-gifted-charts,
+spike, which moved the app off NativeWind v4, so NativeWind is no longer a fallback). Companions: `@expo/ui` bottom sheet (vaul on web), FlashList v2, charts drawn with react-native-svg,
 expo-router native tabs, Reanimated 4, expo-glass-effect, expo-font, a vendored SVG icon set.
 
 The prototype (`design/player-redesign/stacks/index.html` in the workspace repo, route `#styleguide`) shows this
@@ -64,19 +64,28 @@ Desktop
 | Home | none: greeting, Now card, This week, Continue listening, Next in your series, Listening in the house, Smart shelves, Recently added, Favourites, Recently finished | `#home` |
 | Library | Books · Authors · Series · Narrators · Collections · Folders | `#library`, `#series`, `#author`, `#book` |
 | Downloads | none (storage, rules, queue, ready offline) | `#downloads` |
-| You | Stats · Year in listening · Journal | `#stats`, `#year`, `#journal` |
-| Settings (gear) | Preferences · Accounts and devices | `#settings`, `#account` |
+| You | Stats · Year in listening · Journal | `/you?section=stats\|year\|journal` (the Me tab's root) |
+| Settings (gear) | none: a page pushed on the current tab (Back returns there), with its own grouped section nav | `/settings?section=preferences\|accounts\|<pane>`, `/account?connection=` |
 | Overlays | Full player and Finished rise over the current page | `#player`, `#finished` |
 | Standalone | Onboarding / first run; kids mode replaces the whole app | `#connect` |
 
-- Phone **Me** tab is a hub: a large title and a scrolling segmented control (Stats · Year · Journal ·
-  Settings · Account).
+- Phone **Me** tab is a hub (`/you?section=`): a large title naming the section ("Your listening") and a
+  scrolling segmented control (Stats · Year · Journal · Settings · Account). On tablet and desktop the same
+  root is the top bar's **You**; its sub-nav offers only Stats · Year in listening · Journal (Settings is the
+  gear, Account the profile menu; an old link to either still renders). The Journal is a section of the hub
+  (`/journal?tab=` still opens for older links).
+- **Settings** (`SettingsContent`, the `/settings` page and the phone hub's Settings segment) lays out by
+  its measured width: from 720 a grouped section nav (Listening · App · Servers) beside one pane's card,
+  narrower every pane stacked under its group's name.
 - Detail pages (`#series`, `#author`, `#book`) replace the segmented control with Back + breadcrumbs.
 - Hash routes are bare tokens; sub-state (tab, filters, selected series entry) lives in app state
   (Expo Router search params in the real build).
-- **Each setting lives in exactly one place**: Settings sections are Playback, Sleep, Up next and downloads,
-  Appearance, Language, Accessibility, Household and sharing, Servers, Support. Download rules also show in
-  Downloads and in the series page as *shortcuts to the same value*, never a second copy.
+- **Each setting lives in exactly one place**: Settings panes are Listening (Playback, Sleep, Up next and
+  downloads), App (Appearance, Language, Household and sharing: a quiet "arrives with profiles" notice until
+  profiles ship) and Servers (Accounts and devices: the signed-in servers, each opening its Account, and Add
+  a server; Support, hidden in Apple builds). Accessibility gets a pane only once the app has a setting of
+  its own for it (motion and text size follow the system today). Download rules also show in Downloads and
+  in the series page as *shortcuts to the same value*, never a second copy.
 
 ---
 
@@ -211,6 +220,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--success` | `#0d7f5a` | `#3cc994` | Finished, downloaded, synced (always with an icon and a word) |
 | `--warning` | `#a86206` | `#f0b04d` | Offline banner, "Spoilers shown", star ratings |
 | `--destructive` | `#c42b3c` | `#f0606e` | Sign out, remove server, failed download |
+| `--destructive-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid destructive fill (white on the dark coral was 3.2:1; `src/theme/contrast.test.ts` keeps it at 4.5:1) |
 | `--info` | `#2c56c9` | `#7d9bf2` | "On Maya's Shelf" (a friend's server), "Also on ..." |
 | `--seq-0..5` | pink ramp | pink ramp | Listening calendar heatmap only |
 | `--chart-1..5` | fixed order | fixed order | Storage per server, any categorical chart. A sixth series folds into "Other". Where the view already has its pink thing (the Downloads page), start at `chart-2` and use `chart-1` last. |
@@ -463,12 +473,27 @@ tab bar on phone). Dialogs radius 20 with a 40 px tinted icon badge; on phone th
 sit under the top bar for app-wide states. Notices (icon tile + bold headline + one sentence + at most two
 actions) explain local situations.
 
-### Stat tile, listening calendar, listening clock *custom on gifted-charts*
-Stat tile: label with icon, Bricolage 32 value with small unit, one line of context or a delta. Listening
-calendar: 53 x 7 rounded squares on `--seq-0..5`, month labels, today outlined, hover tooltip ("1h 36m · Sat
-3 Oct"), legend Less/More; scrolls to today on phone. Listening clock: 24 radial petals from 00 at the top,
-peaks in `--brand`, the busiest hour in the centre. Weekly bars: 18 px bars with 4 px rounded tops, this week in
-pink. Rank lists (top authors, narrators, series) use portraits/covers + an ink bar.
+### Stat tile, listening calendar, listening clock *custom on react-native-svg*
+Stat tile: label with icon, Bricolage 32 value (25 on a narrow page) with small units, one line of context or a
+delta, read as one element ("This week, 5h 9m, 3h 41m less than last week"). Listening calendar: 53 x 7 rounded
+squares on `--seq-0..5` (graded against the listener's own heavy days, the 95th percentile, so one marathon
+doesn't wash the rest out), month and weekday labels, today outlined, a tooltip ("1h 36m · Sat 3 Oct") on hover
+on the web and on a tap everywhere, legend Less/More, "N days with listening in the last 12 months"; below an
+11 pt cell it scrolls sideways and starts at today. Listening clock: 24 radial petals from 00 at the top, peaks
+(75% of the busiest hour or more) in `--brand`, the rest ink, the busiest hour in the centre, or the hour under
+the pointer or a tap. Weekly bars: the last 12 seven-day windows as 18 px bars with 4 px rounded tops on a dashed
+hour grid, this week in pink, the week under the pointer or a tap in a tooltip. On these pages the clock's peaks
+and this week's bar are the pink; the goal ring, rank bars and links stay ink. Rank lists (top authors,
+narrators, series) use portraits (a series: its monogram cover) + an ink bar, each row opening its page.
+
+In this codebase (`src/components/you/stats/`): the charts are react-native-svg drawings and Views, not
+gifted-charts (never installed). Each chart is one `image` element with a text summary, and is read without
+hover: `ChartPointer` lays a layer over the drawing that reports the point under a web pointer or a tap, and
+`ChartTip` is the ink tooltip. All the rules (weeks, streaks, the grid, the petals, hit tests, the goal steps,
+the layout columns) are the pure `stats-model.ts`. The page lays out by its measured width. Finished this year
+is a shelf of `Spine`s on the series bookcase's `Plank` (the stats carry no length or cover colour, so the
+spines are the standard width in their title's cloth colour), and the Year banner is a washed ink card in the
+blue and violet chart colours, not pink.
 
 ### Avatar, portrait, character token *custom*
 Household avatars: gradient monograms (two hues per person), Bricolage initials; a pink ring marks who is
@@ -484,9 +509,39 @@ rounded covers. No search, settings or downloads. Leaving needs a grown-up to **
 Decision for the owner: profiles on a device marked "shared" switch without a password.
 
 ### Year in listening *custom*
-9:16 story cards with progress bars, tap right/left to move, 6 s auto-advance: 412 hours · 41 books as a growing
-tower of spines ("1.6 metres tall") · book of the year · voice of the year · your listening clock · longest streak
-· 214 characters met (and no spoilers) · the house together · a share card. Shareable as one read-only link.
+9:16 story cards with progress bars, tap right/left to move, 6 s auto-advance. Built (Phase 5,
+`src/components/you/year/`), from the listener's own stats on one server, in that server's time, real data only:
+hours (+ "that's N whole days", the sessions and books, and how much is estimated) · books finished as a growing
+tower of spines (newest on top; no physical height: that would be a guess) · book of the year (its cover) · voice
+of the year (+ the two runners up) · when you listen (a light-on-dark listening clock, the busiest hour in the
+centre) · longest streak (12 weeks of days, the streak still running this year) · author and series of the year ·
+a summary card (hours, books, streak, books listened to, six covers, the AudioSilo mark). A card without data is
+left out; "characters met" and "the house together" wait for data the wire lacks (Phase 8). A year with too
+little listening (under an hour and no book finished) is a calm empty state, never empty cards; a server without
+stats a notice.
+- **Tablet and desktop** (by the measured width): the stage (360 wide) beside a column: eyebrow, "Your 2026, as a
+  story", how it works + the privacy line, the year and server pickers, the thumbnails (the one on stage has the
+  brand border: the view's one pink thing), "Share this card". Under the stage when the width is under 720.
+- **Phone**: an intro (the year banner with "Play the story", the thumbnails) opening the full-screen story (the
+  root modal `/year?year=&connection=&card=`): the card as large as the screen allows on black, a close button,
+  "Share this card" under it, a pull down to close.
+- **Holding the story**: reduced motion shows each card still (no auto-advance, no animation, the bar full); a
+  screen reader, a share in progress, a finger or the pointer on the card and the keyboard focus in it freeze it.
+  Arrow keys on the web (Escape closes the full-screen story). A screen reader hears "Card N of M" and the card's
+  words; the previous and next zones are labelled buttons.
+- **Year picker**: shown once an earlier year has a story (`range=YYYY`, probed back year by year; two quiet years
+  in a row end the search). Server picker with more than one server that keeps stats.
+- **Grounds**: the prototype's gradients, drawn with react-native-svg on every platform. White type on the deep
+  part of each ground; the glows sit in the corners.
+- **Sharing: one card at a time, as a 1080 x 1920 PNG, captured from the same rendered card** (no second
+  renderer; the bars and tap zones are laid over it, so they stay out of the image). iOS and Android:
+  `react-native-view-shot` to a cache file, then the share sheet (`expo-sharing`, `image/png`). Web: html-to-image
+  (the browser lays the card out itself; html2canvas, view-shot's own web engine, clipped every clamped line) in its
+  own lazily loaded chunk, then the Web Share API where files can be shared, else a download. It works under the
+  served player's CSP: same-origin fetches only (the cards' covers are plain `?token=` URLs on the web, never
+  `blob:`), the PNG from `canvas.toBlob`. A capture that fails is tried once more with covers drawn as title
+  blocks. **No share link**: one would need a server endpoint; the column says instead "Made on <server> from your
+  own listening. Nothing leaves the server unless you share a card."
 
 ### Empty, skeleton, first run
 Empty states use ghost spines or ghost covers, one headline, one sentence, one action. Skeletons are exact
@@ -600,8 +655,8 @@ Older servers lack these; the UI degrades quietly (Maya's Shelf on 1.12.3 shows 
 | `--muted / --muted-foreground` | `bg-muted text-muted-foreground` | Skeleton, tracks, captions |
 | `--accent` | `bg-accent` | Hover/pressed ghost items |
 | `--border / --input / --ring` | `border-border ring-ring` | Hairlines, Input, focus |
-| `--destructive` | `bg-destructive` | Sign out, delete |
-| `--chart-1..5` | `fill-chart-1` | gifted-charts series |
+| `--destructive / --destructive-foreground` | `bg-destructive text-destructive-foreground` | Sign out, delete |
+| `--chart-1..5` | `fill-chart-1` | categorical chart series |
 | `--seq-0..5` | `bg-seq-3` | Listening calendar |
 | `--brand / --brand-ink / --brand-soft` | `bg-brand text-brand-ink` | Progress, ribbon, selection (custom) |
 | `--community` | `text-community` | CC BY-SA marks, note pins (custom) |

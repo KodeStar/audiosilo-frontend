@@ -27,6 +27,7 @@ export const colors = {
     accent: '#e8ecf3', // --color-accent
     accentForeground: '#121c36', // --color-accent-foreground
     destructive: '#c42b3c', // --color-destructive
+    destructiveForeground: '#ffffff', // --color-destructive-foreground
     destructiveSoft: '#fde8ea', // --color-destructive-soft
     border: '#e0e5ed', // --color-border
     borderStrong: '#cdd4df', // --color-border-strong
@@ -79,6 +80,7 @@ export const colors = {
     accent: '#1a2340', // --color-accent
     accentForeground: '#e7ebf4', // --color-accent-foreground
     destructive: '#f0606e', // --color-destructive
+    destructiveForeground: '#0a0f1e', // --color-destructive-foreground
     destructiveSoft: '#3a1720', // --color-destructive-soft
     border: '#1d2640', // --color-border
     borderStrong: '#2a3555', // --color-border-strong

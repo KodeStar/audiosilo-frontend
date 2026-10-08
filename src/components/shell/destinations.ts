@@ -1,10 +1,11 @@
-import { router, useNavigationContainerRef, useSegments, type Href } from 'expo-router';
+import { useNavigationContainerRef, useSegments, type Href } from 'expo-router';
 import type { MaterialIcon, SFSymbolIcon } from 'expo-router/unstable-native-tabs';
 import { useCallback } from 'react';
 
 import { LIBRARY_ROOT_PARAMS } from '@/components/library/library-modes';
 import type { IconName } from '@/components/ui/icon';
 import { engine } from '@/downloads/engine';
+import { popTabToRoot } from '@/lib/root-stack';
 
 /**
  * The app's destinations, in ONE table every piece of chrome reads: the native tab bar
@@ -16,7 +17,8 @@ import { engine } from '@/downloads/engine';
  * `(home,library,search,offline,me)/`, which expands into every tab, so the tab that
  * pushes a detail page owns it (expo-router resolves a push against the current
  * segments). Groups are invisible in URLs: `/`, `/library`, `/search`, `/downloads`,
- * `/settings`, `/book/...` are unchanged.
+ * `/you` (the Me tab's root, the You hub), `/book/...`. Settings (`/settings`) is a page
+ * of the array group too: the top bar's gear pushes it on the current tab.
  *
  * The Downloads group is `(offline)`, not `(downloads)`: a cold deep link
  * (`/book/1?...`, which every tab could own) is given to the alphabetically FIRST tab
@@ -24,9 +26,9 @@ import { engine } from '@/downloads/engine';
  */
 export type TabName = '(home)' | '(library)' | '(search)' | '(offline)' | '(me)';
 
-/** i18n keys (under `nav.*` / `settings.*`) the chrome uses, typed so `t()` checks them. */
-type LabelKey = 'nav.home' | 'nav.library' | 'nav.search' | 'nav.downloads' | 'nav.me';
-type TitleKey = 'nav.home' | 'nav.library' | 'nav.search' | 'nav.downloads' | 'settings.title';
+/** i18n keys (under `nav.*`) the chrome uses, typed so `t()` checks them. */
+type LabelKey = 'nav.home' | 'nav.library' | 'nav.search' | 'nav.downloads' | 'nav.me' | 'nav.you';
+type TitleKey = 'nav.home' | 'nav.library' | 'nav.search' | 'nav.downloads' | 'nav.you';
 
 export type Destination = {
   name: TabName;
@@ -34,12 +36,19 @@ export type Destination = {
   root: Href;
   /** The tab root's route name inside the tab's Stack (the file path under the group). */
   rootRoute: string;
-  /** Tab bar / top bar label. */
+  /** Tab bar label (and the top bar's, unless `wideLabelKey`). */
   labelKey: LabelKey;
-  /** The tab root's page title (Me's root is the Settings screen, for now). */
+  /** The tablet/desktop top bar's label when it differs from the tab bar's (the phone's
+   * "Me" tab is the top bar's "You"). */
+  wideLabelKey?: LabelKey;
+  /** The tab root's page title (the sub-nav's; a phone root may set its own). */
   titleKey: TitleKey;
   /** Our vendored glyph (web chrome, top bar). */
   icon: IconName;
+  /** The tablet/desktop top bar's glyph when it differs from the tab bar's (the phone's
+   * "Me" is a person; the top bar's "You" is your listening, beside the profile button's
+   * person). */
+  wideIcon?: IconName;
   /** SF Symbol for the iOS native tab bar. */
   sf: SFSymbolIcon['sf'];
   /** Material Symbol for the Android native tab bar. */
@@ -96,14 +105,20 @@ export const TABS: readonly Destination[] = [
     md: 'download',
   },
   {
+    // The You hub (`/you?section=`, src/components/you/you-hub.tsx): "Me" on the phone's
+    // tab bar, "You" in the top bar.
     name: '(me)',
-    root: '/settings',
-    rootRoute: 'settings',
+    root: '/you',
+    rootRoute: 'you',
     labelKey: 'nav.me',
-    titleKey: 'settings.title',
+    wideLabelKey: 'nav.you',
+    titleKey: 'nav.you',
     icon: 'user',
+    wideIcon: 'chart',
     sf: 'person.crop.circle',
     md: 'person',
+    // The hub's section, and the Journal section's own tab.
+    rootParams: ['section', 'tab'],
   },
 ];
 
@@ -115,12 +130,18 @@ const available = (d: Destination) => d.name !== '(offline)' || engine.supported
 /** The destinations OUR web phone tab bar lists (the native bars list every `TABS`). */
 export const PHONE_TABS: readonly Destination[] = TABS.filter(available);
 
-/** The destinations the tablet/desktop top bar (and the palette's Go to) lists. Search is
- * the omnisearch field and Me is the settings icon + profile button there, so neither is
- * a labelled destination. ("You" - stats, year, journal - joins in Phase 5.) */
+/** The destinations the tablet/desktop top bar (and the palette's Go to) lists: Home,
+ * Library, Downloads, You. Search is the omnisearch field there, so it is not a labelled
+ * destination (Settings is the gear beside the profile button). */
 export const TOP_BAR_TABS: readonly Destination[] = TABS.filter(
-  (t) => t.name !== '(search)' && t.name !== '(me)' && available(t),
+  (t) => t.name !== '(search)' && available(t),
 );
+
+/** A destination's label in the tablet/desktop top bar (and the palette). */
+export const wideLabelKey = (d: Destination): LabelKey => d.wideLabelKey ?? d.labelKey;
+
+/** A destination's glyph in the tablet/desktop top bar. */
+export const wideIcon = (d: Destination): IconName => d.wideIcon ?? d.icon;
 
 export function destination(name: TabName): Destination {
   return TABS.find((t) => t.name === name) ?? TABS[0];
@@ -158,14 +179,14 @@ export function useActiveTab(): TabName | null {
  * Tab presses from OUR chrome (the web tab bar, the tablet/desktop top bar - all outside
  * the tab navigator). Another tab: dispatch JUMP_TO, which restores that tab's stack. A
  * href can't do it: `router.navigate('/(home)')` resolves to `/` and pops Home to its
- * root. The active tab again: navigate to its root, i.e. pop to top.
+ * root. The active tab again: pop its stack to the root (`popTabToRoot`).
  */
 export function useTabPress() {
   const ref = useNavigationContainerRef();
   const active = useActiveTab();
   const press = useCallback(
     (name: TabName) => {
-      if (active === name) router.navigate(destination(name).root);
+      if (active === name) popTabToRoot(name);
       else ref.dispatch({ type: 'JUMP_TO', payload: { name } });
     },
     [active, ref],

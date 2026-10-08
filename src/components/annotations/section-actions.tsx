@@ -8,14 +8,14 @@ import { Button } from '@/components/ui/button';
 import type { AnnotationTarget } from '@/lib/annotation-request';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
-import { pushInShell } from '@/lib/open';
-import { journalHref, type JournalTab } from '@/lib/paths';
+import { openJournal } from '@/lib/open';
+import type { JournalTab } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
 
 import { usePlaceIn } from './use-book-place';
 
 /** "See all in your journal": the listener's bookmarks or notes across every book. From
- * over the full player it lands in the shell underneath (`pushInShell`). */
+ * over the full player it lands in the shell underneath (`openJournal`). */
 export function JournalLink({ tab }: { tab: Exclude<JournalTab, 'diary'> }) {
   const { t } = useTranslation();
   return (
@@ -24,7 +24,7 @@ export function JournalLink({ tab }: { tab: Exclude<JournalTab, 'diary'> }) {
       size="sm"
       title={t('annotations.seeAll')}
       icon="chevron-right"
-      onPress={() => pushInShell(journalHref(tab))}
+      onPress={() => openJournal(tab)}
       testID={`journal-link-${tab}`}
     />
   );

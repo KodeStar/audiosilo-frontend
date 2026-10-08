@@ -4,7 +4,6 @@ import {
   bookHref,
   collectionHref,
   finishedHref,
-  journalHref,
   libraryHref,
   narratorHref,
   parentPath,
@@ -15,6 +14,9 @@ import {
   playerHref,
   segmentsToPath,
   seriesHref,
+  settingsHref,
+  yearHref,
+  youHref,
 } from '@/lib/paths';
 
 describe('segmentsToPath', () => {
@@ -183,11 +185,47 @@ describe('browse detail hrefs', () => {
   });
 });
 
-describe('journalHref', () => {
-  it('is the plain route for the Diary and carries any other tab', () => {
-    expect(journalHref()).toBe('/journal');
-    expect(journalHref('diary')).toBe('/journal');
-    expect(journalHref('notes')).toEqual({ pathname: '/journal', params: { tab: 'notes' } });
+describe('youHref', () => {
+  it('is the plain root for Stats and names every other section', () => {
+    expect(youHref()).toBe('/you');
+    expect(youHref('stats')).toBe('/you');
+    expect(youHref('year')).toEqual({ pathname: '/you', params: { section: 'year' } });
+    expect(youHref('settings')).toEqual({ pathname: '/you', params: { section: 'settings' } });
+  });
+
+  it("carries the Journal's tab only on the Journal, and never the Diary", () => {
+    expect(youHref('year', 'notes')).toEqual({ pathname: '/you', params: { section: 'year' } });
+    expect(youHref('journal', 'diary')).toEqual({
+      pathname: '/you',
+      params: { section: 'journal' },
+    });
+    expect(youHref('journal', 'bookmarks')).toEqual({
+      pathname: '/you',
+      params: { section: 'journal', tab: 'bookmarks' },
+    });
+  });
+});
+
+describe('yearHref', () => {
+  it('leaves out what is the default', () => {
+    expect(yearHref()).toEqual({ pathname: '/year', params: {} });
+    expect(yearHref({ year: 2025, connection: 'c2', card: 3 })).toEqual({
+      pathname: '/year',
+      params: { year: '2025', connection: 'c2', card: '3' },
+    });
+    expect(yearHref({ card: 0 })).toEqual({ pathname: '/year', params: {} });
+  });
+});
+
+describe('settingsHref', () => {
+  it('is the plain route for the preferences and names any other pane', () => {
+    expect(settingsHref()).toBe('/settings');
+    expect(settingsHref('preferences')).toBe('/settings');
+    expect(settingsHref('accounts')).toEqual({
+      pathname: '/settings',
+      params: { section: 'accounts' },
+    });
+    expect(settingsHref('sleep')).toEqual({ pathname: '/settings', params: { section: 'sleep' } });
   });
 });
 

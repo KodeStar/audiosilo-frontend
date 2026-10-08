@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { type NamedChapter, resumeChapterLabel } from '@/lib/chapter-label';
 import { useOpen } from '@/lib/open';
 import { percentOf } from '@/lib/progress-view';
 import { openExternalUrl } from '@/lib/support';
@@ -101,7 +102,7 @@ export function EntryActionButton({
   entry: SeriesEntry;
   compact?: boolean;
   /** The chapter the book you're on resumes at, when known. */
-  resumeChapter?: number;
+  resumeChapter?: NamedChapter;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
@@ -122,9 +123,7 @@ export function EntryActionButton({
   switch (action.kind) {
     case 'resume':
       const label =
-        resumeChapter && !compact
-          ? t('series.resumeChapter', { chapter: resumeChapter })
-          : t('series.resume');
+        resumeChapter && !compact ? resumeChapterLabel(t, resumeChapter) : t('series.resume');
       return (
         <Button
           size={size}

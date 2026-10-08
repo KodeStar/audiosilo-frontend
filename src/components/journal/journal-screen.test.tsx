@@ -256,6 +256,13 @@ describe('JournalScreen: the Diary', () => {
     });
     expect(a.fetchNextPage).toHaveBeenCalled();
   });
+
+  it('insets its list for the iOS tab bar itself (under the You hub control)', async () => {
+    await mount();
+    expect(screen.getByTestId('journal-list').props.contentInsetAdjustmentBehavior).toBe(
+      'automatic',
+    );
+  });
 });
 
 describe('JournalScreen: bookmarks and notes', () => {
@@ -366,6 +373,16 @@ describe('JournalScreen: header', () => {
     await mount();
     await fireEvent.press(screen.getByLabelText('Notes, 0'));
     expect(mockSetParams).toHaveBeenCalledWith({ tab: 'notes' });
+  });
+
+  it('leaves its heading to the You hub when embedded, keeping the tabs and the export', async () => {
+    mockParams = { tab: 'bookmarks' };
+    await mountWithPortal(<JournalScreen embedded />);
+    expect(screen.queryByText("Everything you've marked")).toBeNull();
+    expect(screen.getByLabelText('Export the journal')).toBeTruthy();
+    // The tab is still the route's own param, beside the hub's section.
+    await fireEvent.press(screen.getByLabelText('Diary'));
+    expect(mockSetParams).toHaveBeenCalledWith({ tab: undefined });
   });
 
   it('goes back to the Diary with the plain route', async () => {

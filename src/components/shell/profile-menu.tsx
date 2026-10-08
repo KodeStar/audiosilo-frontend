@@ -13,13 +13,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { accountHref, journalHref } from '@/lib/paths';
+import { openJournal, openSettings } from '@/lib/open';
+import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { type Connection, useSession } from '@/stores/session';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** The user's initial, in a round monogram (household avatars come in Phase 5). */
+/** The user's initial, in a round monogram (household avatars come with profiles, Phase 8). */
 function Monogram({ name }: { name: string }) {
   return (
     <View className="h-[30px] w-[30px] items-center justify-center rounded-full bg-secondary">
@@ -33,9 +34,9 @@ function Monogram({ name }: { name: string }) {
 /**
  * The top bar's profile button and its menu (STYLEGUIDE section 2, the prototype's
  * profile menu without the household, which is Phase 8): every server with its
- * reachability, opening its account screen; Add a server; the Journal (until Phase 5's
- * You destination); the account on the default server; and a light/dark appearance
- * switch. Phone keeps these in the Me tab.
+ * reachability, opening its account screen; Add a server; the Journal (the You hub's
+ * Journal section); Settings; the account on the default server; and a light/dark
+ * appearance switch. Phone keeps these in the Me tab's You hub.
  */
 export function ProfileMenu({ showName }: { showName: boolean }) {
   const { t } = useTranslation();
@@ -95,8 +96,11 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
           <Text>{t('account.connections.add')}</Text>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem icon="history" onPress={() => router.push(journalHref())}>
+        <DropdownMenuItem icon="history" onPress={() => openJournal()}>
           <Text>{t('journal.title')}</Text>
+        </DropdownMenuItem>
+        <DropdownMenuItem icon="settings" onPress={() => openSettings()}>
+          <Text>{t('settings.title')}</Text>
         </DropdownMenuItem>
         {defaultConnection ? (
           <DropdownMenuItem icon="user" onPress={() => router.push(accountHref(defaultId))}>

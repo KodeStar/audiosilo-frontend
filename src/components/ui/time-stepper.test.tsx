@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import { colors } from '@/theme/tokens';
+
 import { TimeStepper } from './time-stepper';
 
 // `render` and `fireEvent` are async in @testing-library/react-native 14 - await
@@ -8,6 +10,18 @@ import { TimeStepper } from './time-stepper';
 // The a11y labels come from the real English catalog (jest.setup initialises i18next).
 const EARLIER = 'From, 30 minutes earlier';
 const LATER = 'From, 30 minutes later';
+
+/** A `#rrggbb` token as react-native-svg's processed opaque ARGB number. */
+const argb = (hex: string) => 0xff000000 + parseInt(hex.slice(1), 16);
+
+/** The fills of every drawn glyph path in a rendered tree. */
+function glyphFills(node: unknown): number[] {
+  if (!node || typeof node !== 'object') return [];
+  if (Array.isArray(node)) return node.flatMap(glyphFills);
+  const n = node as { type?: string; props?: { fill?: { payload?: number } }; children?: unknown };
+  const own = n.type === 'RNSVGPath' && n.props?.fill?.payload ? [n.props.fill.payload] : [];
+  return [...own, ...glyphFills(n.children)];
+}
 
 describe('TimeStepper', () => {
   it('steps by half an hour in each direction', async () => {
@@ -58,5 +72,12 @@ describe('TimeStepper', () => {
     // ICU has varied the space before AM/PM between versions, so normalise it.
     const readout = screen.getByText(/10:00/).props.children as string;
     expect(readout.replace(/\s/g, ' ')).toBe('10:00 PM');
+  });
+
+  it('draws its glyphs in ink, never pink', async () => {
+    await render(<TimeStepper value="22:00" onChange={jest.fn()} label="From" />);
+    const fills = glyphFills(screen.toJSON());
+    expect(fills.length).toBeGreaterThan(0);
+    expect(new Set(fills)).toEqual(new Set([argb(colors.light.foreground)]));
   });
 });

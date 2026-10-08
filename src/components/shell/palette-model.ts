@@ -1,7 +1,11 @@
 import type { TFunction } from 'i18next';
 
 import type { IconName } from '@/components/ui/icon';
+import { youSectionsFor, youTitleKey } from '@/components/you/you-model';
 import type { ShortcutKey } from '@/lib/keyboard';
+import type { YouSection } from '@/lib/paths';
+
+import type { Destination, TabName } from './destinations';
 
 /**
  * The web command palette's model (STYLEGUIDE section 8, "Command palette"): which items
@@ -56,7 +60,7 @@ export type ActionState = {
 
 /** What each action does (the component wires the stores and the router). */
 export type ActionRuns = Record<
-  'toggle' | 'sleepMinutes' | 'sleepChapter' | 'player' | 'upNext' | 'settings' | 'appearance',
+  'toggle' | 'sleepMinutes' | 'sleepChapter' | 'player' | 'upNext' | 'appearance',
   () => void
 >;
 
@@ -64,8 +68,8 @@ export type ActionRuns = Record<
  * The palette's Actions, only what the app can do right now: the transport (pause or
  * "Resume <chapter>"), the sleep timer (end of chapter only with real chapters: without
  * them it falls back to a short duration timer the label would misdescribe), the full
- * player - all three only with a book loaded -, Up next (only where it is offered),
- * settings and the light/dark switch.
+ * player - all three only with a book loaded -, Up next (only where it is offered) and
+ * the light/dark switch. (Settings is a place, so it is in Go to.)
  */
 export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction): PaletteItem[] {
   const items: PaletteItem[] = [];
@@ -114,13 +118,6 @@ export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction):
     });
   }
   items.push({
-    id: 'settings',
-    title: t('palette.settings'),
-    subtitle: t('palette.settingsHint'),
-    icon: 'settings',
-    run: run.settings,
-  });
-  items.push({
     id: 'appearance',
     title: s.dark ? t('palette.light') : t('palette.dark'),
     subtitle: t('settings.appearance.label'),
@@ -128,6 +125,57 @@ export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction):
     run: run.appearance,
   });
   return items;
+}
+
+/** What each Go to item does (the component wires the router). */
+export type GoToRuns = {
+  tab: (name: TabName) => void;
+  you: (section: YouSection) => void;
+  settings: () => void;
+};
+
+/** The palette's glyph for each You hub section. */
+const YOU_SECTION_ICON: Record<YouSection, IconName> = {
+  stats: 'chart',
+  year: 'sparkles',
+  journal: 'history',
+  settings: 'settings',
+  account: 'user',
+};
+
+/**
+ * The palette's Go to: the top bar's destinations (`tabs`, already filtered to what this
+ * browser can do) but You, which goes by the sections its sub-nav offers instead
+ * (`youSectionsFor`: Your listening, Year in listening, the Journal); then Settings.
+ */
+export function buildGoToItems(
+  tabs: readonly Pick<Destination, 'name' | 'labelKey' | 'icon'>[],
+  run: GoToRuns,
+  t: TFunction,
+): PaletteItem[] {
+  return [
+    ...tabs
+      .filter((d) => d.name !== '(me)')
+      .map((d): PaletteItem => ({
+        id: `go:${d.name}`,
+        title: t(d.labelKey),
+        icon: d.icon,
+        run: () => run.tab(d.name),
+      })),
+    ...youSectionsFor('desktop').map((section): PaletteItem => ({
+      id: `go:${section}`,
+      title: t(youTitleKey(section)),
+      icon: YOU_SECTION_ICON[section],
+      run: () => run.you(section),
+    })),
+    {
+      id: 'go:settings',
+      title: t('settings.title'),
+      subtitle: t('palette.settingsHint'),
+      icon: 'settings',
+      run: run.settings,
+    },
+  ];
 }
 
 /** At most this many book results, and Continue listening rows on an empty query. */

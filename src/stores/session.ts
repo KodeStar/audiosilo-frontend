@@ -1,9 +1,16 @@
 import { create } from 'zustand';
 
 import { ApiError } from '@/api/client';
-import type { User } from '@/api/types';
-import { list as listKnownServers, remember as rememberServer } from '@/lib/known-servers';
+import type { ServerAddresses, User } from '@/api/types';
+import {
+  knownAddresses,
+  list as listKnownServers,
+  remember as rememberServer,
+  rememberAddresses,
+} from '@/lib/known-servers';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import { hostOf } from '@/lib/pairing';
+import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
 import { getItem, removeItem, setItem } from '@/lib/storage';
 
 // Multi-connection session: the app can be signed in to several servers at once.
@@ -184,6 +191,11 @@ export type Connection = {
    * successful re-pair (`setSession`) or a successful authed response
    * (`clearNeedsReconnect`) resolves it. */
   needsReconnect?: ReconnectReason;
+  /** The server's home and away addresses (capability `addresses`), persisted with the
+   * rest of the metadata (a connection saved before they existed simply has none: no
+   * storage-version bump). The player picks which one to use by itself
+   * (`src/api/address-route.ts`); `serverUrl` stays what the user paired with or typed. */
+  addresses?: ServerAddresses;
 };
 
 /** Connection metadata persisted to AsyncStorage (token + the in-memory reconnect flag
@@ -214,12 +226,23 @@ type SessionState = {
     token: string;
     user: User;
     name?: string;
+    /** The server's addresses from the pairing link, the redeem payload, or the exchange
+     * / login answer (cleaned where they arrived). Absent keeps what the connection
+     * already knew (a re-pair through an older server, or a link without them, must not
+     * erase what a newer pairing taught it); present is merged with it
+     * (`mergeAddresses`). */
+    addresses?: ServerAddresses;
   }) => Promise<string>;
   /** Remember the server URL mid-connect, before authenticating. */
   setPendingServerUrl: (url: string) => Promise<void>;
   /** Update a specific connection's user (a `/me` refresh after a password change
    * lands on the connection it was made against, not whatever is default). */
   setConnectionUser: (id: string, user: User) => Promise<void>;
+  /** What the server says a connection's addresses are now (`GET /addresses`, cleaned):
+   * merged with what it kept (`mergeAddresses`: a home address survives an answer read
+   * away from home), persisted, and mirrored to the remembered server (for a reconnect
+   * after signing out). A no-op for an unknown connection or when nothing changes. */
+  learnAddresses: (id: string, fresh: ServerAddresses | undefined) => Promise<void>;
   /** Update the default connection's user (sugar over `setConnectionUser`). */
   setUser: (user: User) => Promise<void>;
   /** Remove one connection (deleting its token). Sign-out goes through this (via
@@ -235,17 +258,6 @@ type SessionState = {
    * when it carries no flag, so it's cheap to call on every success. */
   clearNeedsReconnect: (id: string) => void;
 };
-
-function hostName(url: string): string {
-  return url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || url;
-}
-
-/** Two stored serverUrls address the same physical server. All URLs come through
- * `normalizeUrl` (trailing slashes already stripped); the trim is defensive so a stray
- * trailing slash can't hide a same-server match. */
-function sameServer(a: string, b: string): boolean {
-  return a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
-}
 
 /** Derive the default-connection mirror fields from the connection list. */
 function mirror(connections: Connection[], defaultId: string | null) {
@@ -302,7 +314,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     }
   },
 
-  setSession: async ({ serverUrl, serverId, token, user, name }) => {
+  setSession: async ({ serverUrl, serverId, token, user, name, addresses }) => {
     // The connection id IS the server-minted server_id: it keys every per-server store
     // (downloads, the progress mirror/queue, the query cache, scroll memory, the
     // secure-store token). A blank id would file distinct servers under one shared bucket
@@ -318,13 +330,19 @@ export const useSession = create<SessionState>()((set, get) => ({
     // this URL under a different id is a stale identity of the same physical server (its
     // token is dead - flagged needsReconnect='server-reset'). It must be dropped here, or
     // re-pairing leaves a zombie the reconnect banner keeps re-flagging on every /server hit.
-    const stale = existing.filter((c) => c.id !== serverId && sameServer(c.serverUrl, serverUrl));
+    const stale = existing.filter((c) => c.id !== serverId && sameUrl(c.serverUrl, serverUrl));
+    // What the device knew of this server's addresses: the connection's, else (a sign-in
+    // again after signing out, from the connect screen's remembered servers) the remembered
+    // server's, so a sign-in through the away address doesn't forget the home one.
+    const knew = prior ? prior.addresses : await knownAddresses(serverId);
+    const known = mergeAddresses(knew, addresses);
     const conn: Connection = {
       id: serverId,
       serverUrl,
-      name: name ?? prior?.name ?? hostName(serverUrl),
+      name: name ?? prior?.name ?? hostOf(serverUrl),
       token,
       user,
+      addresses: known,
     };
     const surviving = existing.filter((c) => !stale.includes(c));
     const connections = prior
@@ -337,7 +355,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     await persist(connections, serverId);
     // Remember this server durably (no token) so the connect screen can offer a one-tap
     // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
-    await rememberServer({ serverUrl, name: conn.name, serverId });
+    await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
     set({ connections, pendingServerUrl: null, ...mirror(connections, serverId) });
@@ -364,6 +382,21 @@ export const useSession = create<SessionState>()((set, get) => ({
     const next = connections.map((c) => (c.id === id ? { ...c, user } : c));
     await persist(next, defaultConnectionId);
     set({ connections: next, ...mirror(next, defaultConnectionId) });
+  },
+
+  learnAddresses: async (id, fresh) => {
+    // Read and set in one synchronous step, persisting after: the address runner learns
+    // every connection's addresses at once (launch, reconnect), and a list read before an
+    // await would be set over another call's update (or bring back a connection removed
+    // meanwhile).
+    const { connections, defaultConnectionId } = get();
+    const conn = connections.find((c) => c.id === id);
+    if (!conn) return;
+    const addresses = mergeAddresses(conn.addresses, fresh);
+    if (sameAddresses(conn.addresses, addresses)) return;
+    const next = connections.map((c) => (c.id === id ? { ...c, addresses } : c));
+    set({ connections: next, ...mirror(next, defaultConnectionId) });
+    await Promise.all([persist(next, defaultConnectionId), rememberAddresses(id, addresses)]);
   },
 
   setUser: async (user) => {

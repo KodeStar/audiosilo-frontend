@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { AppState, type AppStateStatus, StyleSheet } from 'react-native';
 import type { StoreApi, UseBoundStore } from 'zustand';
 
 type MockPlayer = {
@@ -130,5 +131,57 @@ describe('PlayButton plain', () => {
   it('is the ink circle by default', async () => {
     await render(<PlayButton size="sm" />);
     expect(screen.getByRole('button', { name: 'Play' }).props.className).toContain('bg-primary');
+  });
+});
+
+describe('PlayButton glyph across the background', () => {
+  // The device pass: a book paused from the shade while the app was away (then moved by
+  // a pick-up) left the floating mini player drawing Pause for 20+ s after the app came
+  // back, while the store and the full player said paused.
+  let appState: AppStateStatus = 'active';
+  let onChange: ((s: AppStateStatus) => void) | null = null;
+  beforeEach(() => {
+    appState = 'active';
+    Object.defineProperty(AppState, 'currentState', {
+      get: () => appState,
+      configurable: true,
+    });
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+      _type: string,
+      handler: (s: AppStateStatus) => void,
+    ) => {
+      onChange = handler;
+      return { remove: () => {} };
+    }) as unknown as typeof AppState.addEventListener);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const opacity = (testID: string) =>
+    StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).props.style)
+      .opacity;
+
+  it('draws Play again when the app comes back after a pause in the background', async () => {
+    player.setState({ snapshot: { state: 'playing', trackIndex: 0, position: 30 } });
+    await render(<PlayButton size="sm" plain />);
+    expect(opacity('pause-glyph')).toBe(1);
+    const before = screen.getByTestId('play-pause-glyph', { includeHiddenElements: true });
+
+    await act(async () => {
+      appState = 'background';
+      onChange?.('background');
+      player.setState({ snapshot: { state: 'paused', trackIndex: 0, position: 30 } });
+    });
+    // The label follows the store at once; the glyph's drawn props are what went stale.
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
+
+    await act(async () => {
+      appState = 'active';
+      onChange?.('active');
+    });
+    const after = screen.getByTestId('play-pause-glyph', { includeHiddenElements: true });
+    expect(after).not.toBe(before); // a fresh glyph, drawn from `playing`
+    expect(opacity('play-glyph')).toBe(1);
+    expect(opacity('pause-glyph')).toBe(0);
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
   });
 });

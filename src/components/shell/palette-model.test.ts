@@ -4,6 +4,7 @@ import {
   type ActionRuns,
   type ActionState,
   buildActionItems,
+  buildGoToItems,
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
@@ -210,7 +211,6 @@ describe('buildActionItems', () => {
     sleepChapter: jest.fn(),
     player: jest.fn(),
     upNext: jest.fn(),
-    settings: jest.fn(),
     appearance: jest.fn(),
   });
   const state = (over: Partial<ActionState> = {}): ActionState => ({
@@ -229,10 +229,9 @@ describe('buildActionItems', () => {
       'sleep-minutes',
       'sleep-chapter',
       'player',
-      'settings',
       'appearance',
     ]);
-    expect(ids(state({ nowPlaying: null }))).toEqual(['settings', 'appearance']);
+    expect(ids(state({ nowPlaying: null }))).toEqual(['appearance']);
   });
 
   it('offers end of chapter only for a book with real chapters', () => {
@@ -243,7 +242,7 @@ describe('buildActionItems', () => {
   it('offers Up next where it is supported, with the queued count, and runs openUpNext', () => {
     const r = runs();
     const items = buildActionItems(state({ nowPlaying: null, upNext: { count: 1 } }), r, i18n.t);
-    expect(items.map((i) => i.id)).toEqual(['up-next', 'settings', 'appearance']);
+    expect(items.map((i) => i.id)).toEqual(['up-next', 'appearance']);
     expect(items[0]).toMatchObject({ title: 'Open Up next', subtitle: '1 book queued' });
     items[0].run();
     expect(r.upNext).toHaveBeenCalledTimes(1);
@@ -254,6 +253,53 @@ describe('buildActionItems', () => {
     expect(playing[0].title).toBe('Pause');
     expect(playing.at(-1)?.title).toBe('Switch to light appearance');
     expect(buildActionItems(state(), runs(), i18n.t)[0].title).toBe('Resume Stave One');
+  });
+});
+
+describe('buildGoToItems', () => {
+  const tabs = [
+    { name: '(home)', labelKey: 'nav.home', icon: 'home' },
+    { name: '(library)', labelKey: 'nav.library', icon: 'library' },
+    { name: '(offline)', labelKey: 'nav.downloads', icon: 'download' },
+    { name: '(me)', labelKey: 'nav.me', icon: 'user' },
+  ] as const;
+  const runs = () => ({ tab: jest.fn(), you: jest.fn(), settings: jest.fn() });
+
+  it("lists the destinations, then You's sections, the Journal and Settings", () => {
+    const items = buildGoToItems(tabs, runs(), i18n.t);
+    expect(items.map((i) => i.title)).toEqual([
+      'Home',
+      'Library',
+      'Downloads',
+      'Your listening',
+      'Year in listening',
+      'Journal',
+      'Settings',
+    ]);
+  });
+
+  it('runs each item through its own navigation', () => {
+    const r = runs();
+    const byId = Object.fromEntries(buildGoToItems(tabs, r, i18n.t).map((i) => [i.id, i]));
+    byId['go:(library)'].run();
+    expect(r.tab).toHaveBeenCalledWith('(library)');
+    byId['go:year'].run();
+    expect(r.you).toHaveBeenCalledWith('year');
+    byId['go:journal'].run();
+    expect(r.you).toHaveBeenLastCalledWith('journal');
+    byId['go:settings'].run();
+    expect(r.settings).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the destinations this browser lacks out (the caller filters them)', () => {
+    const items = buildGoToItems([tabs[0]], runs(), i18n.t);
+    expect(items.map((i) => i.id)).toEqual([
+      'go:(home)',
+      'go:stats',
+      'go:year',
+      'go:journal',
+      'go:settings',
+    ]);
   });
 });
 

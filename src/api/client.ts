@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import { webOrigin } from '@/lib/base-url';
 import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
+import { cleanAddresses } from '@/lib/pairing';
 import { APP_VERSION } from '@/lib/version';
 
 import type {
@@ -51,12 +52,20 @@ import type {
   Rating,
   RatingValue,
   SeriesCount,
+  ServerAddresses,
   ServerInfo,
   ShareTarget,
   StatsRange,
   User,
   UserStats,
 } from './types';
+
+/** An answer with its `addresses` checked (`cleanAddresses`: normalised, a malformed
+ * one dropped). The client is where addresses arrive from the wire, so this is the one
+ * place they are cleaned; everything after it trusts them. */
+function withCleanAddresses<T extends { addresses?: ServerAddresses }>(answer: T): T {
+  return { ...answer, addresses: cleanAddresses(answer.addresses) };
+}
 
 export class ApiError extends Error {
   constructor(
@@ -260,17 +269,19 @@ export class ApiClient {
     return this.request<ServerInfo>('GET', '/server', { signal });
   }
   redeemCode(code: string) {
-    return this.request<PairingPayload>('POST', '/auth/redeem', { body: { code } });
+    return this.request<PairingPayload>('POST', '/auth/redeem', { body: { code } }).then(
+      withCleanAddresses,
+    );
   }
   exchange(pairingToken: string, deviceName: string) {
     return this.request<AuthSession>('POST', '/auth/exchange', {
       body: { pairing_token: pairingToken, device_name: deviceName },
-    });
+    }).then(withCleanAddresses);
   }
   login(username: string, password: string, deviceName: string) {
     return this.request<AuthSession>('POST', '/auth/login', {
       body: { username, password, device_name: deviceName },
-    });
+    }).then(withCleanAddresses);
   }
   /** Mint a throwaway demo account (when the server runs in demo mode). Returns a
    * ready-to-use session plus a pairing payload so the same user can be opened on
@@ -278,7 +289,7 @@ export class ApiClient {
   demoSession(deviceName: string) {
     return this.request<DemoSession>('POST', '/demo/session', {
       body: { device_name: deviceName },
-    });
+    }).then(withCleanAddresses);
   }
 
   // --- Session (authed) ----------------------------------------------------
@@ -290,6 +301,16 @@ export class ApiClient {
   }
   pair() {
     return this.request<PairingPayload>('POST', '/auth/pair');
+  }
+  /** The server's home and away addresses (capability `addresses`; `{}` when it has
+   * neither), cleaned (`cleanAddresses`). Lets a paired device learn an address
+   * configured after it paired. The server derives `home` from the request when none is
+   * configured, so an answer read through the away address can lack a home the device
+   * already knows (`mergeAddresses` keeps it). */
+  async addresses(signal?: AbortSignal): Promise<ServerAddresses> {
+    return (
+      cleanAddresses(await this.request<ServerAddresses>('GET', '/addresses', { signal })) ?? {}
+    );
   }
 
   // --- Self-service password (authed) --------------------------------------

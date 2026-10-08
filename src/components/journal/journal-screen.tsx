@@ -42,12 +42,16 @@ function completeCount(sources: Source<unknown>[]): number | undefined {
 }
 
 /**
- * The Journal (`/journal?tab=diary|bookmarks|notes`; Stacks prototype `Journal`): the
- * Diary of every day's listening, and every bookmark and note, on EVERY signed-in server,
- * merged newest first. Each server is asked through its own connection and gated on its
- * own capability; one failing or older server only adds a quiet note above the list.
+ * The Journal (the You hub's Journal section, `/you?section=journal&tab=`, and the older
+ * `/journal?tab=diary|bookmarks|notes` route; Stacks prototype `Journal`): the Diary of
+ * every day's listening, and every bookmark and note, on EVERY signed-in server, merged
+ * newest first. Each server is asked through its own connection and gated on its own
+ * capability; one failing or older server only adds a quiet note above the list.
+ * `embedded`: under the phone hub's large title ("Journal") and its segmented control, so
+ * the page's own eyebrow and heading are left out (the export and the tabs stay). The tab
+ * is the route's own `tab` param in both places.
  */
-export function JournalScreen() {
+export function JournalScreen({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ tab?: string }>();
   const tab = parseJournalTab(params.tab);
@@ -73,12 +77,14 @@ export function JournalScreen() {
           width >= EXPORT_INLINE_MIN ? 'flex-row items-end justify-between gap-4' : 'gap-3',
         )}
       >
-        <View className="shrink gap-1">
-          <Text variant="eyebrow">{t('journal.title')}</Text>
-          <Text variant="display" accessibilityRole="header">
-            {t('journal.heading')}
-          </Text>
-        </View>
+        {embedded ? null : (
+          <View className="shrink gap-1">
+            <Text variant="eyebrow">{t('journal.title')}</Text>
+            <Text variant="display" accessibilityRole="header">
+              {t('journal.heading')}
+            </Text>
+          </View>
+        )}
         {annotationStatus === 'unsupported' ? null : (
           <ExportActions
             compact={width > 0 && width < EXPORT_INLINE_MIN}

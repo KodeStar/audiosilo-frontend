@@ -403,6 +403,25 @@ describe('session store (multi-connection)', () => {
       expect(persisted.map((c: { id: string }) => c.id)).toEqual(['srv-b']);
     });
 
+    it('names and matches servers with the shared URL helpers (hostOf, sameUrl)', async () => {
+      await useSession.getState().setSession({
+        serverUrl: 'HTTPS://Books.example.com/',
+        serverId: 'srv-a',
+        token: 't1',
+        user: mkUser('a'),
+      });
+      // hostOf: the scheme is dropped whatever its case.
+      expect(useSession.getState().connections[0].name).toBe('Books.example.com');
+      // sameUrl: a trailing slash doesn't hide the stale identity at the same address.
+      await useSession.getState().setSession({
+        serverUrl: 'HTTPS://Books.example.com',
+        serverId: 'srv-b',
+        token: 't2',
+        user: mkUser('b'),
+      });
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b']);
+    });
+
     it('leaves connections to DIFFERENT URLs untouched when adding a new server', async () => {
       await useSession
         .getState()
@@ -472,6 +491,154 @@ describe('session store (multi-connection)', () => {
       expect(useSession.getState().connections).toHaveLength(0); // the connection is gone
       expect(warn).toHaveBeenCalled(); // the rejection was warned, not thrown
       warn.mockRestore();
+    });
+  });
+
+  // Home and away addresses (capability `addresses`): kept with the connection, never
+  // erased by a pairing that doesn't carry them, and no storage-version bump.
+  describe('addresses', () => {
+    const HOME = 'http://192.168.1.20:8080';
+    const AWAY = 'https://books.example.com';
+    const pair = (addresses?: { home?: string; away?: string }, serverUrl = AWAY) =>
+      useSession.getState().setSession({
+        serverUrl,
+        serverId: 'srv-a',
+        token: 't',
+        user: mkUser('a'),
+        ...(addresses ? { addresses } : {}),
+      });
+    const addressesOf = () => useSession.getState().connections[0]?.addresses;
+
+    it('stores them with the connection and restores them on a fresh hydrate', async () => {
+      await pair({ home: HOME, away: AWAY });
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      reset();
+      await useSession.getState().hydrate();
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      expect(useSession.getState().connections[0].serverUrl).toBe(AWAY); // never rewritten
+    });
+
+    it('loads a connection saved before addresses existed (no version bump)', async () => {
+      await AsyncStorage.setItem('audiosilo.storageVersion', JSON.stringify(2));
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([{ id: 'srv-old', serverUrl: AWAY, name: 'Old', user: mkUser('o') }]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv-old', 'tok');
+      const reset1 = await resetStaleStorage();
+      expect(reset1.authReset).toBe(false);
+      await useSession.getState().hydrate();
+      const [c] = useSession.getState().connections;
+      expect(c).toMatchObject({ id: 'srv-old', token: 'tok' });
+      expect(c.addresses).toBeUndefined();
+    });
+
+    it('a re-pair without them keeps what the connection knew', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await pair();
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+    });
+
+    it('a re-pair from outside the home network keeps the known home address', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await pair({ away: 'https://new.example.com' });
+      expect(addressesOf()).toEqual({ home: HOME, away: 'https://new.example.com' });
+    });
+
+    it('a sign-in again after signing out keeps the home address the device remembered', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await useSession.getState().removeConnection('srv-a');
+      expect(useSession.getState().connections).toHaveLength(0);
+      // Signed in again through the away address: the answer cannot know home.
+      await pair({ away: AWAY });
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
+      expect(known[0].addresses).toEqual({ home: HOME, away: AWAY });
+    });
+
+    it('the remembered server follows learnAddresses', async () => {
+      await pair({ home: HOME, away: AWAY });
+      await useSession.getState().learnAddresses('srv-a', { away: 'https://new.example.com' });
+      const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
+      expect(known[0].addresses).toEqual({ home: HOME, away: 'https://new.example.com' });
+    });
+
+    it('learnAddresses merges and persists them, and no-ops when nothing changes', async () => {
+      await pair({ home: HOME });
+      const before = useSession.getState().connections;
+      await useSession.getState().learnAddresses('srv-a', { home: HOME });
+      await useSession.getState().learnAddresses('srv-a', undefined); // nothing said
+      expect(useSession.getState().connections).toBe(before); // nothing changed, no churn
+      // An answer read away from home: the away address is new, the home one is kept.
+      await useSession.getState().learnAddresses('srv-a', { away: AWAY });
+      expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
+      // The server has no away address any more.
+      await useSession.getState().learnAddresses('srv-a', {});
+      expect(addressesOf()).toEqual({ home: HOME });
+      await useSession.getState().learnAddresses('nope', { home: HOME }); // unknown: no-op
+      reset();
+      await useSession.getState().hydrate();
+      expect(addressesOf()).toEqual({ home: HOME });
+    });
+
+    describe('learnAddresses called concurrently (the runner learns every connection at once)', () => {
+      const HOME_B = 'http://192.168.1.30:8080';
+      const pairBoth = async () => {
+        await pair();
+        await useSession.getState().setSession({
+          serverUrl: 'https://b.example.com',
+          serverId: 'srv-b',
+          token: 't',
+          user: mkUser('b'),
+        });
+      };
+      const persisted = async () =>
+        JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!) as {
+          id: string;
+          addresses?: unknown;
+        }[];
+      const known = async () =>
+        JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!) as {
+          serverId: string;
+          addresses?: unknown;
+        }[];
+      const byId = <T extends { id?: string; serverId?: string }>(rows: T[], id: string) =>
+        rows.find((r) => (r.id ?? r.serverId) === id);
+
+      it('two calls for two connections both land, in memory and in storage', async () => {
+        await pairBoth();
+        await Promise.all([
+          useSession.getState().learnAddresses('srv-a', { home: HOME }),
+          useSession.getState().learnAddresses('srv-b', { home: HOME_B }),
+        ]);
+        const conns = useSession.getState().connections;
+        expect(byId(conns, 'srv-a')?.addresses).toEqual({ home: HOME });
+        expect(byId(conns, 'srv-b')?.addresses).toEqual({ home: HOME_B });
+        const stored = await persisted();
+        expect(byId(stored, 'srv-a')?.addresses).toEqual({ home: HOME });
+        expect(byId(stored, 'srv-b')?.addresses).toEqual({ home: HOME_B });
+        const remembered = await known();
+        expect(byId(remembered, 'srv-a')?.addresses).toEqual({ home: HOME });
+        expect(byId(remembered, 'srv-b')?.addresses).toEqual({ home: HOME_B });
+        reset();
+        await useSession.getState().hydrate();
+        expect(byId(useSession.getState().connections, 'srv-a')?.addresses).toEqual({ home: HOME });
+        expect(byId(useSession.getState().connections, 'srv-b')?.addresses).toEqual({
+          home: HOME_B,
+        });
+      });
+
+      it('a connection removed while a call awaits storage is not brought back', async () => {
+        await pairBoth();
+        const learning = useSession.getState().learnAddresses('srv-a', { home: HOME });
+        const removing = useSession.getState().removeConnection('srv-a');
+        await Promise.all([learning, removing]);
+        expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b']);
+        expect((await persisted()).map((c) => c.id)).toEqual(['srv-b']);
+        reset();
+        await useSession.getState().hydrate();
+        expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b']);
+      });
     });
   });
 });

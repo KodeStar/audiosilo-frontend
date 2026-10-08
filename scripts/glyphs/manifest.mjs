@@ -80,4 +80,17 @@ export const GLYPHS = [
   ['sun', 'light', 'faSun'],
   ['moon', 'light', 'faMoon'],
   ['play-next', 'light', 'faArrowTurnDownRight'],
+  // Phase 5 (You, Account, Connect).
+  ['chevron-left', 'light', 'faChevronLeft'],
+  ['arrow-left', 'light', 'faArrowLeft'],
+  ['chart', 'light', 'faChartSimple'],
+  ['mobile', 'light', 'faMobile'],
+  ['tablet', 'light', 'faTablet'],
+  ['laptop', 'light', 'faLaptop'],
+  ['key', 'light', 'faKey'],
+  ['copy', 'light', 'faCopy'],
+  ['link', 'light', 'faLink'],
+  ['flame', 'light', 'faFlame'],
+  ['target', 'light', 'faBullseyeArrow'],
+  ['gauge', 'light', 'faGauge'],
 ];

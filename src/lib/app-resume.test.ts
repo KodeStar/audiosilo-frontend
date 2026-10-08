@@ -1,4 +1,7 @@
-import { handleForeground } from './app-resume';
+import { beginNetworkCheck, endNetworkCheck } from '@/api/address-route';
+import { queryClient } from '@/api/provider';
+
+import { handleForeground, refreshAfterResume } from './app-resume';
 
 // babel-jest hoists jest.mock above the import, so app-resume sees these stubs at
 // import time. handleForeground is pure (deps injected), but the module pulls
@@ -33,5 +36,26 @@ describe('handleForeground', () => {
     handleForeground({ refresh, taskWasRemoved: () => true, goHome });
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(goHome).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('refreshAfterResume', () => {
+  it('waits for the network check before it sends anything', async () => {
+    const invalidate = queryClient.invalidateQueries as jest.Mock;
+    invalidate.mockClear();
+    beginNetworkCheck(); // the app was away: the device may be on another network
+    const refreshed = refreshAfterResume();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(invalidate).not.toHaveBeenCalled();
+    endNetworkCheck();
+    await refreshed;
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes at once when no check is due', async () => {
+    const invalidate = queryClient.invalidateQueries as jest.Mock;
+    invalidate.mockClear();
+    await refreshAfterResume();
+    expect(invalidate).toHaveBeenCalledTimes(1);
   });
 });

@@ -238,6 +238,22 @@ describe('book page primary action', () => {
     expect(mockPlayBook).not.toHaveBeenCalled();
   });
 
+  // Another device (or the other app on this phone) moved the saved place on while this
+  // one held the book loaded and paused. The press toggles the loaded book in place, so
+  // it plays from the PLAYER's place: the button and the hero must name that one, as the
+  // time left beside them already does, not the higher saved one.
+  it('names the loaded book by the place a press plays from, not a further saved one', async () => {
+    mockProgress = progressAt(2500);
+    player.patch({
+      nowPlaying: THIS_BOOK as never,
+      bookPosition: 500,
+      snapshot: { ...player.usePlayer.getState().snapshot, state: 'paused' },
+    });
+    await mountAt('desktop');
+    expect(screen.getByRole('button', { name: 'Resume chapter 1' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Resume chapter 3' })).toBeNull();
+  });
+
   it('offers a new book from the start and a finished one again, with its date and stars', async () => {
     await mountAt('tablet');
     expect(screen.getByRole('button', { name: 'Start listening' })).toBeTruthy();

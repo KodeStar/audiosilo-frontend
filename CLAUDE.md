@@ -252,7 +252,67 @@ and routes into the EXISTING connect → sign-in screens to re-enter a code/pass
 `resetStaleStorage`), so after a full logout the connect screen offers one-tap
 "Reconnect to <server>" shortcuts (with a per-entry forget).
 
-**Personal API keys.** The per-server account screen (`src/app/(app)/(home,library,search,offline,me)/account.tsx`)
+**Home and away addresses (Phase 5, capability `addresses`).** A connection keeps the server's
+`addresses: { home?, away? }` (persisted with its metadata, no storage-version bump). Addresses are
+cleaned once where they arrive (`parsePairingScan`, and the `ApiClient` methods that return them);
+`setSession` merges what a pairing link, redeem payload, exchange or login says and keeps the prior
+value when absent, and `learnAddresses` does the same for a `GET /addresses` answer;
+`mergeAddresses` (`src/lib/server-address.ts`) keeps a known `home` an answer lacks, because the
+server derives home from the request (an answer read through the away address can't know it).
+`serverUrl` stays what the user paired with and is never rewritten. Which address requests go to is
+an in-memory pick (`src/api/address-route.ts`: `useAddressRoute`, `effectiveUrl(c)`, and
+`useActiveAddress(cid)` plus `ADDRESS_KIND_LABEL`/`ADDRESS_IN_USE_LABEL` for UI); `ApiProvider` and
+`resolveClient` are the only places that build a connection client and both use it, so never build
+one from `serverUrl`. The pick rule is pure (`pickAddress`): home only when a tokenless
+`GET <home>/api/v1/server` (`probeServerId`, `src/api/server-id-probe.ts`) answers with this
+connection's `server_id` (another box at the same private IP must never get the token), else away,
+else `serverUrl`; the web never switches (the served player is same-origin). The runner
+(`src/api/address-runner.ts`, `startAddressRouting` from the root layout, native only) re-picks at
+launch, on foreground, on a network change and when reachability marks a connection offline, asks
+home again every `HOME_RECHECK_MS` in the foreground (away, to come home; on home, to notice it
+stopped answering, since an idle app sends nothing else that would fail), drops a
+home pick at once when the device moves network, refreshes `GET /addresses` (`useServerAddresses`
+is the hook form), and restarts a streamed book still playing from a previous address in place
+through `startBookInPlace` (never a paused one). `parsePairingScan` returns `addresses` from
+`home=`/`away=` on both link carriers. The known-servers entry keeps the addresses too
+(the session hands `remember` / `rememberAddresses` what it merged, and `setSession` falls back to
+them when signing in again after signing out), and a "Reconnect to <server>" row on native signs in
+through the home address when it answers as that server (`reconnectAddress`). The "At home and
+away" card is ONE component, `AddressesCard` (`src/components/layout/addresses-card.tsx`): connect
+shows it when the server has both addresses, Account shows whichever it knows and, on native, the
+one in use (`inUse`); the web passes no `inUse` and says only what the addresses are for.
+
+**Connect and onboarding** (`src/components/connect/`, routes `src/app/connect/{index,sign-in,ready,scan}.tsx`):
+every way in (pairing link or QR, invite code, password, demo) ends in `finishConnect`, which
+stores the connection with the server's name and the addresses the link (`linkAddresses`) and the
+answer taught, merged there once, and shows `/connect/ready?connection=` ("Your library is
+ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. `repairPlan`: a
+re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
+banner signs in through `effectiveUrl` and passes `reconnect=<cid>`, so a reset server reached
+through its away address still retires its dead identity. `/connect` decides its "nothing to add"
+bounce when it opens and when it is back on top, never while the flow is over it; `sign-in` reads
+`pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
+the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new
+field there; Android edge to edge doesn't resize the window). The cascade panel is generated art:
+never put fake titles on it.
+
+**Account page (Phase 5).** One server's account is `AccountSection({ connectionId? })`
+(`src/components/account/account-section.tsx`): the `/account?connection=<cid>` route renders it,
+with a breadcrumb only when the page under it is one the crumb can name (Settings, or a You hub
+section: `accountParentKey`; from the profile menu or a cold link the chrome's own Back is the way
+back); the phone You hub's Account segment renders it without an id (the default server, with a
+server switcher when several are signed in). It is a non-scrolling column: the host scrolls it
+(`TabPageScroll`). Blocks, each gated on its capability: identity (the session count needs
+`my_devices`), password (hidden for demo; set/change in a dialog that lifts above the keyboard), pair
+another device (`api.pair()`: QR, a 10-minute countdown from arrival, Copy link on web, Share on
+native), "At home and away" (`addresses`, above), signed-in devices (`my_devices`; sessions only,
+each with a glyph from `deviceGlyph`: laptop for a browser, tablet when its name says so, else
+phone), personal API keys (`api_keys`; a notice when the flag is false; hidden for demo), sign out
+of the server. **The current device's row never offers a sign-out** (`canRevoke` refuses
+`current`); this device signs out only through `useSignOut` (teardown first). Pure helpers in
+`account-model.ts`.
+
+**Personal API keys.** The account page (`AccountSection`, above)
 renders an API-keys section (`src/components/account/api-keys-section.tsx` +
 `use-api-keys-manager.ts`, one-time secret via `api-key-created-modal.tsx`) for
 user-minted, non-expiring bearer tokens (dashboards, cron). It is **capability-gated**
@@ -279,6 +339,10 @@ this book plays, Resume chapter N, Start listening, Listen again; through `usePl
 `toggle`, so it never restarts the loaded book), `DownloadControl` (`short` on a stacked hero), Up next (Play
 next / Add to the end, `queue`), favourite (ink, never pink), Add to collection
 (`collections`) and `BookActionsMenu` with `omit` (the items the hero already has).
+Labels that count a chapter by its place ("Resume chapter N" here, on Home and the series page,
+"Ch. N of M") go through `contradictedTitle` / `resumeChapterLabel` (`src/lib/chapter-label.ts`):
+when the chapter's title carries another number (a book that opens with a Prologue), the label
+says the title.
 `DownloadProgress` and the transcode note sit under them. Chapter rows, timeline taps and pins
 go through `usePlayBook` with `at` (below): a phone opens the player on the place, a tablet or
 desktop jumps the loaded book there and plays on, or starts this one there. **Tabs** (`bookTabs()`, `src/components/library/book-tabs.ts`):
@@ -433,7 +497,7 @@ per-book list (the client still reads an older server's `null` as none).
 
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
-from **ONE whole-book POSITION** (`useListeningPosition`, also Search's and the series
+from **ONE whole-book POSITION** (`useBookPlace`'s `listening`, also Search's and the series
 page's) - the player's live position when this book is loaded (never below the saved one;
 and only once its engine load has landed, `selectPlacedBookKey`: until then the snapshot is
 still the PREVIOUS book's place, the store's `loadingBook`),
@@ -589,6 +653,16 @@ media GETs only.
   where we resumed unless a deliberate seek lowered the floor - so a slipped restart can't
   overwrite real progress (the server is last-write-wins). This fixed the beta "book
   restarted from the beginning" report.
+- **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
+  started from the root layout). When the app comes back to the front, the book's server comes
+  back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
+  store's `onPickedUpAgain`, called before that play's first save), the loaded book asks its
+  server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
+  then it saves the held place). It moves only when the record is from another `device_id`,
+  newer than this device's mirror (a newer unsynced save here wins), not finished, and more than
+  30 s away, and stands back if the listener moved meanwhile (`localMoveCount`). The move goes
+  through `seekBook` and a toast offers Undo. This module is the only place that reconciles a
+  loaded book: never call `toggle()` expecting it to look anything up.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and
@@ -784,11 +858,12 @@ src/app/(app)/(home)/index.tsx                  /
 src/app/(app)/(library)/library/index.tsx       /library
 src/app/(app)/(search)/search.tsx               /search
 src/app/(app)/(offline)/downloads.tsx           /downloads
-src/app/(app)/(me)/settings.tsx                 /settings   (the "Me" tab; the Me hub is Phase 5)
+src/app/(app)/(me)/you.tsx                      /you        (the "Me" tab: the You hub, `?section=`)
 src/app/(app)/(home,library,search,offline,me)/_layout.tsx    one Stack per tab (array group)
 src/app/(app)/(home,library,search,offline,me)/{book/[libraryId],library/[libraryId],library/favourites,account,browse}.tsx
 src/app/(app)/(home,library,search,offline,me)/{series,author,narrator,collection}.tsx   Phase 2 detail pages
-src/app/(app)/(home,library,search,offline,me)/journal.tsx    /journal (Phase 4)
+src/app/(app)/(home,library,search,offline,me)/journal.tsx    /journal (Phase 4; older links, the hub has the Journal)
+src/app/(app)/(home,library,search,offline,me)/settings.tsx   /settings (pushed on the current tab by the gear)
 ```
 Groups are invisible in URLs, so every URL is unchanged. The destinations (labels, icons,
 SF Symbols / Material names, tab roots) are one table, `src/components/shell/destinations.ts`.
@@ -803,7 +878,9 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
 - **Tab presses from our chrome dispatch `JUMP_TO`** (`useTabPress`): another tab -
   `navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } })`, which restores
   its stack; a href can't (`router.navigate('/(home)')` resolves to `/` and pops Home). The
-  active tab again - `router.navigate(<its root>)`, pop to top.
+  active tab again: `popTabToRoot(tab)` (`src/lib/root-stack.ts`, `POP_TO_TOP` on that tab
+  stack's key), which keeps the root's own params; never a navigate to the root's href (a
+  navigate is a push in this router, so it stacked a second root over the pages).
 - **Web: `<TabSlot/>` stays at a FIXED ancestor path at every width**; only sibling chrome
   toggles (moving it remounts every screen and jumps the URL on resize). **Native: never add or
   remove tabs at runtime**; tablet/desktop toggle `NativeTabs hidden` (state survives).
@@ -815,6 +892,34 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   connect layout, whose `useGlobalSearchParams` misses a warm link's params on first render.
 - Regression net: `src/components/shell/route-tree*.test.tsx` drive expo-router's
   `renderRouter` over the REAL `src/app` file list (`src/testing/route-tree.tsx`).
+- **The You hub is the Me tab's ROOT** (`/you?section=stats|year|journal|settings|account`,
+  `src/components/you/you-hub.tsx`, rules in `you-model.ts`; `section` and the Journal's `tab` are
+  its `rootParams`). Open it only through `openYou(section)` / `openJournal(tab)` (`src/lib/open.ts`,
+  also on `useOpen`; never `pushInShell`): they close a root modal, pop the Me stack to its root
+  (`popTabToRoot`) and `navigate`, so the hub never gets a second copy pushed over it and is never
+  looked for in another tab. Inside the hub, sections switch with `setParams` (`youSectionParams`).
+  The phone hub sets its large title per section (`navigation.setOptions`; a section then leaves
+  that name out of its own heading); the wide sub-nav keeps "You". Its sections are `StatsSection`,
+  `YearSection`, `JournalScreen`, `SettingsContent` and `AccountSection` (the `SECTIONS` map): the
+  first, second and last are plain columns the hub puts in a `TabPageScroll` (below); the Journal
+  and Settings scroll themselves. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
+  "You" with a chart (`wideLabelKey`, `wideIcon`).
+- **Settings is a page of the array group** (`/settings?section=`, `settingsHref`), pushed on the
+  current tab by the top bar's gear, the profile menu and the palette through `openSettings(section)`
+  (on the Settings page already it only moves the pane), so back returns where the listener was and a
+  cold link lands in Home. `SettingsContent({ section, onSectionChange, embedded })`
+  (`src/components/settings/`, rules in `settings-model.ts`) is also the phone hub's Settings
+  segment.
+- **A tab page's scroller is `TabPageScroll`** (`src/components/shell/tab-page-scroll.tsx`; a
+  FlatList or FlashList spreads `TAB_PAGE_SCROLL_PROPS` and pads by `useMiniPlayerInset()`): the
+  page gutters, the floating mini player's room and `contentInsetAdjustmentBehavior: 'automatic'`.
+  iOS lays a tab page out under its translucent tab bar (and the iOS 26 accessory), and
+  react-native-screens asks UIKit for that inset only on the FIRST ScrollView of the screen's
+  first-descendant chain: on a page with sections (the You hub, the Library modes) that is the
+  phone's horizontal segmented control, so without it the page's own scroller ran its end under
+  the tab bar (the tap for the last row hit a tab). The hub's Stats, Year and Account columns, the
+  Account route, Settings, the Journal list, the Library's Folders and Collections modes, the Books
+  list and every `CoverGrid` use it; a new tab page scroller does too.
 
 **The Library tab root is the browse modes** (`src/components/library/library-screen.tsx`):
 `/library?mode=books|authors|series|narrators|collections|folders` (absent = books; pure rules in
@@ -878,6 +983,38 @@ your series uses `next_book` (a work without `local` is a ghost opening the seri
 shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
 offline queue length without changing progress-sync (decision 7).
 
+**Your listening** (`src/components/you/stats/`, rules in `stats-model.ts`): `StatsSection` is the
+You hub's Stats section. It shows one server's own listening in that server's time (the default
+connection, or a picker when two or more signed-in servers have `user_stats`: `useStatsServer`, on
+`statsServerChoice`, shared with Year;
+a server without the flag gets a Notice). It reads `useMyListening('1y')` (header, week, streak,
+calendar, weekly bars) and `useMyStats('year')` (longest streak, daily average, clock, rank lists,
+finished shelf, the Year banner), and saves the goal through `useSetListeningGoal` /
+`useClearListeningGoal`, one PUT per -/+ step. Charts are react-native-svg drawings with no chart
+library; each is one `image` with a text summary and reads without hover: `ChartPointer` reports
+the web pointer or a tap in the chart's own coordinates, pure hit tests (`calendarCellAt`,
+`petalAt`, `barAt`) pick the item, `ChartTip` draws the ink tooltip. The section has no scroller or
+gutters of its own and lays out by its measured width (`statsColumns`). Rank rows open the
+author/narrator/series page in a guessed library (`libraryForName`), because the stats name only the
+field value. The Year banner and header button go through `openYou('year')`.
+
+**Year in listening** (`src/components/you/year/`, `YearSection` in the You hub; the phone's
+full-screen story is the root modal `src/app/year.tsx`, opened with `router.push(yearHref(...))`
+from `src/lib/paths.ts`; its params back through `parseYearParams`). The cards come from one
+server's own stats in server time (`useYearStory`: `useMyStats(range)` for the year, `range=year`
+this year or `YYYY`; for this year also the running streak from `useMyListening('1y')` and the
+goal). The pure `buildYearCards` leaves out any card without data, and a year under an hour with no
+book finished is a calm empty state. Earlier years come from one query, `useStoryYears` (the pure
+`findStoryYears`, asking back year by year; past years are kept for the session). The section and the
+full-screen story share `useStoryStage`. `StoryCard` is the ONE renderer: the stage lays the bars and tap zones over it, and a share
+captures it (`share-card.ts`: react-native-view-shot to a 1080x1920 PNG, then expo-sharing;
+`share-card.web.ts`: html-to-image, lazy-loaded, then the Web Share API or a download, CSP-safe
+because covers are plain `?token=` URLs on the web, `BookCover`, never `blob:`). A
+failed capture is retried once with plain covers. There is no share link (it would need a server
+endpoint). The story clock is `useStoryPlayer`: a plain timer for the advance plus a Reanimated bar;
+it is held by a share (one that leaves the app holds it until the app is active again), a native
+screen reader, a press, hover or keyboard focus, and reduced motion makes it still.
+
 **One play path** (`src/components/player/use-play-book.ts`; the rule is the pure `playRoute` in
 `play-route.ts`, fed by `navFor`, which reads the navigator at the press, never subscribed):
 `usePlayBook()` with `{ at, toggle, viaBookPage }` is how Home, the Library, the series page, Up
@@ -918,11 +1055,11 @@ older bookmark) the sleep timer's note in ANY of the six locales, read from the 
 locale's quote marks (`annotations.quoted`; Fraunces is not bundled). Small row actions and chips
 take `touchTarget` (below).
 
-**The Journal** (`/journal?tab=diary|bookmarks|notes`, the array-group route `journal.tsx` names
-`JournalScreen`, `src/components/journal/`; `parseJournalTab` in `journal-model.ts`). Entry
-points go through `journalHref(tab?)` (`src/lib/paths.ts`) or `useOpen().openJournal`: the Me
-screen's `JournalEntryRow`, the profile menu, the palette's Go to, and each book section's
-`JournalLink`. It lists EVERY signed-in server's lists, each through its own connection and gated
+**The Journal** (the You hub's Journal section, `/you?section=journal&tab=diary|bookmarks|notes`;
+`JournalScreen` with `embedded` under the phone hub's title; the array-group route `journal.tsx`
+still names it for older `/journal?tab=` links; `src/components/journal/`; `parseJournalTab` in
+`journal-model.ts`). Entry points go through `openJournal(tab?)` (or `openYou('journal')`): the
+hub's segment, the profile menu, the palette's Go to, and each book section's `JournalLink`. It lists EVERY signed-in server's lists, each through its own connection and gated
 on its own flag (`useJournalSources`): one infinite query per server and list through
 `useInfiniteQueries` (`src/lib/use-infinite-queries.ts`, TanStack has nothing for a growing list of
 infinite queries; one `InfiniteQueryObserver` per query hash), merged by `mergeNewestFirst`
@@ -1020,7 +1157,7 @@ NativeTabs (never per tab stack: NativeTabs keeps visited tabs alive, so a card 
 five times), absolutely positioned on the native bar's measured `bar` edge, so it sits on the bar on
 every tab and over pushed pages and a tab switch never remounts it; web puts its card on its own tab
 bar. Tablet/desktop (web and native):
-`TopBar` (64; mark + server line, Home/Library/Downloads, omnisearch, settings, `ProfileMenu`),
+`TopBar` (64; mark + server line, Home/Library/Downloads/You, omnisearch, the Settings gear, `ProfileMenu`),
 `SubNav` (50; title on a tab root, Back on a pushed page; tab roots leave their title to the
 chrome; a tab root fills the rest with `SubNavSections` (its segmented sections) and `SubNavActions`
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
@@ -1112,11 +1249,12 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   `palette-model.ts`; the Actions list is its `buildActionItems`. Content is only what exists: Actions
   (pause / "Resume <chapter>", sleep in 30 minutes, sleep at end of chapter - only with real
   chapters -, open the full player, Open Up next with the queued count - only where the queue's
-  server has `queue`, through `openUpNext()` -, go to settings, switch light/dark), Books from
+  server has `queue`, through `openUpNext()` -, switch light/dark), Books from
   `useSearchAll` (debounced, `useDebouncedValue`; sources
   from `useSourceLabeller`; empty query: Continue listening from the cached `useAllProgressAll` with
   `refetchOnMount: false`, disabled while a query is typed, `isInProgress` shared with Home), Go to (the
-  top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do). A book opens
+  top bar's destinations, `TOP_BAR_TABS`, already filtered to what this browser can do, then Your
+  listening, Year in listening, the Journal and Settings: `buildGoToItems`). A book opens
   with a plain push, so it lands in the current tab. With a query it also lists Series, Authors,
   Narrators and Characters (three each) from the Search screen's model (below), and counts the
   characters not met yet in a note row that is not an option.
@@ -1152,8 +1290,8 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
   saved-locally line: needs signing in again > offline > signed in as), opening its account screen;
-  Add a server (`/connect?add=1`); the account on the default server; a light/dark switch. Phone
-  keeps these in the Me tab.
+  Add a server (`/connect?add=1`); the Journal; Settings; the account on the default server; a
+  light/dark switch. Phone keeps these in the Me tab's You hub.
 - **Toasts** clear the bottom chrome: each piece publishes its measured TOP edge (distance from the
   window's bottom) into `useShellMetrics` with `useChromeEdge` - `bar` (the web tab bar by layout; the
   native bar from the tab stacks' layout: iOS's bottom inset there, Android's gap between the page's
@@ -1175,7 +1313,7 @@ src/app/            Expo Router routes ((app) tab groups, connect/, player + fin
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
-src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
+src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, you/ (the You hub: stats/, year/), settings/ (Settings panes), account/ (the account page), connect/ (onboarding), library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider

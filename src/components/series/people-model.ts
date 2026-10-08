@@ -105,15 +105,19 @@ export function hslHex(h: number, s: number, l: number): string {
   return `#${hex(f(0))}${hex(f(8))}${hex(f(4))}`;
 }
 
+/** Who a portrait shows: a book's author or narrator, or the signed-in listener. */
+export type PortraitKind = 'author' | 'narrator' | 'user';
+
 /** A portrait's colours: an author's pale disc with deep initials, a narrator's deeper
- * square with white ones (STYLEGUIDE section 8, "Avatar, portrait"). Content colours,
- * the same in both themes, like a cover. */
+ * square with white ones, the listener's vivid disc with white ones (STYLEGUIDE section
+ * 8, "Avatar, portrait"). Content colours, the same in both themes, like a cover. */
 export function portraitColors(
   name: string,
-  kind: 'author' | 'narrator',
+  kind: PortraitKind,
 ): { from: string; to: string; ink: string } {
   const h = portraitHue(name);
   const h2 = (h + 40) % 360;
+  if (kind === 'user') return { from: hslHex(h, 74, 60), to: hslHex(h2, 68, 42), ink: '#ffffff' };
   return kind === 'narrator'
     ? { from: hslHex(h, 60, 62), to: hslHex(h2, 55, 30), ink: '#ffffff' }
     : { from: hslHex(h, 46, 88), to: hslHex(h2, 40, 74), ink: hslHex(h, 50, 22) };

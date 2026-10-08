@@ -1,7 +1,8 @@
 import { store } from 'expo-router/build/global-state/router-store';
 
-/** A navigation state, as much of it as the root-stack reads below use. */
-export type NavState = { index?: number; routes: NavRoute[] };
+/** A navigation state, as much of it as the root-stack reads below use (`key`: the
+ * navigator's, which an action can target). */
+export type NavState = { key?: string; index?: number; routes: NavRoute[] };
 export type NavRoute = { name: string; params?: object; state?: NavState };
 
 /** The root stack's route that holds the app shell (the tabs and their pages). The root
@@ -68,5 +69,29 @@ export function currentNavState(): NavState | undefined {
     return (store.state as NavState | undefined) ?? undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** The stack state of tab `tab` (its routes, its navigator key), anywhere in `state`. */
+function tabStackState(state: NavState | undefined, tab: string): NavState | null {
+  for (const r of state?.routes ?? []) {
+    if (r.name === tab) return r.state ?? null;
+    const found = tabStackState(r.state, tab);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Pop tab `tab`'s stack back to its root, which keeps the root's own params (Library's
+ * mode, the You hub's section). Any tab, by its stack's key, not only the focused one.
+ * The way back to a tab root: a navigate to the root's href is a push in this router, so
+ * it stacked a second copy of the root over the pages. Nothing when the stack holds only
+ * its root (or the router isn't ready).
+ */
+export function popTabToRoot(tab: string, state: NavState | undefined = currentNavState()) {
+  const stack = tabStackState(state, tab);
+  if (stack?.key && stack.routes.length > 1) {
+    store.navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
   }
 }

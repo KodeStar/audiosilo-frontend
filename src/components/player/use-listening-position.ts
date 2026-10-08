@@ -25,24 +25,62 @@ export function selectPlacedBookKey(s: PlayerSlice): string | null {
 }
 
 /**
- * Where the listener is in `target`, as ONE whole-book position (the book page's
- * spoiler rule, `meta-gating`): the player's live position while that book is loaded
- * (and placed, `selectPlacedBookKey`),
- * never below the saved one (a live position that hasn't ticked yet can't take back
- * what the saved one already showed), else the saved one. The live position is read
- * in `bucketS` steps, rounded DOWN, so the caller re-renders once per step and a
- * reveal can only come late, never early.
+ * The loaded book's live whole-book position in `bucketS` steps (rounded down) and
+ * whether it has moved off 0, while `target` is that book (and placed,
+ * `selectPlacedBookKey`); undefined otherwise. ONE selector per tick for both readings
+ * of a book's place (`useBookPlace`).
  */
-export function useListeningPosition(
+function useLiveBucket(
+  target: PlayTarget | null | undefined,
+  bucketS: number,
+): { at: number; moved: boolean } | undefined {
+  const key = target ? contentKey(target.connectionId, target.libraryId, target.path) : null;
+  return usePlayer(
+    useShallow((s) => {
+      if (!key || selectPlacedBookKey(s) !== key) return undefined;
+      const position = selectBookPosition(s);
+      return { at: bucket(position, bucketS), moved: position > 0 };
+    }),
+  );
+}
+
+/**
+ * Where the listener is in `target`, as whole-book positions, in `bucketS` steps
+ * (rounded DOWN, so the caller re-renders once per step and a reveal can only come
+ * late, never early):
+ *
+ * - `listening`, the spoiler rule's (`meta-gating`): the player's live position while
+ *   that book is loaded (and placed, `selectPlacedBookKey`), never below the saved one
+ *   (a live position that hasn't ticked yet can't take back what the saved one already
+ *   showed), else the saved one.
+ * - `resume`, where a press on Resume plays it from: the player's live place while that
+ *   book is loaded and has moved off 0 (a press toggles it in place, from there), else
+ *   the saved one. Unlike `listening` this CAN go below the saved place, and must: when
+ *   another device (or the other app on the same phone) saved a place further on while
+ *   this one held the book paused, the press still plays from the player's place, so
+ *   "Resume chapter N", the percent and the current row name that one, as the time left
+ *   (`useBookTimeLeft`), the Now card and the mini player already do. The spoiler gate
+ *   keeps `listening` (a reveal is never taken back).
+ */
+export function useBookPlace(
+  target: PlayTarget | null | undefined,
+  saved: number | undefined,
+  bucketS: number,
+): { listening: number | undefined; resume: number | undefined } {
+  const live = useLiveBucket(target, bucketS);
+  return {
+    listening: listeningPosition(live?.at, saved),
+    resume: live?.moved ? live.at : saved,
+  };
+}
+
+/** `useBookPlace`'s `resume`, for a caller that needs only that. */
+export function useResumePosition(
   target: PlayTarget | null | undefined,
   saved: number | undefined,
   bucketS: number,
 ): number | undefined {
-  const key = target ? contentKey(target.connectionId, target.libraryId, target.path) : null;
-  const live = usePlayer((s) =>
-    key && selectPlacedBookKey(s) === key ? bucket(selectBookPosition(s), bucketS) : undefined,
-  );
-  return listeningPosition(live, saved);
+  return useBookPlace(target, saved, bucketS).resume;
 }
 
 /** The live position never below the saved one; the saved one when nothing is live. */
@@ -51,7 +89,7 @@ const listeningPosition = (live: number | undefined, saved: number | undefined) 
 
 /**
  * The 1-based chapter the listener is in (`chapterNumberAt` on `chapterStarts`, 0 when
- * nothing is known): `useListeningPosition` at the spoiler gate's bucket, selected as a
+ * nothing is known): `useBookPlace`'s `listening` at the spoiler gate's bucket, selected as a
  * NUMBER, so a playing book re-renders the caller only when the chapter changes.
  */
 export function useListeningChapter(

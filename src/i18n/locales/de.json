@@ -7,7 +7,9 @@
     "close": "Schließen",
     "copied": "Kopiert",
     "on": "Ein",
-    "off": "Aus"
+    "off": "Aus",
+    "resumeChapter": "Kapitel {{chapter}} fortsetzen",
+    "resumeTitled": "{{title}} fortsetzen"
   },
   "settings": {
     "title": "Einstellungen",
@@ -15,14 +17,15 @@
       "label": "Darstellung",
       "light": "Hell",
       "dark": "Dunkel",
-      "system": "System"
+      "system": "System",
+      "description": "Hell, dunkel oder wie dieses Gerät."
     },
     "language": {
       "label": "Sprache",
-      "system": "System"
+      "system": "System",
+      "description": "Die Sprache der App. System folgt diesem Gerät."
     },
     "playback": {
-      "label": "Wiedergabe",
       "skipBack": "Zurückspringen",
       "skipForward": "Vorwärtsspringen",
       "defaultSpeed": "Standardgeschwindigkeit",
@@ -31,7 +34,6 @@
       "off": "Aus"
     },
     "sleep": {
-      "label": "Sleep-Timer",
       "auto": {
         "label": "Automatischer Sleep-Timer",
         "description": "Startet automatisch einen Sleep-Timer für Wiedergaben, die zwischen diesen Zeiten beginnen."
@@ -59,7 +61,6 @@
       }
     },
     "upNext": {
-      "label": "Als Nächstes",
       "autoPlay": {
         "label": "Nächstes Buch automatisch abspielen",
         "description": "Wenn ein Buch endet, startet das erste Buch in Als Nächstes oder das nächste der Reihe."
@@ -89,16 +90,11 @@
       "signOut": "Abmelden"
     },
     "devices": {
-      "label": "Geräte",
-      "intro": "Verbinde ein weiteres Telefon, Tablet oder einen Browser mit diesem Konto.",
-      "scanHint": "Öffne AudioSilo auf dem anderen Gerät und scanne diesen Code – oder öffne den Link unten.",
-      "add": "Gerät hinzufügen",
       "share": "Link teilen",
-      "done": "Fertig",
-      "reachError": "Server konnte nicht erreicht werden."
+      "done": "Fertig"
     },
     "apiKeys": {
-      "label": "API-Schlüssel",
+      "label": "Persönliche API-Schlüssel",
       "hint": "Benannte Schlüssel, mit denen Skripte und Dashboards in deinem Namen auf diesen Server zugreifen können. Jeder Schlüssel handelt als du und kann jederzeit widerrufen werden.",
       "nameLabel": "Schlüsselname",
       "namePlaceholder": "z. B. Start-Dashboard",
@@ -112,26 +108,59 @@
       "createError": "Der API-Schlüssel konnte nicht erstellt werden.",
       "revokeError": "Der API-Schlüssel konnte nicht widerrufen werden.",
       "createdModal": {
-        "title": "API-Schlüssel erstellt",
-        "description": "Kopiere diesen Schlüssel jetzt: Er wird nicht erneut angezeigt. Bewahre ihn sicher auf.",
+        "title": "Dein neuer API-Schlüssel",
+        "description": "Kopiere ihn jetzt. Er wird nicht noch einmal angezeigt.",
         "copy": "Schlüssel kopieren"
       },
       "revokeConfirm": {
         "title": "{{name}} widerrufen?",
         "message": "Alles, was diesen Schlüssel verwendet, verliert sofort den Zugriff. Dies kann nicht rückgängig gemacht werden.",
         "confirm": "Schlüssel widerrufen"
-      }
+      },
+      "sub": "Für Home Assistant, Dashboards und Skripte",
+      "unavailable": {
+        "title": "Auf {{server}} nicht verfügbar",
+        "body": "Die AudioSilo-Version dieses Servers bietet noch keine API-Schlüssel. Alles andere funktioniert wie gewohnt."
+      },
+      "dialogTitle": "API-Schlüssel erstellen",
+      "revokeShort": "Widerrufen"
     },
     "support": {
-      "label": "Unterstützen",
       "intro": "AudioSilo wird selbst gehostet und ist kostenlos. Wenn du die Entwicklung unterstützen möchtest, kannst du über GitHub Sponsors beitragen.",
       "cta": "AudioSilo unterstützen"
     },
-    "version": "AudioSilo v{{version}}"
+    "version": "AudioSilo v{{version}}",
+    "sectionsLabel": "Bereiche der Einstellungen",
+    "groups": {
+      "listening": "Hören",
+      "app": "App",
+      "servers": "Server"
+    },
+    "sections": {
+      "playback": "Wiedergabe",
+      "sleep": "Sleep-Timer",
+      "downloads": "Als Nächstes und Downloads",
+      "appearance": "Darstellung",
+      "language": "Sprache",
+      "household": "Haushalt und Teilen",
+      "accounts": "Konten und Geräte",
+      "support": "AudioSilo unterstützen"
+    },
+    "household": {
+      "title": "Profile kommen später",
+      "body": "Für alle im Haushalt ein eigener Platz in jedem Buch, ein Kindermodus und Teilen kommen mit den Profilen in einem späteren Update.",
+      "flag": "Kommt mit den Profilen"
+    },
+    "accounts": {
+      "intro": "Die Server, bei denen dieses Gerät angemeldet ist. Öffne einen für Passwort, deine Geräte und API-Schlüssel."
+    },
+    "stepper": {
+      "less": "{{label}}, weniger",
+      "more": "{{label}}, mehr"
+    }
   },
   "account": {
     "connections": {
-      "label": "Server",
       "manage": "{{name}} verwalten",
       "remove": "{{name}} entfernen",
       "add": "Server hinzufügen",
@@ -149,6 +178,81 @@
       "confirm": "Trotzdem abmelden",
       "downloadsWarning_one": "Beim Abmelden wird außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladenes Buch gelöscht.",
       "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht."
+    },
+    "switcher": "Server",
+    "none": "Melde dich bei einem Server an, um sein Konto zu sehen.",
+    "identity": {
+      "line": "@{{user}} · {{role}} auf {{server}}",
+      "devices_one": "auf {{count}} Gerät angemeldet",
+      "devices_other": "auf {{count}} Geräten angemeldet",
+      "demo": "Demo",
+      "devicesLine_one": "Auf {{count}} Gerät angemeldet",
+      "devicesLine_other": "Auf {{count}} Geräten angemeldet"
+    },
+    "password": {
+      "bodySet": "Damit meldest du dich auf einem neuen Gerät oder im Browser an.",
+      "bodyNotSet": "Du hast dich mit einem Einladungscode angemeldet und noch kein Passwort festgelegt. Leg eines fest, damit du dich auf einem neuen Gerät anmelden kannst.",
+      "dialogSet": "Mindestens {{count}} Zeichen. Deine anderen Geräte bleiben angemeldet.",
+      "dialogChange": "Gib dein aktuelles Passwort und dann das neue ein. Deine anderen Geräte bleiben angemeldet.",
+      "doneSet": "Passwort festgelegt",
+      "doneChanged": "Passwort geändert",
+      "doneBody": "Deine anderen Geräte bleiben angemeldet."
+    },
+    "pair": {
+      "title": "Weiteres Gerät koppeln",
+      "body": "Scanne den Code mit der AudioSilo-App auf einem Smartphone oder öffne den Link. Er läuft nach 10 Minuten ab.",
+      "show": "Kopplungscode anzeigen",
+      "expiresIn": "Läuft ab in {{time}}",
+      "expired": "Dieser Code ist abgelaufen. Erstelle einen neuen, um ein Gerät zu koppeln.",
+      "renew": "Neuen Code erstellen",
+      "copy": "Link kopieren",
+      "qr": "Kopplungscode für {{server}}",
+      "error": "{{server}} war nicht erreichbar. Es wurde kein Code erstellt, versuch es noch einmal."
+    },
+    "devices": {
+      "title": "Angemeldete Geräte",
+      "sub": "Melde ein verlorenes oder verkauftes Gerät ab",
+      "thisDevice": "Dieses Gerät",
+      "activeNow": "gerade aktiv",
+      "never": "seit der Anmeldung nicht gesehen",
+      "onlyThis": "Nur dieses Gerät ist angemeldet.",
+      "unknownApp": "App noch unbekannt",
+      "unnamed": "Unbenanntes Gerät",
+      "platform": {
+        "ios": "iOS",
+        "android": "Android",
+        "web": "Browser"
+      },
+      "seen": {
+        "minute_one": "zuletzt vor {{count}} Minute gesehen",
+        "minute_other": "zuletzt vor {{count}} Minuten gesehen",
+        "hour_one": "zuletzt vor {{count}} Stunde gesehen",
+        "hour_other": "zuletzt vor {{count}} Stunden gesehen",
+        "day_one": "zuletzt vor {{count}} Tag gesehen",
+        "day_other": "zuletzt vor {{count}} Tagen gesehen",
+        "month_one": "zuletzt vor {{count}} Monat gesehen",
+        "month_other": "zuletzt vor {{count}} Monaten gesehen",
+        "year_one": "zuletzt vor {{count}} Jahr gesehen",
+        "year_other": "zuletzt vor {{count}} Jahren gesehen"
+      },
+      "signOut": "Abmelden",
+      "signOutLabel": "{{name}} abmelden",
+      "confirm": {
+        "title": "{{name}} abmelden?",
+        "message": "{{name}} verliert sofort den Zugriff auf {{server}} und muss sich neu anmelden.",
+        "confirm": "Gerät abmelden"
+      },
+      "done": "{{name}} abgemeldet",
+      "doneBody": "Es muss sich neu anmelden, um {{server}} zu erreichen.",
+      "failed": "{{name}} konnte nicht abgemeldet werden",
+      "failedBody": "{{server}} hat nicht geantwortet. Es hat sich nichts geändert, versuch es noch einmal.",
+      "gone": "{{name}} war schon abgemeldet",
+      "goneBody": "Die Liste ist jetzt aktuell.",
+      "loadError": "Deine Geräte konnten nicht von {{server}} geladen werden."
+    },
+    "danger": {
+      "title": "Von {{server}} abmelden",
+      "body": "Entfernt die Downloads dieses Servers von diesem Gerät. Dein Fortschritt bleibt auf dem Server."
     }
   },
   "annotations": {
@@ -214,30 +318,23 @@
   },
   "connect": {
     "server": {
-      "subtitle": "Mit deinem Hörbuch-Server verbinden",
       "connecting": "Gerät wird verbunden…",
       "addressLabel": "Serveradresse",
-      "connect": "Verbinden",
       "enterAddress": "Gib deine Serveradresse ein",
       "missingAddress": "Bei diesem Kopplungslink fehlt die Serveradresse. Gib sie unten ein.",
       "pairingFailed": "Kopplung fehlgeschlagen: {{message}}. Du kannst dich auch verbinden, indem du deinen Einladungscode auf dem Anmeldebildschirm eingibst.",
       "pairingReachError": "Der Server konnte nicht erreicht werden, um die Kopplung abzuschließen.",
-      "serverError": "Der Server hat mit einem Fehler geantwortet: {{message}}",
-      "reachError": "Dieser Server konnte nicht erreicht werden. Überprüfe die Adresse und ob er online ist.",
       "demoError": "Die Demo konnte nicht gestartet werden: {{message}}",
       "demoReachError": "Der Demo-Server konnte nicht erreicht werden.",
-      "demoDivider": "Demo-Server",
-      "demoIntro": "Dieser Server bietet eine Gast-Demo – kein Konto erforderlich.",
       "tryDemo": "Demo ausprobieren",
-      "signInInstead": "Stattdessen anmelden",
-      "or": "oder",
-      "scanQr": "QR-Code scannen"
+      "scanQr": "QR-Code scannen",
+      "cancelAdd": "Hinzufügen eines Servers abbrechen"
     },
     "signIn": {
       "title": "Anmelden",
       "mode": {
-        "code": "Code",
-        "password": "Passwort"
+        "code": "Einladungscode",
+        "password": "Benutzername und Passwort"
       },
       "codeLabel": "Einladungscode",
       "codePlaceholder": "Gib deinen Einladungscode ein",
@@ -245,7 +342,6 @@
       "usernamePlaceholder": "Benutzername",
       "passwordLabel": "Passwort",
       "passwordPlaceholder": "Passwort",
-      "connect": "Verbinden",
       "submit": "Anmelden",
       "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
       "modeLabel": "Anmeldeart"
@@ -258,6 +354,65 @@
       "tryAgain": "Erneut versuchen",
       "openSettings": "Einstellungen öffnen",
       "aimHint": "Richte deine Kamera auf den Kopplungs-QR-Code auf der Verbindungsseite deines Servers."
+    },
+    "probe": {
+      "found": "{{name}} gefunden",
+      "version": "AudioSilo {{version}}",
+      "unencrypted": "Dieser Server nutzt eine unverschlüsselte Verbindung: {{address}}",
+      "signIn": "Anmelden",
+      "signInTo": "Bei {{name}} anmelden",
+      "unreachable": "{{address}} ist nicht erreichbar",
+      "hint": "Prüfe die Schreibweise und ob der Server läuft. Eine Heimadresse wie 192.168.1.20:8080 funktioniert nur im selben Netzwerk wie der Server.",
+      "homeHint": "Das ist eine Adresse im Heimnetz, sie antwortet nur im selben Netzwerk wie der Server. Prüfe, ob dieses Gerät in diesem Netzwerk ist, und die Schreibweise.",
+      "errorTitle": "Der Server hat mit einem Fehler geantwortet",
+      "errorBody": "Meldung: {{message}}"
+    },
+    "link": {
+      "open": "Ich habe einen Kopplungslink",
+      "label": "Kopplungslink",
+      "connect": "Verbinden",
+      "invalid": "Das ist kein AudioSilo-Kopplungslink. Kopplungslinks sehen so aus: https://<server>/web/connect?token=... oder audiosilo://connect?..."
+    }
+  },
+  "onboarding": {
+    "step": "Schritt {{step}} von {{count}}",
+    "start": {
+      "title": "Deine Hörbücher, von deinem eigenen Server.",
+      "lead": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder scanne den Code auf dessen Bildschirm.",
+      "leadWeb": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder füge den Kopplungslink ein, den du bekommen hast.",
+      "continue": "Weiter"
+    },
+    "signIn": {
+      "eyebrow": "{{name}} · {{host}}",
+      "codeHint": "Aus der Einladung deines Admins."
+    },
+    "anotherServer": "Anderer Server",
+    "addresses": {
+      "body": "{{name}} hat zwei Adressen. AudioSilo nutzt zu Hause die schnelle und wechselt von selbst, wenn du gehst."
+    },
+    "panel": {
+      "title": "Jedes Buch im Haus, auf jedem Gerät.",
+      "body": "Ein Fortschritt, der nie auf null springt. Downloads, die ohne Verbindung laufen. Die Bücher, die in einer Reihe fehlen, sichtbar im Regal."
+    },
+    "ready": {
+      "connected": "{{name}} ist verbunden",
+      "title": "Deine Bibliothek ist bereit.",
+      "and": "{{rest}} und {{last}}",
+      "booksIn_one": "{{books}} Buch in {{list}}.",
+      "booksIn_other": "{{books}} Bücher in {{list}}.",
+      "booksAcross_one": "{{books}} Buch in {{libraries}} Bibliotheken.",
+      "booksAcross_other": "{{books}} Bücher in {{libraries}} Bibliotheken.",
+      "librariesIn_one": "Deine Bibliothek: {{list}}.",
+      "librariesIn_other": "Deine Bibliotheken: {{list}}.",
+      "librariesCount_one": "{{count}} Bibliothek ist bereit.",
+      "librariesCount_other": "{{count}} Bibliotheken sind bereit.",
+      "empty": "{{name}} hat noch keine Bücher. Sie erscheinen hier, sobald dein Admin welche hinzufügt.",
+      "loadError": "Deine Bibliotheken konnten gerade nicht gelesen werden. Sie erscheinen in der App, sobald der Server antwortet.",
+      "placeChapter": "Deine Stelle in {{title}} ist mitgekommen: Kapitel {{chapter}}, {{percent}} % gehört.",
+      "place": "Deine Stelle in {{title}} ist mitgekommen: {{percent}} % gehört.",
+      "start": "Loslegen",
+      "browse": "Bibliothek durchsuchen",
+      "placeTitled": "Deine Stelle in {{title}} ist mitgekommen: {{chapter}}, {{percent}} % gehört."
     }
   },
   "home": {
@@ -297,14 +452,14 @@
       "through": "des Buchs gehört",
       "finishPace": "fertig in deinem Tempo",
       "resume": "Fortsetzen",
-      "resumeChapter": "Kapitel {{chapter}} fortsetzen",
       "pause": "Pause",
       "resumeFailed": "Das Buch konnte nicht gestartet werden. Deine Stelle bleibt erhalten, versuche es noch einmal.",
       "openBook": "{{title}} öffnen",
       "whosWho": "Wer ist wer",
       "whosWhoLabel_one": "Wer ist wer, {{count}} Figur bisher kennengelernt",
       "whosWhoLabel_other": "Wer ist wer, {{count}} Figuren bisher kennengelernt",
-      "storySoFar": "Bisher geschehen"
+      "storySoFar": "Bisher geschehen",
+      "countOf": "{{chapter}} von {{total}}"
     },
     "week": {
       "title": "Diese Woche",
@@ -372,6 +527,121 @@
       "dismiss": "Schließen",
       "spoilerSafe": "Spoilerfrei: geschrieben bis Kapitel {{chapter}}.",
       "spoilerSafeStart": "Spoilerfrei: geschrieben vor Beginn dieses Buchs."
+    }
+  },
+  "stats": {
+    "server": {
+      "pick": "Server"
+    },
+    "unsupported": {
+      "title": "Hier gibt es noch keine Hörstatistik",
+      "body": "{{server}} führt noch keine Hörstatistik. Sie kommt mit einer neueren AudioSilo-Version."
+    },
+    "error": {
+      "title": "Dein Hören wurde nicht geladen",
+      "body": "{{server}} hat nicht geantwortet. Es ist nichts verloren; versuch es gleich noch einmal."
+    },
+    "header": {
+      "eyebrow": "Dein Hören · {{server}}",
+      "thisWeek": "{{duration}} diese Woche",
+      "openYear": "Deine Geschichte {{year}} öffnen"
+    },
+    "empty": {
+      "title": "Noch nichts gehört",
+      "body": "Spiel ein Buch ab, dann füllen sich hier deine Woche, deine Serie und dein Jahr."
+    },
+    "tiles": {
+      "week": "Diese Woche",
+      "deltaUp": "{{duration}} mehr als letzte Woche",
+      "deltaDown": "{{duration}} weniger als letzte Woche",
+      "deltaSame": "Genauso viel wie letzte Woche",
+      "streak": "Serie",
+      "days_one": "Tag",
+      "days_other": "Tage",
+      "streakValue_one": "{{count}} Tag",
+      "streakValue_other": "{{count}} Tage",
+      "longest_one": "Längste dieses Jahr: {{count}} Tag",
+      "longest_other": "Längste dieses Jahr: {{count}} Tage",
+      "average": "Tagesdurchschnitt",
+      "books_one": "Über {{count}} Buch dieses Jahr",
+      "books_other": "Über {{count}} Bücher dieses Jahr"
+    },
+    "goal": {
+      "label": "Ziel",
+      "none_one": "{{count}} Buch dieses Jahr beendet, kein Ziel gesetzt",
+      "none_other": "{{count}} Bücher dieses Jahr beendet, kein Ziel gesetzt",
+      "set": "Jahresziel setzen",
+      "of": "von {{goal}}",
+      "percent": "{{percent}} %",
+      "a11y_one": "Ziel: {{count}} von {{goal}} Büchern dieses Jahr beendet, {{percent}} %",
+      "a11y_other": "Ziel: {{count}} von {{goal}} Büchern dieses Jahr beendet, {{percent}} %",
+      "lower": "Jahresziel senken",
+      "raise": "Jahresziel erhöhen",
+      "clear": "Jahresziel entfernen",
+      "saveFailed": "Dein Ziel wurde nicht gespeichert"
+    },
+    "calendar": {
+      "title": "Hörkalender",
+      "sub": "Jeder Tag, an dem du gehört hast, dunkler für mehr",
+      "everyDevice": "Von allen Geräten",
+      "months": "Jan.,Feb.,März,Apr.,Mai,Juni,Juli,Aug.,Sep.,Okt.,Nov.,Dez.",
+      "weekdays": "Mo,,Mi,,Fr,,So",
+      "none": "Nichts gehört",
+      "label_one": "Hörkalender der letzten 12 Monate: Du hast an {{count}} Tag gehört",
+      "label_other": "Hörkalender der letzten 12 Monate: Du hast an {{count}} Tagen gehört",
+      "days_one": "{{count}} Tag mit Hören in den letzten 12 Monaten · heute ist umrandet",
+      "days_other": "{{count}} Tage mit Hören in den letzten 12 Monaten · heute ist umrandet",
+      "less": "Weniger",
+      "more": "Mehr"
+    },
+    "clock": {
+      "title": "Deine Höruhr",
+      "peaksOne": "Am meisten {{a}}",
+      "peaksTwo": "Am meisten {{a}} und {{b}}",
+      "allDay": "den ganzen Tag",
+      "label": "Hören nach Tageszeit in diesem Jahr. Meiste Stunde {{hour}}. {{peaks}}",
+      "labelEmpty": "Hören nach Tageszeit: dieses Jahr noch nichts",
+      "none": "Dieses Jahr noch nichts gehört",
+      "busiest": "deine meiste Stunde",
+      "hourTotal": "{{duration}} dieses Jahr"
+    },
+    "weeks": {
+      "title": "Stunden pro Woche",
+      "sub": "Letzte 12 Wochen · {{duration}} insgesamt",
+      "thisWeek": "diese Woche",
+      "weeksAgo_one": "vor {{count}} Woche",
+      "weeksAgo_other": "vor {{count}} Wochen",
+      "thisWeekShort": "Diese Wo.",
+      "agoShort_one": "vor {{count}} Wo.",
+      "agoShort_other": "vor {{count}} Wo.",
+      "label": "Gehörte Stunden pro Woche, letzte 12 Wochen: {{weeks}}"
+    },
+    "rank": {
+      "authors": "Meistgehörte Autorinnen und Autoren",
+      "authorsSub": "Dieses Jahr, nach Stunden",
+      "narrators": "Meistgehörte Sprecher",
+      "narratorsSub": "Du hast {{duration}} mit {{name}} verbracht",
+      "series": "Meistgehörte Reihen",
+      "seriesSub": "Reihen, zu denen du immer wieder zurückkamst",
+      "rowLabel_one": "{{rank}}. {{name}}, {{duration}}, {{count}} Buch",
+      "rowLabel_other": "{{rank}}. {{name}}, {{duration}}, {{count}} Bücher",
+      "open": {
+        "author": "Öffnet die Autorenseite",
+        "narrator": "Öffnet die Sprecherseite",
+        "series": "Öffnet die Reihe"
+      }
+    },
+    "finished": {
+      "title": "Dieses Jahr beendet",
+      "count_one": "{{count}} Buch",
+      "count_other": "{{count}} Bücher",
+      "none": "Dieses Jahr noch nichts beendet",
+      "journal": "In deinem Journal ansehen",
+      "spineLabel": "{{title}} von {{author}}, beendet {{date}}"
+    },
+    "year": {
+      "summary_one": "Bisher {{duration}} gehört und {{count}} Buch beendet.",
+      "summary_other": "Bisher {{duration}} gehört und {{count}} Bücher beendet."
     }
   },
   "library": {
@@ -848,9 +1118,9 @@
       "finishedOn": "Beendet am {{date}}",
       "start": "Anhören",
       "resume": "Fortsetzen",
-      "resumeChapter": "Kapitel {{chapter}} fortsetzen",
       "again": "Noch einmal hören",
-      "pause": "Pause"
+      "pause": "Pause",
+      "titledOf": "{{title}} · {{chapter}} von {{total}}"
     },
     "upNext": {
       "label": "Als Nächstes für {{title}}",
@@ -1142,13 +1412,21 @@
       "show": "Anzeigen",
       "noServerTitle": "Der Server dieses Buchs ist nicht verbunden",
       "noServerHint": "Lesezeichen, Notizen und Verlauf sind wieder da, sobald er es ist."
+    },
+    "placeMoved": {
+      "title": "Deine Stelle von einem anderen Gerät übernommen",
+      "chapterAt": "Kapitel {{chapter}}, {{time}}",
+      "titledAt": "{{title}}, {{time}}",
+      "at": "Bei {{time}}",
+      "undo": "Rückgängig"
     }
   },
   "reconnect": {
     "banner": {
       "auth": "Erneut mit {{name}} verbinden",
       "serverReset": "{{name}} wurde zurückgesetzt - erneut koppeln, um fortzufahren",
-      "more": "+{{count}} weitere"
+      "more": "+{{count}} weitere",
+      "hint": "Öffnet die Anmeldung für diesen Server"
     },
     "connect": {
       "heading": "Erneut verbinden",
@@ -1164,8 +1442,26 @@
     "offline": "Offline – Änderungen werden bei erneuter Verbindung synchronisiert",
     "someOffline": "Einige Server offline",
     "me": "Ich",
+    "you": "Du",
     "back": "Zurück",
     "backTo": "Zurück zu {{name}}"
+  },
+  "you": {
+    "sections": {
+      "label": "Bereiche von Du",
+      "stats": "Statistik",
+      "year": "Jahr",
+      "journal": "Journal",
+      "settings": "Einstellungen",
+      "account": "Konto"
+    },
+    "titles": {
+      "stats": "Dein Hören",
+      "year": "Dein Hörjahr",
+      "journal": "Journal",
+      "settings": "Einstellungen",
+      "account": "Konto"
+    }
   },
   "ui": {
     "error": "Etwas ist schiefgelaufen.",
@@ -1240,7 +1536,6 @@
     "upNext": "Als Nächstes öffnen",
     "upNextHint_one": "{{count}} Buch vorgemerkt",
     "upNextHint_other": "{{count}} Bücher vorgemerkt",
-    "settings": "Zu den Einstellungen",
     "settingsHint": "Server, Darstellung und Wiedergabe",
     "dark": "Zur dunklen Darstellung wechseln",
     "light": "Zur hellen Darstellung wechseln",
@@ -1363,7 +1658,6 @@
     "listening": "Hörst du · {{percent}} %",
     "listeningNow": "hörst du gerade",
     "resume": "Fortsetzen",
-    "resumeChapter": "Kapitel {{chapter}} fortsetzen",
     "play": "Abspielen",
     "details": "Details",
     "open": "Öffnen",
@@ -1445,7 +1739,6 @@
   "journal": {
     "title": "Journal",
     "heading": "Alles, was du markiert hast",
-    "entryHint": "Dein Hörtagebuch, deine Lesezeichen und Notizen",
     "tabs": {
       "label": "Bereiche des Journals",
       "diary": "Tagebuch",
@@ -1558,6 +1851,141 @@
       "jump": "Springen",
       "jumpLabel": "Zu {{time}} springen",
       "span": "{{from}} bis {{to}}"
+    }
+  },
+  "addresses": {
+    "title": "Zu Hause und unterwegs",
+    "body": "Die Apps nutzen in deinem Heimnetz die Heimadresse und überall sonst die Adresse für unterwegs.",
+    "home": "Heimadresse",
+    "away": "Adresse unterwegs",
+    "paired": "Serveradresse",
+    "inUse": "Aktiv",
+    "usingHome": "Verwendet die Heimadresse.",
+    "usingAway": "Verwendet die Adresse für unterwegs.",
+    "usingPaired": "Verwendet die Adresse, mit der du verbunden hast.",
+    "switches": "Die App wechselt selbst zwischen beiden."
+  },
+  "year": {
+    "eyebrow": "Dein Hörjahr",
+    "title": "Dein {{year}} als Geschichte",
+    "howTo": "Tippe rechts auf eine Karte für die nächste, links, um zurückzugehen.",
+    "howToKeys": "Tippe rechts auf eine Karte für die nächste, links, um zurückzugehen. Die Pfeiltasten gehen auch.",
+    "privacy": "Erstellt auf {{server}} aus deinem eigenen Hören. Nichts verlässt den Server, außer du teilst eine Karte.",
+    "share": "Diese Karte teilen",
+    "shareTitle": "Mein Hörjahr {{year}}",
+    "shareFailed": "Das Bild konnte nicht erstellt werden",
+    "shareFailedBody": "Es wurde nichts geteilt. Versuche es gleich noch einmal.",
+    "saved": "Bild gespeichert",
+    "savedBody": "{{name}} liegt in deinen Downloads.",
+    "play": "Geschichte abspielen",
+    "ready": "Bereit, wenn du es bist",
+    "bannerTitle": "Dein Hörjahr {{year}}",
+    "bannerCards_one": "{{count}} Karte, aus deinem eigenen Hören gemacht.",
+    "bannerCards_other": "{{count}} Karten, aus deinem eigenen Hören gemacht.",
+    "years": "Jahr",
+    "servers": "Server",
+    "close": "Geschichte schließen",
+    "previous": "Vorherige Karte",
+    "next": "Nächste Karte",
+    "cardOf": "Karte {{n}} von {{total}}",
+    "thumbLabel": "Karte {{n}}: {{label}}",
+    "thumbKicker": "Karte {{n}}",
+    "hoursLong_one": "{{count}} Stunde",
+    "hoursLong_other": "{{count}} Stunden",
+    "booksCount_one": "{{count}} Buch",
+    "booksCount_other": "{{count}} Bücher",
+    "sessionsCount_one": "{{count}} Sitzung",
+    "sessionsCount_other": "{{count}} Sitzungen",
+    "loading": "Dein Jahr wird zusammengestellt",
+    "empty": {
+      "title": "Noch nicht viel zu erzählen",
+      "current": "Hör in diesem Jahr noch etwas mehr, dann steht hier deine Geschichte: die Stunden, die Bücher, deine liebste Uhrzeit und mehr.",
+      "past": "{{year}} wurde auf {{server}} zu wenig gehört, um eine Geschichte zu erzählen."
+    },
+    "unsupported": {
+      "title": "Dieser Server führt noch keine Hörstatistik",
+      "body": "{{server}} führt noch keine Hörstatistik. Nach einem Update erscheint hier dein Hörjahr."
+    },
+    "error": {
+      "title": "Dein Jahr konnte nicht geladen werden",
+      "body": "{{server}} hat nicht geantwortet. Es ist nichts verloren; versuche es gleich noch einmal."
+    },
+    "card": {
+      "hours": {
+        "kicker": "AudioSilo · {{server}}",
+        "lead": "Das war dein Hörjahr {{year}}.",
+        "leadNamed": "{{name}}, das war dein Hörjahr {{year}}.",
+        "unit_one": "Stunde",
+        "unit_other": "Stunden",
+        "days_one": "Das ist ein ganzer Tag mit einem Buch im Ohr.",
+        "days_other": "Das sind {{count}} ganze Tage mit einem Buch im Ohr.",
+        "spread": "In {{sessions}} mit {{books}}.",
+        "estimated": "Etwa {{duration}} davon sind geschätzt, aus der Zeit, bevor {{server}} Sitzungen aufgezeichnet hat."
+      },
+      "books": {
+        "kicker": "Beendete Bücher",
+        "unit_one": "Buch beendet",
+        "unit_other": "Bücher beendet",
+        "goalBehind_one": "Noch {{count}} bis zu deinem Ziel von {{goal}}.",
+        "goalBehind_other": "Noch {{count}} bis zu deinem Ziel von {{goal}}.",
+        "goalReached": "Dein Ziel waren {{goal}}. Geschafft.",
+        "tower": "Jeder Buchrücken ist ein Buch, das du beendet hast."
+      },
+      "book": {
+        "kicker": "Dein Buch des Jahres",
+        "by": "Von {{author}}.",
+        "time": "{{duration}} gehört, mehr als jedes andere Buch.",
+        "thumb": "Buch des Jahres"
+      },
+      "voice": {
+        "kicker": "Deine Stimme des Jahres",
+        "title": "{{duration}} mit {{name}}",
+        "thenOne": "Danach {{a}} ({{aTime}}).",
+        "thenTwo": "Danach {{a}} ({{aTime}}) und {{b}} ({{bTime}}).",
+        "thumb": "Stimme des Jahres"
+      },
+      "clock": {
+        "kicker": "Wann du hörst",
+        "part": {
+          "morning": "Ein Morgenmensch.",
+          "afternoon": "Ein Nachmittagsmensch.",
+          "evening": "Ein Abendmensch.",
+          "night": "Eine Nachteule."
+        },
+        "peak": "Am meisten hast du gegen {{time}} gehört.",
+        "caption": "deine liebste Uhrzeit",
+        "thumb": "Deine Uhr"
+      },
+      "streak": {
+        "kicker": "Längste Serie",
+        "unit_one": "Tag in Folge",
+        "unit_other": "Tage in Folge",
+        "going": "Und sie läuft noch.",
+        "current_one": "Gerade bist du an Tag {{count}} einer neuen.",
+        "current_other": "Gerade bist du an Tag {{count}} einer neuen.",
+        "thumb_one": "{{count}} Tag in Folge",
+        "thumb_other": "{{count}} Tage in Folge"
+      },
+      "people": {
+        "kicker": "Zu wem du immer zurückkamst",
+        "author": "Autor oder Autorin des Jahres",
+        "series": "Reihe des Jahres",
+        "detail": "{{duration}} in {{books}}"
+      },
+      "summary": {
+        "kicker": "Hörjahr {{year}}",
+        "kickerNamed": "{{year}} · {{name}}",
+        "hours_one": "Stunde gehört",
+        "hours_other": "Stunden gehört",
+        "listened": "gehört",
+        "finished_one": "Buch beendet",
+        "finished_other": "Bücher beendet",
+        "streak_one": "Tag in Folge",
+        "streak_other": "Tage in Folge",
+        "books_one": "Buch gehört",
+        "books_other": "Bücher gehört",
+        "thumb": "Dein Jahr"
+      }
     }
   }
 }

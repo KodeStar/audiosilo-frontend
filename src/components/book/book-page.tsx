@@ -30,7 +30,7 @@ import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { TranscodeNote } from '@/components/library/transcode-note';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { selectIsLoaded } from '@/components/player/playing-target';
-import { useListeningPosition } from '@/components/player/use-listening-position';
+import { useBookPlace } from '@/components/player/use-listening-position';
 import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
 import { useBookAnnotations } from '@/components/player/use-playing-pins';
 import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left';
@@ -144,9 +144,12 @@ function BookPage() {
   );
   const loaded = usePlayer(selectIsLoaded(target));
   const live = usePlayer((s) => loaded && selectIsTransportLive(s));
-  // The player's live whole-book position while this book is loaded (in the spoiler
-  // gate's coarse steps, never below the saved one), else the saved one.
-  const listeningPosition = useListeningPosition(
+  // `listening`: the player's live whole-book position while this book is loaded (in the
+  // spoiler gate's coarse steps, never below the saved one), else the saved one; the
+  // spoiler gate reads it. `resume`: where a press on the primary plays from (the loaded
+  // book toggles in place, at the player's place, even when another device saved one
+  // further on): the hero's place, its Resume chapter N and the current row.
+  const { listening: listeningPosition, resume: resumePosition } = useBookPlace(
     target,
     progress?.position,
     LIVE_POSITION_BUCKET_S,
@@ -206,7 +209,7 @@ function BookPage() {
   const status = progressQuery.isPending ? undefined : bookStatus(progress);
   const finished = status === 'finished' && !loaded;
   const started = loaded || status === 'progress' || (listeningPosition ?? 0) > 0;
-  const position = finished ? total : (listeningPosition ?? 0);
+  const position = finished ? total : (resumePosition ?? 0);
   // The row the listener is in (none marked before the start or once finished).
   const current = started && !finished ? rowAt(list.rows, position) : -1;
   const timeLeft = useBookTimeLeft(book ? target : null, progress, total);
@@ -384,7 +387,7 @@ function BookPage() {
             ? {
                 percent,
                 fraction: progressFractionRemaining(position, total).fraction,
-                line: placeLine(t, list.kind, current, list.rows.length),
+                line: placeLine(t, list.kind, current, list.rows.length, list.rows[current]?.title),
                 timeLeft,
               }
             : null
@@ -416,6 +419,7 @@ function BookPage() {
                 list.kind === 'chapters' && list.rows.length > 1 && current >= 0
                   ? current + 1
                   : undefined,
+              chapterTitle: list.rows[current]?.title,
             })}
             onPrimary={() => play({ toggle: true })}
             stacked={!layout.heroSide}
