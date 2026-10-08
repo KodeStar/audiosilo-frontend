@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
@@ -26,13 +26,18 @@ const COLUMNS = 6;
 const PER_COLUMN = 7;
 const GAP = 16;
 
-export function CoverCascadePanel({ flex = 1 }: { flex?: number }) {
+/** The generated tiles: the same every time, so built once. */
+const CASCADE = cascadeColumns(COLUMNS, PER_COLUMN);
+const FAN = solidTiles(5);
+
+/** Memoised: it sits beside the connect forms, whose every keystroke re-renders them, and
+ * redrawing its few hundred SVG nodes then is wasted (its only prop is a number). */
+export const CoverCascadePanel = memo(function CoverCascadePanel({ flex = 1 }: { flex?: number }) {
   const { t } = useTranslation();
   const [width, setWidth] = useState(0);
   const scrim = useDomId('scrim');
   // Tiles scale with the panel: about four across its width before the tilt.
   const tile = Math.max(92, Math.round(width / 4.2));
-  const columns = cascadeColumns(COLUMNS, PER_COLUMN);
   return (
     <View
       testID="cover-cascade"
@@ -57,7 +62,7 @@ export function CoverCascadePanel({ flex = 1 }: { flex?: number }) {
         }}
       >
         {width > 0
-          ? columns.map((col, c) => (
+          ? CASCADE.map((col, c) => (
               <View
                 key={c}
                 style={{ gap: GAP, marginTop: c % 2 ? -tile * 0.45 : 0 }}
@@ -93,19 +98,18 @@ export function CoverCascadePanel({ flex = 1 }: { flex?: number }) {
       </View>
     </View>
   );
-}
+});
 
 /** A fan of five generated covers over the phone's first step (the prototype's fan of
- * covers, without fake titles). Decorative. */
-export function CoverFan() {
-  const tiles = solidTiles(5);
+ * covers, without fake titles). Decorative; memoised like the panel (no props). */
+export const CoverFan = memo(function CoverFan() {
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       className="h-[112px] flex-row items-end justify-center"
     >
-      {tiles.map((p, i) => {
+      {FAN.map((p, i) => {
         const off = i - 2;
         return (
           <View
@@ -122,7 +126,7 @@ export function CoverFan() {
       })}
     </View>
   );
-}
+});
 
 /** One generated cover: a cloth square with its motif (or a dashed ghost). */
 function PatternCover({ tile, size }: { tile: PatternTile; size: number }) {
