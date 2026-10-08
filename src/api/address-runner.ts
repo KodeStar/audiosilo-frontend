@@ -15,7 +15,13 @@ import { onForeground } from '@/lib/when-active';
 import { type NowPlaying, selectBookPosition, usePlayer } from '@/playback/store';
 import { type Connection, useSession } from '@/stores/session';
 
-import { effectiveUrl, setAddressPick, useAddressRoute } from './address-route';
+import {
+  beginNetworkCheck,
+  effectiveUrl,
+  endNetworkCheck,
+  setAddressPick,
+  useAddressRoute,
+} from './address-route';
 import { resolveClient } from './connection-clients';
 import { addressesQuery, fetchCapabilities, fetchFailFast } from './hooks';
 import { onReconnect, useReachability } from './reachability';
@@ -34,9 +40,10 @@ import { probeServerId } from './server-id-probe';
  *   the app is in the foreground for a connection away from its home address (walking
  *   in the door raises no event the runner hears: Wi-Fi joins without a type change,
  *   and the app stays open); one probe per connection at a time, none in the
- *   background. When the device leaves its network (`movedNetwork`), a home pick is
- *   dropped first (`leaveHome`), so the token never goes to a home address checked on
- *   another network;
+ *   background. When the device leaves its network (`movedNetwork`: another type, no
+ *   connection, or `ipChanged`: another IP address of its own, one Wi-Fi to another), a
+ *   home pick is dropped first (`leaveHome`), so the token never goes to a home address
+ *   checked on another network;
  * - refreshes the addresses the device keeps from `GET /addresses` (servers with
  *   `addresses`) at launch, for a new connection and on reconnect;
  * - keeps the playing book playing when its connection switches address: a streamed
@@ -132,17 +139,64 @@ export function movedNetwork(state: Network.NetworkState): boolean {
   return previous !== undefined && state.type !== undefined && state.type !== previous;
 }
 
-/** A network event: a move drops home and re-picks at once; any other change re-picks
- * once the events settle (a newer re-pick still supersedes a probe in flight, so a home
- * address checked before the change is never used after it). */
+/** The device's own IP address last read, to tell a move between two networks of the
+ * same type (one Wi-Fi to another) from a change that keeps the device where it is. */
+let lastIp: string | undefined;
+/** The IP reads started, and the newest one that finished (an older read that finishes
+ * late says nothing new). */
+let ipReadsStarted = 0;
+let ipReadApplied = 0;
+
+/** The device's own IP address, or undefined when it can't be told (the read fails, or
+ * `0.0.0.0`: no address). */
+async function deviceIp(): Promise<string | undefined> {
+  try {
+    const ip = await Network.getIpAddressAsync();
+    return ip && ip !== '0.0.0.0' ? ip : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Read the device's IP address and whether it changed since the last one read: the
+ * device moved to another network even when the type stayed the same. An unknown address
+ * is no move by itself (and keeps the last one known for the next read to compare with).
+ */
+export async function ipChanged(): Promise<boolean> {
+  const read = ++ipReadsStarted;
+  const ip = await deviceIp();
+  if (!ip || read < ipReadApplied) return false;
+  ipReadApplied = read;
+  const previous = lastIp;
+  lastIp = ip;
+  return previous !== undefined && previous !== ip;
+}
+
+/** Move: every home pick goes at once, then each connection is picked again. */
+function moved(): void {
+  leaveHome();
+  repickAll();
+}
+
+/** A network event: a move (another type, no connection) drops home and re-picks at
+ * once; any other change re-picks once the events settle (a newer re-pick still
+ * supersedes a probe in flight, so a home address checked before the change is never
+ * used after it), unless the device's IP address turns out to have changed (another
+ * network of the same type, e.g. one Wi-Fi to another), which is a move too. A burst of
+ * events on the same network keeps its IP, so it neither flaps nor restarts the playing
+ * book. */
 function onNetwork(state: Network.NetworkState): void {
+  const changedIp = ipChanged(); // read now, so a move by type records the new address too
   if (movedNetwork(state)) {
-    leaveHome();
-    repickAll();
+    moved();
     return;
   }
   if (settling) clearTimeout(settling);
   settling = setTimeout(repickAll, NETWORK_SETTLE_MS);
+  void changedIp.then((changed) => {
+    if (changed) moved();
+  });
 }
 
 /** Read `GET /addresses` from a server that has `addresses` and keep what it says
@@ -268,41 +322,53 @@ export function startAddressRouting(opts: { probe?: ServerIdProbe } = {}): () =>
   );
 
   // Back in the foreground: the device may have moved while JS was suspended (no network
-  // events then), so the network is read first. The foreground refresh
-  // (`useAppResume`) does not wait for it: a suspended move to a network with a box at
-  // the same home IP is the one window left open.
-  const readNetwork = () =>
-    Network.getNetworkStateAsync().then(
-      (state) => {
-        if (movedNetwork(state)) leaveHome();
-        repickAll();
-      },
-      () => repickAll(),
-    );
+  // events then), so the network is read first, with the same signal as a network event
+  // (another type, no connection, or another IP address). What sends requests on the
+  // same foreground event waits for this (`networkChecked`, due from the moment the app
+  // left), so a home pick from the previous network is dropped before the token goes out.
+  const readNetwork = async () => {
+    try {
+      const [state, changedIp] = await Promise.all([
+        Network.getNetworkStateAsync().catch(() => undefined),
+        ipChanged(),
+      ]);
+      if ((state && movedNetwork(state)) || changedIp) leaveHome();
+      repickAll();
+    } finally {
+      endNetworkCheck();
+    }
+  };
   // The re-check of home runs only in the foreground.
   const recheck = ticker(recheckHome, HOME_RECHECK_MS);
   if (AppState.currentState !== 'background' && AppState.currentState !== 'inactive')
     recheck.start();
+  else beginNetworkCheck(); // started away (a background launch): check on coming to front
   stops.push(
     onForeground(
       () => {
         recheck.start();
         void readNetwork();
       },
-      () => recheck.stop(),
+      () => {
+        recheck.stop();
+        beginNetworkCheck();
+      },
     ),
   );
   stops.push(() => recheck.stop());
+  stops.push(endNetworkCheck);
 
   // Network changes (native only; the runner never runs on web). Seeded with the current
-  // type so the first change can be told from a move.
+  // type and IP address so the first change can be told from a move.
   lastNetworkType = undefined;
+  lastIp = undefined;
   void Network.getNetworkStateAsync().then(
     (state) => {
       lastNetworkType ??= state.type;
     },
     () => undefined,
   );
+  void ipChanged();
   try {
     const netSub = Network.addNetworkStateListener(onNetwork);
     stops.push(() => netSub.remove());

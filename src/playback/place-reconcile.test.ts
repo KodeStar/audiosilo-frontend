@@ -1,5 +1,6 @@
 import type { AppStateStatus } from 'react-native';
 
+import { beginNetworkCheck, endNetworkCheck } from '@/api/address-route';
 import type { Book, Progress } from '@/api/types';
 
 import type { ProgressSave, ResumeLookup } from './progress-sync';
@@ -273,6 +274,19 @@ describe('a loaded book another device has moved on', () => {
     await settle();
     expect(saved().length).toBeGreaterThan(0);
     expect(saved().every((p) => p >= 400)).toBe(true);
+  });
+
+  it("on the app coming back, asks the server only after the address runner's network check", async () => {
+    await loadedAndPaused();
+    const server = jest.fn(async () => record());
+    mockServer = server;
+    beginNetworkCheck(); // the app was away: the device may be on another network now
+    await backInFront();
+    expect(server).not.toHaveBeenCalled(); // no token out before a home pick is dropped
+    endNetworkCheck();
+    await settle();
+    expect(server).toHaveBeenCalledTimes(1);
+    expect(seeks()).toEqual([400]);
   });
 
   it('on the app coming back, moves a paused book there and says so with Undo', async () => {

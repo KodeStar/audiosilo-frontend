@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { networkChecked } from '@/api/address-route';
 import { queryClient } from '@/api/provider';
 
 import { consumeTaskRemoved } from './task-removed';
@@ -28,6 +29,15 @@ type ForegroundDeps = {
 export function handleForeground(deps: ForegroundDeps): void {
   deps.refresh();
   if (deps.taskWasRemoved()) deps.goHome();
+}
+
+/** The foreground refresh: every active query again, once the address runner has
+ * checked the network (`networkChecked`): a device that joined another network while
+ * suspended must drop a home address checked on the previous one before the token goes
+ * out again. */
+export async function refreshAfterResume(): Promise<void> {
+  await networkChecked();
+  await queryClient.invalidateQueries();
 }
 
 function goHome(): void {
@@ -61,7 +71,7 @@ export function useAppResume(): void {
     const sub = AppState.addEventListener('change', (s: AppStateStatus) => {
       if (s !== 'active') return;
       handleForeground({
-        refresh: () => void queryClient.invalidateQueries(),
+        refresh: () => void refreshAfterResume(),
         taskWasRemoved: consumeTaskRemoved,
         goHome,
       });

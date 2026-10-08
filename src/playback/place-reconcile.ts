@@ -1,5 +1,6 @@
 import { t } from 'i18next';
 
+import { networkChecked } from '@/api/address-route';
 import { resolveClient } from '@/api/connection-clients';
 import { isReachable, onReconnect } from '@/api/reachability';
 import type { Progress } from '@/api/types';
@@ -166,7 +167,11 @@ export function undoMove(bookKey: string, from: number): void {
 export function startPlaceReconcile(): () => void {
   const stops: (() => void)[] = [];
   stops.push(onPickedUpAgain(() => void reconcileLoadedPlace('picked-up')));
-  stops.push(onForeground(() => void reconcileLoadedPlace('foreground')));
+  // On the foreground, once the address runner has checked the network: a home address
+  // checked on the network the device was on before it was suspended goes first.
+  stops.push(
+    onForeground(() => void networkChecked().then(() => reconcileLoadedPlace('foreground'))),
+  );
   stops.push(
     onReconnect((cid) => {
       if (usePlayer.getState().nowPlaying?.connectionId === cid) {

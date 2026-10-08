@@ -52,6 +52,50 @@ export function effectiveUrl(c: AddressedConnection): string {
   return pickedUrl(c, useAddressRoute.getState().picks[c.id]);
 }
 
+/** How long `networkChecked` waits at most: the check is two native reads, and nothing
+ * the app does on coming back may hang on one that never answers. */
+export const NETWORK_CHECK_MAX_MS = 2_000;
+
+/** The address runner's check of the network after the app was away (null: none due). */
+let networkCheck: { promise: Promise<void>; resolve: () => void } | null = null;
+
+/** The app left the foreground: the device may join another network before it is back,
+ * so the next foreground's requests wait for `endNetworkCheck`. Runner-only. */
+export function beginNetworkCheck(): void {
+  if (networkCheck) return;
+  let resolve = () => {};
+  const promise = new Promise<void>((r) => (resolve = r));
+  networkCheck = { promise, resolve };
+}
+
+/** The runner has read the network after the app came back (and dropped the home
+ * addresses when the device moved), or stopped. Runner-only. */
+export function endNetworkCheck(): void {
+  networkCheck?.resolve();
+  networkCheck = null;
+}
+
+/**
+ * Resolves once the address runner has checked the network after the app came back to
+ * the foreground (at once when no check is due, on web, or after `NETWORK_CHECK_MAX_MS`).
+ * Whatever sends requests on the foreground event awaits it first: the device may have
+ * changed network while suspended, and a home address checked on the previous network
+ * must be dropped before the token goes out (`useAppResume`'s refresh, the place
+ * reconcile). Safe to call in any order with the runner's own foreground handler: the
+ * check is due from the moment the app leaves.
+ */
+export function networkChecked(): Promise<void> {
+  const check = networkCheck;
+  if (!check) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, NETWORK_CHECK_MAX_MS);
+    void check.promise.then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 /** The address a connection is using now and which of its addresses that is. */
 export type ActiveAddress = { url: string; kind: AddressKind };
 

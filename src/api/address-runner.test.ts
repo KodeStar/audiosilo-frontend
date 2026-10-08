@@ -23,8 +23,14 @@ jest.mock('@/components/player/start-book', () => ({
 type MockNetwork = { type?: string; isConnected?: boolean };
 let mockNetworkListener: ((state: MockNetwork) => void) | null = null;
 let mockNetwork: MockNetwork = { type: 'WIFI', isConnected: true };
+/** The device's own IP address (an Error: the read fails). */
+let mockIp: string | Error = '192.168.1.50';
 jest.mock('expo-network', () => ({
   getNetworkStateAsync: async () => mockNetwork,
+  getIpAddressAsync: async () => {
+    if (mockIp instanceof Error) throw mockIp;
+    return mockIp;
+  },
   addNetworkStateListener: (listener: (state: MockNetwork) => void) => {
     mockNetworkListener = listener;
     return {
@@ -47,7 +53,7 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useAddressRoute } from '@/api/address-route';
+import { NETWORK_CHECK_MAX_MS, networkChecked, useAddressRoute } from '@/api/address-route';
 import {
   followPlayingBook,
   HOME_RECHECK_MS,
@@ -139,6 +145,7 @@ let stop: (() => void) | null = null;
 beforeEach(() => {
   servers = {};
   mockNetwork = { type: 'WIFI', isConnected: true };
+  mockIp = '192.168.1.50';
   installFetch();
   jest.clearAllMocks();
   useAddressRoute.setState({ picks: {} });
@@ -346,6 +353,149 @@ describe('when it re-picks', () => {
     appHandler!('active');
     await flush();
     expect(inUse()).toBe(HOME);
+  });
+
+  describe('one Wi-Fi to another (the type stays the same)', () => {
+    const fakeTimers = () =>
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    /** A home probe answering `homeId`, recording the address in use at each call. */
+    let homeId: string | null;
+    let inUseAtProbe: string[];
+    const probe = jest.fn(async () => {
+      inUseAtProbe.push(inUse());
+      return homeId;
+    });
+    const startAtHome = async () => {
+      homeId = 'srv-a';
+      inUseAtProbe = [];
+      servers = { [AWAY]: { id: 'srv-a' } };
+      setConnections([mkConn()]);
+      stop = startAddressRouting({ probe });
+      await flush();
+      expect(inUse()).toBe(HOME);
+      probe.mockClear();
+      fetchMock.mockClear(); // the launch's reads, through the home address it confirmed
+      inUseAtProbe = [];
+    };
+
+    it('drops home at once on a new IP address, before any probe or settle', async () => {
+      fakeTimers();
+      try {
+        await startAtHome();
+        homeId = 'not-yours'; // another box at the same private IP on the new network
+        mockIp = '10.0.0.7';
+        mockNetworkListener!({ type: 'WIFI', isConnected: true });
+        await flush(); // the IP read only: no timer has run
+        expect(inUse()).toBe(AWAY);
+        expect(inUseAtProbe).toEqual([AWAY]); // home was dropped before it was asked again
+        jest.advanceTimersByTime(NETWORK_SETTLE_MS * 2);
+        await flush();
+        expect(probe).toHaveBeenCalledTimes(1); // the move's re-pick replaced the settle
+        await resolveClient('srv-a')!.me();
+        expect(requestsTo(HOME)).toEqual([]); // the token never went to the other box
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('keeps home through a burst of events with the same IP address (no flapping)', async () => {
+      fakeTimers();
+      try {
+        await startAtHome();
+        const switches: unknown[] = [];
+        const unsub = useAddressRoute.subscribe((s) => switches.push(s.picks));
+        for (let i = 0; i < 4; i++) {
+          mockNetworkListener!({ type: 'WIFI', isConnected: true });
+          await flush();
+          expect(inUse()).toBe(HOME);
+          jest.advanceTimersByTime(NETWORK_SETTLE_MS / 2);
+        }
+        expect(probe).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(NETWORK_SETTLE_MS);
+        await flush();
+        expect(probe).toHaveBeenCalledTimes(1);
+        expect(inUse()).toBe(HOME);
+        expect(switches).toEqual([]); // the pick never changed, so nothing restarted
+        unsub();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('an IP address that cannot be read is no move by itself', async () => {
+      await startAtHome();
+      for (const unknown of ['0.0.0.0', '', new Error('no permission')]) {
+        mockIp = unknown;
+        mockNetworkListener!({ type: 'WIFI', isConnected: true });
+        await flush();
+        expect(inUse()).toBe(HOME);
+      }
+      // The last address known is kept to compare with: the same one is no move...
+      mockIp = '192.168.1.50';
+      mockNetworkListener!({ type: 'WIFI', isConnected: true });
+      await flush();
+      expect(inUse()).toBe(HOME);
+      // ...another one is.
+      homeId = null;
+      mockIp = '10.0.0.7';
+      mockNetworkListener!({ type: 'WIFI', isConnected: true });
+      await flush();
+      expect(inUseAtProbe.at(-1)).toBe(AWAY);
+      expect(inUse()).toBe(AWAY);
+    });
+
+    it('back in the foreground on another Wi-Fi: home is dropped before the first requests', async () => {
+      await startAtHome();
+      appHandler!('background');
+      // Suspended: the device joins another Wi-Fi, no event reaches JS.
+      homeId = 'not-yours';
+      mockIp = '10.0.0.7';
+      // What sends requests on the foreground event may run before the runner's own
+      // handler: it waits for the check all the same.
+      let usedAfterCheck: string | null = null;
+      const checked = networkChecked().then(() => {
+        usedAfterCheck = inUse();
+      });
+      await flush();
+      expect(usedAfterCheck).toBeNull(); // due since the app left
+      appHandler!('active');
+      await checked;
+      expect(usedAfterCheck).toBe(AWAY);
+      await flush();
+      expect(inUse()).toBe(AWAY);
+      expect(inUseAtProbe).toEqual([AWAY]);
+    });
+
+    it('back in the foreground on the same network: home stays, and the wait ends', async () => {
+      await startAtHome();
+      appHandler!('background');
+      const checked = networkChecked();
+      appHandler!('active');
+      await checked;
+      expect(inUse()).toBe(HOME);
+      await expect(networkChecked()).resolves.toBeUndefined(); // nothing due now
+    });
+
+    it('the wait never outlasts NETWORK_CHECK_MAX_MS, and ends with the runner', async () => {
+      fakeTimers();
+      try {
+        await startAtHome();
+        appHandler!('background');
+        let done = false;
+        void networkChecked().then(() => (done = true));
+        jest.advanceTimersByTime(NETWORK_CHECK_MAX_MS);
+        await flush();
+        expect(done).toBe(true); // the app never came back: nothing waits for ever
+        let ended = false;
+        void networkChecked().then(() => (ended = true));
+        stop!();
+        stop = null;
+        await flush();
+        expect(ended).toBe(true);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   it('when a connection learns new addresses, and drops the pick of a removed one', async () => {
