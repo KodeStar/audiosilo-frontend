@@ -2,8 +2,11 @@ import { NativeModule, requireNativeModule } from 'expo';
 
 import type {
   AudiosiloPlayerModuleEvents,
+  BookRef,
+  LoadedBook,
   NativeChapter,
   NativeTrack,
+  PendingBookmark,
   PlayerConfig,
 } from './AudiosiloPlayer.types';
 
@@ -14,12 +17,15 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
   setConfig(config: PlayerConfig): Promise<void>;
   /** Load a queue and position to `startIndex` at `positionInTrack` seconds (does not
    * auto-play). `chapters` (Android only) makes each chapter a clipped media item so the
-   * lock screen gets a chapter scrubber + prev/next chapter; omit/empty for file-per-item. */
+   * lock screen gets a chapter scrubber + prev/next chapter; omit/empty for file-per-item.
+   * `book` (Phase 6) names the book so Android can tell which book a queue is when the service
+   * is asked about it later (`getLoadedBook`); iOS accepts and ignores it. */
   load(
     tracks: NativeTrack[],
     startIndex: number,
     positionInTrack: number,
     chapters?: NativeChapter[],
+    book?: BookRef,
   ): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
@@ -46,6 +52,15 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
    * foreground (Android keeps the dismissed process cached, so the next open is a
    * warm resume on the last route). iOS cold-starts on relaunch, so it's always false. */
   consumeTaskRemoved(): boolean;
+  /** Phase 6, both platforms: hand native the car snapshot (JSON) for CarPlay / Android Auto. Native
+   * keeps the last one on disk so the car shows it at once next time. Absent on older binaries. */
+  setCarSnapshot?(json: string): Promise<void>;
+  /** Phase 6, Android: the book the service has loaded, else null (iOS: always null). Absent on
+   * older binaries. */
+  getLoadedBook?(): Promise<LoadedBook | null>;
+  /** Phase 6, Android: bookmarks pressed while no JS ran, oldest first, cleared by the read (iOS:
+   * []). Absent on older binaries. */
+  consumePendingBookmarks?(): Promise<PendingBookmark[]>;
 }
 
 export default requireNativeModule<AudiosiloPlayerModule>('AudiosiloPlayer');
