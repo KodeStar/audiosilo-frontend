@@ -249,6 +249,17 @@ describe('PlayerView', () => {
     expect(mockHoverTip).toBe(true);
   });
 
+  it('keeps the hover tip while the grace card holds the status slot, chip or not', async () => {
+    mockLayout = 'desktop';
+    mockGraceOpen = true;
+    const now = Date.now();
+    useJumpUndo.setState({
+      jump: { from: 30, bookKey: 'a:1:Corey/Calibans War', until: now + 10_000, at: now },
+    });
+    await mount(<PlayerView onClose={jest.fn()} />);
+    expect(mockHoverTip).toBe(true);
+  });
+
   it("makes way for the timeline's tip: the seek bar's times row hides while it shows", async () => {
     mockLayout = 'phone';
     await mount(<PlayerView onClose={jest.fn()} />);

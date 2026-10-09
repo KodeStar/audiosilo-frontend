@@ -34,18 +34,22 @@ export function showWhoIsWho(playerOnTop: boolean) {
  * without rendering; the rules are `watchReveal` (only a natural crossing while playing:
  * never a load, a resume, a seek or a skip, though a pause or a file change on the way is
  * fine) and `revealOnCrossing` (never anyone already met this session, never a finished
- * book). The chapter is read at Who's who's place, gated by `useListeningChapter`
- * (`selectLivePosition`), so the toast and the panel always agree on who is there.
+ * book). The chapter is read at Who's who's place (`selectLivePosition`, as
+ * `useListeningChapter` reads it), and nobody the saved place already shows is news (the
+ * gate never reads below it), so the toast and the panel always agree on who is there.
  */
 function Watcher({
   target,
   characters,
   starts,
+  saved,
   finished,
 }: {
   target: PlayTarget;
   characters: BookMetaCharacter[];
   starts: number[];
+  /** The saved place (`useBookProgress`): Who's who already shows everyone up to it. */
+  saved: number | undefined;
   finished: boolean;
 }) {
   const { t } = useTranslation();
@@ -53,6 +57,9 @@ function Watcher({
   // Read when Show is pressed, not when the toast went up: it lives 8 s, and the full
   // player may have opened or closed since.
   const onTopNow = useLatest(() => playerOnTop);
+  // Read at a crossing, not a dependency: the place is saved every few seconds while the
+  // book plays, and restarting the watch would lose the sample before a boundary.
+  const savedChapter = useLatest(() => chapterNumberAt(starts, saved ?? 0));
   const announce = useLatest((met: BookMetaCharacter[], chapter: number) => {
     const key = contentKey(target.connectionId, target.libraryId, target.path);
     useCompanion.getState().markJustMet(
@@ -80,13 +87,14 @@ function Watcher({
       watch = seen.watch;
       const c = seen.crossing;
       if (!c) return;
-      const met = revealOnCrossing(characters, c.from, c.to, c.reached, finished);
+      const reached = Math.max(c.reached, savedChapter());
+      const met = revealOnCrossing(characters, c.from, c.to, reached, finished);
       if (met.length > 0) announce(met, c.to.chapter);
     };
     // The first look is where the book is now: a load or a resume, never a crossing.
     look(usePlayer.getState());
     return usePlayer.subscribe(look);
-  }, [characters, starts, finished, target, announce]);
+  }, [characters, starts, finished, target, announce, savedChapter]);
   return null;
 }
 
@@ -107,6 +115,7 @@ function BookWatch({ target }: { target: PlayTarget }) {
       target={target}
       characters={characters}
       starts={chapterStarts}
+      saved={progress?.position}
       finished={!!progress?.finished}
     />
   );
