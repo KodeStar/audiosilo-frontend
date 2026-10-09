@@ -699,6 +699,25 @@ function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
 
 // --- Start and stop -------------------------------------------------------------------------
 
+/**
+ * A car connected or left: what the sync's own connection listener does, exported for the
+ * iOS car start (`register-car-task.ios.ts`), whose listener registers first at a CarPlay-first
+ * launch and so receives the connect native queued before JS listened; the sync's listener,
+ * registered after, never sees that one. Safe to call twice for one event (a request joins the
+ * pending one, the adoption check is shared). A no-op until the sync is started.
+ */
+export function handleCarConnection(connected: boolean): void {
+  if (!active) return;
+  setCarConnected(connected);
+  if (!connected) return;
+  if (!carSeen) {
+    carSeen = true;
+    void setItem(CAR_SEEN_KEY, true);
+  }
+  request(true);
+  void checkLoadedBook();
+}
+
 /** Resolves once the last start's first steps (bootstrap, adopt, the bookmark drain) ran. */
 export function carSyncReady(): Promise<void> {
   return ready;
@@ -724,16 +743,7 @@ export function startCarSync(): () => void {
   /** The downloads registry's state signature last seen (a progress tick changes nothing). */
   let downloadsSig = statusSignature(useDownloads.getState().entries);
   stops = [
-    carNative.onConnection((connected) => {
-      setCarConnected(connected);
-      if (!connected) return;
-      if (!carSeen) {
-        carSeen = true;
-        void setItem(CAR_SEEN_KEY, true);
-      }
-      request(true);
-      void checkLoadedBook();
-    }),
+    carNative.onConnection(handleCarConnection),
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {

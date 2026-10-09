@@ -4,7 +4,7 @@ import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 
 import { isCarConnected } from './car-connection';
-import { carSyncReady, startCarSync } from './car-controller';
+import { carSyncReady, handleCarConnection, startCarSync } from './car-controller';
 import { carNative } from './car-native';
 
 /** How long the player must stay idle before the task says it is done. */
@@ -43,6 +43,32 @@ export async function runCarTask(): Promise<void> {
   startCarSync();
   await carSyncReady();
   await untilIdle(CAR_TASK_IDLE_MS);
+}
+
+let carWork: Promise<void> | null = null;
+
+/**
+ * iOS: the car's work without the React tree (`register-car-task.ios.ts` calls it when a car
+ * connects). A CarPlay-first launch runs React Native in a parking window that never gets a
+ * layout pass, so expo-router's SafeAreaProvider (no initial metrics on native) never hears
+ * its insets and renders nothing: the root layout, and every launch step and controller it
+ * starts, never runs until the phone app opens. So this starts what `runCarTask` starts on
+ * Android (the launch steps, the address pick, the place reconcile, the car sync), once per
+ * runtime; the root layout's own starts later are shared ones and add nothing. Nothing is
+ * stopped: the car's requests must keep finding their listeners.
+ *
+ * `connected` is the connection state the caller's listener heard last: that listener
+ * registers first, so the connect native queued before JS listened reaches it and never the
+ * sync's own listener, and is handed on here once the sync runs.
+ */
+export function startCarWork(connected: () => boolean): Promise<void> {
+  carWork ??= (async () => {
+    await bootstrapPlayback();
+    startAppControllers();
+    startCarSync();
+    handleCarConnection(connected());
+  })();
+  return carWork;
 }
 
 let controllersStarted = false;
