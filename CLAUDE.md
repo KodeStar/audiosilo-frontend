@@ -437,7 +437,7 @@ resolver with `useCommunityCover(cid, lib, path)` and passes it to the tabs as `
 (rails and previous rows both at 320, so a cover is fetched and cached once); the rules are `communityCoverSource` (`community-cover.ts`):
 proxied when the flag is on, else the direct `cover_url` on native and the placeholder on
 web (the player's CSP takes images only from the server), nothing while `/server` is
-unknown. A tab without `coverFor` shows placeholders. Progressive enhancement - **capability-gated** on
+unknown (an unreachable `/server` counts as no flag). A tab without `coverFor` shows placeholders. Progressive enhancement - **capability-gated** on
 server `metadata` (`!!server.capabilities.metadata`, absent on older servers) and nothing renders while
 loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 `useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so

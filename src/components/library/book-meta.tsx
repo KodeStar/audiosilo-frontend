@@ -431,11 +431,12 @@ function PreviousBookRow({
         <>
           <View className="w-10 overflow-hidden rounded-sm border border-black/10 dark:border-white/10">
             {/* Without art (none, or a web player whose server can't serve it), the
-                title's monogram rather than an empty square. */}
+                title's monogram rather than an empty square. 38: the w-10 frame less
+                its 1px border, so the frame stays square. */}
             <Cover
               source={coverFor(entry.cover_url, COMMUNITY_COVER_SIZE)}
               label={entry.title}
-              size={40}
+              size={38}
               rounded="rounded-sm"
             />
           </View>
