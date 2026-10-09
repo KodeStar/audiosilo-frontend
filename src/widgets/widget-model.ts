@@ -17,7 +17,7 @@ import {
 import { formatTimeLeft, timeLeft } from '@/playback/time-left';
 
 /**
- * The pure half of the iOS widgets (decision 9, contract 2.6): what the app writes into
+ * The pure half of the iOS widgets: what the app writes into
  * the `ContinueListening` widget and the `SleepTimer` Live Activity, and WHEN. Framework
  * free and platform free, so all of it is unit tested; `widget-sync.ios.ts` only wires
  * these to the stores and to expo-widgets.
@@ -129,7 +129,7 @@ export function emptyContinueListeningProps(t: TFunction): ContinueListeningProp
 // --- When to write the widget -------------------------------------------------------
 
 /** A move this far (book seconds) from where steady playback would be is a jump worth a
- * write (contract 2.6: "a jump over 30 s"). */
+ * write of its own. */
 export const JUMP_SECONDS = 30;
 /** While playing, refresh the time left and the progress bar at most this often. Reloads
  * are free while the app is the Now Playing app, but there is no point redrawing a

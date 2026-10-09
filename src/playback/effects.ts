@@ -1,5 +1,5 @@
 /**
- * Where Smart Speed and Voice Boost can work (contract decisions 6 and 7). Pure rules,
+ * Where Smart speed and Voice boost can work. Pure rules,
  * no engine: the speed sheet and Settings ask these to say why a switch is off or what it
  * applies to, and the web engine asks `supportsVoiceBoost` before it builds its graph.
  */

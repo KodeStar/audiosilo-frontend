@@ -48,7 +48,11 @@ Sessions in this repo run a fixed division of labour between models:
   `src/components/ui/icon-data.ts` and drawn with `react-native-svg` - the app has
   **no `@fortawesome/*` dependency** (so no token to build). To add/change an icon,
   edit `scripts/glyphs/manifest.mjs` and regenerate (see `scripts/glyphs/README.md`).
-- **expo-secure-store** for the session token; **AsyncStorage** for everything else.
+- **expo-secure-store** for the session token (`src/lib/secure-store.ts`; on iOS in an
+  after-first-unlock keychain service, so CarPlay can start a book on a locked phone: see Car
+  below); **AsyncStorage** for everything else.
+- **expo-widgets** for the iOS home screen widget and the sleep timer Live Activity
+  (`src/widgets/`, see Widgets below).
 
 ## ⚠️ Environment gotchas (read before running)
 - **Node 24 required.** RN 0.85 needs ≥20.19.4, and the Expo CLI's env-file loader
@@ -152,7 +156,7 @@ reading storage, without importing React; removing/signing out of a connection
 **purges** its scoped state through the `onConnectionRemoved` registry in
 `src/stores/session.ts`. Stale persisted state is reconciled once, before any store
 hydrates, by `resetStaleStorage()` (run inside the memoised launch migration `migrateStorage()`,
-`src/lib/storage-migration.ts`, which the root layout and ThemeProvider both await) along **two independent version axes** so cache churn
+`src/lib/storage-migration.ts`, which `bootstrapPlayback` (the launch steps, below) and ThemeProvider both await) along **two independent version axes** so cache churn
 can never log anyone out (`{ authReset, cacheReset }`):
 - **`AUTH_STORAGE_VERSION`** gates the auth wipe (connections + their secure-store session
   tokens). Session tokens never expire server-side, so wiping them is the ONLY thing that
@@ -166,7 +170,13 @@ can never log anyone out (`{ authReset, cacheReset }`):
   while keeping every login intact. A pre-existing install that predates this split adopts
   the cache version silently, without wiping its downloads.
 
-`_layout.tsx` wipes the downloads root via `engine.clearAll()` when **either** axis reset.
+**The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
+storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,
+then hydrating the session, settings, downloads, series orderings and library selection, with the
+listener's language applied alongside. The root layout calls it before any screen, and so does the
+Android car's headless task (Car below), which has no layout; a later activity on the same JS
+runtime finds it done. Add a new launch step there, never in `_layout.tsx` alone, or the car runs
+without it.
 `migrateStorage()` first writes the theme default (see Theme below), so the existing-install signal is read
 before the reset can rewrite the session keys - no effect-order contract.
 See `src/api/client.ts` + `src/api/types.ts`.
@@ -546,37 +556,87 @@ media GETs only.
   `service.web.ts` (HTML5 + Media Session) / `service.native.ts`, which is a thin
   bridge to the **custom native module** `modules/audiosilo-player` (AVQueuePlayer on
   iOS, Media3/ExoPlayer on Android - that module owns the audio session, background
-  audio, lock-screen/remote commands, gapless multi-file playback, and pitch-corrected
-  speed). `service.ts` is a throwing fallback for tsc only. (There is **no**
-  `register.native.ts` and no react-native-track-player - both are gone; the native
-  module registers its own background service.)
-- **The native module is where the OS-integration bugs live**, and it can only be
-  validated by a device rebuild. Known iOS gotchas now handled in
-  `AudiosiloPlayerModule.swift` (read its comments before touching it):
+  audio, lock-screen/remote commands, gapless multi-file playback, pitch-corrected
+  speed, the audio effects and the car). `service.ts` is a throwing fallback for tsc only.
+  (There is **no** `register.native.ts` and no react-native-track-player - both are gone; the
+  native module registers its own background service.)
+- **The module's surface** (`modules/audiosilo-player/src/AudiosiloPlayer.types.ts` +
+  `AudiosiloPlayerModule.ts`): the transport, `load(tracks, startIndex, position, chapters?,
+  book?)` (the chapter clips drive both lock screens; `book`, a `BookRef`, names the queue so an
+  engine that outlives the JS can say later which book it holds), `setConfig` (auto-rewind, skip
+  lengths, `smartSpeed`, `voiceBoost`), `setCarSnapshot(json)`, `getLoadedBook()` (Android; iOS
+  null) and `consumePendingBookmarks()` (Android; iOS `[]`); events `onRemoteMove`,
+  `onRateChange`, `onRemoteBookmark`, `onCarConnection`, `onCarPlayRequest` and
+  `onProgress.silenceSaved`. **Feature-detect every function added after the first shipped
+  builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
+  Expo function called with more arguments than it declares throws. So `load`'s 5th `book` is
+  passed only when the binary also has `getLoadedBook` (`moduleTakesBook` in
+  `service.native.ts`; the two ship together), the way `setVolume` is detected, and the car seam
+  (`src/car/car-native*.ts`) answers null / `[]` and never fires on an older binary. Events need
+  no detection (an older binary never sends them).
+- **Remote moves vs the resume floor.** The `resumeFloor` save guard (below) lowers only for a
+  deliberate move, and the lock screen, a headset, CarPlay and Android Auto (their chapter lists
+  too) move the engine without the JS asking. The module reports those as `onRemoteMove
+  {trackIndex, position}`, in file coordinates, **once the move has landed**;
+  `service.native.ts` updates its snapshot first (so a save inside the handler saves the landed
+  place), and the store's handler (`userMoved`) lowers the floor to it, counts it in
+  `localMoves` (a place reconcile in flight stands back) and persists. Without it a lock-screen
+  scrub back past the 60 s tolerance never saved. Never sent for JS-asked moves (`seekTo`,
+  `skipToTrack`, `load`), auto-rewind, Smart speed's skips or a file running on into the next.
+  `onRateChange` (iOS's rate command, CarPlay's rate button, an Android controller; already
+  applied) sets `rate` (clamped; only an out-of-range speed goes back to the engine) and
+  persists. The web has neither: its Media Session seeks go through the store (`onRemoteSeek`)
+  before the element moves.
+- **The iOS engine is split into files** (`modules/audiosilo-player/ios/`, read their comments
+  before touching them): `AudiosiloPlayerModule.swift` is only the Expo module definition;
+  `AudioEngine.swift` is the engine (one per module, `AudioEngine.shared` for CarPlay);
+  `ChapterClips.swift` the pure chapter-clip maths; `VoiceBoostTap.swift` + `VoiceBoostDSP.swift`
+  Voice boost; `AudioEngine+CarPlay.swift` what the CarPlay templates read (the loaded book from
+  `load`'s `book`, the chapters, the rate); the scene and CarPlay files are under Car below. A
+  native change needs a full rebuild; only `ChapterClips` and `VoiceBoostDSP` have a host check
+  (Tests below). Known iOS gotchas handled in `AudioEngine.swift`:
   - **Seek before ready.** Seeking a freshly-created `AVPlayerItem` before it reaches
     `.readyToPlay` is silently dropped (esp. streaming) - this made resume start from
     0. The resume/skip start position is **deferred** until `.readyToPlay`
     (`pendingSeek`/`applyPendingSeek`), with play gated (`wantsPlay`) so audio never
     briefly starts at 0. Android doesn't have this - Media3's `setMediaItems(items,
     startIndex, startPositionMs)` honors the start natively.
-  - **Single earbud press / "pause needs two presses".** `MPNowPlayingInfoCenter.
-    playbackState` is entitlement-gated and silently ignored for third-party apps, so
-    iOS infers our play state itself and can get stuck (sending Play while we're already
-    playing, so the press no-ops). Fix: route the play, pause AND toggle remote commands
-    all through one real-transport-state `togglePlayback()` (reads
-    `player.timeControlStatus`), so a single press always flips playback. (There is no
-    `syncPlaybackState` - that was an earlier, abandoned approach.)
+  - **Single earbud press / "pause needs two presses".** A device ignores
+    `MPNowPlayingInfoCenter.playbackState` for third-party apps, so iOS infers our play state
+    itself and can get stuck (sending Play while we're already playing, so the press no-ops).
+    Fix: route the play, pause AND toggle remote commands all through one
+    real-transport-state `togglePlayback()` (reads `player.timeControlStatus`), so a single
+    press always flips playback. The engine still sets `playbackState` (`syncPlaybackState`,
+    on every `timeControlStatus` change, whole-info rewrite and `reset`) because the
+    **Simulator** honours it: without it CarPlay's Simulator window reads the app as paused. It
+    is not the earbud fix; don't lean on it on a device.
   - **Interruption auto-resume.** Only resume on interruption `.ended` if we were
     actually playing when it began (`wasPlayingBeforeInterruption`) - otherwise the
     charging chime (a brief interruption) resumes a paused book.
-- **Android lock screen = chapter controls (Audible parity)** (`AudiosiloPlayerService.kt`
-  + `AudiosiloPlayerModule.kt`). Each **chapter is a clipped `MediaItem`**
-  (`MediaItem.ClippingConfiguration`, built from the `chapters` arg to `load`), so the
-  system scrubber is **chapter-relative** and `COMMAND_SEEK_TO_*_MEDIA_ITEM` give
-  **prev/next chapter**; **30s skip buttons** use Media3's **predefined** `CommandButton`
-  icon constants (`ICON_SKIP_BACK_30`/`ICON_SKIP_FORWARD_30`, since Media3 **1.5.0** - no
-  app-shipped drawable, not icon-less, so the old "Android 16 drops icon-less actions"
-  problem is gone), wired as **custom session commands** (`setSessionCommand` +
+  - **Chapter Now Playing (parity with Android).** `load` keeps the chapter clips (the same
+    clips Android plays as items; one naming a file outside the tracks drops back to file
+    mode, as `buildChapterClips` does). With 2+ clips Now Playing shows the chapter: its title,
+    the book as album, a chapter-relative duration and elapsed, chapter number and count. The
+    1 s tick updates only elapsed and rate unless the playhead crossed into another clip. The
+    scrubber's time is chapter-relative (clamped into the shown clip); next track = the next
+    clip (across files through `skip(to:position:)`), previous restarts the clip past 3 s
+    (`ChapterClips.restartThreshold`, Media3's rule), else the previous one. 0 or 1 clips:
+    whole-file info and next/previous file. Which of the skip or track buttons the lock screen
+    draws is iOS's choice; headsets and CarPlay send the track commands.
+    `changePlaybackRateCommand` lists `supportedPlaybackRates` 0.75-2 (CarPlay's rate button
+    needs it), and Now Playing always carries `DefaultPlaybackRate`, so CarPlay doesn't read 0x
+    while paused.
+- **Android: a `MediaLibraryService` with chapter controls (Audible parity)**
+  (`AudiosiloPlayerService.kt` + `AudiosiloPlayerModule.kt` and helpers). The service is a
+  Media3 `MediaLibraryService` (Android Auto browses it too, Car below) whose session player is
+  `AudiobookPlayer`; the module drives it through a `MediaController`. Each **chapter is a
+  clipped `MediaItem`** (`MediaItem.ClippingConfiguration`, built from the `chapters` arg to
+  `load`), so the system scrubber is **chapter-relative** and `COMMAND_SEEK_TO_*_MEDIA_ITEM`
+  give **prev/next chapter**. The **skip buttons** seek by the listener's skip lengths
+  (`PlayerConfig`) and wear the nearest of Media3's **predefined** `CommandButton` icons
+  (`ICON_SKIP_BACK_5/10/15/30`, `ICON_SKIP_FORWARD_*`, since Media3 **1.5.0** - no app-shipped
+  drawable, not icon-less, so the old "Android 16 drops icon-less actions" problem is gone),
+  wired as **custom session commands** (`setSessionCommand` +
   `MediaSession.Callback.onCustomCommand` → `player.seekBack()/seekForward()`), **NOT**
   `COMMAND_SEEK_BACK/FORWARD` - those map to the legacy `ACTION_REWIND`/`FAST_FORWARD` that
   the modern Android media UI silently ignores (`dumpsys media_session` showed
@@ -586,21 +646,74 @@ media GETs only.
   whereas `setCustomLayout` makes the provider emit standard `[prev, play, next]` (auto, when
   the seek-to-prev/next commands are available) **+** the custom skip buttons = all 5
   actions, alongside the draggable chapter scrubber → the full lock-screen row
-  `[prev-ch] [scrubber] [next-ch] [back-30] [fwd-30]` (`dumpsys`: `actions=5`,
-  device-verified on a Pixel). The **app logo** is
-  the notification small icon (`DefaultMediaNotificationProvider.setSmallIcon` +
+  `[prev-ch] [scrubber] [next-ch] [back] [fwd]` (`dumpsys`: `actions=5`, device-verified on a
+  Pixel). A third custom button, the bookmark (`audiosilo.BOOKMARK`), is left out of the
+  notification's own actions by our `NotificationProvider` (so the phone keeps its five) and
+  shows in Android Auto's overflow. The **app logo** is the notification small icon
+  (`DefaultMediaNotificationProvider.setSmallIcon` +
   `android/.../res/drawable/ic_notification.xml`). `AudiobookPlayer` (a `ForwardingPlayer`)
   still applies auto-rewind on every `play()` and hides prev/next **only when there's a
-  single item** (a chapterless single-file book, so "previous" can't restart it). **The JS
-  store + iOS stay file-based**: the Android module translates between its chapter clips and
-  the file-relative `(trackIndex, position)` the bridge reports (`ChapterMap`
-  `fileToItem`/`itemToFile`); `buildChapterClips` (`book-queue.ts`) returns `[]` for 0/1
-  chapters → one item per file (today's behavior). A `SimpleCache`/`CacheDataSource` keeps
-  clipped single-file **streaming** gapless (clips re-open the same URL) - gapless was
-  device-verified on a Pixel (no audible gap at chapter boundaries); the safety fallback if
-  a future device regresses is to make `buildChapterClips` return `[]` for single-file
-  books. iOS keeps `preferredIntervals` + a whole-file Now Playing scrubber (chapter parity
-  on iOS is a follow-up).
+  single item** (a chapterless single-file book, so "previous" can't restart it).
+  - **The JS store + iOS stay file-based**: the Android module translates between its chapter
+    clips and the file-relative `(trackIndex, position)` the bridge reports through
+    `TimelineMap` (in `MediaItems.kt`: `fileToItem`/`itemToFile`), built from each item's own
+    `MediaMetadata.extras` (`fileIndex`, `startInFile`, the file's duration, plus the
+    `BookRef`), so it is right for a queue the module loaded AND for one the service loaded
+    itself (the car). Items are built by one `MediaItems.buildQueue` / `toClipItem`.
+    `buildChapterClips` (`book-queue.ts`) returns `[]` for 0/1 chapters → one item per file. A
+    `SimpleCache`/`CacheDataSource` keeps clipped single-file **streaming** gapless (clips
+    re-open the same URL) - device-verified on a Pixel; the safety fallback if a future device
+    regresses is to make `buildChapterClips` return `[]` for single-file books.
+  - **Who moved the player.** The module's controller connects with the hint
+    `audiosilo.app=true`; `PlayerBridge.isAppController` requires the hint **and**
+    `controller.uid == Process.myUid()` (any app can send the hint; Media3's own notification
+    controller shares the uid but not the hint). `AudiobookPlayer` reports a seek, skip or
+    speed change from any other controller (`isRemoteRequest`; the custom skip commands, which
+    the session doesn't attribute, pass their origin through `withOrigin`). The service's own
+    moves (auto-rewind, a car play spec's rate) run inside `internal { }` and never count: **a
+    new service-made seek or speed change must go through `internal { }`**, or JS reads it as
+    the listener's and lowers the resume floor. The module emits `onRateChange` at once and
+    `onRemoteMove` once its own controller has caught up (its next position discontinuity, or
+    300 ms).
+  - **The exported service is a security boundary.** Auto and the system bind to it, and
+    Media3's default would accept any item carrying a URI and fetch it with the session's auth
+    header. So `onAddMediaItems` refuses every controller but the app's, `onSetMediaItems` from
+    another controller takes only car item ids and voice queries, and `AuthHolder` adds the
+    bearer token **only to requests to the origin of the loaded book's tracks** (never to
+    another host an item or artwork URI names). Keep all three when touching the service.
+  - **`PlayerConfig` persists** (auto-rewind and the skip lengths, in the `audiosilo.player`
+    SharedPreferences, beside the effects switches) whenever `setConfig` changes it, and the
+    service restores it in `onCreate`, so a book the car starts with no JS honours the
+    listener's Settings.
+- **Smart speed and Voice boost** (two device-wide settings, `smartSpeed` / `voiceBoost` in
+  `src/stores/settings.ts`, off by default, reaching the engine through `configure`; the pure
+  platform rules in `src/playback/effects.ts`; ONE `EffectsSettings` component in both the
+  speed sheet and Settings > Playback; no wire change). **Voice boost** runs everywhere it can,
+  with one native preset (80 Hz high-pass, -20 dBFS, 3:1, 6 dB soft knee, +12 dB make-up,
+  -1 dBFS limiter: the per-sample peak detector puts the unity point at -2 dBFS, above
+  narration's peaks, so the make-up is never taken back): Android a `VoiceBoostProcessor` after
+  Sonic (always active; the switch ramps dry/wet over ~20 ms, since toggling `isActive` would
+  flush the sink: a gap and a position jump); iOS an `MTAudioProcessingTap` per item running
+  `VoiceBoostDSP` (no allocation, locks or Swift refcounting on the render thread; every item
+  gets its tap before it plays, switch on or off, for the current item and two ahead, because
+  setting `audioMix` on a playing item is a ~1 s dropout); the web a Web Audio
+  compressor/trim/limiter, never in WebKit-only browsers (choppy, ignores `playbackRate`,
+  suspends when locked) and for same-origin sources only (a cross-origin element routed through
+  Web Audio plays zeroes). **Smart speed is Android only**: `NarrationSilenceProcessor` (a
+  vendored port of Media3 1.11.1's silence skipper; 1.5.1's keeps a quarter of the padding)
+  heads `AudiosiloAudioChain` (silence → Sonic → boost, so skipped frames are book time and the
+  boost's attack and release are real time). The switches reach the service as
+  `audiosilo.SET_EFFECTS` and persist in SharedPreferences, so a service started without JS
+  applies them. **Not on iOS** (withdrawn after a device test): a tap can't drop frames, and
+  changing AVPlayer's rate while it plays is an audible dropout, so it stuttered at every
+  pause; a real version needs an `AVAudioEngine` path for downloaded books. iOS ignores
+  `config.smartSpeed` and sends no `silenceSaved`, and the switch says why. **Time saved**
+  (`src/playback/time-saved.ts`): `silenceSaved` is Android's process-wide, monotonic total;
+  `silenceDelta` counts only its growth (the first total this JS sees is a base, since the
+  service can outlive the JS), per book (`contentKey`) and lifetime, in
+  `persistedDocument('audiosilo.timeSaved')`, flushed on a halt, on leaving the foreground and
+  every 30 s (an `engineTicker`), purged per connection; read through `useTimeSaved` /
+  `useBookTimeSaved`.
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
@@ -613,7 +726,7 @@ media GETs only.
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
   `server_id` id scheme) can't be re-keyed, so the one-time `resetStaleStorage()` bump
   clears the registry and `engine.clearAll()` wipes the whole downloads root once (run
-  from `_layout.tsx` before the stores hydrate). `onConnectionRemoved` deletes a removed
+  by `bootstrapPlayback` before the stores hydrate). `onConnectionRemoved` deletes a removed
   server's downloaded files.
 - **Stream the file, not the book.** A track URL must be a real audio file
   (a chapter's `file_path` or a `BookFile.rel_path`) - **never** a folder/book path.
@@ -718,6 +831,139 @@ media GETs only.
   (`transcodeStartAt`): at the very end there is nothing to encode and the element errors
   instead of ending.
 
+**Car (CarPlay and Android Auto)** (`src/car/`, the native side in `modules/audiosilo-player`;
+the full write-up is the docs' `docs-developers/frontend/native-integrations.md`). No wire change.
+- **JS decides what the car lists.** Native has no strings, no session and no server, so
+  `car-model.ts` (pure, `buildCarSnapshot`) builds ONE JSON snapshot and hands it over with
+  `setCarSnapshot`; native keeps the last one on disk, so a car shows its lists at once, before
+  or without JS. It holds the localized labels and up to four tabs: Continue listening (Home's
+  rule, the loaded book first), Up next (the queue the app shows, `queueConnectionId`; left out
+  when that server lacks `queue`), Downloads, and the Library tab's library. An item's id is
+  `carItemId` (`book:` + the URI-encoded connection id, library id and path: never a DB id),
+  and it carries its `BookRef` so native compares fields instead of decoding the id. Covers are
+  files the app wrote (`car-artwork.ts`), never URLs. **Play specs are Android only**: a
+  downloaded book's item carries `file://` tracks with NO headers, its chapter clips, its start
+  (`resumeStart`) and rate, so the service can start it with no JS; no session token ever
+  leaves expo-secure-store for the car.
+- **`car-controller.ts`** (`startCarSync`, from the root layout and the car task; a no-op on the
+  web and on a binary without the car functions) **builds nothing until a car has connected on
+  this device** (`audiosilo.carSeen`), so a phone that never meets a car never builds a
+  snapshot or fetches car covers. Then: at start, on a car connect, a language change, a book
+  starting or pausing in the car, and 2 s after the lists, queue, downloads, connections,
+  library selection or default speed change; never two writes within 2 s. It never overwrites
+  native's snapshot with a worse one (not while `sessionHydrateFailed()`, not with unreadable
+  lists once one was written). Every write, play request, adoption and bookmark drain waits for
+  `bootstrapPlayback()`. It answers `onCarPlayRequest` (`handleCarPlayRequest`: the loaded book
+  plays on, never restarted; any other starts through `startBookInPlace` from its saved place,
+  a downloaded one from its download) and **bookmarks**: `carNative.onBookmark` (the module's
+  `onRemoteBookmark`, carrying the engine's own book) adds one through the framework-free
+  `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
+  place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
+  JS (`consumePendingBookmarks`) drain at start and on every foreground, and one that can't
+  reach its server waits under `audiosilo.carBookmarks`.
+- **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
+  item, chapters and local files: the download's copy, else through the query cache),
+  `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
+  `startBookInPlace`, `adoptLoaded` and the car's play specs share it, so the car and the
+  phone start a book at the same place.
+- **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
+  car sync) is read by `auto-sleep-controller.ts`, so the nightly timer never pauses a driver.
+  It is its own module so neither reader imports the car sync.
+- **Android Auto.** `LibraryCallback` + `CarBrowseTree` answer browsing from the snapshot;
+  `ArtworkProvider` serves only covers the current snapshot names inside the app's data
+  directory. `playFromCar`: the book already loaded plays on; a downloaded book starts from its
+  spec **only when no JS runtime exists** (with JS running, JS may hold another book as
+  `nowPlaying`, and swapping the engine under it would save one book's place as another's);
+  anything else emits `onCarPlayRequest` and completes with the module's next `load` (10 s, then
+  `labels.unavailable`). Voice ("play X on AudioSilo") goes through `playFromSearch`; there is
+  no search button. `ResumptionReceiver` refuses to start the foreground service when nothing
+  is resumable (one that doesn't start playback within seconds crashes the app,
+  `ForegroundServiceDidNotStartInTimeException`); `CarConnectionMonitor` reads the Auto host's
+  connection provider (Media3 only notices a legacy controller leaving by timeout).
+  - **Headless JS.** When the service needs JS (a car play, a book playing with no JS that
+    must save, a pending bookmark, Auto connecting), `JsRuntime.ensure` starts the app's
+    `ReactHost` in-process (not a `HeadlessJsTaskService`: Android 12+ forbids starting a
+    service from the background, and we already run inside one) and then the headless task
+    `AudiosiloCar`, even in an already running runtime (React Native fires JS timers with no
+    activity resumed only while a task runs, and the snapshot writes are timers). `index.ts`
+    (`package.json` `main`) imports `src/car/register-car-task` (empty except on Android)
+    **before** `expo-router/entry`. `runCarTask` (`car-task.ts`) runs `bootstrapPlayback()`,
+    starts address routing, the place reconcile and the car sync, and resolves once no car is
+    connected and the player has been idle `CAR_TASK_IDLE_MS` (30 s).
+  - **Adopting.** `getLoadedBook()` names a book the service loaded without JS (the car
+    started it, or it kept playing while JS restarted). The controller calls the store's
+    `adoptLoaded(book)` (at start, on a car connect, on the foreground, and when the engine
+    moves file or starts playing on its own), which builds the queue from `bookSourceOf`, sets
+    `nowPlaying` and the rate, makes the resume floor the engine's place, seeds the bridge
+    (`adoptPlace`, so the next tick maps onto the right file) and, if playing, runs the
+    pick-up check before its first save, all **without `svc.load`** (a reload would cut the
+    audio). Regression tests: `store-adopt.test.ts`.
+- **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over an SDK 56
+  AppDelegate fixture by `withCarPlay.test.ts`). Declaring any scene moves the whole iOS app
+  onto the UIScene life cycle (the iOS 27 SDK will require it anyway), where UIKit never shows
+  a window the app delegate made. So the plugin writes a phone scene and a CarPlay scene into
+  the manifest, and rewrites the AppDelegate so the template's window creation +
+  `startReactNative` become a stored starter (`AudiosiloScenes.configure`) that the first scene
+  to connect runs (a CarPlay-first launch, maybe with the phone locked, into an off-screen
+  parking window the phone scene adopts later). **The template text is matched exactly and any
+  other text fails the prebuild** (a silent miss would ship a black screen), so an Expo SDK bump
+  updates the plugin and its fixture. **Plugin order**: mods of one kind run in REVERSE
+  registration order, so **no plugin that rewrites the AppDelegate may be listed after
+  `withCarPlay` in `app.json`** (its edit would run first and break the match). The
+  `com.apple.developer.carplay-audio` entitlement is added only with **`AUDIOSILO_CARPLAY=1`**
+  at prebuild: a device build carrying it can't be signed until Apple grants it, and without
+  it iOS never connects the CarPlay scene (the scene code still ships). The phone scene
+  delegate rebuilds launch options from `connectionOptions` and re-feeds URLs and user
+  activities to the app delegate: **pairing deep links, cold and warm, are the regression to
+  check** after any change here. The templates (`AudiosiloCarPlaySceneDelegate.swift`): a tab
+  bar of lists from the snapshot; a tap always asks JS (`onCarPlayRequest`: JS has the session,
+  the saved place and the queue rules) and pushes Now Playing once the engine reports the book
+  (gives up after 10 s); Now Playing reads the engine's chapter info and adds a chapter list, a
+  rate button and a bookmark button. Car events wait in `AudiosiloCarEvents` until JS listens.
+- **Tokens on a locked phone** (`src/lib/secure-store.ts`). CarPlay starts books with the phone
+  in a pocket, and the default `WHEN_UNLOCKED` keychain item can't be read then. On iOS tokens
+  live in their own keychain service, `audiosilo.tokens.afu`, written `AFTER_FIRST_UNLOCK`: a
+  separate service because expo-secure-store's re-save of an existing item updates only its
+  data, never its accessibility. `getSecure` moves an old item on first read (write the new,
+  read it back, and only when it reads back equal delete the old; never delete first);
+  `deleteSecure` deletes both; `AUTH_STORAGE_VERSION` is untouched, so nobody re-pairs.
+  **A locked hydrate waits** (`session.ts`): a hydrate that fails only on the locked keychain
+  (`isLockedKeychainError`, "interaction is not allowed") keeps `status` on `loading` (screens
+  show their spinner, never the connect screen) and retries every `LOCKED_RETRY_MS` (5 s) and on
+  the foreground; any other failure is `unauthenticated`. While `sessionHydrateFailed()`,
+  nothing may treat the empty connection list as real (the offline queue keeps its saves, car
+  bookmarks are kept, the car snapshot isn't rewritten as signed out).
+
+**Widgets and the Live Activity (iOS only)** (`src/widgets/`, `expo-widgets` 56.0.27, whose
+Android side is a stub, so `widget-sync.ts` is the no-op everywhere else).
+`continue-listening.tsx` and `sleep-timer-activity.tsx` are `'widget'` functions:
+babel-preset-expo turns each into a source string the extension evaluates in its own
+JavaScriptCore with `@expo/ui/swift-ui` as globals. So **no hooks, nothing from module scope,
+imports only from those modules under their original names, the system font, and every string
+arriving in props, already localized.** `widget-model.ts` (pure, tested) decides what to write
+and when; `widget-sync.ios.ts` (`startWidgetSync`, root layout; it requires expo-widgets lazily
+behind a native-module check, since importing it on an older binary throws) rewrites the widget
+on a book, chapter, play/pause or speed change, a jump over 30 s, a stop and once a minute while
+playing, coalesced per `MIN_WRITE_MS`, with covers written into the widgets directory once per
+book (the extension can't fetch; only when `fitsCover` says the file is small enough, as there is
+no resizer). The Live Activity starts only in the foreground (ActivityKit's rule), ends
+immediately when the timer fires or is cancelled, and has no buttons (expo-widgets has no
+`AudioPlaybackIntent`, so a button would run in the extension and never reach the player).
+`plugins/withWidgetsNoPush.js` strips the `aps-environment` expo-widgets 56 adds
+unconditionally (the app sends no push, and every profile would otherwise need the capability);
+it and `withXcode26SwiftUICoreFix` are listed BEFORE `expo-widgets` so they run after it. A
+store build needs the App Group `group.app.audiosilo` and the extension `app.audiosilo.widget`
+provisioned. **A dev build beside the store app needs its own ids** for the app, the extension
+and the group, edited after prebuild (the list is in the docs' Testing page); a half-patched
+build signs but shows an empty widget.
+
+**Links into the app keep their encoding** (`src/app/+native-intent.tsx`, `redirectSystemPath`;
+the rule is `appLinkPath` in `src/lib/native-intent.ts`): an `audiosilo://` link (the widget, the
+Live Activity, a pairing link) becomes a plain path before Expo Router sees it, because Expo
+Router decodes an app-scheme URL's query values and joins them back unencoded, which split a path
+holding `&`, `#`, `+` or `%XX` ("Austen/Pride & Prejudice"). The development client's own links
+pass through as they are.
+
 **Tests** - new logic ships with a unit test. Pure, framework-free modules get
 direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
 `progress-sync.ts`, `src/stores/*` (see the co-located `*.test.ts`). Keep logic out
@@ -725,7 +971,15 @@ of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo (jest 29
 + @testing-library/react-native 14** - matchers are built in (no `jest-native`);
 `jest.setup.ts` provides in-memory mocks for `expo-secure-store` + AsyncStorage,
 and tests mock `fetch` / `@/api/reachability` as needed. Flip `Platform.OS` at
-runtime to cover web-vs-native branches.
+runtime to cover web-vs-native branches. **Jest proves nothing about Swift or Kotlin.** The
+native module's pure parts have checks of their own that need no device: the Android JVM tests
+(`TimelineMapTest`, `NarrationSilenceProcessorTest`, `VoiceBoostProcessorTest`; after an
+Android prebuild, `./gradlew :audiosilo-player:testDebugUnitTest` under JDK 17) and the iOS
+host self-check for `ChapterClips.swift` + `VoiceBoostDSP.swift`
+(`modules/audiosilo-player/ios/SelfCheck/run.sh`, Xcode toolchain only). Android Auto needs the
+Desktop Head Unit, CarPlay the Simulator (prebuilt with `AUDIOSILO_CARPLAY=1`), and lock
+screens, the effects by ear, widgets and the locked-phone token read a device; the docs' Testing
+page has the steps.
 
 **Styling**: use `className` on core RN components (**Uniwind**, Tailwind v4; Metro wires
 it in via `withUniwindConfig` in `metro.config.js`, so there is no babel preset). Never
@@ -1327,13 +1581,18 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
 ```
 src/app/            Expo Router routes ((app) tab groups, connect/, player + finished modals)
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
-src/playback/       PlaybackService + web/native engines, store, book-queue, progress-sync
+src/playback/       PlaybackService + web/native engines, store, book-queue, book-source, progress-sync, effects, time-saved
+src/car/            CarPlay + Android Auto JS: snapshot model, car sync controller, headless task, native seam
+src/widgets/        iOS widget + sleep timer Live Activity ('widget' functions, model, sync)
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
 src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, you/ (the You hub: stats/, year/), settings/ (Settings panes), account/ (the account page), connect/ (onboarding), library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
 src/stores/         Zustand: session, search, settings, series-orderings
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider
-src/lib/            storage, secure-store, device, paths, format, register-sw
+src/lib/            storage, secure-store, bootstrap (launch steps), native-intent, device, paths, format, register-sw
+modules/audiosilo-player/   the native playback module (ios/ Swift, android/ Kotlin, src/ its TS surface)
+plugins/            config plugins: withCarPlay, withWidgetsNoPush, withXcode26SwiftUICoreFix
+index.ts            app entry: registers the car task, then expo-router/entry
 ```
 
 @AGENTS.md

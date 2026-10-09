@@ -13,13 +13,14 @@ import type {
 declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEvents> {
   /** Initialise the audio session / media session (idempotent). */
   setup(): Promise<void>;
-  /** Update runtime tunables (rewind, lock-screen skip intervals). */
+  /** Update runtime tunables (rewind, lock-screen skip intervals, the audio effects). */
   setConfig(config: PlayerConfig): Promise<void>;
   /** Load a queue and position to `startIndex` at `positionInTrack` seconds (does not
    * auto-play). `chapters` gives the lock screen a chapter scrubber + prev/next chapter
    * (Android makes each a clipped media item; iOS maps the file place onto them); omit/empty
-   * for file-per-item. `book` (Phase 6) names the book: Android's `getLoadedBook`, and on iOS
-   * CarPlay's playing indicator. */
+   * for file-per-item. `book` names the book: Android's `getLoadedBook`, and on iOS
+   * CarPlay's playing indicator. A binary that predates it throws on a 5th argument, so
+   * `service.native.ts` passes it only when `getLoadedBook` exists (the two ship together). */
   load(
     tracks: NativeTrack[],
     startIndex: number,
@@ -52,13 +53,13 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
    * foreground (Android keeps the dismissed process cached, so the next open is a
    * warm resume on the last route). iOS cold-starts on relaunch, so it's always false. */
   consumeTaskRemoved(): boolean;
-  /** Phase 6, both platforms: hand native the car snapshot (JSON) for CarPlay / Android Auto. Native
+  /** Both platforms: hand native the car snapshot (JSON) for CarPlay / Android Auto. Native
    * keeps the last one on disk so the car shows it at once next time. Absent on older binaries. */
   setCarSnapshot?(json: string): Promise<void>;
-  /** Phase 6, Android: the book the service has loaded, else null (iOS: always null). Absent on
+  /** Android: the book the service has loaded, else null (iOS: always null). Absent on
    * older binaries. */
   getLoadedBook?(): Promise<LoadedBook | null>;
-  /** Phase 6, Android: bookmarks pressed while no JS ran, oldest first, cleared by the read (iOS:
+  /** Android: bookmarks pressed while no JS ran, oldest first, cleared by the read (iOS:
    * []). Absent on older binaries. */
   consumePendingBookmarks?(): Promise<PendingBookmark[]>;
 }

@@ -19,7 +19,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Voice Boost (Phase 6 contract, decision 7): makes quiet narration easier to follow in noise.
+ * Voice boost: makes quiet narration easier to follow in noise.
  * Placed AFTER Sonic in [AudiosiloAudioChain], so it sees the sped-up signal and its timings are
  * real time. 16-bit PCM in and out (the sink's float output is off, so the chain is always
  * 16-bit). Every channel shares one gain (stereo-linked), so the image never shifts.
@@ -260,7 +260,7 @@ class VoiceBoostProcessor(
     private val DB_PER_LN = 20.0 / ln(10.0)
 
     const val HIGH_PASS_HZ = 80.0
-    // The stronger preset (Phase 6 device pass): -24 dBFS / +6 dB was hard to hear. The
+    // The stronger preset (after a device test): -24 dBFS / +6 dB was hard to hear. The
     // detector follows sample PEAKS, so normal narration (-22..-25 dBFS RMS) sits well above a
     // low threshold: -30 / +9 had its unity point at -16.5 dBFS and lifted it by only ~1 dB.
     // -20 / +12 lifts quiet speech ~10-11 dB, normal ~8.5 dB, loud (-17 RMS) ~5.5 dB, and the

@@ -1,7 +1,7 @@
 import AVFoundation
 import MediaToolbox
 
-// Voice Boost on iOS: an MTAudioProcessingTap per AVPlayerItem running VoiceBoostDSP.swift (an
+// Voice boost on iOS: an MTAudioProcessingTap per AVPlayerItem running VoiceBoostDSP.swift (an
 // 80 Hz high-pass, a soft-knee compressor, make-up gain, a peak limiter), the same numbers as
 // Android's VoiceBoostProcessor so the two platforms sound alike.
 //

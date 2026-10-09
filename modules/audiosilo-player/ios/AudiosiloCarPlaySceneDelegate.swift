@@ -2,7 +2,7 @@
 import CarPlay
 import UIKit
 
-/// The CarPlay scene (Phase 6). Named in Info.plist's scene manifest by
+/// The CarPlay scene. Named in Info.plist's scene manifest by
 /// `plugins/withCarPlay.js`, hence the stable @objc name. iOS connects it only when the app is
 /// signed with `com.apple.developer.carplay-audio` (opt-in at prebuild, `AUDIOSILO_CARPLAY=1`).
 ///

@@ -19,7 +19,7 @@ import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
 import type { SleepTimerActivityProps } from './widget-model';
 
 /**
- * The sleep timer Live Activity (decision 9): the book, its chapter and the countdown, on
+ * The sleep timer Live Activity: the book, its chapter and the countdown, on
  * the lock screen and in the Dynamic Island, while a sleep timer counts down. Started by
  * the app in the foreground when a timer is set, ended the moment it fires or is
  * cancelled (`widget-sync.ios.ts`).

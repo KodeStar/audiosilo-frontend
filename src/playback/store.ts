@@ -287,7 +287,7 @@ type PlayerState = {
   /** Present the OS audio-route / casting picker (AirPlay, Android output switcher, web
    * Remote Playback). No-op if the engine doesn't support it. */
   showRoutePicker: () => Promise<void>;
-  /** Phase 6, Android: take over the book the playback SERVICE has loaded (the car started
+  /** Android: take over the book the playback SERVICE has loaded (the car started
    * it, or it kept playing while the app's JS restarted) WITHOUT reloading the engine: the
    * queue is built as `playBook` builds it, the place and speed are the engine's, and the
    * resume floor is that place, so the save loop saves under that book from where it is.
@@ -1171,7 +1171,7 @@ async function switchCurrentBookToLocal() {
 }
 
 /**
- * `adoptLoaded` (Phase 6, Android): the playback service can hold a book JS never loaded (a
+ * `adoptLoaded` (Android): the playback service can hold a book JS never loaded (a
  * downloaded book the car started with no JS running, from the car snapshot's play spec), or
  * keep playing one after the app's JS restarted. Adopting it gives the store that book
  * exactly as `playBook` would have built it, without `svc.load` (the engine is already

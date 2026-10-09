@@ -20,7 +20,7 @@ import type {
 } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
 
 /**
- * The car snapshot (Phase 6 contract, section 3): what CarPlay and Android Auto list, built
+ * The car snapshot: what CarPlay and Android Auto list, built
  * by JS because native has no strings, no session and no server of its own. Pure and
  * framework-free; `car-controller.ts` gathers the inputs (the progress lists, the queue, the
  * downloads registry, the selected library, the artwork files, the resume lookups) and hands
@@ -261,9 +261,10 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
  * How Android starts a downloaded book with no JS: its queue exactly as `playBook` builds it
  * for a downloaded book (`buildBookQueue` over the local files, the chapter clips), at the
  * place `playBook` would resume it from. `lookup` is `loadInitialProgress`'s answer (the
- * newest of the server row, the local mirror and the offline queue), read the way `playBook`
- * reads it: an unfinished book resumes at its saved place, a finished one starts again at 0,
- * and its saved speed wins over the default. Undefined when a file has no local copy.
+ * newest of the server row, the local mirror and the offline queue), read through
+ * `resumeStart` (`book-source.ts`) as `playBook` reads it: an unfinished book resumes at its
+ * saved place, a finished one starts again at 0, and its saved speed wins over the default.
+ * Android only (iOS always lets JS start a book). Undefined when a file has no local copy.
  */
 export function playSpec(
   ref: BookRef,
@@ -299,8 +300,9 @@ export type CarSnapshotInput = {
   generatedAt: string;
   labels: CarLabels;
   signedIn: boolean;
-  /** Each tab's books in order. `upnext` null: the default server keeps no queue, so the
-   * tab is left out. */
+  /** Each tab's books in order. `upnext` null: the server whose queue the app shows
+   * (`queueConnectionId`: the loaded book's, else the default, else the first) has no `queue`,
+   * so the tab is left out. */
   books: Record<Exclude<CarTabId, 'upnext'>, CarBook[]> & { upnext: CarBook[] | null };
 };
 

@@ -28,7 +28,7 @@ import { createWidget, type WidgetEnvironment } from 'expo-widgets';
 import type { ContinueListeningProps } from './widget-model';
 
 /**
- * The "Continue listening" home screen widget (decision 9): the book that is loaded (or
+ * The "Continue listening" home screen widget: the book that is loaded (or
  * was last), display only, opening its player on a tap.
  *
  * The function below is NOT React. The `'widget'` directive makes babel-preset-expo turn

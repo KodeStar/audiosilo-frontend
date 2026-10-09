@@ -8,7 +8,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.session.MediaConstants
 
 /**
- * The Android Auto browse tree, answered from the car snapshot (contract section 3):
+ * The Android Auto browse tree, answered from the car snapshot (`src/car/car-model.ts`):
  * root -> up to four browsable tabs (Continue listening, Up next, Downloads, Library) -> books
  * (playable, shown as a grid with their cover, completion and download state). Auto doesn't
  * page, so each tab is the snapshot's own trimmed list. Signed out, or a tab with no books: a

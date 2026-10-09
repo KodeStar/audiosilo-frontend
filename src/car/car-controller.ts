@@ -71,16 +71,21 @@ import { isCarConnected, setCarConnected } from './car-connection';
 import { carNative } from './car-native';
 
 /**
- * CarPlay and Android Auto, the JS side (Phase 6 contract, sections 3 and 4). Framework-free,
- * started once from the root layout and from the car's headless task (`car-task.ts`):
+ * CarPlay and Android Auto, the JS side. Framework-free, started once from the root layout
+ * and from the car's headless task (`car-task.ts`):
  *
  * - **The car snapshot**: built (`car-model.ts`) and handed to native only once a car has
  *   connected on this device (a phone that never meets a car never builds one, nor
  *   downloads car covers): at start, when a car connects (always a fresh build: native
- *   shows the last one it was handed at once, then this one), when the progress lists, the
- *   Up next queue or the downloads registry change (after `SETTLE_MS`), when the language
- *   changes, and, while a car is connected, when a book starts or pauses; never more often
- *   than every `MIN_GAP_MS`. Its covers are files the app wrote: a downloaded book's own
+ *   shows the last one it was handed at once, then this one), after adopting a book the
+ *   service loaded, when the language changes, while a car is connected when a book starts
+ *   or pauses, and `SETTLE_MS` after the progress lists, the Up next queue, the downloads
+ *   registry, the session's connections or default, the library selection or the default
+ *   speed change (and once covers a written snapshot lacked have been fetched); never more
+ *   often than every `MIN_GAP_MS`. It never replaces native's last snapshot with a worse one:
+ *   not while the session's hydrate has failed, and not with no server's lists readable once
+ *   one was written on this device. Every write, play request, adoption and bookmark drain
+ *   waits for `bootstrapPlayback()`. Its covers are files the app wrote: a downloaded book's own
  *   cover, else a small JPEG (`car-artwork.ts`) fetched after the snapshot that needs it is
  *   out (a list never waits on the network). The downloaded books' play specs (Android's,
  *   for starting one with no JS; iOS has none) come from one read of the device's own
@@ -89,8 +94,8 @@ import { carNative } from './car-native';
  *   plays on; any other starts through `startBookInPlace`, from its saved place (a
  *   downloaded one from its download, offline too). A failure is logged; native times the
  *   request out and says `labels.unavailable`.
- * - **Bookmarks from outside the app** (CarPlay's Now Playing button, the Android
- *   notification / Android Auto; `carNative.onBookmark`): added through the framework-free
+ * - **Bookmarks from outside the app** (CarPlay's Now Playing button, Android Auto's
+ *   custom action; `carNative.onBookmark`): added through the framework-free
  *   `addBookmark` (no label, so its `annotations` gate has nothing to hold back) at the
  *   engine's place at the press, on the book the engine names (else the loaded book). Those
  *   pressed while no JS ran
@@ -614,7 +619,7 @@ async function drainCarBookmarks(): Promise<void> {
 }
 
 /** A bookmark pressed outside the app while JS runs, at the engine's place. When the engine
- * names its book (a Phase 6 binary), it goes on THAT book at the engine's file place
+ * names its book (a binary that knows `load`'s book), it goes on THAT book at the engine's file place
  * (`bookPlaceOf` maps it through the loaded queue when that is the book, else the book's own
  * timeline): the engine can hold a book the store has not adopted yet (a car start the JS
  * boot is still adopting), and it is the one the listener heard. Without one (an older

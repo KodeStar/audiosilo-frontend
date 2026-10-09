@@ -28,12 +28,12 @@ struct ConfigRecord: Record {
   @Field var jumpBackward: Double = 15
   // No `smartSpeed`: Android only (withdrawn on iOS, see AudioEngine.swift). A record ignores
   // keys it doesn't declare.
-  /// Phase 6. The speech compressor (VoiceBoostTap.swift). Absent from an older JS bundle: off.
+  /// The speech compressor (VoiceBoostTap.swift). Absent from an older JS bundle: off.
   @Field var voiceBoost: Bool = false
 }
 
 /// Chapter clips from the shared bridge (`buildChapterClips`): Android plays them as clipped
-/// media items; iOS (Phase 6) uses them for the chapter-relative lock screen, next/previous
+/// media items; iOS uses them for the chapter-relative lock screen, next/previous
 /// chapter and CarPlay's chapter list, while still playing whole files.
 struct ChapterRecord: Record {
   @Field var fileIndex: Int = 0
@@ -42,7 +42,7 @@ struct ChapterRecord: Record {
   @Field var title: String = ""
 }
 
-/// `load`'s optional 5th argument (Phase 6): which book the queue is. Android keeps it in the
+/// `load`'s optional 5th argument: which book the queue is. Android keeps it in the
 /// service's media items (`getLoadedBook`); iOS keeps it for CarPlay (`loadedBook`).
 struct BookRecord: Record {
   @Field var connectionId: String = ""
@@ -62,7 +62,7 @@ public class AudiosiloPlayerModule: Module {
   public func definition() -> ModuleDefinition {
     Name("AudiosiloPlayer")
 
-    // The full Phase 6 event list (contract section 1). onCarConnection / onCarPlayRequest are
+    // Every event the module sends. onCarConnection / onCarPlayRequest are
     // sent by the CarPlay scene code through AudiosiloCarEvents, which holds them until JS
     // listens (below); every other event JS doesn't listen to is simply dropped.
     Events(
@@ -121,13 +121,13 @@ public class AudiosiloPlayerModule: Module {
       onMain { promise.resolve(self.presentRoutePicker()) }
     }
 
-    // Phase 6, Android's: the book a service started without JS. iOS never plays without the
+    // Android's: the book a service started without JS. iOS never plays without the
     // app's JS (CarPlay asks JS to start every book), so there is never one.
     AsyncFunction("getLoadedBook") { (promise: Promise) in promise.resolve(nil) }
-    // Phase 6, Android's: bookmarks pressed while no JS ran. iOS sends onRemoteBookmark live.
+    // Android's: bookmarks pressed while no JS ran. iOS sends onRemoteBookmark live.
     AsyncFunction("consumePendingBookmarks") { () -> [String] in [] }
 
-    // Phase 6 (CarPlay): the car snapshot JS builds (labels, tabs, books). Kept on disk so the
+    // CarPlay: the car snapshot JS builds (labels, tabs, books). Kept on disk so the
     // car shows it at once on the next connect; refreshes the templates on screen.
     AsyncFunction("setCarSnapshot") { (json: String) in
       AudiosiloCarSnapshotStore.shared.set(json: json)

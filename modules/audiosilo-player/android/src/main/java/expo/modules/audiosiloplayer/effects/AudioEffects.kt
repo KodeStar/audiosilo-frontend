@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Smart Speed + Voice Boost on Android (Phase 6 contract, decisions 6-8): the one seam the
+ * Smart speed + Voice boost on Android: the one seam the
  * service and the module use. Process-wide state, because the service may build a new player
  * (a new sink and chain) while the module and JS live on:
  *  - the Voice Boost switch, read by every [VoiceBoostProcessor] once per buffer;

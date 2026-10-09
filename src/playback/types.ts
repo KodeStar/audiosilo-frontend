@@ -209,7 +209,7 @@ export interface PlaybackService {
    * Android Auto and their chapter lists), and landed at `(trackIndex, positionInTrack)`.
    * The engine updates its snapshot BEFORE calling `handler`, so a save inside it saves the
    * new place. The store treats it as the listener's own move (it lowers the resume
-   * floor). Not called for moves the JS asked for, auto-rewind, Smart Speed's skips, or a
+   * floor). Not called for moves the JS asked for, auto-rewind, Smart speed's skips, or a
    * file running on into the next. Optional: the web routes its OS seeks through
    * `onRemoteSeek` instead (its engine has not moved yet when the OS asks).
    */
@@ -217,13 +217,14 @@ export interface PlaybackService {
   /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an
    * Android controller) and the engine already applied it. Optional. */
   onRateChange?(handler: ((rate: number) => void) | null): void;
-  /** Native: book seconds Smart Speed has removed since the engine was created (monotonic
-   * while that engine lives; a new engine starts again at 0), reported with the engine's
-   * progress ticks. Not playback state, so not in the snapshot. Optional, and never called
-   * by a binary that predates Smart Speed, nor on iOS (no Smart Speed there). */
+  /** Native: book seconds Smart speed has removed since the app's process started (Android's
+   * total is process-wide, summed over every player the service builds, so it never goes
+   * down; it can predate this JS, since the service can outlive it), reported with the
+   * engine's progress ticks. Not playback state, so not in the snapshot. Optional, and never
+   * called by a binary that predates Smart speed, nor on iOS (no Smart speed there). */
   onSilenceSaved?(handler: ((totalSeconds: number) => void) | null): void;
   /**
-   * Phase 6 (the store's `adoptLoaded`): where an engine this bridge did NOT load is now (a
+   * For the store's `adoptLoaded`: where an engine this bridge did NOT load is now (a
    * queue the Android playback service loaded itself, for the car or before the app's JS
    * restarted). Seeds the bridge's merged snapshot WITHOUT emitting, so the next event it
    * re-emits carries the adopted track, place and state instead of the initial ones (a file

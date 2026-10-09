@@ -1,7 +1,7 @@
 import CoreAudio
 import Foundation
 
-// Voice Boost's per-sample DSP, kept free of AVFoundation so the host self-check
+// Voice boost's per-sample DSP, kept free of AVFoundation so the host self-check
 // (SelfCheck/run.sh) runs the exact code the tap runs on real speech. VoiceBoostTap.swift owns
 // the MTAudioProcessingTap around it.
 //
@@ -14,7 +14,7 @@ import Foundation
 // freed in `release`, both called outside the render thread), so the render path touches no
 // Swift object.
 
-/// The preset (decision 7, raised after the iPhone Air test). The same numbers as Android's
+/// The preset (raised after the iPhone Air test). The same numbers as Android's
 /// VoiceBoostProcessor.
 ///
 /// Why these: the detector is per-sample PEAK, so a curve's unity point (where the make-up and

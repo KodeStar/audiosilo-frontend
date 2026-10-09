@@ -48,7 +48,7 @@ class ChapterRecord : Record {
   @Field var title: String = ""
 }
 
-/** `load`'s optional 5th argument (Phase 6): which book the queue is. */
+/** `load`'s optional 5th argument: which book the queue is. */
 class BookRecord : Record {
   @Field var connectionId: String = ""
   @Field var libraryId: Double = 0.0
@@ -59,7 +59,7 @@ class ConfigRecord : Record {
   @Field var autoRewindMax: Double = 0.0
   @Field var jumpForward: Double = 30.0
   @Field var jumpBackward: Double = 15.0
-  /** Phase 6; absent from an older JS bundle (then the effects are left alone). */
+  /** Absent from an older JS bundle (then the effects are left alone). */
   @Field var smartSpeed: Boolean? = null
   @Field var voiceBoost: Boolean? = null
 }
@@ -320,14 +320,14 @@ class AudiosiloPlayerModule : Module() {
       handler.post { promise.resolve(openOutputSwitcher()) }
     }
 
-    // Phase 6: the car snapshot (JSON, contract section 3). Written atomically to filesDir so the
+    // The car snapshot (JSON, built by src/car/car-model.ts). Written atomically to filesDir so the
     // car shows it at once next time (even with no JS), then the car's lists refresh.
     AsyncFunction("setCarSnapshot") { json: String ->
       CarSnapshotStore.write(context, json)
       handler.post { PlayerBridge.service?.onSnapshotChanged() }
     }
 
-    // Phase 6: the book the SERVICE has loaded (the car started it, or JS restarted while the
+    // The book the SERVICE has loaded (the car started it, or JS restarted while the
     // service kept playing), in FILE coordinates, else null. JS adopts it without reloading.
     AsyncFunction("getLoadedBook") { promise: Promise ->
       handler.post {
@@ -349,7 +349,7 @@ class AudiosiloPlayerModule : Module() {
       }
     }
 
-    // Phase 6: bookmarks pressed while no JS listened, oldest first; the read clears them.
+    // Bookmarks pressed while no JS listened, oldest first; the read clears them.
     AsyncFunction("consumePendingBookmarks") {
       PendingBookmarks.consume(context)
     }

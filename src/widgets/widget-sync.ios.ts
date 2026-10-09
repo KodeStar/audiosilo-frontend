@@ -35,7 +35,7 @@ import {
 } from './widget-model';
 
 /**
- * The iOS widget sync (decision 9, contract 2.6): keeps the `ContinueListening` widget
+ * The iOS widget sync: keeps the `ContinueListening` widget
  * and the `SleepTimer` Live Activity in step with the player and the sleep timer.
  * Framework-free like the other `start*` controllers in the root layout: subscriptions,
  * no rendering. What to write and when is `widget-model.ts` (pure, tested); this is the
@@ -48,8 +48,9 @@ import {
  *   while the app is the Now Playing app, which is the only time most of them happen.
  * - **Covers.** Written once per book into `widgetsDirectory` (the extension cannot
  *   fetch): the server's 320 px thumbnail for the widget and its 160 px one for the Live
- *   Activity, else the downloaded book's cover, each only when its header says it is
- *   small enough (`fitsCover`; there is no image resizer in the app). Other books'
+ *   Activity (not asked of a server known to lack `cover_sizes`), else the cover the player
+ *   shows (the downloaded one, or the streamed one, fetched), each only when its header says
+ *   it is small enough (`fitsCover`; there is no image resizer in the app). Other books'
  *   covers are deleted, so the folder holds one book.
  * - **Live Activity.** Started when a timer counts down and the app is in the foreground
  *   (ActivityKit refuses a start from the background; a timer armed in the background,

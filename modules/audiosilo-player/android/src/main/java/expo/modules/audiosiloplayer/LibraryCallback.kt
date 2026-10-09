@@ -37,7 +37,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
    * controller; SET_EFFECTS only to the app's own controller. Notes an Android Auto controller.
    *
    * Search is NOT granted: the session has no `onSearch`/`onGetSearchResult` (car search is
-   * not built, Phase 6 contract decision 12), and a legacy browser's root hints say
+   * deliberately not built), and a legacy browser's root hints say
    * `BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED` exactly when the controller holds
    * `COMMAND_CODE_LIBRARY_SEARCH` (MediaLibraryServiceLegacyStub.onGetRoot), so granting it
    * (the default command set does) showed Android Auto a search button that found nothing.

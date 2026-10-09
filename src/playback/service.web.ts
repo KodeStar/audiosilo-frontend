@@ -57,8 +57,8 @@ type CompressorSettings = {
   release: number;
 };
 
-/** Voice Boost's compressor (contract decision 7, the stronger preset of the Phase 6 device
- * pass): the native boost's numbers. */
+/** Voice boost's compressor (the stronger preset a device test called for): the native
+ * boost's numbers. */
 export const VOICE_BOOST_COMPRESSOR = {
   threshold: -20,
   knee: 6,

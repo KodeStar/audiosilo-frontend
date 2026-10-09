@@ -1,6 +1,6 @@
 import UIKit
 
-/// The phone (and iPad) window scene (Phase 6). Named in Info.plist's scene manifest by
+/// The phone (and iPad) window scene. Named in Info.plist's scene manifest by
 /// `plugins/withCarPlay.js`, hence the stable @objc name.
 ///
 /// Under the UIScene life cycle UIKit stops calling the app delegate's URL, user-activity,

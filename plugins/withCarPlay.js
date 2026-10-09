@@ -1,7 +1,7 @@
 const { withAppDelegate, withEntitlementsPlist, withInfoPlist } = require('expo/config-plugins');
 
 /**
- * CarPlay (Phase 6): move the iOS app onto the UIScene life cycle and declare a CarPlay scene.
+ * CarPlay: move the iOS app onto the UIScene life cycle and declare a CarPlay scene.
  *
  * Declaring ANY scene in `UIApplicationSceneManifest` moves the whole app to the scene life
  * cycle, and from then on UIKit never shows a window the app delegate made. Expo SDK 56's
@@ -21,9 +21,10 @@ const { withAppDelegate, withEntitlementsPlist, withInfoPlist } = require('expo/
  *     prebuild. A device build carrying it cannot be signed until Apple grants it; without it
  *     iOS simply never connects a CarPlay scene (the scene code still ships).
  *
- * List this plugin BEFORE `expo-widgets` in app.json and after nothing that rewrites the
- * AppDelegate: mods of one kind run in REVERSE registration order, so a plugin listed after
- * this one would edit the template before this plugin matches it.
+ * Plugin order: a plugin that rewrites the AppDelegate must NOT be listed after this one in
+ * app.json. Mods of one kind run in REVERSE registration order, so a plugin listed after this
+ * one would edit the template first and break the exact match above. (`expo-widgets`, listed
+ * after it, edits Info.plist and the entitlements but not the AppDelegate.)
  *
  * The transforms are pure and exported for `withCarPlay.test.ts`.
  */

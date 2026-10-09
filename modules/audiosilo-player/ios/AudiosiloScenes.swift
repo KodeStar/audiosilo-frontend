@@ -1,6 +1,6 @@
 import UIKit
 
-/// Starts React Native in whichever UIScene connects first (Phase 6, CarPlay).
+/// Starts React Native in whichever UIScene connects first (the phone's or CarPlay's).
 ///
 /// Declaring a CarPlay scene moves the whole app onto the UIScene life cycle, where UIKit never
 /// shows a window the app delegate made. `plugins/withCarPlay.js` therefore rewrites the Expo

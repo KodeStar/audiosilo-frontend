@@ -34,10 +34,10 @@ interface AudiobookPlayerHooks {
  *  - **Configurable skips**: [seekBack]/[seekForward] seek by the live [PlayerConfig]
  *    intervals instead of ExoPlayer's build-time increments, so the lock-screen skip
  *    buttons (and any other controller) honor the Settings value.
- *  - **Remote moves** (Phase 6): every seek entry point reports, once it landed, a move that a
+ *  - **Remote moves**: every seek entry point reports, once it landed, a move that a
  *    controller OTHER than the app asked for ([AudiobookPlayerHooks.onRemoteMove]), so JS can
  *    lower its resume floor for a lock-screen scrub. Not reported: the app's own seeks, the
- *    auto-rewind inside [play] ([internal]), Smart Speed's silence skips and a file/clip
+ *    auto-rewind inside [play] ([internal]), Smart speed's silence skips and a file/clip
  *    advancing at its end (neither calls a seek method on this wrapper).
  *  - **Remote speed**: a controller other than the app changing the speed is reported too.
  */

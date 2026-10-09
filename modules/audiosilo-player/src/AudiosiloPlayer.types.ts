@@ -27,15 +27,16 @@ export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 
 
 export type StateEvent = { state: NativeState };
 /** Position/duration within the current track, in seconds. `silenceSaved` (Android only):
- * book seconds removed by Smart Speed since the engine was created, monotonic while the engine
- * lives (a new engine starts again at 0). Absent on iOS and on binaries older than Phase 6. */
+ * book seconds removed by Smart speed since the app's process started, summed over every
+ * player the service builds, so it never goes down. Absent on iOS (no Smart speed there) and on
+ * binaries that predate Smart speed. */
 export type ProgressEvent = { position: number; duration: number; silenceSaved?: number };
 export type TrackChangeEvent = { index: number };
 
 /** The engine moved because of something OUTSIDE the JS API (the lock screen or notification
  * scrubber and buttons, a headset, CarPlay, Android Auto, their chapter lists), sent once the move
  * landed, in the bridge's usual coordinates (FILE index + seconds within that file). Not sent for
- * moves the JS API asked for, auto-rewind on play, Smart Speed's silence skips, or a file
+ * moves the JS API asked for, auto-rewind on play, Smart speed's silence skips, or a file
  * advancing by itself at its end. */
 export type RemoteMoveEvent = { trackIndex: number; position: number };
 
@@ -43,9 +44,10 @@ export type RemoteMoveEvent = { trackIndex: number; position: number };
  * controller). The engine already applied it. */
 export type RateChangeEvent = { rate: number };
 
-/** A bookmark button outside the app was pressed (CarPlay, the Android notification / Android
- * Auto custom action): where the book was at the press, and which book the engine had loaded
- * (absent from a binary that predates it, or an engine loaded without a `book`). */
+/** A bookmark button outside the app was pressed (CarPlay's Now Playing, Android Auto's custom
+ * action; the phone's notification leaves it out): where the book was at the press, and which
+ * book the engine had loaded (absent from a binary that predates it, or an engine loaded
+ * without a `book`). */
 export type RemoteBookmarkEvent = { trackIndex: number; position: number } & Partial<BookRef>;
 
 /** CarPlay or Android Auto connected or disconnected. */
@@ -78,9 +80,10 @@ export type PlayerConfig = {
   /** Lock-screen skip-backward interval (seconds). */
   jumpBackward: number;
   /** Trim silences (Android only; iOS accepts and ignores it). Default false. Ignored by
-   * binaries older than Phase 6. */
+   * binaries that predate the audio effects. */
   smartSpeed?: boolean;
-  /** Compress and lift speech. Default false. Ignored by binaries older than Phase 6. */
+  /** Compress and lift speech. Default false. Ignored by binaries that predate the audio
+   * effects. */
   voiceBoost?: boolean;
 };
 

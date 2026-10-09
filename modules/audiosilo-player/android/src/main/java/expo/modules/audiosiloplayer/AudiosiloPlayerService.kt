@@ -153,10 +153,10 @@ object AuthHolder {
  * service automatically. The Expo module drives it through a MediaController.
  *
  * Lock screen (Audible-parity): a chapter-relative scrubber + prev/next-chapter buttons
- * (chapters are clipped media items, see [MediaItems]) + 30s skip buttons (predefined Media3
- * icons) + the app logo as the notification small icon.
+ * (chapters are clipped media items, see [MediaItems]) + skip buttons at the listener's skip
+ * lengths (the nearest predefined Media3 icons) + the app logo as the notification small icon.
  *
- * Phase 6: a [MediaLibraryService] so Android Auto can browse (the car snapshot JS writes, see
+ * A [MediaLibraryService] so Android Auto can browse (the car snapshot JS writes, see
  * [CarBrowseTree]) and play; the session player is the same [AudiobookPlayer], so the lock
  * screen behaves exactly as before. It also reports remote moves / speed changes / bookmark
  * presses to the module ([PlayerBridge]) and wires Smart Speed + Voice Boost ([AudioEffects]).
@@ -289,13 +289,14 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * The custom buttons. Media3's notification provider builds the action row as **standard
    * [prev, play/pause, next]** (auto-added from the player's available seek-to-prev/next
    * commands - present for a chaptered book, absent for a single-item/chapterless book)
-   * **plus the CUSTOM-command buttons** from the custom layout. So we only declare the two
-   * skip buttons and let prev/next-chapter fill in -> the full
-   * `[prev] [play] [next] [back-30] [fwd-30]` row.
+   * **plus the CUSTOM-command buttons** from the custom layout. So we declare the two skip
+   * buttons (and the bookmark, below) and let prev/next-chapter fill in -> the full
+   * `[prev] [play] [next] [back] [fwd]` row.
    *
    * They MUST be custom session commands (see [LibraryCallback]); the standard
    * COMMAND_SEEK_BACK/FORWARD map to the legacy ACTION_REWIND/FAST_FORWARD the modern media
-   * UI ignores. Predefined `ICON_SKIP_*_30` icons render without an app-shipped drawable.
+   * UI ignores. Predefined `ICON_SKIP_*` icons (the nearest of 5/10/15/30, [skipIcon]) render
+   * without an app-shipped drawable.
    *
    * The bookmark comes THIRD: System UI (API 33+) shows play, prev, next and only the first
    * two custom actions, so the phone keeps exactly today's row, while Android Auto lists every

@@ -542,7 +542,7 @@ class NarrationSilenceProcessor(
 
   companion object {
     /*
-     * Narration defaults (Phase 6 contract, decision 6). Spoken word has short, meaningful
+     * Narration defaults. Spoken word has short, meaningful
      * pauses and quiet consonant tails, so these are gentler than Media3's.
      */
 

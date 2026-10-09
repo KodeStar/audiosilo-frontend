@@ -21,12 +21,12 @@ func onMain(_ work: @escaping () -> Void) {
 /// Now Playing metadata and lock-screen remote commands. Positions are per-track;
 /// the JS store maps them onto the whole-book timeline.
 ///
-/// Phase 6 additions: chapter-relative Now Playing + chapter next/previous when `load` got 2+
-/// chapter clips (ChapterClips.swift), `onRemoteMove` for every move the JS API did not ask
-/// for, the rate command and Voice Boost (VoiceBoostTap.swift). The CarPlay side reads this
-/// engine through AudioEngine+CarPlay.swift.
+/// Also: chapter-relative Now Playing + chapter next/previous when `load` got 2+ chapter clips
+/// (ChapterClips.swift), `onRemoteMove` for every move the JS API did not ask for, the rate
+/// command and Voice boost (VoiceBoostTap.swift). The CarPlay side reads this engine through
+/// AudioEngine+CarPlay.swift.
 ///
-/// No Smart Speed on iOS (withdrawn in Phase 6 after a device test): the design raised
+/// No Smart speed on iOS (withdrawn after a device test): the design raised
 /// `player.rate` inside silences and put it back before the next word, and every AVPlayer rate
 /// change while playing is an audible dropout on a real iPhone, so it stuttered at every pause.
 /// `config.smartSpeed` is ignored (`ConfigRecord` doesn't declare it); `onProgress` carries no
@@ -674,7 +674,7 @@ final class AudioEngine: NSObject {
     addCommand(cc.pauseCommand) { [weak self] _ in self?.togglePlayback(); return .success }
     addCommand(cc.togglePlayPauseCommand) { [weak self] _ in self?.togglePlayback(); return .success }
     // Every move below is a REMOTE move (onRemoteMove once it lands): the JS store treats it
-    // as the listener's own and lowers the resume floor (decision 11).
+    // as the listener's own and lowers the resume floor, so a scrub back is saved.
     cc.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForward)]
     addCommand(cc.skipForwardCommand) { [weak self] event in
       guard let self = self else { return .commandFailed }
@@ -772,8 +772,8 @@ final class AudioEngine: NSObject {
     let fileDuration = currentDuration()
     let pos = currentPosition()
     if clips.isActive, let ci = clips.index(fileIndex: currentIndex, position: pos) {
-      // Chapter mode (decision 10): the chapter is the "track" (title, a chapter-relative
-      // scrubber, chapter number/count), the book is the album.
+      // Chapter mode (parity with Android's clipped items): the chapter is the "track"
+      // (title, a chapter-relative scrubber, chapter number/count), the book is the album.
       let c = clips.clips[ci]
       let times = clips.nowPlayingTimes(clip: ci, position: pos, fileDuration: fileDuration > 0 ? fileDuration : nil)
       info[MPMediaItemPropertyTitle] = c.title.isEmpty ? t.title : c.title

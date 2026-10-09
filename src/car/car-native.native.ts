@@ -4,7 +4,7 @@ import type { CarNative } from './car-native';
 
 /**
  * iOS and Android: the module's car functions, each feature-detected (`typeof === 'function'`,
- * like `setVolume` in `service.native.ts`), so an installed binary older than Phase 6 keeps
+ * like `setVolume` in `service.native.ts`), so an installed binary without them keeps
  * today's behaviour with no error. The car events are only listened to on a binary that has
  * the car functions: an older one never declared them.
  */
@@ -64,7 +64,7 @@ export const carNative: CarNative = {
     const sub = AudiosiloPlayer.addListener('onRemoteBookmark', (e) => {
       const { trackIndex, position } = e;
       if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
-      // The engine's own book (Phase 6 binaries send it): the press belongs to the book the
+      // The engine's own book (a binary that knows `load`'s book sends it): the press belongs to the book the
       // listener heard, whichever the store holds right now.
       const book =
         typeof e.connectionId === 'string' &&

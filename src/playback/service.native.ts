@@ -13,7 +13,7 @@ import {
   toNativeTrack,
 } from './types';
 
-/** Does the installed binary know Phase 6's module surface (`load`'s 5th `book` argument
+/** Does the installed binary know the car-era module surface (`load`'s 5th `book` argument
  * among it)? The JS bundle can be newer than the binary (a shipped store build lags), and
  * an Expo function called with more arguments than it declares THROWS ("received 5
  * arguments, expected 4", expo-modules-core's argument count check on both platforms), so
@@ -30,7 +30,7 @@ function moduleTakesBook(): boolean {
  * speed. The whole-book timeline lives in the player store; this engine works
  * per-track. The module's `NativeState` values match `PlaybackState` 1:1.
  *
- * Phase 6 events (`onRemoteMove`, `onRateChange`, `silenceSaved` on `onProgress`) are
+ * The newer events (`onRemoteMove`, `onRateChange`, `silenceSaved` on `onProgress`) are
  * listened for on every binary: an older one simply never sends them, and listening for an
  * event a module doesn't declare is harmless. (`onRemoteBookmark` is the car's: see
  * `src/car/car-native.native.ts`.)
@@ -85,7 +85,7 @@ class NativePlaybackService implements PlaybackService {
 
   async configure(config: PlaybackConfig) {
     // `smartSpeed` / `voiceBoost` ride along on every binary: the config is a record, and
-    // one older than Phase 6 ignores fields it doesn't read.
+    // a binary that predates the effects ignores fields it doesn't read.
     await AudiosiloPlayer.setConfig(config);
   }
 

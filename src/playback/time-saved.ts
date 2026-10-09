@@ -9,13 +9,13 @@ import { onConnectionRemoved } from '@/stores/session';
 import { engineTicker } from './engine-ticks';
 
 /**
- * "Time saved" (contract decision 8): book seconds Smart Speed removed, per book and in
- * all, kept on this device only (no wire change). Speed is not counted: the figure is
- * what the silences would have taken at 1x.
+ * "Time saved": book seconds Smart speed removed, per book and in all, kept on this
+ * device only (no wire change). Speed is not counted: the figure is what the silences
+ * would have taken at 1x.
  *
- * The engine reports a running total (`onSilenceSaved`: monotonic while one engine lives,
- * back to 0 for a new one); the store hands each total here with the playing book's
- * `contentKey`. Saved with `persistedDocument`, but never a write per tick: the totals
+ * The engine reports a running total (`onSilenceSaved`: Android's is process-wide and
+ * monotonic, summed over every player the service builds, and can predate this JS); the
+ * store hands each total here with the playing book's `contentKey`. Saved with `persistedDocument`, but never a write per tick: the totals
  * are flushed on a pause (the store's halt), when the app leaves the foreground, and
  * every 30 s while they grow (an `engineTicker`, so Android's paused JS timers can't
  * stop it).
@@ -29,10 +29,10 @@ const FLUSH_MS = 30_000;
 
 /**
  * The seconds a new engine total adds, and the base the next one is measured from. The
- * first total this JS has seen is only a base (an engine can outlive the JS, the Android
- * service does, and its total then holds savings already counted); so is a total LOWER
- * than the base (a new engine, which starts again at 0). Anything not a finite,
- * non-negative number changes nothing.
+ * first total this JS has seen is only a base (the Android service can outlive the JS, and
+ * its total then holds savings already counted); a total LOWER than the base only becomes
+ * the new base, adding nothing (a guard: the process-wide total never goes down). Anything
+ * not a finite, non-negative number changes nothing.
  */
 export function silenceDelta(
   base: number | null,
@@ -169,14 +169,14 @@ onConnectionRemoved(async (id) => {
   stored.write(next, next);
 });
 
-/** Seconds Smart Speed saved on this device, in all (0 before any), as precise as it is
+/** Seconds Smart speed saved on this device, in all (0 before any), as precise as it is
  * shown (`savedForDisplay`). */
 export function useTimeSaved(): number {
   useEffect(() => void hydrateTimeSaved(), []);
   return useTimeSavedStore((s) => savedForDisplay(s.lifetime));
 }
 
-/** Seconds Smart Speed saved on one book on this device (0 before any, or without a
+/** Seconds Smart speed saved on one book on this device (0 before any, or without a
  * book), as precise as it is shown (`savedForDisplay`). */
 export function useBookTimeSaved(
   connectionId: string | null | undefined,

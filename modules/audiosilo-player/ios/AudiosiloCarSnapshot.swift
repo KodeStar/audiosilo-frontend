@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Model
 
-/// The car snapshot JS writes through `setCarSnapshot` (Phase 6 contract, section 3). Native
+/// The car snapshot JS writes through `setCarSnapshot` (built by `src/car/car-model.ts`). Native
 /// has no strings of its own: every label comes from here, localized by JS. Decoding is
 /// lenient (a missing field never drops the whole snapshot; undeclared keys are ignored, so
 /// only what iOS reads is declared); `play` is Android's and ignored here (iOS always lets JS

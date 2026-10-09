@@ -53,7 +53,7 @@ data class CarLabels(
   val bookmarkSaved: String,
 )
 
-/** The car snapshot JS writes through `setCarSnapshot` (Phase 6 contract, section 3). */
+/** The car snapshot JS writes through `setCarSnapshot` (built by `src/car/car-model.ts`). */
 class CarSnapshot(
   val labels: CarLabels,
   val signedIn: Boolean,

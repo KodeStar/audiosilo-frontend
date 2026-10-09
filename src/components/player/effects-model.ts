@@ -1,8 +1,8 @@
 import { smartSpeedApplies } from '@/playback/effects';
 
 /**
- * What the Smart Speed and Voice Boost switches say and allow, on each platform
- * (STYLEGUIDE section 8 "Speed", contract decisions 6-8). Pure, so the copy rules are
+ * What the Smart speed and Voice boost switches say and allow, on each platform
+ * (STYLEGUIDE section 8 "Speed"). Pure, so the copy rules are
  * tested without rendering; `effects-settings.tsx` turns the line keys into words.
  */
 
