@@ -163,6 +163,8 @@ import { AppState, Platform } from 'react-native';
 
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
+import { bootstrapPlayback } from '@/lib/bootstrap';
+import { setConnectionAliases } from '@/lib/connection-id';
 import * as store from '@/playback/store';
 import { useLibrarySelection } from '@/stores/library-selection';
 import { useSession, type Connection } from '@/stores/session';
@@ -706,6 +708,19 @@ describe('play requests', () => {
     expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
   });
 
+  it('an item of a snapshot from before the identity migration starts the book on its new connection', async () => {
+    // The aliases load in the launch steps, which a tap queued while JS booted waits for.
+    jest.mocked(bootstrapPlayback).mockImplementationOnce(async () => {
+      setConnectionAliases({ srv: 'srv.3' });
+    });
+    try {
+      await handleCarPlayRequest(carItemId({ ...ref, connectionId: 'srv' }));
+      expect(mockStartBookInPlace).toHaveBeenCalledWith({ ...ref, connectionId: 'srv.3' });
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   it('ignores an id that is not a car item, and logs a failed start', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     await handleCarPlayRequest('nonsense');
@@ -836,6 +851,31 @@ describe('bookmarks from outside the app', () => {
     await settle();
     expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 130);
     expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+  });
+
+  it('adds ones naming an old connection id (from before the identity migration) on its new one', async () => {
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      connect(['srv.3']);
+      mockClients['srv.3'] = fakeClient({});
+      useDownloads.setState({ entries: { 'srv.3:2:D': downloaded('srv.3', 'D') } });
+      // One kept from an earlier drain, one the Android service queued while no JS ran.
+      await setItem('audiosilo.carBookmarks', [
+        { connectionId: 'srv', libraryId: 2, path: 'D', position: 12 },
+      ]);
+      mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+        { connectionId: 'srv', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark.mock.calls).toEqual([
+        ['srv.3', 2, 'D', 12],
+        ['srv.3', 2, 'D', 130],
+      ]);
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('reads a streaming book’s timeline through its item and chapters', async () => {

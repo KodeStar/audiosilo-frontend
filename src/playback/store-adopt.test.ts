@@ -75,6 +75,7 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
+import { setConnectionAliases } from '@/lib/connection-id';
 import { useSettings } from '@/stores/settings';
 
 import { onPickedUpAgain, usePlayer } from './store';
@@ -405,6 +406,29 @@ describe('adoptLoaded', () => {
     await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
     jest.advanceTimersByTime(10_000);
     expect(usePlayer.getState().snapshot.state).toBe('paused');
+  });
+
+  // Phase 8: a play spec from a car snapshot written before the identity migration names the
+  // old connection id. Fails without the alias in `adoptLoadedBook`: the store would hold the
+  // book under the old id (its download not found, its saves filed under a dead id).
+  it('adopts a book the service names by an old connection id under the new one', async () => {
+    setConnectionAliases({ c0: 'c1' });
+    try {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      expect(await usePlayer.getState().adoptLoaded({ ...loadedB({}), connectionId: 'c0' })).toBe(
+        true,
+      );
+      const { nowPlaying } = usePlayer.getState();
+      expect(nowPlaying).toMatchObject({ connectionId: 'c1', libraryId: 2, path: 'B' });
+      // Its download, found under the new id.
+      expect(nowPlaying!.queue.tracks.map((t) => t.url)).toEqual([
+        'file:///d/1.mp3',
+        'file:///d/2.mp3',
+      ]);
+      expect(mockResolveClient).not.toHaveBeenCalledWith('c0');
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('gives up when the book is neither downloaded nor on a signed-in server', async () => {

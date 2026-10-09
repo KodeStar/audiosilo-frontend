@@ -61,6 +61,7 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import { Directory } from 'expo-file-system';
 
+import { setConnectionAliases } from '@/lib/connection-id';
 import type { NowPlaying } from '@/playback/store';
 import { useSleepTimer } from '@/playback/sleep-timer';
 
@@ -265,6 +266,27 @@ describe('the Continue listening widget', () => {
     now += 120_000;
     player.usePlayer.setState({ bookPosition: 300 });
     jest.advanceTimersByTime(5000);
+    expect(h.writes.at(-1)).toEqual({ emptyText: 'Play a book and it shows up here.' });
+  });
+});
+
+describe('the Continue listening widget after the identity migration', () => {
+  afterEach(() => setConnectionAliases({}));
+
+  it('clears a book written before it (an old connection id) when its new connection signs out', async () => {
+    setConnectionAliases({ srv: 'srv.3' });
+    const left = {
+      title: 'Old',
+      isPlaying: false,
+      connectionId: 'srv',
+      deepLink: 'audiosilo://player?connection=srv',
+    };
+    const h = harness({ timeline: [left] });
+    run(h);
+    await flush();
+    for (const fn of mockRemoval.fns) fn('other.1');
+    expect(h.writes).toEqual([]); // not that connection's: kept
+    for (const fn of mockRemoval.fns) fn('srv.3');
     expect(h.writes.at(-1)).toEqual({ emptyText: 'Play a book and it shows up here.' });
   });
 });

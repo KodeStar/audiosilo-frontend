@@ -58,6 +58,14 @@ describe('the counts document', () => {
       books: { 'c10:2:a': 5 },
     });
   });
+  it("drops only that user's books when two users of one server share the device", () => {
+    expect(
+      withoutConnection(
+        { lifetime: 9, books: { 'srv.3:2:a': 4, 'srv.30:2:a': 5, 'srv:2:a': 1 } },
+        'srv.3',
+      ),
+    ).toEqual({ lifetime: 9, books: { 'srv.30:2:a': 5, 'srv:2:a': 1 } });
+  });
   it('reads only counts back', () => {
     expect(parseTimeSaved(null)).toEqual({});
     expect(parseTimeSaved({ lifetime: 'x', books: { a: 3, b: -1, c: 'y' } })).toEqual({

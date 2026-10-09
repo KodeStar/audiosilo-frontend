@@ -74,4 +74,16 @@ describe('scroll-memory', () => {
     expect(recallScroll(scrollKey('c1', 2, 'B'))).toBe(0);
     expect(recallScroll(scrollKey('c2', 1, 'A'))).toBe(200); // the other server survives
   });
+
+  it('keeps two users of one server apart (`<server_id>.<user_id>` ids)', () => {
+    rememberScroll(scrollKey('srv.3', 1, 'A'), 100);
+    rememberScroll(scrollKey('srv.30', 1, 'A'), 300);
+    rememberScroll(scrollKey('srv', 1, 'A'), 50); // a legacy id of the same server
+
+    removalCleanup('srv.3');
+
+    expect(recallScroll(scrollKey('srv.3', 1, 'A'))).toBe(0);
+    expect(recallScroll(scrollKey('srv.30', 1, 'A'))).toBe(300);
+    expect(recallScroll(scrollKey('srv', 1, 'A'))).toBe(50);
+  });
 });

@@ -3,7 +3,8 @@ import { act, render } from '@testing-library/react-native';
 import { useSession } from '@/stores/session';
 
 import { setAddressPick, useAddressRoute } from './address-route';
-import { type ApiConnection, ApiProvider, buildClients, useApis } from './provider';
+import { qk } from './hooks';
+import { type ApiConnection, ApiProvider, buildClients, queryClient, useApis } from './provider';
 
 jest.mock('./reachability', () => ({
   onReconnect: jest.fn(),
@@ -100,5 +101,49 @@ describe('buildClients', () => {
   it('drops a removed connection', () => {
     const first = buildClients(conns, {}, new Map());
     expect([...buildClients([conns[0]], {}, first).keys()]).toEqual(['c1']);
+  });
+});
+
+describe('the query cache with `<server_id>.<user_id>` connection ids', () => {
+  it('a removed connection evicts its own queries, never another user of the same server', async () => {
+    const user = (id: number) => ({
+      id,
+      username: `u${id}`,
+      role: 'user' as const,
+      disabled: false,
+      has_password: true,
+      has_recovery: false,
+    });
+    useSession.setState({ connections: [], defaultConnectionId: null } as never);
+    await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://h', serverId: 'srv', token: 'a', user: user(3) });
+    await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://h', serverId: 'srv', token: 'b', user: user(30) });
+    queryClient.setQueryData(qk.libraries('srv.3'), [1]);
+    queryClient.setQueryData(qk.libraries('srv.30'), [2]);
+    await useSession.getState().removeConnection('srv.3');
+    expect(queryClient.getQueryData(qk.libraries('srv.3'))).toBeUndefined();
+    expect(queryClient.getQueryData(qk.libraries('srv.30'))).toEqual([2]);
+  });
+
+  it("a /server answer from the connection's own server flags nothing; another server_id flags it", async () => {
+    useSession.setState({
+      connections: [
+        { id: 'srv.3', serverId: 'srv', name: 'H', serverUrl: 'https://h', token: 't' },
+      ],
+    } as never);
+    await queryClient.fetchQuery({
+      queryKey: qk.server('srv.3'),
+      queryFn: async () => ({ server_id: 'srv' }),
+    });
+    expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
+    await queryClient.fetchQuery({
+      queryKey: qk.server('srv.3'),
+      queryFn: async () => ({ server_id: 'rebuilt' }),
+      staleTime: 0,
+    });
+    expect(useSession.getState().connections[0].needsReconnect).toBe('server-reset');
   });
 });
