@@ -9,6 +9,7 @@ import { startAddressRouting } from '@/api/address-runner';
 import { ApiProvider } from '@/api/provider';
 import { startCarSync } from '@/car/car-controller';
 import { startCastSync } from '@/cast/cast-session';
+import { KidsRouteGuard } from '@/components/kids/kids-route-guard';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
@@ -62,6 +63,8 @@ function RootNavigator() {
       {/* A shake must keep the listener going while the phone is locked
           and no player screen is mounted. */}
       <ShakeToExtendListener />
+      {/* Kids mode (Phase 8): a kids profile stays on /kids, whatever the route. */}
+      <KidsRouteGuard />
     </>
   );
 }

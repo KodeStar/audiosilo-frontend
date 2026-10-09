@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import { useEffect, type ReactNode } from 'react';
 
 import { useOptionalApi } from '@/api/provider';
+import { useKidsActive } from '@/components/kids/use-kids';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { accountFlagsKnown } from '@/lib/account';
@@ -21,6 +22,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const status = useSession((s) => s.status);
   const setUser = useSession((s) => s.setUser);
   const api = useOptionalApi();
+  const kids = useKidsActive();
 
   // Backfill the cached user's account flags (has_password) for a session
   // persisted before those flags existed - fresh logins already carry
@@ -50,5 +52,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
   if (status === 'unauthenticated') return <Redirect href="/connect" />;
+  // Phase 8 kids mode: a kids profile never gets the shell (tabs, search, settings,
+  // downloads, the web command palette); the root layout's `KidsRouteGuard` takes it to
+  // `/kids`, and this holds the screen until it has.
+  if (kids) {
+    return (
+      <Screen>
+        <Spinner center />
+      </Screen>
+    );
+  }
   return <>{children}</>;
 }
