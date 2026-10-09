@@ -102,6 +102,9 @@ export type BookListQuery = {
   series?: string;
   narrator?: string;
   sort?: BookSort;
+  /** With `series`: every book in it, those in it beyond their main series too
+   * (capability `series_memberships`; an older server matches main series only). */
+  memberships?: boolean;
 };
 
 /** The timeout of a request that waits on the community metadata service. The server
@@ -385,8 +388,9 @@ export class ApiClient {
     opts: BookListQuery & { limit?: number; cursor?: string } = {},
     signal?: AbortSignal,
   ): Promise<BookPage> {
+    const { memberships, ...rest } = opts;
     const r = await this.request<BookPage>('GET', `/libraries/${libraryId}/books`, {
-      query: opts,
+      query: { ...rest, memberships: memberships ? 1 : undefined },
       signal,
     });
     return { ...r, books: r.books ?? [] };
@@ -416,12 +420,17 @@ export class ApiClient {
     }>('GET', `/libraries/${libraryId}/${kind}`, { signal });
     return { people: r[kind] ?? [], unknown: r.unknown ?? 0 };
   }
-  /** Series of a library, sorted case-insensitively. */
-  async seriesList(libraryId: number, signal?: AbortSignal) {
+  /** Series of a library, sorted case-insensitively. With `memberships` (capability
+   * `series_memberships`) a book counts in every series it is in, at its position there. */
+  async seriesList(
+    libraryId: number,
+    { memberships = false }: { memberships?: boolean } = {},
+    signal?: AbortSignal,
+  ) {
     const r = await this.request<{ series: SeriesCount[] | null }>(
       'GET',
       `/libraries/${libraryId}/series`,
-      { signal },
+      { query: { memberships: memberships ? 1 : undefined }, signal },
     );
     return r.series ?? [];
   }

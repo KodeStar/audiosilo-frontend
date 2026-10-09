@@ -22,7 +22,7 @@ import type { PersonKind } from './people-mode';
 import { booksBySeries, creditedPeople, personStats } from './people-model';
 import { PersonChip } from './person-chip';
 import { Portrait } from './portrait';
-import type { ProgressLookup } from './series-model';
+import { inSeries, type ProgressLookup } from './series-model';
 
 /** A tile's caption on these pages: "2004 · 12h 20m". */
 function bookCaption(b: Book): string {
@@ -245,24 +245,25 @@ function SeriesShelf({
         data={books}
         keyExtractor={(b) => b.rel_path}
         accessibilityLabel={series}
-        renderItem={(b, width) => (
-          <CoverTile
-            connectionId={cid}
-            libraryId={b.library_id}
-            path={b.rel_path}
-            title={b.title}
-            book={b}
-            caption={[
-              b.series_index > 0 ? t('series.bookN', { position: b.series_index }) : '',
-              yearOf(b.published),
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-            author={b.author}
-            coverVersion={b.cover_version}
-            width={width}
-          />
-        )}
+        renderItem={(b, width) => {
+          // Numbered by this shelf's series (a book in several is on each).
+          const position = inSeries(b, series)?.series_index ?? b.series_index;
+          return (
+            <CoverTile
+              connectionId={cid}
+              libraryId={b.library_id}
+              path={b.rel_path}
+              title={b.title}
+              book={b}
+              caption={[position > 0 ? t('series.bookN', { position }) : '', yearOf(b.published)]
+                .filter(Boolean)
+                .join(' · ')}
+              author={b.author}
+              coverVersion={b.cover_version}
+              width={width}
+            />
+          );
+        }}
       />
     </View>
   );

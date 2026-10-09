@@ -1,15 +1,26 @@
+import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 
-import { itemQuery, searchQuery, tagBooks } from '@/api/hooks';
+import { itemQuery, searchQuery, tagBooks, useAllLibraryBooks } from '@/api/hooks';
 import { useApis, useOptionalApi } from '@/api/provider';
 import type { Book, BookRef } from '@/api/types';
 
-import type { ElsewhereBook } from './series-model';
+import { inSeries, type ElsewhereBook } from './series-model';
 
 /**
  * The data the series page reads beyond the shared `src/api` hooks (no new wire
  * calls).
  */
+
+/**
+ * Every book of a series in a library (`useAllLibraryBooks` by `series`), each as it
+ * stands in that series (`inSeries`): a book in several is numbered by this one.
+ */
+export function useSeriesBooks(libraryId: number, name: string, connectionId?: string) {
+  const list = useAllLibraryBooks(libraryId, { series: name }, connectionId);
+  const books = useMemo(() => list.books.map((b) => inSeries(b, name) ?? b), [list.books, name]);
+  return { ...list, books };
+}
 
 /**
  * The books of a series on the listener's OTHER connections, for "On Maya's Shelf":

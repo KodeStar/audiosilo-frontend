@@ -42,7 +42,6 @@ jest.mock('@/api/hooks', () => ({
     };
   },
   useMetaWork: () => ({ isLoading: false, data: undefined }),
-  useAllLibraryBooks: () => mockBooks,
   useProgressLookup: () => ({
     progressOf: (c: string, l: number, p: string) => mockProgress[`${c}:${l}:${p}`],
     isLoading: false,
@@ -84,6 +83,8 @@ const mockProgress: Record<
 jest.mock('./use-series-data', () => ({
   useElsewhereBooks: () => mockElsewhere,
   usePlacedBooks: () => [],
+  // The series' books (each in this series: the fixtures are in no other).
+  useSeriesBooks: () => mockBooks,
 }));
 
 /* eslint-disable import/first */

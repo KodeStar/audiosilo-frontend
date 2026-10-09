@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import type { BookPageLayout, Fact, TitleScale } from './book-page-model';
+import type { BookPageLayout, EyebrowItem, Fact, TitleScale } from './book-page-model';
 import { titleScale } from './book-page-model';
 
 /** The title's display size per step (STYLEGUIDE section 4, Display XL: 52 desktop, 40
@@ -40,14 +40,15 @@ export type BookHeroProps = {
   layout: BookPageLayout;
   /** Above the hero (the folder crumbs). */
   crumbs?: ReactNode;
-  eyebrow: { text: string; series?: string };
+  eyebrow: EyebrowItem[];
   facts: Fact[];
   /** In progress: the place line and bar. */
   place?: HeroPlace | null;
   /** Finished: the badge (with the finish date when known) and, with `ratings`, stars. */
   finished?: { date?: string } | null;
   ratings: boolean;
-  onOpenSeries?: () => void;
+  /** Opens a series page (the main series, or another the book is in). */
+  onOpenSeries?: (series: string) => void;
   onOpenAuthor?: () => void;
   /** Absent: the narrator is plain text (a server without narrator pages). */
   onOpenNarrator?: () => void;
@@ -179,25 +180,41 @@ function TextLink({
   );
 }
 
+/** The eyebrow's parts (a book in several series lists each), apart by " / ". */
 function Eyebrow({
   eyebrow,
   onOpenSeries,
 }: {
-  eyebrow: { text: string; series?: string };
-  onOpenSeries?: () => void;
+  eyebrow: EyebrowItem[];
+  onOpenSeries?: (series: string) => void;
 }) {
   const { t } = useTranslation();
-  if (!eyebrow.text) return null;
-  const text = <Text variant="eyebrow">{eyebrow.text}</Text>;
-  if (!eyebrow.series || !onOpenSeries) return text;
+  if (!eyebrow.some((e) => e.text)) return null;
   return (
-    <View className="flex-row">
-      <TextLink
-        label={t('book.hero.openSeries', { series: eyebrow.series })}
-        onPress={onOpenSeries}
-      >
-        {text}
-      </TextLink>
+    <View className="flex-row flex-wrap items-center">
+      {eyebrow.map((e, i) => {
+        const text = <Text variant="eyebrow">{e.text}</Text>;
+        const series = e.series;
+        return (
+          <View key={i} className="flex-row items-center">
+            {i > 0 ? (
+              <Text variant="eyebrow" aria-hidden>
+                {' / '}
+              </Text>
+            ) : null}
+            {series && onOpenSeries ? (
+              <TextLink
+                label={t('book.hero.openSeries', { series })}
+                onPress={() => onOpenSeries(series)}
+              >
+                {text}
+              </TextLink>
+            ) : (
+              text
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }

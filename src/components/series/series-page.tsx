@@ -2,13 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import {
-  useAllLibraryBooks,
-  useBookMeta,
-  useCapability,
-  useMetaWork,
-  useProgressLookup,
-} from '@/api/hooks';
+import { useBookMeta, useCapability, useMetaWork, useProgressLookup } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { BookRef } from '@/api/types';
 import { CoverWash } from '@/components/library/cover-wash';
@@ -44,7 +38,7 @@ import {
   currentEntry,
   defaultSelection,
   localEntries,
-  looseKey,
+  inSeries,
   metadataAnchor,
   pickRail,
   railEntries,
@@ -55,7 +49,7 @@ import {
 import { EntryList, ProgressTrack, ShelfCaption, ShelfLegend, statsLine } from './series-parts';
 import { spineDims } from './spine-fit';
 import { useResumeChapter } from './use-resume-chapter';
-import { useElsewhereBooks, usePlacedBooks } from './use-series-data';
+import { useElsewhereBooks, usePlacedBooks, useSeriesBooks } from './use-series-data';
 
 const ORDER_NOTE_KEY = {
   publication: 'series.orderNote.publication',
@@ -70,14 +64,15 @@ const LIST_TITLE_KEY = {
 } as const;
 
 /**
- * The series page for a LOCAL series (`name`, the exact `Book.series`), optionally
+ * The series page for a LOCAL series (`name`, a series name in the library), optionally
  * pinned to a community work (`work`): the listener's books in the series, and - when
  * the server has community metadata and matches one of them - the whole series in the
  * chosen reading order, gaps included (STYLEGUIDE section 8, "Series shelf").
  *
- * Data: the owned books (`useAllLibraryBooks`, the `series=` filter), the saved progress
- * on every connection, the community rails of ONE owned book (`useBookMeta` on the book
- * you're on, else the first with an ASIN/ISBN: the server matches by those), the books
+ * Data: the owned books (`useSeriesBooks`: the `series=` filter, each numbered by this
+ * series), the saved progress on every connection, the community rails of ONE owned
+ * book (`useBookMeta` on the book you're on, else the first with an ASIN/ISBN: the
+ * server matches by those), the books
  * of the series on the other connections (one search each), and the rows of books the
  * rail places in other libraries. Without `metadata`, or with no match, the page is the
  * local series with "Book N" ghosts for the gaps. Spoilers: titles and positions only,
@@ -101,7 +96,7 @@ export function SeriesPage({
   // The anchor and the rail wait below read only THIS server's progress: another server
   // that is slow or unreachable must not hold the page on its skeleton.
   const progressLoading = loadingOf(cid);
-  const owned = useAllLibraryBooks(libraryId, { series: name });
+  const owned = useSeriesBooks(libraryId, name);
   const metadata = useCapability('metadata');
   // Wait for the progress so the anchor is the book you're on, not one asked for first
   // and replaced a moment later.
@@ -137,7 +132,7 @@ export function SeriesPage({
     ? railEntries(view, owned.books, { ...source, elsewhere, extraBooks: placed })
     : localEntries(owned.books, {
         ...source,
-        elsewhere: elsewhere.filter((b) => looseKey(b.series) === looseKey(name)),
+        elsewhere: elsewhere.flatMap((b) => inSeries(b, name) ?? []),
       });
 
   const [picked, setPicked] = useState<string>();
@@ -163,7 +158,8 @@ export function SeriesPage({
   const railPending =
     metadata === true &&
     ((!owned.complete && !owned.error) || progressLoading || (!!anchor && meta.isLoading));
-  if (owned.isLoading || railPending) return <SeriesSkeleton />;
+  // isIdle too: a series list waits for /server (series_memberships) before it asks.
+  if (owned.isLoading || owned.isIdle || railPending) return <SeriesSkeleton />;
   if (owned.error && owned.books.length === 0) {
     return (
       <EmptyShelf

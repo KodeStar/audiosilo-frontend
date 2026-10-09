@@ -57,7 +57,7 @@ const row = (
   updated_at: string,
 ): Partial<Progress> => ({ library_id: 1, path, position, duration: 400, finished, updated_at });
 
-const mockA = makeClient('a', { browse_people: true, metadata: true }, [
+const mockA = makeClient('a', { browse_people: true, metadata: true, series_memberships: true }, [
   row('in-progress', 250, false, '2026-10-03T00:00:00Z'),
   row('finished', 400, true, '2026-10-02T00:00:00Z'),
   row('unstarted', 0, false, '2026-10-01T00:00:00Z'),
@@ -118,6 +118,8 @@ describe('usePeopleSources', () => {
     });
     expect(mockB.authors).not.toHaveBeenCalled();
     expect(mockB.seriesList).not.toHaveBeenCalled();
+    // A book counts in every series it is in where the server can say so.
+    expect(mockA.seriesList).toHaveBeenCalledWith(1, { memberships: true }, expect.anything());
   });
 
   it('fetches nothing while disabled', async () => {
