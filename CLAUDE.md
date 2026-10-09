@@ -428,7 +428,16 @@ hydration wins and never clobbers the stored rest.
 Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
 (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
 (`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`/
-`previousWorks`) are unit-tested. Progressive enhancement - **capability-gated** on
+`previousWorks`) are unit-tested. **Community covers** (rail entries, previous-book rows)
+never load from their own host on web: a server with `meta_covers` serves them
+(`client.communityCoverUrl(lib, path, cover_url, {size})` -> `GET /libraries/{id}/meta/cover`,
+`?token=` like every media URL; the server only serves a `cover_url` that book's envelope
+hands out, so pass the same `libraryId`/`path` as `useBookMeta`). `BookTabPanel` builds the
+resolver with `useCommunityCover(cid, lib, path)` and passes it to the tabs as `coverFor`
+(rails and previous rows both at 320, so a cover is fetched and cached once); the rules are `communityCoverSource` (`community-cover.ts`):
+proxied when the flag is on, else the direct `cover_url` on native and the placeholder on
+web (the player's CSP takes images only from the server), nothing while `/server` is
+unknown (an unreachable `/server` counts as no flag). A tab without `coverFor` shows placeholders. Progressive enhancement - **capability-gated** on
 server `metadata` (`!!server.capabilities.metadata`, absent on older servers) and nothing renders while
 loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 `useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so
@@ -532,9 +541,12 @@ the player's chapter identity**: a chapterless single-file book gets *synthetic*
 reading them as logical chapter numbers revealed the whole cast an hour in. The
 consequence is that a chapterless book gates to 0 whether playing or not (accepted -
 "Show anyway" is the escape hatch). The live position is sampled in coarse buckets
-(`LIVE_POSITION_BUCKET_S`, exported by `meta-gating.ts` for the book page and the player's
-companion; Previously on reads the saved place, never the live one) so the screen re-renders at chapter-ish granularity
-rather than per tick; rounding DOWN can only delay a reveal, never reveal early.
+(`LIVE_POSITION_BUCKET_S`, exported by `meta-gating.ts` for the book page and Search's
+characters; Previously on reads the saved place, never the live one) so the screen re-renders at chapter-ish granularity
+rather than per tick; rounding DOWN can only delay a reveal, never reveal early. The player's
+companion needs no bucket: `useListeningChapter` selects the chapter NUMBER on the exact live
+place (`selectLivePosition`), so it re-renders only when the chapter changes and turns over at
+the boundary itself.
 That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
 gated). Its `queryFn` falls back to the durable local mirror (`mirroredProgress` in
@@ -1469,7 +1481,8 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   companion's Chapters tab on desktop and phone, the chapter sheet on a tablet);
   `PlayerStatusLine` (`usePlaceSync`, % of the book, time left) that becomes the `UndoChip`, gives its
   slot to the sleep timer's `GraceCard` (`inline`: in the flow, never over the controls) and fades
-  while the seek bar's scrub/hover tip floats into it (`onTip`); seek bar (its times row hides under
+  while the seek bar's scrub/hover tip floats into it (`onTip`; while the chip holds the slot the
+  bar draws no hover tip, `hoverTip`, since the click that made the chip leaves the pointer on it); seek bar (its times row hides under
   the timeline's tip the same way), compact timeline with bookmark and note pins (a tap on a pin lands
   on it), transport, actions (speed, sleep, bookmark, output, Up next on phone/tablet). The two
   scrubbers share `scrub-parts.tsx` (hover, `Playhead`, `ScrubTip`) and one `usePlayingPins` call; the
@@ -1484,8 +1497,9 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every block.
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
   only (`watchReveal` + `revealOnCrossing`: a pause, a buffer or a file change reported in two
-  writes on the way still counts; a seek never does), reading the chapter in the gate's own
-  15 s buckets so the toast and Who's who agree; Show reads whether the player is on top when
+  writes on the way still counts; a seek never does), reading the chapter at Who's who's own
+  exact place (`selectLivePosition`) and never announcing anyone the saved place already shows,
+  so the toast and Who's who agree; Show reads whether the player is on top when
   pressed. Unknown `metadata` counts as off for the companion, as for the phone's chips. **Sheets**: `PlayerSheetHost` renders `usePlayerSheets` (speed, sleep,
   chapters, the companion through `openCompanion(tab)`, Up next's `upnext`, the annotation editor
   through `openEditor`; bookmark/output are actions), deciding the form from its layout (the full player's MEASURED one), all through one

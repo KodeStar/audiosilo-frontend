@@ -381,6 +381,25 @@ describe('ApiClient', () => {
     );
   });
 
+  // --- Community covers (meta_covers) ------------------------------------------
+
+  it('builds the community cover URL from the book and its cover_url, with the media token', () => {
+    const c = new ApiClient('https://h', 'tok');
+    expect(
+      c.communityCoverUrl(3, 'A/Book', 'https://m.media-amazon.com/images/I/x.jpg?a=1&b=2', {
+        size: 160,
+      }),
+    ).toBe(
+      'https://h/api/v1/libraries/3/meta/cover?path=A%2FBook' +
+        '&url=https%3A%2F%2Fm.media-amazon.com%2Fimages%2FI%2Fx.jpg%3Fa%3D1%26b%3D2' +
+        '&size=160&token=tok',
+    );
+    // No size: the server's default thumbnail. No token: none in the URL.
+    expect(new ApiClient('https://h').communityCoverUrl(3, 'A/Book', 'https://c/1.jpg')).toBe(
+      'https://h/api/v1/libraries/3/meta/cover?path=A%2FBook&url=https%3A%2F%2Fc%2F1.jpg',
+    );
+  });
+
   // --- The player Book's new fields ------------------------------------------
 
   it('mirrors published, description, cover_color and cover_version on a Book', async () => {

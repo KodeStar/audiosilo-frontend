@@ -32,7 +32,10 @@ const mockAddBookmark = jest.fn(async () => undefined);
 jest.mock('./player-shortcuts', () => ({ addBookmarkHere: () => mockAddBookmark() }));
 jest.mock('./undo-chip', () => {
   const { Text: T } = jest.requireActual('react-native');
-  return { UndoChip: () => <T>Back to 1:00:00</T> };
+  return {
+    UndoChip: () => <T>Back to 1:00:00</T>,
+    useUndoVisible: jest.requireActual('./undo-chip').useUndoVisible,
+  };
 });
 
 /* eslint-disable import/first */

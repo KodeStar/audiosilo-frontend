@@ -201,6 +201,25 @@ describe('SeekBar', () => {
     expect(onTip).toHaveBeenLastCalledWith(false);
   });
 
+  it('keeps the hover tip away when hoverTip is off, still shading and still tipping a drag', async () => {
+    // The full player turns it off while its Undo chip is up: the pointer is still on
+    // the bar after the click that made the chip, and the tip would keep it hidden.
+    Platform.OS = 'web';
+    const onTip = jest.fn();
+    await render(<SeekBar {...bar({ onTip, hoverTip: false })} />);
+    await layout(400);
+    const slider = screen.getByRole('adjustable');
+    const rect = { getBoundingClientRect: () => ({ left: 0, width: 400 }) };
+    await fireEvent(slider, 'pointerMove', { nativeEvent: { clientX: 300 }, currentTarget: rect });
+    expect(screen.getByTestId('seek-bars-hovered')).toBeTruthy();
+    expect(screen.queryByText('Click to jump')).toBeNull();
+    expect(onTip).not.toHaveBeenCalled();
+    const [pan] = lastGesture();
+    await act(async () => pan.handlers.onBegin({ x: 200 }));
+    expect(screen.getByText('38:54')).toBeTruthy();
+    expect(onTip).toHaveBeenLastCalledWith(true);
+  });
+
   it('leaves a vertical touch to the scrolling player on the web (touch-action pan-y)', async () => {
     // Gesture-handler's default is `none`: a swipe that starts on the bar could never
     // scroll the player's column.

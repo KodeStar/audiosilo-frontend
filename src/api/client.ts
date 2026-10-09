@@ -618,6 +618,25 @@ export class ApiClient {
       ...this.mediaTokenQuery(),
     });
   }
+  /** Build the URL of a community cover served by this server (`meta_covers`): a
+   * JPEG thumbnail of `coverUrl`, a `cover_url` from the `/meta` envelope of the
+   * book at `path` (a series rail entry's or the recording's). The server serves
+   * only covers that book's envelope hands out (anything else is a 404), so pass
+   * the same `libraryId`/`path` the envelope was asked for. `size` defaults to the
+   * server's 320. */
+  communityCoverUrl(
+    libraryId: number,
+    path: string,
+    coverUrl: string,
+    opts?: { size?: CoverSize },
+  ) {
+    return this.apiUrl(`/libraries/${libraryId}/meta/cover`, {
+      path,
+      url: coverUrl,
+      size: opts?.size,
+      ...this.mediaTokenQuery(),
+    });
+  }
   /** Build a stream URL. `transcode` requests an on-the-fly MP3 re-encode for
    * codecs the client can't decode natively (only useful when the server's
    * `transcode` capability is on and the book's `direct_playable` is false);

@@ -48,6 +48,13 @@ export type Capabilities = {
    * Tracks `metadata` (off when enrichment is off). Absent on older servers - treat
    * missing as false: such a server ignores both params and sends the full envelope. */
   meta_bundle?: boolean;
+  /** Whether the server serves community covers itself
+   * (`/libraries/{id}/meta/cover`, `client.communityCoverUrl`): a JPEG
+   * thumbnail of a `cover_url` the book's `/meta` envelope hands out. Tracks
+   * `metadata`. Absent on older servers - treat missing as false: the web player
+   * can't load a cover from its own host (its CSP takes images only from the
+   * server), so it shows the placeholder; native loads the `cover_url` directly. */
+  meta_covers?: boolean;
   // The user-state flags below (player redesign Phase 1b) are all absent on older
   // servers: treat missing as false and never call the routes they gate.
   /** Whether the server keeps an Up next queue per user (`/me/queue`, every method;

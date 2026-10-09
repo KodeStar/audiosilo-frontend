@@ -21,8 +21,7 @@ import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { selectUndoFor, useJumpUndo } from '@/playback/jump-undo';
-import { selectBookKey, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
+import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -34,7 +33,7 @@ import { usePlaceSync } from './place-sync';
 import { addBookmarkHere } from './player-shortcuts';
 import { usePlayerSheets } from './player-sheets';
 import { playerContext } from './player-view-model';
-import { UndoChip } from './undo-chip';
+import { UndoChip, useUndoVisible } from './undo-chip';
 import { useSleepPill } from './use-sleep-countdown';
 import { usePlayingTimeLeft } from './use-time-left';
 
@@ -172,8 +171,7 @@ export function PlayerStatusLine() {
   const cid = usePlayer((s) => s.nowPlaying?.connectionId ?? '');
   const total = usePlayer((s) => s.nowPlaying?.queue.total ?? 0);
   const playing = usePlayer(selectIsPlaying);
-  const bookKey = usePlayer(selectBookKey);
-  const undo = useJumpUndo(selectUndoFor(bookKey));
+  const undo = useUndoVisible();
   const sync = usePlaceSync(cid, playing);
   const percent = usePlayingPercent();
   const left = usePlayingTimeLeft();

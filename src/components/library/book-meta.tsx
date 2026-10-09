@@ -37,7 +37,13 @@ import {
   splitCharacters,
   splitRecaps,
 } from './meta-gating';
+import { type CommunityCoverFor, noCommunityCover } from './community-cover';
 import type { SeriesRail } from './series-rails';
+
+/** The one thumbnail size for every community cover here (a rail tile, a previous
+ * book's row): the same cover at one size is fetched and cached once, on the server
+ * and on the device, whichever tab shows it first. */
+const COMMUNITY_COVER_SIZE = 320;
 
 /** Descriptions past this many characters get a collapse + "show more" toggle.
  * A deterministic length heuristic (rather than an onTextLayout measure pass) so
@@ -402,10 +408,12 @@ function PreviousBookRow({
   entry,
   first,
   body: Body,
+  coverFor,
 }: {
   entry: BookMetaSeriesWork;
   first: boolean;
   body: PreviousBookBody;
+  coverFor: CommunityCoverFor;
 }) {
   const { t } = useTranslation();
   // Open state lives here (not inside `Disclosure`) because the lazy fetch is
@@ -422,7 +430,15 @@ function PreviousBookRow({
       header={
         <>
           <View className="w-10 overflow-hidden rounded-sm border border-black/10 dark:border-white/10">
-            <Cover source={entry.cover_url ?? null} rounded="rounded-sm" />
+            {/* Without art (none, or a web player whose server can't serve it), the
+                title's monogram rather than an empty square. 38: the w-10 frame less
+                its 1px border, so the frame stays square. */}
+            <Cover
+              source={coverFor(entry.cover_url, COMMUNITY_COVER_SIZE)}
+              label={entry.title}
+              size={38}
+              rounded="rounded-sm"
+            />
           </View>
           <View className="flex-1">
             {entry.position ? (
@@ -461,9 +477,11 @@ function PreviousBookRow({
 function PreviousBooksSection({
   works,
   body,
+  coverFor,
 }: {
   works: BookMetaSeriesWork[];
   body: PreviousBookBody;
+  coverFor: CommunityCoverFor;
 }) {
   const { t } = useTranslation();
   if (works.length === 0) return null;
@@ -472,7 +490,7 @@ function PreviousBooksSection({
       <SectionHeader title={t('book.meta.previousBooks')} />
       <View className="overflow-hidden rounded-xl border border-border">
         {works.map((w, i) => (
-          <PreviousBookRow key={w.id} entry={w} first={i === 0} body={body} />
+          <PreviousBookRow key={w.id} entry={w} first={i === 0} body={body} coverFor={coverFor} />
         ))}
       </View>
     </View>
@@ -602,11 +620,15 @@ export function BookMetaCharactersTab({
   showSpoilers,
   onToggleSpoilers,
   previousBooks = [],
+  coverFor = noCommunityCover,
 }: SpoilerReveal & {
   characters: BookMetaCharacter[];
   progress: ListeningProgress;
   /** Earlier books of the series, for the catch-up block (see `previousWorks`). */
   previousBooks?: BookMetaSeriesWork[];
+  /** Where their community covers load from (`useCommunityCover`); without it each
+   * shows its placeholder. */
+  coverFor?: CommunityCoverFor;
 }) {
   const split = splitCharacters(characters, progress);
   const rows = spoilerRows(split, showSpoilers);
@@ -616,7 +638,11 @@ export function BookMetaCharactersTab({
         <CharacterCard key={item.id} character={item} spoiler={spoiler} />
       ))}
       <HiddenNotice count={split.hidden.length} shown={showSpoilers} onToggle={onToggleSpoilers} />
-      <PreviousBooksSection works={previousBooks} body={PreviousCharactersBody} />
+      <PreviousBooksSection
+        works={previousBooks}
+        body={PreviousCharactersBody}
+        coverFor={coverFor}
+      />
     </View>
   );
 }
@@ -635,6 +661,7 @@ export function BookMetaRecapsTab({
   showSpoilers,
   onToggleSpoilers,
   previousBooks = [],
+  coverFor = noCommunityCover,
 }: SpoilerReveal & {
   recaps: BookMetaRecap[];
   progress: ListeningProgress;
@@ -649,6 +676,9 @@ export function BookMetaRecapsTab({
   summaryVisible: boolean;
   /** Earlier books of the series, for the catch-up block (see `previousWorks`). */
   previousBooks?: BookMetaSeriesWork[];
+  /** Where their community covers load from (`useCommunityCover`); without it each
+   * shows its placeholder. */
+  coverFor?: CommunityCoverFor;
 }) {
   const { t } = useTranslation();
   const split = splitRecaps(sortRecaps(recaps), progress);
@@ -672,7 +702,7 @@ export function BookMetaRecapsTab({
         </View>
       ) : null}
       <HiddenNotice count={split.hidden.length} shown={showSpoilers} onToggle={onToggleSpoilers} />
-      <PreviousBooksSection works={previousBooks} body={PreviousRecapBody} />
+      <PreviousBooksSection works={previousBooks} body={PreviousRecapBody} coverFor={coverFor} />
     </View>
   );
 }
@@ -711,9 +741,13 @@ function ReadingOrderToggle({
 export function BookMetaSeriesTab({
   rails,
   onSelectView,
+  coverFor = noCommunityCover,
 }: {
   rails: SeriesRail[];
   onSelectView?: (family: string, viewId: string) => void;
+  /** Where the rails' community covers load from (`useCommunityCover`); without it
+   * each shows its placeholder (the title). */
+  coverFor?: CommunityCoverFor;
 }) {
   const { t } = useTranslation();
   const multipleSeries = rails.length > 1;
@@ -747,7 +781,7 @@ export function BookMetaSeriesTab({
                 className="w-28"
               >
                 <CoverFrame>
-                  <Cover source={w.cover_url ?? null} label={w.title} />
+                  <Cover source={coverFor(w.cover_url, COMMUNITY_COVER_SIZE)} label={w.title} />
                 </CoverFrame>
                 {w.position ? (
                   <Text variant="caption" className="mt-1.5">

@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 
-import { chapterNumberAt, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
+import { chapterNumberAt } from '@/components/library/meta-gating';
 import { contentKey } from '@/lib/content-key';
 import { selectBookKey, selectBookPosition, usePlayer } from '@/playback/store';
 
@@ -22,6 +22,15 @@ type PlayerSlice = ReturnType<typeof usePlayer.getState>;
 export function selectPlacedBookKey(s: PlayerSlice): string | null {
   const key = selectBookKey(s);
   return key !== null && s.loadingBook === key ? null : key;
+}
+
+/**
+ * The exact live whole-book position of the book `key` while it is the placed one
+ * (`selectPlacedBookKey`), else undefined. The one reading of the live place for the
+ * companion's gate (`useListeningChapter`) and its reveal toast, so the two agree.
+ */
+export function selectLivePosition(s: PlayerSlice, key: string): number | undefined {
+  return selectPlacedBookKey(s) === key ? selectBookPosition(s) : undefined;
 }
 
 /**
@@ -89,8 +98,11 @@ const listeningPosition = (live: number | undefined, saved: number | undefined) 
 
 /**
  * The 1-based chapter the listener is in (`chapterNumberAt` on `chapterStarts`, 0 when
- * nothing is known): `useBookPlace`'s `listening` at the spoiler gate's bucket, selected as a
- * NUMBER, so a playing book re-renders the caller only when the chapter changes.
+ * nothing is known): `useBookPlace`'s `listening` rule on the EXACT live place
+ * (`selectLivePosition`), selected as a NUMBER, so a playing book re-renders the caller
+ * only when the chapter changes. No bucket is needed for that (the number is the coarse
+ * reading), so the chapter turns over at the boundary itself, never before the listener
+ * reaches it. The companion's gate reads it, and the reveal toast reads the same place.
  */
 export function useListeningChapter(
   target: PlayTarget,
@@ -99,11 +111,7 @@ export function useListeningChapter(
 ): number {
   const key = contentKey(target.connectionId, target.libraryId, target.path);
   return usePlayer((s) => {
-    const live =
-      selectPlacedBookKey(s) === key
-        ? bucket(selectBookPosition(s), LIVE_POSITION_BUCKET_S)
-        : undefined;
-    const position = listeningPosition(live, saved);
+    const position = listeningPosition(selectLivePosition(s, key), saved);
     return position == null ? 0 : chapterNumberAt(chapterStarts, position);
   });
 }
