@@ -12,6 +12,7 @@ import {
   useFavouritesAll,
   useRecentAll,
 } from '@/api/hooks';
+import { profileName } from '@/components/profiles/profiles-model';
 import { HouseRow } from '@/components/house/house-row';
 import { libraryBooksHref } from '@/components/library/books/books-view';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
@@ -27,6 +28,7 @@ import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
 import { flushQueue } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
+import { useActiveProfile, useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { ProgressTile } from './book-title';
@@ -72,7 +74,9 @@ export function HomeScreen() {
   const paddingBottom = useMiniPlayerInset();
   const qc = useQueryClient();
 
-  const connections = useSession((s) => s.connections);
+  // The person listening: their servers (Phase 8 profiles).
+  const connections = useProfileConnections();
+  const profile = useActiveProfile();
   const defaultCid = useSession((s) => s.defaultConnectionId);
   const user = useSession((s) => s.user);
   const { progress, isLoading, error } = useAllProgressAll();
@@ -154,7 +158,11 @@ export function HomeScreen() {
           className="gap-[22px]"
           onLayout={(e) => setColumnWidth(e.nativeEvent.layout.width)}
         >
-          <Greeting name={user?.username} sync={sync} servers={connections.length} />
+          <Greeting
+            name={profile ? profileName(profile, connections, t) : user?.username}
+            sync={sync}
+            servers={connections.length}
+          />
           {/* Back on the Now card's book after 12+ days: where they left it. */}
           {nowAt ? <PreviouslyOnCard at={nowAt} saved={nowSaved} /> : null}
           {beside ? (

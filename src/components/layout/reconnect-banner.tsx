@@ -5,6 +5,7 @@ import { Pressable } from 'react-native';
 import { effectiveUrl } from '@/api/address-route';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -22,7 +23,8 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 export function ReconnectBanner() {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const connections = useSession((s) => s.connections);
+  // The person listening's servers only: another person's sign-in is theirs to renew.
+  const connections = useProfileConnections();
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const needing = connections.filter((c) => c.needsReconnect);
 

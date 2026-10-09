@@ -8,6 +8,7 @@ import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
+import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { pickSuggestions, progressIndex, queueConnectionId, queuedSeconds } from './up-next-model';
@@ -17,7 +18,8 @@ import { closeUpNext } from './up-next-store';
 export function useUpNextConnection(): string | undefined {
   const loaded = usePlayer((s) => s.nowPlaying?.connectionId);
   const defaultId = useSession((s) => s.defaultConnectionId);
-  const connections = useSession((s) => s.connections);
+  // The person listening's servers (Phase 8 profiles).
+  const connections = useProfileConnections();
   return queueConnectionId(loaded, defaultId, connections);
 }
 

@@ -27,7 +27,7 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { useSession } from '@/stores/session';
+import { useProfileConnections } from '@/stores/profiles';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { ActiveRow, PlannedRow, ReadyRow } from './download-rows';
@@ -105,7 +105,9 @@ export function DownloadsScreen() {
   const entries = useMemo(() => useDownloads.getState().entries, [signature]);
   const supported = useDownloads((s) => s.supported);
   const hydrated = useDownloads((s) => s.hydrated);
-  const connections = useSession((s) => s.connections);
+  // The person listening's servers and downloads (Phase 8 profiles); another person's
+  // downloads stay on the device (and keep playing for them) but are theirs to see.
+  const connections = useProfileConnections();
   const slots = useKeepAhead((s) => s.slots);
   const progressLabels = useProgressLabels();
   const storage = useStorage();
@@ -117,7 +119,13 @@ export function DownloadsScreen() {
   );
   const serverName = (id: string) =>
     servers.find((s) => s.id === id)?.name ?? t('downloads.storage.unknownServer');
-  const { active, ready } = useMemo(() => splitDownloads(Object.values(entries)), [entries]);
+  const { active, ready } = useMemo(
+    () =>
+      splitDownloads(
+        Object.values(entries).filter((e) => servers.some((s) => s.id === e.connectionId)),
+      ),
+    [entries, servers],
+  );
   const groups = useMemo(() => groupByServer(ready, servers), [ready, servers]);
   // Books the keep-ahead plan is holding back (Wi-Fi, room, its turn) and that aren't in
   // the registry yet.
