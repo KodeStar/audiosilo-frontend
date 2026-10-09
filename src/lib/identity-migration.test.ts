@@ -19,6 +19,7 @@ import {
   planMoves,
   randomId,
   rekey,
+  UNKNOWN,
 } from './identity-migration';
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
@@ -100,7 +101,10 @@ async function seedLegacyInstall() {
     { connectionId: 'srvB', libraryId: 1, path: 'Two', trackIndex: 1, positionInTrack: 5 },
   ]);
   await set('audiosilo.librarySelection', { selection: { connectionId: 'srvB', libraryId: 2 } });
-  await set('audiosilo.timeSaved', { lifetime: 100, books: { 'srvA:1:Book/One': 40, 'srvC:2:Other': 5 } });
+  await set('audiosilo.timeSaved', {
+    lifetime: 100,
+    books: { 'srvA:1:Book/One': 40, 'srvC:2:Other': 5 },
+  });
   await set(DRIFT_STORAGE_KEY, { 'srvB:1:Two': drift });
   await set(CAR_SNAPSHOT_WRITTEN_KEY, true);
   await set('audiosilo.storageVersion', 2);
@@ -454,6 +458,15 @@ describe('migrateConnectionIdentity', () => {
       ).toMatchObject({ status: 'migrated' });
     });
 
+    it('the playback service does not say which book it holds in time', async () => {
+      await seedLegacyInstall();
+      const before = await snapshotDocuments();
+      expect(
+        await migrateConnectionIdentity(deps({ loadedConnectionId: async () => UNKNOWN })),
+      ).toEqual({ status: 'aborted', step: 'busy' });
+      expect(await snapshotDocuments()).toEqual(before);
+    });
+
     it('a storage read that fails', async () => {
       await seedLegacyInstall();
       storage.getMany.mockRejectedValueOnce(new Error('io'));
@@ -592,7 +605,9 @@ describe('rekey', () => {
 });
 
 it('randomId is a v4 UUID', () => {
-  expect(randomId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(randomId()).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
   const c = globalThis.crypto;
   try {
     Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });

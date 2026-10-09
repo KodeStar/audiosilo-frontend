@@ -262,7 +262,11 @@ describe('the address field', () => {
     await fireEvent.press(screen.getByText('Continue'));
     await fireEvent.press(await screen.findByText('Try the demo'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(conn()).toMatchObject({ id: 'srv-demo.1', name: 'Hearthside', addresses: { away: AWAY } });
+    expect(conn()).toMatchObject({
+      id: 'srv-demo.1',
+      name: 'Hearthside',
+      addresses: { away: AWAY },
+    });
   });
 });
 

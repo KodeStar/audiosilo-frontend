@@ -79,9 +79,7 @@ describe('serverResetCid', () => {
     });
 
     it('flags the connection whose server answers with another server_id (rebuilt)', () => {
-      expect(serverResetCid(qk.server('srv-a.5'), { server_id: 'srv-new' }, conns)).toBe(
-        'srv-a.5',
-      );
+      expect(serverResetCid(qk.server('srv-a.5'), { server_id: 'srv-new' }, conns)).toBe('srv-a.5');
     });
   });
 });

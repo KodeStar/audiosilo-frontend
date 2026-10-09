@@ -159,7 +159,7 @@ export function resetTimeSavedBase(): void {
   base = null;
 }
 
-// A removed connection's books go with it (re-adding a server mints a new id).
+// A removed connection's books go with it (signing out forgets that account here).
 onConnectionRemoved(async (id) => {
   await hydrateTimeSaved();
   const doc = docOf(useTimeSavedStore.getState());

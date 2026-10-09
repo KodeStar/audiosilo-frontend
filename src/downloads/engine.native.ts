@@ -42,7 +42,8 @@ async function mergeInto(from: Directory, to: Directory): Promise<void> {
   for (const item of from.list()) {
     const target = item instanceof File ? new File(to, item.name) : new Directory(to, item.name);
     if (!target.exists) await item.move(to);
-    else if (item instanceof Directory && target instanceof Directory) await mergeInto(item, target);
+    else if (item instanceof Directory && target instanceof Directory)
+      await mergeInto(item, target);
     else item.delete();
   }
   from.delete();

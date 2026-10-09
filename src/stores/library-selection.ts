@@ -76,8 +76,8 @@ export const useLibrarySelection = create<LibrarySelectionState>()((set, get) =>
   },
 }));
 
-// A removed connection's pick would point at a server that is gone for good (re-adding
-// it mints a new id): drop it with the rest of its scoped state.
+// A removed connection's pick would point at an account that is no longer signed in: drop
+// it with the rest of its scoped state.
 onConnectionRemoved((id) => {
   if (useLibrarySelection.getState().selection?.connectionId === id) {
     useLibrarySelection.getState().clear();

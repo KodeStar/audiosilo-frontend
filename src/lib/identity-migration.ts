@@ -13,12 +13,7 @@ import {
 } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
-import {
-  CONNECTIONS_KEY,
-  DEFAULT_KEY,
-  type PersistedConnection,
-  tokenKey,
-} from '@/stores/session';
+import { CONNECTIONS_KEY, DEFAULT_KEY, type PersistedConnection, tokenKey } from '@/stores/session';
 
 /**
  * The one-time connection identity migration (Phase 8): every connection saved with a
@@ -109,8 +104,9 @@ export type InitialProfilesDoc = {
 export type IdentityMigrationDeps = {
   /** The downloads engine's move (absent where there are no downloads). */
   moveConnection?: (fromId: string, toId: string) => Promise<void>;
-  /** The connection of the book the Android playback service holds, else null. */
-  loadedConnectionId: () => Promise<string | null>;
+  /** The connection of the book the Android playback service holds, else null; `unknown`
+   * when the service did not say in time (the run waits for a launch where it does). */
+  loadedConnectionId: () => Promise<string | null | typeof UNKNOWN>;
   /** A new profile's id. */
   newProfileId: () => string;
 };
@@ -126,6 +122,12 @@ export function randomId(): string {
   return `${hex(8)}-${hex(4)}-4${hex(3)}-${variant}${hex(3)}-${hex(12)}`;
 }
 
+/** `loadedConnectionId` could not tell. */
+export const UNKNOWN = Symbol('unknown');
+/** How long the playback service gets to say which book it holds. The launch waits on the
+ * migration (the theme, every store), so a native call that never answers must not hang it. */
+const LOADED_BOOK_TIMEOUT_MS = 3_000;
+
 function defaultDeps(): IdentityMigrationDeps {
   return {
     moveConnection: engine.moveConnection?.bind(engine),
@@ -133,7 +135,16 @@ function defaultDeps(): IdentityMigrationDeps {
     // native module, which nothing else on this launch path needs yet.
     loadedConnectionId: async () => {
       const { carNative } = await import('@/car/car-native');
-      return (await carNative.getLoadedBook())?.connectionId ?? null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<typeof UNKNOWN>((resolve) => {
+        timer = setTimeout(() => resolve(UNKNOWN), LOADED_BOOK_TIMEOUT_MS);
+      });
+      try {
+        const loaded = await Promise.race([carNative.getLoadedBook(), late]);
+        return loaded === UNKNOWN ? UNKNOWN : (loaded?.connectionId ?? null);
+      } finally {
+        clearTimeout(timer);
+      }
     },
     newProfileId: randomId,
   };
@@ -376,7 +387,7 @@ export async function migrateConnectionIdentity(
     // (Either side of a move: the id it reports may already read through an alias.)
     const loaded = await deps.loadedConnectionId().catch(() => null);
     const involved = new Set(moves.flat());
-    if (loaded && involved.has(loaded)) return aborted('busy');
+    if (loaded === UNKNOWN || (loaded && involved.has(loaded))) return aborted('busy');
   }
 
   // 2. Tokens: copy and verify every one before anything else changes.

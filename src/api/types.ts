@@ -100,9 +100,10 @@ export type ServerAddresses = { home?: string; away?: string };
 
 export type ServerInfo = {
   name: string;
-  /** Stable per-install identity minted once by the server. The client uses it as a
-   * connection's id and keys all per-server state on it, so a server keeps its
-   * identity across URL changes and remove/re-add. */
+  /** Stable per-install identity minted once by the server. The client's connection id
+   * is it plus the user's id (`<server_id>.<user_id>`, `connectionIdOf`), so a connection
+   * keeps its identity across URL changes and remove/re-add, and two people on one server
+   * are two connections. Compare servers with `serverIdOf`, never a connection id. */
   server_id: string;
   version: string;
   api: string;
@@ -134,7 +135,8 @@ export type User = {
 };
 
 /** Response of /auth/exchange and /auth/login. The token is the session secret;
- * `server_id` is the paired server's stable identity (adopted as the connection id). */
+ * `server_id` is the paired server's stable identity (with `user.id`, the connection id:
+ * `connectionIdOf`). */
 export type AuthSession = {
   token: string;
   server_id: string;

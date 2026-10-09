@@ -43,7 +43,11 @@ async function run(): Promise<StorageMigrationResult> {
     identity = { status: 'aborted', step: 'read', error };
   }
   if (identity.status === 'aborted') {
-    console.warn('[storage] connection identity migration stopped at', identity.step, identity.error);
+    console.warn(
+      '[storage] connection identity migration stopped at',
+      identity.step,
+      identity.error,
+    );
   }
   return { ...reset, identity };
 }

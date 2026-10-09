@@ -45,6 +45,7 @@ beforeAll(() => {
   g.location = { origin: ORIGIN };
   g.Response = FakeResponse;
   jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     engine = (require('./engine.web') as { engine: DownloadEngine }).engine;
   });
 });
@@ -60,7 +61,7 @@ const put = (url: string, body: string) =>
   store.set(url, { body, headers: { 'Content-Length': String(body.length) }, status: 200 });
 
 describe('engine.web moveConnection', () => {
-  it("puts every file of the connection under the new id, then drops the old ones", async () => {
+  it('puts every file of the connection under the new id, then drops the old ones', async () => {
     put(at('srv', '1/Book-abc/0.mp3'), 'audio');
     put(at('srv', '1/Book-abc/cover.jpg'), 'cover');
     put(at('srv', '2/Other-1/meta.json'), '{}');

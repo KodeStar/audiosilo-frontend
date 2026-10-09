@@ -98,7 +98,12 @@ describe('repairPlan', () => {
 
     it('matches the connection to the server by its server_id, never its id', () => {
       expect(
-        repairPlan({ pending: AWAY, serverId: 'srv-1', connections: [sam], answer: { away: AWAY } }),
+        repairPlan({
+          pending: AWAY,
+          serverId: 'srv-1',
+          connections: [sam],
+          answer: { away: AWAY },
+        }),
       ).toEqual({ serverUrl: HOME, addresses: { away: AWAY } });
       // The id alone (a fixture without serverId) is read the same way.
       const { serverId: _s, ...bare } = sam;

@@ -69,8 +69,7 @@ export function repairPlan(input: {
   const { pending, serverId, connections, reconnectId, answer, known, userId } = input;
   const onServer = connections.filter((c) => serverIdOf(c) === serverId);
   const same =
-    (userId !== undefined ? onServer.find((c) => c.user?.id === userId) : undefined) ??
-    onServer[0];
+    (userId !== undefined ? onServer.find((c) => c.user?.id === userId) : undefined) ?? onServer[0];
   if (same && isOwnAddress(pending, same)) {
     return { serverUrl: same.serverUrl, addresses: answer };
   }

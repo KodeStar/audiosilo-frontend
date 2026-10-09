@@ -33,7 +33,8 @@ export async function getDeviceId(): Promise<string> {
 }
 
 export type ProgressSave = {
-  /** Which server this save belongs to (never replay it against another). */
+  /** Which connection (one user on one server) this save belongs to (never replay it
+   * against another). */
   connectionId: string;
   libraryId: number;
   path: string;
@@ -406,8 +407,8 @@ export async function flushConnection(connectionId: string): Promise<void> {
   });
 }
 
-// Removing a connection orphans its scoped state forever (re-adding mints a new id),
-// so drop its mirror records and queued saves here.
+// Removing a connection orphans its scoped state (signing in again starts from the
+// server's own record), so drop its mirror records and queued saves here.
 onConnectionRemoved(async (id) => {
   // The mirror and queue take independent locks and touch disjoint storage keys, so
   // purge them concurrently rather than serializing the two storage round-trips.

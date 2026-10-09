@@ -626,8 +626,11 @@ function afterLaunch(task: () => void) {
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`fileName` for audio, `cover.jpg` for the
  * cover), so the (connectionId, libraryId, path, fileName) → live-uri mapping lives
- * here too; `engine.localUri` supplies the container-current absolute uri. A no-op
- * when the engine has no `localUri` (web), where uris are stable cache keys, not paths.
+ * here too; `engine.localUri` supplies the container-current absolute uri (native) or
+ * the virtual cache url (web). Recomputing from the entry's own connection id is also
+ * what carries a download across the identity migration, which moves the files and
+ * rewrites `connectionId` but not the stored uris. A no-op only for an engine without
+ * `localUri` (no offline storage).
  */
 function relocateEntry(e: DownloadEntry): DownloadEntry {
   const resolve = engine.localUri;
@@ -828,8 +831,8 @@ async function runOne(key: string) {
 }
 
 // Removing a connection purges its downloads: abort any in-flight transfer, delete the
-// files, and drop the entries. Re-adding the server mints a new id, so these are
-// otherwise unreachable forever.
+// files, and drop the entries (signing out of an account takes its downloads with it;
+// nothing else would ever reach them).
 onConnectionRemoved(async (id) => {
   const entries = useDownloads.getState().entries;
   const doomed = Object.entries(entries).filter(([, e]) => e.connectionId === id);

@@ -456,16 +456,16 @@ describe('session store (multi-connection)', () => {
       // 'auth' mark must not clobber it.
       useSession.getState().markNeedsReconnect('srv-a.1', 'server-reset');
       useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
-      expect(useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect).toBe(
-        'server-reset',
-      );
+      expect(
+        useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect,
+      ).toBe('server-reset');
       // The reverse (auth → server-reset) is a valid upgrade.
       useSession.getState().clearNeedsReconnect('srv-a.1');
       useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
       useSession.getState().markNeedsReconnect('srv-a.1', 'server-reset');
-      expect(useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect).toBe(
-        'server-reset',
-      );
+      expect(
+        useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect,
+      ).toBe('server-reset');
     });
 
     it('clearNeedsReconnect clears the flag and no-ops when unset', async () => {
@@ -767,7 +767,9 @@ describe('session store (multi-connection)', () => {
         expect(byId(remembered, 'srv-b')?.addresses).toEqual({ home: HOME_B });
         reset();
         await useSession.getState().hydrate();
-        expect(byId(useSession.getState().connections, 'srv-a.1')?.addresses).toEqual({ home: HOME });
+        expect(byId(useSession.getState().connections, 'srv-a.1')?.addresses).toEqual({
+          home: HOME,
+        });
         expect(byId(useSession.getState().connections, 'srv-b.1')?.addresses).toEqual({
           home: HOME_B,
         });
@@ -875,9 +877,12 @@ describe('session store (multi-connection)', () => {
       await SecureStore.setItemAsync('audiosilo.token.srv', 'old');
       await useSession.getState().hydrate();
       expect(useSession.getState().connections[0]).toMatchObject({ id: 'srv', serverId: 'srv' });
-      const id = await useSession
-        .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'new', user: user(3, 'sam') });
+      const id = await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv',
+        token: 'new',
+        user: user(3, 'sam'),
+      });
       expect(id).toBe('srv');
       expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv']);
       expect(await SecureStore.getItemAsync('audiosilo.token.srv')).toBe('new');
@@ -896,9 +901,12 @@ describe('session store (multi-connection)', () => {
       );
       await SecureStore.setItemAsync('audiosilo.token.srv', 'old');
       await useSession.getState().hydrate();
-      const id = await useSession
-        .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'new', user: user(3, 'sam') });
+      const id = await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv',
+        token: 'new',
+        user: user(3, 'sam'),
+      });
       expect(id).toBe('srv');
       expect(useSession.getState().connections).toHaveLength(1);
     });

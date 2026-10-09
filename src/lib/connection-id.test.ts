@@ -61,7 +61,10 @@ describe('parseConnectionId / isLegacyConnectionId', () => {
   });
 
   it('round-trips connectionIdOf', () => {
-    expect(parseConnectionId(connectionIdOf('a-b_c', 12))).toEqual({ serverId: 'a-b_c', userId: 12 });
+    expect(parseConnectionId(connectionIdOf('a-b_c', 12))).toEqual({
+      serverId: 'a-b_c',
+      userId: 12,
+    });
   });
 
   it('treats anything without a numeric user part as legacy', () => {

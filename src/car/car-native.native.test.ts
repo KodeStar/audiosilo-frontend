@@ -24,6 +24,7 @@ jest.mock('../../modules/audiosilo-player', () => ({
 let carNative: CarNative;
 beforeAll(() => {
   // Required here, not imported: the seam reads the module's functions as it loads.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   carNative = (require('./car-native.native') as { carNative: CarNative }).carNative;
 });
 beforeEach(() => setConnectionAliases({ srv: 'srv.3' }));

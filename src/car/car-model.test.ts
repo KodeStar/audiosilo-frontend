@@ -104,9 +104,17 @@ describe('carItemId / parseCarItemId', () => {
     it('names the new connection id (and a new-form id round-trips)', () => {
       setConnectionAliases({ srv: 'srv.3' });
       const old = carItemId({ connectionId: 'srv', libraryId: 2, path: 'A/Book.m4b' });
-      expect(parseCarItemId(old)).toEqual({ connectionId: 'srv.3', libraryId: 2, path: 'A/Book.m4b' });
+      expect(parseCarItemId(old)).toEqual({
+        connectionId: 'srv.3',
+        libraryId: 2,
+        path: 'A/Book.m4b',
+      });
       const fresh = carItemId({ connectionId: 'srv.3', libraryId: 2, path: 'A/Book.m4b' });
-      expect(parseCarItemId(fresh)).toEqual({ connectionId: 'srv.3', libraryId: 2, path: 'A/Book.m4b' });
+      expect(parseCarItemId(fresh)).toEqual({
+        connectionId: 'srv.3',
+        libraryId: 2,
+        path: 'A/Book.m4b',
+      });
     });
   });
 });

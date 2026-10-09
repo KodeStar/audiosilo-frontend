@@ -47,7 +47,9 @@ jest.mock('expo-file-system', () => {
     }
     list() {
       return [...mockTree.entries()]
-        .filter(([k]) => k.startsWith(`${this.uri}/`) && !k.slice(this.uri.length + 1).includes('/'))
+        .filter(
+          ([k]) => k.startsWith(`${this.uri}/`) && !k.slice(this.uri.length + 1).includes('/'),
+        )
         .map(([k, v]) => (v === 'dir' ? new MockDirectory(k) : new MockFile(k)));
     }
   }
@@ -64,7 +66,8 @@ const ROOT = 'file:///docs/downloads';
 function seed(files: Record<string, string>) {
   for (const [rel, content] of Object.entries(files)) {
     const parts = rel.split('/');
-    for (let i = 1; i < parts.length; i++) mockTree.set(`${ROOT}/${parts.slice(0, i).join('/')}`, 'dir');
+    for (let i = 1; i < parts.length; i++)
+      mockTree.set(`${ROOT}/${parts.slice(0, i).join('/')}`, 'dir');
     mockTree.set(`${ROOT}/${rel}`, content);
   }
   mockTree.set(ROOT, 'dir');
@@ -102,7 +105,9 @@ describe('engine.native moveConnection', () => {
     });
     expect(mockTree.has(`${ROOT}/srv`)).toBe(false);
     // The engine's own uris for the new id find them.
-    expect(engine.localUri!('srv.3', 1, 'Book', '0.mp3')).toMatch(/^file:\/\/\/docs\/downloads\/srv\.3\/1\//);
+    expect(engine.localUri!('srv.3', 1, 'Book', '0.mp3')).toMatch(
+      /^file:\/\/\/docs\/downloads\/srv\.3\/1\//,
+    );
   });
 
   it('is a no-op when there is nothing under the old id (moved already, or no downloads)', async () => {
