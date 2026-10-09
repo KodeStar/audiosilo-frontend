@@ -1,15 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// The player store, as far as a profile switch uses it: what is loaded, and `stop` (pause,
-// save, unload).
-const mockPlayer = {
-  nowPlaying: null as { connectionId: string } | null,
-  stop: jest.fn(async () => {
-    mockPlayer.nowPlaying = null;
-  }),
-};
-jest.mock('@/playback/store', () => ({ usePlayer: { getState: () => mockPlayer } }));
-
 import { act, renderHook } from '@testing-library/react-native';
 
 import type { User } from '@/api/types';
@@ -35,6 +25,16 @@ import {
   useProfiles,
 } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
+
+// The player store, as far as a profile switch uses it: what is loaded, and `stop` (pause,
+// save, unload).
+const mockPlayer = {
+  nowPlaying: null as { connectionId: string } | null,
+  stop: jest.fn(async () => {
+    mockPlayer.nowPlaying = null;
+  }),
+};
+jest.mock('@/playback/store', () => ({ usePlayer: { getState: () => mockPlayer } }));
 
 const user = (id: number, username: string): User => ({
   id,
