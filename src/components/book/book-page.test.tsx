@@ -33,6 +33,7 @@ jest.mock('@/api/hooks', () => ({
   useChapters: () => ({ data: mockChapters, isLoading: false }),
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
   useCapability: (flag: string) => mockCaps[flag] ?? false,
+  useServerInfo: () => ({ data: { capabilities: mockCaps }, isError: false }),
   useBookMeta: () => ({ data: mockMeta }),
   useBookProgress: () => ({ data: mockProgress, isPending: false }),
   useFavourites: () => ({ data: [] }),

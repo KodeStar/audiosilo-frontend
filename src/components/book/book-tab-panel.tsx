@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useScopedCid } from '@/api/provider';
 import type { Book, BookMetaSeriesWork, ChaptersResponse } from '@/api/types';
 import {
   BookMetaCharactersTab,
@@ -13,6 +14,7 @@ import { HistorySection } from '@/components/library/history-section';
 import type { ListeningProgress } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import type { SeriesRail } from '@/components/library/series-rails';
+import { useCommunityCover } from '@/components/library/use-community-cover';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { BookTab } from '@/lib/paths';
@@ -62,6 +64,8 @@ export function BookTabPanel({
 }: BookTabPanelProps) {
   const { t } = useTranslation();
   const work = community.meta?.work;
+  // The envelope's covers, from this server when it serves them (`meta_covers`).
+  const coverFor = useCommunityCover(useScopedCid(), libraryId, path);
   switch (tab) {
     case 'chapters':
       if (chapters.list.rows.length === 0) {
@@ -86,6 +90,7 @@ export function BookTabPanel({
             showSpoilers={community.showSpoilers}
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}
+            coverFor={coverFor}
           />
           {recaps.length > 0 || community.summaryVisible ? (
             <Attribution attribution={work?.attribution} />
@@ -103,6 +108,7 @@ export function BookTabPanel({
             showSpoilers={community.showSpoilers}
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}
+            coverFor={coverFor}
           />
           {characters.length > 0 ? <Attribution attribution={work?.attribution} /> : null}
         </View>
@@ -117,7 +123,13 @@ export function BookTabPanel({
     case 'notes':
       return <NotesSection libraryId={libraryId} path={path} />;
     case 'series':
-      return <BookMetaSeriesTab rails={community.rails} onSelectView={community.onSelectView} />;
+      return (
+        <BookMetaSeriesTab
+          rails={community.rails}
+          onSelectView={community.onSelectView}
+          coverFor={coverFor}
+        />
+      );
     case 'details':
       return (
         <BookDetailsTab
