@@ -46,6 +46,7 @@ function YourListening({ figures }: { figures: ListeningFigures }) {
     { key: 'speed', label: t('book.listening.speed'), value: figures.speed },
     { key: 'started', label: t('book.listening.started'), value: figures.started },
     { key: 'finished', label: t('book.listening.finished'), value: figures.finished },
+    { key: 'smartSpeed', label: t('effects.bookSaved'), value: figures.smartSpeedSaved },
   ].filter((r): r is { key: string; label: string; value: string } => !!r.value);
   if (rows.length === 0) return null;
   return (

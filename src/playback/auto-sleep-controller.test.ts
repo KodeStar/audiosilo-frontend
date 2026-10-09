@@ -27,6 +27,7 @@ function load() {
   const controller =
     require('@/playback/auto-sleep-controller') as typeof import('@/playback/auto-sleep-controller');
   const ticks = require('@/playback/engine-ticks') as typeof import('@/playback/engine-ticks');
+  const car = require('@/car/car-connection') as typeof import('@/car/car-connection');
   /* eslint-enable @typescript-eslint/no-require-imports */
   return {
     player,
@@ -35,6 +36,7 @@ function load() {
     useSettings: settings.useSettings,
     startAutoSleep: controller.startAutoSleep,
     engineTick: ticks.engineTick,
+    setCarConnected: car.setCarConnected,
   };
 }
 
@@ -184,6 +186,22 @@ describe('auto sleep controller', () => {
     jest.setSystemTime(IN_WINDOW);
     playing();
     start();
+    expect(phase()).toBe('running');
+  });
+
+  it('never arms in a car, and arms once the car is gone with the book still playing', () => {
+    // A night drive with CarPlay or Android Auto: a timer would fade and pause the book
+    // mid-drive (and leave a "fell asleep" bookmark for a driver).
+    jest.setSystemTime(IN_WINDOW);
+    ctx.setCarConnected(true);
+    start();
+    playing();
+    expect(phase()).toBe('idle');
+    jest.advanceTimersByTime(60_000);
+    expect(phase()).toBe('idle'); // the poll asked again, still in the car
+
+    ctx.setCarConnected(false); // home, still listening
+    jest.advanceTimersByTime(60_000);
     expect(phase()).toBe('running');
   });
 

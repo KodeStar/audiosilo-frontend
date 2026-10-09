@@ -10,6 +10,7 @@ import { timeLeft } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { slopTo44 } from './control-pill';
+import { EffectsSettings } from './effects-settings';
 import { OptionTile } from './option-tile';
 import { PlayerSheet } from './player-sheet';
 import {
@@ -30,7 +31,8 @@ const STEP_SLOP = slopTo44(2.75);
  * The playback-speed sheet (STYLEGUIDE section 8, "Sheets"): the big readout, how long
  * the rest of the book takes at this speed ("remembered for this book": the store saves
  * the speed with the book's progress), a 0.5-2.0 slider in 0.05 steps between minus and
- * plus buttons, and the presets, each with the time left at that speed.
+ * plus buttons, the presets, each with the time left at that speed, and the Smart Speed
+ * and Voice Boost switches (`EffectsSettings`, the same rows Settings shows).
  */
 export function SpeedSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { t } = useTranslation();
@@ -122,6 +124,8 @@ function SpeedSheetBody() {
           />
         ))}
       </View>
+
+      <EffectsSettings />
     </View>
   );
 }

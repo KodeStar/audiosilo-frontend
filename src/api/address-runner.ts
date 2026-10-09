@@ -278,12 +278,34 @@ export function followPlayingBook(): void {
     });
 }
 
+/** How many callers hold the runner, and its teardown while one does. */
+let holders = 0;
+let teardown: (() => void) | null = null;
+
 /**
- * Start the runner; returns its teardown. A no-op on web. `opts.probe` replaces the
- * home probe (tests).
+ * Start the runner; returns its release. A no-op on web. Shared: the root layout starts it,
+ * and so does the car's headless task (Android Auto with no activity, where a connection
+ * paired on its home address must still reach its server from the car); it runs once until
+ * the last holder releases it, so one runtime never runs two (their teardowns reset the
+ * same module state). `opts.probe` replaces the home probe (tests: the first start's wins).
  */
 export function startAddressRouting(opts: { probe?: ServerIdProbe } = {}): () => void {
   if (Platform.OS === 'web') return () => undefined;
+  holders++;
+  teardown ??= runAddressRouting(opts);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holders--;
+    if (holders > 0 || !teardown) return;
+    const stop = teardown;
+    teardown = null;
+    stop();
+  };
+}
+
+function runAddressRouting(opts: { probe?: ServerIdProbe }): () => void {
   probe = opts.probe ?? probeServerId;
   const stops: (() => void)[] = [];
 

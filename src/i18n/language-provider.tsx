@@ -44,9 +44,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void getItem<LanguagePref>(STORAGE_KEY)
-      .then(async (saved) => {
-        const next: LanguagePref = saved === 'system' || isSupportedCode(saved) ? saved : 'system';
+    void readLanguagePref()
+      .then(async (next) => {
         await i18n.changeLanguage(resolveLanguage(next));
         if (active) setPrefState(next);
       })
@@ -75,6 +74,27 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       {children}
     </LanguageContext.Provider>
   );
+}
+
+/** The persisted language preference (default, and for anything unreadable: follow the
+ * device). */
+export async function readLanguagePref(): Promise<LanguagePref> {
+  const saved = await getItem<LanguagePref>(STORAGE_KEY);
+  return saved === 'system' || isSupportedCode(saved) ? saved : 'system';
+}
+
+/**
+ * Apply the persisted language preference to i18next outside React, as a launch step
+ * (`bootstrapPlayback`): where no `LanguageProvider` runs (the car's headless task, whose
+ * strings, the car snapshot's labels, must be in the listener's language too), the
+ * framework-free controllers read the right language from the start.
+ */
+export async function restoreLanguage(): Promise<void> {
+  try {
+    await i18n.changeLanguage(resolveLanguage(await readLanguagePref()));
+  } catch {
+    // the fallback language
+  }
 }
 
 export function useLanguage() {

@@ -3,6 +3,7 @@ import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteError, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
+import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 import { onConnectionRemoved } from '@/stores/session';
 
@@ -115,13 +116,50 @@ export async function loadInitialProgress(
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
   // so a locally-newer offline advance isn't regressed by a stale server read).
   if (serverOk && server) await writeMirror(progressToSave(connectionId, libraryId, path, server));
+  return resumeLookupOf(
+    serverOk ? server : undefined,
+    await readLocalPlaces(),
+    connectionId,
+    libraryId,
+    path,
+  );
+}
 
-  const mirror = mirrorAsProgress(libraryId, path, await readMirror(connectionId, libraryId, path));
-  const queued = await pendingProgressFor(connectionId, libraryId, path);
-  const best = newest(newest(server, mirror), queued);
+/** This device's own records of where books are: the durable mirror (by `contentKey`) and
+ * the offline replay queue. */
+export type LocalPlaces = { mirror: Record<string, ProgressSave>; queue: ProgressSave[] };
 
+/** Both, read at once: for a reader that looks many books up together (the car snapshot's
+ * play specs), two storage reads in all instead of two per book. */
+export async function readLocalPlaces(): Promise<LocalPlaces> {
+  const [mirror, queue] = await Promise.all([readMirrorMap(), readQueue()]);
+  return { mirror, queue };
+}
+
+/**
+ * `loadInitialProgress`'s rule, pure: the newest (by `updated_at`) of the server's row, the
+ * durable mirror and the offline queue's save. `server` is the server's answer when it was
+ * reached (null: no record, a new book there), `undefined` when it was not: only a reached
+ * server can make an unknown book `empty`; otherwise it is `failed`.
+ */
+export function resumeLookupOf(
+  server: Progress | null | undefined,
+  places: LocalPlaces,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): ResumeLookup {
+  const mirror = places.mirror[contentKey(connectionId, libraryId, path)] ?? null;
+  const queued =
+    places.queue.find(
+      (s) => s.connectionId === connectionId && s.libraryId === libraryId && s.path === path,
+    ) ?? null;
+  const best = newest(
+    newest(server ?? null, mirrorAsProgress(libraryId, path, mirror)),
+    mirrorAsProgress(libraryId, path, queued),
+  );
   if (best) return { kind: 'progress', progress: best };
-  if (serverOk) return { kind: 'empty' }; // server reachable + nothing anywhere = truly new
+  if (server !== undefined) return { kind: 'empty' }; // server reachable + nothing anywhere = truly new
   return { kind: 'failed' }; // never reached the server and no local fallback
 }
 
@@ -137,6 +175,7 @@ export async function mirroredProgress(
   return mirrorAsProgress(libraryId, path, await readMirror(connectionId, libraryId, path));
 }
 
+/** A stored save (the mirror's, or one waiting in the offline queue) as a `Progress`. */
 function mirrorAsProgress(
   libraryId: number,
   path: string,
@@ -177,15 +216,7 @@ function progressToSave(
 }
 
 // Serialize mirror read-modify-write so concurrent saves can't clobber each other.
-let mirrorLock: Promise<unknown> = Promise.resolve();
-function withMirrorLock<T>(fn: () => Promise<T>): Promise<T> {
-  const run = mirrorLock.then(fn, fn);
-  mirrorLock = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
-}
+const withMirrorLock = serialQueue();
 
 /** Upsert the durable mirror, keeping the newest record by `updated_at`. */
 export async function writeMirror(save: ProgressSave): Promise<void> {
@@ -207,31 +238,6 @@ export async function readMirror(
 ): Promise<ProgressSave | null> {
   const map = await readMirrorMap();
   return map[contentKey(connectionId, libraryId, path)] ?? null;
-}
-
-/** Reconstruct progress from the offline replay queue, so a downloaded book
- * resumes at the right spot when the server can't be reached. */
-async function pendingProgressFor(
-  connectionId: string,
-  libraryId: number,
-  path: string,
-): Promise<Progress | null> {
-  const queue = await readQueue();
-  const save = queue.find(
-    (s) => s.connectionId === connectionId && s.libraryId === libraryId && s.path === path,
-  );
-  if (!save) return null;
-  return {
-    library_id: libraryId,
-    path,
-    position: save.position,
-    duration: save.duration,
-    finished: save.finished,
-    playback_speed: save.playback_speed,
-    version: 0,
-    device_id: save.device_id,
-    updated_at: save.updated_at,
-  };
 }
 
 function isUnrecoverable(e: unknown): boolean {
@@ -275,15 +281,7 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
 // Serialize all read-modify-write access to the queue so a flush and a
 // concurrent save (or two overlapping flushes) can't clobber each other's writes
 // and drop queued saves (review finding F4).
-let queueLock: Promise<unknown> = Promise.resolve();
-function withQueueLock<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queueLock.then(fn, fn);
-  queueLock = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
-}
+const withQueueLock = serialQueue();
 
 async function enqueue(save: ProgressSave): Promise<void> {
   await withQueueLock(async () => {

@@ -1,6 +1,10 @@
 /// <reference lib="dom" />
+import { sameOrigin } from '@/lib/same-origin';
+
+import { supportsVoiceBoost } from './effects';
 import {
   AutoplayBlockedError,
+  type BookRef,
   INITIAL_SNAPSHOT,
   type PlaybackChapter,
   type PlaybackConfig,
@@ -43,6 +47,68 @@ export function routePickerKind(el: {
   if (el.remote && typeof el.remote.prompt === 'function') return 'remote';
   return 'none';
 }
+
+/** The numbers of a `DynamicsCompressorNode`, in the units it takes (seconds for the times). */
+type CompressorSettings = {
+  threshold: number;
+  knee: number;
+  ratio: number;
+  attack: number;
+  release: number;
+};
+
+/** Voice boost's compressor (the stronger preset a device test called for): the native
+ * boost's numbers. */
+export const VOICE_BOOST_COMPRESSOR = {
+  threshold: -20,
+  knee: 6,
+  ratio: 3,
+  attack: 0.01,
+  release: 0.2,
+} as const satisfies CompressorSettings;
+
+/**
+ * A gain between the compressor and the limiter (dB), so the web lifts narration as much as
+ * the native boost (+8 dB for -14 dBFS peaks, its make-up being +12). `DynamicsCompressorNode`
+ * has no make-up setting: it applies its own, `(1 / curve(1.0))^0.6` (Web Audio spec, "makeup
+ * gain"; Chromium and Firefox share the curve): +6.9 dB for this compressor and +1.7 dB for
+ * the limiter. Its knee runs from the threshold UP (the native knee is centred on it), so
+ * above the knee the browser's curve sits 3.3 dB under the native one: this +1.6 and the
+ * limiter's +1.7 make it up, and below the threshold the web lifts ~10.2 dB (native 12).
+ * `service.web.test.ts` recomputes the whole chain from the browser's curve.
+ */
+export const VOICE_BOOST_TRIM_DB = 1.6;
+
+/** The peak limiter after the trim (the native ceiling is -1 dBFS): a hard 20:1 at -3 dBFS,
+ * which with its own +1.7 dB make-up lands a full-scale input near -1.1 dBFS. Its 1 ms attack
+ * (and the browser's ~6 ms look-ahead) catches the onsets the compressor's 10 ms lets by. */
+export const VOICE_BOOST_LIMITER = {
+  threshold: -3,
+  knee: 0,
+  ratio: 20,
+  attack: 0.001,
+  release: 0.08,
+} as const satisfies CompressorSettings;
+
+function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompressorNode {
+  const node = ctx.createDynamicsCompressor();
+  node.threshold.value = c.threshold;
+  node.knee.value = c.knee;
+  node.ratio.value = c.ratio;
+  node.attack.value = c.attack;
+  node.release.value = c.release;
+  return node;
+}
+
+/**
+ * Is `url` served from this page's own origin? A media element routed through Web Audio
+ * whose source is cross-origin (without CORS) plays SILENCE (the spec's "outputs zeroes"
+ * for a tainted source), so only a same-origin source is ever routed: the player served at
+ * `/web` by the server it plays from, and the service worker's `/_offline/` copies. A
+ * stream from another signed-in server plays on unboosted.
+ */
+const routable = (url: string): boolean =>
+  sameOrigin(url, typeof location !== 'undefined' ? location : undefined);
 
 /** A media element augmented with the (non-standard) picker entry points. */
 type RoutePickerEl = {
@@ -89,7 +155,28 @@ class WebPlaybackService implements PlaybackService {
   /** Last requested output volume, re-applied to every element we create (a fade
    * mid-`swapTo` would otherwise jump back to full on the swapped-in element). */
   private volume = 1;
-  private config: PlaybackConfig = { autoRewindMax: 0, jumpForward: 30, jumpBackward: 15 };
+  private config: PlaybackConfig = {
+    autoRewindMax: 0,
+    jumpForward: 30,
+    jumpBackward: 15,
+    smartSpeed: false,
+    voiceBoost: false,
+  };
+  /** Whether `configure` has run once: the first call is the store's set-up (no gesture),
+   * every later one is a setting the listener changed. */
+  private configured = false;
+  /** Voice Boost's Web Audio graph: ONE context and ONE compressor (-> trim -> limiter ->
+   * destination), created lazily inside a listener's gesture (the switch, or a play tap with
+   * the setting on) and never torn down; switching the boost off reconnects each source straight to
+   * the destination. Never created where `supportsVoiceBoost` says no (Safari). */
+  private boost: { ctx: AudioContext; compressor: DynamicsCompressorNode } | null = null;
+  /** Each element's source node. An element takes exactly ONE for its whole life (a second
+   * `createMediaElementSource` throws), and once it has one its sound only comes out
+   * through the graph: so it is only made while the context is running (a suspended one
+   * would silence the book) and only for a same-origin source (see `routable`). */
+  private sources = new Map<HTMLAudioElement, MediaElementAudioSourceNode>();
+  /** Where each element's source node is connected now. */
+  private routedTo = new Map<HTMLAudioElement, AudioNode>();
   private pausedAt: number | null = null;
   /** Track-absolute start (seconds) of the active element's source: the `t` a
    * transcoded stream was requested at, 0 for a direct stream. */
@@ -215,15 +302,23 @@ class WebPlaybackService implements PlaybackService {
   private loadTrack(index: number, positionInTrack: number, autoplay: boolean) {
     const track = this.tracks[index];
     if (!track) return;
+    const source = sourceFor(track, positionInTrack);
+    // An element already routed through Voice Boost would play another server's stream
+    // as silence (see `routable`): give that source a fresh, unrouted element. A load
+    // interrupts playback anyway, so the change is inaudible.
+    if (this.audio && this.sources.has(this.audio) && !routable(source.url)) {
+      this.discard(this.audio);
+      this.audio = null;
+    }
     const a = this.el();
     this.index = index;
-    const source = sourceFor(track, positionInTrack);
     this.offset = source.offset;
     this.earlyEndRetryAt = null; // handleEnded re-sets it for its own reload
     this.pendingAutoplay = autoplay;
     const seq = ++this.loadSeq;
     a.src = source.url;
     this.applyRate(a);
+    this.routeBoost(a);
     this.update({
       trackIndex: index,
       // A transcoded stream starts at the `t` it was requested at (see `sourceFor`).
@@ -286,7 +381,89 @@ class WebPlaybackService implements PlaybackService {
   }
 
   async configure(config: PlaybackConfig) {
+    const switchedOn = config.voiceBoost && !this.config.voiceBoost;
     this.config = config;
+    // Turned on by the listener (a later call than the store's set-up): that is a gesture,
+    // the moment a browser lets an AudioContext start. Smart Speed has no web engine.
+    if (switchedOn && this.configured) this.ensureBoostGraph();
+    this.configured = true;
+    if (this.audio) this.routeBoost(this.audio);
+  }
+
+  /** Voice Boost wanted, and possible in this browser. */
+  private wantsBoost(): boolean {
+    return this.config.voiceBoost && supportsVoiceBoost();
+  }
+
+  /** Make the graph if Voice Boost is wanted and there is none yet, and ask the context to
+   * run. Call it inside a listener's gesture (the switch, a play tap): the browser only
+   * lets an AudioContext start then. Synchronous up to `resume()`, so the gesture holds. */
+  private ensureBoostGraph() {
+    if (!this.wantsBoost()) return;
+    if (!this.boost) {
+      try {
+        const ctx = new AudioContext();
+        const compressor = makeCompressor(ctx, VOICE_BOOST_COMPRESSOR);
+        const trim = ctx.createGain();
+        trim.gain.value = 10 ** (VOICE_BOOST_TRIM_DB / 20);
+        const limiter = makeCompressor(ctx, VOICE_BOOST_LIMITER);
+        compressor.connect(trim);
+        trim.connect(limiter);
+        limiter.connect(ctx.destination);
+        this.boost = { ctx, compressor };
+        // Route the playing element once the context actually runs (see `sources`).
+        ctx.addEventListener('statechange', () => {
+          if (this.audio) this.routeBoost(this.audio);
+        });
+      } catch {
+        return; // no Web Audio after all: the book plays on unboosted
+      }
+    }
+    if (this.boost.ctx.state !== 'running') {
+      this.boost.ctx.resume().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Point `a`'s sound where the setting says: through the compressor when Voice Boost is
+   * on, straight to the destination when it is off. An element is only given a source node
+   * (which it then keeps for life) while the context RUNS and its source is same-origin;
+   * until then it plays on by itself, unboosted, which is never worse than silence. An
+   * element that never had one stays as it is while the boost is off.
+   */
+  private routeBoost(a: HTMLAudioElement) {
+    const boost = this.boost;
+    if (!boost) return;
+    let source = this.sources.get(a);
+    if (!source) {
+      if (!this.wantsBoost() || boost.ctx.state !== 'running') return;
+      if (!routable(a.src)) return;
+      try {
+        source = boost.ctx.createMediaElementSource(a);
+      } catch {
+        return;
+      }
+      this.sources.set(a, source);
+    }
+    // Re-wired only when the target changes: a load, or any other setting, re-asks.
+    const target = this.wantsBoost() ? boost.compressor : boost.ctx.destination;
+    if (this.routedTo.get(a) === target) return;
+    source.disconnect();
+    source.connect(target);
+    this.routedTo.set(a, target);
+  }
+
+  /** Stop and drop an element we no longer use, and its source node with it. */
+  private discard(a: HTMLAudioElement) {
+    a.pause();
+    a.removeAttribute('src');
+    a.load();
+    const source = this.sources.get(a);
+    if (source) {
+      source.disconnect();
+      this.sources.delete(a);
+      this.routedTo.delete(a);
+    }
   }
 
   async load(
@@ -294,6 +471,7 @@ class WebPlaybackService implements PlaybackService {
     startIndex: number,
     positionInTrack: number,
     _chapters?: PlaybackChapter[], // chapters are a native lock-screen concern; web ignores them
+    _book?: BookRef, // a native concern too (the Android service)
   ) {
     this.tracks = tracks;
     // A pause belongs to what was loaded before: the first play() of a new load must not
@@ -308,6 +486,7 @@ class WebPlaybackService implements PlaybackService {
     startIndex: number,
     positionInTrack: number,
     _chapters?: PlaybackChapter[], // ignored on web (see load)
+    _book?: BookRef, // ignored on web (see load)
   ): Promise<boolean> {
     const track = tracks[startIndex];
     if (!track) return false;
@@ -371,9 +550,7 @@ class WebPlaybackService implements PlaybackService {
     // The local source never became playable - discard it and keep streaming rather
     // than cutting the live element over to a dead one.
     if (!ready) {
-      pending.pause();
-      pending.removeAttribute('src');
-      pending.load();
+      this.discard(pending);
       return false;
     }
 
@@ -386,11 +563,9 @@ class WebPlaybackService implements PlaybackService {
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
     this.loadSeq++; // the old element's pending load handler (if any) is moot
-    if (old) {
-      old.pause();
-      old.removeAttribute('src');
-      old.load();
-    }
+    if (old) this.discard(old);
+    // The swapped-in element gets its own source node (an element's one for life).
+    this.routeBoost(pending);
     this.setMediaSession(track);
     this.update({
       trackIndex: startIndex,
@@ -425,6 +600,9 @@ class WebPlaybackService implements PlaybackService {
   }
 
   async play() {
+    // A play tap is a gesture: the moment to make (or wake) Voice Boost's graph, before
+    // anything here awaits.
+    this.ensureBoostGraph();
     const a = this.el();
     const pausedFor = this.pausedAt != null ? Date.now() - this.pausedAt : 0;
     const rewind =

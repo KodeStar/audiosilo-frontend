@@ -388,6 +388,17 @@ describe('Your listening', () => {
     expect(listeningFigures({ started: false, finished: false, speed: 1, now })).toBeNull();
   });
 
+  it('names what Smart Speed saved on this device, once there is a whole second', () => {
+    const saved = (smartSpeedSaved: number) =>
+      listeningFigures({ started: true, finished: false, speed: 1, smartSpeedSaved, now })
+        ?.smartSpeedSaved;
+    expect(saved(840)).toBe('14m');
+    expect(saved(0.3)).toBeUndefined();
+    expect(
+      listeningFigures({ started: true, finished: false, speed: 1, now })?.smartSpeedSaved,
+    ).toBeUndefined();
+  });
+
   it('adds up the history spans and names the speed and the start', () => {
     const figures = listeningFigures({
       started: true,

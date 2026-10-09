@@ -1988,5 +1988,38 @@
         "thumb": "Tu año"
       }
     }
+  },
+  "widgets": {
+    "empty": "Reproduce un libro y aparecerá aquí.",
+    "sleepTimer": "Temporizador"
+  },
+  "effects": {
+    "smartSpeed": {
+      "label": "Velocidad inteligente",
+      "hint": "Acorta los silencios entre palabras",
+      "notInBrowser": "No disponible en el navegador",
+      "notOnIphone": "Aún no disponible en el iPhone"
+    },
+    "voiceBoost": {
+      "label": "Realce de voz",
+      "hint": "Iguala las voces bajas y altas",
+      "notInThisBrowser": "No disponible en este navegador"
+    },
+    "saved": "{{time}} ahorrados",
+    "bookSaved": "Ahorrado con velocidad inteligente",
+    "pillLabel": "Velocidad inteligente y realce de voz: {{state}}"
+  },
+  "car": {
+    "continue": "Continuar escuchando",
+    "upNext": "A continuación",
+    "downloads": "Descargas",
+    "library": "Biblioteca",
+    "chapters": "Capítulos",
+    "bookmark": "Marcador",
+    "bookmarkSaved": "Marcador guardado",
+    "empty": "Aún no hay nada aquí",
+    "signedOut": "Conecta un servidor en AudioSilo para escuchar en el coche",
+    "unavailable": "Este libro no se puede reproducir ahora",
+    "subtitle": "{{author}} · {{left}}"
   }
 }

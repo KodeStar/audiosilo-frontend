@@ -7,7 +7,12 @@ jest.mock('expo-localization', () => ({ getLocales: () => [{ languageCode: 'en' 
 // eslint-disable-next-line import/first
 import i18n from './index';
 // eslint-disable-next-line import/first
-import { LanguageProvider, useLanguage } from './language-provider';
+import {
+  LanguageProvider,
+  readLanguagePref,
+  restoreLanguage,
+  useLanguage,
+} from './language-provider';
 
 const STORAGE_KEY = 'audiosilo.language';
 
@@ -64,5 +69,20 @@ describe('LanguageProvider', () => {
 
     await waitFor(() => expect(value()!.pref).toBe('es'));
     expect(await getItem<string>(STORAGE_KEY)).toBe('es');
+  });
+});
+
+describe('readLanguagePref / restoreLanguage (outside React)', () => {
+  it('reads the stored pref, and "system" for anything unreadable', async () => {
+    await setItem(STORAGE_KEY, 'fr');
+    expect(await readLanguagePref()).toBe('fr');
+    await setItem(STORAGE_KEY, 'not-a-language');
+    expect(await readLanguagePref()).toBe('system');
+  });
+
+  it('applies the stored pref to i18next', async () => {
+    await setItem(STORAGE_KEY, 'it');
+    await restoreLanguage();
+    expect(i18n.language).toBe('it');
   });
 });

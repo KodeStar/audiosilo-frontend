@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import type { Book, BookFile, Chapter, History, Progress } from '@/api/types';
 import { chapterIndexAt } from '@/components/home/now-card-model';
 import type { BookStatus } from '@/components/library/books/books-view';
+import { hasSaved } from '@/components/player/effects-model';
 import { listeningSummary } from '@/components/player/end-credits-logic';
 import type { IconName } from '@/components/ui/icon';
 import { contradictedTitle, resumeChapterLabel } from '@/lib/chapter-label';
@@ -393,6 +394,8 @@ export type ListeningFigures = {
   finished?: string;
   speed?: string;
   listened?: string;
+  /** Book time Smart Speed removed on this device ("14m"). */
+  smartSpeedSaved?: string;
 };
 
 /** The listened figure shows from a minute up (a few seconds of history is noise). */
@@ -401,7 +404,8 @@ const LISTENED_MIN_S = 60;
 /**
  * Your listening, from what this book's own records say, nothing estimated: when it was
  * started (`startedAt`) and finished, at what speed, and how long was spent listening
- * (the history's wall-clock time, `listeningSummary`). Null for a book not started.
+ * (the history's wall-clock time, `listeningSummary`), and what Smart Speed saved on this
+ * device once there is a whole second of it. Null for a book not started.
  */
 export function listeningFigures(input: {
   started: boolean;
@@ -409,9 +413,11 @@ export function listeningFigures(input: {
   progress?: Pick<Progress, 'started_at' | 'finished_at'>;
   history?: readonly Pick<History, 'started_at' | 'ended_at'>[];
   speed: number;
+  /** Seconds Smart Speed saved on this book (`useBookTimeSaved`). */
+  smartSpeedSaved?: number;
   now: Date;
 }): ListeningFigures | null {
-  const { started, finished, progress, history, speed, now } = input;
+  const { started, finished, progress, history, speed, smartSpeedSaved = 0, now } = input;
   if (!started && !finished) return null;
   const startDate = startedAt(progress?.started_at, history);
   const finishedAt = finished && progress?.finished_at ? new Date(progress.finished_at) : null;
@@ -424,5 +430,6 @@ export function listeningFigures(input: {
         : undefined,
     speed: formatSpeed(speed),
     listened: listened >= LISTENED_MIN_S ? formatDuration(listened) : undefined,
+    smartSpeedSaved: hasSaved(smartSpeedSaved) ? formatDuration(smartSpeedSaved) : undefined,
   };
 }

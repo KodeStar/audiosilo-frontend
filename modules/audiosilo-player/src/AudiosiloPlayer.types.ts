@@ -12,10 +12,10 @@ export type NativeTrack = {
   duration?: number;
 };
 
-/** A chapter clip for the Android engine to turn into a clipped MediaItem (lock-screen
- * chapter scrubber + prev/next chapter). `fileIndex` indexes into the `tracks` passed to
- * `load`; `startInFile`/`endInFile` bound the clip within that file (`endInFile <= 0` ⇒ to
- * end of file). Optional `load` arg - iOS ignores it. */
+/** A chapter clip for the lock screen's chapter scrubber + prev/next chapter (Android turns
+ * each into a clipped MediaItem; iOS maps the file place onto them). `fileIndex` indexes into
+ * the `tracks` passed to `load`; `startInFile`/`endInFile` bound the clip within that file
+ * (`endInFile <= 0` ⇒ to end of file). Optional `load` arg. */
 export type NativeChapter = {
   fileIndex: number;
   startInFile: number;
@@ -26,9 +26,50 @@ export type NativeChapter = {
 export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 export type StateEvent = { state: NativeState };
-/** Position/duration within the current track, in seconds. */
-export type ProgressEvent = { position: number; duration: number };
+/** Position/duration within the current track, in seconds. `silenceSaved` (Android only):
+ * book seconds removed by Smart speed since the app's process started, summed over every
+ * player the service builds, so it never goes down. Absent on iOS (no Smart speed there) and on
+ * binaries that predate Smart speed. */
+export type ProgressEvent = { position: number; duration: number; silenceSaved?: number };
 export type TrackChangeEvent = { index: number };
+
+/** The engine moved because of something OUTSIDE the JS API (the lock screen or notification
+ * scrubber and buttons, a headset, CarPlay, Android Auto, their chapter lists), sent once the move
+ * landed, in the bridge's usual coordinates (FILE index + seconds within that file). Not sent for
+ * moves the JS API asked for, auto-rewind on play, Smart speed's silence skips, or a file
+ * advancing by itself at its end. */
+export type RemoteMoveEvent = { trackIndex: number; position: number };
+
+/** The OS changed the speed (CarPlay's rate button, iOS changePlaybackRateCommand, an Android
+ * controller). The engine already applied it. */
+export type RateChangeEvent = { rate: number };
+
+/** A bookmark button outside the app was pressed (CarPlay's Now Playing, Android Auto's custom
+ * action; the phone's notification leaves it out): where the book was at the press, and which
+ * book the engine had loaded (absent from a binary that predates it, or an engine loaded
+ * without a `book`). */
+export type RemoteBookmarkEvent = { trackIndex: number; position: number } & Partial<BookRef>;
+
+/** CarPlay or Android Auto connected or disconnected. */
+export type CarConnectionEvent = { connected: boolean };
+
+/** The car asked to play a book native can't start alone; JS starts it (`startBookInPlace`). */
+export type CarPlayRequestEvent = { id: string };
+
+/** A book's identity: path is the identity, scoped by connection (never a DB id). */
+export type BookRef = { connectionId: string; libraryId: number; path: string };
+
+/** Android: the book the SERVICE has loaded (started from the car, or still playing when the
+ * app's JS restarted). */
+export type LoadedBook = BookRef & {
+  trackIndex: number;
+  position: number;
+  rate: number;
+  playing: boolean;
+};
+
+/** Android: a bookmark pressed while no JS was running. */
+export type PendingBookmark = BookRef & { trackIndex: number; position: number };
 
 /** Tunables that can change at runtime (driven by the app's settings store). */
 export type PlayerConfig = {
@@ -38,10 +79,21 @@ export type PlayerConfig = {
   jumpForward: number;
   /** Lock-screen skip-backward interval (seconds). */
   jumpBackward: number;
+  /** Trim silences (Android only; iOS accepts and ignores it). Default false. Ignored by
+   * binaries that predate the audio effects. */
+  smartSpeed?: boolean;
+  /** Compress and lift speech. Default false. Ignored by binaries that predate the audio
+   * effects. */
+  voiceBoost?: boolean;
 };
 
 export type AudiosiloPlayerModuleEvents = {
   onState: (event: StateEvent) => void;
   onProgress: (event: ProgressEvent) => void;
   onTrackChange: (event: TrackChangeEvent) => void;
+  onRemoteMove: (event: RemoteMoveEvent) => void;
+  onRateChange: (event: RateChangeEvent) => void;
+  onRemoteBookmark: (event: RemoteBookmarkEvent) => void;
+  onCarConnection: (event: CarConnectionEvent) => void;
+  onCarPlayRequest: (event: CarPlayRequestEvent) => void;
 };

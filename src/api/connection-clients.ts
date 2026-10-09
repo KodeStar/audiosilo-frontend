@@ -1,4 +1,4 @@
-import { useSession } from '@/stores/session';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
@@ -28,7 +28,8 @@ export function resolveClient(connectionId: string): ApiClient | null {
 
 /** Whether the session store has finished hydrating (so the connection list is real).
  * The offline replay flush gates on this: a flush racing hydrate would resolve every
- * entry's client to null and drop the queue as unroutable. */
+ * entry's client to null and drop the queue as unroutable. So would one after a hydrate
+ * that failed (the list never loaded: `sessionHydrateFailed`), until one succeeds. */
 export function sessionReady(): boolean {
-  return useSession.getState().status !== 'loading';
+  return useSession.getState().status !== 'loading' && !sessionHydrateFailed();
 }

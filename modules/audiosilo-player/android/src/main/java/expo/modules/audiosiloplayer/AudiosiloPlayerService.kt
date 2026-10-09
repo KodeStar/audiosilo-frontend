@@ -2,10 +2,14 @@ package expo.modules.audiosiloplayer
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -13,6 +17,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -21,113 +26,125 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
+import androidx.media3.session.SessionError
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import com.google.common.util.concurrent.SettableFuture
+import expo.modules.audiosiloplayer.effects.AudioEffects
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-
-// Custom session commands for the 30s skip buttons. They must be CUSTOM actions (not the
-// standard COMMAND_SEEK_BACK/FORWARD, which map to legacy ACTION_REWIND/FAST_FORWARD that
-// the modern Android media UI does NOT render) so the buttons actually appear.
-private const val CMD_SEEK_BACK = "audiosilo.SEEK_BACK"
-private const val CMD_SEEK_FORWARD = "audiosilo.SEEK_FORWARD"
-
-/**
- * Shared auth headers for streaming + artwork. They are identical for every track
- * in a book (a single session bearer token), so the module sets them once per load
- * and the data source reads them at request time.
- */
-object AuthHolder {
-  @Volatile
-  var headers: Map<String, String> = emptyMap()
-}
 
 /**
  * User-configurable playback tunables, shared from the Expo module's `setConfig` to the
  * player: the auto-rewind window (read live by [AudiobookPlayer.play] so a resume from
  * anywhere, the lock screen included, rewinds by the current Settings value) and the
  * skip intervals (read live by [AudiobookPlayer.seekBack]/[AudiobookPlayer.seekForward]).
+ *
+ * Persisted in the player's prefs (beside the effects) whenever they change, and restored by the
+ * service's onCreate: a service started with no JS (Android Auto, playback resumption) used to
+ * run with the defaults (no auto-rewind, 30/15 s skips) whatever the listener had set.
  */
 object PlayerConfig {
+  private const val KEY_AUTO_REWIND = "config.autoRewindMaxMs"
+  private const val KEY_JUMP_FORWARD = "config.jumpForwardMs"
+  private const val KEY_JUMP_BACKWARD = "config.jumpBackwardMs"
+
   @Volatile var autoRewindMaxMs: Long = 0
+    private set
   // Skip amounts (ms). The seek honors these immediately; the notification glyphs
   // (nearest predefined ICON_SKIP_*) are chosen when the layout is built at start.
   @Volatile var jumpForwardMs: Long = 30_000
+    private set
   @Volatile var jumpBackwardMs: Long = 15_000
+    private set
+
+  /** Whether the persisted values were read into this process. Guarded by this object. */
+  private var restored = false
+
+  /** The module's `setConfig`: takes effect at once, and is persisted when it changed (when a
+   * [context] is at hand; the module passes its React context, absent only during teardown). */
+  @Synchronized
+  fun update(context: Context?, autoRewindMaxMs: Long, jumpForwardMs: Long, jumpBackwardMs: Long) {
+    // Read the persisted values first, so "changed" compares against what is on disk and a later
+    // restore can't overwrite what JS just set.
+    if (context != null) restoreLocked(context) else restored = true
+    if (autoRewindMaxMs == this.autoRewindMaxMs && jumpForwardMs == this.jumpForwardMs &&
+      jumpBackwardMs == this.jumpBackwardMs
+    ) {
+      return
+    }
+    this.autoRewindMaxMs = autoRewindMaxMs
+    this.jumpForwardMs = jumpForwardMs
+    this.jumpBackwardMs = jumpBackwardMs
+    if (context == null) return
+    prefs(context).edit()
+      .putLong(KEY_AUTO_REWIND, autoRewindMaxMs)
+      .putLong(KEY_JUMP_FORWARD, jumpForwardMs)
+      .putLong(KEY_JUMP_BACKWARD, jumpBackwardMs)
+      .apply()
+  }
+
+  /** The service's onCreate: the listener's last values (once per process; JS's own win). */
+  @Synchronized
+  fun restore(context: Context) = restoreLocked(context)
+
+  private fun restoreLocked(context: Context) {
+    if (restored) return
+    restored = true
+    val prefs = prefs(context)
+    autoRewindMaxMs = prefs.getLong(KEY_AUTO_REWIND, autoRewindMaxMs)
+    jumpForwardMs = prefs.getLong(KEY_JUMP_FORWARD, jumpForwardMs)
+    jumpBackwardMs = prefs.getLong(KEY_JUMP_BACKWARD, jumpBackwardMs)
+  }
+
+  private fun prefs(context: Context) =
+    context.getSharedPreferences(AudiosiloPlayerService.PREFS, Context.MODE_PRIVATE)
 }
 
 /**
- * Wraps the ExoPlayer so audiobook behavior applies no matter where a command
- * originates (lock screen, notification, headset, or the JS bridge - all route through
- * the session's player):
- *  - **Auto-rewind on resume** lives in [play] (not the JS bridge), so resuming from the
- *    lock screen rewinds too. [prepare] resets the baseline so a freshly-loaded book
- *    never inherits the previous one's pause time.
- *  - **Prev/next** are exposed only when there's more than one item (chapter clips or a
- *    multi-file book) → the lock screen gets prev/next-chapter buttons. With a single
- *    item (a chapterless single-file book) they're hidden so a tap can't "restart the
- *    only book".
- *  - **Configurable skips**: [seekBack]/[seekForward] seek by the live [PlayerConfig]
- *    intervals instead of ExoPlayer's build-time increments, so the lock-screen skip
- *    buttons (and any other controller) honor the Settings value.
+ * Shared auth headers for streaming + artwork. They are identical for every track
+ * in a book (a single session bearer token), so the module sets them once per load
+ * and the data source reads them at request time, ONLY for a request to the server they
+ * were given for ([origin]): the token never goes to any other host.
  */
-private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
-  private var pausedAt: Long = 0L
+object AuthHolder {
+  @Volatile
+  private var auth: Pair<String, Map<String, String>>? = null
 
-  override fun getAvailableCommands(): Player.Commands {
-    val base = super.getAvailableCommands()
-    if (mediaItemCount > 1) return base
-    return base.buildUpon()
-      .removeAll(
-        Player.COMMAND_SEEK_TO_NEXT,
-        Player.COMMAND_SEEK_TO_PREVIOUS,
-        Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
-        Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
-      )
-      .build()
+  /** The book's auth headers and the URL of a track they are for (its origin scopes them). */
+  fun set(headers: Map<String, String>?, url: String?) {
+    val origin = url?.let { originOf(Uri.parse(it)) }
+    auth = if (headers.isNullOrEmpty() || origin == null) null else origin to headers
   }
 
-  override fun prepare() {
-    pausedAt = 0L // a new load: don't rewind against the previous book's pause
-    super.prepare()
+  fun clear() {
+    auth = null
   }
 
-  override fun play() {
-    val maxMs = PlayerConfig.autoRewindMaxMs
-    if (maxMs > 0 && pausedAt > 0L) {
-      val rewind = minOf(maxMs, System.currentTimeMillis() - pausedAt)
-      if (rewind > 500) seekBackBy(rewind)
+  /** The headers for a request to [uri]: the book's, when it is the book's server. */
+  fun headersFor(uri: Uri): Map<String, String> {
+    val (origin, headers) = auth ?: return emptyMap()
+    return if (originOf(uri) == origin) headers else emptyMap()
+  }
+
+  private fun originOf(uri: Uri): String? {
+    val scheme = uri.scheme?.lowercase() ?: return null
+    val host = uri.host?.lowercase() ?: return null
+    val port = when {
+      uri.port != -1 -> uri.port
+      scheme == "https" -> 443
+      scheme == "http" -> 80
+      else -> -1
     }
-    pausedAt = 0L
-    super.play()
+    return "$scheme://$host:$port"
   }
-
-  override fun pause() {
-    pausedAt = System.currentTimeMillis()
-    super.pause()
-  }
-
-  // Seek by the user-configured Settings intervals (live from PlayerConfig), clamped
-  // within the current item/clip - NOT ExoPlayer's build-time fixed increment, which
-  // ignored the Settings value (the lock screen always jumped 30s). The increment
-  // getters report the same values so anything displaying them stays truthful.
-  override fun getSeekBackIncrement(): Long = PlayerConfig.jumpBackwardMs
-  override fun getSeekForwardIncrement(): Long = PlayerConfig.jumpForwardMs
-
-  override fun seekBack() = seekBackBy(PlayerConfig.jumpBackwardMs)
-
-  override fun seekForward() {
-    val max = if (duration != C.TIME_UNSET) duration else Long.MAX_VALUE
-    seekTo(minOf(max, currentPosition + PlayerConfig.jumpForwardMs))
-  }
-
-  private fun seekBackBy(ms: Long) = seekTo(maxOf(0L, currentPosition - ms))
 }
 
 /**
@@ -136,23 +153,67 @@ private class AudiobookPlayer(player: Player) : ForwardingPlayer(player) {
  * service automatically. The Expo module drives it through a MediaController.
  *
  * Lock screen (Audible-parity): a chapter-relative scrubber + prev/next-chapter buttons
- * (chapters are clipped media items, built by [AudiosiloPlayerModule]) + 30s skip buttons
- * (predefined Media3 icons) + the app logo as the notification small icon.
+ * (chapters are clipped media items, see [MediaItems]) + skip buttons at the listener's skip
+ * lengths (the nearest predefined Media3 icons) + the app logo as the notification small icon.
+ *
+ * A [MediaLibraryService] so Android Auto can browse (the car snapshot JS writes, see
+ * [CarBrowseTree]) and play; the session player is the same [AudiobookPlayer], so the lock
+ * screen behaves exactly as before. It also reports remote moves / speed changes / bookmark
+ * presses to the module ([PlayerBridge]) and wires Smart Speed + Voice Boost ([AudioEffects]).
  */
 @androidx.annotation.OptIn(UnstableApi::class)
-class AudiosiloPlayerService : MediaSessionService() {
-  private var mediaSession: MediaSession? = null
+class AudiosiloPlayerService : MediaLibraryService() {
+  private var mediaSession: MediaLibrarySession? = null
+  private var exoPlayer: ExoPlayer? = null
+  internal var player: AudiobookPlayer? = null
+    private set
   /** Single-thread artwork loader executor; retained so onDestroy can shut it down. */
   private var bitmapExecutor: ExecutorService? = null
+  private val handler = Handler(Looper.getMainLooper())
+
+  /** Android Auto / Automotive controllers connected right now (the fallback car signal). */
+  private val carControllers = HashSet<MediaSession.ControllerInfo>()
+  private var carMonitor: CarConnectionMonitor? = null
+
+  /** A car play JS must start, waiting for the module's next `load` (see [playFromCar]). */
+  private var pendingPlay: SettableFuture<MediaItemsWithStartPosition>? = null
+  private val pendingTimeout = Runnable { failPendingPlay() }
+
+  /** The snapshot the car was last told about ([onSnapshotChanged]); null before the first. */
+  private var shownSnapshot: CarSnapshot? = null
+
+  /** The labels the current button layout was built with ([mediaButtons]). */
+  private var layoutLabels: CarLabels? = null
+
+  /** (package, uri) artwork grants already made ([grantArtwork]). Main thread. */
+  private val artworkGrants = HashSet<Pair<String, Uri>>()
+
+  /** Smart Speed / Voice Boost as last saved to prefs ([applyEffects]). */
+  private var savedEffects: Pair<Boolean, Boolean>? = null
+
+  /** The bookmark button shows "filled" for a moment after a press. */
+  private var bookmarkFilled = false
+  private val bookmarkUnfill = Runnable {
+    bookmarkFilled = false
+    mediaSession?.setCustomLayout(mediaButtons())
+  }
 
   override fun onCreate() {
     super.onCreate()
+    CarSnapshotStore.init(this)
+    // The car snapshot is read off the main thread; until it is in, the buttons carry their
+    // English labels (as before the first snapshot), and the layout is re-set once it is.
+    CarSnapshotStore.preload(this) { handler.post { refreshLayout() } }
+    // A service started without JS (the car, playback resumption) uses the listener's last
+    // auto-rewind and skip intervals; the module's setConfig updates them whenever JS runs.
+    PlayerConfig.restore(this)
 
     val httpFactory = DefaultHttpDataSource.Factory()
-    val upstream = DataSource.Factory {
-      val ds = httpFactory.createDataSource()
-      AuthHolder.headers.forEach { (key, value) -> ds.setRequestProperty(key, value) }
-      ds
+    // The auth headers go per request, and only to the server the app loaded the book from
+    // (AuthHolder): never to another host a media item or an artwork URI names.
+    val upstream: DataSource.Factory = ResolvingDataSource.Factory(httpFactory) { dataSpec ->
+      val headers = AuthHolder.headersFor(dataSpec.uri)
+      if (headers.isEmpty()) dataSpec else dataSpec.withAdditionalHeaders(headers)
     }
     // Cache streamed bytes so the repeated opens that chapter clips make over the SAME
     // single-file m4b reuse already-downloaded data + the parsed container header,
@@ -170,12 +231,27 @@ class AudiosiloPlayerService : MediaSessionService() {
       .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
       .build()
 
-    val exoPlayer = ExoPlayer.Builder(this)
+    // The renderers factory installs the Smart Speed + Voice Boost audio processor chain.
+    val exo = ExoPlayer.Builder(this, AudioEffects.renderersFactory(this))
       .setMediaSourceFactory(mediaSourceFactory)
       .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
       .setHandleAudioBecomingNoisy(true)
       .build()
-    val player = AudiobookPlayer(exoPlayer)
+    // A service started without JS (the car, playback resumption) applies the listener's last
+    // switches; the module's setConfig re-sends them whenever JS runs.
+    val (smart, boost) = AudioEffects.load(this)
+    AudioEffects.apply(exo, smart, boost)
+    savedEffects = smart to boost
+    exoPlayer = exo
+    exo.addListener(object : Player.Listener {
+      override fun onIsPlayingChanged(isPlaying: Boolean) {
+        // A book playing with no JS (started from the car, or resumed) must still save its
+        // progress: boot JS, which adopts the loaded book (store `adoptLoaded`).
+        if (isPlaying) needJs() else maybeReleaseJs()
+      }
+    })
+    val audiobookPlayer = AudiobookPlayer(exo, PlayerHooks())
+    player = audiobookPlayer
 
     // Authenticated artwork loader (uses the same headers as the stream). Retain the
     // executor so onDestroy can shut it down - an unmanaged newSingleThreadExecutor leaks
@@ -189,45 +265,71 @@ class AudiosiloPlayerService : MediaSessionService() {
     // App logo as the notification small icon (Media3's default is a generic glyph).
     // Must be a white/transparent silhouette - the system tints it.
     setMediaNotificationProvider(
-      DefaultMediaNotificationProvider.Builder(this).build().apply {
-        setSmallIcon(R.drawable.ic_notification)
-      },
+      NotificationProvider(this).apply { setSmallIcon(R.drawable.ic_notification) },
     )
 
-    mediaSession = MediaSession.Builder(this, player)
+    mediaSession = MediaLibrarySession.Builder(this, audiobookPlayer, LibraryCallback(this))
       .setBitmapLoader(bitmapLoader)
-      .setCallback(MediaCallback)
       // Use setCustomLayout (NOT setMediaButtonPreferences): the slot-based preferences
       // capped the notification at 3 actions on 1.5.1 (it drops the secondary slots -
       // verified via dumpsys, actions=3). setCustomLayout makes the provider build
       // [prev, play/pause, next] (auto, from command availability) + the custom skip
-      // buttons → all 5 actions, alongside the draggable chapter scrubber. (dumpsys: actions=5)
+      // buttons -> all 5 actions, alongside the draggable chapter scrubber. (dumpsys: actions=5)
       .setCustomLayout(mediaButtons())
       .build()
+
+    carMonitor = CarConnectionMonitor(this) { updateCarConnection() }.also { it.start() }
+    PlayerBridge.service = this
   }
 
+  /** The car snapshot (null until JS wrote one). */
+  internal fun snapshot(): CarSnapshot? = CarSnapshotStore.get(this)
+
   /**
-   * The 30s skip buttons for the notification's custom layout. Media3's notification
-   * provider builds the action row as **standard [prev, play/pause, next]** (auto-added
-   * from the player's available seek-to-prev/next commands - present for a chaptered book,
-   * absent for a single-item/chapterless book) **plus the CUSTOM-command buttons** from the
-   * custom layout. So we only declare the two skip buttons here and let prev/next-chapter
-   * fill in automatically → the full `[prev] [play] [next] [back-30] [fwd-30]` row.
+   * The custom buttons. Media3's notification provider builds the action row as **standard
+   * [prev, play/pause, next]** (auto-added from the player's available seek-to-prev/next
+   * commands - present for a chaptered book, absent for a single-item/chapterless book)
+   * **plus the CUSTOM-command buttons** from the custom layout. So we declare the two skip
+   * buttons (and the bookmark, below) and let prev/next-chapter fill in -> the full
+   * `[prev] [play] [next] [back] [fwd]` row.
    *
-   * They MUST be custom session commands (see [MediaCallback]); the standard
+   * They MUST be custom session commands (see [LibraryCallback]); the standard
    * COMMAND_SEEK_BACK/FORWARD map to the legacy ACTION_REWIND/FAST_FORWARD the modern media
-   * UI ignores. Predefined `ICON_SKIP_*_30` icons render without an app-shipped drawable.
+   * UI ignores. Predefined `ICON_SKIP_*` icons (the nearest of 5/10/15/30, [skipIcon]) render
+   * without an app-shipped drawable.
+   *
+   * The bookmark comes THIRD: System UI (API 33+) shows play, prev, next and only the first
+   * two custom actions, so the phone keeps exactly today's row, while Android Auto lists every
+   * custom action (the bookmark in its overflow). [NotificationProvider] leaves it out of the
+   * notification's own actions so `dumpsys notification` stays at actions=5.
+   *
+   * Never reads the disk (the snapshot may still be loading): records the labels it used, so
+   * [refreshLayout] re-sets the layout once they change.
    */
-  private fun mediaButtons(): List<CommandButton> = listOf(
-    CommandButton.Builder(skipIcon(PlayerConfig.jumpBackwardMs, forward = false))
-      .setSessionCommand(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
-      .setDisplayName("Back ${PlayerConfig.jumpBackwardMs / 1000} seconds")
-      .build(),
-    CommandButton.Builder(skipIcon(PlayerConfig.jumpForwardMs, forward = true))
-      .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
-      .setDisplayName("Forward ${PlayerConfig.jumpForwardMs / 1000} seconds")
-      .build(),
-  )
+  private fun mediaButtons(): List<CommandButton> {
+    val labels = CarSnapshotStore.peek()?.labels
+    layoutLabels = labels
+    return listOf(
+      CommandButton.Builder(skipIcon(PlayerConfig.jumpBackwardMs, forward = false))
+        .setSessionCommand(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
+        .setDisplayName("Back ${PlayerConfig.jumpBackwardMs / 1000} seconds")
+        .build(),
+      CommandButton.Builder(skipIcon(PlayerConfig.jumpForwardMs, forward = true))
+        .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
+        .setDisplayName("Forward ${PlayerConfig.jumpForwardMs / 1000} seconds")
+        .build(),
+      CommandButton.Builder(
+        if (bookmarkFilled) CommandButton.ICON_BOOKMARK_FILLED else CommandButton.ICON_BOOKMARK_UNFILLED,
+      )
+        .setSessionCommand(SessionCommand(CMD_BOOKMARK, Bundle.EMPTY))
+        // JS localizes the labels through the snapshot; English until the first snapshot.
+        .setDisplayName(
+          (if (bookmarkFilled) labels?.bookmarkSaved else labels?.bookmark)?.ifEmpty { null }
+            ?: if (bookmarkFilled) "Bookmark saved" else "Bookmark",
+        )
+        .build(),
+    )
+  }
 
   /** Nearest predefined Media3 skip glyph for a configured interval. Media3 ships only
    * 5/10/15/30s icons, so an off-scale value shows the closest one; the actual seek uses
@@ -242,42 +344,289 @@ class AudiosiloPlayerService : MediaSessionService() {
     }
   }
 
-  /**
-   * Grants the custom skip commands to connecting controllers (so the buttons are enabled)
-   * and runs them as the player's own seek ([AudiobookPlayer.seekBack]/[seekForward], the
-   * live Settings intervals; clip-bounded → stays within the chapter, which is fine -
-   * prev/next chapter cross boundaries).
-   */
-  private object MediaCallback : MediaSession.Callback {
-    override fun onConnect(
-      session: MediaSession,
-      controller: MediaSession.ControllerInfo,
-    ): MediaSession.ConnectionResult {
-      val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
-        .add(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
-        .add(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
-        .build()
-      return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-        .setAvailableSessionCommands(sessionCommands)
-        .build()
+  /** Who asked for the Player call in progress, and where remote moves go. */
+  private inner class PlayerHooks : AudiobookPlayerHooks {
+    override fun isRemoteRequest(): Boolean {
+      val c = mediaSession?.controllerForCurrentRequest ?: return false
+      return !PlayerBridge.isAppController(c)
     }
 
-    override fun onCustomCommand(
-      session: MediaSession,
-      controller: MediaSession.ControllerInfo,
-      customCommand: SessionCommand,
-      args: Bundle,
-    ): ListenableFuture<SessionResult> {
-      when (customCommand.customAction) {
-        // AudiobookPlayer overrides these to seek by the live user-configured intervals.
-        CMD_SEEK_BACK -> session.player.seekBack()
-        CMD_SEEK_FORWARD -> session.player.seekForward()
-      }
-      return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+    override fun onRemoteMove() {
+      val (fileIndex, position) = currentFilePosition() ?: return
+      PlayerBridge.sink?.remoteMove(fileIndex, position)
+    }
+
+    override fun onRemoteRate(rate: Float) {
+      PlayerBridge.sink?.rateChange(rate.toDouble())
     }
   }
 
-  override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+  /** Where the player is, in FILE coordinates (from the current item's extras). */
+  private fun currentFilePosition(): Pair<Int, Double>? {
+    val p = player ?: return null
+    if (p.mediaItemCount == 0) return null
+    return TimelineMap.toFile(MediaItems.entryOf(p.currentMediaItem), p.currentMediaItemIndex, p.currentPosition)
+  }
+
+  // ---- Effects ---------------------------------------------------------------------------
+
+  internal fun applyEffects(smartSpeed: Boolean, voiceBoost: Boolean) {
+    val exo = exoPlayer ?: return
+    AudioEffects.apply(exo, smartSpeed, voiceBoost)
+    val effects = smartSpeed to voiceBoost
+    if (effects != savedEffects) {
+      savedEffects = effects
+      AudioEffects.save(this, smartSpeed, voiceBoost)
+    }
+  }
+
+  // ---- Bookmarks -------------------------------------------------------------------------
+
+  /** The bookmark button: JS saves it when it listens, else it waits in the pending list (and
+   * JS boots to drain it). The icon shows "filled" for ~2 s either way. */
+  internal fun onBookmarkPressed() {
+    val p = player ?: return
+    val (fileIndex, position) = currentFilePosition() ?: return
+    val book = MediaItems.bookOf(p.currentMediaItem)
+    val sink = PlayerBridge.sink
+    if (sink != null && sink.observingBookmarks) {
+      // With its book: JS may not have adopted the book the engine plays yet (a car start
+      // the JS boot is still adopting), and the press belongs to the book the listener heard.
+      sink.remoteBookmark(fileIndex, position, book)
+    } else {
+      book ?: return // can't name the book: drop it
+      PendingBookmarks.append(this, book, fileIndex, position)
+      needJs()
+    }
+    bookmarkFilled = true
+    mediaSession?.setCustomLayout(mediaButtons())
+    handler.removeCallbacks(bookmarkUnfill)
+    handler.postDelayed(bookmarkUnfill, 2_000)
+  }
+
+  // ---- Android Auto ----------------------------------------------------------------------
+
+  internal fun onControllerConnected(controller: MediaSession.ControllerInfo) {
+    if (isCarController(controller)) {
+      // A (re)connecting car may be a restarted Auto app, whose URI grants went with it.
+      artworkGrants.clear()
+      carControllers.add(controller)
+      updateCarConnection()
+    }
+  }
+
+  internal fun onControllerDisconnected(controller: MediaSession.ControllerInfo) {
+    if (carControllers.remove(controller)) updateCarConnection()
+  }
+
+  /** Android Auto's phone app (projection; also the DHU) or Automotive's media center. Media3's
+   * own `isAutoCompanionController`/`isAutomotiveController` check the same packages but only
+   * for LEGACY controllers; a package check also covers a future Media3 controller. */
+  private fun isCarController(c: MediaSession.ControllerInfo) = c.packageName in CAR_PACKAGES
+
+  /** Connected = the car connection provider says so; when it can't be read, any connected Auto
+   * controller. Emits `onCarConnection` on a change; JS refreshes the snapshot on connect. */
+  private fun updateCarConnection() {
+    val connected = carMonitor?.state ?: carControllers.isNotEmpty()
+    if (connected == PlayerBridge.carConnected) return
+    PlayerBridge.carConnected = connected
+    PlayerBridge.sink?.carConnection(connected)
+    if (connected) needJs() else maybeReleaseJs()
+  }
+
+  /** The snapshot changed (`setCarSnapshot`): tell the car which lists changed (JS re-sends the
+   * whole snapshot on every change, often with most tabs as they were), and re-set the buttons
+   * when their labels changed. */
+  internal fun onSnapshotChanged() {
+    val session = mediaSession ?: return
+    val snapshot = snapshot()
+    val previous = shownSnapshot
+    shownSnapshot = snapshot
+    if (snapshot == null || previous == null || previous.signedIn != snapshot.signedIn) {
+      // Nothing shown yet, or signing in/out: every list is new.
+      session.notifyChildrenChanged(CarBrowseTree.ROOT, snapshot?.tabs?.size ?: 0, null)
+      snapshot?.tabs?.forEach { session.notifyChildrenChanged(CarBrowseTree.tabId(it), it.items.size, null) }
+    } else {
+      if (rootChanged(previous, snapshot)) session.notifyChildrenChanged(CarBrowseTree.ROOT, snapshot.tabs.size, null)
+      for (tab in snapshot.tabs) {
+        if (tabChanged(previous, snapshot, tab)) session.notifyChildrenChanged(CarBrowseTree.tabId(tab), tab.items.size, null)
+      }
+    }
+    refreshLayout()
+  }
+
+  /** The root's children: the tabs (ids and titles), or the signed-out label. */
+  private fun rootChanged(previous: CarSnapshot, snapshot: CarSnapshot): Boolean =
+    previous.tabs.map { it.id to it.title } != snapshot.tabs.map { it.id to it.title } ||
+      previous.labels.signedOut != snapshot.labels.signedOut
+
+  /** A tab's children: its books, or the empty label. */
+  private fun tabChanged(previous: CarSnapshot, snapshot: CarSnapshot, tab: CarTab): Boolean {
+    val before = previous.tabs.firstOrNull { it.id == tab.id } ?: return true
+    return before.items != tab.items || (tab.items.isEmpty() && previous.labels.empty != snapshot.labels.empty)
+  }
+
+  /** Re-sets the button layout when the snapshot's labels differ from the ones it was built with. */
+  private fun refreshLayout() {
+    val session = mediaSession ?: return
+    if (CarSnapshotStore.peek()?.labels == layoutLabels) return
+    session.setCustomLayout(mediaButtons())
+  }
+
+  /** Lets the browsing app (Android Auto's package) open a cover's content URI; each (package,
+   * uri) once, since every browse of a tab asks again. */
+  internal fun grantArtwork(browser: MediaSession.ControllerInfo, uri: Uri) {
+    val grant = browser.packageName to uri
+    if (!artworkGrants.add(grant)) return
+    try {
+      grantUriPermission(browser.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    } catch (e: Exception) {
+      artworkGrants.remove(grant)
+      Log.w(TAG, "Could not grant artwork to ${browser.packageName}", e)
+    }
+  }
+
+  /**
+   * The car (or a resumption) asked to play a snapshot book.
+   *  - The book the player already has: it plays on from where it is ([playingQueue]).
+   *  - No JS runtime and the book is downloaded (has a play spec): start it now, from the
+   *    spec; JS boots once it plays and adopts it (`getLoadedBook`).
+   *  - Otherwise JS starts it (`onCarPlayRequest`, queued until JS listens; JS boots when
+   *    needed). The returned future completes when the module's next `load` arrives (with the
+   *    queue JS just loaded), or fails after ~10 s with the snapshot's "unavailable" label.
+   *    While a JS runtime exists, even a downloaded book goes through JS: JS may hold another
+   *    book as `nowPlaying`, and swapping the engine under it would save one book's place as
+   *    another's.
+   */
+  internal fun playFromCar(id: String, requirePlaySpec: Boolean): ListenableFuture<MediaItemsWithStartPosition> {
+    val snapshot = snapshot()
+    val item = snapshot?.find(id)
+    val spec = item?.play
+    if (item == null || (requirePlaySpec && spec == null)) {
+      sendUnavailable()
+      return Futures.immediateFailedFuture(UnsupportedOperationException("Unknown car item"))
+    }
+    // The book already loaded (the first Continue listening row, so the most common tap): it
+    // plays on from where it is, as on iOS. Sent to JS, the request waited for a `load` JS
+    // never makes for its own book, and the car said "unavailable" 10 s later while it played.
+    item.book?.let { playingQueue(it) }?.let {
+      failPendingPlay(notify = false)
+      return Futures.immediateFuture(it)
+    }
+    // Natively only with no JS runtime at all: one that runs may hold another book as
+    // `nowPlaying` (even with its car sync not listening yet), and swapping the engine under
+    // it would map this book's place onto that one.
+    if (spec != null && PlayerBridge.sink == null) {
+      val queue = MediaItems.buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
+      // Every track of a play spec is a local file: no auth headers.
+      AuthHolder.clear()
+      player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }
+      return Futures.immediateFuture(MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs))
+    }
+    failPendingPlay(notify = false)
+    val future = SettableFuture.create<MediaItemsWithStartPosition>()
+    pendingPlay = future
+    handler.postDelayed(pendingTimeout, CAR_PLAY_TIMEOUT_MS)
+    PlayerBridge.requestCarPlay(id)
+    needJs()
+    return future
+  }
+
+  /** The player's own queue at its place when it has [book] loaded (any book with null) and
+   * can play on (ready or buffering), else null. Media3 then sets that same queue again
+   * (absorbed, see [AudiobookPlayer.absorbIdenticalSet]) and plays: a paused book resumes,
+   * with auto-rewind; an ended or failed one goes the usual way, through JS. */
+  private fun playingQueue(book: BookRef?): MediaItemsWithStartPosition? {
+    val p = player ?: return null
+    if (p.mediaItemCount == 0) return null
+    if (book != null && MediaItems.bookOf(p.currentMediaItem) != book) return null
+    val state = p.playbackState
+    if (state != Player.STATE_READY && state != Player.STATE_BUFFERING) return null
+    p.absorbIdenticalSet = true
+    // Media3 applies the result on this looper (at once, or posted ahead of this): clear the
+    // flag after it, so a later identical load of the app's (a retry) is never skipped.
+    handler.post { player?.absorbIdenticalSet = false }
+    return MediaItemsWithStartPosition(p.mediaItems(), p.currentMediaItemIndex, p.currentPosition)
+  }
+
+  /**
+   * A voice or search play from the car (the Assistant's "play AudioSilo", "play <title> on
+   * AudioSilo"; Media3 hands it over as an item with no id and the query): the listed book whose
+   * title holds the query, else what the listener most likely means, the loaded book playing
+   * on, else the first Continue listening book. "Unavailable" only when there is none.
+   */
+  internal fun playFromSearch(query: String?): ListenableFuture<MediaItemsWithStartPosition> {
+    val snapshot = snapshot()
+    val q = query?.trim().orEmpty()
+    val match = if (q.isEmpty()) null else snapshot?.findByTitle(q)
+    if (match != null) return playFromCar(match.id, requirePlaySpec = false)
+    playingQueue(null)?.let {
+      failPendingPlay(notify = false)
+      return Futures.immediateFuture(it)
+    }
+    val first = snapshot?.firstContinue()
+    if (first == null) {
+      sendUnavailable()
+      return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to play"))
+    }
+    return playFromCar(first.id, requirePlaySpec = false)
+  }
+
+  /** The module's `load` arrived (the app's controller set a queue). Completes a pending car
+   * play with that queue; the identical re-set Media3 then makes is absorbed by the player. */
+  internal fun onAppLoad() {
+    if (pendingPlay == null) return
+    // Posted: the app's items are applied right after this callback returns.
+    handler.post {
+      val future = pendingPlay ?: return@post
+      val p = player ?: return@post
+      pendingPlay = null
+      handler.removeCallbacks(pendingTimeout)
+      val items = p.mediaItems()
+      if (items.isEmpty()) {
+        future.setException(IllegalStateException("Nothing loaded"))
+        return@post
+      }
+      p.absorbIdenticalSet = true
+      future.set(MediaItemsWithStartPosition(items, p.currentMediaItemIndex, p.currentPosition))
+      // Media3 applies the result on this looper (at once, or posted ahead of this): clear the
+      // flag after it, so a later identical load of the app's (a retry) is never skipped.
+      handler.post { player?.absorbIdenticalSet = false }
+    }
+  }
+
+  private fun failPendingPlay(notify: Boolean = true) {
+    handler.removeCallbacks(pendingTimeout)
+    val future = pendingPlay ?: return
+    pendingPlay = null
+    PlayerBridge.pendingCarPlayId = null
+    future.setException(IllegalStateException("The car play request timed out"))
+    if (notify) sendUnavailable()
+  }
+
+  /** An error Android Auto shows (the platform session's error state), in the listener's
+   * language (the snapshot's label). */
+  private fun sendUnavailable() {
+    val label = snapshot()?.labels?.unavailable?.ifEmpty { null } ?: return
+    try {
+      mediaSession?.sendError(SessionError(SessionError.ERROR_NOT_SUPPORTED, label))
+    } catch (e: Exception) {
+      Log.w(TAG, "Could not report the car error", e)
+    }
+  }
+
+  // ---- JS runtime ------------------------------------------------------------------------
+
+  internal fun needJs() = JsRuntime.ensure(this)
+
+  /** No car and nothing playing: the car task can end. */
+  private fun maybeReleaseJs() {
+    if (PlayerBridge.carConnected) return
+    if (player?.isPlaying == true) return
+    JsRuntime.release()
+  }
+
+  override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
 
   override fun onTaskRemoved(rootIntent: Intent?) {
     // The user swiped the app away from recents. Android usually keeps the (now
@@ -291,16 +640,34 @@ class AudiosiloPlayerService : MediaSessionService() {
       .apply()
     val player = mediaSession?.player
     if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
+      // A bound browser (Android Auto) keeps a bound service alive regardless; stopSelf only
+      // ends the started state, so the car keeps browsing.
       stopSelf()
     }
   }
 
   override fun onDestroy() {
+    if (PlayerBridge.service === this) PlayerBridge.service = null
+    handler.removeCallbacksAndMessages(null)
+    pendingPlay?.setException(IllegalStateException("Service stopped"))
+    pendingPlay = null
+    // A car request JS never received dies with the service: delivered to a JS that starts
+    // listening later (the car long gone), it would start the book on the phone.
+    PlayerBridge.pendingCarPlayId = null
+    carMonitor?.stop()
+    carMonitor = null
+    if (PlayerBridge.carConnected) {
+      PlayerBridge.carConnected = false
+      PlayerBridge.sink?.carConnection(false)
+    }
+    JsRuntime.release()
     mediaSession?.run {
       player.release()
       release()
     }
     mediaSession = null
+    player = null
+    exoPlayer = null
     bitmapExecutor?.shutdown()
     bitmapExecutor = null
     // The cache is a process-lifetime singleton (a SimpleCache instance owns its folder);
@@ -308,12 +675,43 @@ class AudiosiloPlayerService : MediaSessionService() {
     super.onDestroy()
   }
 
+  /**
+   * Media3's provider, minus the bookmark: the notification's own actions stay exactly
+   * `[prev] [play] [next] [back] [fwd]` (on API < 33 every custom button becomes a
+   * notification action and the sixth would crowd the row); the bookmark still reaches the
+   * platform session's custom actions, where Android Auto shows it.
+   */
+  private class NotificationProvider(context: Context) : DefaultMediaNotificationProvider(context) {
+    override fun getMediaButtons(
+      session: MediaSession,
+      playerCommands: Player.Commands,
+      mediaButtonPreferences: ImmutableList<CommandButton>,
+      showPauseButton: Boolean,
+    ): ImmutableList<CommandButton> = super.getMediaButtons(
+      session,
+      playerCommands,
+      ImmutableList.copyOf(mediaButtonPreferences.filter { it.sessionCommand?.customAction != CMD_BOOKMARK }),
+      showPauseButton,
+    )
+  }
+
   companion object {
+    private const val TAG = "AudiosiloPlayer"
+
     /** Shared prefs + key used to hand the "task swiped from recents" signal to the
      * module (read+cleared by `consumeTaskRemoved`). The service and module live in
      * the same process; prefs are the simplest durable channel between them. */
     const val PREFS = "audiosilo.player"
     const val KEY_TASK_REMOVED = "task_removed"
+
+    /** How long a car play waits for JS to load the book before Auto shows an error. */
+    private const val CAR_PLAY_TIMEOUT_MS = 10_000L
+
+    private val CAR_PACKAGES = setOf(
+      "com.google.android.projection.gearhead", // Android Auto (and the DHU)
+      "com.android.car.media", // Android Automotive OS media center
+      "com.android.car.carlauncher",
+    )
 
     @Volatile private var mediaCache: SimpleCache? = null
 

@@ -134,6 +134,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
 import {
   downloadedCountFor,
+  downloadedEntryOf,
   downloadKey,
   isDeclined,
   refreshedChapters,
@@ -277,6 +278,22 @@ describe('downloadedCountFor', () => {
     expect(downloadedCountFor(entries, 'c1')).toBe(1);
     expect(downloadedCountFor(entries, 'c2')).toBe(1);
     expect(downloadedCountFor(entries, 'c3')).toBe(0);
+  });
+});
+
+describe('downloadedEntryOf', () => {
+  it("answers a book's entry only once it is fully downloaded, on its own connection", () => {
+    const a = downloadedEntry({ path: 'A' });
+    useDownloads.setState({
+      entries: {
+        [downloadKey('c1', 2, 'A')]: a,
+        [downloadKey('c1', 2, 'B')]: downloadedEntry({ path: 'B', status: 'downloading' }),
+      },
+    });
+    expect(downloadedEntryOf({ connectionId: 'c1', libraryId: 2, path: 'A' })).toBe(a);
+    expect(downloadedEntryOf({ connectionId: 'c1', libraryId: 2, path: 'B' })).toBeUndefined();
+    expect(downloadedEntryOf({ connectionId: 'c2', libraryId: 2, path: 'A' })).toBeUndefined();
+    useDownloads.setState({ entries: {} });
   });
 });
 

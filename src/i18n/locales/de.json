@@ -1988,5 +1988,38 @@
         "thumb": "Dein Jahr"
       }
     }
+  },
+  "widgets": {
+    "empty": "Spiel ein Buch ab, dann erscheint es hier.",
+    "sleepTimer": "Sleep-Timer"
+  },
+  "effects": {
+    "smartSpeed": {
+      "label": "Pausen kürzen",
+      "hint": "Kürzt die Stille zwischen den Wörtern",
+      "notInBrowser": "Im Browser nicht verfügbar",
+      "notOnIphone": "Auf dem iPhone noch nicht verfügbar"
+    },
+    "voiceBoost": {
+      "label": "Stimme verstärken",
+      "hint": "Gleicht leise und laute Stimmen aus",
+      "notInThisBrowser": "In diesem Browser nicht verfügbar"
+    },
+    "saved": "{{time}} gespart",
+    "bookSaved": "Durch Pausenkürzen gespart",
+    "pillLabel": "Pausen kürzen und Stimme verstärken: {{state}}"
+  },
+  "car": {
+    "continue": "Weiterhören",
+    "upNext": "Als Nächstes",
+    "downloads": "Downloads",
+    "library": "Bibliothek",
+    "chapters": "Kapitel",
+    "bookmark": "Lesezeichen",
+    "bookmarkSaved": "Lesezeichen gespeichert",
+    "empty": "Hier ist noch nichts",
+    "signedOut": "Verbinde in AudioSilo einen Server, um im Auto zu hören",
+    "unavailable": "Dieses Buch kann gerade nicht abgespielt werden",
+    "subtitle": "{{author}} · {{left}}"
   }
 }

@@ -406,7 +406,7 @@ when paused). Chapter title (tap for the chapter list), book · author, a status
 the book · 22h 27m left at 1.25x") that becomes the **Undo chip** after a jump, the **chapter-relative waveform
 seek bar** with live scrub preview ("41:12 · 17:26:50 in the book"), "21m left in the chapter · ends 22:01", the
 **whole-book timeline** (compact), transport (54/76), and actions: speed, sleep, bookmark, output, Up next
-(phone/tablet), smart speed / voice boost ("Saved 2h 11m" native, "Voice boost" web). Desktop: a 420 px
+(phone/tablet), smart speed / voice boost ("Saved 2h 11m" Android, "Voice boost" web and iOS). Desktop: a 420 px
 companion column (Who's who · Story so far · Chapters · Bookmarks · Notes). Tablet: the companion sits below
 the controls. Phone: chips open the companion as a 78% bottom sheet.
 
@@ -449,7 +449,7 @@ Desktop: an anchored popover above the dock (or centred over the player column).
 Phone: bottom sheet with grabber (`@expo/ui` detents on native, vaul on web).
 - **Speed**: big readout, slider 0.5-2.0 in 0.05 steps with minus/plus, presets with the resulting time left
   ("1.5x · 18h 42m"), "remembered for this book", smart speed and voice boost switches (smart speed disabled on
-  web with "Not available in the browser").
+  web with "Not available in the browser" and on iOS with "Not available on iPhone yet").
 - **Sleep**: 5/10/15/30/45/60 min, End of chapter (with its countdown), "Or stop after" 1-4 chapters with their
   end times ("ends 22:49"), Auto sleep (window from Settings), Shake to extend (native only), and the note that a
   "Fell asleep" bookmark is saved. The last 30 s show the **grace card**: "Fading out in 24 s · Keep listening".
@@ -577,7 +577,7 @@ library is ready."**: spines drop onto a plank one by one, with the counts and w
 | Feedback | Haptics on play, skip, bookmark | Ripple from the press point | Hover states everywhere |
 | Output | AirPlay route picker | Cast | Browser output; Media Session |
 | OS surfaces | Lock screen, Dynamic Island, Live Activity (chapter, time left, sleep countdown), widgets, CarPlay, App Intents | Media notification with chapter prev/next and chapter scrubber, Android Auto, App Actions | PWA install prompt, Media Session (artwork, chapter, skips) |
-| Not available | | | Smart speed (voice boost works via Web Audio), shake, widgets, CarPlay. Say "Not available in the browser". |
+| Not available | Smart speed (withdrawn: its rate changes stuttered). Say "Not available on iPhone yet". | | Smart speed (voice boost works via Web Audio), shake, widgets, CarPlay. Say "Not available in the browser". |
 
 Web is the desktop and casual surface (iOS Safari PWAs are weak at background audio), so the Downloads page
 explains browser storage honestly: secure context only, the browser may evict, Safari stops in the background.

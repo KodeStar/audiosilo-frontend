@@ -6,6 +6,7 @@ import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
+import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
@@ -609,24 +610,6 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
   }
 }
 
-/** `fn` over `items`, at most `limit` at a time, the results in order. */
-async function mapLimit<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}
-
 /** Run `task` once the launch's first screens are up: when the JS thread is next idle
  * (`requestIdleCallback`, on native and most browsers), else a moment later. */
 function afterLaunch(task: () => void) {
@@ -874,6 +857,17 @@ export function useDownloadEntry(
   path: string,
 ): DownloadEntry | undefined {
   return useDownloads((s) => s.entries[downloadKey(connectionId, libraryId, path)]);
+}
+
+/** A book's registry entry when it is fully downloaded, else undefined: the non-hook
+ * read for the framework-free callers (the player store, the car). */
+export function downloadedEntryOf(ref: {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+}): DownloadEntry | undefined {
+  const e = useDownloads.getState().entries[downloadKey(ref.connectionId, ref.libraryId, ref.path)];
+  return e?.status === 'downloaded' ? e : undefined;
 }
 
 /** How many fully-downloaded books belong to a connection - the count the removal

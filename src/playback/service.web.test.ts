@@ -1,6 +1,15 @@
-import { createPlaybackService, isSwapReady, routePickerKind, sourceFor } from './service.web';
+import {
+  createPlaybackService,
+  isSwapReady,
+  routePickerKind,
+  sourceFor,
+  VOICE_BOOST_COMPRESSOR,
+  VOICE_BOOST_LIMITER,
+  VOICE_BOOST_TRIM_DB,
+} from './service.web';
 import {
   AutoplayBlockedError,
+  type PlaybackConfig,
   type PlaybackService,
   type PlaybackState,
   type PlaybackTrack,
@@ -253,7 +262,13 @@ describe('WebPlaybackService (transcoded tracks)', () => {
   });
 
   it('a new load forgets the pause before it: no early start, no extra request', async () => {
-    await svc.configure({ autoRewindMax: 30, jumpForward: 30, jumpBackward: 15 });
+    await svc.configure({
+      autoRewindMax: 30,
+      jumpForward: 30,
+      jumpBackward: 15,
+      smartSpeed: false,
+      voiceBoost: false,
+    });
     await startPlaying(200);
     await svc.pause();
     now += 10 * 60_000; // long enough to read as a stale transcode
@@ -305,7 +320,13 @@ describe('WebPlaybackService (transcoded tracks)', () => {
   });
 
   it('auto-rewind on resume re-requests further back', async () => {
-    await svc.configure({ autoRewindMax: 30, jumpForward: 30, jumpBackward: 15 });
+    await svc.configure({
+      autoRewindMax: 30,
+      jumpForward: 30,
+      jumpBackward: 15,
+      smartSpeed: false,
+      voiceBoost: false,
+    });
     await startPlaying(200);
     el().currentTime = 10;
     el().emit('timeupdate'); // at 210
@@ -597,7 +618,13 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
     const svc = createPlaybackService();
     const storeSeek = jest.fn();
     svc.onRemoteSeek!(storeSeek);
-    await svc.configure({ autoRewindMax: 0, jumpForward: 30, jumpBackward: 15 });
+    await svc.configure({
+      autoRewindMax: 0,
+      jumpForward: 30,
+      jumpBackward: 15,
+      smartSpeed: false,
+      voiceBoost: false,
+    });
     await svc.load(transcodedTracks, 0, 250);
     const src = el().src;
     (handlers.get('seekto') as (d: { seekTime?: number }) => void)({ seekTime: 20 });
@@ -619,5 +646,350 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
     setPositionState.mockClear();
     el().emit('timeupdate');
     expect(setPositionState).not.toHaveBeenCalled(); // then left alone
+  });
+});
+
+// --- Voice Boost over a fake Web Audio graph ------------------------------------------
+class FakeNode {
+  targets: FakeNode[] = [];
+  disconnects = 0;
+  connect(n: FakeNode) {
+    this.targets.push(n);
+    return n;
+  }
+  disconnect() {
+    this.disconnects++;
+    this.targets = [];
+  }
+}
+class FakeCompressor extends FakeNode {
+  threshold = { value: 0 };
+  knee = { value: 0 };
+  ratio = { value: 0 };
+  attack = { value: 0 };
+  release = { value: 0 };
+}
+class FakeGain extends FakeNode {
+  gain = { value: 1 };
+}
+class FakeAudioContext {
+  static all: FakeAudioContext[] = [];
+  /** What the next `resume()` does: run (a gesture allowed it) or stay suspended. */
+  static resumeRuns = true;
+  state = 'suspended';
+  destination = new FakeNode();
+  compressors: FakeCompressor[] = [];
+  /** The first compressor made: Voice Boost's (the second is its limiter). */
+  get compressor(): FakeCompressor | null {
+    return this.compressors[0] ?? null;
+  }
+  gains: FakeGain[] = [];
+  sources = new Map<unknown, FakeNode>();
+  resumes = 0;
+  private listeners: (() => void)[] = [];
+  constructor() {
+    FakeAudioContext.all.push(this);
+  }
+  createDynamicsCompressor() {
+    const node = new FakeCompressor();
+    this.compressors.push(node);
+    return node;
+  }
+  createGain() {
+    const node = new FakeGain();
+    this.gains.push(node);
+    return node;
+  }
+  createMediaElementSource(el: unknown) {
+    if (this.sources.has(el)) throw new Error('InvalidStateError: already has a source');
+    const node = new FakeNode();
+    this.sources.set(el, node);
+    return node;
+  }
+  addEventListener(_type: string, fn: () => void) {
+    this.listeners.push(fn);
+  }
+  resume() {
+    this.resumes++;
+    if (FakeAudioContext.resumeRuns) this.run();
+    return Promise.resolve();
+  }
+  /** The browser lets it run (a later gesture). */
+  run() {
+    this.state = 'running';
+    for (const fn of this.listeners) fn();
+  }
+}
+
+const CHROME =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const SAFARI =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+
+describe('WebPlaybackService Voice Boost (Web Audio)', () => {
+  const g = globalThis as Record<string, unknown>;
+  const saved = {
+    Audio: g.Audio,
+    AudioContext: g.AudioContext,
+    navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+    location: Object.getOwnPropertyDescriptor(globalThis, 'location'),
+  };
+  let svc: PlaybackService;
+  const config = (voiceBoost: boolean): PlaybackConfig => ({
+    autoRewindMax: 0,
+    jumpForward: 30,
+    jumpBackward: 15,
+    smartSpeed: false,
+    voiceBoost,
+  });
+  const ctx = () => FakeAudioContext.all[0];
+  /** Where the element's source node sends its sound, by name. */
+  const routeOf = (a: FakeAudio) => {
+    const source = ctx()?.sources.get(a);
+    if (!source) return 'element';
+    const [target] = source.targets;
+    return target === ctx().compressor
+      ? 'compressor'
+      : target === ctx().destination
+        ? 'destination'
+        : 'nowhere';
+  };
+  function browser(userAgent: string) {
+    Object.defineProperty(globalThis, 'navigator', { value: { userAgent }, configurable: true });
+  }
+
+  beforeEach(async () => {
+    FakeAudio.all = [];
+    FakeAudioContext.all = [];
+    FakeAudioContext.resumeRuns = true;
+    g.Audio = FakeAudio;
+    g.AudioContext = FakeAudioContext;
+    browser(CHROME);
+    Object.defineProperty(globalThis, 'location', {
+      value: { href: 'https://s/web/player', origin: 'https://s' },
+      configurable: true,
+    });
+    svc = createPlaybackService();
+  });
+  afterEach(() => {
+    g.Audio = saved.Audio;
+    g.AudioContext = saved.AudioContext;
+    for (const key of ['navigator', 'location'] as const) {
+      const d = saved[key];
+      if (d) Object.defineProperty(globalThis, key, d);
+      else delete g[key];
+    }
+  });
+
+  it('makes nothing at set-up, even with the setting on: only a gesture may', async () => {
+    await svc.configure(config(true)); // the store's set-up call
+    await svc.load(directTracks, 0, 0);
+    expect(FakeAudioContext.all).toHaveLength(0);
+    expect(routeOf(el())).toBe('element');
+  });
+
+  it('builds the graph on the first play tap with the setting on, and routes the book through it', async () => {
+    await svc.configure(config(true));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    expect(FakeAudioContext.all).toHaveLength(1);
+    expect(ctx().resumes).toBe(1);
+    expect(ctx().compressor).toMatchObject({
+      threshold: { value: VOICE_BOOST_COMPRESSOR.threshold },
+      knee: { value: VOICE_BOOST_COMPRESSOR.knee },
+      ratio: { value: VOICE_BOOST_COMPRESSOR.ratio },
+      attack: { value: VOICE_BOOST_COMPRESSOR.attack },
+      release: { value: VOICE_BOOST_COMPRESSOR.release },
+    });
+    // compressor -> trim -> limiter -> destination
+    const [trim] = ctx().gains;
+    const limiter = ctx().compressors[1];
+    expect(ctx().compressors).toHaveLength(2);
+    expect(ctx().compressor!.targets).toEqual([trim]);
+    expect(trim.targets).toEqual([limiter]);
+    expect(trim.gain.value).toBeCloseTo(10 ** (VOICE_BOOST_TRIM_DB / 20), 6);
+    expect(limiter).toMatchObject({
+      threshold: { value: VOICE_BOOST_LIMITER.threshold },
+      knee: { value: VOICE_BOOST_LIMITER.knee },
+      ratio: { value: VOICE_BOOST_LIMITER.ratio },
+      attack: { value: VOICE_BOOST_LIMITER.attack },
+      release: { value: VOICE_BOOST_LIMITER.release },
+    });
+    expect(limiter.targets).toEqual([ctx().destination]);
+    expect(routeOf(el())).toBe('compressor');
+  });
+
+  it('builds it on the switch (a gesture), and a later play makes no second one', async () => {
+    await svc.configure(config(false));
+    await svc.load(directTracks, 0, 0);
+    await svc.configure(config(true)); // the listener's switch
+    expect(FakeAudioContext.all).toHaveLength(1);
+    expect(routeOf(el())).toBe('compressor');
+    await svc.play();
+    expect(FakeAudioContext.all).toHaveLength(1);
+  });
+
+  it('switching off reconnects the source to the destination, and never tears the graph down', async () => {
+    await svc.configure(config(true));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    const a = el();
+    await svc.configure(config(false));
+    expect(routeOf(a)).toBe('destination');
+    await svc.configure(config(true));
+    expect(routeOf(a)).toBe('compressor');
+    expect(FakeAudioContext.all).toHaveLength(1);
+    expect(ctx().sources.size).toBe(1); // one source for the element's whole life
+  });
+
+  it('leaves the wiring alone when another setting changes (no glitch mid-book)', async () => {
+    await svc.configure(config(true));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    const source = ctx().sources.get(el())!;
+    const before = source.disconnects;
+    await svc.configure({ ...config(true), jumpForward: 45 });
+    expect(source.disconnects).toBe(before);
+    expect(routeOf(el())).toBe('compressor');
+  });
+
+  it('never makes a graph while the boost is off', async () => {
+    await svc.configure(config(false));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    expect(FakeAudioContext.all).toHaveLength(0);
+  });
+
+  it('waits for a running context before routing (a suspended one would silence the book)', async () => {
+    FakeAudioContext.resumeRuns = false;
+    await svc.configure(config(true));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    expect(routeOf(el())).toBe('element');
+    ctx().run();
+    expect(routeOf(el())).toBe('compressor');
+  });
+
+  it('keeps one source per element: a next file reuses it, the swapped-in element gets its own', async () => {
+    jest.useFakeTimers();
+    try {
+      await svc.configure(config(true));
+      await svc.load(directTracks, 0, 0);
+      await svc.play();
+      const first = el();
+      await svc.skipToTrack(1, 0); // same element, new src
+      expect(el()).toBe(first);
+      expect(ctx().sources.size).toBe(1);
+      expect(routeOf(first)).toBe('compressor');
+
+      const local: PlaybackTrack[] = directTracks.map((t, i) => ({
+        ...t,
+        url: `https://s/local/${i}.mp3`,
+      }));
+      const swap = svc.swapTo!(local, 1, 0);
+      const pending = el();
+      pending.emit('loadedmetadata');
+      pending.readyState = 4;
+      pending.emit('canplay');
+      expect(await swap).toBe(true);
+      expect(ctx().sources.size).toBe(2);
+      expect(routeOf(pending)).toBe('compressor');
+      expect(ctx().sources.get(first)!.targets).toEqual([]); // the old one is let go
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("plays another server's stream unboosted, on a fresh element, never through the graph", async () => {
+    await svc.configure(config(true));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    const routed = el();
+    expect(routeOf(routed)).toBe('compressor');
+    const foreign: PlaybackTrack[] = [{ id: 'x', url: 'https://other/stream?path=x', title: 'X' }];
+    await svc.load(foreign, 0, 0);
+    const fresh = el();
+    expect(fresh).not.toBe(routed);
+    expect(fresh.src).toBe('https://other/stream?path=x');
+    expect(routeOf(fresh)).toBe('element');
+    expect(routed.src).toBe('');
+  });
+
+  it('never in Safari', async () => {
+    browser(SAFARI);
+    await svc.configure(config(false));
+    await svc.load(directTracks, 0, 0);
+    await svc.configure(config(true));
+    await svc.play();
+    expect(FakeAudioContext.all).toHaveLength(0);
+  });
+});
+
+// --- The web Voice Boost's level, from the browser compressor's own curve ----------------
+/**
+ * `DynamicsCompressorNode`'s static curve with its automatic make-up gain, as browsers compute
+ * it (Web Audio spec "DynamicsCompressorNode" processing; Chromium's DynamicsCompressorKernel,
+ * which Firefox shares): linear below the threshold, an exponential knee from the threshold to
+ * threshold + knee whose slope there meets 1/ratio, then the ratio; the make-up gain is
+ * `(1 / curve(1.0))^0.6`. Maps a steady input level (dBFS) to the output level.
+ */
+function webCompressor(c: { threshold: number; knee: number; ratio: number }) {
+  const toDb = (x: number) => 20 * Math.log10(x);
+  const toLin = (d: number) => 10 ** (d / 20);
+  const lt = toLin(c.threshold);
+  const kneeCurve = (x: number, k: number) => (x < lt ? x : lt + (1 - Math.exp(-k * (x - lt))) / k);
+  const slopeAt = (x: number, k: number) => {
+    const x2 = x * 1.001;
+    return (toDb(kneeCurve(x2, k)) - toDb(kneeCurve(x, k))) / (toDb(x2) - toDb(x));
+  };
+  const kneeEndDb = c.threshold + c.knee;
+  const kneeEnd = toLin(kneeEndDb);
+  let [minK, maxK, k] = [0.1, 10000, 5];
+  for (let i = 0; i < 15; i++) {
+    if (slopeAt(kneeEnd, k) < 1 / c.ratio) maxK = k;
+    else minK = k;
+    k = Math.sqrt(minK * maxK);
+  }
+  const yKneeEndDb = toDb(kneeCurve(kneeEnd, k));
+  const curve = (x: number) =>
+    x < kneeEnd ? kneeCurve(x, k) : toLin(yKneeEndDb + (toDb(x) - kneeEndDb) / c.ratio);
+  const makeupDb = 0.6 * -toDb(curve(1));
+  return (levelDb: number) => toDb(curve(toLin(levelDb))) + makeupDb;
+}
+
+/** The native boost's static lift (VoiceBoostProcessor / VoiceBoostTap): -20 dBFS, 3:1, a
+ * 6 dB knee centred on the threshold, +12 dB make-up. */
+function nativeLiftDb(levelDb: number): number {
+  const over = levelDb + 20;
+  const cut =
+    2 * over < -6
+      ? 0
+      : 2 * Math.abs(over) <= 6
+        ? ((1 / 3 - 1) * (over + 3) ** 2) / 12
+        : (1 / 3 - 1) * over;
+  return cut + 12;
+}
+
+describe('the web Voice Boost level', () => {
+  const compressor = webCompressor(VOICE_BOOST_COMPRESSOR);
+  const limiter = webCompressor(VOICE_BOOST_LIMITER);
+  /** The chain's output level for a steady input level. */
+  const out = (levelDb: number) => limiter(compressor(levelDb) + VOICE_BOOST_TRIM_DB);
+
+  it('lifts narration like the native boost (+8 dB for -14 dBFS peaks), within 0.5 dB above the knee', () => {
+    expect(out(-14) + 14).toBeCloseTo(8, 0);
+    for (const level of [-14, -12, -10, -8, -6, -4]) {
+      expect(Math.abs(out(level) - level - nativeLiftDb(level))).toBeLessThan(0.5);
+    }
+  });
+
+  it('lifts quiet speech by about 10 dB (the native boost: 12)', () => {
+    expect(out(-40) + 40).toBeGreaterThan(9.5);
+    expect(out(-40) + 40).toBeLessThan(12.5);
+  });
+
+  it('keeps a full-scale input under -1 dBFS (the limiter, with its own make-up)', () => {
+    expect(out(0)).toBeLessThan(-1);
+    expect(out(0)).toBeGreaterThan(-2);
   });
 });

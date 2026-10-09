@@ -48,6 +48,7 @@ import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
+import { useBookTimeSaved } from '@/playback/time-saved';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useConnectionName } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -220,12 +221,15 @@ function BookPage() {
     ...historyQuery(cid, api, libraryId, started || finished ? path : ''),
     staleTime: HISTORY_STALE_MS,
   }).data;
+  // Smart Speed's seconds saved on this book, kept on this device (`time-saved.ts`).
+  const smartSpeedSaved = useBookTimeSaved(cid, libraryId, relPath);
   const listening = listeningFigures({
     started,
     finished,
     progress,
     history,
     speed,
+    smartSpeedSaved,
     now: new Date(),
   });
 

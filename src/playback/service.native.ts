@@ -1,27 +1,26 @@
 import type { EventSubscription } from 'expo-modules-core';
 
-import AudiosiloPlayer, { type NativeTrack } from '../../modules/audiosilo-player';
+import AudiosiloPlayer from '../../modules/audiosilo-player';
 
 import {
+  type BookRef,
   INITIAL_SNAPSHOT,
   type PlaybackChapter,
   type PlaybackConfig,
   type PlaybackService,
   type PlaybackSnapshot,
   type PlaybackTrack,
+  toNativeTrack,
 } from './types';
 
-function toNativeTrack(t: PlaybackTrack): NativeTrack {
-  return {
-    id: t.id,
-    url: t.url,
-    headers: t.headers,
-    title: t.title,
-    album: t.album,
-    artist: t.artist,
-    artwork: t.artwork,
-    duration: t.duration,
-  };
+/** Does the installed binary know the car-era module surface (`load`'s 5th `book` argument
+ * among it)? The JS bundle can be newer than the binary (a shipped store build lags), and
+ * an Expo function called with more arguments than it declares THROWS ("received 5
+ * arguments, expected 4", expo-modules-core's argument count check on both platforms), so
+ * the `book` argument is only passed to a binary that also has `getLoadedBook`: the two
+ * ship together. */
+function moduleTakesBook(): boolean {
+  return typeof AudiosiloPlayer.getLoadedBook === 'function';
 }
 
 /**
@@ -30,12 +29,20 @@ function toNativeTrack(t: PlaybackTrack): NativeTrack {
  * multi-file playback, lock-screen controls + remote commands, and pitch-corrected
  * speed. The whole-book timeline lives in the player store; this engine works
  * per-track. The module's `NativeState` values match `PlaybackState` 1:1.
+ *
+ * The newer events (`onRemoteMove`, `onRateChange`, `silenceSaved` on `onProgress`) are
+ * listened for on every binary: an older one simply never sends them, and listening for an
+ * event a module doesn't declare is harmless. (`onRemoteBookmark` is the car's: see
+ * `src/car/car-native.native.ts`.)
  */
 class NativePlaybackService implements PlaybackService {
   private snapshot: PlaybackSnapshot = { ...INITIAL_SNAPSHOT };
   private listeners = new Set<(s: PlaybackSnapshot) => void>();
   private subscriptions: EventSubscription[] = [];
   private setupDone = false;
+  private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
+  private rateChange: ((rate: number) => void) | null = null;
+  private silenceSaved: ((totalSeconds: number) => void) | null = null;
 
   private emit() {
     for (const listener of this.listeners) listener(this.snapshot);
@@ -49,18 +56,36 @@ class NativePlaybackService implements PlaybackService {
     if (this.setupDone) return;
     this.subscriptions.push(
       AudiosiloPlayer.addListener('onState', ({ state }) => this.update({ state })),
-      AudiosiloPlayer.addListener('onProgress', ({ position, duration }) =>
-        this.update({ position, duration }),
-      ),
+      AudiosiloPlayer.addListener('onProgress', ({ position, duration, silenceSaved }) => {
+        this.update({ position, duration });
+        // Absent on binaries older than Smart Speed.
+        if (typeof silenceSaved === 'number' && Number.isFinite(silenceSaved)) {
+          this.silenceSaved?.(silenceSaved);
+        }
+      }),
       AudiosiloPlayer.addListener('onTrackChange', ({ index }) =>
         this.update({ trackIndex: index }),
       ),
+      // The engine already moved (the lock screen, a headset, the car): take the landed
+      // place into the snapshot FIRST, so the store's save inside the handler saves it.
+      AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position }) => {
+        if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
+        this.update({ trackIndex, position });
+        this.remoteMove?.(trackIndex, position);
+      }),
+      AudiosiloPlayer.addListener('onRateChange', ({ rate }) => {
+        if (!Number.isFinite(rate) || rate <= 0) return;
+        this.update({ rate });
+        this.rateChange?.(rate);
+      }),
     );
     await AudiosiloPlayer.setup();
     this.setupDone = true;
   }
 
   async configure(config: PlaybackConfig) {
+    // `smartSpeed` / `voiceBoost` ride along on every binary: the config is a record, and
+    // a binary that predates the effects ignores fields it doesn't read.
     await AudiosiloPlayer.setConfig(config);
   }
 
@@ -69,11 +94,18 @@ class NativePlaybackService implements PlaybackService {
     startIndex: number,
     positionInTrack: number,
     chapters?: PlaybackChapter[],
+    book?: BookRef,
   ) {
-    // chapters are the per-chapter clips; the Android module builds clipped media items
-    // from them (iOS ignores the arg). PlaybackChapter and NativeChapter are the same
-    // shape, so they pass straight through.
-    await AudiosiloPlayer.load(tracks.map(toNativeTrack), startIndex, positionInTrack, chapters);
+    // chapters are the per-chapter clips: Android builds clipped media items from them, iOS
+    // drives its chapter lock screen with them. PlaybackChapter and NativeChapter are the
+    // same shape, so they pass straight through. `book` goes only to a binary that takes it
+    // (see `moduleTakesBook`).
+    const native = tracks.map(toNativeTrack);
+    if (book && moduleTakesBook()) {
+      await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters ?? [], book);
+    } else {
+      await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters);
+    }
     this.update({
       trackIndex: startIndex,
       position: positionInTrack,
@@ -126,6 +158,20 @@ class NativePlaybackService implements PlaybackService {
   }
   async showRoutePicker() {
     return AudiosiloPlayer.showRoutePicker();
+  }
+  onRemoteMove(handler: ((trackIndex: number, positionInTrack: number) => void) | null) {
+    this.remoteMove = handler;
+  }
+  onRateChange(handler: ((rate: number) => void) | null) {
+    this.rateChange = handler;
+  }
+  onSilenceSaved(handler: ((totalSeconds: number) => void) | null) {
+    this.silenceSaved = handler;
+  }
+  adoptPlace(snapshot: PlaybackSnapshot) {
+    // No emit: the store sets its own snapshot when it adopts; this only makes the next
+    // engine event (a progress tick carries no track or state) re-emit the right ones.
+    this.snapshot = { ...snapshot };
   }
   getSnapshot() {
     return this.snapshot;

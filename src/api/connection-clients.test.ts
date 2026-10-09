@@ -1,15 +1,17 @@
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { useSession } from '@/stores/session';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 
 // resolveClient reads the connection list and calls markNeedsReconnect straight off the
 // zustand store, so mock the store to control both without wiring the real session (which
 // a sibling change owns). markNeedsReconnect's signature is stable, so this stays valid.
 jest.mock('@/stores/session', () => ({
   useSession: { getState: jest.fn() },
+  sessionHydrateFailed: jest.fn(() => false),
 }));
 
 const getState = (useSession as unknown as { getState: jest.Mock }).getState;
+const hydrateFailed = sessionHydrateFailed as jest.Mock;
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -108,6 +110,13 @@ describe('connection-clients', () => {
     getState.mockReturnValue({ connections: [], markNeedsReconnect, status: 'loading' });
     expect(sessionReady()).toBe(false);
     getState.mockReturnValue({ connections: [], markNeedsReconnect, status: 'ready' });
+    expect(sessionReady()).toBe(true);
+  });
+
+  it('is not ready after a hydrate that failed (the list never loaded), until one succeeds', () => {
+    getState.mockReturnValue({ connections: [], markNeedsReconnect, status: 'unauthenticated' });
+    hydrateFailed.mockReturnValueOnce(true);
+    expect(sessionReady()).toBe(false);
     expect(sessionReady()).toBe(true);
   });
 });

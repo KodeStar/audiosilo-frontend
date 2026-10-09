@@ -3,19 +3,21 @@ package expo.modules.audiosiloplayer
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import expo.modules.audiosiloplayer.effects.AudioEffects
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -37,7 +39,7 @@ class TrackRecord : Record {
  * One chapter clip (mirrors the JS PlaybackChapter). The module turns each into a
  * clipped MediaItem so the lock screen gets a chapter-relative scrubber and prev/next
  * chapter. `fileIndex` indexes into the loaded tracks; `startInFile`/`endInFile` bound
- * the clip within that file (endInFile <= 0 ⇒ to end of file).
+ * the clip within that file (endInFile <= 0 => to end of file).
  */
 class ChapterRecord : Record {
   @Field var fileIndex: Int = 0
@@ -46,77 +48,86 @@ class ChapterRecord : Record {
   @Field var title: String = ""
 }
 
+/** `load`'s optional 5th argument: which book the queue is. */
+class BookRecord : Record {
+  @Field var connectionId: String = ""
+  @Field var libraryId: Double = 0.0
+  @Field var path: String = ""
+}
+
 class ConfigRecord : Record {
   @Field var autoRewindMax: Double = 0.0
   @Field var jumpForward: Double = 30.0
   @Field var jumpBackward: Double = 15.0
+  /** Absent from an older JS bundle (then the effects are left alone). */
+  @Field var smartSpeed: Boolean? = null
+  @Field var voiceBoost: Boolean? = null
 }
 
 /**
- * Translates between the chapter-clip media items the engine plays and the FILE-based
- * timeline the JS store works in. The store thinks in (fileIndex, positionInFile); each
- * engine media item is one chapter clip. This keeps the bridge contract unchanged while
- * the lock screen gets true chapter controls.
- */
-private class ChapterMap(val clips: List<ChapterRecord>) {
-  /** (fileIndex, seconds-within-file) → (clip item index, clip-relative ms). */
-  fun fileToItem(fileIndex: Int, fileRelSec: Double): Pair<Int, Long> {
-    // Fallback candidate: the latest clip of this file that starts at or before the
-    // target, else the file's first clip (when the target precedes every clip).
-    var candidate = -1
-    for (i in clips.indices) {
-      val c = clips[i]
-      if (c.fileIndex != fileIndex) continue
-      val end = if (c.endInFile > c.startInFile) c.endInFile else Double.MAX_VALUE
-      if (fileRelSec >= c.startInFile && fileRelSec < end) {
-        return Pair(i, (((fileRelSec - c.startInFile) * 1000).toLong()).coerceAtLeast(0L))
-      }
-      if (candidate < 0 || c.startInFile <= fileRelSec) candidate = i
-    }
-    // Position not inside any clip of that file (a gap between chapters, or rounding past
-    // the last boundary). Snap to the candidate and measure the offset against THAT
-    // clip's start - measuring against the file's first clip seeked into the wrong
-    // chapter's content. Clamp within the chosen clip so we never cross its clipped end;
-    // before the first clip the negative offset clamps to 0 (the clip's start).
-    val idx = candidate.coerceAtLeast(0)
-    val clip = clips.getOrNull(idx)
-    val start = clip?.startInFile ?: 0.0
-    val clipLenMs = clip?.let {
-      if (it.endInFile > it.startInFile) ((it.endInFile - it.startInFile) * 1000).toLong() else Long.MAX_VALUE
-    } ?: Long.MAX_VALUE
-    return Pair(idx, (((fileRelSec - start) * 1000).toLong()).coerceIn(0L, clipLenMs))
-  }
-
-  /** (clip item index, clip-relative ms) → (fileIndex, seconds-within-file). */
-  fun itemToFile(itemIndex: Int, clipRelMs: Long): Pair<Int, Double> {
-    val c = clips.getOrNull(itemIndex) ?: return Pair(itemIndex, clipRelMs / 1000.0)
-    return Pair(c.fileIndex, c.startInFile + clipRelMs / 1000.0)
-  }
-}
-
-/**
- * Bridges the JS playback API to a Media3 MediaSessionService via a MediaController.
+ * Bridges the JS playback API to a Media3 MediaLibraryService via a MediaController.
  * Positions are reported per-FILE (seconds); the JS store maps them onto the whole-book
  * timeline. When chapters are supplied each chapter is a clipped media item, and this
  * module translates the engine's clip indices/positions back to file-relative ones so
- * the store's file-based math is unchanged. All controller access happens on the main
- * thread.
+ * the store's file-based math is unchanged ([TimelineMap], rebuilt from the controller's
+ * timeline so it is right for a queue the SERVICE loaded too). All controller access happens on
+ * the main thread.
  */
 class AudiosiloPlayerModule : Module() {
   private var controller: MediaController? = null
   private var controllerFuture: ListenableFuture<MediaController>? = null
+  private val connectWaiters = mutableListOf<(Exception?) -> Unit>()
   private val handler = Handler(Looper.getMainLooper())
   private var progressRunnable: Runnable? = null
   private var lastTrackIndex: Int = -1
-  /** Non-null when the current book is played as chapter clips (see ChapterMap). */
-  private var chapterMap: ChapterMap? = null
-  /** Per-file durations (seconds) from the loaded tracks, so progress can report the
-   * FILE duration even when the engine's current item is a clip. */
-  private var fileDurations: List<Double> = emptyList()
+  /** The engine items' FILE mapping (chapter clips or whole files), from their extras. */
+  private var timelineMap: TimelineMap = TimelineMap(emptyList())
   /** Output gain (0..1) last asked for by JS - the sleep timer's fade-out. Kept here so a
    * reconnect re-applies it: the controller can be rebuilt against a freshly started
    * service whose ExoPlayer is back at full volume, which would abort a fade mid-way. */
   private var lastVolume: Float = 1.0f
+  /** Smart Speed / Voice Boost last asked for by JS (null: never), re-sent on a reconnect. */
+  private var lastEffects: Pair<Boolean, Boolean>? = null
+
+  /** A remote move the service reported, emitted once the controller's own position caught up
+   * (its next discontinuity), so `onRemoteMove` follows the `onProgress` that shows it. */
+  private var pendingRemoteMove: Pair<Int, Double>? = null
+  private val remoteMoveFallback = Runnable { flushRemoteMove() }
+
+  @Volatile private var observingBookmarks = false
+  @Volatile private var observingCar = false
+  @Volatile private var observingCarConnection = false
+
+  private val sink = object : PlayerEventSink {
+    override fun remoteMove(fileIndex: Int, position: Double) {
+      pendingRemoteMove = Pair(fileIndex, position)
+      handler.removeCallbacks(remoteMoveFallback)
+      handler.postDelayed(remoteMoveFallback, REMOTE_MOVE_FALLBACK_MS)
+    }
+
+    override fun rateChange(rate: Double) {
+      sendEvent("onRateChange", mapOf("rate" to rate))
+    }
+
+    override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?) {
+      val place: Map<String, Any> = mapOf("trackIndex" to fileIndex, "position" to position)
+      val named: Map<String, Any> = book?.let {
+        mapOf("connectionId" to it.connectionId, "libraryId" to it.libraryId.toDouble(), "path" to it.path)
+      } ?: emptyMap()
+      sendEvent("onRemoteBookmark", place + named)
+    }
+
+    override fun carConnection(connected: Boolean) {
+      if (observingCarConnection) sendEvent("onCarConnection", mapOf("connected" to connected))
+    }
+
+    override fun carPlayRequest(id: String) {
+      sendEvent("onCarPlayRequest", mapOf("id" to id))
+    }
+
+    override val observingBookmarks: Boolean get() = this@AudiosiloPlayerModule.observingBookmarks
+    override val observingCar: Boolean get() = this@AudiosiloPlayerModule.observingCar
+  }
 
   private val context
     get() = requireNotNull(appContext.reactContext) { "React context is not available" }
@@ -124,7 +135,43 @@ class AudiosiloPlayerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("AudiosiloPlayer")
 
-    Events("onState", "onProgress", "onTrackChange")
+    Events(
+      "onState",
+      "onProgress",
+      "onTrackChange",
+      "onRemoteMove",
+      "onRateChange",
+      "onRemoteBookmark",
+      "onCarConnection",
+      "onCarPlayRequest",
+    )
+
+    OnCreate {
+      PlayerBridge.sink = sink
+    }
+
+    // Car events JS couldn't hear yet (a car tap that booted JS, a connect before the car
+    // controller listened) are delivered the moment it starts listening.
+    // On the main thread, like the service's `requestCarPlay` it hands off with: Expo runs
+    // these on its own queue, where the check-then-act of the two could lose a request (or
+    // deliver an older one after a newer).
+    OnStartObserving("onCarPlayRequest") {
+      handler.post {
+        observingCar = true
+        PlayerBridge.pendingCarPlayId?.let { id ->
+          PlayerBridge.pendingCarPlayId = null
+          sendEvent("onCarPlayRequest", mapOf("id" to id))
+        }
+      }
+    }
+    OnStopObserving("onCarPlayRequest") { handler.post { observingCar = false } }
+    OnStartObserving("onCarConnection") {
+      observingCarConnection = true
+      if (PlayerBridge.carConnected) sendEvent("onCarConnection", mapOf("connected" to true))
+    }
+    OnStopObserving("onCarConnection") { observingCarConnection = false }
+    OnStartObserving("onRemoteBookmark") { observingBookmarks = true }
+    OnStopObserving("onRemoteBookmark") { observingBookmarks = false }
 
     // True once if the app was swiped away from recents since the last check (set by
     // the service's onTaskRemoved). Read+cleared synchronously so JS can decide, on
@@ -140,7 +187,15 @@ class AudiosiloPlayerModule : Module() {
     }
 
     AsyncFunction("setup") { promise: Promise ->
-      handler.post { connect(promise) }
+      handler.post {
+        connect { error ->
+          if (error == null) {
+            promise.resolve(null)
+          } else {
+            promise.reject("ERR_MEDIA_CONTROLLER", "Failed to connect to media session", error)
+          }
+        }
+      }
     }
 
     AsyncFunction("setConfig") { config: ConfigRecord ->
@@ -148,35 +203,44 @@ class AudiosiloPlayerModule : Module() {
       // too. The jump intervals feed the lock-screen skip buttons - the seek amount is read
       // live in the service's custom-command handler; the notification glyphs pick up a
       // changed value on the next service start (nearest predefined ICON_SKIP_*).
-      PlayerConfig.autoRewindMaxMs = (config.autoRewindMax * 1000).toLong()
-      PlayerConfig.jumpForwardMs = (config.jumpForward * 1000).toLong()
-      PlayerConfig.jumpBackwardMs = (config.jumpBackward * 1000).toLong()
+      // Persisted too, for a service started without JS (the car, playback resumption).
+      PlayerConfig.update(
+        appContext.reactContext,
+        autoRewindMaxMs = (config.autoRewindMax * 1000).toLong(),
+        jumpForwardMs = (config.jumpForward * 1000).toLong(),
+        jumpBackwardMs = (config.jumpBackward * 1000).toLong(),
+      )
+      // Smart Speed + Voice Boost run in the service's audio chain: a custom session command
+      // applies them there (and the service keeps them for a start without JS). JS calls
+      // setConfig on every settings change, so only a changed pair is sent.
+      if (config.smartSpeed != null || config.voiceBoost != null) {
+        val effects = Pair(config.smartSpeed ?: false, config.voiceBoost ?: false)
+        handler.post {
+          if (effects == lastEffects) return@post
+          lastEffects = effects
+          controller?.let { sendEffects(it, effects) }
+        }
+      }
     }
 
-    AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double, chapters: List<ChapterRecord>? ->
+    AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double, chapters: List<ChapterRecord>?, book: BookRecord? ->
       handler.post {
         val c = controller ?: return@post
-        // Every track in a book shares the same auth header.
-        AuthHolder.headers = tracks.firstOrNull()?.headers ?: emptyMap()
+        // A remote move not reported yet belongs to the queue this load replaces.
+        dropRemoteMove()
+        // Every streamed track in a book shares the same auth header, for its server.
+        val authed = tracks.firstOrNull { !it.headers.isNullOrEmpty() }
+        AuthHolder.set(authed?.headers, authed?.url)
         lastTrackIndex = -1
-        fileDurations = tracks.map { it.duration ?: 0.0 }
-        val map = if (!chapters.isNullOrEmpty()) ChapterMap(chapters) else null
-        chapterMap = map
-        val items: List<MediaItem>
-        val itemIndex: Int
-        val itemPosMs: Long
-        if (map != null) {
-          items = map.clips.map { toClipItem(it, tracks) }
-          val (idx, ms) = map.fileToItem(startIndex, position)
-          itemIndex = idx
-          itemPosMs = ms
-        } else {
-          items = tracks.map { toMediaItem(it) }
-          itemIndex = startIndex
-          itemPosMs = (position * 1000).toLong()
+        val specs = tracks.map {
+          TrackSpec(it.id, it.url, it.title, it.album, it.artist, it.artwork, it.duration ?: 0.0)
         }
-        val safeIndex = itemIndex.coerceIn(0, maxOf(0, items.size - 1))
-        c.setMediaItems(items, safeIndex, itemPosMs)
+        val clips = chapters.orEmpty().map { ClipSpec(it.fileIndex, it.startInFile, it.endInFile, it.title) }
+        val ref = book?.takeIf { it.connectionId.isNotEmpty() && it.path.isNotEmpty() }
+          ?.let { BookRef(it.connectionId, it.libraryId.toLong(), it.path) }
+        val queue = MediaItems.buildQueue(specs, clips, ref, startIndex, position)
+        timelineMap = timelineOf(queue.items)
+        c.setMediaItems(queue.items, queue.index, queue.positionMs)
         c.prepare()
         emitTrackChange(startIndex) // emit the FILE index the JS store expects
       }
@@ -197,8 +261,8 @@ class AudiosiloPlayerModule : Module() {
       // maps to (clip item, clip-relative position).
       handler.post {
         val c = controller ?: return@post
-        val map = chapterMap
-        if (map != null) {
+        val map = timelineMap
+        if (map.clipped) {
           val fileIndex = map.itemToFile(c.currentMediaItemIndex, 0L).first
           val (idx, ms) = map.fileToItem(fileIndex, seconds)
           c.seekTo(idx, ms)
@@ -212,8 +276,8 @@ class AudiosiloPlayerModule : Module() {
       // `index` is a FILE index; map it to the clip item that starts that file/position.
       handler.post {
         val c = controller ?: return@post
-        val map = chapterMap
-        if (map != null) {
+        val map = timelineMap
+        if (map.clipped) {
           val (idx, ms) = map.fileToItem(index, seconds)
           c.seekTo(idx, ms)
         } else {
@@ -239,26 +303,77 @@ class AudiosiloPlayerModule : Module() {
 
     AsyncFunction("reset") {
       handler.post {
+        dropRemoteMove()
         controller?.stop()
         controller?.clearMediaItems()
         lastTrackIndex = -1
-        chapterMap = null
-        fileDurations = emptyList()
+        timelineMap = TimelineMap(emptyList())
         sendEvent("onState", mapOf("state" to "idle"))
       }
     }
 
     // Open the system media-output switcher so the user can send audio elsewhere
-    // (Bluetooth — e.g. an Echo paired as a speaker — or a Cast target). Resolves true
+    // (Bluetooth - e.g. an Echo paired as a speaker - or a Cast target). Resolves true
     // if a chooser was launched. The standalone in-app affordance complements the
     // output-switcher chip Media3 already puts in the media notification.
     AsyncFunction("showRoutePicker") { promise: Promise ->
       handler.post { promise.resolve(openOutputSwitcher()) }
     }
 
+    // The car snapshot (JSON, built by src/car/car-model.ts). Written atomically to filesDir so the
+    // car shows it at once next time (even with no JS), then the car's lists refresh.
+    AsyncFunction("setCarSnapshot") { json: String ->
+      CarSnapshotStore.write(context, json)
+      handler.post { PlayerBridge.service?.onSnapshotChanged() }
+    }
+
+    // The book the SERVICE has loaded (the car started it, or JS restarted while the
+    // service kept playing), in FILE coordinates, else null. JS adopts it without reloading.
+    AsyncFunction("getLoadedBook") { promise: Promise ->
+      handler.post {
+        // No service in this process, or one with nothing loaded: nothing to adopt, and no
+        // reason to bind (so create) the playback service on every launch just to ask.
+        val loaded = PlayerBridge.service?.player
+        if (loaded == null || loaded.mediaItemCount == 0) {
+          promise.resolve(null)
+          return@post
+        }
+        connect { error ->
+          val c = controller
+          if (error != null || c == null) {
+            promise.resolve(null)
+            return@connect
+          }
+          promise.resolve(loadedBook(c))
+        }
+      }
+    }
+
+    // Bookmarks pressed while no JS listened, oldest first; the read clears them.
+    AsyncFunction("consumePendingBookmarks") {
+      PendingBookmarks.consume(context)
+    }
+
     OnDestroy {
+      if (PlayerBridge.sink === sink) PlayerBridge.sink = null
       handler.post { releaseController() }
     }
+  }
+
+  private fun loadedBook(c: MediaController): Map<String, Any>? {
+    if (c.mediaItemCount == 0) return null
+    val book = MediaItems.bookOf(c.currentMediaItem) ?: return null
+    val (fileIndex, position) = timelineMap.itemToFile(c.currentMediaItemIndex, c.currentPosition)
+    val ended = c.playbackState == Player.STATE_ENDED || c.playbackState == Player.STATE_IDLE
+    return mapOf(
+      "connectionId" to book.connectionId,
+      "libraryId" to book.libraryId.toDouble(),
+      "path" to book.path,
+      "trackIndex" to fileIndex,
+      "position" to position,
+      "rate" to c.playbackParameters.speed.toDouble(),
+      "playing" to (c.playWhenReady && !ended),
+    )
   }
 
   /**
@@ -270,7 +385,7 @@ class AudiosiloPlayerModule : Module() {
   private fun openOutputSwitcher(): Boolean {
     // Resolve the React context defensively: the `context` getter throws (requireNotNull)
     // if it's gone during teardown, and this runs on the main looper outside Expo's promise
-    // wrapper — an uncaught throw here would crash and leave the JS promise unresolved.
+    // wrapper - an uncaught throw here would crash and leave the JS promise unresolved.
     // Bail to "nothing shown" instead.
     val ctx = appContext.reactContext ?: return false
     val activity = appContext.currentActivity
@@ -287,21 +402,35 @@ class AudiosiloPlayerModule : Module() {
         launchCtx.startActivity(intent)
         return true
       } catch (_: Exception) {
-        // unsupported on this device — try the next fallback
+        // unsupported on this device - try the next fallback
       }
     }
     return false
   }
 
-  private fun connect(promise: Promise) {
+  /** Connect (once) the module's MediaController; [done] runs on the main thread. The
+   * connection hint marks it as the app's own controller (see [PlayerBridge.HINT_APP]). */
+  private fun connect(done: (Exception?) -> Unit) {
     if (controller != null) {
-      promise.resolve(null)
+      done(null)
       return
     }
-    val token = SessionToken(context, ComponentName(context, AudiosiloPlayerService::class.java))
-    val future = MediaController.Builder(context, token).buildAsync()
+    connectWaiters.add(done)
+    if (controllerFuture != null) return
+    val ctx = appContext.reactContext
+    if (ctx == null) {
+      val waiters = connectWaiters.toList()
+      connectWaiters.clear()
+      waiters.forEach { it(IllegalStateException("React context is not available")) }
+      return
+    }
+    val token = SessionToken(ctx, ComponentName(ctx, AudiosiloPlayerService::class.java))
+    val hints = Bundle().apply { putBoolean(PlayerBridge.HINT_APP, true) }
+    val future = MediaController.Builder(ctx, token).setConnectionHints(hints).buildAsync()
     controllerFuture = future
     future.addListener({
+      val waiters = connectWaiters.toList()
+      connectWaiters.clear()
       try {
         val c = future.get()
         controller = c
@@ -309,16 +438,35 @@ class AudiosiloPlayerModule : Module() {
         // volume; re-assert the last requested gain so a fade isn't undone by a
         // service restart.
         c.volume = lastVolume
+        lastEffects?.let { sendEffects(c, it) }
         attachListener(c)
+        // The service may already hold a queue (the car started it, or JS restarted):
+        // read its mapping from the items, not from a load this module never made.
+        timelineMap = timelineOf(c.mediaItems())
         // The loop is play-state-driven (onIsPlayingChanged). If we reconnected to a
         // service that is already playing, kick it off now since no transition will fire.
         if (c.isPlaying) startProgressLoop()
-        promise.resolve(null)
+        waiters.forEach { it(null) }
       } catch (e: Exception) {
-        promise.reject("ERR_MEDIA_CONTROLLER", "Failed to connect to media session", e)
+        controllerFuture = null
+        waiters.forEach { it(e) }
       }
-    }, ContextCompat.getMainExecutor(context))
+    }, ContextCompat.getMainExecutor(ctx))
   }
+
+  private fun sendEffects(c: MediaController, effects: Pair<Boolean, Boolean>) {
+    val args = Bundle().apply {
+      putBoolean("smartSpeed", effects.first)
+      putBoolean("voiceBoost", effects.second)
+    }
+    c.sendCustomCommand(SessionCommand(CMD_SET_EFFECTS, Bundle.EMPTY), args)
+  }
+
+  private fun timelineOf(items: List<MediaItem>): TimelineMap = TimelineMap(
+    items.mapIndexed { i, item ->
+      MediaItems.entryOf(item) ?: TimelineMap.Entry(i, 0.0, 0.0, 0.0, clip = false)
+    },
+  )
 
   private fun attachListener(c: MediaController) {
     c.addListener(object : Player.Listener {
@@ -334,25 +482,47 @@ class AudiosiloPlayerModule : Module() {
         }
       }
       override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = emitState()
+      override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+        // A queue set by anyone (this module, the car, playback resumption): its items carry
+        // their file mapping. A SOURCE_UPDATE (a duration resolved) leaves the items, and so the
+        // mapping, as they were.
+        if (reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
+        timelineMap = timelineOf(c.mediaItems())
+      }
       override fun onPositionDiscontinuity(
         oldPosition: Player.PositionInfo,
         newPosition: Player.PositionInfo,
         reason: Int,
-      ) = emitProgress()
+      ) {
+        // Smart Speed skips a silence several times a minute; each is a discontinuity. They
+        // only happen while playing, when the 1 s loop already reports the position, so a
+        // sample per skip would just wake JS for nothing.
+        if (reason == Player.DISCONTINUITY_REASON_SILENCE_SKIP) return
+        emitProgress()
+        flushRemoteMove()
+      }
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         // Report the FILE index. In chapter mode several consecutive items belong to the
         // same file; emitTrackChange dedupes, so this only fires when the file changes.
-        val map = chapterMap
-        val fileIndex =
-          if (map != null) map.itemToFile(c.currentMediaItemIndex, 0L).first
-          else c.currentMediaItemIndex
-        emitTrackChange(fileIndex)
+        emitTrackChange(timelineMap.itemToFile(c.currentMediaItemIndex, 0L).first)
       }
 
       override fun onPlayerError(error: PlaybackException) {
         sendEvent("onState", mapOf("state" to "error"))
       }
     })
+  }
+
+  private fun dropRemoteMove() {
+    handler.removeCallbacks(remoteMoveFallback)
+    pendingRemoteMove = null
+  }
+
+  private fun flushRemoteMove() {
+    handler.removeCallbacks(remoteMoveFallback)
+    val move = pendingRemoteMove ?: return
+    pendingRemoteMove = null
+    sendEvent("onRemoteMove", mapOf("trackIndex" to move.first, "position" to move.second))
   }
 
   private fun emitState() {
@@ -373,23 +543,22 @@ class AudiosiloPlayerModule : Module() {
     }
   }
 
-  /** Emit one progress sample (file-relative position + FILE duration). Safe to call in
-   * any state; driven by the play-time loop and by onPositionDiscontinuity (paused seeks). */
+  /** Emit one progress sample (file-relative position + FILE duration + Smart Speed's saved
+   * seconds). Safe to call in any state; driven by the play-time loop and by
+   * onPositionDiscontinuity (paused seeks). */
   private fun emitProgress() {
     val c = controller ?: return
     if (c.mediaItemCount == 0) return
-    val map = chapterMap
-    if (map != null) {
-      // Translate the engine's clip position back to a file-relative position +
-      // the FILE duration, so the JS store's file-based timeline math is unchanged.
-      val (fileIndex, fileSec) = map.itemToFile(c.currentMediaItemIndex, c.currentPosition)
-      val dur = fileDurations.getOrElse(fileIndex) { 0.0 }
-      sendEvent("onProgress", mapOf("position" to fileSec, "duration" to dur))
-    } else {
-      val pos = c.currentPosition / 1000.0
-      val dur = if (c.duration > 0) c.duration / 1000.0 else 0.0
-      sendEvent("onProgress", mapOf("position" to pos, "duration" to dur))
-    }
+    val map = timelineMap
+    val item = c.currentMediaItemIndex
+    // Clips: translate the engine's clip position back to a file-relative position + the FILE
+    // duration, so the JS store's file-based timeline math is unchanged.
+    val position = if (map.clipped) map.itemToFile(item, c.currentPosition).second else c.currentPosition / 1000.0
+    val duration = if (!map.clipped && c.duration > 0) c.duration / 1000.0 else map.fileDurationAt(item)
+    sendEvent(
+      "onProgress",
+      mapOf("position" to position, "duration" to duration, "silenceSaved" to AudioEffects.silenceSavedSeconds),
+    )
   }
 
   private fun startProgressLoop() {
@@ -409,48 +578,18 @@ class AudiosiloPlayerModule : Module() {
     progressRunnable = null
   }
 
-  private fun toMediaItem(t: TrackRecord): MediaItem {
-    val metadata = MediaMetadata.Builder()
-      .setTitle(t.title)
-      .setArtist(t.artist ?: "")
-      .setAlbumTitle(t.album ?: t.title)
-      .apply { t.artwork?.let { setArtworkUri(Uri.parse(it)) } }
-      .build()
-    return MediaItem.Builder()
-      .setUri(t.url)
-      .setMediaId(t.id)
-      .setMediaMetadata(metadata)
-      .build()
-  }
-
-  /** Build a clipped media item for one chapter: the file's URL clipped to the chapter's
-   * in-file range, titled with the chapter (so the lock screen shows the chapter). */
-  private fun toClipItem(clip: ChapterRecord, tracks: List<TrackRecord>): MediaItem {
-    val t = tracks.getOrNull(clip.fileIndex) ?: tracks.first()
-    val title = clip.title.ifEmpty { t.title }
-    val metadata = MediaMetadata.Builder()
-      .setTitle(title)
-      .setArtist(t.artist ?: "")
-      .setAlbumTitle(t.album ?: t.title)
-      .apply { t.artwork?.let { setArtworkUri(Uri.parse(it)) } }
-      .build()
-    val clipping = MediaItem.ClippingConfiguration.Builder()
-      .setStartPositionMs((clip.startInFile * 1000).toLong())
-      .apply { if (clip.endInFile > 0) setEndPositionMs((clip.endInFile * 1000).toLong()) }
-      .build()
-    return MediaItem.Builder()
-      .setUri(t.url)
-      .setMediaId("${t.id}#${clip.startInFile}")
-      .setMediaMetadata(metadata)
-      .setClippingConfiguration(clipping)
-      .build()
-  }
-
   private fun releaseController() {
     stopProgressLoop()
+    handler.removeCallbacks(remoteMoveFallback)
     controller?.release()
     controller = null
     controllerFuture?.let { MediaController.releaseFuture(it) }
     controllerFuture = null
+  }
+
+  private companion object {
+    /** A remote move is emitted at the controller's next discontinuity, or after this if
+     * none comes (the service already moved; never lose the event). */
+    const val REMOTE_MOVE_FALLBACK_MS = 300L
   }
 }

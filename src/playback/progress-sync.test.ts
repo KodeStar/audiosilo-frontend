@@ -13,6 +13,8 @@ import {
   mirroredProgress,
   pendingSaveCount,
   type ProgressSave,
+  readLocalPlaces,
+  resumeLookupOf,
   saveProgress,
 } from '@/playback/progress-sync';
 
@@ -566,5 +568,52 @@ describe('pendingSaveCount', () => {
     expect(await pendingSaveCount('c2')).toBe(2);
     expect(await pendingSaveCount('c3')).toBe(0);
     expect(await pendingSaveCount()).toBe(3);
+  });
+});
+
+describe('readLocalPlaces / resumeLookupOf', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const at = (updated_at: string, position: number) => ({ ...save, updated_at, position });
+
+  it('resolves each book from the mirror and the queue read once', async () => {
+    await AsyncStorage.setItem(
+      MIRROR_KEY,
+      JSON.stringify({ 'c1:1:A/Book': at('2026-01-02T00:00:00Z', 20) }),
+    );
+    await AsyncStorage.setItem(
+      QUEUE_KEY,
+      JSON.stringify([{ ...at('2026-01-03T00:00:00Z', 30), path: 'B' }]),
+    );
+    const places = await readLocalPlaces();
+
+    // The mirror's place is newer than the server's row.
+    expect(resumeLookupOf(makeProgress({ position: 10 }), places, 'c1', 1, 'A/Book')).toMatchObject(
+      { kind: 'progress', progress: { position: 20 } },
+    );
+    // A queued save stands in for an unreached server.
+    expect(resumeLookupOf(undefined, places, 'c1', 1, 'B')).toMatchObject({
+      kind: 'progress',
+      progress: { path: 'B', position: 30 },
+    });
+    // Nothing anywhere: new when the server answered, unknown when it was not reached.
+    expect(resumeLookupOf(null, places, 'c1', 1, 'C')).toEqual({ kind: 'empty' });
+    expect(resumeLookupOf(undefined, places, 'c1', 1, 'C')).toEqual({ kind: 'failed' });
+    // Another server's record of the same path is not this book's.
+    expect(resumeLookupOf(undefined, places, 'c2', 1, 'A/Book')).toEqual({ kind: 'failed' });
+  });
+
+  it('a newer server row wins over the device', async () => {
+    await AsyncStorage.setItem(
+      MIRROR_KEY,
+      JSON.stringify({ 'c1:1:A/Book': at('2026-01-02T00:00:00Z', 20) }),
+    );
+    const row = makeProgress({ position: 70, updated_at: '2026-02-01T00:00:00Z' });
+    expect(resumeLookupOf(row, await readLocalPlaces(), 'c1', 1, 'A/Book')).toEqual({
+      kind: 'progress',
+      progress: row,
+    });
   });
 });

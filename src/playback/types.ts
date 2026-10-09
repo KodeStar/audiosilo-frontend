@@ -1,3 +1,10 @@
+import type {
+  BookRef,
+  NativeTrack,
+} from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
+
+export type { BookRef };
+
 export type PlaybackTrack = {
   id: string;
   url: string;
@@ -17,13 +24,13 @@ export type PlaybackTrack = {
 };
 
 /**
- * A chapter clip for the native engine to play as a clipped media item - the basis
- * for the Android lock screen's chapter-relative scrubber and prev/next-chapter
- * buttons. `fileIndex` indexes into the `tracks` passed to `load`; `startInFile`/
- * `endInFile` bound the clip within that file (`endInFile <= 0` ⇒ play to end of
- * file). The whole-book timeline stays file-based in the store; the native module
- * translates between its chapter items and the file-relative positions it reports.
- * iOS and web ignore this (optional `load` arg).
+ * A chapter clip for the native engine: the basis for the lock screen's chapter-relative
+ * scrubber and prev/next-chapter buttons (Android plays each as a clipped media item; iOS
+ * maps the file-relative place onto it). `fileIndex` indexes into the `tracks` passed to
+ * `load`; `startInFile`/`endInFile` bound the clip within that file (`endInFile <= 0` ⇒
+ * play to end of file). The whole-book timeline stays file-based in the store; the native
+ * module translates between its chapters and the file-relative positions it reports. The
+ * web ignores this (optional `load` arg).
  */
 export type PlaybackChapter = {
   fileIndex: number;
@@ -74,7 +81,35 @@ export type PlaybackConfig = {
   jumpForward: number;
   /** Lock-screen / media-session skip-backward interval (seconds). */
   jumpBackward: number;
+  /** Trim the silences between words (Android only; iOS and the web ignore it). */
+  smartSpeed: boolean;
+  /** Compress and lift speech (native; web through Web Audio, never in Safari). */
+  voiceBoost: boolean;
 };
+
+/** A book's identity (the module's `BookRef`, re-exported above: the one definition), as
+ * the native engine is told it (`load`'s optional `book`) and the car names it: path is the
+ * identity, scoped by connection. Built from anything that carries the three fields (a
+ * `NowPlaying`, a `LoadedBook`, a download entry) without its other fields riding along
+ * into JSON or the bridge. */
+export function bookRefOf(b: BookRef): BookRef {
+  return { connectionId: b.connectionId, libraryId: b.libraryId, path: b.path };
+}
+
+/** A track as the native module takes it (exactly its fields, so nothing JS-only, such as
+ * `transcoded`, crosses the bridge or lands in the car snapshot). */
+export function toNativeTrack(t: PlaybackTrack): NativeTrack {
+  return {
+    id: t.id,
+    url: t.url,
+    headers: t.headers,
+    title: t.title,
+    album: t.album,
+    artist: t.artist,
+    artwork: t.artwork,
+    duration: t.duration,
+  };
+}
 
 /**
  * Coerce a caller's volume into the [0,1] linear-gain range every engine expects.
@@ -97,11 +132,15 @@ export interface PlaybackService {
   setup(): Promise<void>;
   /** Apply runtime tunables (auto-rewind, skip intervals). */
   configure(config: PlaybackConfig): Promise<void>;
+  /** `book` names the book being loaded, so a native engine that outlives the JS (the
+   * Android service, played from the car) can tell later which book its queue is. The web
+   * ignores it. */
   load(
     tracks: PlaybackTrack[],
     startIndex: number,
     positionInTrack: number,
     chapters?: PlaybackChapter[],
+    book?: BookRef,
   ): Promise<void>;
   /**
    * Swap the queue to a new source as gaplessly as possible: keep the current
@@ -117,6 +156,7 @@ export interface PlaybackService {
     startIndex: number,
     positionInTrack: number,
     chapters?: PlaybackChapter[],
+    book?: BookRef,
   ): Promise<boolean>;
   play(): Promise<void>;
   pause(): Promise<void>;
@@ -163,6 +203,35 @@ export interface PlaybackService {
    * module handles its remote commands itself.
    */
   onRemoteSeek?(handler: ((positionInTrack: number) => void) | null): void;
+  /**
+   * Native: the engine ALREADY moved because of something outside the JS API (the lock
+   * screen or notification scrubber, its skip and chapter buttons, a headset, CarPlay,
+   * Android Auto and their chapter lists), and landed at `(trackIndex, positionInTrack)`.
+   * The engine updates its snapshot BEFORE calling `handler`, so a save inside it saves the
+   * new place. The store treats it as the listener's own move (it lowers the resume
+   * floor). Not called for moves the JS asked for, auto-rewind, Smart speed's skips, or a
+   * file running on into the next. Optional: the web routes its OS seeks through
+   * `onRemoteSeek` instead (its engine has not moved yet when the OS asks).
+   */
+  onRemoteMove?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
+  /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an
+   * Android controller) and the engine already applied it. Optional. */
+  onRateChange?(handler: ((rate: number) => void) | null): void;
+  /** Native: book seconds Smart speed has removed since the app's process started (Android's
+   * total is process-wide, summed over every player the service builds, so it never goes
+   * down; it can predate this JS, since the service can outlive it), reported with the
+   * engine's progress ticks. Not playback state, so not in the snapshot. Optional, and never
+   * called by a binary that predates Smart speed, nor on iOS (no Smart speed there). */
+  onSilenceSaved?(handler: ((totalSeconds: number) => void) | null): void;
+  /**
+   * For the store's `adoptLoaded`: where an engine this bridge did NOT load is now (a
+   * queue the Android playback service loaded itself, for the car or before the app's JS
+   * restarted). Seeds the bridge's merged snapshot WITHOUT emitting, so the next event it
+   * re-emits carries the adopted track, place and state instead of the initial ones (a file
+   * index left at 0 would map the engine's place onto the wrong file). Optional: only the
+   * native bridge has an engine it did not load.
+   */
+  adoptPlace?(snapshot: PlaybackSnapshot): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

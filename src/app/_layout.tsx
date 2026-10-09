@@ -7,18 +7,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { startAddressRouting } from '@/api/address-runner';
 import { ApiProvider } from '@/api/provider';
+import { startCarSync } from '@/car/car-controller';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
 import { ShellToastHost } from '@/components/shell/shell-toast-host';
 import { RootInsetsProvider } from '@/components/ui/overlay';
-import { engine } from '@/downloads/engine';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
-import { startChapterRefresh, useDownloads } from '@/downloads/store';
+import { startChapterRefresh } from '@/downloads/store';
 import '@/i18n';
 import { LanguageProvider } from '@/i18n/language-provider';
 import { useAppResume } from '@/lib/app-resume';
-import { migrateStorage } from '@/lib/storage-migration';
+import { bootstrapPlayback } from '@/lib/bootstrap';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { startJumpUndo } from '@/playback/jump-undo';
@@ -29,12 +29,9 @@ import '@/lib/register-sw';
 // role-bearing pressables (tab, radio, switch...). All top-level imports evaluate before
 // the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
-import { useLibrarySelection } from '@/stores/library-selection';
-import { useSeriesOrderings } from '@/stores/series-orderings';
-import { useSession } from '@/stores/session';
-import { useSettings } from '@/stores/settings';
 import { ThemeProvider } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { startWidgetSync } from '@/widgets/widget-sync';
 
 export const unstable_settings = {
   anchor: '(app)',
@@ -69,45 +66,13 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  const hydrate = useSession((s) => s.hydrate);
-  const hydrateSettings = useSettings((s) => s.hydrate);
-  const hydrateDownloads = useDownloads((s) => s.hydrate);
-  const hydrateSeriesOrderings = useSeriesOrderings((s) => s.hydrate);
-  const hydrateLibrarySelection = useLibrarySelection((s) => s.hydrate);
+  // The launch steps every store needs before a screen reads it (the storage migration,
+  // then the downloads wipe after a reset, then hydrating the session, settings,
+  // downloads, series orderings and library selection), as one memoised run shared with
+  // the car's headless task: see `bootstrapPlayback`.
   useEffect(() => {
-    void (async () => {
-      // Reconcile storage left incompatible by a version bump BEFORE the stores read it,
-      // so none loads records keyed on now-invalid connection ids. Two independent axes:
-      // `authReset` (connection identity scheme changed - everyone re-pairs) and
-      // `cacheReset` (disposable download/progress cache schema changed - logins intact).
-      // A no-op after the first post-bump launch. Guarded so a keychain/storage hiccup can
-      // never skip hydration below - that would strand the app on 'loading' forever
-      // (and defeat hydrate()'s own fail-safe).
-      let didReset = false;
-      try {
-        // The one memoised launch migration (ThemeProvider awaits the same run).
-        const { authReset, cacheReset } = await migrateStorage();
-        didReset = authReset || cacheReset;
-      } catch (e) {
-        console.warn('[storage] stale-state reset failed', e);
-      }
-      // Whenever either axis reset, the on-disk downloaded files no longer match the
-      // registry (auth wipe orphans them; a cache-schema bump invalidates them), so wipe
-      // the whole downloads root once - otherwise they leak, uncounted-for, forever.
-      if (didReset && engine.clearAll) {
-        try {
-          await engine.clearAll();
-        } catch {
-          // best-effort; orphaned files are non-fatal
-        }
-      }
-      void hydrate();
-      void hydrateSettings();
-      void hydrateDownloads();
-      void hydrateSeriesOrderings();
-      void hydrateLibrarySelection();
-    })();
-  }, [hydrate, hydrateSettings, hydrateDownloads, hydrateSeriesOrderings, hydrateLibrarySelection]);
+    void bootstrapPlayback();
+  }, []);
 
   // The nightly auto sleep timer. Framework-free (subscriptions, no rendering), so it is
   // started here rather than mounted as a component that renders null - this is simply
@@ -143,6 +108,21 @@ export default function RootLayout() {
   // Home and away addresses: picks the address each server is reached at (native only)
   // and keeps the playing book on it. Framework-free like the others; see the module.
   useEffect(() => startAddressRouting(), []);
+
+  // iOS: the Continue listening widget and the sleep timer Live Activity follow the player
+  // and the sleep timer (a no-op elsewhere). Framework-free like the others; see the module.
+  useEffect(() => startWidgetSync(), []);
+
+  // CarPlay and Android Auto: keeps the car's lists (the car snapshot) current, plays what
+  // the car asks for, saves the car's bookmarks and adopts a book the car started. Native
+  // only (a no-op on the web and on a binary without the car functions); it waits for the
+  // launch steps above itself. Framework-free like the others; see the module. Never
+  // stopped (like the car's headless task): the JS runtime outlives this layout on Android
+  // (the activity is destroyed, the store and its book live on), and while it runs the car's
+  // requests must reach it, never start a book natively under the store's.
+  useEffect(() => {
+    startCarSync();
+  }, []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.
