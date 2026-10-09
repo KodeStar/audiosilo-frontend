@@ -249,6 +249,11 @@ describe('placeInDoc (the connect flow)', () => {
     expect(next.activeProfileId).toBe('p1');
   });
 
+  it('leaves a connection already in the active profile where it is', () => {
+    const placed = reconcileProfiles(base, [A1, B1], A1.id, ids);
+    expect(placeInDoc(placed, B1, [A1, B1], {}, ids)).toEqual({ doc: placed, profileId: 'p' });
+  });
+
   it('moves a connection the reconcile placed a moment earlier', () => {
     const placed = reconcileProfiles(base, [A1, C3], A1.id, ids);
     expect(placed.profiles[0].connectionIds).toEqual([A1.id, C3.id]);
@@ -410,5 +415,16 @@ describe('switchProfile', () => {
     });
     expect(activeProfile()?.connectionIds).toEqual([A2.id]);
     expect(useSession.getState().defaultConnectionId).toBe(A2.id);
+    // Chris left: Sam must be chosen (with his PIN), not assumed.
+    expect(useProfiles.getState().chooseRequired).toBe(true);
+    await switchProfile(activeProfile()!.id);
+    expect(useProfiles.getState().chooseRequired).toBe(false);
+  });
+
+  it('removing someone who is not listening asks nobody to choose', async () => {
+    await act(async () => {
+      await useSession.getState().removeConnection(A2.id);
+    });
+    expect(useProfiles.getState().chooseRequired).toBe(false);
   });
 });

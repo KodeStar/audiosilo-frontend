@@ -21,6 +21,7 @@ import {
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
 import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from './connect-frame';
@@ -51,16 +52,22 @@ import { useLinkPairing } from './use-pairing';
 export function ConnectStart() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away } = useLocalSearchParams<{
+  const { token, server, home, away, profile } = useLocalSearchParams<{
     token?: string;
     server?: string;
     home?: string;
     away?: string;
+    profile?: string;
   }>();
+  // "Add someone" (Phase 8): a new person signs in, maybe on a server this device knows.
+  const newPerson = profile === 'new';
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const savedUrl = useSession((s) => s.pendingServerUrl);
   // The signed-in servers (`serverIdOf`: a connection id also names its user), one line each.
   const serverIds = useSession((s) => s.connections.map(serverIdOf).join('\n'));
+  // The servers of the person listening: a remembered server another person on this device
+  // uses is still one this person can sign in to.
+  const personServerIds = useProfileConnections().map(serverIdOf);
   const [url, setUrl] = useState(savedUrl ?? '');
   const [known, setKnown] = useState<KnownServer[]>([]);
   // Which connect action is in flight (a remembered server's `serverId`, or `'manual'` for
@@ -218,7 +225,7 @@ export function ConnectStart() {
     );
   }
 
-  const offered = knownToOffer(known, serverIds ? serverIds.split('\n') : []);
+  const offered = knownToOffer(known, newPerson ? [] : personServerIds);
   const isWeb = Platform.OS === 'web';
 
   return (
@@ -243,10 +250,14 @@ export function ConnectStart() {
       <StepDots step={0} />
       <View className="gap-2">
         <Text variant={phone ? 'display' : 'display-xl'} accessibilityRole="header">
-          {t('onboarding.start.title')}
+          {newPerson ? t('profiles.connect.title') : t('onboarding.start.title')}
         </Text>
         <Text variant="muted" className="text-[15px] leading-[22px]">
-          {isWeb ? t('onboarding.start.leadWeb') : t('onboarding.start.lead')}
+          {newPerson
+            ? t('profiles.connect.lead')
+            : isWeb
+              ? t('onboarding.start.leadWeb')
+              : t('onboarding.start.lead')}
         </Text>
       </View>
       {pairError ? (

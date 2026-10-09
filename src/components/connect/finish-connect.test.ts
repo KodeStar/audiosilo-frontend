@@ -5,6 +5,12 @@ import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
 
+// A change of person unloads the previous person's book (the player store, reduced).
+jest.mock('@/playback/store', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/player-store-mock').createPlayerStoreMock(),
+);
+
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 jest.mock('expo-router', () => ({
@@ -171,4 +177,68 @@ it('another user on a server the device has gets a connection of their own, on i
   // Signed in through the away address of a server already paired at home: the paired
   // address stays the server's, and the home address carries over.
   expect(conns[1]).toMatchObject({ serverUrl: HOME, addresses: { home: HOME, away: AWAY } });
+});
+
+describe('placing the new connection in a profile (Phase 8)', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const profiles = () => require('@/stores/profiles') as typeof import('@/stores/profiles');
+  const intent = () =>
+    require('@/components/profiles/connect-intent') as typeof import('@/components/profiles/connect-intent');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const sam: User = { ...user, id: 2, username: 'sam' };
+  const people = () =>
+    profiles()
+      .useProfiles.getState()
+      .profiles.map((p) => [p.name, p.connectionIds]);
+
+  beforeEach(async () => {
+    profiles().resetProfilesForTests();
+    intent().setConnectForNewProfile(false);
+    await profiles().useProfiles.getState().hydrate();
+  });
+
+  it('a new server joins the active person', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: 'https://two', session: session('srv-2') });
+    expect(people()).toEqual([['chris', ['srv-1.1', 'srv-2.1']]]);
+  });
+
+  it('another user on a server the active person has: a new person, made active', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    expect(people()).toEqual([
+      ['chris', ['srv-1.1']],
+      ['sam', ['srv-1.2']],
+    ]);
+    expect(profiles().activeProfile()?.name).toBe('sam');
+    expect(useSession.getState().defaultConnectionId).toBe('srv-1.2');
+    expect(profiles().useProfiles.getState().askAtLaunch).toBe(true);
+  });
+
+  it('"Add someone" puts even a new server in a new person', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    intent().setConnectForNewProfile(true);
+    await finishConnect({ serverUrl: 'https://two', session: session('srv-2', { user: sam }) });
+    expect(people()).toEqual([
+      ['chris', ['srv-1.1']],
+      ['sam', ['srv-2.2']],
+    ]);
+    expect(profiles().activeProfile()?.name).toBe('sam');
+  });
+
+  it('a re-pair keeps its person; "Add someone" as a person already here switches to them', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    // Sam is active; Chris signs in again (a re-pair): Chris keeps his profile, Sam stays.
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    expect(people()).toEqual([
+      ['chris', ['srv-1.1']],
+      ['sam', ['srv-1.2']],
+    ]);
+    expect(profiles().activeProfile()?.name).toBe('sam');
+    intent().setConnectForNewProfile(true);
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    expect(profiles().activeProfile()?.name).toBe('chris');
+    expect(people()).toHaveLength(2);
+  });
 });

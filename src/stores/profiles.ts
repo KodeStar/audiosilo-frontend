@@ -268,6 +268,11 @@ export function placeInDoc(
 ): { doc: ProfilesDoc; profileId: string } {
   const byId = new Map(connections.map((c) => [c.id, c]));
   byId.set(conn.id, conn);
+  const current = doc.profiles.find((p) => p.connectionIds.includes(conn.id));
+  // Already in the active person (the reconcile put it there): where the rule puts it too.
+  if (!opts.newProfile && current && current.id === doc.activeProfileId) {
+    return { doc, profileId: current.id };
+  }
   const without = doc.profiles
     .map((p) =>
       p.connectionIds.includes(conn.id)
@@ -316,12 +321,19 @@ export function connectionsOfProfile<C extends { id: string }>(
 type ProfilesState = ProfilesDoc & {
   /** The stored document has been read (and reconciled once the session settles). */
   hydrated: boolean;
+  /** The active person left this device (signed out of their last server, removed) while
+   * others remain: the next one was made active only so the app has someone, and
+   * "Who's listening?" must be answered (with that person's PIN, where they set one)
+   * before anyone uses the app. In memory: a relaunch asks anyway when it should
+   * (`askAtLaunch`). Cleared by `switchProfile`. */
+  chooseRequired: boolean;
   hydrate: () => Promise<void>;
 };
 
 export const useProfiles = create<ProfilesState>()(() => ({
   ...EMPTY_DOC,
   hydrated: false,
+  chooseRequired: false,
   hydrate: () => hydrateProfiles(),
 }));
 
@@ -340,7 +352,12 @@ const docOf = (s: ProfilesDoc): ProfilesDoc => ({
 function commit(next: ProfilesDoc): void {
   const state = useProfiles.getState();
   if (!state.hydrated || sameDoc(next, docOf(state))) return;
-  useProfiles.setState(docOf(next));
+  // The active person went and someone else is left: they must be chosen, not assumed.
+  const left =
+    state.activeProfileId !== null &&
+    !next.profiles.some((p) => p.id === state.activeProfileId) &&
+    next.profiles.length > 0;
+  useProfiles.setState({ ...docOf(next), ...(left ? { chooseRequired: true } : {}) });
   void setItem(PROFILES_KEY, docOf(next));
 }
 
@@ -357,21 +374,9 @@ export function reconcileNow(): void {
   void alignDefaultConnection();
 }
 
-function hydrateProfiles(): Promise<void> {
-  hydration ??= (async () => {
-    const doc = parseProfilesDoc(await getItem<unknown>(PROFILES_KEY));
-    useProfiles.setState({ ...doc, hydrated: true });
-    unsubscribeSession ??= useSession.subscribe((s, prev) => {
-      if (s.connections !== prev.connections || s.status !== prev.status) reconcileNow();
-    });
-    reconcileNow();
-  })();
-  return hydration;
-}
-
-// A removed connection leaves its profile at once (the session's own change already
-// reconciles; this also covers a removal while the list counts as unsettled).
-onConnectionRemoved((id) => {
+/** A removed connection leaves its profile at once (the session's own change already
+ * reconciles; this also covers a removal while the list counts as unsettled). */
+function onRemoved(id: string): void {
   const s = useProfiles.getState();
   if (!s.hydrated || !s.profiles.some((p) => p.connectionIds.includes(id))) return;
   const profiles = s.profiles
@@ -381,7 +386,27 @@ onConnectionRemoved((id) => {
     ? s.activeProfileId
     : (profiles[0]?.id ?? null);
   commit({ ...docOf(s), profiles, activeProfileId });
-});
+}
+
+function hydrateProfiles(): Promise<void> {
+  hydration ??= (async () => {
+    const doc = parseProfilesDoc(await getItem<unknown>(PROFILES_KEY));
+    useProfiles.setState({ ...doc, hydrated: true });
+    // Registered once hydrated (nothing to keep consistent before).
+    if (!unsubscribeSession) {
+      const unsubChanges = useSession.subscribe((s, prev) => {
+        if (s.connections !== prev.connections || s.status !== prev.status) reconcileNow();
+      });
+      const unsubRemoved = onConnectionRemoved(onRemoved);
+      unsubscribeSession = () => {
+        unsubChanges();
+        unsubRemoved();
+      };
+    }
+    reconcileNow();
+  })();
+  return hydration;
+}
 
 // --- Reads ----------------------------------------------------------------------------------
 
@@ -522,6 +547,7 @@ export async function switchProfile(profileId: string): Promise<void> {
   const target = s.profiles.find((p) => p.id === profileId);
   if (!target) return;
   commit({ ...docOf(s), activeProfileId: profileId });
+  useProfiles.setState({ chooseRequired: false });
   // Required on use: the player store imports most of the app (and, through the API
   // provider, this module), so a static import would be a cycle at load.
   const { usePlayer } =
@@ -551,5 +577,5 @@ export function resetProfilesForTests(): void {
   hydration = null;
   unsubscribeSession?.();
   unsubscribeSession = null;
-  useProfiles.setState({ ...EMPTY_DOC, hydrated: false });
+  useProfiles.setState({ ...EMPTY_DOC, hydrated: false, chooseRequired: false });
 }

@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
 
 import type { AuthSession, ServerAddresses } from '@/api/types';
+import { connectForNewProfile } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
+import { serverIdOf } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
+import { activeProfile, placeConnection, profileOf, switchProfile } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
@@ -49,6 +52,14 @@ export async function finishConnect(input: {
     known,
     userId: input.session.user.id,
   });
+  const newPerson = connectForNewProfile();
+  // A connection the device already had (a re-pair) keeps its person; read before the
+  // session adds a new one (the profiles reconcile places it at once).
+  const sameServer = connections.filter((c) => serverIdOf(c) === serverId);
+  const existing =
+    sameServer.find((c) => c.user?.id === input.session.user.id) ??
+    sameServer.find((c) => typeof c.user?.id !== 'number');
+  const hadProfile = existing ? profileOf(existing.id) : null;
   const id = await setSession({
     serverUrl: plan.serverUrl,
     serverId,
@@ -57,7 +68,31 @@ export async function finishConnect(input: {
     ...(input.name ? { name: input.name } : {}),
     addresses: plan.addresses,
   });
+  await placeSignedIn(id, hadProfile?.id ?? null, newPerson);
   if (first) router.replace(readyHref(id));
   else leaveOnboarding();
   return id;
+}
+
+/**
+ * The profile the connection just signed in belongs to (Phase 8, `src/stores/profiles.ts`):
+ * - a NEW connection goes into the active profile, unless that profile already has this
+ *   server (another user on it is another person) or the flow was "Add someone": then a
+ *   profile of its own, which becomes active (`placeConnection`);
+ * - a re-pair keeps the person it had; "Add someone" signing in as a person already on
+ *   this device switches to them.
+ * A change of person goes through `switchProfile` (the previous person's book unloads).
+ */
+async function placeSignedIn(
+  id: string,
+  hadProfileId: string | null,
+  newPerson: boolean,
+): Promise<void> {
+  const before = activeProfile()?.id ?? null;
+  const target = hadProfileId
+    ? newPerson
+      ? hadProfileId
+      : null
+    : placeConnection(id, { newProfile: newPerson });
+  if (target && target !== before) await switchProfile(target);
 }

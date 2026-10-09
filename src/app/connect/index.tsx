@@ -1,7 +1,8 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ConnectStart } from '@/components/connect/connect-start';
+import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
 import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { useSession } from '@/stores/session';
 
@@ -20,7 +21,16 @@ import { useSession } from '@/stores/session';
 export default function ConnectRoute() {
   const status = useSession((s) => s.status);
   const pendingServerUrl = useSession((s) => s.pendingServerUrl);
-  const { add, token } = useLocalSearchParams<{ add?: string; token?: string }>();
+  const { add, token, profile } = useLocalSearchParams<{
+    add?: string;
+    token?: string;
+    profile?: string;
+  }>();
+  // "Add someone" (`profile=new`): the connection this flow makes is a new person's.
+  useEffect(() => {
+    setConnectForNewProfile(profile === 'new');
+    return () => setConnectForNewProfile(false);
+  }, [profile]);
   const [bounce] = useState(
     () => status === 'authenticated' && !add && !token && !pendingServerUrl,
   );
