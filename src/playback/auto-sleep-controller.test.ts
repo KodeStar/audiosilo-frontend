@@ -28,6 +28,7 @@ function load() {
     require('@/playback/auto-sleep-controller') as typeof import('@/playback/auto-sleep-controller');
   const ticks = require('@/playback/engine-ticks') as typeof import('@/playback/engine-ticks');
   const car = require('@/car/car-connection') as typeof import('@/car/car-connection');
+  const profiles = require('@/stores/profiles') as typeof import('@/stores/profiles');
   /* eslint-enable @typescript-eslint/no-require-imports */
   return {
     player,
@@ -37,6 +38,8 @@ function load() {
     startAutoSleep: controller.startAutoSleep,
     engineTick: ticks.engineTick,
     setCarConnected: car.setCarConnected,
+    useProfiles: profiles.useProfiles,
+    decideBedtime: controller.decideBedtime,
   };
 }
 
@@ -616,5 +619,146 @@ describe('auto sleep controller', () => {
     expect(phase()).toBe('idle');
     expect(jest.getTimerCount()).toBe(0);
     expect(ctx.player.subscriberCount()).toBe(0);
+  });
+
+  // --- kids mode: bedtime (Phase 8) ------------------------------------------
+
+  describe('a kids profile', () => {
+    /** Today at hh:mm, local. */
+    const at = (hh: number, mm = 0, day = 15) => new Date(2026, 0, day, hh, mm);
+
+    /** Make the active profile a kid with `bedtime` (or a grown-up with `null`). */
+    const profile = (bedtime: string | null) =>
+      ctx.useProfiles.setState({
+        profiles: [
+          {
+            id: 'p',
+            name: 'Leo',
+            connectionIds: ['srv-1'],
+            ...(bedtime ? { kids: { bedtime } } : {}),
+          },
+        ],
+        activeProfileId: 'p',
+        hydrated: true,
+      });
+
+    beforeEach(() => {
+      // The device-wide setting is OFF: bedtime must not depend on it.
+      ctx.useSettings.setState({ autoSleepTimer: false });
+      profile('19:30');
+    });
+
+    it('arms a 20 minute timer on a story started after bedtime, with the setting off', () => {
+      jest.setSystemTime(at(19, 45));
+      start();
+      playing();
+      expect(phase()).toBe('running');
+      expect(ctx.useSleepTimer.getState().origin).toEqual({ kind: 'duration', minutes: 20 });
+      expect(ctx.useSleepTimer.getState().remaining).toBe(20 * 60);
+    });
+
+    it('arms nothing before bedtime, then arms once bedtime comes during the story', () => {
+      jest.setSystemTime(at(19, 29, 15));
+      start();
+      playing();
+      expect(phase()).toBe('idle');
+      jest.advanceTimersByTime(60_000); // 19:30
+      expect(phase()).toBe('running');
+      expect(ctx.useSleepTimer.getState().origin).toEqual({ kind: 'duration', minutes: 20 });
+    });
+
+    it('keeps the window across midnight until 06:00', () => {
+      for (const [now, armed] of [
+        [at(23, 59), true],
+        [at(0, 0, 16), true],
+        [at(2, 30, 16), true],
+        [at(5, 59, 16), true],
+        [at(6, 0, 16), false],
+        [at(12, 0, 16), false],
+        [at(19, 29, 16), false],
+      ] as const) {
+        expect(
+          ctx.decideBedtime({ bedtime: '19:30', now, bookKey: 'k', memory: new Set() }),
+        ).toEqual(armed ? { arm: 'duration', minutes: 20 } : { arm: 'none' });
+      }
+    });
+
+    it('arms at 02:00 on a story resumed in the night', () => {
+      jest.setSystemTime(at(2, 0, 16));
+      start();
+      playing();
+      expect(phase()).toBe('running');
+    });
+
+    it('arms again when the story is resumed after its timer ran out', async () => {
+      jest.setSystemTime(at(20, 0));
+      start();
+      playing();
+      jest.advanceTimersByTime(20 * 60_000 + ctx.GRACE_SECONDS * 1000);
+      await flush();
+      expect(phase()).toBe('idle');
+      expect(ctx.player.usePlayer.getState().snapshot.state).toBe('paused');
+      playing(); // "one more", pressed by the child
+      expect(phase()).toBe('running');
+      expect(ctx.useSleepTimer.getState().remaining).toBe(20 * 60);
+    });
+
+    it('never arms while a car is connected', () => {
+      jest.setSystemTime(at(20, 0));
+      ctx.setCarConnected(true);
+      start();
+      playing();
+      jest.advanceTimersByTime(60_000);
+      expect(phase()).toBe('idle');
+      ctx.setCarConnected(false);
+      jest.advanceTimersByTime(60_000);
+      expect(phase()).toBe('running');
+    });
+
+    it("replaces the device-wide setting's rule while the kid is active", () => {
+      // A grown-up's "end of chapter from 22:00" is not the child's bedtime.
+      ctx.useSettings.setState({ autoSleepTimer: true, autoSleepType: 'chapter' });
+      jest.setSystemTime(at(19, 45));
+      start();
+      playing();
+      expect(ctx.useSleepTimer.getState().origin).toEqual({ kind: 'duration', minutes: 20 });
+    });
+
+    it('leaves a grown-up profile on the device-wide setting exactly as before', () => {
+      profile(null);
+      jest.setSystemTime(at(19, 45));
+      start();
+      playing();
+      expect(phase()).toBe('idle'); // the setting is off
+      expect(ctx.player.subscriberCount()).toBe(0);
+      paused();
+
+      ctx.useSettings.setState({ autoSleepTimer: true }); // 22:00-06:00, 30 minutes
+      playing();
+      expect(phase()).toBe('idle'); // 19:45 is not inside the grown-up's window
+      jest.setSystemTime(IN_WINDOW);
+      jest.advanceTimersByTime(60_000);
+      expect(ctx.useSleepTimer.getState().origin).toEqual({ kind: 'duration', minutes: 30 });
+    });
+
+    it('watches the player only while a kid (or the setting) needs it', () => {
+      profile(null);
+      start();
+      expect(ctx.player.subscriberCount()).toBe(0);
+      profile('19:30'); // switched to the kid
+      expect(ctx.player.subscriberCount()).toBe(1);
+      profile(null); // and back to a grown-up with the setting off
+      expect(ctx.player.subscriberCount()).toBe(0);
+    });
+
+    it('arms at once when the kid becomes active with a story already playing at bedtime', () => {
+      profile(null);
+      jest.setSystemTime(at(20, 0));
+      start();
+      playing();
+      expect(phase()).toBe('idle');
+      profile('19:30');
+      expect(phase()).toBe('running');
+    });
   });
 });
