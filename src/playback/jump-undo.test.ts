@@ -138,6 +138,20 @@ describe('startJumpUndo', () => {
     stop();
   });
 
+  it('records a web seek-bar click: the optimistic landing, a seeking blip, then playing', () => {
+    // The web engine's sequence for a click on a seek bar (any surface: the full
+    // player's, the dock's), as logged in a browser.
+    const { report, jump, stop } = playingAt(1000);
+    jest.advanceTimersByTime(265);
+    report('playing', 18);
+    report('loading', 18);
+    report('playing', 18.006);
+    jest.advanceTimersByTime(265);
+    report('playing', 18.25);
+    expect(jump()).toMatchObject({ from: 1003, bookKey: 'srv:1:a/book' });
+    stop();
+  });
+
   it('records an Android media-session next chapter (clip transition, then a rebuffer)', () => {
     // Media3 seekToNext moves to the next chapter clip: onPositionDiscontinuity reports
     // the new file-relative position while the state is still playing, then the clip

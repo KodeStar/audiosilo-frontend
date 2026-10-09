@@ -421,6 +421,8 @@ above; hover tooltip names the chapter; click seeks (with Undo).
 Ink pill: undo icon, "Back to 17:26:50", and a ring that empties over 10 s. Appears after any jump over 60 s
 (scrub, chapter tap, timeline click, bookmark jump, lock-screen seek). Tap restores and toasts "Back where you
 were".
+In the full player it sits in the status line, where the seek bar's tip floats: while the chip is up the bar
+shows no hover tip (the pointer is still on the bar after the click that made it); a drag's tip still shows.
 
 ### Up next *custom*
 Desktop: right drawer, 360 px, resizable 300-480 by its left edge, collapsible (Q). Tablet/phone: bottom sheet.

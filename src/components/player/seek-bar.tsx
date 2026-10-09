@@ -63,6 +63,11 @@ export type SeekBarProps = {
    * whatever sits just above the bar, which the caller can make way for (the full
    * player's status line). */
   onTip?: (showing: boolean) => void;
+  /** Whether a web hover shows the tip (default on; the hovered bars shade either way).
+   * The full player turns it off while its Undo chip is up: the pointer stays on the bar
+   * after a click, and the tip would hide the chip that click just made. A drag's tip
+   * always shows. */
+  hoverTip?: boolean;
   /** Seeds the bar texture: one per book and chapter (`seekTextureKey`). */
   textureKey: string;
   /** Real audio peaks for the segment, any length and scale; replaces the texture. */
@@ -101,6 +106,7 @@ export function SeekBar({
   onSeek,
   onScrub,
   onTip,
+  hoverTip = true,
   textureKey,
   peaks,
   bookmarks,
@@ -158,8 +164,9 @@ export function SeekBar({
     setWidth(e.nativeEvent.layout.width);
   };
 
-  const tipSeconds = scrub ?? (hover !== null ? hover * length : null);
-  const tipFrac = scrub !== null ? (length > 0 ? scrub / length : null) : hover;
+  const hoverAt = hoverTip ? hover : null;
+  const tipSeconds = scrub ?? (hoverAt !== null ? hoverAt * length : null);
+  const tipFrac = scrub !== null ? (length > 0 ? scrub / length : null) : hoverAt;
 
   return (
     // pan-y: on the web a touch that starts on the bar can still scroll the player.
@@ -354,11 +361,13 @@ export const SeekTimes = memo(function SeekTimes({
 export function PlayerSeekBar({
   bookmarks,
   onTip,
+  hoverTip,
   timesHidden = false,
   bars,
 }: {
   bookmarks?: readonly number[];
   onTip?: (showing: boolean) => void;
+  hoverTip?: boolean;
   timesHidden?: boolean;
   bars?: number;
 }) {
@@ -387,6 +396,7 @@ export function PlayerSeekBar({
         onSeek={onSeek}
         onScrub={setScrub}
         onTip={onTip}
+        hoverTip={hoverTip}
         textureKey={seekTextureKey(bookKey, segment.perTrack ? -1 - trackIndex : segment.start)}
         bookmarks={inSegment}
         bookOffset={segment.perTrack ? undefined : segment.start}

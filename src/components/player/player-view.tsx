@@ -50,6 +50,7 @@ import {
 import { PlayerSeekBar } from './seek-bar';
 import { trackLabel } from './transport';
 import { TransportControls } from './transport-controls';
+import { useUndoVisible } from './undo-chip';
 import { usePlayingPins } from './use-playing-pins';
 
 /** `--dur-4` (STYLEGUIDE section 6): the cover's breathe and the player's rise. */
@@ -157,6 +158,10 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // never sits on top of words.
   const [tip, setTip] = useState(false);
   const [timelineTip, setTimelineTip] = useState(false);
+  // The Undo chip lives in that status slot, and wins over the seek bar's HOVER tip: on
+  // the web the pointer is still on the bar after the click that made the chip, so the
+  // tip would keep the chip hidden for its whole life. A drag's tip still shows.
+  const undo = useUndoVisible();
   // The playing book's bookmarks and notes, once for both scrubbers.
   const pins = usePlayingPins();
   // A phone's column is a flex column filling the viewport: the cover's slot takes what
@@ -238,6 +243,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
             bookmarks={pins.bookmarks}
             bars={phone ? 56 : 96}
             onTip={setTip}
+            hoverTip={!undo}
             timesHidden={timelineTip}
           />
           <PlayerBookTimeline pins={pins} onTip={setTimelineTip} />

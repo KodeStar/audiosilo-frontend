@@ -32,15 +32,19 @@ jest.mock('./companion/companion', () => {
   return { Companion: ({ variant }: { variant: string }) => <T>{`companion ${variant}`}</T> };
 });
 let mockOnTip: ((showing: boolean) => void) | undefined;
+let mockHoverTip: boolean | undefined;
 jest.mock('./seek-bar', () => ({
   PlayerSeekBar: ({
     onTip,
+    hoverTip,
     timesHidden,
   }: {
     onTip?: (showing: boolean) => void;
+    hoverTip?: boolean;
     timesHidden?: boolean;
   }) => {
     mockOnTip = onTip;
+    mockHoverTip = hoverTip;
     mockTimesHidden = !!timesHidden;
     return null;
   },
@@ -78,6 +82,8 @@ jest.mock('@/components/library/cover-wash', () => ({ CoverWash: () => null }));
 
 /* eslint-disable import/first */
 import { playerStoreMock } from '@/testing/player-store-mock';
+
+import { useJumpUndo } from '@/playback/jump-undo';
 
 import { useCompanion } from './companion/companion-store';
 import { usePlayerSheets } from './player-sheets';
@@ -131,6 +137,7 @@ beforeEach(() => {
   player.usePlayer.setState({ nowPlaying: BOOK, bookPosition: 150 } as never);
   usePlayerSheets.setState({ open: null });
   useCompanion.setState({ tab: null });
+  useJumpUndo.setState({ jump: null });
 });
 
 describe('PlayerView', () => {
@@ -225,6 +232,21 @@ describe('PlayerView', () => {
     expect(slot().props.style).toEqual({ opacity: 0 });
     await act(async () => mockOnTip?.(false));
     expect(slot().props.style).toBeUndefined();
+  });
+
+  it("keeps the seek bar's hover tip off the Undo chip while it can be undone", async () => {
+    // A click on the bar (the web) leaves the pointer on it: its hover tip would hide the
+    // status slot, and the chip in it, for the chip's whole life.
+    mockLayout = 'desktop';
+    await mount(<PlayerView onClose={jest.fn()} />);
+    expect(mockHoverTip).toBe(true);
+    const now = Date.now();
+    const jump = { from: 30, bookKey: 'a:1:Corey/Calibans War', until: now + 10_000, at: now };
+    await act(async () => useJumpUndo.setState({ jump }));
+    expect(mockHoverTip).toBe(false);
+    // Another book's undo is not this player's chip.
+    await act(async () => useJumpUndo.setState({ jump: { ...jump, bookKey: 'a:1:Other' } }));
+    expect(mockHoverTip).toBe(true);
   });
 
   it("makes way for the timeline's tip: the seek bar's times row hides while it shows", async () => {
