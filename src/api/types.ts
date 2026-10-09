@@ -30,6 +30,11 @@ export type Capabilities = {
    * the `narrator=` filter on `/libraries/{id}/books`. Absent on older servers -
    * treat missing as false and never request them. */
   browse_people?: boolean;
+  /** Whether books can be in several series: `series_list` on a {@link Book} in more
+   * than one, and `memberships=1` on `/libraries/{id}/books?series=` and
+   * `/libraries/{id}/series` to match and count a book in every series it is in.
+   * Absent on older servers - treat missing as false (main series only). */
+  series_memberships?: boolean;
   /** Whether the server resolves what to play after a book (`/libraries/{id}/next`,
    * {@link NextBook}). Absent on older servers - treat missing as false and keep the
    * client-side folder-sibling fallback. */
@@ -251,6 +256,10 @@ export type Book = {
   author: string;
   series: string;
   series_index: number;
+  /** Every series the book is in, its main one (`series`) first, with its position in
+   * each (0 = none) - present only for a book in more than one series (capability
+   * `series_memberships`; absent from older servers and downloads saved from one). */
+  series_list?: SeriesMembership[];
   narrator: string;
   duration: number;
   asin?: string;
@@ -342,6 +351,9 @@ export type PersonCount = { name: string; books: number; duration: number };
  * only books inside the caller's share scope. */
 export type PeopleList = { people: PersonCount[]; unknown: number };
 
+/** One series a book is in, with its position there (0 = none). */
+export type SeriesMembership = { name: string; position: number };
+
 /** One distinct series in a library (GET /libraries/{id}/series, capability
  * `browse_people`): its book count, total `duration` (seconds), and the
  * `series_index` values the library holds (`positions`), so a UI can show gaps. */
@@ -351,6 +363,9 @@ export type SeriesCount = {
   books: number;
   duration: number;
   positions: number[];
+  /** How many of `books` are in it beyond their main series (`memberships=1`,
+   * capability `series_memberships`); 0 without memberships, absent on older servers. */
+  extra_books?: number;
 };
 
 /** Response of GET /libraries/{id}/next (capability `next_book`): what to play

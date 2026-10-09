@@ -502,6 +502,19 @@ describe('ApiClient', () => {
     await expect(c.seriesList(4)).resolves.toEqual([]);
   });
 
+  it('asks for every series a book is in only with memberships', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { books: [], series: [] } }));
+    const c = new ApiClient('https://h', 'tok');
+    await c.listBooks(2, { series: 'City Watch', memberships: true });
+    await c.listBooks(2, { series: 'City Watch', memberships: false });
+    await c.seriesList(2, { memberships: true });
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+      'https://h/api/v1/libraries/2/books?series=City+Watch&memberships=1',
+      'https://h/api/v1/libraries/2/books?series=City+Watch',
+      'https://h/api/v1/libraries/2/series?memberships=1',
+    ]);
+  });
+
   // --- Next book -------------------------------------------------------------
 
   it('fetches the next book via GET /libraries/{id}/next?path= and returns it as is', async () => {

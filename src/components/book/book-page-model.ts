@@ -12,6 +12,7 @@ import { type BookPlace, pathLeaf } from '@/lib/paths';
 import { yearOf } from '@/lib/published';
 import { synthesizeChapters } from '@/playback/book-queue';
 import { codecLabel } from '@/playback/transcode';
+import { seriesOf } from '@/components/series/series-model';
 
 /**
  * The book page's rules (STYLEGUIDE section 8 and the Stacks prototype's `Book()`), pure
@@ -288,23 +289,24 @@ export function placeLine(
 
 // --- Hero text -------------------------------------------------------------------
 
-/** The hero's eyebrow: the series and the book's number in it (a link to the series
- * page), else where the book lives. */
+/** One part of the hero's eyebrow: its text, and the series it opens (none for where
+ * the book lives). */
+export type EyebrowItem = { text: string; series?: string };
+
+/** The hero's eyebrow: every series the book is in with its number there, its main one
+ * first, each a link to its series page - else where the book lives. */
 export function heroEyebrow(
   t: TFunction,
-  book: Pick<Book, 'series' | 'series_index'>,
+  book: Pick<Book, 'series' | 'series_index' | 'series_list'>,
   libraryName: string,
   serverName: string,
-): { text: string; series?: string } {
-  if (book.series) {
-    return {
-      text: book.series_index
-        ? t('book.hero.seriesBook', { series: book.series, position: book.series_index })
-        : book.series,
-      series: book.series,
-    };
-  }
-  return { text: [libraryName, serverName].filter(Boolean).join(' · ') };
+): EyebrowItem[] {
+  const series = seriesOf(book);
+  if (series.length === 0) return [{ text: [libraryName, serverName].filter(Boolean).join(' · ') }];
+  return series.map(({ name, position }) => ({
+    text: position ? t('book.hero.seriesBook', { series: name, position }) : name,
+    series: name,
+  }));
 }
 
 export type Fact = { key: string; icon: IconName; text: string };

@@ -64,6 +64,27 @@ describe('personStats', () => {
 });
 
 describe('booksBySeries', () => {
+  it('puts a book in several series on each shelf, placed by it', () => {
+    const guards = book('Guards! Guards!', {
+      series: 'Discworld',
+      series_index: 8,
+      series_list: [
+        { name: 'Discworld', position: 8 },
+        { name: 'City Watch', position: 1 },
+      ],
+    });
+    const arms = book('Men at Arms', { series: 'City Watch', series_index: 2 });
+    const { series } = booksBySeries([arms, guards]);
+    // City Watch #1 before #2, though Guards! Guards! is Discworld #8.
+    expect(series.map((g) => [g.series, g.books.map((b) => b.title)])).toEqual([
+      ['City Watch', ['Guards! Guards!', 'Men at Arms']],
+      ['Discworld', ['Guards! Guards!']],
+    ]);
+    // Each shelf holds the book's own row: an action or download from it keeps the
+    // book's main series.
+    expect(series[0].books[0]).toBe(guards);
+  });
+
   it('groups series in order and leaves standalones by title', () => {
     const { series, standalone } = booksBySeries([
       book('Grave Peril', { series: 'The Dresden Files', series_index: 3 }),

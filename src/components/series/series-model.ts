@@ -1,4 +1,11 @@
-import type { Book, BookMetaSeries, BookMetaSeriesWork, CoverColor, Progress } from '@/api/types';
+import type {
+  Book,
+  BookMetaSeries,
+  BookMetaSeriesWork,
+  CoverColor,
+  Progress,
+  SeriesMembership,
+} from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { foldAccents } from '@/lib/names';
 import { bookTitle } from '@/lib/paths';
@@ -119,11 +126,46 @@ function bookCopy(book: Book, connectionId: string, connectionName: string): Ser
   return { connectionId, connectionName, libraryId: book.library_id, path: book.rel_path, book };
 }
 
-/** Sort a series' own books: by `series_index`, unnumbered (0) last, then by title. */
-export function sortSeriesBooks(books: readonly Book[]): Book[] {
+/** Every series a book is in, its main one first (`series_list`, else its `series`). */
+export function seriesOf(
+  book: Pick<Book, 'series' | 'series_index' | 'series_list'>,
+): SeriesMembership[] {
+  if (book.series_list?.length) return book.series_list;
+  return book.series ? [{ name: book.series, position: book.series_index }] : [];
+}
+
+/**
+ * The book as it stands in the series `name`: its `series` and `series_index` that
+ * series' name and its position there, so a series page orders and numbers it by
+ * that series, not its main one (Guards! Guards! is book 1 of City Watch though
+ * Discworld #8). The name matches exactly, else loosely (case and punctuation
+ * aside); undefined when the book isn't in the series.
+ */
+export function inSeries<T extends Book>(book: T, name: string): T | undefined {
+  const all = seriesOf(book);
+  let s = all.find((x) => x.name === name);
+  if (!s) {
+    const key = looseKey(name);
+    s = all.find((x) => looseKey(x.name) === key);
+  }
+  if (!s) return undefined;
+  return s.name === book.series && s.position === book.series_index
+    ? book
+    : { ...book, series: s.name, series_index: s.position };
+}
+
+/** Sort a series' own books: by `series_index` (or `positionOf`, a book's place in
+ * the series sorted by when that isn't its main one), unnumbered (0) last, then by
+ * title. */
+export function sortSeriesBooks(
+  books: readonly Book[],
+  positionOf: (book: Book) => number = (book) => book.series_index,
+): Book[] {
   return [...books].sort((a, b) => {
-    const ia = a.series_index > 0 ? a.series_index : Infinity;
-    const ib = b.series_index > 0 ? b.series_index : Infinity;
+    const pa = positionOf(a);
+    const pb = positionOf(b);
+    const ia = pa > 0 ? pa : Infinity;
+    const ib = pb > 0 ? pb : Infinity;
     if (ia !== ib) return ia - ib;
     return a.title.localeCompare(b.title);
   });

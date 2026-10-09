@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { useAllLibraryBooks } from '@/api/hooks';
 import type { SeriesCount } from '@/api/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
@@ -13,6 +12,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 
 import { MiniShelf, MiniShelfSkeleton } from './mini-shelf';
 import { localEntries, localGaps, type ProgressLookup } from './series-model';
+import { useSeriesBooks } from './use-series-data';
 
 const SHELF = 118;
 
@@ -63,7 +63,7 @@ export function SeriesCard({
 }) {
   const { t } = useTranslation();
   const { openSeries } = useOpen();
-  const { books } = useAllLibraryBooks(libraryId, { series: series.name }, connectionId);
+  const { books } = useSeriesBooks(libraryId, series.name, connectionId);
   const entries =
     books.length > 0 ? localEntries(books, { connectionId, connectionName, progressOf }) : null;
   const gaps = localGaps(series.positions).length;

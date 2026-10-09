@@ -395,9 +395,7 @@ function BookPage() {
         }
         finished={finished ? { date: listening?.finished } : null}
         ratings={ratings}
-        onOpenSeries={
-          book.series ? () => openSeries(cid, libraryId, { name: book.series }) : undefined
-        }
+        onOpenSeries={(name) => openSeries(cid, libraryId, { name })}
         onOpenAuthor={book.author ? () => openAuthor(cid, libraryId, book.author) : undefined}
         onOpenNarrator={
           book.narrator && browsePeople !== false
