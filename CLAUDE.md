@@ -943,6 +943,26 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   the saved place and the queue rules) and pushes Now Playing once the engine reports the book
   (gives up after 10 s); Now Playing reads the engine's chapter info and adds a chapter list, a
   rate button and a bookmark button. Car events wait in `AudiosiloCarEvents` until JS listens.
+  - **JS timers under CarPlay alone** (`AudiosiloJSTimers.swift`, the rule in
+    `CarTimerPolicy.swift`). React Native's `RCTTiming` fires every timer under 1 s from a
+    display link and moves to an NSTimer only on the app's background notifications, which a
+    CarPlay scene in the foreground never sends; if the display link stops with no phone scene
+    on screen, every short JS timer stalls. So while a car is connected and no phone scene is
+    in the foreground, the module calls RCTTiming's `appDidMoveToBackground` (again after
+    each app activation), and `appDidMoveToForeground` when the phone scene returns; with no
+    car it never touches it. In bridgeless mode that RCTTiming is no module (the registry's
+    "Timing" is another instance) and posting the notifications would reach AppState and
+    Expo's lifecycle, so `ReactTiming.find` reads React Native's private ivars from RCTHost,
+    each step checked (a moved internal is a logged no-op). **`rn-timing-internals.test.ts`
+    fails a React Native upgrade that moves them.** The Simulator's display link keeps
+    ticking in a CarPlay-only process, so only a device shows whether this matters. **Open:**
+    after a CarPlay-first launch in the Simulator the bundle and its timers run, yet the car
+    sync never starts (no car listener registers, no snapshot is written) until the phone app
+    opens; a parked root started under a phone scene does start it.
+  - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
+    and iOS moves the data container on an update or restore; `CarArtworkPath` reads a missing
+    file from the same `Documents/`/`Library/` path in the current container (never outside
+    it). Both are covered by `modules/audiosilo-player/ios/SelfCheck/run.sh`.
 - **Tokens on a locked phone** (`src/lib/secure-store.ts`). CarPlay starts books with the phone
   in a pocket, and the default `WHEN_UNLOCKED` keychain item can't be read then. On iOS tokens
   live in their own keychain service, `audiosilo.tokens.afu`, written `AFTER_FIRST_UNLOCK`: a
