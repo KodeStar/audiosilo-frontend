@@ -8,9 +8,7 @@ import UIKit
 ///
 /// A CarPlay-first launch (the app not running, possibly with the phone locked) starts React
 /// Native into a parking window (`AudiosiloScenes.ensureStarted`), so JS can write a fresh
-/// snapshot and start books; until then the car shows the last snapshot from disk. While no
-/// phone scene is in the foreground, `AudiosiloJSTimers` keeps JS timers off the display link
-/// (which never ticks then).
+/// snapshot and start books; until then the car shows the last snapshot from disk.
 @objc(AudiosiloCarPlaySceneDelegate)
 public final class AudiosiloCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   private var controller: AudiosiloCarPlayController?
@@ -20,8 +18,6 @@ public final class AudiosiloCarPlaySceneDelegate: UIResponder, CPTemplateApplica
     didConnect interfaceController: CPInterfaceController
   ) {
     AudiosiloScenes.ensureStarted()
-    // No phone scene may be on screen: JS timers must not wait for its display link.
-    AudiosiloJSTimers.car(connected: true)
     let controller = AudiosiloCarPlayController(interfaceController: interfaceController)
     self.controller = controller
     controller.start()
@@ -34,7 +30,6 @@ public final class AudiosiloCarPlaySceneDelegate: UIResponder, CPTemplateApplica
   ) {
     controller?.stop()
     controller = nil
-    AudiosiloJSTimers.car(connected: false)
     AudiosiloCarEvents.shared.drop("onCarPlayRequest")
     AudiosiloCarEvents.shared.send("onCarConnection", ["connected": false])
   }

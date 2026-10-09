@@ -45,7 +45,6 @@ public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelega
   }
 
   public func sceneDidDisconnect(_ scene: UIScene) {
-    AudiosiloJSTimers.phone(foreground: false)
     AudiosiloScenes.detachPhoneWindow(window)
     window = nil
   }
@@ -61,14 +60,11 @@ public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelega
   }
 
   public func sceneWillEnterForeground(_ scene: UIScene) {
-    // With CarPlay already keeping the app active, UIKit posts no app-level notification here.
-    AudiosiloJSTimers.phone(foreground: true)
     let app = UIApplication.shared
     app.delegate?.applicationWillEnterForeground?(app)
   }
 
   public func sceneDidEnterBackground(_ scene: UIScene) {
-    AudiosiloJSTimers.phone(foreground: false)
     let app = UIApplication.shared
     app.delegate?.applicationDidEnterBackground?(app)
   }
