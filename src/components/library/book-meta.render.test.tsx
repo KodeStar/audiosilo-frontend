@@ -209,7 +209,7 @@ describe('BookMetaSeriesTab', () => {
 });
 
 describe('community covers', () => {
-  const rail = (cover_url?: string) =>
+  const rail = () =>
     seriesRails(
       [
         {
@@ -222,7 +222,7 @@ describe('community covers', () => {
               title: 'The Fellowship of the Ring',
               position: '2',
               authors: [],
-              cover_url,
+              cover_url: 'https://img/lotr.jpg',
               web_url: 'https://m/work?id=lotr',
             },
           ],
@@ -230,6 +230,16 @@ describe('community covers', () => {
       ],
       'the-hobbit',
     );
+  const previous: BookMetaSeriesWork[] = [
+    {
+      id: 'book-one',
+      title: 'The Fellowship',
+      position: '1',
+      authors: [],
+      cover_url: 'https://img/1.jpg',
+      web_url: 'https://m/work?id=book-one',
+    },
+  ];
   const coverFor = jest.fn((url: string | undefined, size: number) =>
     url ? `https://server/meta/cover?url=${url}&size=${size}` : null,
   );
@@ -237,54 +247,32 @@ describe('community covers', () => {
     screen.queryAllByTestId('cover-image').map((n) => n.props.source as string | null);
 
   it('loads each rail cover through coverFor at 320', async () => {
-    await mount(<BookMetaSeriesTab rails={rail('https://img/lotr.jpg')} coverFor={coverFor} />);
+    await mount(<BookMetaSeriesTab rails={rail()} coverFor={coverFor} />);
     expect(sources()).toEqual(['https://server/meta/cover?url=https://img/lotr.jpg&size=320']);
   });
 
   it("shows the placeholder, never the cover's own host, when no coverFor is given", async () => {
-    await mount(<BookMetaSeriesTab rails={rail('https://img/lotr.jpg')} />);
+    await mount(<BookMetaSeriesTab rails={rail()} />);
     expect(sources()).toEqual([]);
     // The placeholder carries the title (and the caption repeats it).
     expect(screen.getAllByText('The Fellowship of the Ring')).toHaveLength(2);
   });
 
-  it('loads each previous book cover through coverFor at 160', async () => {
+  it('loads each previous book cover through coverFor at the same 320', async () => {
     await mount(
       <RecapsTab
         recaps={[]}
         progress={{ chapter: 0, finished: false }}
-        previousBooks={[
-          {
-            id: 'book-one',
-            title: 'The Fellowship',
-            position: '1',
-            authors: [],
-            cover_url: 'https://img/1.jpg',
-            web_url: 'https://m/work?id=book-one',
-          },
-        ]}
+        previousBooks={previous}
         coverFor={coverFor}
       />,
     );
-    expect(sources()).toEqual(['https://server/meta/cover?url=https://img/1.jpg&size=160']);
+    expect(sources()).toEqual(['https://server/meta/cover?url=https://img/1.jpg&size=320']);
   });
 
   it("shows a previous book's monogram, not an empty square, when there is no cover", async () => {
     await mount(
-      <RecapsTab
-        recaps={[]}
-        progress={{ chapter: 0, finished: false }}
-        previousBooks={[
-          {
-            id: 'book-one',
-            title: 'The Fellowship',
-            position: '1',
-            authors: [],
-            cover_url: 'https://img/1.jpg',
-            web_url: 'https://m/work?id=book-one',
-          },
-        ]}
-      />,
+      <RecapsTab recaps={[]} progress={{ chapter: 0, finished: false }} previousBooks={previous} />,
     );
     expect(sources()).toEqual([]);
     expect(screen.getByTestId('cover-monogram', { includeHiddenElements: true })).toBeTruthy();

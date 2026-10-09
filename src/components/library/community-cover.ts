@@ -29,9 +29,6 @@ export function communityCoverSource(opts: {
 }): string | null {
   const { coverUrl, size, proxied, web, api, libraryId, path } = opts;
   if (!coverUrl) return null;
-  if (proxied === true) {
-    return api ? api.communityCoverUrl(libraryId, path, coverUrl, { size }) : null;
-  }
-  if (proxied === false && !web) return coverUrl;
-  return null;
+  if (proxied) return api?.communityCoverUrl(libraryId, path, coverUrl, { size }) ?? null;
+  return proxied === false && !web ? coverUrl : null;
 }

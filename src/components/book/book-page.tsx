@@ -16,7 +16,6 @@ import {
 import { useOptionalApi, useScopedCid } from '@/api/provider';
 import { ContentScope } from '@/components/layout/content-scope';
 import { matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
-import { useCommunityCover } from '@/components/library/use-community-cover';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { bookStatus } from '@/components/library/books/books-view';
 import { DownloadProgress } from '@/components/library/download-control';
@@ -134,8 +133,6 @@ function BookPage() {
   // and only for a book with an ASIN or ISBN (one without can never match).
   const bookMetaEnabled = metaEnabledFor(useCapability('metadata', cid), book);
   const { data: meta } = useBookMeta(libraryId, path, bookMetaEnabled);
-  // The envelope's covers, from this server when it serves them (`meta_covers`).
-  const coverFor = useCommunityCover(cid, libraryId, path);
   // Where the listener is: the hero's place, the primary action, the spoiler gate.
   const progressQuery = useBookProgress(libraryId, path, true);
   const progress = progressQuery.data ?? undefined;
@@ -347,7 +344,6 @@ function BookPage() {
             rails,
             previousBooks,
             onSelectView: pickOrdering,
-            coverFor,
           }}
           details={{ downloaded, transcoded, serverName, libraryName }}
         />

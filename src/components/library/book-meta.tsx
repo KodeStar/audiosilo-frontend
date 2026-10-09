@@ -40,6 +40,11 @@ import {
 import { type CommunityCoverFor, noCommunityCover } from './community-cover';
 import type { SeriesRail } from './series-rails';
 
+/** The one thumbnail size for every community cover here (a rail tile, a previous
+ * book's row): the same cover at one size is fetched and cached once, on the server
+ * and on the device, whichever tab shows it first. */
+const COMMUNITY_COVER_SIZE = 320;
+
 /** Descriptions past this many characters get a collapse + "show more" toggle.
  * A deterministic length heuristic (rather than an onTextLayout measure pass) so
  * the toggle never flashes and the choice is unit-testable. */
@@ -428,7 +433,7 @@ function PreviousBookRow({
             {/* Without art (none, or a web player whose server can't serve it), the
                 title's monogram rather than an empty square. */}
             <Cover
-              source={coverFor(entry.cover_url, 160)}
+              source={coverFor(entry.cover_url, COMMUNITY_COVER_SIZE)}
               label={entry.title}
               size={40}
               rounded="rounded-sm"
@@ -775,7 +780,7 @@ export function BookMetaSeriesTab({
                 className="w-28"
               >
                 <CoverFrame>
-                  <Cover source={coverFor(w.cover_url, 320)} label={w.title} />
+                  <Cover source={coverFor(w.cover_url, COMMUNITY_COVER_SIZE)} label={w.title} />
                 </CoverFrame>
                 {w.position ? (
                   <Text variant="caption" className="mt-1.5">

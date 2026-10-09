@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useScopedCid } from '@/api/provider';
 import type { Book, BookMetaSeriesWork, ChaptersResponse } from '@/api/types';
 import {
   BookMetaCharactersTab,
@@ -10,10 +11,10 @@ import {
 } from '@/components/library/book-meta';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
-import type { CommunityCoverFor } from '@/components/library/community-cover';
 import type { ListeningProgress } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import type { SeriesRail } from '@/components/library/series-rails';
+import { useCommunityCover } from '@/components/library/use-community-cover';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { BookTab } from '@/lib/paths';
@@ -44,8 +45,6 @@ export type BookTabPanelProps = {
     rails: SeriesRail[];
     previousBooks: BookMetaSeriesWork[];
     onSelectView: (family: string, viewId: string) => void;
-    /** Where the rails' and previous books' covers load from (`useCommunityCover`). */
-    coverFor: CommunityCoverFor;
   };
   /** The Details tab: how this device plays the book, and where it lives. */
   details: { downloaded: boolean; transcoded: boolean; serverName: string; libraryName: string };
@@ -65,6 +64,8 @@ export function BookTabPanel({
 }: BookTabPanelProps) {
   const { t } = useTranslation();
   const work = community.meta?.work;
+  // The envelope's covers, from this server when it serves them (`meta_covers`).
+  const coverFor = useCommunityCover(useScopedCid(), libraryId, path);
   switch (tab) {
     case 'chapters':
       if (chapters.list.rows.length === 0) {
@@ -89,7 +90,7 @@ export function BookTabPanel({
             showSpoilers={community.showSpoilers}
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}
-            coverFor={community.coverFor}
+            coverFor={coverFor}
           />
           {recaps.length > 0 || community.summaryVisible ? (
             <Attribution attribution={work?.attribution} />
@@ -107,7 +108,7 @@ export function BookTabPanel({
             showSpoilers={community.showSpoilers}
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}
-            coverFor={community.coverFor}
+            coverFor={coverFor}
           />
           {characters.length > 0 ? <Attribution attribution={work?.attribution} /> : null}
         </View>
@@ -126,7 +127,7 @@ export function BookTabPanel({
         <BookMetaSeriesTab
           rails={community.rails}
           onSelectView={community.onSelectView}
-          coverFor={community.coverFor}
+          coverFor={coverFor}
         />
       );
     case 'details':
