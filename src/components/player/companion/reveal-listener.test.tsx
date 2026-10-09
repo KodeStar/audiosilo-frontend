@@ -21,10 +21,11 @@ jest.mock('@/api/provider', () => ({
 // Avasarala and Bobbie from chapter 4.
 let mockFinished = false;
 let mockMetadata = true;
+let mockSaved = 150;
 jest.mock('@/api/hooks', () => ({
   useCapability: () => mockMetadata,
   useBook: () => ({ data: { asin: 'B0' } }),
-  useBookProgress: () => ({ data: { position: 150, finished: mockFinished } }),
+  useBookProgress: () => ({ data: { position: mockSaved, finished: mockFinished } }),
   useChapters: () => ({
     data: {
       files: [],
@@ -81,6 +82,7 @@ beforeEach(() => {
   player.reset();
   mockFinished = false;
   mockMetadata = true;
+  mockSaved = 150;
   mockSegments = ['(app)'];
   mockPush.mockClear();
   (toast as jest.Mock).mockClear();
@@ -161,15 +163,25 @@ describe('CompanionRevealListener', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it("fires when Who's who's gate does: the live place in the gate's 15 s steps", async () => {
-    // Prax arrives with chapter 3, at 200 s; the gate reads 200.5 as 195 (chapter 2).
+  it("fires at the chapter's start, where Who's who's gate turns over (the exact live place)", async () => {
+    // Prax arrives with chapter 3, at 200 s: not on a 15 s step, so a bucketed place
+    // (195) would hold the reveal back to 210.
     await mountAt(198);
-    await tick(200.5);
-    await tick(205);
+    await tick(199.6);
     expect(toast).not.toHaveBeenCalled();
-    await tick(210.2);
+    await tick(200.1);
     expect(toast).toHaveBeenCalledTimes(1);
     expect((toast as jest.Mock).mock.calls[0][0].title).toBe("New in Who's who: Prax");
+  });
+
+  it("announces nobody the saved place already shows in Who's who", async () => {
+    // Another device saved a place in chapter 4; this one plays on from chapter 3, where
+    // Who's who (never below the saved place) already shows Avasarala and Bobbie.
+    mockSaved = 350;
+    await mountAt(298);
+    await tick(299.5);
+    await tick(300.6);
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it("never reads the previous book's place as a new book's while its load is in flight", async () => {

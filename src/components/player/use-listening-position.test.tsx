@@ -14,6 +14,7 @@ import { contentKey } from '@/lib/content-key';
 import { usePlayer } from '@/playback/store';
 
 import {
+  selectLivePosition,
   useBookPlace,
   useListeningChapter,
   useLivePosition,
@@ -79,8 +80,24 @@ describe('useResumePosition', () => {
   });
 });
 
+describe('selectLivePosition', () => {
+  it("is the book's exact live place while it is the placed one, else undefined", async () => {
+    const key = contentKey('c', 1, 'Book');
+    const read = () => selectLivePosition(usePlayer.getState() as never, key);
+    await setPlayer({ key, position: 1207.4, loadingBook: null });
+    expect(read()).toBe(1207.4);
+    await setPlayer({ key: contentKey('c', 1, 'Other'), position: 999 });
+    expect(read()).toBeUndefined();
+    // A new book's load: the snapshot is still the previous book's place.
+    await setPlayer({ key, position: 999, loadingBook: key });
+    expect(read()).toBeUndefined();
+    await setPlayer({ key: null, position: 0, loadingBook: null });
+  });
+});
+
 describe('useListeningChapter', () => {
-  const starts = [0, 600, 1200];
+  // The third chapter starts off the 15 s steps the book page reads in.
+  const starts = [0, 600, 1207];
 
   it('places the listener by chapter, re-rendering only when the chapter changes', async () => {
     await setPlayer({ key: null, position: 0 });
@@ -97,8 +114,11 @@ describe('useListeningChapter', () => {
     await setPlayer({ key: contentKey('c', 1, 'Book'), position: 760 });
     await setPlayer({ key: contentKey('c', 1, 'Book'), position: 1190 });
     expect(renders).toBe(before);
-    // Rounded down to the gate's bucket: 1210 reads as 1200, the third chapter.
-    await setPlayer({ key: contentKey('c', 1, 'Book'), position: 1210 });
+    await setPlayer({ key: contentKey('c', 1, 'Book'), position: 1206.9 });
+    expect(result.current).toBe(2);
+    expect(renders).toBe(before);
+    // The exact place, no bucket: the third chapter from its first moment, not at 1215.
+    await setPlayer({ key: contentKey('c', 1, 'Book'), position: 1207.1 });
     expect(result.current).toBe(3);
   });
 
