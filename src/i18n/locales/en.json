@@ -2021,5 +2021,39 @@
     "signedOut": "Connect a server in AudioSilo to listen in the car",
     "unavailable": "This book can't play right now",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "house": {
+    "title": "Listening in the house",
+    "sub": "{{server}} · shared by choice",
+    "settingsLink": "Sharing settings",
+    "listLabel": "Listening in the house on {{server}}",
+    "inTheHouse": "In the house",
+    "chapterN": "Chapter {{n}}",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "Listening now",
+      "paused": "Paused",
+      "today": "Earlier today",
+      "yesterday": "Yesterday",
+      "earlier": "Recently"
+    },
+    "label": {
+      "playing": "{{name}} is listening to {{title}}",
+      "paused": "{{name}} paused {{title}}",
+      "today": "{{name}} listened to {{title}} earlier today",
+      "yesterday": "{{name}} listened to {{title}} yesterday",
+      "earlier": "{{name}} listened to {{title}} recently",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Share what I'm listening to with the house",
+      "switchLabel": "Share what I'm listening to with the house on {{server}}",
+      "body": "Your current book shows on the Home page of other people on {{server}} who share theirs too. Off by default.",
+      "saving": "Saving",
+      "loadFailed": "Couldn't load this setting.",
+      "failed": "Couldn't change sharing on {{server}}",
+      "failedBody": "Nothing changed. Check the connection and try again.",
+      "demo": "Demo accounts can't share what they listen to."
+    }
   }
 }

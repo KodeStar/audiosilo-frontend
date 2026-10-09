@@ -2021,5 +2021,39 @@
     "signedOut": "Collega un server in AudioSilo per ascoltare in auto",
     "unavailable": "Questo libro non può essere riprodotto ora",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "house": {
+    "title": "Cosa si ascolta in casa",
+    "sub": "{{server}} · condiviso per scelta",
+    "settingsLink": "Impostazioni di condivisione",
+    "listLabel": "Cosa si ascolta in casa su {{server}}",
+    "inTheHouse": "In casa",
+    "chapterN": "Capitolo {{n}}",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "In ascolto ora",
+      "paused": "In pausa",
+      "today": "Oggi, prima",
+      "yesterday": "Ieri",
+      "earlier": "Di recente"
+    },
+    "label": {
+      "playing": "{{name}} sta ascoltando {{title}}",
+      "paused": "{{name}} ha messo in pausa {{title}}",
+      "today": "{{name}} ha ascoltato {{title}} oggi, prima",
+      "yesterday": "{{name}} ha ascoltato {{title}} ieri",
+      "earlier": "{{name}} ha ascoltato {{title}} di recente",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Condividi con la casa cosa sto ascoltando",
+      "switchLabel": "Condividi con la casa cosa sto ascoltando su {{server}}",
+      "body": "Il tuo libro attuale compare nella pagina Home delle altre persone su {{server}} che condividono anche il loro. Disattivato per impostazione predefinita.",
+      "saving": "Salvataggio",
+      "loadFailed": "Impossibile caricare questa impostazione.",
+      "failed": "Impossibile cambiare la condivisione su {{server}}",
+      "failedBody": "Non è cambiato nulla. Controlla la connessione e riprova.",
+      "demo": "Gli account demo non possono condividere cosa ascoltano."
+    }
   }
 }

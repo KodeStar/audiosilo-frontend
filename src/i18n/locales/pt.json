@@ -2021,5 +2021,39 @@
     "signedOut": "Ligue um servidor no AudioSilo para ouvir no carro",
     "unavailable": "Este livro não pode ser reproduzido agora",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "house": {
+    "title": "O que se ouve em casa",
+    "sub": "{{server}} · partilhado por escolha",
+    "settingsLink": "Definições de partilha",
+    "listLabel": "O que se ouve em casa em {{server}}",
+    "inTheHouse": "Em casa",
+    "chapterN": "Capítulo {{n}}",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "A ouvir agora",
+      "paused": "Em pausa",
+      "today": "Hoje, mais cedo",
+      "yesterday": "Ontem",
+      "earlier": "Recentemente"
+    },
+    "label": {
+      "playing": "{{name}} está a ouvir {{title}}",
+      "paused": "{{name}} pausou {{title}}",
+      "today": "{{name}} ouviu {{title}} hoje, mais cedo",
+      "yesterday": "{{name}} ouviu {{title}} ontem",
+      "earlier": "{{name}} ouviu {{title}} recentemente",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Partilhar com a casa o que estou a ouvir",
+      "switchLabel": "Partilhar com a casa o que estou a ouvir em {{server}}",
+      "body": "O teu livro atual aparece na página inicial das outras pessoas em {{server}} que também partilham o seu. Desativado por predefinição.",
+      "saving": "A guardar",
+      "loadFailed": "Não foi possível carregar esta definição.",
+      "failed": "Não foi possível alterar a partilha em {{server}}",
+      "failedBody": "Nada mudou. Verifica a ligação e tenta novamente.",
+      "demo": "As contas de demonstração não podem partilhar o que ouvem."
+    }
   }
 }
