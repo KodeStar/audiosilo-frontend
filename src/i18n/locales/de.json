@@ -146,11 +146,6 @@
       "accounts": "Konten und Geräte",
       "support": "AudioSilo unterstützen"
     },
-    "household": {
-      "title": "Profile kommen später",
-      "body": "Für alle im Haushalt ein eigener Platz in jedem Buch, ein Kindermodus und Teilen kommen mit den Profilen in einem späteren Update.",
-      "flag": "Kommt mit den Profilen"
-    },
     "accounts": {
       "intro": "Die Server, bei denen dieses Gerät angemeldet ist. Öffne einen für Passwort, deine Geräte und API-Schlüssel."
     },
@@ -2076,6 +2071,105 @@
       "failed": "Teilen auf {{server}} konnte nicht geändert werden",
       "failedBody": "Nichts wurde geändert. Prüfe die Verbindung und versuche es erneut.",
       "demo": "Demo-Konten können nicht teilen, was sie hören."
+    }
+  },
+  "profiles": {
+    "someone": "Jemand",
+    "status": {
+      "listening": "Hört gerade",
+      "kids": "Kindermodus · Schlafenszeit {{time}}",
+      "servers_one": "{{name}} + {{count}} weiterer",
+      "servers_other": "{{name}} + {{count}} weitere"
+    },
+    "picker": {
+      "eyebrow": "Dieses Gerät wird geteilt",
+      "title": "Wer hört zu?",
+      "lead": "Jede Person behält ihre eigene Stelle in jedem Buch, ihre eigene Warteschlange und ihre eigene Statistik.",
+      "close": "Schließen und weiter wie bisher hören",
+      "needsPin": "fragt nach einer PIN",
+      "emptyTitle": "Hier ist noch niemand angemeldet",
+      "emptyHint": "Melde dich mit einem AudioSilo-Konto an, um loszuhören."
+    },
+    "add": {
+      "label": "Person hinzufügen",
+      "hint": "Meldet sich mit dem eigenen Konto an",
+      "a11y": "Person hinzufügen: mit dem eigenen Konto anmelden"
+    },
+    "connect": {
+      "title": "Eine Person zu diesem Gerät hinzufügen.",
+      "lead": "Sie meldet sich mit ihrem eigenen Konto an, auf deinem Server oder ihrem. Alle behalten ihre eigene Stelle in jedem Buch."
+    },
+    "menu": {
+      "listeningAs": "Hört als",
+      "switchTo": "Zu {{name}} wechseln"
+    },
+    "gate": {
+      "title": "Das gehört {{name}}",
+      "body": "Es liegt im Konto von {{name}} auf diesem Gerät. Wechsle zu {{name}}, um es zu öffnen.",
+      "switch": "Zu {{name}} wechseln",
+      "back": "Zurück"
+    },
+    "pin": {
+      "label": "PIN",
+      "onBody": "Wird abgefragt, wenn jemand zu {{name}} wechselt",
+      "offBody": "Aus. Alle auf diesem Gerät können zu dieser Person wechseln.",
+      "set": "PIN festlegen",
+      "setA11y": "PIN für {{name}} festlegen",
+      "change": "Ändern",
+      "changeA11y": "PIN von {{name}} ändern",
+      "remove": "Entfernen",
+      "removeA11y": "PIN von {{name}} entfernen",
+      "enterTitle": "PIN von {{name}} eingeben",
+      "enterBody": "Vier Ziffern.",
+      "currentTitle": "Aktuelle PIN von {{name}} eingeben",
+      "chooseTitle": "Eine vierstellige PIN wählen",
+      "confirmTitle": "PIN noch einmal eingeben",
+      "chooseBody": "Wird abgefragt, wenn jemand auf diesem Gerät zu {{name}} wechselt. Sie bleibt auf diesem Gerät.",
+      "fieldLabel": "PIN für {{name}}",
+      "wrong": "Diese PIN stimmt nicht",
+      "mismatch": "Die PINs stimmen nicht überein. Wähle noch einmal eine.",
+      "wait_one": "Zu viele Versuche. Versuche es in {{count}} Sekunde noch einmal.",
+      "wait_other": "Zu viele Versuche. Versuche es in {{count}} Sekunden noch einmal.",
+      "forgot": "Vergessen? Entferne {{name}} in den Einstellungen von diesem Gerät und melde dich neu an.",
+      "readFailed": "Die PIN konnte auf diesem Gerät nicht geprüft werden. Versuche es noch einmal.",
+      "saveFailed": "Die PIN konnte auf diesem Gerät nicht gespeichert werden. Nichts wurde geändert."
+    },
+    "rename": {
+      "label": "Name",
+      "action": "Umbenennen",
+      "title": "{{name}} umbenennen",
+      "body": "Der Name erscheint nur auf diesem Gerät. Das Konto behält seinen Benutzernamen.",
+      "empty": "Gib einen Namen ein"
+    },
+    "kids": {
+      "label": "Kindermodus",
+      "body": "Eine Bibliothek mit großen Covern, eine Schlafenszeit und keine Einstellungen oder Suche. Verlassen geht nur mit einer erwachsenen Person.",
+      "switchA11y": "Kindermodus für {{name}}",
+      "library": "Bibliothek",
+      "libraryBody": "Die eine Bibliothek, die der Kindermodus zeigt",
+      "libraryOn": "{{name}} auf {{server}}",
+      "firstLibrary": "Die erste ({{name}})",
+      "librariesLoading": "Bibliotheken werden geladen",
+      "librariesFailed": "Die Bibliotheken konnten nicht geladen werden.",
+      "noLibraries": "Dieses Konto sieht keine Bibliothek. Bitte die Person, die den Server verwaltet, eine freizugeben.",
+      "bedtime": "Schlafenszeit",
+      "bedtimeBody": "Ab dann bis 06:00 startet das Abspielen einen 20-Minuten-Schlaftimer"
+    },
+    "remove": {
+      "label": "Von diesem Gerät entfernen",
+      "hint": "Meldet {{name}} hier von den eigenen Servern ab. Die Stelle in jedem Buch bleibt auf dem Server.",
+      "action": "Von diesem Gerät entfernen",
+      "title": "{{name}} von diesem Gerät entfernen?",
+      "body": "Damit wird {{name}} auf diesem Gerät von {{servers}} abgemeldet und die Downloads hier werden gelöscht. Die Stelle in jedem Buch bleibt auf dem Server.",
+      "noPassword": "{{name}} hat auf {{server}} kein Passwort: Ohne eines ist für die nächste Anmeldung eine neue Einladung nötig.",
+      "confirm": "Entfernen und abmelden"
+    },
+    "household": {
+      "intro": "Alle, die auf diesem Gerät hören, jeweils mit eigenen Servern, eigener Stelle in jedem Buch, Warteschlange und Statistik.",
+      "switch": "Wechseln",
+      "askAtLaunch": "Beim Öffnen der App fragen, wer zuhört",
+      "askAtLaunchBody": "Wenn zwei oder mehr Personen auf diesem Gerät sind",
+      "noSharing": "Noch keiner deiner Server bietet das an."
     }
   }
 }

@@ -2,7 +2,10 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 import type { ReactNode } from 'react';
 
 import { ConnectionScope } from '@/api/provider';
+import { OtherPersonGate } from '@/components/profiles/other-person-gate';
+import { otherOwner } from '@/components/profiles/profiles-model';
 import { connectionParam } from '@/lib/paths';
+import { useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 /**
@@ -21,11 +24,16 @@ import { useSession } from '@/stores/session';
  * Redirects home when the id names a connection that isn't signed in, so `useApi()` under
  * the scope never throws on a stale link to a removed/unpaired server. Aggregated screens
  * (Home/Search) carry no `connection`, so they don't wrap in this and default to `''`.
+ *
+ * A connection of ANOTHER person on this device (Phase 8 profiles) is never shown
+ * silently: `OtherPersonGate` offers to switch to them first (their PIN rules apply).
  */
 export function ContentScope({ children }: { children: ReactNode }) {
   const { connection } = useLocalSearchParams<{ connection?: string | string[] }>();
   const cid = connectionParam(connection);
   const known = useSession((s) => !cid || s.connections.some((c) => c.id === cid));
+  const owner = useProfiles((s) => otherOwner(s, cid));
   if (!known) return <Redirect href="/" />;
+  if (owner) return <OtherPersonGate profile={owner} />;
   return <ConnectionScope connectionId={cid}>{children}</ConnectionScope>;
 }

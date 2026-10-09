@@ -5,6 +5,7 @@ import { View } from 'react-native';
 
 import { AccountSection } from '@/components/account/account-section';
 import { JournalScreen } from '@/components/journal/journal-screen';
+import { ListeningAsCard } from '@/components/profiles/listening-as-card';
 import { SettingsContent } from '@/components/settings/settings-content';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { SubNavSections } from '@/components/shell/tab-root-nav';
@@ -41,7 +42,14 @@ const SECTIONS: Record<YouSection, (opts: { phone: boolean }) => ReactNode> = {
   year: () => column(<YearSection />),
   journal: ({ phone }) => <JournalScreen embedded={phone} />,
   settings: ({ phone }) => <SettingsContent embedded={phone} />,
-  account: () => column(<AccountSection />),
+  // The phone has no profile menu: who is listening heads its Account segment (Phase 8).
+  account: ({ phone }) =>
+    column(
+      <>
+        {phone ? <ListeningAsCard /> : null}
+        <AccountSection />
+      </>,
+    ),
 };
 
 /**

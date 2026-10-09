@@ -21,8 +21,16 @@ jest.mock('@/theme/theme-provider', () => ({
   }),
 }));
 
+jest.mock('@/playback/store', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/player-store-mock').createPlayerStoreMock(),
+);
+
 /* eslint-disable import/first */
 import { useReachability } from '@/api/reachability';
+import { setSecure } from '@/lib/secure-store';
+import { pinKey } from '@/lib/profile-pin';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { ProfileMenu } from './profile-menu';
@@ -32,6 +40,7 @@ const user = (username: string) => ({ username }) as never;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetProfilesForTests();
   mockScheme = 'light';
   useSession.setState({
     connections: [
@@ -121,5 +130,51 @@ describe('ProfileMenu', () => {
     useSession.setState({ user: null, defaultConnectionId: null });
     await mountWithPortal(<ProfileMenu showName />);
     expect(screen.queryByTestId('top-bar-profile')).toBeNull();
+  });
+
+  describe('with two people on this device', () => {
+    beforeEach(() => {
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'chris', name: 'Chris', connectionIds: ['c1', 'c3'] },
+          { id: 'sam', name: 'Sam', connectionIds: ['c2'], hasPin: true },
+        ],
+        activeProfileId: 'chris',
+      });
+    });
+
+    async function openAs(name: string) {
+      await mountWithPortal(<ProfileMenu showName />);
+      await fireEvent.press(screen.getByLabelText(`Servers and account, ${name}`));
+    }
+
+    it("lists who is listening, the other people, and only the listener's servers", async () => {
+      await openAs('Chris');
+      expect(screen.getByText('Listening as')).toBeTruthy();
+      expect(screen.getAllByText('Chris').length).toBeGreaterThan(0);
+      expect(screen.getByLabelText('Switch to Sam')).toBeTruthy();
+      expect(screen.getByText('Hearthside')).toBeTruthy();
+      expect(screen.getByText('Old box')).toBeTruthy();
+      // Sam's server is Sam's: not in Chris's menu.
+      expect(screen.queryByText("Maya's Shelf")).toBeNull();
+    });
+
+    it("asks for Sam's PIN before switching to him", async () => {
+      await setSecure(
+        pinKey('sam'),
+        JSON.stringify({ v: 1, salt: '0'.repeat(32), iterations: 1, hash: '0'.repeat(64) }),
+      );
+      await openAs('Chris');
+      await fireEvent.press(screen.getByLabelText('Switch to Sam'));
+      expect(await screen.findByText("Enter Sam's PIN")).toBeTruthy();
+      expect(useProfiles.getState().activeProfileId).toBe('chris');
+    });
+
+    it('opens "Who\'s listening?"', async () => {
+      await openAs('Chris');
+      await fireEvent.press(screen.getByText("Who's listening?"));
+      expect(mockRouter.push).toHaveBeenCalledWith('/profiles');
+    });
   });
 });

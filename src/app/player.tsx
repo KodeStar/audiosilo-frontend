@@ -6,9 +6,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBook, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
+import { OtherPersonGate } from '@/components/profiles/other-person-gate';
+import { otherOwner } from '@/components/profiles/profiles-model';
 import { Spinner } from '@/components/ui/spinner';
 import { connectionParam, segmentsToPath } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
+import { useProfiles } from '@/stores/profiles';
 
 export default function PlayerScreen() {
   const {
@@ -33,6 +36,9 @@ export default function PlayerScreen() {
   // mini-player just re-shows nowPlaying).
   const cid = useCid(connectionId);
   const insets = useSafeAreaInsets();
+  // A link to another person's book on this device (Phase 8): switch to them first, never
+  // start their book silently.
+  const owner = useProfiles((s) => otherOwner(s, connectionId ?? ''));
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const seekBook = usePlayer((s) => s.seekBook);
@@ -66,7 +72,7 @@ export default function PlayerScreen() {
   // chapters would be missing. Start point priority: explicit position (bookmark
   // jump) > resume. If this book is already playing, only honor an explicit jump.
   useEffect(() => {
-    if (!book || Number.isNaN(libraryId) || chaptersQuery.isLoading) return;
+    if (owner || !book || Number.isNaN(libraryId) || chaptersQuery.isLoading) return;
     const posParam = position !== undefined ? Number(position) : undefined;
     const hasPos = posParam !== undefined && !Number.isNaN(posParam);
     const trackParam = track !== undefined ? Number(track) : undefined;
@@ -115,7 +121,10 @@ export default function PlayerScreen() {
     nowPlaying,
     seekBook,
     goToTrack,
+    owner,
   ]);
+
+  if (owner) return <OtherPersonGate profile={owner} />;
 
   if (!book && !nowPlaying) {
     return (

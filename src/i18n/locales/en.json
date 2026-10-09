@@ -146,11 +146,6 @@
       "accounts": "Accounts and devices",
       "support": "Support AudioSilo"
     },
-    "household": {
-      "title": "Profiles arrive later",
-      "body": "Everyone in the house with their own place in every book, a kids mode and sharing come with profiles in a later update.",
-      "flag": "Arrives with profiles"
-    },
     "accounts": {
       "intro": "The servers this device is signed in to. Open one for its password, your devices and API keys."
     },
@@ -2076,6 +2071,105 @@
       "failed": "Couldn't change sharing on {{server}}",
       "failedBody": "Nothing changed. Check the connection and try again.",
       "demo": "Demo accounts can't share what they listen to."
+    }
+  },
+  "profiles": {
+    "someone": "Someone",
+    "status": {
+      "listening": "Listening now",
+      "kids": "Kids mode · bedtime {{time}}",
+      "servers_one": "{{name}} + {{count}} more",
+      "servers_other": "{{name}} + {{count}} more"
+    },
+    "picker": {
+      "eyebrow": "This device is shared",
+      "title": "Who's listening?",
+      "lead": "Each person keeps their own place in every book, their own queue and their own stats.",
+      "close": "Close and keep listening as now",
+      "needsPin": "asks for a PIN",
+      "emptyTitle": "Nobody is signed in here yet",
+      "emptyHint": "Sign in with an AudioSilo account to start listening."
+    },
+    "add": {
+      "label": "Add someone",
+      "hint": "Signs in with their own account",
+      "a11y": "Add someone: sign in with their own account"
+    },
+    "connect": {
+      "title": "Add someone to this device.",
+      "lead": "They sign in with their own account on your server or theirs. Everyone keeps their own place in every book."
+    },
+    "menu": {
+      "listeningAs": "Listening as",
+      "switchTo": "Switch to {{name}}"
+    },
+    "gate": {
+      "title": "This belongs to {{name}}",
+      "body": "It's on {{name}}'s account on this device. Switch to {{name}} to open it.",
+      "switch": "Switch to {{name}}",
+      "back": "Go back"
+    },
+    "pin": {
+      "label": "PIN",
+      "onBody": "Asked when someone switches to {{name}}",
+      "offBody": "Off. Anyone on this device can switch to this person.",
+      "set": "Set a PIN",
+      "setA11y": "Set a PIN for {{name}}",
+      "change": "Change",
+      "changeA11y": "Change {{name}}'s PIN",
+      "remove": "Remove",
+      "removeA11y": "Remove {{name}}'s PIN",
+      "enterTitle": "Enter {{name}}'s PIN",
+      "enterBody": "Four digits.",
+      "currentTitle": "Enter {{name}}'s current PIN",
+      "chooseTitle": "Choose a 4-digit PIN",
+      "confirmTitle": "Enter the PIN again",
+      "chooseBody": "Asked whenever someone switches to {{name}} on this device. It stays on this device.",
+      "fieldLabel": "PIN for {{name}}",
+      "wrong": "That PIN doesn't match",
+      "mismatch": "Those PINs don't match. Choose one again.",
+      "wait_one": "Too many tries. Try again in {{count}} second.",
+      "wait_other": "Too many tries. Try again in {{count}} seconds.",
+      "forgot": "Forgotten it? Remove {{name}} from this device in Settings and sign in again.",
+      "readFailed": "Couldn't check the PIN on this device. Try again.",
+      "saveFailed": "Couldn't save the PIN on this device. Nothing changed."
+    },
+    "rename": {
+      "label": "Name",
+      "action": "Rename",
+      "title": "Rename {{name}}",
+      "body": "The name shows on this device only. The account keeps its username.",
+      "empty": "Enter a name"
+    },
+    "kids": {
+      "label": "Kids mode",
+      "body": "One library as big covers, a bedtime, and no settings or search. Leaving needs a grown-up.",
+      "switchA11y": "Kids mode for {{name}}",
+      "library": "Library",
+      "libraryBody": "The one library kids mode shows",
+      "libraryOn": "{{name}} on {{server}}",
+      "firstLibrary": "The first one ({{name}})",
+      "librariesLoading": "Loading the libraries",
+      "librariesFailed": "Couldn't load the libraries.",
+      "noLibraries": "This account sees no libraries. Ask the server's admin to share one.",
+      "bedtime": "Bedtime",
+      "bedtimeBody": "From then until 06:00, playing starts a 20 minute sleep timer"
+    },
+    "remove": {
+      "label": "Remove from this device",
+      "hint": "Signs {{name}} out of their servers here. Their place in every book stays on the server.",
+      "action": "Remove from this device",
+      "title": "Remove {{name}} from this device?",
+      "body": "This signs {{name}} out of {{servers}} on this device and deletes their downloads here. Their place in every book stays on the server.",
+      "noPassword": "{{name}} has no password on {{server}}: without one they'll need a new invite to sign in again.",
+      "confirm": "Remove and sign out"
+    },
+    "household": {
+      "intro": "Everyone who listens on this device, each with their own servers, place in every book, queue and stats.",
+      "switch": "Switch",
+      "askAtLaunch": "Ask who's listening when the app opens",
+      "askAtLaunchBody": "With two or more people on this device",
+      "noSharing": "None of your servers offers this yet."
     }
   }
 }

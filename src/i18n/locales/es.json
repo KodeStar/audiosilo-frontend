@@ -146,11 +146,6 @@
       "accounts": "Cuentas y dispositivos",
       "support": "Apoyar AudioSilo"
     },
-    "household": {
-      "title": "Los perfiles llegarán más adelante",
-      "body": "Un lugar propio en cada libro para cada persona de la casa, un modo infantil y compartir llegarán con los perfiles en una próxima actualización.",
-      "flag": "Llega con los perfiles"
-    },
     "accounts": {
       "intro": "Los servidores en los que este dispositivo tiene la sesión iniciada. Abre uno para ver su contraseña, tus dispositivos y las claves de API."
     },
@@ -2076,6 +2071,105 @@
       "failed": "No se pudo cambiar el uso compartido en {{server}}",
       "failedBody": "No ha cambiado nada. Comprueba la conexión y vuelve a intentarlo.",
       "demo": "Las cuentas de demostración no pueden compartir lo que escuchan."
+    }
+  },
+  "profiles": {
+    "someone": "Alguien",
+    "status": {
+      "listening": "Escuchando ahora",
+      "kids": "Modo infantil · a dormir a las {{time}}",
+      "servers_one": "{{name}} + {{count}} más",
+      "servers_other": "{{name}} + {{count}} más"
+    },
+    "picker": {
+      "eyebrow": "Este dispositivo es compartido",
+      "title": "¿Quién escucha?",
+      "lead": "Cada persona conserva su punto en cada libro, su propia cola y sus propias estadísticas.",
+      "close": "Cerrar y seguir escuchando como ahora",
+      "needsPin": "pide un PIN",
+      "emptyTitle": "Aún no hay nadie conectado aquí",
+      "emptyHint": "Inicia sesión con una cuenta de AudioSilo para empezar a escuchar."
+    },
+    "add": {
+      "label": "Añadir a alguien",
+      "hint": "Inicia sesión con su propia cuenta",
+      "a11y": "Añadir a alguien: iniciar sesión con su propia cuenta"
+    },
+    "connect": {
+      "title": "Añadir a alguien a este dispositivo.",
+      "lead": "Inicia sesión con su propia cuenta, en tu servidor o en el suyo. Cada persona conserva su punto en cada libro."
+    },
+    "menu": {
+      "listeningAs": "Escuchando como",
+      "switchTo": "Cambiar a {{name}}"
+    },
+    "gate": {
+      "title": "Esto es de {{name}}",
+      "body": "Está en la cuenta de {{name}} en este dispositivo. Cambia a {{name}} para abrirlo.",
+      "switch": "Cambiar a {{name}}",
+      "back": "Volver"
+    },
+    "pin": {
+      "label": "PIN",
+      "onBody": "Se pide cuando alguien cambia a {{name}}",
+      "offBody": "Desactivado. Cualquiera en este dispositivo puede cambiar a esta persona.",
+      "set": "Establecer un PIN",
+      "setA11y": "Establecer un PIN para {{name}}",
+      "change": "Cambiar",
+      "changeA11y": "Cambiar el PIN de {{name}}",
+      "remove": "Quitar",
+      "removeA11y": "Quitar el PIN de {{name}}",
+      "enterTitle": "Introduce el PIN de {{name}}",
+      "enterBody": "Cuatro dígitos.",
+      "currentTitle": "Introduce el PIN actual de {{name}}",
+      "chooseTitle": "Elige un PIN de 4 dígitos",
+      "confirmTitle": "Introduce el PIN otra vez",
+      "chooseBody": "Se pide cada vez que alguien cambia a {{name}} en este dispositivo. Se queda en este dispositivo.",
+      "fieldLabel": "PIN de {{name}}",
+      "wrong": "Ese PIN no coincide",
+      "mismatch": "Los PIN no coinciden. Elige uno otra vez.",
+      "wait_one": "Demasiados intentos. Vuelve a intentarlo en {{count}} segundo.",
+      "wait_other": "Demasiados intentos. Vuelve a intentarlo en {{count}} segundos.",
+      "forgot": "¿Lo has olvidado? Quita a {{name}} de este dispositivo en Ajustes y vuelve a iniciar sesión.",
+      "readFailed": "No se pudo comprobar el PIN en este dispositivo. Inténtalo de nuevo.",
+      "saveFailed": "No se pudo guardar el PIN en este dispositivo. No ha cambiado nada."
+    },
+    "rename": {
+      "label": "Nombre",
+      "action": "Cambiar nombre",
+      "title": "Cambiar el nombre de {{name}}",
+      "body": "El nombre solo se muestra en este dispositivo. La cuenta conserva su nombre de usuario.",
+      "empty": "Escribe un nombre"
+    },
+    "kids": {
+      "label": "Modo infantil",
+      "body": "Una sola biblioteca con portadas grandes, una hora de dormir y sin ajustes ni búsqueda. Para salir hace falta una persona adulta.",
+      "switchA11y": "Modo infantil para {{name}}",
+      "library": "Biblioteca",
+      "libraryBody": "La biblioteca que muestra el modo infantil",
+      "libraryOn": "{{name}} en {{server}}",
+      "firstLibrary": "La primera ({{name}})",
+      "librariesLoading": "Cargando las bibliotecas",
+      "librariesFailed": "No se pudieron cargar las bibliotecas.",
+      "noLibraries": "Esta cuenta no ve ninguna biblioteca. Pide a quien administra el servidor que comparta una.",
+      "bedtime": "Hora de dormir",
+      "bedtimeBody": "Desde entonces hasta las 06:00, al reproducir se activa un temporizador de 20 minutos"
+    },
+    "remove": {
+      "label": "Quitar de este dispositivo",
+      "hint": "Cierra la sesión de {{name}} en sus servidores aquí. Su punto en cada libro sigue en el servidor.",
+      "action": "Quitar de este dispositivo",
+      "title": "¿Quitar a {{name}} de este dispositivo?",
+      "body": "Se cerrará la sesión de {{name}} en {{servers}} en este dispositivo y se borrarán sus descargas aquí. Su punto en cada libro sigue en el servidor.",
+      "noPassword": "{{name}} no tiene contraseña en {{server}}: sin una, necesitará una nueva invitación para volver a entrar.",
+      "confirm": "Quitar y cerrar sesión"
+    },
+    "household": {
+      "intro": "Todas las personas que escuchan en este dispositivo, cada una con sus servidores, su punto en cada libro, su cola y sus estadísticas.",
+      "switch": "Cambiar",
+      "askAtLaunch": "Preguntar quién escucha al abrir la app",
+      "askAtLaunchBody": "Con dos o más personas en este dispositivo",
+      "noSharing": "Ninguno de tus servidores lo ofrece todavía."
     }
   }
 }

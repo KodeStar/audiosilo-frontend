@@ -52,6 +52,11 @@ function RootNavigator() {
         <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="finished" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="year" options={{ presentation: 'fullScreenModal' }} />
+        {/* "Who's listening?" (Phase 8): chosen, never swiped away. */}
+        <Stack.Screen
+          name="profiles"
+          options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
+        />
       </Stack>
       {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
           end-of-book flow when a book reaches its natural end. */}
