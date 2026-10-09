@@ -1,10 +1,12 @@
 // Host self-check for the pure Swift parts of the iOS engine (no simulator needed):
 //   modules/audiosilo-player/ios/SelfCheck/run.sh
-// Compiled with swiftc together with ../ChapterClips.swift, ../VoiceBoostDSP.swift and ../CarArtworkPath.swift.
+// Compiled with swiftc together with ../ChapterClips.swift, ../VoiceBoostDSP.swift, ../CarArtworkPath.swift
+// and ../CarTimerPolicy.swift.
 // Excluded from the pod (AudiosiloPlayer.podspec `exclude_files`). Exits non-zero on failure.
 
 import AVFoundation
 import Foundation
+import ObjectiveC
 
 var failures = 0
 var checks = 0
@@ -334,6 +336,108 @@ do {
   let sim = "/Users/me/Library/Developer/CoreSimulator/Devices/D7A1D0E8-0000-4000-8000-000000000003/data/Containers/Data/Application/0A1B2C3D-0000-4000-8000-000000000001"
   check(CarArtworkPath.reroot("\(sim)/Documents/car-artwork/abc.jpg", home: new + "/") == "\(new)/Documents/car-artwork/abc.jpg",
         "a Simulator path anchors on the app's container, not the Mac's Library; a trailing / on home is fine")
+}
+
+// MARK: - CarTimerPolicy
+
+do {
+  var p = CarTimerPolicy()
+  // A phone-only app: never touched, whatever the phone does.
+  p.phone(foreground: true)
+  check(p.decide(timingFound: true) == .none, "phone-first launch, no car: nothing")
+  p.phone(foreground: false)
+  check(p.decide(timingFound: true) == .none, "phone backgrounded, no car: nothing (UIKit's notifications do it)")
+
+  // A CarPlay-first launch: background mode once React Native's timing exists.
+  p = CarTimerPolicy()
+  p.car(connected: true)
+  check(p.decide(timingFound: false) == .none && !p.holding, "car first, RN not started yet: wait")
+  check(p.decide(timingFound: true) == .background && p.holding, "car first, JS running: NSTimer mode")
+  check(p.decide(timingFound: true) == .background, "re-applied after an app activation")
+  // The phone app opens: back to the display link.
+  p.phone(foreground: true)
+  check(p.decide(timingFound: true) == .foreground && !p.holding, "phone scene in the foreground: display link")
+  check(p.decide(timingFound: true) == .none, "and only once")
+  // The phone is locked (or the user leaves the app) with the car still on.
+  p.phone(foreground: false)
+  check(p.decide(timingFound: true) == .background, "phone backgrounded under CarPlay: NSTimer mode")
+  // The car leaves while the phone is in the background: UIKit's DidEnterBackground holds it.
+  p.car(connected: false)
+  check(p.decide(timingFound: true) == .none && !p.holding, "car gone, phone in the background: leave RCTTiming be")
+  // The car leaves while the phone app is on screen: it was never moved.
+  p = CarTimerPolicy()
+  p.phone(foreground: true)
+  p.car(connected: true)
+  check(p.decide(timingFound: true) == .none, "car connects under a phone on screen: nothing")
+  p.car(connected: false)
+  check(p.decide(timingFound: true) == .none, "and nothing when it leaves")
+}
+
+// MARK: - ReactTiming (React Native's internals, faked with the Objective-C runtime)
+
+do {
+  /// A class with object (`@`) ivars, like React Native's Objective-C classes.
+  func makeClass(_ name: String, ivars: [String], encoding: String = "@") -> AnyClass {
+    let cls: AnyClass = objc_allocateClassPair(NSObject.self, name, 0)!
+    for ivar in ivars {
+      _ = class_addIvar(cls, ivar, MemoryLayout<AnyObject?>.size,
+                        UInt8(MemoryLayout<AnyObject?>.alignment.trailingZeroBitCount), encoding)
+    }
+    objc_registerClassPair(cls)
+    return cls
+  }
+  func make(_ cls: AnyClass, _ ivars: [String: AnyObject] = [:]) -> NSObject {
+    let object = (cls as! NSObject.Type).init()
+    for (name, value) in ivars {
+      object_setIvarWithStrongDefault(object, class_getInstanceVariable(cls, name)!, value)
+    }
+    return object
+  }
+  func addMethod(_ cls: AnyClass, _ name: String, _ block: @escaping @convention(block) (NSObject) -> AnyObject?) {
+    _ = class_addMethod(cls, NSSelectorFromString(name), imp_implementationWithBlock(block), "@@:")
+  }
+  func isFound(_ lookup: ReactTiming.Lookup, _ object: NSObject? = nil) -> Bool {
+    if case .found(let t) = lookup { return object == nil || t === object }
+    return false
+  }
+  func isNotYet(_ lookup: ReactTiming.Lookup) -> Bool { if case .notYet = lookup { return true }; return false }
+  func isMoved(_ lookup: ReactTiming.Lookup) -> Bool { if case .moved = lookup { return true }; return false }
+
+  let Host: AnyClass = makeClass("FakeRCTHost", ivars: ["_instance"])
+  let Instance: AnyClass = makeClass("FakeRCTInstance", ivars: ["_displayLink"])
+  let Link: AnyClass = makeClass("FakeRCTDisplayLink", ivars: ["_frameUpdateObservers"])
+  let Holder: AnyClass = makeClass("FakeHolder", ivars: ["_module"])
+  addMethod(Holder, "instance") { holder in
+    object_getIvar(holder, class_getInstanceVariable(type(of: holder), "_module")!) as AnyObject?
+  }
+  let Timing: AnyClass = makeClass("RCTTiming", ivars: [])
+  let Other: AnyClass = makeClass("FakeOtherObserver", ivars: [])
+
+  let timing = make(Timing)
+  let observers = NSMutableSet(array: [make(Holder, ["_module": make(Other)]), make(Holder, ["_module": timing])])
+  let link = make(Link, ["_frameUpdateObservers": observers])
+  let host = make(Host, ["_instance": make(Instance, ["_displayLink": link])])
+
+  check(isMoved(ReactTiming.find(host: host)), "an RCTTiming without the selectors: moved, never called")
+  var calls: [String] = []
+  addMethod(Timing, "appDidMoveToBackground") { _ in calls.append("background"); return nil }
+  addMethod(Timing, "appDidMoveToForeground") { _ in calls.append("foreground"); return nil }
+  check(isFound(ReactTiming.find(host: host), timing), "the RCTTiming on the display link is found")
+  if case .found(let t) = ReactTiming.find(host: host) { _ = t.perform(ReactTiming.background) }
+  check(calls == ["background"], "and takes appDidMoveToBackground: \(calls)")
+
+  check(isNotYet(ReactTiming.find(host: make(Host))), "no instance yet: not yet")
+  check(isNotYet(ReactTiming.find(host: make(Host, ["_instance": make(Instance)]))), "no display link yet: not yet")
+  let noTiming = make(Link, ["_frameUpdateObservers": NSMutableSet(array: [make(Holder, ["_module": make(Other)])])])
+  check(isNotYet(ReactTiming.find(host: make(Host, ["_instance": make(Instance, ["_displayLink": noTiming])]))),
+        "the timing not registered yet: not yet")
+  check(isMoved(ReactTiming.find(host: make(makeClass("FakeHostRenamed", ivars: ["_reactInstance"])))),
+        "a renamed host ivar: moved")
+  check(isMoved(ReactTiming.find(host: make(makeClass("FakeHostScalar", ivars: ["_instance"], encoding: "q")))),
+        "a non-object ivar is never read as an object: moved")
+  let oddLink = make(makeClass("FakeLinkRenamed", ivars: ["_observers"]))
+  check(isMoved(ReactTiming.find(host: make(Host, ["_instance": make(Instance, ["_displayLink": oddLink])]))),
+        "a renamed observer set: moved")
 }
 
 print("\(checks - failures)/\(checks) checks passed")

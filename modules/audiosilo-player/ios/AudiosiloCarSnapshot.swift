@@ -136,6 +136,8 @@ final class AudiosiloCarEvents {
 
   func startObserving(_ name: String, module: AudiosiloPlayerModule) {
     onMain {
+      // JS runs: a car that connected first gets its timers now (`AudiosiloJSTimers`).
+      MainActor.assumeIsolated { AudiosiloJSTimers.jsStarted() }
       if self.module !== module {
         self.module = module
         self.observing.removeAll()

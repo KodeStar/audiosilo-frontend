@@ -147,7 +147,17 @@ public class AudiosiloPlayerModule: Module {
       if let self = self { AudiosiloCarEvents.shared.stopObserving("onCarPlayRequest", module: self) }
     }
 
+    // React Native registers its timing module right after Expo creates the modules (on the JS
+    // thread, as the runtime starts): a CarPlay-first launch needs it found even if JS never
+    // gets as far as listening for car events.
+    OnCreate {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        MainActor.assumeIsolated { AudiosiloJSTimers.jsStarted() }
+      }
+    }
+
     OnDestroy { [weak self] in
+      DispatchQueue.main.async { MainActor.assumeIsolated { AudiosiloJSTimers.jsStopped() } }
       onMain {
         self?.engine?.reset()
         self?.engine = nil

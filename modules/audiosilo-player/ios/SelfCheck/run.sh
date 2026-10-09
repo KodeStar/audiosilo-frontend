@@ -1,7 +1,8 @@
 #!/bin/sh
 # Compile and run the host self-check for the iOS engine's pure Swift parts (the lock screen's
 # chapter-clip maths; Voice Boost's DSP on synthetic signals and on `say` speech; the car covers'
-# re-rooting into the current app container).
+# re-rooting into the current app container; when JS timers leave the display link under CarPlay,
+# and finding React Native's timing module, against Objective-C runtime fakes).
 # Needs only the Xcode toolchain (no simulator). Usage: modules/audiosilo-player/ios/SelfCheck/run.sh
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
@@ -9,5 +10,5 @@ out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 xcrun swiftc -O -o "$out/selfcheck" \
   "$here/../VoiceBoostDSP.swift" "$here/../ChapterClips.swift" "$here/../CarArtworkPath.swift" \
-  "$here/main.swift"
+  "$here/../CarTimerPolicy.swift" "$here/main.swift"
 "$out/selfcheck"
