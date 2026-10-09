@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { ApiClient } from '@/api/client';
+import { ApiClient, SERIES_BOOKS_MAX_NAMES } from '@/api/client';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -1367,5 +1367,233 @@ describe('ApiClient annotations (Phase 4)', () => {
       method: 'GET',
     });
     expect(sent(fetchMock, 1).url).toBe('https://h/api/v1/me/history?limit=100&cursor=h2');
+  });
+});
+
+describe('ApiClient series books (series_books)', () => {
+  /** A server answering GET /libraries/{id}/series/books: per distinct name, one book
+   * titled after it and a cursor to its second page. */
+  function seriesServer() {
+    return installFetch((url) => {
+      const names = [...new Set(new URL(url).searchParams.getAll('name'))];
+      return {
+        status: 200,
+        body: {
+          series: names.map((name) => ({
+            name,
+            books: [{ title: name }],
+            next_cursor: `${name}-2`,
+          })),
+        },
+      };
+    });
+  }
+  const namesOf = (fetchMock: jest.Mock, i: number) =>
+    new URL(sent(fetchMock, i).url).searchParams.getAll('name');
+
+  /** A fetch that answers only when the test says so, recording each call's signal. */
+  function deferredFetch() {
+    const calls: { url: string; signal: AbortSignal; answer: (body: unknown) => void }[] = [];
+    globalThis.fetch = jest.fn(
+      (input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const signal = init!.signal!;
+          signal.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+          );
+          calls.push({
+            url: String(input),
+            signal,
+            answer: (body) =>
+              resolve({
+                ok: true,
+                status: 200,
+                statusText: '',
+                text: () => Promise.resolve(JSON.stringify(body)),
+              } as Response),
+          });
+        }),
+    ) as unknown as typeof globalThis.fetch;
+    return calls;
+  }
+  /** Let the batch window close and the request go out. */
+  const windowCloses = () => new Promise((r) => setTimeout(r, 30));
+
+  it('asks for several series at once with the name repeated, the list unwrapped', async () => {
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: {
+        series: [
+          { name: 'A & B', books: null },
+          { name: 'C', books: [{ id: 1 }] },
+        ],
+      },
+    }));
+    const entries = await new ApiClient('https://h', 'tok').seriesBooks(2, ['A & B', 'C'], {
+      limit: 100,
+    });
+    expect(sent(fetchMock).url).toBe(
+      'https://h/api/v1/libraries/2/series/books?name=A+%26+B&name=C&limit=100',
+    );
+    expect(entries).toEqual([
+      { name: 'A & B', books: [] },
+      { name: 'C', books: [{ id: 1 }] },
+    ]);
+  });
+
+  it('answers every series asked for within the window with one request', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    const pages = await Promise.all([
+      c.seriesBooksPage(2, 'Discworld', { limit: 100 }),
+      c.seriesBooksPage(2, 'City Watch / Night', { limit: 100 }),
+      c.seriesBooksPage(2, 'Discworld', { limit: 100 }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sent(fetchMock).url).toBe(
+      'https://h/api/v1/libraries/2/series/books?name=Discworld&name=City+Watch+%2F+Night&limit=100',
+    );
+    expect(pages).toEqual([
+      { books: [{ title: 'Discworld' }], next_cursor: 'Discworld-2' },
+      { books: [{ title: 'City Watch / Night' }], next_cursor: 'City Watch / Night-2' },
+      { books: [{ title: 'Discworld' }], next_cursor: 'Discworld-2' },
+    ]);
+  });
+
+  it('splits more than 50 names into requests of at most 50', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    const names = Array.from({ length: 51 }, (_, i) => `S${i}`);
+    const pages = await Promise.all(names.map((n) => c.seriesBooksPage(2, n)));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(namesOf(fetchMock, 0)).toEqual(names.slice(0, SERIES_BOOKS_MAX_NAMES));
+    expect(namesOf(fetchMock, 1)).toEqual(['S50']);
+    expect(pages.map((p) => p.books[0].title)).toEqual(names);
+  });
+
+  it('sends a request per library and per limit', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    await Promise.all([
+      c.seriesBooksPage(2, 'A'),
+      c.seriesBooksPage(3, 'B'),
+      c.seriesBooksPage(2, 'C', { limit: 20 }),
+      c.seriesBooksPage(2, 'D'),
+    ]);
+    expect(fetchMock.mock.calls.map((call) => String(call[0])).sort()).toEqual([
+      'https://h/api/v1/libraries/2/series/books?name=A&name=D',
+      'https://h/api/v1/libraries/2/series/books?name=C&limit=20',
+      'https://h/api/v1/libraries/3/series/books?name=B',
+    ]);
+  });
+
+  it('starts a new batch once the window has closed', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    await c.seriesBooksPage(2, 'A');
+    await c.seriesBooksPage(2, 'B');
+    expect([namesOf(fetchMock, 0), namesOf(fetchMock, 1)]).toEqual([['A'], ['B']]);
+  });
+
+  it('rejects every caller in a failed request, and only those', async () => {
+    const fetchMock = installFetch((url) =>
+      new URL(url).pathname.includes('/libraries/2/')
+        ? { status: 500, body: { error: 'boom' } }
+        : { status: 200, body: { series: [{ name: 'C', books: [] }] } },
+    );
+    const c = new ApiClient('https://h', 'tok');
+    const results = await Promise.allSettled([
+      c.seriesBooksPage(2, 'A'),
+      c.seriesBooksPage(2, 'B'),
+      c.seriesBooksPage(3, 'C'),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected', 'fulfilled']);
+    expect((results[0] as PromiseRejectedResult).reason).toMatchObject({
+      name: 'ApiError',
+      status: 500,
+    });
+  });
+
+  it('asks /books for a name the answer leaves out', async () => {
+    const fetchMock = installFetch((url) =>
+      url.includes('/series/books')
+        ? { status: 200, body: { series: [{ name: 'A', books: [] }] } }
+        : { status: 200, body: { books: [{ title: 'B1' }] } },
+    );
+    const c = new ApiClient('https://h', 'tok');
+    const [, b] = await Promise.all([c.seriesBooksPage(2, 'A'), c.seriesBooksPage(2, 'B')]);
+    expect(b).toEqual({ books: [{ title: 'B1' }] });
+    expect(sent(fetchMock, 1).url).toBe(
+      'https://h/api/v1/libraries/2/books?series=B&memberships=1',
+    );
+  });
+
+  it("drops a caller's name when it aborts before the request goes out", async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    const gone = new AbortController();
+    const a = c.seriesBooksPage(2, 'A', {}, gone.signal);
+    const b = c.seriesBooksPage(2, 'B');
+    gone.abort();
+    await expect(a).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(b).resolves.toMatchObject({ books: [{ title: 'B' }] });
+    expect(namesOf(fetchMock, 0)).toEqual(['B']);
+  });
+
+  it('sends nothing when every caller has aborted before the window closes', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    const gone = new AbortController();
+    const a = c.seriesBooksPage(2, 'A', {}, gone.signal);
+    gone.abort();
+    await expect(a).rejects.toMatchObject({ name: 'AbortError' });
+    await windowCloses();
+    expect(fetchMock).not.toHaveBeenCalled();
+    // An already aborted signal never joins a batch.
+    await expect(c.seriesBooksPage(2, 'A', {}, gone.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+  });
+
+  it('keeps a shared request going when one of its callers aborts', async () => {
+    const calls = deferredFetch();
+    const c = new ApiClient('https://h', 'tok');
+    const gone = new AbortController();
+    const a = c.seriesBooksPage(2, 'A', {}, gone.signal);
+    const sameName = c.seriesBooksPage(2, 'A');
+    const b = c.seriesBooksPage(2, 'B');
+    await windowCloses();
+    expect(calls).toHaveLength(1);
+    gone.abort();
+    await expect(a).rejects.toMatchObject({ name: 'AbortError' });
+    expect(calls[0].signal.aborted).toBe(false);
+    calls[0].answer({
+      series: [
+        { name: 'A', books: [{ title: 'A' }] },
+        { name: 'B', books: [{ title: 'B' }] },
+      ],
+    });
+    await expect(sameName).resolves.toEqual({ books: [{ title: 'A' }] });
+    await expect(b).resolves.toEqual({ books: [{ title: 'B' }] });
+  });
+
+  it('aborts a request in flight once every caller in it has aborted', async () => {
+    const calls = deferredFetch();
+    const c = new ApiClient('https://h', 'tok');
+    const one = new AbortController();
+    const two = new AbortController();
+    const a = expect(c.seriesBooksPage(2, 'A', {}, one.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    const b = expect(c.seriesBooksPage(2, 'B', {}, two.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    await windowCloses();
+    one.abort();
+    expect(calls[0].signal.aborted).toBe(false);
+    two.abort();
+    await Promise.all([a, b]);
+    expect(calls[0].signal.aborted).toBe(true);
   });
 });

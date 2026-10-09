@@ -51,6 +51,8 @@ import type {
   RatedBook,
   Rating,
   RatingValue,
+  SeriesBooks,
+  SeriesBooksEntry,
   SeriesCount,
   ServerAddresses,
   ServerInfo,
@@ -90,7 +92,8 @@ export class TimeoutError extends Error {
 }
 
 type QueryValue = string | number | boolean | undefined | null;
-type Query = Record<string, QueryValue>;
+/** A list value is sent as the key repeated once per item (`name=A&name=B`). */
+type Query = Record<string, QueryValue | readonly QueryValue[]>;
 
 /** Options of `bookMeta` (capability `meta_bundle`; an older server ignores both). */
 export type BookMetaOptions = { includePrevious?: boolean; hideSpoilers?: boolean };
@@ -114,6 +117,29 @@ export type BookListQuery = {
  * worst). */
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
+/** How long `seriesBooksPage` collects series names before it asks: every card
+ * rendered in one commit (their queries start in the same task) lands in one request,
+ * and a few ms is not felt. */
+const SERIES_BATCH_WINDOW_MS = 10;
+
+/** The most distinct names one GET /libraries/{id}/series/books takes (400 beyond). */
+export const SERIES_BOOKS_MAX_NAMES = 50;
+
+/** One caller of `seriesBooksPage`, waiting for its series' page. */
+type SeriesWaiter = { resolve: (page: BookPage) => void; reject: (e: unknown) => void };
+
+/** One series name in a batch: its callers still waiting, and once the batch has been
+ * sent, the request it rides in. */
+type SeriesSlot = { waiters: Set<SeriesWaiter>; request?: AbortController };
+
+/** The error a caller's `seriesBooksPage` rejects with when its own signal aborts (the
+ * `AbortError` name the reachability layer reads as a deliberate cancel). */
+function abortError(): Error {
+  const e = new Error('Aborted');
+  e.name = 'AbortError';
+  return e;
+}
+
 /** Just the `{library_id, path}` of each entry: the server decodes list bodies
  * strictly, so a cached `QueueEntry`/`CollectionItem` (with `added_at`, `book`)
  * passed as a ref would otherwise be a 400. */
@@ -125,7 +151,9 @@ function toQueryString(query?: Query): string {
   if (!query) return '';
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null) params.set(key, String(value));
+    for (const v of Array.isArray(value) ? value : [value]) {
+      if (v !== undefined && v !== null) params.append(key, String(v));
+    }
   }
   const s = params.toString();
   return s ? `?${s}` : '';
@@ -146,6 +174,9 @@ export class ApiClient {
   private readonly clientHeaders: Record<string, string>;
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
+  /** The series names `seriesBooksPage` is collecting, per `libraryId:limit`, until the
+   * window closes. */
+  private readonly seriesBatches = new Map<string, Map<string, SeriesSlot>>();
 
   /**
    * `onAuthError` is invoked once whenever a request produces an HTTP **401** - a
@@ -394,6 +425,118 @@ export class ApiClient {
       signal,
     });
     return { ...r, books: r.books ?? [] };
+  }
+  /** The first page of several series' books in one request (capability
+   * `series_books`; at most {@link SERIES_BOOKS_MAX_NAMES} distinct names, and at least
+   * one): per name, exactly what `listBooks(libraryId, {series: name, memberships: true,
+   * limit})` would answer, so its `next_cursor` continues there. Entries come in request
+   * order, a repeated name answered once. Prefer `seriesBooksPage`, which batches the
+   * callers of one moment into these requests. */
+  async seriesBooks(
+    libraryId: number,
+    names: readonly string[],
+    { limit }: { limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<SeriesBooksEntry[]> {
+    const r = await this.request<SeriesBooks>('GET', `/libraries/${libraryId}/series/books`, {
+      query: { name: names, limit },
+      signal,
+    });
+    return (r.series ?? []).map((e) => ({ ...e, books: e.books ?? [] }));
+  }
+  /**
+   * The first page of one series' books (as `listBooks` with `series`, `memberships`
+   * and `limit`), fetched TOGETHER with every other series asked for in the same few
+   * milliseconds (`SERIES_BATCH_WINDOW_MS`) on the same library and `limit`: one
+   * `seriesBooks` request per {@link SERIES_BOOKS_MAX_NAMES} distinct names, so a
+   * screen of series cards is one request, not one per card. Needs `series_books`.
+   *
+   * Abort: the request is shared, so one caller's `signal` never cancels it. An aborted
+   * caller rejects at once with an `AbortError` and leaves the batch: before it is sent
+   * its name is dropped (when nobody else asked for it), and once it is in flight the
+   * request is aborted only when every caller in it has left. A failed request rejects
+   * every caller in it. A name the answer leaves out (which the server shouldn't do)
+   * is asked for on its own through `listBooks`.
+   */
+  seriesBooksPage(
+    libraryId: number,
+    name: string,
+    { limit }: { limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<BookPage> {
+    if (signal?.aborted) return Promise.reject(abortError());
+    const key = `${libraryId}:${limit ?? ''}`;
+    let batch = this.seriesBatches.get(key);
+    if (!batch) {
+      const opened = new Map<string, SeriesSlot>();
+      batch = opened;
+      this.seriesBatches.set(key, opened);
+      setTimeout(() => {
+        this.seriesBatches.delete(key);
+        this.sendSeriesBatch(libraryId, limit, opened);
+      }, SERIES_BATCH_WINDOW_MS);
+    }
+    let slot = batch.get(name);
+    if (!slot) {
+      slot = { waiters: new Set() };
+      batch.set(name, slot);
+    }
+    const inBatch = batch;
+    const mine = slot;
+    return new Promise<BookPage>((resolve, reject) => {
+      const onAbort = () => {
+        mine.waiters.delete(waiter);
+        reject(abortError());
+        if (mine.waiters.size > 0) return;
+        const inFlight = mine.request;
+        if (!inFlight) inBatch.delete(name);
+        else if (![...inBatch.values()].some((s) => s.request === inFlight && s.waiters.size > 0))
+          inFlight.abort();
+      };
+      const settled = () => signal?.removeEventListener('abort', onAbort);
+      const waiter: SeriesWaiter = {
+        resolve: (page) => (settled(), resolve(page)),
+        reject: (e) => (settled(), reject(e)),
+      };
+      mine.waiters.add(waiter);
+      signal?.addEventListener('abort', onAbort);
+    });
+  }
+  /** Send one closed `seriesBooksPage` batch: a `seriesBooks` request per chunk of
+   * {@link SERIES_BOOKS_MAX_NAMES} names, each settling its own callers. */
+  private sendSeriesBatch(
+    libraryId: number,
+    limit: number | undefined,
+    batch: Map<string, SeriesSlot>,
+  ) {
+    const names = [...batch.keys()];
+    for (let i = 0; i < names.length; i += SERIES_BOOKS_MAX_NAMES) {
+      const chunk = names.slice(i, i + SERIES_BOOKS_MAX_NAMES);
+      const request = new AbortController();
+      for (const name of chunk) batch.get(name)!.request = request;
+      const settle = (name: string, page: () => Promise<BookPage>) => {
+        const { waiters } = batch.get(name)!;
+        if (waiters.size === 0) return;
+        page().then(
+          (p) => waiters.forEach((w) => w.resolve(p)),
+          (e) => waiters.forEach((w) => w.reject(e)),
+        );
+      };
+      this.seriesBooks(libraryId, chunk, { limit }, request.signal).then(
+        (entries) => {
+          const byName = new Map(entries.map(({ name, ...page }) => [name, page]));
+          for (const name of chunk) {
+            const page = byName.get(name);
+            settle(name, () =>
+              page
+                ? Promise.resolve(page)
+                : this.listBooks(libraryId, { series: name, memberships: true, limit }),
+            );
+          }
+        },
+        (e) => chunk.forEach((name) => settle(name, () => Promise.reject(e))),
+      );
+    }
   }
   // The browse lists (capability `browse_people`): every distinct author, narrator
   // or series in a library with counts, limited to the caller's share scope.

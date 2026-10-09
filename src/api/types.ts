@@ -35,6 +35,11 @@ export type Capabilities = {
    * `/libraries/{id}/series` to match and count a book in every series it is in.
    * Absent on older servers - treat missing as false (main series only). */
   series_memberships?: boolean;
+  /** Whether `/libraries/{id}/series/books?name=...` answers the first page of several
+   * series' books in one request ({@link SeriesBooks}). Comes with `series_memberships`.
+   * Absent on older servers - treat missing as false and ask `/libraries/{id}/books`
+   * once per series. */
+  series_books?: boolean;
   /** Whether the server resolves what to play after a book (`/libraries/{id}/next`,
    * {@link NextBook}). Absent on older servers - treat missing as false and keep the
    * client-side folder-sibling fallback. */
@@ -335,6 +340,16 @@ export type BookSort = 'author' | 'title' | 'recent';
 /** Response of GET /libraries/{id}/books: one keyset page. `next_cursor` is absent
  * once the list is exhausted. */
 export type BookPage = { books: Book[]; next_cursor?: string };
+
+/** One series of GET /libraries/{id}/series/books (capability `series_books`): exactly
+ * the page `GET /libraries/{id}/books?series=<name>&memberships=1&limit=N` would return
+ * (default sort; `books` is `[]` for none), so `next_cursor` (absent once exhausted)
+ * continues on that `/books` query. */
+export type SeriesBooksEntry = BookPage & { name: string };
+
+/** Response of GET /libraries/{id}/series/books: one entry per distinct requested name,
+ * in request order. */
+export type SeriesBooks = { series: SeriesBooksEntry[] };
 
 /** One distinct author or narrator in a library, with their book count and total
  * `duration` (seconds). `name` is one person: a "Kramer & Reading" credit counts

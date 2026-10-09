@@ -782,7 +782,11 @@ export type LibraryBooksOptions = {
  * `browse_people` (an older server ignores it and would answer with the whole
  * library), so with one the query only runs once the server advertises the flag. A
  * `series` filter waits for `/server` (unless it fails) to learn whether to ask with
- * `memberships` (`series_memberships`). */
+ * `memberships` (`series_memberships`). A plain series list (no other filter or sort)
+ * on a server with `series_books` fetches its first page through `seriesBooksPage`,
+ * one request for every series card on screen; later pages, and every other list, use
+ * `listBooks`. Either way the cache entry is the same, so the series page reuses a
+ * card's answer. */
 export function useLibraryBooks(
   libraryId: number,
   query: BookListQuery = {},
@@ -800,13 +804,30 @@ export function useLibraryBooks(
   const serverFailed = useServerInfo(connectionId).isError;
   const seriesReady = !query.series || memberships !== undefined || serverFailed;
   const effective = query.series && memberships ? { ...query, memberships: true } : query;
+  // The batch answers exactly `series` + `memberships` in the default sort. Its flag
+  // comes in the same /server answer `seriesReady` waits for, so a card never asks
+  // alone first and then in a batch.
+  const batchedSeries =
+    useCapability('series_books', connectionId) === true &&
+    effective.memberships &&
+    !effective.author &&
+    !effective.narrator &&
+    !effective.sort
+      ? effective.series
+      : undefined;
   const key = qk.libraryBooks(cid, libraryId, effective);
   return useInfiniteQuery({
     queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
     queryFn:
       api && (!query.narrator || narratorOk) && seriesReady
         ? ({ pageParam, signal }) =>
-            api.listBooks(libraryId, { ...effective, limit: pageSize, cursor: pageParam }, signal)
+            batchedSeries && pageParam === undefined
+              ? api.seriesBooksPage(libraryId, batchedSeries, { limit: pageSize }, signal)
+              : api.listBooks(
+                  libraryId,
+                  { ...effective, limit: pageSize, cursor: pageParam },
+                  signal,
+                )
         : skipToken,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
