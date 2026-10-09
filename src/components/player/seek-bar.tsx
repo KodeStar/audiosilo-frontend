@@ -63,10 +63,8 @@ export type SeekBarProps = {
    * whatever sits just above the bar, which the caller can make way for (the full
    * player's status line). */
   onTip?: (showing: boolean) => void;
-  /** Whether a web hover shows the tip (default on; the hovered bars shade either way).
-   * The full player turns it off while its Undo chip is up: the pointer stays on the bar
-   * after a click, and the tip would hide the chip that click just made. A drag's tip
-   * always shows. */
+  /** Whether a web hover shows the tip (default on): the hovered bars shade either way,
+   * and a drag's tip always shows. */
   hoverTip?: boolean;
   /** Seeds the bar texture: one per book and chapter (`seekTextureKey`). */
   textureKey: string;

@@ -10,11 +10,11 @@ import { useBookCommunity } from '@/components/library/use-book-community';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
 import { useLatest } from '@/lib/use-latest';
-import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
+import { selectIsPlaying, usePlayer } from '@/playback/store';
 
 import { usePlayerOnTop, usePlayerSheets } from '../player-sheets';
 import { usePlayingTarget } from '../playing-target';
-import { selectPlacedBookKey } from '../use-listening-position';
+import { selectLivePosition } from '../use-listening-position';
 import type { PlayTarget } from '../use-play-book';
 import { REVEAL_WATCH_START, revealOnCrossing, watchReveal } from './companion-model';
 import { useCompanion } from './companion-store';
@@ -34,10 +34,8 @@ export function showWhoIsWho(playerOnTop: boolean) {
  * without rendering; the rules are `watchReveal` (only a natural crossing while playing:
  * never a load, a resume, a seek or a skip, though a pause or a file change on the way is
  * fine) and `revealOnCrossing` (never anyone already met this session, never a finished
- * book). The chapter is read exactly as Who's who's gate reads it (`useListeningChapter`):
- * the exact live place, so the reveal lands at the chapter's start, and only once the
- * book's own place is known (`selectPlacedBookKey`), so the toast and the panel always
- * agree on who is there.
+ * book). The chapter is read at Who's who's place, gated by `useListeningChapter`
+ * (`selectLivePosition`), so the toast and the panel always agree on who is there.
  */
 function Watcher({
   target,
@@ -73,15 +71,11 @@ function Watcher({
     const key = contentKey(target.connectionId, target.libraryId, target.path);
     let watch = REVEAL_WATCH_START;
     const look = (s: ReturnType<typeof usePlayer.getState>) => {
-      const position = selectBookPosition(s);
+      const position = selectLivePosition(s, key);
       const next =
-        selectPlacedBookKey(s) === key
-          ? {
-              position,
-              playing: selectIsPlaying(s),
-              chapter: chapterNumberAt(starts, position),
-            }
-          : null;
+        position === undefined
+          ? null
+          : { position, playing: selectIsPlaying(s), chapter: chapterNumberAt(starts, position) };
       const seen = watchReveal(watch, next);
       watch = seen.watch;
       const c = seen.crossing;

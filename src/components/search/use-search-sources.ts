@@ -12,6 +12,7 @@ import {
 } from '@/api/hooks';
 import { useApiRegistry } from '@/api/provider';
 import type { BookMeta, PeopleList, SeriesCount } from '@/api/types';
+import { LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
 import { useLivePosition } from '@/components/player/use-listening-position';
 import { contentKey } from '@/lib/content-key';
 
@@ -32,9 +33,6 @@ import {
 
 /** Same freshness as the browse lists (`hooks.ts`). */
 const BROWSE_STALE_MS = 5 * 60_000;
-/** How coarsely the loaded book's live position is sampled (as the book page does): a
- * reveal is only ever late by this much, never early. */
-const LIVE_POSITION_BUCKET_S = 15;
 
 type BrowseKind = 'authors' | 'narrators' | 'series';
 

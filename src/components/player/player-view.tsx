@@ -158,9 +158,10 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // never sits on top of words.
   const [tip, setTip] = useState(false);
   const [timelineTip, setTimelineTip] = useState(false);
-  // The Undo chip lives in that status slot, and wins over the seek bar's HOVER tip: on
-  // the web the pointer is still on the bar after the click that made the chip, so the
-  // tip would keep the chip hidden for its whole life. A drag's tip still shows.
+  // The Undo chip lives in that status slot, and wins over the seek bar's HOVER tip, which
+  // the bar then does not draw: on the web the pointer is still on the bar after the
+  // click that made the chip, so the tip would keep the chip hidden for its whole life
+  // (or, drawn over a visible slot, sit on top of it). A drag's tip still shows.
   const undo = useUndoVisible();
   // The playing book's bookmarks and notes, once for both scrubbers.
   const pins = usePlayingPins();

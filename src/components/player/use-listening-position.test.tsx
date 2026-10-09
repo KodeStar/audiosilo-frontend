@@ -14,6 +14,7 @@ import { contentKey } from '@/lib/content-key';
 import { usePlayer } from '@/playback/store';
 
 import {
+  selectLivePosition,
   useBookPlace,
   useListeningChapter,
   useLivePosition,
@@ -76,6 +77,21 @@ describe('useResumePosition', () => {
     expect(result.current).toBe(100);
     await setPlayer({ key, position: 650, loadingBook: null });
     expect(result.current).toBe(645);
+  });
+});
+
+describe('selectLivePosition', () => {
+  it("is the book's exact live place while it is the placed one, else undefined", async () => {
+    const key = contentKey('c', 1, 'Book');
+    const read = () => selectLivePosition(usePlayer.getState() as never, key);
+    await setPlayer({ key, position: 1207.4, loadingBook: null });
+    expect(read()).toBe(1207.4);
+    await setPlayer({ key: contentKey('c', 1, 'Other'), position: 999 });
+    expect(read()).toBeUndefined();
+    // A new book's load: the snapshot is still the previous book's place.
+    await setPlayer({ key, position: 999, loadingBook: key });
+    expect(read()).toBeUndefined();
+    await setPlayer({ key: null, position: 0, loadingBook: null });
   });
 });
 

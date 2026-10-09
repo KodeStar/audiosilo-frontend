@@ -13,14 +13,12 @@ import { chapterBookOffset } from '@/playback/book-queue';
 export type ListeningProgress = { chapter: number; finished: boolean };
 
 /**
- * How coarsely a spoiler-gated surface samples the player's live position (seconds):
- * the book page and Home's Previously on. (The player's companion and its reveal toast
- * select the chapter NUMBER instead, which needs no bucket: `useListeningChapter`.) The
- * gate only needs to know which CHAPTER the listener is in, so subscribing to the
- * per-tick position
- * would re-render long lists every second for nothing. Rounding DOWN can delay a
- * reveal by at most this long at a chapter boundary - it can never reveal something
- * early, which is the direction that matters.
+ * How coarsely a spoiler-gated surface samples the player's live position (seconds),
+ * for the book page and Home's Previously on. The gate only needs to know which CHAPTER
+ * the listener is in, so subscribing to the per-tick position would re-render long lists
+ * every second for nothing. Rounding DOWN can delay a reveal by at most this long at a
+ * chapter boundary - it can never reveal something early, which is the direction that
+ * matters.
  */
 export const LIVE_POSITION_BUCKET_S = 15;
 

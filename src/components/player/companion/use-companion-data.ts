@@ -40,10 +40,8 @@ const NO_RECAPS: BookMetaRecap[] = [];
 /**
  * The community metadata of `target` and the listener's place in it, gated exactly as
  * the book page gates it (`meta-gating.ts`: the same position, the same corrected
- * chapter starts), except that the live place is exact, not in the page's 15 s steps
- * (`useListeningChapter`): at a chapter boundary the companion can be up to that much
- * ahead of the page, never ahead of the listener. Call it inside a `ConnectionScope` for the
- * book's own connection (the meta query reads the route scope).
+ * chapter starts), gated by `useListeningChapter`. Call it inside a `ConnectionScope`
+ * for the book's own connection (the meta query reads the route scope).
  */
 export function useCompanionData(target: PlayTarget): CompanionData {
   const { connectionId, libraryId, path } = target;

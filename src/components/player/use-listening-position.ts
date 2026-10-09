@@ -25,6 +25,15 @@ export function selectPlacedBookKey(s: PlayerSlice): string | null {
 }
 
 /**
+ * The exact live whole-book position of the book `key` while it is the placed one
+ * (`selectPlacedBookKey`), else undefined. The one reading of the live place for the
+ * companion's gate (`useListeningChapter`) and its reveal toast, so the two agree.
+ */
+export function selectLivePosition(s: PlayerSlice, key: string): number | undefined {
+  return selectPlacedBookKey(s) === key ? selectBookPosition(s) : undefined;
+}
+
+/**
  * The loaded book's live whole-book position in `bucketS` steps (rounded down) and
  * whether it has moved off 0, while `target` is that book (and placed,
  * `selectPlacedBookKey`); undefined otherwise. ONE selector per tick for both readings
@@ -89,11 +98,11 @@ const listeningPosition = (live: number | undefined, saved: number | undefined) 
 
 /**
  * The 1-based chapter the listener is in (`chapterNumberAt` on `chapterStarts`, 0 when
- * nothing is known): `useBookPlace`'s `listening` rule on the EXACT live place, selected
- * as a NUMBER, so a playing book re-renders the caller only when the chapter changes.
- * No bucket is needed for that (the number is the coarse reading), so the chapter turns
- * over at the boundary itself, never before the listener reaches it. The companion's gate
- * and the reveal toast read it this way, and agree.
+ * nothing is known): `useBookPlace`'s `listening` rule on the EXACT live place
+ * (`selectLivePosition`), selected as a NUMBER, so a playing book re-renders the caller
+ * only when the chapter changes. No bucket is needed for that (the number is the coarse
+ * reading), so the chapter turns over at the boundary itself, never before the listener
+ * reaches it. The companion's gate reads it, and the reveal toast reads the same place.
  */
 export function useListeningChapter(
   target: PlayTarget,
@@ -102,8 +111,7 @@ export function useListeningChapter(
 ): number {
   const key = contentKey(target.connectionId, target.libraryId, target.path);
   return usePlayer((s) => {
-    const live = selectPlacedBookKey(s) === key ? selectBookPosition(s) : undefined;
-    const position = listeningPosition(live, saved);
+    const position = listeningPosition(selectLivePosition(s, key), saved);
     return position == null ? 0 : chapterNumberAt(chapterStarts, position);
   });
 }
