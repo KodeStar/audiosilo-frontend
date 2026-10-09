@@ -1,4 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// The player store, as far as a profile switch uses it: what is loaded, and `stop` (pause,
+// save, unload).
+const mockPlayer = {
+  nowPlaying: null as { connectionId: string } | null,
+  stop: jest.fn(async () => {
+    mockPlayer.nowPlaying = null;
+  }),
+};
+jest.mock('@/playback/store', () => ({ usePlayer: { getState: () => mockPlayer } }));
+
 import { act, renderHook } from '@testing-library/react-native';
 
 import type { User } from '@/api/types';
@@ -70,6 +81,8 @@ function setSession(connections: Connection[], defaultId: string | null = null) 
 
 beforeEach(async () => {
   n = 0;
+  mockPlayer.nowPlaying = null;
+  mockPlayer.stop.mockClear();
   await AsyncStorage.clear();
   resetProfilesForTests();
   useSession.setState({
@@ -342,5 +355,60 @@ describe('the store', () => {
     expect(result.current.profile?.id).toBe(sam);
     expect(result.current.connections.map((c) => c.id)).toEqual([A2.id]);
     expect(result.current.connections).not.toBe(first);
+  });
+});
+
+describe('switchProfile', () => {
+  beforeEach(async () => {
+    setSession([A1, B1, A2], A1.id);
+    await useProfiles.getState().hydrate();
+  });
+
+  it("unloads another person's playing book (paused and saved by stop) and moves the default", async () => {
+    mockPlayer.nowPlaying = { connectionId: B1.id };
+    const sam = profileOf(A2.id)!.id;
+    await switchProfile(sam);
+    expect(activeProfile()?.id).toBe(sam);
+    expect(mockPlayer.stop).toHaveBeenCalledTimes(1);
+    expect(useSession.getState().defaultConnectionId).toBe(A2.id);
+    const stored = JSON.parse((await AsyncStorage.getItem(PROFILES_KEY))!) as ProfilesDoc;
+    expect(stored.activeProfileId).toBe(sam);
+  });
+
+  it("keeps a book of the new person's own servers playing", async () => {
+    const sam = profileOf(A2.id)!.id;
+    await switchProfile(sam);
+    mockPlayer.nowPlaying = { connectionId: B1.id };
+    await switchProfile(profileOf(A1.id)!.id);
+    expect(mockPlayer.stop).not.toHaveBeenCalled();
+    // The default was Sam's: it moves to Chris's first server, in session order.
+    expect(useSession.getState().defaultConnectionId).toBe(A1.id);
+  });
+
+  it('keeps a default that is already one of the new profile', async () => {
+    useSession.setState({ defaultConnectionId: B1.id });
+    await switchProfile(profileOf(A1.id)!.id);
+    expect(useSession.getState().defaultConnectionId).toBe(B1.id);
+  });
+
+  it('an unknown profile changes nothing', async () => {
+    const before = activeProfile();
+    await switchProfile('nobody');
+    expect(activeProfile()).toBe(before);
+  });
+
+  it("a removal that leaves the default on someone else's server moves it back", async () => {
+    // Chris is active (A1, B1); the session's own fallback after removing A1 is its first
+    // remaining connection (B1), already Chris's: kept.
+    await act(async () => {
+      await useSession.getState().removeConnection(A1.id);
+    });
+    expect(useSession.getState().defaultConnectionId).toBe(B1.id);
+    // Removing B1 too deletes Chris's profile: Sam becomes active, with his default.
+    await act(async () => {
+      await useSession.getState().removeConnection(B1.id);
+    });
+    expect(activeProfile()?.connectionIds).toEqual([A2.id]);
+    expect(useSession.getState().defaultConnectionId).toBe(A2.id);
   });
 });

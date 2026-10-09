@@ -263,6 +263,9 @@ type SessionState = {
   learnAddresses: (id: string, fresh: ServerAddresses | undefined) => Promise<void>;
   /** Update the default connection's user (sugar over `setConnectionUser`). */
   setUser: (user: User) => Promise<void>;
+  /** Make a signed-in connection the default (a profile switch: the new person's first
+   * server, `src/stores/profiles.ts`). A no-op for an unknown id or the default itself. */
+  setDefaultConnection: (id: string) => Promise<void>;
   /** Remove one connection (deleting its token). Sign-out goes through this (via
    * `teardownBeforeTokenRevoke` first - see `use-sign-out.ts`), so there is no separate
    * `logout()`: it would revoke the token without the pre-revoke stop-playback + flush. */
@@ -511,6 +514,13 @@ export const useSession = create<SessionState>()((set, get) => ({
   setUser: async (user) => {
     const { defaultConnectionId } = get();
     if (defaultConnectionId) await get().setConnectionUser(defaultConnectionId, user);
+  },
+
+  setDefaultConnection: async (id) => {
+    const { connections, defaultConnectionId } = get();
+    if (id === defaultConnectionId || !connections.some((c) => c.id === id)) return;
+    set(mirror(connections, id));
+    await persist(connections, id);
   },
 
   removeConnection: async (id) => {

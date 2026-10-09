@@ -50,6 +50,7 @@ import {
   resolveLibrarySelection,
   useLibrarySelection,
 } from '@/stores/library-selection';
+import { profileConnections, useProfiles } from '@/stores/profiles';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
@@ -175,7 +176,7 @@ async function itemOf(ref: BookRef): Promise<Book | null> {
 /** The progress rows of every signed-in server, and which servers' rows are known (read now
  * or cached): only those can stand in for the server in a resume lookup. */
 async function progressRows(): Promise<{ rows: SourcedProgress[]; known: Set<string> }> {
-  const conns = useSession.getState().connections;
+  const conns = profileConnections();
   const known = new Set<string>();
   const lists = await Promise.all(
     conns.map(async (c) => {
@@ -200,11 +201,10 @@ async function progressRows(): Promise<{ rows: SourcedProgress[]; known: Set<str
 /** The Up next queue the app shows (`queueConnectionId`: the loaded book's server, else the
  * default, else the first), or null when that server keeps none (no `queue`). */
 async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } | null> {
-  const { connections, defaultConnectionId } = useSession.getState();
   const cid = queueConnectionId(
     usePlayer.getState().nowPlaying?.connectionId,
-    defaultConnectionId,
-    connections,
+    useSession.getState().defaultConnectionId,
+    profileConnections(),
   );
   const client = cid ? resolveClient(cid) : null;
   if (!cid || !client) return null;
@@ -219,7 +219,7 @@ async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } |
  * tab resolves it), over every signed-in server's library list. */
 async function selectedLibrary(): Promise<{ connectionId: string; libraryId: number } | null> {
   const groups = await Promise.all(
-    useSession.getState().connections.map(async (c): Promise<LibraryGroup> => {
+    profileConnections().map(async (c): Promise<LibraryGroup> => {
       const client = resolveClient(c.id);
       const libs = client
         ? await read({ ...librariesQuery(c.id, client), staleTime: LIST_STALE_MS })
@@ -310,7 +310,8 @@ async function buildAndWrite(): Promise<void> {
   if (sessionHydrateFailed()) return;
   const t = i18n.t.bind(i18n);
   const settings = useSettings.getState();
-  const conns = useSession.getState().connections;
+  // The person listening on this device: the car lists their servers only (Phase 8).
+  const conns = profileConnections();
   const signedIn = conns.length > 0;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
@@ -765,6 +766,10 @@ export function startCarSync(): () => void {
     useSession.subscribe((s, prev) => {
       if (s.connections !== prev.connections || s.defaultConnectionId !== prev.defaultConnectionId)
         request(false);
+    }),
+    // Another person on this device: their lists, at once (a fresh build, as on a connect).
+    useProfiles.subscribe((s, prev) => {
+      if (s.activeProfileId !== prev.activeProfileId) request(true);
     }),
     useLibrarySelection.subscribe((s, prev) => {
       if (s.selection !== prev.selection) request(false);

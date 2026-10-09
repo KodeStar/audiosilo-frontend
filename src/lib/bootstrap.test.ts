@@ -20,6 +20,7 @@ const mockHydrates = {
   downloads: hydrate('downloads'),
   series: hydrate('series'),
   library: hydrate('library'),
+  profiles: hydrate('profiles'),
 };
 jest.mock('@/stores/session', () => ({
   useSession: { getState: () => ({ hydrate: mockHydrates.session }) },
@@ -39,6 +40,10 @@ const mockRestoreLanguage = jest.fn(async () => {
 jest.mock('@/i18n/language-provider', () => ({ restoreLanguage: () => mockRestoreLanguage() }));
 jest.mock('@/stores/library-selection', () => ({
   useLibrarySelection: { getState: () => ({ hydrate: mockHydrates.library }) },
+}));
+
+jest.mock('@/stores/profiles', () => ({
+  useProfiles: { getState: () => ({ hydrate: mockHydrates.profiles }) },
 }));
 
 /* eslint-disable import/first */
@@ -61,6 +66,7 @@ describe('bootstrapPlayback', () => {
       'downloads',
       'series',
       'library',
+      'profiles',
     ]);
     expect(mockClearAll).not.toHaveBeenCalled();
   });

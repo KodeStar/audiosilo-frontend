@@ -167,6 +167,7 @@ import { bootstrapPlayback } from '@/lib/bootstrap';
 import { setConnectionAliases } from '@/lib/connection-id';
 import * as store from '@/playback/store';
 import { useLibrarySelection } from '@/stores/library-selection';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession, type Connection } from '@/stores/session';
 import { getItem, setItem } from '@/lib/storage';
 
@@ -342,6 +343,7 @@ beforeEach(async () => {
   mockLocalPlaces.mirror = {};
   mockLocalPlaces.queue = [];
   connect([]);
+  resetProfilesForTests();
   // A car has met this phone before (the snapshot's gate); the gate's own tests clear it.
   await setItem('audiosilo.carSeen', true);
 });
@@ -658,6 +660,38 @@ describe('startCarSync', () => {
     mockNative.connection?.(true);
     await settle(0);
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("lists only the active profile's servers, and rebuilds at once on a switch", async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({
+      progress: [makeProgress({ path: 'P1', position: 60 })],
+      items: { P1: makeBook({ rel_path: 'P1', title: "Chris's book" }) },
+    });
+    mockClients.c2 = fakeClient({
+      progress: [makeProgress({ path: 'P2', position: 60 })],
+      items: { P2: makeBook({ rel_path: 'P2', title: "Sam's book" }) },
+    });
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['c1'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'continue')!.items.map((i) => i.title)).toEqual(["Chris's book"]);
+    expect(mockClients.c2.allProgress).not.toHaveBeenCalled();
+    await settle(MIN_GAP_MS);
+    const writes = mockNative.setSnapshot.mock.calls.length;
+
+    useProfiles.setState({ activeProfileId: 'sam' });
+    // At once, as far as the gap after the last write allows (not after the settle).
+    await settle(MIN_GAP_MS);
+    expect(mockNative.setSnapshot.mock.calls.length).toBeGreaterThan(writes);
+    expect(tab(lastSnapshot(), 'continue')!.items.map((i) => i.title)).toEqual(["Sam's book"]);
   });
 
   it('is shared: a second start adds no listeners, and the last stop removes them', async () => {

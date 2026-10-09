@@ -354,6 +354,7 @@ export function reconcileNow(): void {
   if (!useProfiles.getState().hydrated || !sessionSettled()) return;
   const { connections, defaultConnectionId } = useSession.getState();
   commit(reconcileProfiles(docOf(useProfiles.getState()), connections, defaultConnectionId));
+  void alignDefaultConnection();
 }
 
 function hydrateProfiles(): Promise<void> {
@@ -502,13 +503,47 @@ export function placeConnection(
 }
 
 /**
- * Make `profileId` the active person. (The full switch, what happens to the playing book,
- * the default connection, the car and the widget, is `switchProfile` below.)
+ * Switch to another person on this device (the caller has asked for their PIN, and
+ * navigates Home: `src/components/profiles/use-choose-profile.ts`):
+ *
+ * - The playing book, when it belongs to a connection outside the new profile, is
+ *   paused, its place saved (the store's own persist) and unloaded (`stop`), so the next
+ *   person finds no mini player with someone else's book.
+ * - The session's default connection becomes the new profile's first (in session order)
+ *   unless the default is already one of theirs: the chrome's fallback scope (`useCid`).
+ * - The car snapshot rebuilds and the widget clears: both follow `activeProfileId`
+ *   (`car-controller.ts`, `widget-sync.ios.ts`).
+ *
+ * Nothing about another person's state is touched: their downloads, queued saves and
+ * car bookmarks keep going through ALL connections.
  */
 export async function switchProfile(profileId: string): Promise<void> {
   const s = useProfiles.getState();
-  if (!s.profiles.some((p) => p.id === profileId)) return;
+  const target = s.profiles.find((p) => p.id === profileId);
+  if (!target) return;
   commit({ ...docOf(s), activeProfileId: profileId });
+  // Required on use: the player store imports most of the app (and, through the API
+  // provider, this module), so a static import would be a cycle at load.
+  const { usePlayer } =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy: see above
+    require('@/playback/store') as typeof import('@/playback/store');
+  const playing = usePlayer.getState().nowPlaying;
+  if (playing && !target.connectionIds.includes(playing.connectionId)) {
+    await usePlayer.getState().stop();
+  }
+  await alignDefaultConnection();
+}
+
+/** The session's default connection follows the active profile: its first connection
+ * when the default is someone else's (a switch, a removal that left the default on
+ * another person's server). */
+async function alignDefaultConnection(): Promise<void> {
+  const profile = activeProfile();
+  if (!profile) return;
+  const { connections, defaultConnectionId, setDefaultConnection } = useSession.getState();
+  if (defaultConnectionId && profile.connectionIds.includes(defaultConnectionId)) return;
+  const first = connectionsOfProfile(connections, profile.connectionIds)[0];
+  if (first) await setDefaultConnection(first.id);
 }
 
 /** Tests only: forget the hydration and the store's state. */

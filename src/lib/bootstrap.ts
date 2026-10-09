@@ -4,6 +4,7 @@ import { restoreLanguage } from '@/i18n/language-provider';
 import { loadConnectionAliases } from '@/lib/connection-id';
 import { migrateStorage } from '@/lib/storage-migration';
 import { useLibrarySelection } from '@/stores/library-selection';
+import { useProfiles } from '@/stores/profiles';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -30,8 +31,8 @@ let pending: Promise<void> | null = null;
  * 3. When either axis reset, the downloaded files no longer match the registry (an auth
  *    wipe orphans them; a cache-schema bump invalidates them): wipe the whole downloads
  *    root once, or they leak, uncounted, forever.
- * 4. Hydrate the session, settings, downloads, series orderings and library selection, all
- *    started together in that order. Resolves once each has settled (a store's own hydrate
+ * 4. Hydrate the session, settings, downloads, series orderings, library selection and the
+ *    profiles (who is listening on this device), all started together in that order. Resolves once each has settled (a store's own hydrate
  *    has its fail-safe; a rejection is logged, never thrown).
  *
  * Alongside all of it (it reads no store and no record a reset touches), the listener's
@@ -67,6 +68,9 @@ async function run(): Promise<void> {
     useDownloads.getState().hydrate(),
     useSeriesOrderings.getState().hydrate(),
     useLibrarySelection.getState().hydrate(),
+    // After the session in this list: it reconciles with the session's connections once
+    // those have loaded (whichever settles last), building the document when it is missing.
+    useProfiles.getState().hydrate(),
   ]);
   for (const r of results) {
     if (r.status === 'rejected') console.warn('[bootstrap] a store failed to hydrate', r.reason);

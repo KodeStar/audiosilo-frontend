@@ -954,3 +954,26 @@ describe('session store (multi-connection)', () => {
     });
   });
 });
+
+describe('setDefaultConnection (a profile switch)', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    reset();
+  });
+
+  it('makes a signed-in connection the default, persisted, and ignores an unknown id', async () => {
+    const s = useSession.getState();
+    await s.setSession({ serverUrl: 'https://a', serverId: 'a', token: 't1', user: mkUser('a') });
+    const b = await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://b', serverId: 'b', token: 't2', user: mkUser('b') });
+    const a = useSession.getState().connections[0].id;
+    expect(useSession.getState().defaultConnectionId).toBe(b);
+    await useSession.getState().setDefaultConnection(a);
+    expect(useSession.getState().defaultConnectionId).toBe(a);
+    expect(useSession.getState().user?.username).toBe('a');
+    expect(JSON.parse((await AsyncStorage.getItem('audiosilo.activeConnection'))!)).toBe(a);
+    await useSession.getState().setDefaultConnection('nope');
+    expect(useSession.getState().defaultConnectionId).toBe(a);
+  });
+});
