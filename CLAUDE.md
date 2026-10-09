@@ -455,7 +455,15 @@ and `seriesList` with `useAuthors`/`useNarrators`/`useSeriesList` (`browse_peopl
 `client.listBooks` with `useLibraryBooks` (a `narrator` filter waits for
 `browse_people`; a `series` filter waits for `/server`, then asks with `memberships=1` on
 `series_memberships`, as `useSeriesList` does: a book in several series, `Book.series_list`,
-is matched and counted in each); `client.nextBook` + `useNextBook` (`next_book`, server-resolved: community when it
+is matched and counted in each; with the `batch` option (series cards only) on `series_books`
+a plain series list (`isPlainSeriesQuery`: `series` with `memberships`, no other key) fetches its
+first page through `client.seriesBooksPage`, a per-(library, page size) `createBatchLoader`
+(`src/lib/batch-loader.ts`) that collects every series asked for within 10 ms into one
+`GET /libraries/{id}/series/books?name=...` per 50 names (fewer when long names would pass 4000 query bytes), under the same `qk.libraryBooks` key,
+later pages staying on `/books`; that branch never reads react-query's `signal`, so a card
+scrolled off still caches its page from the shared request, which nobody cancels, until a
+later page of that query has read it: react-query then cancels the refetch, keeping the old
+pages); `client.nextBook` + `useNextBook` (`next_book`, server-resolved: community when it
 places its next work, else series -> folder -> none, `source` naming who produced
 `next`; a `work` without `local` is the rail's next work left unplaced; a community
 `next` can be in another library);
@@ -1247,7 +1255,9 @@ colours `spine-colors.ts` (the cover's colour, else a cloth colour from the titl
 Resume chapter N, Play, `QueueButton`, Open on <server>, View on AudioSilo Meta), the "Keep ahead
 offline" card (the one `keepAhead` setting, only where the device can download) and the CC0 credit.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books
-only once on screen; Search reuses the card. Authors / Narrators modes and the person pages are
+only once on screen, the cards on screen together in one request on `series_books`
+(`useSeriesBooks(..., { batch: true })`; the series page asks plainly and reuses the cache); Search reuses
+the card. Authors / Narrators modes and the person pages are
 `people-mode.tsx` / `person-page.tsx` over `people-model.ts` (letter heads, portraits, books grouped
 by series).
 
@@ -1568,7 +1578,7 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   (`useSearch`, shared with the palette): books from every server (`useSearchAll`, deduplicated),
   series/authors/narrators matched on the device against every library's browse lists
   (`usePeopleSources`, `browse_people`; a series result is the Library's `SeriesCard`, whose mini
-  shelf fetches that series' books only once the card shows), and characters only once met (`useCharacterSources`: the
+  shelf fetches that series' books only once the card shows, batched with the other cards), and characters only once met (`useCharacterSources`: the
   community characters of the newest 8 started books on `metadata` servers, each gated by the
   listener's place in THAT book with `meta-gating`'s rules, chapters fetched only for unfinished
   books with characters, "from the start" until they arrive). The pure `search-model.ts`

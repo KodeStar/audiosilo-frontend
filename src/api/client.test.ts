@@ -1,6 +1,11 @@
 import { Platform } from 'react-native';
 
-import { ApiClient } from '@/api/client';
+import {
+  ApiClient,
+  isPlainSeriesQuery,
+  SERIES_BATCH_MAX_QUERY_BYTES,
+  SERIES_BOOKS_MAX_NAMES,
+} from '@/api/client';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -19,6 +24,18 @@ function installFetch(impl: (url: string, init: RequestInit) => FetchResult): je
   });
   globalThis.fetch = mock as unknown as typeof globalThis.fetch;
   return mock;
+}
+
+/** A fetch that never resolves until its signal aborts. */
+function installHangingFetch() {
+  globalThis.fetch = jest.fn(
+    (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+        );
+      }),
+  ) as unknown as typeof globalThis.fetch;
 }
 
 function headerValue(init: RequestInit, name: string): string | undefined {
@@ -558,18 +575,6 @@ describe('ApiClient', () => {
     expect(String(url)).toBe('https://h/api/v1/libraries/2/next?path=Saga%2FBook+2');
     expect(init.method).toBe('GET');
   });
-
-  // A fetch that never resolves until its signal aborts.
-  function installHangingFetch() {
-    globalThis.fetch = jest.fn(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
-          );
-        }),
-    ) as unknown as typeof globalThis.fetch;
-  }
 
   it('surfaces a timeout as TimeoutError, not AbortError (review finding F3)', async () => {
     installHangingFetch();
@@ -1386,5 +1391,168 @@ describe('ApiClient annotations (Phase 4)', () => {
       method: 'GET',
     });
     expect(sent(fetchMock, 1).url).toBe('https://h/api/v1/me/history?limit=100&cursor=h2');
+  });
+});
+
+describe('ApiClient series books (series_books)', () => {
+  /** A server answering GET /libraries/{id}/series/books: per distinct name, one book
+   * titled after it and a cursor to its second page. */
+  function seriesServer() {
+    return installFetch((url) => {
+      const names = [...new Set(new URL(url).searchParams.getAll('name'))];
+      return {
+        status: 200,
+        body: {
+          series: names.map((name) => ({
+            name,
+            books: [{ title: name }],
+            next_cursor: `${name}-2`,
+          })),
+        },
+      };
+    });
+  }
+  const namesOf = (fetchMock: jest.Mock, i: number) =>
+    new URL(sent(fetchMock, i).url).searchParams.getAll('name');
+
+  it('asks for several series at once with the name repeated, the list unwrapped', async () => {
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: {
+        series: [
+          { name: 'A & B', books: null },
+          { name: 'C', books: [{ id: 1 }] },
+        ],
+      },
+    }));
+    const entries = await new ApiClient('https://h', 'tok').seriesBooks(2, ['A & B', 'C'], {
+      limit: 100,
+    });
+    expect(sent(fetchMock).url).toBe(
+      'https://h/api/v1/libraries/2/series/books?name=A+%26+B&name=C&limit=100',
+    );
+    expect(entries).toEqual([
+      { name: 'A & B', books: [] },
+      { name: 'C', books: [{ id: 1 }] },
+    ]);
+  });
+
+  it('answers every series asked for within the window with one request', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    const pages = await Promise.all([
+      c.seriesBooksPage(2, 'Discworld', { limit: 100 }),
+      c.seriesBooksPage(2, 'City Watch / Night', { limit: 100 }),
+      c.seriesBooksPage(2, 'Discworld', { limit: 100 }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sent(fetchMock).url).toBe(
+      'https://h/api/v1/libraries/2/series/books?name=Discworld&name=City+Watch+%2F+Night&limit=100',
+    );
+    expect(pages).toEqual([
+      { books: [{ title: 'Discworld' }], next_cursor: 'Discworld-2' },
+      { books: [{ title: 'City Watch / Night' }], next_cursor: 'City Watch / Night-2' },
+      { books: [{ title: 'Discworld' }], next_cursor: 'Discworld-2' },
+    ]);
+  });
+
+  it('splits more than 50 names into requests of at most 50', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    const names = Array.from({ length: 51 }, (_, i) => `S${i}`);
+    const pages = await Promise.all(names.map((n) => c.seriesBooksPage(2, n)));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(namesOf(fetchMock, 0)).toEqual(names.slice(0, SERIES_BOOKS_MAX_NAMES));
+    expect(namesOf(fetchMock, 1)).toEqual(['S50']);
+    expect(pages.map((p) => p.books[0].title)).toEqual(names);
+  });
+
+  it('keeps each request line short: long names split a batch before 50', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    // 30 characters of CJK: 270 bytes encoded, so fewer than 50 fit the budget.
+    const names = Array.from({ length: 20 }, (_, i) => `${'\u5DE8'.repeat(30)}${i}`);
+    const pages = await Promise.all(names.map((n) => c.seriesBooksPage(2, n)));
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    const sentNames = fetchMock.mock.calls.flatMap((_, i) => namesOf(fetchMock, i));
+    expect(sentNames).toEqual(names);
+    for (let i = 0; i < fetchMock.mock.calls.length; i++) {
+      const query = new URL(sent(fetchMock, i).url).search;
+      expect(query.length).toBeLessThan(SERIES_BATCH_MAX_QUERY_BYTES + 100);
+    }
+    expect(pages.map((p) => p.books[0].title)).toEqual(names);
+  });
+
+  it('sends a request per library and per limit', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    await Promise.all([
+      c.seriesBooksPage(2, 'A'),
+      c.seriesBooksPage(3, 'B'),
+      c.seriesBooksPage(2, 'C', { limit: 20 }),
+      c.seriesBooksPage(2, 'D'),
+    ]);
+    expect(fetchMock.mock.calls.map((call) => String(call[0])).sort()).toEqual([
+      'https://h/api/v1/libraries/2/series/books?name=A&name=D',
+      'https://h/api/v1/libraries/2/series/books?name=C&limit=20',
+      'https://h/api/v1/libraries/3/series/books?name=B',
+    ]);
+  });
+
+  it('starts a new batch once the window has closed', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    await c.seriesBooksPage(2, 'A');
+    await c.seriesBooksPage(2, 'B');
+    expect([namesOf(fetchMock, 0), namesOf(fetchMock, 1)]).toEqual([['A'], ['B']]);
+  });
+
+  it('rejects every caller in a failed request, and only those', async () => {
+    const fetchMock = installFetch((url) =>
+      new URL(url).pathname.includes('/libraries/2/')
+        ? { status: 500, body: { error: 'boom' } }
+        : { status: 200, body: { series: [{ name: 'C', books: [] }] } },
+    );
+    const c = new ApiClient('https://h', 'tok');
+    const results = await Promise.allSettled([
+      c.seriesBooksPage(2, 'A'),
+      c.seriesBooksPage(2, 'B'),
+      c.seriesBooksPage(3, 'C'),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected', 'fulfilled']);
+    expect((results[0] as PromiseRejectedResult).reason).toMatchObject({
+      name: 'ApiError',
+      status: 500,
+    });
+  });
+
+  it('rejects a caller whose name the answer leaves out, the others answered', async () => {
+    installFetch(() => ({ status: 200, body: { series: [{ name: 'A', books: [] }] } }));
+    const c = new ApiClient('https://h', 'tok');
+    const [a, b] = await Promise.allSettled([c.seriesBooksPage(2, 'A'), c.seriesBooksPage(2, 'B')]);
+    expect(a).toEqual({ status: 'fulfilled', value: { books: [] } });
+    expect(b.status).toBe('rejected');
+  });
+
+  it('knows a plain series query by having no other key', () => {
+    expect(isPlainSeriesQuery({ series: 'A', memberships: true })).toBe(true);
+    // The batch always answers with memberships, so a list without them isn't one.
+    expect(isPlainSeriesQuery({ series: 'A' })).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', memberships: false })).toBe(false);
+    // An unset or empty filter is no filter.
+    const m = { memberships: true };
+    expect(isPlainSeriesQuery({ series: 'A', ...m, author: undefined, narrator: '' })).toBe(true);
+    expect(isPlainSeriesQuery(m)).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', ...m, sort: 'title' })).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', ...m, author: 'X' })).toBe(false);
+    // A key BookListQuery doesn't have today is not answered by the batch either.
+    expect(isPlainSeriesQuery({ series: 'A', ...m, genre: 'x' } as never)).toBe(false);
+  });
+
+  it('gives a batched request the client timeout', async () => {
+    installHangingFetch();
+    const c = new ApiClient('https://h', 'tok', 10); // 10ms timeout
+    await expect(c.seriesBooksPage(2, 'A')).rejects.toMatchObject({ name: 'TimeoutError' });
   });
 });

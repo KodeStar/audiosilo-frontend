@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import { webOrigin } from '@/lib/base-url';
+import { createBatchLoader } from '@/lib/batch-loader';
 import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
 import { cleanAddresses } from '@/lib/pairing';
 import { APP_VERSION } from '@/lib/version';
@@ -51,6 +52,8 @@ import type {
   RatedBook,
   Rating,
   RatingValue,
+  SeriesBooks,
+  SeriesBooksEntry,
   SeriesCount,
   ServerAddresses,
   ServerInfo,
@@ -90,7 +93,8 @@ export class TimeoutError extends Error {
 }
 
 type QueryValue = string | number | boolean | undefined | null;
-type Query = Record<string, QueryValue>;
+/** A list value is sent as the key repeated once per item (`name=A&name=B`). */
+type Query = Record<string, QueryValue | readonly QueryValue[]>;
 
 /** Options of `bookMeta` (capability `meta_bundle`; an older server ignores both). */
 export type BookMetaOptions = { includePrevious?: boolean; hideSpoilers?: boolean };
@@ -114,6 +118,34 @@ export type BookListQuery = {
  * worst). */
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
+/** How long `seriesBooksPage` collects series names before it asks: every card
+ * rendered in one commit (their queries start in the same task) lands in one request,
+ * and a few ms is not felt. */
+const SERIES_BATCH_WINDOW_MS = 10;
+
+/** The most distinct names one GET /libraries/{id}/series/books takes (400 beyond). */
+export const SERIES_BOOKS_MAX_NAMES = 50;
+
+/** The most bytes of `name=` parameters one batch request carries, well inside the
+ * request-line limit of common reverse proxies (nginx: 8 KB with the path and headers
+ * around it); a batch with longer names is split into more requests. */
+export const SERIES_BATCH_MAX_QUERY_BYTES = 4000;
+
+/** Whether a `listBooks` query is exactly what `seriesBooks` answers: a `series` with
+ * `memberships` (which `seriesBooks` always applies) and nothing else, so default sort
+ * and no other filter. Checks for keys beyond those two rather than for the ones known
+ * today, so a filter added to {@link BookListQuery} later is never answered by the
+ * batch by mistake. */
+export function isPlainSeriesQuery(q: BookListQuery): boolean {
+  return (
+    !!q.series &&
+    q.memberships === true &&
+    Object.entries(q).every(
+      ([k, v]) => k === 'series' || k === 'memberships' || v === undefined || v === '',
+    )
+  );
+}
+
 /** Just the `{library_id, path}` of each entry: the server decodes list bodies
  * strictly, so a cached `QueueEntry`/`CollectionItem` (with `added_at`, `book`)
  * passed as a ref would otherwise be a 400. */
@@ -125,7 +157,9 @@ function toQueryString(query?: Query): string {
   if (!query) return '';
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null) params.set(key, String(value));
+    for (const v of Array.isArray(value) ? value : [value]) {
+      if (v !== undefined && v !== null) params.append(key, String(v));
+    }
   }
   const s = params.toString();
   return s ? `?${s}` : '';
@@ -146,6 +180,9 @@ export class ApiClient {
   private readonly clientHeaders: Record<string, string>;
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
+  /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
+   * by libraries x page sizes), created on first use. */
+  private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
 
   /**
    * `onAuthError` is invoked once whenever a request produces an HTTP **401** - a
@@ -394,6 +431,62 @@ export class ApiClient {
       signal,
     });
     return { ...r, books: r.books ?? [] };
+  }
+  /** The first page of several series' books in one request (capability
+   * `series_books`; at most {@link SERIES_BOOKS_MAX_NAMES} distinct names, and at least
+   * one): per name, exactly what `listBooks(libraryId, {series: name, memberships: true,
+   * limit})` would answer, so its `next_cursor` continues there. Entries come in request
+   * order, a repeated name answered once. `seriesBooksPage` batches the callers of one
+   * moment into these requests. */
+  async seriesBooks(
+    libraryId: number,
+    names: readonly string[],
+    { limit }: { limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<SeriesBooksEntry[]> {
+    const r = await this.request<SeriesBooks>('GET', `/libraries/${libraryId}/series/books`, {
+      query: { name: names, limit },
+      signal,
+    });
+    return (r.series ?? []).map((e) => ({ ...e, books: e.books ?? [] }));
+  }
+  /**
+   * The first page of one series' books (as `listBooks` with `series`, `memberships`
+   * and `limit`), fetched TOGETHER with every other series asked for in the same few
+   * milliseconds (`SERIES_BATCH_WINDOW_MS`) on the same library and `limit`: one
+   * `seriesBooks` request per {@link SERIES_BOOKS_MAX_NAMES} distinct names
+   * (`createBatchLoader`), so a screen of series cards is one request, not one per card.
+   * Needs `series_books`. There is no signal: the request is shared, so no one caller
+   * cancels it (it has the client's normal timeout). A failed request rejects every
+   * caller in it, and a name its answer leaves out (which the server never does)
+   * rejects that caller.
+   */
+  seriesBooksPage(
+    libraryId: number,
+    name: string,
+    { limit }: { limit?: number } = {},
+  ): Promise<BookPage> {
+    const key = `${libraryId}:${limit ?? ''}`;
+    let load = this.seriesLoaders.get(key);
+    if (!load) {
+      load = createBatchLoader({
+        windowMs: SERIES_BATCH_WINDOW_MS,
+        maxKeys: SERIES_BOOKS_MAX_NAMES,
+        // Long names (a CJK name is about 9 bytes a character encoded) could otherwise
+        // make one request line longer than a reverse proxy takes (nginx: 8 KB).
+        size: (name) => encodeURIComponent(name).length + '&name='.length,
+        maxSize: SERIES_BATCH_MAX_QUERY_BYTES,
+        load: async (names: string[]) =>
+          new Map(
+            (await this.seriesBooks(libraryId, names, { limit })).map(({ name, ...page }) => [
+              name,
+              page,
+            ]),
+          ),
+      });
+      this.seriesLoaders.set(key, load);
+    }
+    return load(name);
   }
   // The browse lists (capability `browse_people`): every distinct author, narrator
   // or series in a library with counts, limited to the caller's share scope.

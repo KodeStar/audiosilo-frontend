@@ -15,9 +15,16 @@ import { inSeries, type ElsewhereBook } from './series-model';
 /**
  * Every book of a series in a library (`useAllLibraryBooks` by `series`), each as it
  * stands in that series (`inSeries`): a book in several is numbered by this one.
+ * `batch` (a series card) fetches the first page in one request with the other cards on
+ * screen (`LibraryBooksOptions.batch`); the cache entry is the same either way.
  */
-export function useSeriesBooks(libraryId: number, name: string, connectionId?: string) {
-  const list = useAllLibraryBooks(libraryId, { series: name }, connectionId);
+export function useSeriesBooks(
+  libraryId: number,
+  name: string,
+  connectionId?: string,
+  { batch }: { batch?: boolean } = {},
+) {
+  const list = useAllLibraryBooks(libraryId, { series: name }, connectionId, { batch });
   const books = useMemo(() => list.books.map((b) => inSeries(b, name) ?? b), [list.books, name]);
   return { ...list, books };
 }
