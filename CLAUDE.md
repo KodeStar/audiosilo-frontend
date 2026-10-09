@@ -428,7 +428,16 @@ hydration wins and never clobbers the stored rest.
 Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
 (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
 (`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`/
-`previousWorks`) are unit-tested. Progressive enhancement - **capability-gated** on
+`previousWorks`) are unit-tested. **Community covers** (rail entries, previous-book rows)
+never load from their own host on web: a server with `meta_covers` serves them
+(`client.communityCoverUrl(lib, path, cover_url, {size})` -> `GET /libraries/{id}/meta/cover`,
+`?token=` like every media URL; the server only serves a `cover_url` that book's envelope
+hands out, so pass the same `libraryId`/`path` as `useBookMeta`). The book page builds the
+resolver with `useCommunityCover(cid, lib, path)` and passes it as `coverFor` (rails at
+320, previous rows at 160); the rules are `communityCoverSource` (`community-cover.ts`):
+proxied when the flag is on, else the direct `cover_url` on native and the placeholder on
+web (the player's CSP takes images only from the server), nothing while `/server` is
+unknown. A tab without `coverFor` shows placeholders. Progressive enhancement - **capability-gated** on
 server `metadata` (`!!server.capabilities.metadata`, absent on older servers) and nothing renders while
 loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 `useBookMeta` keys on `qk.bookMeta(cid, lib, path)` (1h `staleTime`, `retry:false` so

@@ -10,6 +10,7 @@ import {
 } from '@/components/library/book-meta';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
+import type { CommunityCoverFor } from '@/components/library/community-cover';
 import type { ListeningProgress } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import type { SeriesRail } from '@/components/library/series-rails';
@@ -43,6 +44,8 @@ export type BookTabPanelProps = {
     rails: SeriesRail[];
     previousBooks: BookMetaSeriesWork[];
     onSelectView: (family: string, viewId: string) => void;
+    /** Where the rails' and previous books' covers load from (`useCommunityCover`). */
+    coverFor: CommunityCoverFor;
   };
   /** The Details tab: how this device plays the book, and where it lives. */
   details: { downloaded: boolean; transcoded: boolean; serverName: string; libraryName: string };
@@ -86,6 +89,7 @@ export function BookTabPanel({
             showSpoilers={community.showSpoilers}
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}
+            coverFor={community.coverFor}
           />
           {recaps.length > 0 || community.summaryVisible ? (
             <Attribution attribution={work?.attribution} />
@@ -103,6 +107,7 @@ export function BookTabPanel({
             showSpoilers={community.showSpoilers}
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}
+            coverFor={community.coverFor}
           />
           {characters.length > 0 ? <Attribution attribution={work?.attribution} /> : null}
         </View>
@@ -117,7 +122,13 @@ export function BookTabPanel({
     case 'notes':
       return <NotesSection libraryId={libraryId} path={path} />;
     case 'series':
-      return <BookMetaSeriesTab rails={community.rails} onSelectView={community.onSelectView} />;
+      return (
+        <BookMetaSeriesTab
+          rails={community.rails}
+          onSelectView={community.onSelectView}
+          coverFor={community.coverFor}
+        />
+      );
     case 'details':
       return (
         <BookDetailsTab
