@@ -126,13 +126,20 @@ const SERIES_BATCH_WINDOW_MS = 10;
 /** The most distinct names one GET /libraries/{id}/series/books takes (400 beyond). */
 export const SERIES_BOOKS_MAX_NAMES = 50;
 
-/** Whether a `listBooks` query is exactly what `seriesBooks` answers: a `series` (with
- * `memberships` or not) and nothing else, so default sort and no other filter. Checks
- * for keys beyond those two rather than for the ones known today, so a filter added to
- * {@link BookListQuery} later is never answered by the batch by mistake. */
+/** The most bytes of `name=` parameters one batch request carries, well inside the
+ * request-line limit of common reverse proxies (nginx: 8 KB with the path and headers
+ * around it); a batch with longer names is split into more requests. */
+export const SERIES_BATCH_MAX_QUERY_BYTES = 4000;
+
+/** Whether a `listBooks` query is exactly what `seriesBooks` answers: a `series` with
+ * `memberships` (which `seriesBooks` always applies) and nothing else, so default sort
+ * and no other filter. Checks for keys beyond those two rather than for the ones known
+ * today, so a filter added to {@link BookListQuery} later is never answered by the
+ * batch by mistake. */
 export function isPlainSeriesQuery(q: BookListQuery): boolean {
   return (
     !!q.series &&
+    q.memberships === true &&
     Object.entries(q).every(
       ([k, v]) => k === 'series' || k === 'memberships' || v === undefined || v === '',
     )
@@ -465,6 +472,10 @@ export class ApiClient {
       load = createBatchLoader({
         windowMs: SERIES_BATCH_WINDOW_MS,
         maxKeys: SERIES_BOOKS_MAX_NAMES,
+        // Long names (a CJK name is about 9 bytes a character encoded) could otherwise
+        // make one request line longer than a reverse proxy takes (nginx: 8 KB).
+        size: (name) => encodeURIComponent(name).length + '&name='.length,
+        maxSize: SERIES_BATCH_MAX_QUERY_BYTES,
         load: async (names: string[]) =>
           new Map(
             (await this.seriesBooks(libraryId, names, { limit })).map(({ name, ...page }) => [

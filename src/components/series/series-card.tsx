@@ -35,8 +35,8 @@ function shelfPositions(positions: readonly number[]): number[] {
  * (the grid renders only the rows on screen), so a library of 300 series asks for the
  * few on screen, not all of them; on a server with `series_books` the cards that show
  * together are asked for in one request (`useSeriesBooks` with `batch` ->
- * `seriesBooksPage`), else one per card. Until then the shelf is spine-shaped placeholders at the positions the
- * series list already gives.
+ * `seriesBooksPage`), else one per card. Until then the shelf is spine-shaped
+ * placeholders at the positions the series list already gives.
  *
  * Search shows its series results with it too: `heading` replaces the plain name (the
  * match in bold), `kindLabel` names it a series to a screen reader, `where` adds the

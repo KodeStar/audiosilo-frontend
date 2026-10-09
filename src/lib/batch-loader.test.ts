@@ -4,12 +4,15 @@ import { createBatchLoader } from './batch-loader';
 function doubler(opts: {
   windowMs?: number;
   maxKeys?: number;
+  maxSize?: number;
   fail?: (keys: number[]) => boolean;
 }) {
   const calls: number[][] = [];
   const load = createBatchLoader<number, number>({
     windowMs: opts.windowMs ?? 10,
     maxKeys: opts.maxKeys ?? 50,
+    size: (k) => k,
+    maxSize: opts.maxSize,
     load: async (keys) => {
       calls.push(keys);
       if (opts.fail?.(keys)) throw new Error(`boom ${keys.join(',')}`);
@@ -51,11 +54,26 @@ describe('createBatchLoader', () => {
     expect(calls).toEqual([[7, 8]]);
   });
 
+  it('hands every caller of one key in a batch the same promise', () => {
+    const { load } = doubler({});
+    const a = load(7);
+    expect(load(7)).toBe(a);
+    expect(load(8)).not.toBe(a);
+    return a;
+  });
+
   it('splits a batch into loads of at most maxKeys, in the order asked', async () => {
     const { load, calls } = doubler({ maxKeys: 2 });
     const out = await Promise.all([1, 2, 3, 4, 5].map(load));
     expect(out).toEqual([2, 4, 6, 8, 10]);
     expect(calls).toEqual([[1, 2], [3, 4], [5]]);
+  });
+
+  it('also splits a batch so no load exceeds maxSize, an oversized key alone', async () => {
+    const { load, calls } = doubler({ maxSize: 10 });
+    const out = await Promise.all([4, 5, 2, 12, 3].map((k) => load(k)));
+    expect(out).toEqual([8, 10, 4, 24, 6]);
+    expect(calls).toEqual([[4, 5], [2], [12], [3]]);
   });
 
   it('rejects every caller of a failed chunk, and only those', async () => {
@@ -81,6 +99,25 @@ describe('createBatchLoader', () => {
       },
     });
     await expect(load(1)).rejects.toThrow('sync');
+  });
+
+  it('rejects its callers, not leaves them waiting, when the answer cannot be read', async () => {
+    const load = createBatchLoader<number, number>({
+      windowMs: 1,
+      maxKeys: 10,
+      // Not a Map: reading it throws after load has resolved.
+      load: async () => undefined as unknown as Map<number, number>,
+    });
+    const results = await Promise.allSettled([load(1), load(2)]);
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+  });
+
+  it('refuses a maxKeys that could never split a batch', () => {
+    for (const maxKeys of [0, -1, Number.NaN]) {
+      expect(() =>
+        createBatchLoader({ windowMs: 1, maxKeys, load: async () => new Map() }),
+      ).toThrow(RangeError);
+    }
   });
 
   it('rejects only the caller whose key the answer lacks', async () => {

@@ -1,6 +1,11 @@
 import { Platform } from 'react-native';
 
-import { ApiClient, isPlainSeriesQuery, SERIES_BOOKS_MAX_NAMES } from '@/api/client';
+import {
+  ApiClient,
+  isPlainSeriesQuery,
+  SERIES_BATCH_MAX_QUERY_BYTES,
+  SERIES_BOOKS_MAX_NAMES,
+} from '@/api/client';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -1443,6 +1448,22 @@ describe('ApiClient series books (series_books)', () => {
     expect(pages.map((p) => p.books[0].title)).toEqual(names);
   });
 
+  it('keeps each request line short: long names split a batch before 50', async () => {
+    const fetchMock = seriesServer();
+    const c = new ApiClient('https://h', 'tok');
+    // 30 characters of CJK: 270 bytes encoded, so fewer than 50 fit the budget.
+    const names = Array.from({ length: 20 }, (_, i) => `${'\u5DE8'.repeat(30)}${i}`);
+    const pages = await Promise.all(names.map((n) => c.seriesBooksPage(2, n)));
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    const sentNames = fetchMock.mock.calls.flatMap((_, i) => namesOf(fetchMock, i));
+    expect(sentNames).toEqual(names);
+    for (let i = 0; i < fetchMock.mock.calls.length; i++) {
+      const query = new URL(sent(fetchMock, i).url).search;
+      expect(query.length).toBeLessThan(SERIES_BATCH_MAX_QUERY_BYTES + 100);
+    }
+    expect(pages.map((p) => p.books[0].title)).toEqual(names);
+  });
+
   it('sends a request per library and per limit', async () => {
     const fetchMock = seriesServer();
     const c = new ApiClient('https://h', 'tok');
@@ -1496,15 +1517,18 @@ describe('ApiClient series books (series_books)', () => {
   });
 
   it('knows a plain series query by having no other key', () => {
-    expect(isPlainSeriesQuery({ series: 'A' })).toBe(true);
     expect(isPlainSeriesQuery({ series: 'A', memberships: true })).toBe(true);
+    // The batch always answers with memberships, so a list without them isn't one.
+    expect(isPlainSeriesQuery({ series: 'A' })).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', memberships: false })).toBe(false);
     // An unset or empty filter is no filter.
-    expect(isPlainSeriesQuery({ series: 'A', author: undefined, narrator: '' })).toBe(true);
-    expect(isPlainSeriesQuery({})).toBe(false);
-    expect(isPlainSeriesQuery({ series: 'A', sort: 'title' })).toBe(false);
-    expect(isPlainSeriesQuery({ series: 'A', author: 'X' })).toBe(false);
+    const m = { memberships: true };
+    expect(isPlainSeriesQuery({ series: 'A', ...m, author: undefined, narrator: '' })).toBe(true);
+    expect(isPlainSeriesQuery(m)).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', ...m, sort: 'title' })).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', ...m, author: 'X' })).toBe(false);
     // A key BookListQuery doesn't have today is not answered by the batch either.
-    expect(isPlainSeriesQuery({ series: 'A', genre: 'x' } as never)).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', ...m, genre: 'x' } as never)).toBe(false);
   });
 
   it('gives a batched request the client timeout', async () => {

@@ -820,9 +820,7 @@ export function useLibraryBooks(
   // Its flag comes in the same /server answer `seriesReady` waits for, so a card never
   // asks alone first and then in a batch.
   const batchedSeries =
-    batch && caps?.series_books && effective.memberships && isPlainSeriesQuery(effective)
-      ? effective.series
-      : undefined;
+    batch && caps?.series_books && isPlainSeriesQuery(effective) ? effective.series : undefined;
   const key = qk.libraryBooks(cid, libraryId, effective);
   return useInfiniteQuery({
     queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
@@ -832,6 +830,9 @@ export function useLibraryBooks(
           // throws away) a fetch whose signal was read once its last observer leaves,
           // but a card scrolled off still has its page coming in the shared request,
           // and that page should land in the cache rather than be asked for again.
+          // (An infinite query remembers a read for its whole life, so once a later
+          // page has gone out on /books with the signal, a card leaving mid-refetch
+          // still drops the refetch and keeps the pages it had.)
           (ctx) =>
             batchedSeries && ctx.pageParam === undefined
               ? api.seriesBooksPage(libraryId, batchedSeries, { limit: pageSize })
