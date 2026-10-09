@@ -1,9 +1,32 @@
 import { useCallback, useState } from 'react';
 
+import type { ApiClient } from '@/api/client';
 import { useOptionalApi } from '@/api/provider';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { accountFlagsKnown, needsPasswordWarning } from '@/lib/account';
 import { useSession } from '@/stores/session';
+
+/**
+ * Sign this device out of one connection: stop playback through it and replay its queued
+ * saves while its token still works (`teardownBeforeTokenRevoke`), revoke the token on the
+ * server (best effort), then forget the connection here. The body of `useSignOut`'s
+ * `signOut`, shared with removing a person from this device (Settings > Household), which
+ * signs out each of their servers after the same password warning.
+ */
+export async function signOutConnection(
+  connectionId: string,
+  api: ApiClient | null,
+  removeConnection: (id: string) => Promise<void> = (id) =>
+    useSession.getState().removeConnection(id),
+) {
+  await teardownBeforeTokenRevoke(connectionId);
+  try {
+    await api?.logout();
+  } catch {
+    // ignore; clear locally regardless
+  }
+  await removeConnection(connectionId);
+}
 
 /**
  * The single guarded sign-out chokepoint, scoped to one connection. Every place that
@@ -35,13 +58,7 @@ export function useSignOut(connectionId: string) {
     // queued progress (removing the connection below purges those saves, so this is
     // the last chance to land them). A book playing through another connection keeps
     // going; its token stays valid.
-    await teardownBeforeTokenRevoke(connectionId);
-    try {
-      await api?.logout();
-    } catch {
-      // ignore; clear locally regardless
-    }
-    await removeConnection(connectionId);
+    await signOutConnection(connectionId, api, removeConnection);
   }, [api, connectionId, removeConnection]);
 
   const requestSignOut = useCallback(async () => {
