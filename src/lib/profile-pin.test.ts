@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createHash } from 'crypto';
 
+import { toHex } from '@/lib/random';
 import { getSecure, setSecure } from '@/lib/secure-store';
 import { profileOf, resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -49,20 +49,24 @@ beforeEach(async () => {
   await useProfiles.getState().hydrate();
 });
 
+// Node's own SHA-256, as the reference (the app's tsconfig has no node types).
+type NodeHash = { update: (d: Uint8Array) => NodeHash; digest: () => Uint8Array };
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createHash } = require('crypto') as { createHash: (alg: 'sha256') => NodeHash };
+const bytes = (hex: string) => new Uint8Array(hex.match(/../g)!.map((h) => parseInt(h, 16)));
+const join = (a: Uint8Array, b: Uint8Array) => new Uint8Array([...a, ...b]);
+
 const profileId = () => profileOf(conn.id)!.id;
 
 describe('hashPin', () => {
   it('is SHA-256 over salt + PIN, then over salt + the previous digest', () => {
     const salt = '00112233445566778899aabbccddeeff';
-    const s = Buffer.from(salt, 'hex');
+    const s = bytes(salt);
     let d = createHash('sha256')
-      .update(Buffer.concat([s, Buffer.from('1234')]))
+      .update(join(s, new TextEncoder().encode('1234')))
       .digest();
-    for (let i = 1; i < 25; i++)
-      d = createHash('sha256')
-        .update(Buffer.concat([s, d]))
-        .digest();
-    expect(hashPin('1234', salt, 25)).toBe(d.toString('hex'));
+    for (let i = 1; i < 25; i++) d = createHash('sha256').update(join(s, d)).digest();
+    expect(hashPin('1234', salt, 25)).toBe(toHex(d));
   });
 
   it('differs by salt and by PIN', () => {

@@ -1,8 +1,10 @@
-import { createHash } from 'crypto';
-
+import { toHex as hex } from './random';
 import { sha256, utf8 } from './sha256';
 
-const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+// Node's own implementation, as the reference (the app's tsconfig has no node types).
+type NodeHash = { update: (d: Uint8Array) => NodeHash; digest: () => Uint8Array };
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createHash } = require('crypto') as { createHash: (alg: 'sha256') => NodeHash };
 
 describe('sha256', () => {
   it('matches the FIPS 180-4 test vectors', () => {
@@ -20,7 +22,7 @@ describe('sha256', () => {
   it("agrees with node's crypto at every padding boundary", () => {
     for (let n = 0; n < 200; n++) {
       const data = new Uint8Array(n).map((_, i) => (i * 31 + n) & 0xff);
-      expect(hex(sha256(data))).toBe(createHash('sha256').update(data).digest('hex'));
+      expect(hex(sha256(data))).toBe(hex(createHash('sha256').update(data).digest()));
     }
   });
 
