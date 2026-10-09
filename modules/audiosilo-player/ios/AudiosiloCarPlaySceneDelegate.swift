@@ -229,10 +229,13 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
     }
   }
 
-  /// The cover file scaled to fill the list item's image box. Off the main thread.
+  /// The cover file scaled to fill the list item's image box. Off the main thread. A snapshot
+  /// from before an app update names the old data container: `CarArtworkPath` finds the file
+  /// under the current one.
   private nonisolated static func decodeCover(_ path: String, size: CGSize, scale: CGFloat) -> UIImage? {
-    guard let url = URL(string: path), url.isFileURL,
-          let source = UIImage(contentsOfFile: url.path) else { return nil }
+    let files = FileManager.default
+    guard let file = CarArtworkPath.resolve(path, home: NSHomeDirectory(), exists: { files.fileExists(atPath: $0) }),
+          let source = UIImage(contentsOfFile: file) else { return nil }
     let format = UIGraphicsImageRendererFormat()
     format.scale = scale > 0 ? scale : 2
     return UIGraphicsImageRenderer(size: size, format: format).image { _ in
