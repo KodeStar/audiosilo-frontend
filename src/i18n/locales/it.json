@@ -2077,5 +2077,50 @@
       "failedBody": "Non è cambiato nulla. Controlla la connessione e riprova.",
       "demo": "Gli account demo non possono condividere cosa ascoltano."
     }
+  },
+  "kids": {
+    "greeting": "Ciao {{name}}",
+    "greetingNoName": "Ciao",
+    "grownUps": {
+      "label": "Adulti",
+      "button": "Adulti: tieni premuto",
+      "holding": "Continua a tenere premuto",
+      "hint": "Tieni premuto per uscire dalla modalità bambini",
+      "action": "Esci dalla modalità bambini"
+    },
+    "bedtime": {
+      "at": "L'ora della nanna è alle {{time}}",
+      "now": "Il timer di spegnimento parte quando inizia una storia",
+      "later": "Dopo l'ora della nanna, una storia si ferma da sola dopo 20 minuti e il suono si abbassa piano piano."
+    },
+    "player": {
+      "play": "Riproduci",
+      "pause": "Pausa",
+      "retry": "Riprova",
+      "previous": "Capitolo precedente",
+      "next": "Capitolo successivo",
+      "back_one": "Torna indietro di {{count}} secondo",
+      "back_other": "Torna indietro di {{count}} secondi",
+      "progress": "A che punto sei del capitolo",
+      "chapterLeft_one": "{{chapter}} · manca {{count}} minuto",
+      "chapterLeft_other": "{{chapter}} · mancano {{count}} minuti"
+    },
+    "stories": {
+      "title": "Le tue storie",
+      "play": "Ascolta {{title}}",
+      "playing": "In ascolto",
+      "loading": "Cerchiamo le tue storie",
+      "emptyTitle": "Qui non ci sono ancora storie",
+      "emptyBody": "Chiedi a un adulto di aggiungerne qualcuna su {{server}}.",
+      "errorTitle": "Le storie non si caricano in questo momento",
+      "errorBody": "{{server}} non risponde. Non si è perso niente.",
+      "offlineBody": "{{server}} non è raggiungibile e su questo dispositivo non ci sono storie salvate.",
+      "retry": "Riprova",
+      "onDevice": "Queste storie sono salvate su questo dispositivo."
+    },
+    "startFailed": {
+      "title": "Questa storia non parte in questo momento",
+      "body": "Provane un'altra o chiedi a un adulto."
+    }
   }
 }

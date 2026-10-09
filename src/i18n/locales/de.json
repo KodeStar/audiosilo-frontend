@@ -2077,5 +2077,50 @@
       "failedBody": "Nichts wurde geändert. Prüfe die Verbindung und versuche es erneut.",
       "demo": "Demo-Konten können nicht teilen, was sie hören."
     }
+  },
+  "kids": {
+    "greeting": "Hallo {{name}}",
+    "greetingNoName": "Hallo",
+    "grownUps": {
+      "label": "Erwachsene",
+      "button": "Erwachsene: gedrückt halten",
+      "holding": "Weiter halten",
+      "hint": "Gedrückt halten, um den Kindermodus zu verlassen",
+      "action": "Kindermodus verlassen"
+    },
+    "bedtime": {
+      "at": "Schlafenszeit ist um {{time}}",
+      "now": "Der Schlaf-Timer startet, wenn eine Geschichte beginnt",
+      "later": "Nach der Schlafenszeit hört eine Geschichte nach 20 Minuten von selbst auf, und der Ton wird langsam leiser."
+    },
+    "player": {
+      "play": "Abspielen",
+      "pause": "Pause",
+      "retry": "Nochmal versuchen",
+      "previous": "Vorheriges Kapitel",
+      "next": "Nächstes Kapitel",
+      "back_one": "{{count}} Sekunde zurück",
+      "back_other": "{{count}} Sekunden zurück",
+      "progress": "Wie weit im Kapitel",
+      "chapterLeft_one": "{{chapter}} · noch {{count}} Minute",
+      "chapterLeft_other": "{{chapter}} · noch {{count}} Minuten"
+    },
+    "stories": {
+      "title": "Deine Geschichten",
+      "play": "{{title}} abspielen",
+      "playing": "Läuft",
+      "loading": "Deine Geschichten werden gesucht",
+      "emptyTitle": "Hier gibt es noch keine Geschichten",
+      "emptyBody": "Frag einen Erwachsenen, ob er welche auf {{server}} hinzufügt.",
+      "errorTitle": "Die Geschichten lassen sich gerade nicht laden",
+      "errorBody": "{{server}} antwortet nicht. Es ist nichts verloren.",
+      "offlineBody": "{{server}} ist nicht erreichbar, und auf diesem Gerät sind keine Geschichten gespeichert.",
+      "retry": "Nochmal versuchen",
+      "onDevice": "Diese Geschichten sind auf diesem Gerät gespeichert."
+    },
+    "startFailed": {
+      "title": "Diese Geschichte startet gerade nicht",
+      "body": "Probier eine andere oder frag einen Erwachsenen."
+    }
   }
 }
