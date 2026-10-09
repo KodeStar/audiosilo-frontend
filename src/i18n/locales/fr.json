@@ -2022,6 +2022,28 @@
     "unavailable": "Ce livre ne peut pas être lu pour le moment",
     "subtitle": "{{author}} · {{left}}"
   },
+  "cast": {
+    "button": {
+      "label": "Caster",
+      "connecting": "Connexion à un appareil Cast",
+      "connected": "Diffusion en cours",
+      "connectedTo": "Diffusion sur {{device}}",
+      "blockedLabel": "Caster, indisponible pour ce livre"
+    },
+    "blocked": {
+      "title": "Ce livre ne peut pas être diffusé",
+      "unsupported": "Son serveur ne prend pas encore en charge Cast. Une mise à jour d’AudioSilo sur le serveur l’ajoute.",
+      "local-address": "L’app joint votre serveur à l’adresse propre de cet appareil (localhost), qu’un appareil Cast ne peut pas atteindre. Connectez-vous plutôt au serveur par son adresse réseau.",
+      "codec": "Son format audio ne se lit pas sur les appareils Cast, et le serveur ne peut pas le convertir.",
+      "no-connection": "Son serveur n’est pas connecté sur cet appareil. Reconnectez-vous pour le diffuser."
+    },
+    "failed": {
+      "title": "Impossible de lancer la diffusion",
+      "titleDevice": "Impossible de lire sur {{device}}",
+      "description": "Le livre reste sur cet appareil. Vérifiez que l’appareil Cast peut joindre votre serveur.",
+      "connect": "Impossible de se connecter à l’appareil Cast"
+    }
+  },
   "house": {
     "title": "Ce qu’on écoute à la maison",
     "sub": "{{server}} · partagé par choix",

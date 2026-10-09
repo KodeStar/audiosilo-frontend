@@ -2022,6 +2022,28 @@
     "unavailable": "Dieses Buch kann gerade nicht abgespielt werden",
     "subtitle": "{{author}} · {{left}}"
   },
+  "cast": {
+    "button": {
+      "label": "Streamen",
+      "connecting": "Verbindung mit einem Cast-Gerät wird hergestellt",
+      "connected": "Wird gestreamt",
+      "connectedTo": "Wird auf {{device}} gestreamt",
+      "blockedLabel": "Streamen, für dieses Buch nicht verfügbar"
+    },
+    "blocked": {
+      "title": "Dieses Buch kann nicht gestreamt werden",
+      "unsupported": "Sein Server unterstützt Cast noch nicht. Ein Update von AudioSilo auf dem Server fügt es hinzu.",
+      "local-address": "Die App erreicht deinen Server über die eigene Adresse dieses Geräts (localhost), die ein Cast-Gerät nicht erreichen kann. Verbinde dich stattdessen über die Netzwerkadresse des Servers.",
+      "codec": "Sein Audioformat läuft nicht auf Cast-Geräten, und der Server kann es nicht umwandeln.",
+      "no-connection": "Sein Server ist auf diesem Gerät nicht angemeldet. Melde dich erneut an, um es zu streamen."
+    },
+    "failed": {
+      "title": "Streamen konnte nicht gestartet werden",
+      "titleDevice": "Wiedergabe auf {{device}} nicht möglich",
+      "description": "Das Buch bleibt auf diesem Gerät. Prüfe, ob das Cast-Gerät deinen Server erreichen kann.",
+      "connect": "Verbindung mit dem Cast-Gerät fehlgeschlagen"
+    }
+  },
   "house": {
     "title": "Was im Haus gehört wird",
     "sub": "{{server}} · freiwillig geteilt",

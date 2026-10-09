@@ -2022,6 +2022,28 @@
     "unavailable": "This book can't play right now",
     "subtitle": "{{author}} · {{left}}"
   },
+  "cast": {
+    "button": {
+      "label": "Cast",
+      "connecting": "Connecting to a Cast device",
+      "connected": "Casting",
+      "connectedTo": "Casting to {{device}}",
+      "blockedLabel": "Cast, not available for this book"
+    },
+    "blocked": {
+      "title": "This book can't be cast",
+      "unsupported": "Its server doesn't support casting yet. Updating AudioSilo on the server adds it.",
+      "local-address": "The app reaches your server at this device's own address (localhost), which a Cast device can't reach. Connect to the server by its network address instead.",
+      "codec": "Its audio format doesn't play on Cast devices, and the server can't convert it.",
+      "no-connection": "Its server isn't signed in on this device. Sign in again to cast it."
+    },
+    "failed": {
+      "title": "Couldn't start casting",
+      "titleDevice": "Couldn't play on {{device}}",
+      "description": "The book stays on this device. Check that the Cast device can reach your server.",
+      "connect": "Couldn't connect to the Cast device"
+    }
+  },
   "house": {
     "title": "Listening in the house",
     "sub": "{{server}} · shared by choice",

@@ -2022,6 +2022,28 @@
     "unavailable": "Este libro no se puede reproducir ahora",
     "subtitle": "{{author}} · {{left}}"
   },
+  "cast": {
+    "button": {
+      "label": "Enviar",
+      "connecting": "Conectando con un dispositivo Cast",
+      "connected": "Enviando",
+      "connectedTo": "Enviando a {{device}}",
+      "blockedLabel": "Enviar, no disponible para este libro"
+    },
+    "blocked": {
+      "title": "Este libro no se puede enviar",
+      "unsupported": "Su servidor aún no admite Cast. Actualizar AudioSilo en el servidor lo añade.",
+      "local-address": "La app llega a tu servidor por la dirección propia de este dispositivo (localhost), a la que un dispositivo Cast no puede llegar. Conéctate al servidor por su dirección de red.",
+      "codec": "Su formato de audio no se reproduce en dispositivos Cast y el servidor no puede convertirlo.",
+      "no-connection": "Su servidor no tiene la sesión iniciada en este dispositivo. Vuelve a iniciar sesión para enviarlo."
+    },
+    "failed": {
+      "title": "No se pudo empezar a enviar",
+      "titleDevice": "No se pudo reproducir en {{device}}",
+      "description": "El libro sigue en este dispositivo. Comprueba que el dispositivo Cast puede llegar a tu servidor.",
+      "connect": "No se pudo conectar con el dispositivo Cast"
+    }
+  },
   "house": {
     "title": "Lo que se escucha en casa",
     "sub": "{{server}} · compartido por elección",

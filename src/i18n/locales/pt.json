@@ -2022,6 +2022,28 @@
     "unavailable": "Este livro não pode ser reproduzido agora",
     "subtitle": "{{author}} · {{left}}"
   },
+  "cast": {
+    "button": {
+      "label": "Transmitir",
+      "connecting": "A ligar a um dispositivo Cast",
+      "connected": "A transmitir",
+      "connectedTo": "A transmitir para {{device}}",
+      "blockedLabel": "Transmitir, indisponível para este livro"
+    },
+    "blocked": {
+      "title": "Este livro não pode ser transmitido",
+      "unsupported": "O servidor ainda não suporta Cast. Atualizar o AudioSilo no servidor acrescenta-o.",
+      "local-address": "A app chega ao servidor pelo endereço deste próprio dispositivo (localhost), que um dispositivo Cast não consegue alcançar. Liga-te ao servidor pelo endereço de rede.",
+      "codec": "O formato de áudio não toca em dispositivos Cast e o servidor não o consegue converter.",
+      "no-connection": "O servidor não tem sessão iniciada neste dispositivo. Inicia sessão de novo para o transmitir."
+    },
+    "failed": {
+      "title": "Não foi possível começar a transmitir",
+      "titleDevice": "Não foi possível tocar em {{device}}",
+      "description": "O livro fica neste dispositivo. Verifica se o dispositivo Cast consegue chegar ao servidor.",
+      "connect": "Não foi possível ligar ao dispositivo Cast"
+    }
+  },
   "house": {
     "title": "O que se ouve em casa",
     "sub": "{{server}} · partilhado por escolha",
