@@ -19,6 +19,7 @@ import type {
   BookPage,
   BookRef,
   BookSort,
+  CastToken,
   ChaptersResponse,
   Collection,
   CollectionDetail,
@@ -29,6 +30,8 @@ import type {
   Favourite,
   History,
   HistoryEntry,
+  HouseholdSettings,
+  HouseListening,
   Library,
   ListeningGoalStatus,
   Listing,
@@ -991,6 +994,35 @@ export class ApiClient {
    * of the connection the usual way instead. */
   revokeMyDevice(id: number) {
     return this.request<MyDeviceRevoked>('DELETE', `/me/devices/${id}`);
+  }
+
+  // --- Listening in the house (capability `household`) ---------------------
+  /** Whether the caller shares what they are listening to with the house. */
+  household(signal?: AbortSignal) {
+    return this.request<HouseholdSettings>('GET', '/me/household', { signal });
+  }
+  /** Share (or stop sharing) what the caller is listening to; answers as GET. A demo
+   * account is refused with a 403. */
+  setHousehold(share: boolean) {
+    return this.request<HouseholdSettings>('PUT', '/me/household', {
+      body: { share_listening: share },
+    });
+  }
+  /** What the other people who share are listening to (`[]` unless the caller shares). */
+  async houseListening(signal?: AbortSignal): Promise<HouseListening> {
+    const r = await this.request<HouseListening>('GET', '/household/listening', { signal });
+    return { ...r, listening: r.listening ?? [] };
+  }
+
+  // --- Casting (capability `cast`) -------------------------------------------
+  /** Mint a cast token for the book at `path` (a part path covers its whole book): the
+   * `?token=` for the cover and stream URLs a Cast receiver loads, in place of the
+   * session token. 403 outside the caller's access, 404 for no such book; an API-key
+   * client is refused (403). */
+  castToken(libraryId: number, path: string) {
+    return this.request<CastToken>('POST', '/cast/token', {
+      body: { library_id: libraryId, path },
+    });
   }
 
   /** A book's listening spans, newest first: the server's default 100, or up to `limit`
