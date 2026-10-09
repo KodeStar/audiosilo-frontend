@@ -339,7 +339,8 @@ Stacks book page, laid out by its MEASURED width (`bookPageLayout`: the cover be
 from 600, the aside as a right-hand column from 900, between the hero and the tabs below it;
 the Up next drawer can leave a desktop page phone-narrow). **Hero** (`book-hero.tsx`):
 `CoverWash` from `cover_color` (a neutral wash without one), quiet folder crumbs, the eyebrow
-(series + "Book N", opening the series page; else library and server), the title (one size
+(series + "Book N", opening the series page - every series in `series_list` for a book in
+several, apart by " / "; else library and server), the title (one size
 smaller past 48 characters), the byline (author and narrator pages; the narrator is plain text
 where `browse_people` is off), the facts (`bookFacts`), then the place of a book in progress
 (percent, "Chapter N of M", time left at the book's own speed, the progress bar: the page's one
@@ -443,7 +444,9 @@ no query function at all (`skipToken`), so it is never asked, not even by a manu
 `refetch`: `client.authors`/`narrators` (normalised to `PeopleList {people, unknown}`)
 and `seriesList` with `useAuthors`/`useNarrators`/`useSeriesList` (`browse_people`), and
 `client.listBooks` with `useLibraryBooks` (a `narrator` filter waits for
-`browse_people`); `client.nextBook` + `useNextBook` (`next_book`, server-resolved: community when it
+`browse_people`; a `series` filter waits for `/server`, then asks with `memberships=1` on
+`series_memberships`, as `useSeriesList` does: a book in several series, `Book.series_list`,
+is matched and counted in each); `client.nextBook` + `useNextBook` (`next_book`, server-resolved: community when it
 places its next work, else series -> folder -> none, `source` naming who produced
 `next`; a `work` without `local` is the rail's next work left unplaced; a community
 `next` can be in another library);
@@ -1193,7 +1196,8 @@ library: `useSelectedLibrary()` (the device-local `useLibrarySelection` store, p
 `resolveLibrarySelection`: a pick that is gone falls back to the first library, an offline server
 keeps its pick), chosen with `LibraryPicker` (hidden with one library). Each mode body is its own
 file under `src/components/library/modes/`. The detail pages take query params too:
-`seriesHref(cid, lib, { name } | { work })` (`name` = a local `Book.series`, `work` = a community
+`seriesHref(cid, lib, { name } | { work })` (`name` = a local series: a `Book.series` or one of
+its `series_list`, `useSeriesBooks` numbering each book by that series (`inSeries`); `work` = a community
 work id whose rails to show), `authorHref` / `narratorHref(cid, lib, name)` (exact field values),
 `collectionHref(cid, id)`, with `parse*Params` and `useOpen().open{Series,Author,Narrator,Collection}`.
 In Collections mode the picker names servers only (`LibraryPicker by="server"`, hidden with one

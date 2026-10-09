@@ -162,8 +162,9 @@ export function finishedHref(
 // are also the exact `author=` / `narrator=` / `series=` filters of GET /books.
 
 /**
- * Which series a series page shows. `name` is a LOCAL series: the exact `Book.series`
- * value in the library (the `series=` books filter and a `SeriesCount.name`). `work` is
+ * Which series a series page shows. `name` is a LOCAL series: a series name in the
+ * library - a book's `series`, or one of its `series_list` (the `series=` books
+ * filter and a `SeriesCount.name`). `work` is
  * a community-metadata work id (`BookMetaRailEntry.id`, `/meta/work?id=`): the page
  * shows that work's series rails, which is how a series the listener owns nothing of is
  * reached (a ghost on a rail, a "next in your series" for a book not in the library).

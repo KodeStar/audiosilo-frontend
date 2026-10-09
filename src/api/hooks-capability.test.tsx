@@ -274,8 +274,63 @@ describe('capability-gated hooks', () => {
     const c1 = mockClients.c1;
     expect(c1.authors).toHaveBeenCalledWith(2, expect.anything());
     expect(c1.narrators).toHaveBeenCalledWith(2, expect.anything());
-    expect(c1.seriesList).toHaveBeenCalledWith(2, expect.anything());
+    // Main series only: the server doesn't say it knows more (series_memberships).
+    expect(c1.seriesList).toHaveBeenCalledWith(2, { memberships: false }, expect.anything());
     expect(c1.nextBook).not.toHaveBeenCalled();
+  });
+
+  it('asks for every series a book is in on series_memberships', async () => {
+    const { result } = await mount(
+      { c1: { browse_people: true, series_memberships: true } },
+      () => {
+        useLibraryBooks(2, { series: 'City Watch' });
+        return useBrowseAndNext();
+      },
+    );
+    await waitFor(() => expect(result.current.lists.every((q) => q.isSuccess)).toBe(true));
+    const c1 = mockClients.c1;
+    expect(c1.seriesList).toHaveBeenCalledWith(2, { memberships: true }, expect.anything());
+    await waitFor(() =>
+      expect(c1.listBooks).toHaveBeenCalledWith(
+        2,
+        expect.objectContaining({ series: 'City Watch', memberships: true }),
+        expect.anything(),
+      ),
+    );
+    // Asked once: never first by its main series alone.
+    expect(c1.listBooks).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a series list until /server says whether it knows memberships', async () => {
+    let answer: (info: ServerInfo) => void = () => {};
+    const { result } = await mount(
+      { c1: {} },
+      () => useLibraryBooks(2, { series: 'City Watch' }),
+      () => mockClients.c1.serverInfo.mockReturnValue(new Promise((r) => (answer = r))),
+    );
+    expect(mockClients.c1.listBooks).not.toHaveBeenCalled();
+    await act(async () => answer(serverWith('c1', { series_memberships: true })));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockClients.c1.listBooks).toHaveBeenCalledTimes(1);
+    expect(mockClients.c1.listBooks.mock.calls[0][1]).toMatchObject({ memberships: true });
+  });
+
+  it('asks for a series by its main name alone without series_memberships', async () => {
+    const { result } = await mount({ c1: { browse_people: true } }, () =>
+      useLibraryBooks(2, { series: 'City Watch' }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockClients.c1.listBooks.mock.calls[0][1]).not.toHaveProperty('memberships');
+  });
+
+  it('does not hold a series list on a server whose /server fails', async () => {
+    const { result } = await mount(
+      { c1: {} },
+      () => useLibraryBooks(2, { series: 'City Watch' }),
+      () => mockClients.c1.serverInfo.mockRejectedValue(new Error('down')),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockClients.c1.listBooks.mock.calls[0][1]).not.toHaveProperty('memberships');
   });
 
   it('asks for the next book on next_book alone', async () => {

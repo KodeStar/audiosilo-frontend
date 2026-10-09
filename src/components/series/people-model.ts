@@ -1,7 +1,7 @@
 import type { Book } from '@/api/types';
 import { hashString } from '@/lib/monogram';
 
-import { type ProgressLookup, sortSeriesBooks } from './series-model';
+import { inSeries, type ProgressLookup, seriesOf, sortSeriesBooks } from './series-model';
 
 /**
  * Pure rules behind the Authors / Narrators modes and the author and narrator pages
@@ -48,8 +48,10 @@ export function personStats(
 
 export type SeriesGroup = { series: string; books: Book[] };
 
-/** A person's books as their series (by name, each in series order) and the books in
- * no series (by title). */
+/** A person's books as their series (by name, each in series order; a book in several
+ * series is on each, placed by its position there) and the books in no series (by
+ * title). Each shelf holds the books' own rows (a download or an action started from
+ * one keeps the book's main series); `inSeries` numbers a row by its shelf. */
 export function booksBySeries(books: readonly Book[]): {
   series: SeriesGroup[];
   standalone: Book[];
@@ -57,18 +59,25 @@ export function booksBySeries(books: readonly Book[]): {
   const groups = new Map<string, Book[]>();
   const standalone: Book[] = [];
   for (const b of books) {
-    if (!b.series.trim()) {
+    const all = seriesOf(b).filter((s) => s.name.trim());
+    if (all.length === 0) {
       standalone.push(b);
       continue;
     }
-    const g = groups.get(b.series);
-    if (g) g.push(b);
-    else groups.set(b.series, [b]);
+    // A book in several series is on each shelf.
+    for (const s of all) {
+      const g = groups.get(s.name);
+      if (g) g.push(b);
+      else groups.set(s.name, [b]);
+    }
   }
   return {
     series: [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([series, list]) => ({ series, books: sortSeriesBooks(list) })),
+      .map(([series, list]) => ({
+        series,
+        books: sortSeriesBooks(list, (b) => inSeries(b, series)?.series_index ?? 0),
+      })),
     standalone: standalone.sort((a, b) => a.title.localeCompare(b.title)),
   };
 }

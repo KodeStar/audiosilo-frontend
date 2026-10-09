@@ -303,6 +303,24 @@ describe('book page hero', () => {
     expect(paths).toEqual(['/series', '/author', '/narrator']);
   });
 
+  it('opens each series a book is in from its own part of the eyebrow', async () => {
+    mockBook = {
+      ...BOOK,
+      series_list: [
+        { name: 'The Stormlight Archive', position: 1 },
+        { name: 'The Cosmere', position: 4 },
+      ],
+    };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByRole('link', { name: 'Open the series The Cosmere' }));
+    expect(mockPush).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        pathname: '/series',
+        params: expect.objectContaining({ name: 'The Cosmere' }),
+      }),
+    );
+  });
+
   it('keeps a narrator without a page as plain text', async () => {
     mockCaps = { browse_people: false };
     await mountAt('desktop');

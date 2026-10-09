@@ -6,6 +6,7 @@ import {
   currentEntry,
   defaultSelection,
   type ElsewhereBook,
+  inSeries,
   localEntries,
   localGaps,
   looseKey,
@@ -13,6 +14,7 @@ import {
   pickRail,
   type ProgressLike,
   railEntries,
+  seriesOf,
   seriesStats,
   trackSegments,
 } from './series-model';
@@ -63,6 +65,41 @@ const src = { connectionId: CID, connectionName: 'Home Library', progressOf };
 
 beforeEach(() => {
   for (const k of Object.keys(progress)) delete progress[k];
+});
+
+describe('a book in several series', () => {
+  const guards = book('Guards! Guards!', 8, {
+    series: 'Discworld',
+    series_list: [
+      { name: 'Discworld', position: 8 },
+      { name: 'Discworld: City Watch', position: 1 },
+    ],
+  });
+
+  it('is in each, at its own place', () => {
+    expect(seriesOf(guards).map((s) => s.name)).toEqual(['Discworld', 'Discworld: City Watch']);
+    // Without a list (an older server, a one-series book): its main series only.
+    expect(seriesOf(book('Leviathan Wakes', 1))).toEqual([{ name: 'The Expanse', position: 1 }]);
+    expect(inSeries(guards, 'discworld - city watch')?.series_index).toBe(1);
+    expect(inSeries(guards, 'Mort')).toBeUndefined();
+  });
+
+  it('stands in a series page as that series numbers it', () => {
+    expect(inSeries(guards, 'Discworld: City Watch')).toMatchObject({
+      series: 'Discworld: City Watch',
+      series_index: 1,
+    });
+    expect(inSeries(guards, 'Discworld')).toBe(guards);
+    const arms = book('Men at Arms', 2, { series: 'Discworld: City Watch' });
+    const entries = localEntries(
+      [arms, guards].map((b) => inSeries(b, 'Discworld: City Watch') ?? b),
+      src,
+    );
+    expect(entries.map((e) => [e.position, e.title])).toEqual([
+      ['1', 'Guards! Guards!'],
+      ['2', 'Men at Arms'],
+    ]);
+  });
 });
 
 describe('localGaps', () => {

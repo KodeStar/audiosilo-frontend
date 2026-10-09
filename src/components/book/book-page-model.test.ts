@@ -272,19 +272,39 @@ describe('the place in the list', () => {
 
 describe('heroEyebrow', () => {
   it('names the series and the book in it, which opens the series', () => {
-    expect(heroEyebrow(t, { series: 'Stormlight', series_index: 1 }, 'Fiction', 'Home')).toEqual({
-      text: 'Stormlight · Book 1',
-      series: 'Stormlight',
-    });
-    expect(heroEyebrow(t, { series: 'Stormlight', series_index: 0 }, 'Fiction', 'Home').text).toBe(
-      'Stormlight',
-    );
+    expect(heroEyebrow(t, { series: 'Stormlight', series_index: 1 }, 'Fiction', 'Home')).toEqual([
+      { text: 'Stormlight · Book 1', series: 'Stormlight' },
+    ]);
+    expect(
+      heroEyebrow(t, { series: 'Stormlight', series_index: 0 }, 'Fiction', 'Home')[0].text,
+    ).toBe('Stormlight');
+  });
+
+  it('names every series a book is in, each opening its own page', () => {
+    expect(
+      heroEyebrow(
+        t,
+        {
+          series: 'Discworld',
+          series_index: 8,
+          series_list: [
+            { name: 'Discworld', position: 8 },
+            { name: 'City Watch', position: 1 },
+          ],
+        },
+        'Fiction',
+        'Home',
+      ),
+    ).toEqual([
+      { text: 'Discworld · Book 8', series: 'Discworld' },
+      { text: 'City Watch · Book 1', series: 'City Watch' },
+    ]);
   });
 
   it('else says where the book lives', () => {
-    expect(heroEyebrow(t, { series: '', series_index: 0 }, 'Fiction', 'Home')).toEqual({
-      text: 'Fiction · Home',
-    });
+    expect(heroEyebrow(t, { series: '', series_index: 0 }, 'Fiction', 'Home')).toEqual([
+      { text: 'Fiction · Home' },
+    ]);
   });
 });
 

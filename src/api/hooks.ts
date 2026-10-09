@@ -80,7 +80,9 @@ export const qk = {
   metaWork: (cid: string, workId: string) => ['metaWork', cid, workId] as const,
   authors: (cid: string, lib: number) => ['authors', cid, lib] as const,
   narrators: (cid: string, lib: number) => ['narrators', cid, lib] as const,
-  seriesList: (cid: string, lib: number) => ['seriesList', cid, lib] as const,
+  /** `memberships`: counted in every series a book is in (`series_memberships`). */
+  seriesList: (cid: string, lib: number, memberships: boolean) =>
+    ['seriesList', cid, lib, { memberships }] as const,
   libraryBooks: (cid: string, lib: number, query: BookListQuery) =>
     ['libraryBooks', cid, lib, query] as const,
   nextBook: (cid: string, lib: number, path: string) => ['nextBook', cid, lib, path] as const,
@@ -751,11 +753,14 @@ export function useNarrators(libraryId: number, connectionId?: string) {
   );
 }
 
-/** A library's series with book counts and positions (capability `browse_people`). */
+/** A library's series with book counts and positions (capability `browse_people`): a
+ * book in several series counts in each where the server can say so
+ * (`series_memberships`). */
 export function useSeriesList(libraryId: number, connectionId?: string) {
+  const memberships = useCapability('series_memberships', connectionId) === true;
   return useBrowseList(
-    (cid) => qk.seriesList(cid, libraryId),
-    (api, signal) => api.seriesList(libraryId, signal),
+    (cid) => qk.seriesList(cid, libraryId, memberships),
+    (api, signal) => api.seriesList(libraryId, { memberships }, signal),
     connectionId,
   );
 }
@@ -775,7 +780,9 @@ export type LibraryBooksOptions = {
  * server's cursor, optionally narrowed by exact `author`/`series`/`narrator` values
  * and sorted. `author`/`series` work on every server; a `narrator` filter needs
  * `browse_people` (an older server ignores it and would answer with the whole
- * library), so with one the query only runs once the server advertises the flag. */
+ * library), so with one the query only runs once the server advertises the flag. A
+ * `series` filter waits for `/server` (unless it fails) to learn whether to ask with
+ * `memberships` (`series_memberships`). */
 export function useLibraryBooks(
   libraryId: number,
   query: BookListQuery = {},
@@ -785,13 +792,21 @@ export function useLibraryBooks(
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   const narratorOk = useCapability('browse_people', connectionId) === true;
-  const key = qk.libraryBooks(cid, libraryId, query);
+  // A series' books are every book in it where the server can say so; a series list
+  // waits for the flag (as a narrator one waits for browse_people), so it isn't first
+  // answered with the main series' books and then again.
+  const memberships = useCapability('series_memberships', connectionId);
+  // (A server whose /server fails is no wait: the list then fails or answers alone.)
+  const serverFailed = useServerInfo(connectionId).isError;
+  const seriesReady = !query.series || memberships !== undefined || serverFailed;
+  const effective = query.series && memberships ? { ...query, memberships: true } : query;
+  const key = qk.libraryBooks(cid, libraryId, effective);
   return useInfiniteQuery({
     queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
     queryFn:
-      api && (!query.narrator || narratorOk)
+      api && (!query.narrator || narratorOk) && seriesReady
         ? ({ pageParam, signal }) =>
-            api.listBooks(libraryId, { ...query, limit: pageSize, cursor: pageParam }, signal)
+            api.listBooks(libraryId, { ...effective, limit: pageSize, cursor: pageParam }, signal)
         : skipToken,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
@@ -828,7 +843,8 @@ export function useAllLibraryBooks(
     complete: !!data && !hasNextPage,
     /** Nothing loaded yet (the first page is on its way). */
     isLoading: q.isPending && q.fetchStatus !== 'idle',
-    /** The query can't run (no client, or a narrator filter on a server without it). */
+    /** The query can't run (no client, or a narrator filter on a server without it) or
+     * hasn't yet (a series filter waiting for `/server`). */
     isIdle: q.isPending && q.fetchStatus === 'idle',
     error: q.error,
     retry: () => void (data ? fetchNextPage() : refetch()),

@@ -75,6 +75,8 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
     queries: slots.map(({ kind, source }) => {
       const client = clients.get(source.connectionId);
       const on = caps[source.connectionId]?.browse_people === true && !!client;
+      // Counted in every series a book is in where the server can (as useSeriesList).
+      const memberships = caps[source.connectionId]?.series_memberships === true;
       const { connectionId: cid, libraryId: lib } = source;
       return {
         queryKey:
@@ -82,7 +84,7 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
             ? qk.authors(cid, lib)
             : kind === 'narrators'
               ? qk.narrators(cid, lib)
-              : qk.seriesList(cid, lib),
+              : qk.seriesList(cid, lib, memberships),
         queryFn:
           on && client
             ? ({ signal }: { signal: AbortSignal }) =>
@@ -90,7 +92,7 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
                   ? client.authors(lib, signal)
                   : kind === 'narrators'
                     ? client.narrators(lib, signal)
-                    : client.seriesList(lib, signal)
+                    : client.seriesList(lib, { memberships }, signal)
             : skipToken,
         enabled,
         staleTime: BROWSE_STALE_MS,
