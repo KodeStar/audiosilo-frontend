@@ -109,8 +109,12 @@ class AudiosiloPlayerModule : Module() {
       sendEvent("onRateChange", mapOf("rate" to rate))
     }
 
-    override fun remoteBookmark(fileIndex: Int, position: Double) {
-      sendEvent("onRemoteBookmark", mapOf("trackIndex" to fileIndex, "position" to position))
+    override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?) {
+      val place: Map<String, Any> = mapOf("trackIndex" to fileIndex, "position" to position)
+      val named: Map<String, Any> = book?.let {
+        mapOf("connectionId" to it.connectionId, "libraryId" to it.libraryId.toDouble(), "path" to it.path)
+      } ?: emptyMap()
+      sendEvent("onRemoteBookmark", place + named)
     }
 
     override fun carConnection(connected: Boolean) {
@@ -148,14 +152,19 @@ class AudiosiloPlayerModule : Module() {
 
     // Car events JS couldn't hear yet (a car tap that booted JS, a connect before the car
     // controller listened) are delivered the moment it starts listening.
+    // On the main thread, like the service's `requestCarPlay` it hands off with: Expo runs
+    // these on its own queue, where the check-then-act of the two could lose a request (or
+    // deliver an older one after a newer).
     OnStartObserving("onCarPlayRequest") {
-      observingCar = true
-      PlayerBridge.pendingCarPlayId?.let { id ->
-        PlayerBridge.pendingCarPlayId = null
-        sendEvent("onCarPlayRequest", mapOf("id" to id))
+      handler.post {
+        observingCar = true
+        PlayerBridge.pendingCarPlayId?.let { id ->
+          PlayerBridge.pendingCarPlayId = null
+          sendEvent("onCarPlayRequest", mapOf("id" to id))
+        }
       }
     }
-    OnStopObserving("onCarPlayRequest") { observingCar = false }
+    OnStopObserving("onCarPlayRequest") { handler.post { observingCar = false } }
     OnStartObserving("onCarConnection") {
       observingCarConnection = true
       if (PlayerBridge.carConnected) sendEvent("onCarConnection", mapOf("connected" to true))
@@ -217,8 +226,11 @@ class AudiosiloPlayerModule : Module() {
     AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double, chapters: List<ChapterRecord>?, book: BookRecord? ->
       handler.post {
         val c = controller ?: return@post
-        // Every track in a book shares the same auth header.
-        AuthHolder.headers = tracks.firstOrNull()?.headers ?: emptyMap()
+        // A remote move not reported yet belongs to the queue this load replaces.
+        dropRemoteMove()
+        // Every streamed track in a book shares the same auth header, for its server.
+        val authed = tracks.firstOrNull { !it.headers.isNullOrEmpty() }
+        AuthHolder.set(authed?.headers, authed?.url)
         lastTrackIndex = -1
         val specs = tracks.map {
           TrackSpec(it.id, it.url, it.title, it.album, it.artist, it.artwork, it.duration ?: 0.0)
@@ -291,6 +303,7 @@ class AudiosiloPlayerModule : Module() {
 
     AsyncFunction("reset") {
       handler.post {
+        dropRemoteMove()
         controller?.stop()
         controller?.clearMediaItems()
         lastTrackIndex = -1
@@ -318,6 +331,13 @@ class AudiosiloPlayerModule : Module() {
     // service kept playing), in FILE coordinates, else null. JS adopts it without reloading.
     AsyncFunction("getLoadedBook") { promise: Promise ->
       handler.post {
+        // No service in this process, or one with nothing loaded: nothing to adopt, and no
+        // reason to bind (so create) the playback service on every launch just to ask.
+        val loaded = PlayerBridge.service?.player
+        if (loaded == null || loaded.mediaItemCount == 0) {
+          promise.resolve(null)
+          return@post
+        }
         connect { error ->
           val c = controller
           if (error != null || c == null) {
@@ -491,6 +511,11 @@ class AudiosiloPlayerModule : Module() {
         sendEvent("onState", mapOf("state" to "error"))
       }
     })
+  }
+
+  private fun dropRemoteMove() {
+    handler.removeCallbacks(remoteMoveFallback)
+    pendingRemoteMove = null
   }
 
   private fun flushRemoteMove() {

@@ -17,6 +17,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -110,11 +111,40 @@ object PlayerConfig {
 /**
  * Shared auth headers for streaming + artwork. They are identical for every track
  * in a book (a single session bearer token), so the module sets them once per load
- * and the data source reads them at request time.
+ * and the data source reads them at request time, ONLY for a request to the server they
+ * were given for ([origin]): the token never goes to any other host.
  */
 object AuthHolder {
   @Volatile
-  var headers: Map<String, String> = emptyMap()
+  private var auth: Pair<String, Map<String, String>>? = null
+
+  /** The book's auth headers and the URL of a track they are for (its origin scopes them). */
+  fun set(headers: Map<String, String>?, url: String?) {
+    val origin = url?.let { originOf(Uri.parse(it)) }
+    auth = if (headers.isNullOrEmpty() || origin == null) null else origin to headers
+  }
+
+  fun clear() {
+    auth = null
+  }
+
+  /** The headers for a request to [uri]: the book's, when it is the book's server. */
+  fun headersFor(uri: Uri): Map<String, String> {
+    val (origin, headers) = auth ?: return emptyMap()
+    return if (originOf(uri) == origin) headers else emptyMap()
+  }
+
+  private fun originOf(uri: Uri): String? {
+    val scheme = uri.scheme?.lowercase() ?: return null
+    val host = uri.host?.lowercase() ?: return null
+    val port = when {
+      uri.port != -1 -> uri.port
+      scheme == "https" -> 443
+      scheme == "http" -> 80
+      else -> -1
+    }
+    return "$scheme://$host:$port"
+  }
 }
 
 /**
@@ -179,10 +209,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
     PlayerConfig.restore(this)
 
     val httpFactory = DefaultHttpDataSource.Factory()
-    val upstream = DataSource.Factory {
-      val ds = httpFactory.createDataSource()
-      AuthHolder.headers.forEach { (key, value) -> ds.setRequestProperty(key, value) }
-      ds
+    // The auth headers go per request, and only to the server the app loaded the book from
+    // (AuthHolder): never to another host a media item or an artwork URI names.
+    val upstream: DataSource.Factory = ResolvingDataSource.Factory(httpFactory) { dataSpec ->
+      val headers = AuthHolder.headersFor(dataSpec.uri)
+      if (headers.isEmpty()) dataSpec else dataSpec.withAdditionalHeaders(headers)
     }
     // Cache streamed bytes so the repeated opens that chapter clips make over the SAME
     // single-file m4b reuse already-downloaded data + the parsed container header,
@@ -355,11 +386,14 @@ class AudiosiloPlayerService : MediaLibraryService() {
   internal fun onBookmarkPressed() {
     val p = player ?: return
     val (fileIndex, position) = currentFilePosition() ?: return
+    val book = MediaItems.bookOf(p.currentMediaItem)
     val sink = PlayerBridge.sink
     if (sink != null && sink.observingBookmarks) {
-      sink.remoteBookmark(fileIndex, position)
+      // With its book: JS may not have adopted the book the engine plays yet (a car start
+      // the JS boot is still adopting), and the press belongs to the book the listener heard.
+      sink.remoteBookmark(fileIndex, position, book)
     } else {
-      val book = MediaItems.bookOf(p.currentMediaItem) ?: return // can't name the book: drop it
+      book ?: return // can't name the book: drop it
       PendingBookmarks.append(this, book, fileIndex, position)
       needJs()
     }
@@ -453,13 +487,15 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   /**
    * The car (or a resumption) asked to play a snapshot book.
-   *  - JS not listening and the book is downloaded (has a play spec): start it now, from the
+   *  - The book the player already has: it plays on from where it is ([playingQueue]).
+   *  - No JS runtime and the book is downloaded (has a play spec): start it now, from the
    *    spec; JS boots once it plays and adopts it (`getLoadedBook`).
    *  - Otherwise JS starts it (`onCarPlayRequest`, queued until JS listens; JS boots when
    *    needed). The returned future completes when the module's next `load` arrives (with the
    *    queue JS just loaded), or fails after ~10 s with the snapshot's "unavailable" label.
-   *    While JS runs, even a downloaded book goes through JS: JS may hold another book as
-   *    `nowPlaying`, and swapping the engine under it would save one book's place as another's.
+   *    While a JS runtime exists, even a downloaded book goes through JS: JS may hold another
+   *    book as `nowPlaying`, and swapping the engine under it would save one book's place as
+   *    another's.
    */
   internal fun playFromCar(id: String, requirePlaySpec: Boolean): ListenableFuture<MediaItemsWithStartPosition> {
     val snapshot = snapshot()
@@ -469,10 +505,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
       sendUnavailable()
       return Futures.immediateFailedFuture(UnsupportedOperationException("Unknown car item"))
     }
-    if (spec != null && !PlayerBridge.jsListening) {
+    // The book already loaded (the first Continue listening row, so the most common tap): it
+    // plays on from where it is, as on iOS. Sent to JS, the request waited for a `load` JS
+    // never makes for its own book, and the car said "unavailable" 10 s later while it played.
+    item.book?.let { playingQueue(it) }?.let {
+      failPendingPlay(notify = false)
+      return Futures.immediateFuture(it)
+    }
+    // Natively only with no JS runtime at all: one that runs may hold another book as
+    // `nowPlaying` (even with its car sync not listening yet), and swapping the engine under
+    // it would map this book's place onto that one.
+    if (spec != null && PlayerBridge.sink == null) {
       val queue = MediaItems.buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
       // Every track of a play spec is a local file: no auth headers.
-      AuthHolder.headers = emptyMap()
+      AuthHolder.clear()
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }
       return Futures.immediateFuture(MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs))
     }
@@ -483,6 +529,46 @@ class AudiosiloPlayerService : MediaLibraryService() {
     PlayerBridge.requestCarPlay(id)
     needJs()
     return future
+  }
+
+  /** The player's own queue at its place when it has [book] loaded (any book with null) and
+   * can play on (ready or buffering), else null. Media3 then sets that same queue again
+   * (absorbed, see [AudiobookPlayer.absorbIdenticalSet]) and plays: a paused book resumes,
+   * with auto-rewind; an ended or failed one goes the usual way, through JS. */
+  private fun playingQueue(book: BookRef?): MediaItemsWithStartPosition? {
+    val p = player ?: return null
+    if (p.mediaItemCount == 0) return null
+    if (book != null && MediaItems.bookOf(p.currentMediaItem) != book) return null
+    val state = p.playbackState
+    if (state != Player.STATE_READY && state != Player.STATE_BUFFERING) return null
+    p.absorbIdenticalSet = true
+    // Media3 applies the result on this looper (at once, or posted ahead of this): clear the
+    // flag after it, so a later identical load of the app's (a retry) is never skipped.
+    handler.post { player?.absorbIdenticalSet = false }
+    return MediaItemsWithStartPosition(p.mediaItems(), p.currentMediaItemIndex, p.currentPosition)
+  }
+
+  /**
+   * A voice or search play from the car (the Assistant's "play AudioSilo", "play <title> on
+   * AudioSilo"; Media3 hands it over as an item with no id and the query): the listed book whose
+   * title holds the query, else what the listener most likely means, the loaded book playing
+   * on, else the first Continue listening book. "Unavailable" only when there is none.
+   */
+  internal fun playFromSearch(query: String?): ListenableFuture<MediaItemsWithStartPosition> {
+    val snapshot = snapshot()
+    val q = query?.trim().orEmpty()
+    val match = if (q.isEmpty()) null else snapshot?.findByTitle(q)
+    if (match != null) return playFromCar(match.id, requirePlaySpec = false)
+    playingQueue(null)?.let {
+      failPendingPlay(notify = false)
+      return Futures.immediateFuture(it)
+    }
+    val first = snapshot?.firstContinue()
+    if (first == null) {
+      sendUnavailable()
+      return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to play"))
+    }
+    return playFromCar(first.id, requirePlaySpec = false)
   }
 
   /** The module's `load` arrived (the app's controller set a queue). Completes a pending car
@@ -564,6 +650,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
     handler.removeCallbacksAndMessages(null)
     pendingPlay?.setException(IllegalStateException("Service stopped"))
     pendingPlay = null
+    // A car request JS never received dies with the service: delivered to a JS that starts
+    // listening later (the car long gone), it would start the book on the phone.
+    PlayerBridge.pendingCarPlayId = null
     carMonitor?.stop()
     carMonitor = null
     if (PlayerBridge.carConnected) {

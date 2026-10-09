@@ -1,3 +1,4 @@
+import { AppState, type NativeEventSubscription, Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { ApiError } from '@/api/client';
@@ -31,7 +32,7 @@ const LEGACY_USER = 'audiosilo.user';
 // log anyone out. Auth (connections + their secure-store session tokens) and the
 // disposable per-server cache (downloads/progress) each carry their own version; a bump
 // to one never touches the other. `resetStaleStorage()` reconciles both, awaited before
-// any store hydrates (see `_layout.tsx`).
+// any store hydrates (see `bootstrapPlayback`, `src/lib/bootstrap.ts`).
 //
 // AUTH version — gates ONLY the auth wipe (connections metadata + secure-store tokens +
 // the default id + the legacy single-session keys). Session tokens never expire
@@ -72,8 +73,8 @@ export type StorageResetResult = {
 /**
  * One-time reconciliation of storage left incompatible by a version bump, split across two
  * independent axes so cache churn can never log anyone out. MUST be awaited before
- * session/downloads/progress hydrate (see `_layout.tsx`), so no store loads records keyed
- * on now-invalid connection ids. Returns which axes actually reset, so the caller can also
+ * session/downloads/progress hydrate (see `bootstrapPlayback`), so no store loads records
+ * keyed on now-invalid connection ids. Returns which axes actually reset, so the caller can also
  * wipe the orphaned on-disk download files (outside AsyncStorage) when EITHER fired.
  *
  * AUTH axis: if the recorded `AUTH_STORAGE_VERSION` differs, wipe connections + their
@@ -269,6 +270,64 @@ function mirror(connections: Connection[], defaultId: string | null) {
   };
 }
 
+/**
+ * Whether the last hydrate failed, so the persisted connections are NOT in memory: a token
+ * read threw. Until a hydrate succeeds nothing may act on the empty list as if it were the
+ * real one: a sign-in would write it over the persisted one (keeping only its own server),
+ * the offline queue's replay would drop every save as unroutable (`sessionReady`), and the
+ * car would be told the listener signed out. The hydrate runs again when the app next comes
+ * to the front, and while the phone is locked (`LOCKED_RETRY_MS`).
+ */
+let hydrateFailed = false;
+let retryWhenActive: NativeEventSubscription | null = null;
+let retryLocked: ReturnType<typeof setTimeout> | null = null;
+let retrying: Promise<void> | null = null;
+
+/** How often a session read the locked phone refused is tried again. The app may already
+ * count as active (its CarPlay scene), so opening the phone need not change its state. */
+export const LOCKED_RETRY_MS = 5_000;
+
+export function sessionHydrateFailed(): boolean {
+  return hydrateFailed;
+}
+
+/**
+ * Whether a token read failed only because the phone is locked: iOS, a CarPlay launch with
+ * the phone in a pocket, before the token moved to the item readable after first unlock
+ * (the earlier one is readable only unlocked, `secure-store.ts`). It reads once the phone
+ * is unlocked.
+ */
+export function isLockedKeychainError(e: unknown): boolean {
+  if (Platform.OS !== 'ios') return false;
+  const message = e instanceof Error ? e.message : String(e);
+  return /interaction is not allowed/i.test(message);
+}
+
+/** One retry at a time, from either trigger. */
+function retryHydrate() {
+  retrying ??= useSession
+    .getState()
+    .hydrate()
+    .finally(() => {
+      retrying = null;
+    });
+}
+
+/** Note how the hydrate ended: a failure hydrates again on the next foreground and, when
+ * the phone was locked, every `LOCKED_RETRY_MS` until it reads. */
+function hydrateEnded(failed: boolean, locked = false) {
+  hydrateFailed = failed;
+  retryWhenActive?.remove();
+  retryWhenActive = null;
+  if (retryLocked) clearTimeout(retryLocked);
+  retryLocked = null;
+  if (!failed) return;
+  retryWhenActive = AppState.addEventListener('change', (next) => {
+    if (next === 'active') retryHydrate();
+  });
+  if (locked) retryLocked = setTimeout(retryHydrate, LOCKED_RETRY_MS);
+}
+
 async function persist(connections: Connection[], defaultId: string | null) {
   // Strip the token (→ secure-store) AND the in-memory `needsReconnect` flag, so a stale
   // reconnect prompt never survives a restart (it's recomputed from the next failure).
@@ -300,17 +359,24 @@ export const useSession = create<SessionState>()((set, get) => ({
           }),
         );
         const connections = withTokens.filter((c): c is Connection => c !== null);
+        hydrateEnded(false);
         set({ connections, ...mirror(connections, defaultId ?? null) });
         return;
       }
 
+      hydrateEnded(false);
       set({ status: 'unauthenticated' });
     } catch (e) {
-      // Fail safe: never leave status stuck on 'loading' (that would hang sessionReady()
-      // consumers and the offline-replay flush forever). Surface as unauthenticated; the
-      // persisted connections are untouched, so a future clean launch restores them.
-      console.warn('[session] hydrate failed', e);
-      set({ status: 'unauthenticated' });
+      // The persisted connections are untouched, and loaded again later (`hydrateFailed`):
+      // a JS runtime can outlive this launch (CarPlay's).
+      const locked = isLockedKeychainError(e);
+      if (!locked || !hydrateFailed) console.warn('[session] hydrate failed', e);
+      hydrateEnded(true, locked);
+      // A locked phone: still loading (the screens wait on their spinner, never on the
+      // connect screen), since the read succeeds once it is unlocked. Anything else: fail
+      // safe, never stuck on 'loading' (sessionReady() consumers would wait forever), so
+      // unauthenticated, and the listener can sign in again.
+      set({ status: locked ? 'loading' : 'unauthenticated' });
     }
   },
 
@@ -321,6 +387,9 @@ export const useSession = create<SessionState>()((set, get) => ({
     // and make the default `useApi('')` throw, so refuse it loudly (the connect/sign-in
     // flows surface this ApiError) rather than silently corrupt scoped state.
     if (!serverId) throw new ApiError(0, 'Server did not return an id (server_id).');
+    // The persisted connections first, when they never loaded: the list written below would
+    // otherwise hold this server alone and drop every other one.
+    if (hydrateFailed) await get().hydrate();
     const existing = get().connections;
     // Dedupe by the server's stable identity, so re-pairing the same server - even at a
     // different URL - updates its connection (and refreshes the URL) instead of adding a
@@ -353,6 +422,9 @@ export const useSession = create<SessionState>()((set, get) => ({
     // already dead, so there's nothing to call.
     await Promise.all(stale.map((c) => deleteSecure(tokenKey(c.id)).catch(() => undefined)));
     await persist(connections, serverId);
+    // The list just written is the one in memory: settled, even when the hydrate above failed
+    // again (unreadable storage, not a locked phone: a sign-in means it is unlocked).
+    if (hydrateFailed) hydrateEnded(false);
     // Remember this server durably (no token) so the connect screen can offer a one-tap
     // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
     await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });

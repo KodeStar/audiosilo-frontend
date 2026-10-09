@@ -516,10 +516,17 @@ final class AudioEngine: NSObject {
   }
 
   /// CarPlay's bookmark button: `onRemoteBookmark` with the file and position right now (a
-  /// pending start seek's target while one is waiting).
+  /// pending start seek's target while one is waiting), and the loaded book when `load` named
+  /// it, so JS adds the bookmark to the book the listener heard.
   func emitRemoteBookmark() {
     guard !tracks.isEmpty else { return }
-    send("onRemoteBookmark", ["trackIndex": currentIndex, "position": currentPosition()])
+    var body: [String: Any] = ["trackIndex": currentIndex, "position": currentPosition()]
+    if let b = loadedBook {
+      body["connectionId"] = b.connectionId
+      body["libraryId"] = b.libraryId
+      body["path"] = b.path
+    }
+    send("onRemoteBookmark", body)
   }
 
   // MARK: Observers

@@ -93,7 +93,10 @@ describe('counting and saving', () => {
     ts = require('./time-saved');
     /* eslint-enable @typescript-eslint/no-require-imports */
   });
-  afterEach(() => {
+  afterEach(async () => {
+    // A count starts the module's 30 s flush loop, and only a flush stops it: left running,
+    // the orphaned interval kept the Jest worker alive past the run.
+    await ts.flushTimeSaved();
     jest.useRealTimers();
     jest.restoreAllMocks();
   });

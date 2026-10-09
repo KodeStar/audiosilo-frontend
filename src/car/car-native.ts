@@ -1,4 +1,5 @@
 import type {
+  BookRef,
   LoadedBook,
   PendingBookmark,
 } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -28,8 +29,11 @@ export type CarNative = {
   onPlayRequest: (handler: (id: string) => void) => () => void;
   /** A bookmark button outside the app was pressed (CarPlay's Now Playing button, the
    * Android notification / Android Auto) while JS runs: the engine's place at the press
-   * (file index + seconds in that file) of the book it has loaded. */
-  onBookmark: (handler: (trackIndex: number, positionInTrack: number) => void) => () => void;
+   * (file index + seconds in that file) of the book it has loaded, and that book when the
+   * binary names it (`book` is undefined from an older one). */
+  onBookmark: (
+    handler: (trackIndex: number, positionInTrack: number, book?: BookRef) => void,
+  ) => () => void;
 };
 
 const none = () => () => undefined;

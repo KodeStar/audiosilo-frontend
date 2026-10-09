@@ -129,7 +129,7 @@ type SettingsState = PlaybackSettings & {
 
 /** The persisted settings, under the shared hydration rule (`persistedDocument`): a
  * setting changed before hydration finished wins over its stored value, and never
- * clobbers the settings it did not touch. Hydrated once at boot from `_layout.tsx`. */
+ * clobbers the settings it did not touch. Hydrated once at boot by `bootstrapPlayback`. */
 export const useSettings = create<SettingsState>()((set, get) => {
   // Every setter goes through here: set the one value, then persist the WHOLE document -
   // exactly the persisted keys (DEFAULTS' own), never the store's functions.

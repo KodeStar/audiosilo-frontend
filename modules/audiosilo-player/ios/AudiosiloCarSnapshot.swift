@@ -163,4 +163,10 @@ final class AudiosiloCarEvents {
       }
     }
   }
+
+  /// Forget a queued event JS has not received: a car tap that timed out, or whose car left,
+  /// must not start its book when JS starts listening later (on the phone, the car gone).
+  func drop(_ name: String) {
+    onMain { self.pending.removeValue(forKey: name) }
+  }
 }

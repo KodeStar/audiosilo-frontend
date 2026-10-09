@@ -61,8 +61,20 @@ export const carNative: CarNative = {
 
   onBookmark(handler) {
     if (!available) return () => undefined;
-    const sub = AudiosiloPlayer.addListener('onRemoteBookmark', ({ trackIndex, position }) => {
-      if (Number.isFinite(trackIndex) && Number.isFinite(position)) handler(trackIndex, position);
+    const sub = AudiosiloPlayer.addListener('onRemoteBookmark', (e) => {
+      const { trackIndex, position } = e;
+      if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
+      // The engine's own book (Phase 6 binaries send it): the press belongs to the book the
+      // listener heard, whichever the store holds right now.
+      const book =
+        typeof e.connectionId === 'string' &&
+        e.connectionId !== '' &&
+        typeof e.path === 'string' &&
+        e.path !== '' &&
+        Number.isSafeInteger(e.libraryId)
+          ? { connectionId: e.connectionId, libraryId: e.libraryId as number, path: e.path }
+          : undefined;
+      handler(trackIndex, position, book);
     });
     return () => sub.remove();
   },

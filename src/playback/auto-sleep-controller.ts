@@ -1,3 +1,4 @@
+import { isCarConnected } from '@/car/car-connection';
 import { useSettings } from '@/stores/settings';
 
 import {
@@ -102,6 +103,10 @@ export function startAutoSleep(): () => void {
       poll.stop();
       return;
     }
+    // Never in a car (CarPlay, Android Auto): the nightly timer is for listening in bed, and
+    // one that fades and pauses the book mid-drive sends the driver to the phone. The poll
+    // goes on, so a book still playing once the car is gone is armed then.
+    if (isCarConnected()) return;
     const settings = useSettings.getState();
     const decision = decideAutoSleep({
       enabled: settings.autoSleepTimer,

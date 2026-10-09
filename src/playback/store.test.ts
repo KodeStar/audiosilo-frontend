@@ -1105,6 +1105,32 @@ describe('plays a downloaded book whose connection is gone', () => {
     expect(usePlayer.getState().nowPlaying?.cover).toBe('file:///dl/cover.jpg');
   });
 
+  it('saves nothing while the connection is gone, then saves once it is back', async () => {
+    // A session that could not be read yet (a CarPlay launch with the phone locked) loads
+    // its connections later, while the downloaded book plays on.
+    seedDownloaded('gone');
+    mockResolveClient.mockReturnValue(null);
+    try {
+      await usePlayer.getState().playBook('gone', 2, makeBook(), undefined);
+      mockSaveProgress.mockClear();
+      pushSnapshot(snap('playing', 40));
+      pushSnapshot(snap('paused', 40));
+      await flushMicrotasks();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+    } finally {
+      mockResolveClient.mockReturnValue(fakeClient);
+    }
+    pushSnapshot(snap('playing', 50));
+    pushSnapshot(snap('paused', 50));
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(mockSaveProgress.mock.calls[0][0]).toBe(fakeClient);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({
+      connectionId: 'gone',
+      position: 50,
+    });
+  });
+
   it('still bails when the connection is gone AND the book is not downloaded (streaming needs a client)', async () => {
     mockResolveClient.mockReturnValueOnce(null);
     (mockSvc.load as jest.Mock).mockClear();

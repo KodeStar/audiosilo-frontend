@@ -47,7 +47,7 @@ struct ChapterClips {
   var isActive: Bool { clips.count >= 2 }
   var count: Int { clips.count }
 
-  /// The clip index for a FILE position. Mirrors Android's `ChapterMap.fileToItem`: the clip
+  /// The clip index for a FILE position. Mirrors Android's `TimelineMap.fileToItem`: the clip
   /// of that file containing the position, else the latest clip of the file starting at or
   /// before it, else the file's first clip (a position before every clip). nil when no clip
   /// covers that file at all (the bridge never sends that: `buildChapterClips` covers every

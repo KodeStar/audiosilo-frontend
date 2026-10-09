@@ -33,21 +33,26 @@ object JsRuntime {
   private var taskId: Int? = null
   private var taskContext: ReactContext? = null
 
-  /** Make sure the JS car controller runs. Main thread. No-op when it already listens. */
+  /** Make sure the JS car controller runs, inside a running task. Main thread. */
   fun ensure(context: Context) {
     if (Looper.myLooper() != Looper.getMainLooper()) {
       main.post { ensure(context) }
       return
     }
-    if (PlayerBridge.jsListening || starting) return
+    if (starting) return
     val host = (context.applicationContext as? ReactApplication)?.reactHost ?: return
     val running = host.currentReactContext
     if (running != null && running.hasActiveReactInstance()) {
-      // The runtime runs (an activity, or a task we started earlier) but the car controller
-      // doesn't listen: run the task in it (it is idempotent with the root layout's start).
+      // The runtime runs (an activity, or a task we started earlier): run the task in it, even
+      // when the car controller already listens (an activity's runtime, now in the background).
+      // Only a running headless task keeps React Native's JS timers firing while no activity is
+      // resumed, and the car sync's snapshot writes are timers: without one, a car connecting to
+      // a backgrounded app kept its old lists for the whole drive. The task's steps are all
+      // idempotent with the root layout's; startTask is a no-op while ours still runs.
       startTask(running)
       return
     }
+    if (PlayerBridge.jsListening) return
     starting = true
     host.addReactInstanceEventListener(
       object : ReactInstanceEventListener {

@@ -44,8 +44,9 @@ export type RemoteMoveEvent = { trackIndex: number; position: number };
 export type RateChangeEvent = { rate: number };
 
 /** A bookmark button outside the app was pressed (CarPlay, the Android notification / Android
- * Auto custom action): where the book was at the press. */
-export type RemoteBookmarkEvent = { trackIndex: number; position: number };
+ * Auto custom action): where the book was at the press, and which book the engine had loaded
+ * (absent from a binary that predates it, or an engine loaded without a `book`). */
+export type RemoteBookmarkEvent = { trackIndex: number; position: number } & Partial<BookRef>;
 
 /** CarPlay or Android Auto connected or disconnected. */
 export type CarConnectionEvent = { connected: boolean };

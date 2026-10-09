@@ -22,7 +22,7 @@ import { queryClient } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
-import { startBookInPlace } from './start-book';
+import { FRESH_SOURCE_WAIT_MS, startBookInPlace } from './start-book';
 /* eslint-enable import/first */
 
 const target = { connectionId: 'c1', libraryId: 2, path: 'Weir/Project Hail Mary' };
@@ -128,6 +128,56 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
     );
+  });
+
+  it("starts a downloaded book with its server's item and chapters when it answers", async () => {
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    mockChapters.mockResolvedValue({ chapters: [{ title: 'Ch 1' }], files: [] });
+    await expect(startBookInPlace(target)).resolves.toBe(true);
+    expect(mockPlayBook).toHaveBeenCalledWith(
+      'c1',
+      2,
+      { rel_path: target.path },
+      { chapters: [{ title: 'Ch 1' }], files: [] },
+      undefined,
+      undefined,
+      undefined,
+    );
+  });
+
+  it("starts a downloaded book from its download's copy when the server fails or is slow", async () => {
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    mockChapters.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await expect(startBookInPlace(target)).resolves.toBe(true);
+    expect(mockPlayBook).toHaveBeenLastCalledWith(
+      'c1',
+      2,
+      { rel_path: target.path, title: 'From the download' },
+      { chapters: [], files: [], from: 'download' },
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    queryClient.clear();
+    jest.useFakeTimers();
+    try {
+      mockItem.mockImplementationOnce(() => new Promise(() => {})); // a server that never answers
+      const starting = startBookInPlace(target);
+      await jest.advanceTimersByTimeAsync(FRESH_SOURCE_WAIT_MS);
+      await expect(starting).resolves.toBe(true);
+      expect(mockPlayBook).toHaveBeenLastCalledWith(
+        'c1',
+        2,
+        { rel_path: target.path, title: 'From the download' },
+        { chapters: [], files: [], from: 'download' },
+        undefined,
+        undefined,
+        undefined,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('rejects, without playing, when the book cannot be fetched', async () => {

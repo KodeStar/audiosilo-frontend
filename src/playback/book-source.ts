@@ -56,9 +56,19 @@ export async function bookSourceOf(ref: BookRef): Promise<BookSource | null> {
       local: localFromManifest(dl.manifest),
     };
   }
-  const { connectionId, libraryId, path } = ref;
-  const client = resolveClient(connectionId);
+  const client = resolveClient(ref.connectionId);
   if (!client) return null;
+  return fetchBookSource(ref, client);
+}
+
+/** A book's item and chapters from its server, through the query cache (`fetchFailFast`: it
+ * always settles; a book whose page is open is not asked again). Rejects when the server
+ * can't be read. */
+export async function fetchBookSource(
+  ref: BookRef,
+  client: NonNullable<ReturnType<typeof resolveClient>>,
+): Promise<BookSource> {
+  const { connectionId, libraryId, path } = ref;
   const [book, chapters] = await Promise.all([
     fetchFailFast({ ...itemQuery(connectionId, client, libraryId, path), staleTime: 30_000 }),
     fetchFailFast({ ...chaptersQuery(connectionId, client, libraryId, path), staleTime: 30_000 }),

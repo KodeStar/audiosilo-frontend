@@ -225,4 +225,24 @@ class NarrationSilenceProcessorTest {
     assertTrue(chain.getAudioProcessors()[2] === chain.boost)
     assertFalse(chain.applySkipSilenceEnabled(false))
   }
+
+  /** The fade-in's gain at every step of the longest fade the narration defaults make (187.5 ms)
+   * at 192 kHz: between the floor and full, never decreasing. Its Int arithmetic overflowed
+   * past ~23,860 frames, giving a garbage (often negative) gain at the end of every fade-in. */
+  @Test
+  fun fadeInGainStaysInRangeAtHighSampleRates() {
+    val p = NarrationSilenceProcessor()
+    val fadeIn = NarrationSilenceProcessor::class.java
+      .getDeclaredMethod("calculateFadeInPercentage", Int::class.java, Int::class.java)
+      .apply { isAccessible = true }
+    val max = 36_000 // 187.5 ms at 192 kHz
+    var previous = 0
+    for (value in 0..max step 7) {
+      val percent = fadeIn.invoke(p, value, max) as Int
+      assertTrue("gain $percent% at $value/$max", percent in 10..100)
+      assertTrue("gain fell from $previous% to $percent% at $value/$max", percent >= previous)
+      previous = percent
+    }
+    assertEquals(100, fadeIn.invoke(p, max, max) as Int)
+  }
 }

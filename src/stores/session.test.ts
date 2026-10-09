@@ -1,11 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 
+import { sessionReady } from '@/api/connection-clients';
 import type { User } from '@/api/types';
 import {
   hasExistingInstall,
+  LOCKED_RETRY_MS,
   onConnectionRemoved,
   resetStaleStorage,
+  sessionHydrateFailed,
   useSession,
 } from '@/stores/session';
 
@@ -60,6 +64,147 @@ describe('session store (multi-connection)', () => {
       store.getItemAsync = original;
       warn.mockRestore();
     }
+  });
+
+  describe('a hydrate that failed (a token read that threw)', () => {
+    const store = SecureStore as unknown as {
+      getItemAsync: (k: string) => Promise<string | null>;
+    };
+    let original: typeof store.getItemAsync;
+    let onAppState: ((s: AppStateStatus) => void) | null = null;
+
+    beforeEach(async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 'tA', user: mkUser('a') });
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 'tB', user: mkUser('b') });
+      reset();
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+        _type: string,
+        handler: (s: AppStateStatus) => void,
+      ) => {
+        onAppState = handler;
+        return { remove: () => (onAppState = null) };
+      }) as unknown as typeof AppState.addEventListener);
+      original = store.getItemAsync;
+      store.getItemAsync = () => Promise.reject(new Error('keychain unreadable'));
+      await useSession.getState().hydrate();
+      store.getItemAsync = original; // readable from here on
+    });
+
+    afterEach(async () => {
+      store.getItemAsync = original;
+      await useSession.getState().hydrate(); // a clean end for the next test
+      jest.restoreAllMocks();
+    });
+
+    it('loads the persisted servers again when the app next comes to the front', async () => {
+      expect(useSession.getState().status).toBe('unauthenticated');
+      expect(sessionHydrateFailed()).toBe(true);
+      onAppState?.('active');
+      await new Promise((r) => setTimeout(r, 0));
+      const s = useSession.getState();
+      expect(s.status).toBe('authenticated');
+      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a', 'srv-b']);
+      expect(sessionHydrateFailed()).toBe(false);
+    });
+
+    it('a sign-in meanwhile keeps the servers that never loaded', async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://c', serverId: 'srv-c', token: 'tC', user: mkUser('c') });
+      reset();
+      await useSession.getState().hydrate();
+      expect(
+        useSession
+          .getState()
+          .connections.map((c) => c.id)
+          .sort(),
+      ).toEqual(['srv-a', 'srv-b', 'srv-c']);
+    });
+
+    it('is not ready for the offline replay until a read succeeds (it would drop every save)', async () => {
+      expect(sessionReady()).toBe(false);
+      await useSession.getState().hydrate();
+      expect(sessionReady()).toBe(true);
+    });
+
+    it('a sign-in while the stored servers still cannot be read settles the session', async () => {
+      store.getItemAsync = () => Promise.reject(new Error('unreadable'));
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://c', serverId: 'srv-c', token: 'tC', user: mkUser('c') });
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-c']);
+      expect(sessionHydrateFailed()).toBe(false);
+      expect(onAppState).toBeNull();
+    });
+  });
+
+  describe('a token read the locked phone refused (iOS: a CarPlay launch)', () => {
+    const store = SecureStore as unknown as {
+      getItemAsync: (k: string) => Promise<string | null>;
+    };
+    let original: typeof store.getItemAsync;
+    const prevOS = Platform.OS;
+
+    beforeEach(async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 'tA', user: mkUser('a') });
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 'tB', user: mkUser('b') });
+      reset();
+      Platform.OS = 'ios';
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      jest.useFakeTimers();
+      original = store.getItemAsync;
+      // expo-secure-store's message for errSecInteractionNotAllowed.
+      store.getItemAsync = () =>
+        Promise.reject(
+          new Error(
+            "Calling the 'getValueWithKeyAsync' function has failed\n→ Caused by: User interaction is not allowed.",
+          ),
+        );
+    });
+
+    afterEach(async () => {
+      store.getItemAsync = original;
+      await useSession.getState().hydrate(); // a clean end for the next test
+      jest.useRealTimers();
+      Platform.OS = prevOS;
+      jest.restoreAllMocks();
+    });
+
+    it('stays loading (never the connect screen) and reads them once the phone is unlocked', async () => {
+      await useSession.getState().hydrate();
+      expect(useSession.getState().status).toBe('loading');
+      expect(sessionHydrateFailed()).toBe(true);
+      expect(sessionReady()).toBe(false);
+
+      // Still locked at the next try.
+      await jest.advanceTimersByTimeAsync(LOCKED_RETRY_MS);
+      expect(useSession.getState().status).toBe('loading');
+
+      store.getItemAsync = original; // unlocked
+      await jest.advanceTimersByTimeAsync(LOCKED_RETRY_MS);
+      const s = useSession.getState();
+      expect(s.status).toBe('authenticated');
+      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a', 'srv-b']);
+      expect(sessionHydrateFailed()).toBe(false);
+      expect(sessionReady()).toBe(true);
+      expect(console.warn).toHaveBeenCalledTimes(1); // once for the streak, not every try
+    });
+
+    it('fails safe elsewhere: the same error on Android is not a locked phone', async () => {
+      Platform.OS = 'android';
+      await useSession.getState().hydrate();
+      expect(useSession.getState().status).toBe('unauthenticated');
+      expect(sessionHydrateFailed()).toBe(true);
+    });
   });
 
   it('adds connections and restores them (with tokens) on a fresh hydrate', async () => {

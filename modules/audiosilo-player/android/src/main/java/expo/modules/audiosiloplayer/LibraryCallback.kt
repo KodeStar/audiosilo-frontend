@@ -150,9 +150,29 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     }
     val single = mediaItems.singleOrNull()
     if (single != null && single.localConfiguration == null) {
+      // No id: a voice or search play (Media3's onPlayFromSearch item carries only the query).
+      if (single.mediaId.isEmpty()) return service.playFromSearch(single.requestMetadata.searchQuery)
       return service.playFromCar(single.mediaId, requirePlaySpec = false)
     }
-    return super.onSetMediaItems(mediaSession, controller, mediaItems, startIndex, startPositionMs)
+    // Never another app's playable URI (see onAddMediaItems).
+    return Futures.immediateFailedFuture(UnsupportedOperationException("Only car items play here"))
+  }
+
+  /**
+   * Only the app's own controller adds playable items. Media3's default accepts any item that
+   * carries a URI, and the player fetches it with the session's auth header: any installed app
+   * could have the user's (non-expiring) token sent to its own server. Other controllers play
+   * by car item id ([onSetMediaItems]) or resume ([onPlaybackResumption]).
+   */
+  override fun onAddMediaItems(
+    mediaSession: MediaSession,
+    controller: MediaSession.ControllerInfo,
+    mediaItems: MutableList<MediaItem>,
+  ): ListenableFuture<MutableList<MediaItem>> {
+    if (!PlayerBridge.isAppController(controller)) {
+      return Futures.immediateFailedFuture(UnsupportedOperationException("Only the app adds items"))
+    }
+    return super.onAddMediaItems(mediaSession, controller, mediaItems)
   }
 
   /**

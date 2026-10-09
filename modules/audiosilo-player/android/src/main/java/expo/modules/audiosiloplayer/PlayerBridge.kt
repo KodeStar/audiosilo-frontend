@@ -1,5 +1,6 @@
 package expo.modules.audiosiloplayer
 
+import android.os.Process
 import androidx.media3.session.MediaSession
 
 /**
@@ -14,8 +15,9 @@ interface PlayerEventSink {
   /** A controller other than the app changed the speed; the engine already applied it. */
   fun rateChange(rate: Double)
 
-  /** The bookmark button was pressed at (fileIndex, seconds within that file). */
-  fun remoteBookmark(fileIndex: Int, position: Double)
+  /** The bookmark button was pressed at (fileIndex, seconds within that file) of [book], the
+   * book the engine has loaded (null when its items carry none, e.g. an older JS load). */
+  fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?)
 
   /** Android Auto (or Automotive) connected or disconnected. */
   fun carConnection(connected: Boolean)
@@ -51,8 +53,14 @@ object PlayerBridge {
   /** The last car play request JS has not received yet (only the newest matters). */
   @Volatile var pendingCarPlayId: String? = null
 
+  /** The module's own controller: the hint AND this app's uid. The hint alone is whatever a
+   * connecting app sends (any app could claim it: the effects command, completing a car play
+   * with its queue, its moves never reported); the uid is the binder caller's. Media3's own
+   * notification controller shares the uid but not the hint. */
   fun isAppController(controller: MediaSession.ControllerInfo?): Boolean =
-    controller?.connectionHints?.getBoolean(HINT_APP, false) == true
+    controller != null &&
+      controller.uid == Process.myUid() &&
+      controller.connectionHints.getBoolean(HINT_APP, false)
 
   /** True when the JS car controller is listening, so JS can adopt or start books. */
   val jsListening: Boolean get() = sink?.observingCar == true

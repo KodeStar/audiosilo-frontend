@@ -116,8 +116,13 @@ export default function RootLayout() {
   // CarPlay and Android Auto: keeps the car's lists (the car snapshot) current, plays what
   // the car asks for, saves the car's bookmarks and adopts a book the car started. Native
   // only (a no-op on the web and on a binary without the car functions); it waits for the
-  // launch steps above itself. Framework-free like the others; see the module.
-  useEffect(() => startCarSync(), []);
+  // launch steps above itself. Framework-free like the others; see the module. Never
+  // stopped (like the car's headless task): the JS runtime outlives this layout on Android
+  // (the activity is destroyed, the store and its book live on), and while it runs the car's
+  // requests must reach it, never start a book natively under the store's.
+  useEffect(() => {
+    startCarSync();
+  }, []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.

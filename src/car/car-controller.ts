@@ -2,7 +2,7 @@ import type { FetchQueryOptions, QueryKey } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
 import { ApiError } from '@/api/client';
-import { resolveClient } from '@/api/connection-clients';
+import { resolveClient, sessionReady } from '@/api/connection-clients';
 import {
   addBookmark,
   allProgressQuery,
@@ -21,6 +21,7 @@ import { queryClient } from '@/api/provider';
 import type { Book, Progress, QueueEntry } from '@/api/types';
 import { progressAt } from '@/components/home/home-model';
 import { startBookInPlace } from '@/components/player/start-book';
+import { queueConnectionId } from '@/components/upnext/up-next-model';
 import { statusSignature } from '@/downloads/downloads-view';
 import { downloadedEntryOf, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
@@ -48,7 +49,7 @@ import {
   resolveLibrarySelection,
   useLibrarySelection,
 } from '@/stores/library-selection';
-import { useSession } from '@/stores/session';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import type { PendingBookmark } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -66,6 +67,7 @@ import {
   type CarPlaySpec,
   type LivePlace,
 } from './car-model';
+import { isCarConnected, setCarConnected } from './car-connection';
 import { carNative } from './car-native';
 
 /**
@@ -90,7 +92,8 @@ import { carNative } from './car-native';
  * - **Bookmarks from outside the app** (CarPlay's Now Playing button, the Android
  *   notification / Android Auto; `carNative.onBookmark`): added through the framework-free
  *   `addBookmark` (no label, so its `annotations` gate has nothing to hold back) at the
- *   loaded book's place at the press. Those pressed while no JS ran
+ *   engine's place at the press, on the book the engine names (else the loaded book). Those
+ *   pressed while no JS ran
  *   (`consumePendingBookmarks`) are added at start and on every return to the foreground,
  *   each for its own book on its own connection (dropped when the connection is gone). One
  *   that can't reach its server is kept on the device and tried again then.
@@ -121,6 +124,8 @@ const ITEM_CONCURRENCY = 4;
 const RETRY_KEY = 'audiosilo.carBookmarks';
 /** Set once a car (CarPlay or Android Auto) has connected on this device. */
 const CAR_SEEN_KEY = 'audiosilo.carSeen';
+/** Set once native has been handed a snapshot on this device (it keeps the last one). */
+const WRITTEN_KEY = 'audiosilo.carSnapshotWritten';
 
 /** Started (`startCarSync`), and how many callers hold it. */
 let active = false;
@@ -131,9 +136,6 @@ let ready: Promise<void> = Promise.resolve();
 /** A car has connected on this device at least once (`CAR_SEEN_KEY`): only then is a
  * snapshot built and written, and are covers fetched for it. */
 let carSeen = false;
-/** A car is connected now: only then does a book starting or pausing rebuild the snapshot
- * (a connect builds a fresh one anyway). */
-let carConnected = false;
 
 // --- Reading what the app knows ---------------------------------------------------------
 
@@ -189,9 +191,15 @@ async function progressRows(): Promise<{ rows: SourcedProgress[]; known: Set<str
   return { rows: lists.flat(), known };
 }
 
-/** The default server's Up next queue, or null when it keeps none (no `queue`). */
+/** The Up next queue the app shows (`queueConnectionId`: the loaded book's server, else the
+ * default, else the first), or null when that server keeps none (no `queue`). */
 async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } | null> {
-  const cid = useSession.getState().defaultConnectionId;
+  const { connections, defaultConnectionId } = useSession.getState();
+  const cid = queueConnectionId(
+    usePlayer.getState().nowPlaying?.connectionId,
+    defaultConnectionId,
+    connections,
+  );
   const client = cid ? resolveClient(cid) : null;
   if (!cid || !client) return null;
   // `fetchCapabilities` already falls back to the cached flags; it rejects only when none.
@@ -287,8 +295,13 @@ async function playSpecs(
 let lastBody = '';
 /** Covers a written snapshot still lacks, fetched after it is out. */
 let missingArtwork = new Map<string, { name: string; url: string }>();
+/** Whether native keeps a snapshot from before (`WRITTEN_KEY`), read once; null until then. */
+let wroteBefore: boolean | null = null;
 
 async function buildAndWrite(): Promise<void> {
+  // The session's connections never loaded (a locked keychain at a CarPlay launch): the
+  // snapshot native kept is better than a signed-out one (its downloads still play).
+  if (sessionHydrateFailed()) return;
   const t = i18n.t.bind(i18n);
   const settings = useSettings.getState();
   const conns = useSession.getState().connections;
@@ -308,6 +321,15 @@ async function buildAndWrite(): Promise<void> {
   const [{ rows, known }, queue, library] = signedIn
     ? await Promise.all([progressRows(), upNextEntries(), libraryBooks()])
     : [{ rows: [], known: new Set<string>() }, null, null];
+  // Signed in, yet no server's list could be read or found cached (a fresh runtime away from
+  // every server: the car's offline case): the snapshot native kept from last time is better
+  // than one with empty lists, and its covers are still wanted. Nothing is written or pruned
+  // until a server's lists can be read; only a device that never wrote one writes what it
+  // has (its downloads).
+  if (signedIn && known.size === 0) {
+    wroteBefore ??= (await getItem<boolean>(WRITTEN_KEY)) === true;
+    if (wroteBefore) return;
+  }
   const progressByKey = new Map<string, Progress>();
   for (const r of rows) progressByKey.set(contentKeyOf(progressAt(r)), r);
   const progressOf = (ref: BookRef) => progressByKey.get(contentKeyOf(ref)) ?? null;
@@ -402,6 +424,10 @@ async function buildAndWrite(): Promise<void> {
     ))
   ) {
     lastBody = bodyJson;
+    if (wroteBefore !== true) {
+      wroteBefore = true;
+      void setItem(WRITTEN_KEY, true);
+    }
   }
   pruneArtwork(names, onDisk);
   missingArtwork = missing;
@@ -448,6 +474,10 @@ async function write(): Promise<void> {
   timer = null;
   writing = true;
   try {
+    // Never build from stores the launch steps haven't hydrated yet: a car connect replayed
+    // as the listener registers (the root layout's path doesn't wait for them) would write a
+    // signed-out snapshot over the good one and prune every cover it no longer names.
+    await bootstrapPlayback();
     await buildAndWrite();
   } catch (err) {
     console.warn('[car] snapshot failed', err);
@@ -472,6 +502,10 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
     console.warn('[car] not a car item id', id);
     return;
   }
+  // A tap queued natively while JS booted is replayed as the listener registers, which on
+  // the root layout's path comes before the launch steps hydrated the session and the
+  // downloads: started then, the book would find no connection and no download.
+  await bootstrapPlayback();
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (np && contentKeyOf(np) === contentKeyOf(ref)) {
@@ -516,7 +550,9 @@ async function bookPlaceOf(b: CarBookmark): Promise<number | null> {
 /** Add one: `done`, `retry` (its server can't be reached, or its place can't be read yet) or
  * `drop` (its connection is gone, or the server refused it). */
 async function addCarBookmark(b: CarBookmark): Promise<'done' | 'retry' | 'drop'> {
-  if (!resolveClient(b.connectionId)) return 'drop';
+  // No connection: gone for good once the session has loaded, else (a session that failed
+  // to load: a CarPlay launch with the phone locked) kept until it has.
+  if (!resolveClient(b.connectionId)) return sessionReady() ? 'drop' : 'retry';
   const position = await bookPlaceOf(b);
   if (position === null) return 'retry';
   try {
@@ -550,6 +586,9 @@ const serially = serialQueue();
 /** Add `fresh` and every kept bookmark, keeping (on the device) those to try again. */
 function addBookmarks(fresh: CarBookmark[]): Promise<void> {
   return serially(async () => {
+    // Each bookmark resolves its connection: before the session hydrated, every one would
+    // read as a connection that is gone and be dropped, the kept ones with them.
+    await bootstrapPlayback();
     const stored = await getItem<unknown[]>(RETRY_KEY);
     const kept = Array.isArray(stored) ? stored.filter(isCarBookmark) : [];
     const todo = [...kept, ...fresh];
@@ -574,10 +613,19 @@ async function drainCarBookmarks(): Promise<void> {
   await addBookmarks(pending.map(fromPending));
 }
 
-/** A bookmark pressed outside the app while JS runs, at the engine's place in the book
- * loaded here (a press with none loaded is dropped). Its whole-book place is taken now, so
- * one kept for a retry needs no timeline later. */
-function onBookmarkPressed(trackIndex: number, positionInTrack: number): void {
+/** A bookmark pressed outside the app while JS runs, at the engine's place. When the engine
+ * names its book (a Phase 6 binary), it goes on THAT book at the engine's file place
+ * (`bookPlaceOf` maps it through the loaded queue when that is the book, else the book's own
+ * timeline): the engine can hold a book the store has not adopted yet (a car start the JS
+ * boot is still adopting), and it is the one the listener heard. Without one (an older
+ * binary) it goes on the book loaded here, at its whole-book place taken now, so one kept for
+ * a retry needs no timeline later; a press with none loaded is dropped. */
+function onBookmarkPressed(trackIndex: number, positionInTrack: number, book?: BookRef): void {
+  if (book) {
+    noteInteraction();
+    void addBookmarks([{ ...bookRefOf(book), trackIndex, positionInTrack }]);
+    return;
+  }
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
   noteInteraction();
@@ -601,6 +649,10 @@ function checkLoadedBook(): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve();
   checking ??= (async () => {
     try {
+      // The book is read against the stores (its download, its connection): never before
+      // the launch steps hydrated them (a connect replayed as the listener registers comes
+      // first on the root layout's path).
+      await bootstrapPlayback();
       const asked = usePlayer.getState();
       if (asked.loadingBook) return;
       const loaded = await carNative.getLoadedBook();
@@ -611,10 +663,13 @@ function checkLoadedBook(): Promise<void> {
       if (await player.adoptLoaded(loaded)) request(true);
     } catch (err) {
       console.warn('[car] adopting the loaded book failed', err);
-    } finally {
-      checking = null;
     }
-  })();
+    // Cleared once the check is over, never inside it: a body that returned before its
+    // first await would clear `checking` before `??=` stored the promise, which then stayed
+    // set for good and every later check returned it without asking native again.
+  })().finally(() => {
+    checking = null;
+  });
   return checking;
 }
 
@@ -665,7 +720,7 @@ export function startCarSync(): () => void {
   let downloadsSig = statusSignature(useDownloads.getState().entries);
   stops = [
     carNative.onConnection((connected) => {
-      carConnected = connected;
+      setCarConnected(connected);
       if (!connected) return;
       if (!carSeen) {
         carSeen = true;
@@ -678,7 +733,9 @@ export function startCarSync(): () => void {
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
       if (
-        carConnected &&
+        // A car is connected now: only then does a book starting or pausing rebuild the
+        // snapshot (a connect builds a fresh one anyway).
+        isCarConnected() &&
         (selectBookKey(s) !== selectBookKey(prev) || selectIsPlaying(s) !== selectIsPlaying(prev))
       ) {
         request(true);
@@ -740,7 +797,7 @@ function teardown() {
   if (timer) clearTimeout(timer);
   timer = null;
   again = null;
-  carConnected = false;
+  setCarConnected(false);
 }
 
 /** Tests only: stop everything and forget what was written, as if the app had just started. */
@@ -755,4 +812,5 @@ export function forgetCarSync() {
   specs = new Map();
   carSeen = false;
   checking = null;
+  wroteBefore = null;
 }

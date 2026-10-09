@@ -33,6 +33,8 @@ data class CarItem(
   /** A file:// URI the app wrote, or null. */
   val artwork: String?,
   val play: CarPlaySpec?,
+  /** The book the item is (JS writes it on every item; null from an older snapshot). */
+  val book: BookRef? = null,
 ) {
   /** The cover file and the opaque key the artwork provider serves it under, worked out once
    * here (a SHA-256) rather than on every browse. Derived from [artwork], so not part of equals. */
@@ -71,6 +73,15 @@ class CarSnapshot(
     for (tab in tabs) for (item in tab.items) if (item.id == id) return item
     return null
   }
+
+  /** The first listed book whose title holds [query] (ignoring case), Continue listening first. */
+  fun findByTitle(query: String): CarItem? {
+    for (tab in tabs) for (item in tab.items) if (item.title.contains(query, ignoreCase = true)) return item
+    return null
+  }
+
+  /** The first Continue listening book. */
+  fun firstContinue(): CarItem? = tabs.firstOrNull { it.id == "continue" }?.items?.firstOrNull()
 
   /** Playback resumption: the first Continue listening book with a play spec (downloaded). */
   fun resumable(): CarItem? = tabs.firstOrNull { it.id == "continue" }?.items?.firstOrNull()?.takeIf { it.play != null }
@@ -134,7 +145,15 @@ class CarSnapshot(
         downloaded = o.optBoolean("downloaded", false),
         artwork = if (o.isNull("artwork")) null else o.optString("artwork").ifEmpty { null },
         play = o.optJSONObject("play")?.let { parsePlay(it) },
+        book = o.optJSONObject("book")?.let { parseBook(it) },
       )
+    }
+
+    private fun parseBook(b: JSONObject): BookRef? {
+      val connectionId = b.optString("connectionId")
+      val path = b.optString("path")
+      if (connectionId.isEmpty() || path.isEmpty()) return null
+      return BookRef(connectionId, b.optLong("libraryId"), path)
     }
 
     private fun parsePlay(o: JSONObject): CarPlaySpec? {

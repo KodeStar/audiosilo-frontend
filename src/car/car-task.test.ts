@@ -1,8 +1,21 @@
 const calls: string[] = [];
+let mockCarConnected = false;
 const mockStop = jest.fn();
 jest.mock('@/lib/bootstrap', () => ({
   bootstrapPlayback: jest.fn(async () => {
     calls.push('bootstrap');
+  }),
+}));
+jest.mock('@/api/address-runner', () => ({
+  startAddressRouting: jest.fn(() => {
+    calls.push('routing');
+    return () => undefined;
+  }),
+}));
+jest.mock('@/playback/place-reconcile', () => ({
+  startPlaceReconcile: jest.fn(() => {
+    calls.push('reconcile');
+    return () => undefined;
   }),
 }));
 jest.mock('./car-controller', () => ({
@@ -14,6 +27,7 @@ jest.mock('./car-controller', () => ({
     calls.push('ready');
   }),
 }));
+jest.mock('./car-connection', () => ({ isCarConnected: () => mockCarConnected }));
 let mockConnection: ((connected: boolean) => void) | null = null;
 jest.mock('./car-native', () => ({
   carNative: {
@@ -51,6 +65,7 @@ async function flush() {
 beforeEach(() => {
   jest.useFakeTimers();
   calls.length = 0;
+  mockCarConnected = false;
   mockStop.mockClear();
   setState('idle');
 });
@@ -60,14 +75,14 @@ afterEach(() => {
 });
 
 describe('runCarTask', () => {
-  it('boots (the language among the launch steps), starts the car sync, then ends once idle (never stopping the sync)', async () => {
+  it('boots (the language among the launch steps), starts the address pick, the place reconcile and the car sync, then ends once idle (never stopping them)', async () => {
     setState('playing');
     let done = false;
     const task = runCarTask().then(() => {
       done = true;
     });
     await flush();
-    expect(calls).toEqual(['bootstrap', 'start', 'ready']);
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start', 'ready']);
     await jest.advanceTimersByTimeAsync(CAR_TASK_IDLE_MS * 2);
     expect(done).toBe(false); // still playing
     setState('paused');
@@ -75,6 +90,19 @@ describe('runCarTask', () => {
     await task;
     expect(done).toBe(true);
     expect(mockStop).not.toHaveBeenCalled();
+  });
+
+  it('starts the address pick and the place reconcile once per runtime', async () => {
+    setState('idle');
+    const run = async () => {
+      const task = runCarTask();
+      await jest.advanceTimersByTimeAsync(CAR_TASK_IDLE_MS);
+      await task;
+    };
+    await run();
+    calls.length = 0;
+    await run();
+    expect(calls).toEqual(['bootstrap', 'start', 'ready']);
   });
 });
 
@@ -118,6 +146,20 @@ describe('untilIdle', () => {
     await flush();
     expect(done).toBe(true);
     expect(mockConnection).toBeNull(); // its listeners are gone
+  });
+
+  it('stays while a car is connected, even with nothing playing, and ends once it leaves', async () => {
+    mockCarConnected = true;
+    let done = false;
+    void untilIdle(30_000).then(() => {
+      done = true;
+    });
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(done).toBe(false); // the car's lists still need their timers
+    mockCarConnected = false;
+    mockConnection?.(false);
+    await flush();
+    expect(done).toBe(true);
   });
 
   it('notices the window is over on the next player change when timers were held', async () => {

@@ -485,9 +485,12 @@ class NarrationSilenceProcessor(
     if (max == 0) {
       return 100
     }
+    // In Long: (100 - min) * 1000 * value overflows an Int past ~23,860 frames, which the
+    // narration defaults' fade (up to 187.5 ms) reaches above ~127 kHz (a 176.4 or 192 kHz
+    // file got a garbage, often negative, gain at the end of every fade-in).
     return minVolumeToKeepPercentageWhenMuting +
-      ((100 - minVolumeToKeepPercentageWhenMuting) * (AVOID_TRUNCATION_FACTOR * value) / max) /
-      AVOID_TRUNCATION_FACTOR
+      ((100 - minVolumeToKeepPercentageWhenMuting).toLong() * (AVOID_TRUNCATION_FACTOR.toLong() * value) / max /
+        AVOID_TRUNCATION_FACTOR).toInt()
   }
 
   /** Copies the remaining bytes of [data] into a new output buffer. */

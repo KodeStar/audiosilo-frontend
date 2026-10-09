@@ -77,7 +77,7 @@ import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { useSettings } from '@/stores/settings';
 
-import { usePlayer } from './store';
+import { onPickedUpAgain, usePlayer } from './store';
 /* eslint-enable import/first */
 
 function makeBook(p: Partial<Book> = {}): Book {
@@ -174,6 +174,73 @@ afterEach(() => {
 });
 
 describe('adoptLoaded', () => {
+  it("asks for another device's newer place before its first save when the book plays", async () => {
+    // The engine's place was never checked against the server: a car start plays the place
+    // its snapshot was built with, and the tablet may have played on since.
+    const order: string[] = [];
+    const stop = onPickedUpAgain(() => order.push('picked-up'));
+    mockSaveProgress.mockImplementation(async () => {
+      order.push('save');
+    });
+    try {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
+      pushSnapshot(snap('playing', 1, 45));
+      jest.advanceTimersByTime(15_000);
+      await flushMicrotasks();
+      expect(order[0]).toBe('picked-up');
+      expect(order.filter((o) => o === 'picked-up')).toHaveLength(1);
+    } finally {
+      stop();
+      mockSaveProgress.mockImplementation(async () => {});
+    }
+  });
+
+  it('counts a paused adopted book as picked up again on its next play', async () => {
+    const picked = jest.fn();
+    const stop = onPickedUpAgain(picked);
+    try {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+      expect(picked).not.toHaveBeenCalled();
+      // A play seconds later still asks: how long the book had been paused is unknown.
+      jest.advanceTimersByTime(5_000);
+      pushSnapshot(snap('playing', 1, 30));
+      expect(picked).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it('stands back while a start is on its way (it switches the book after its lookup)', async () => {
+    const progressSync = jest.requireMock('./progress-sync') as {
+      loadInitialProgress: jest.Mock;
+    };
+    let answer!: (r: { kind: 'empty' }) => void;
+    progressSync.loadInitialProgress.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    // The listener (or the car) starts Y, whose resume lookup is still out...
+    const starting = usePlayer.getState().playBook('c1', 2, makeBook({ rel_path: 'Y' }));
+    await flushMicrotasks();
+    // ...when the service's own book is offered for adoption: Y's start stands.
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    expect(await usePlayer.getState().adoptLoaded(loadedB({}))).toBe(false);
+    answer({ kind: 'empty' });
+    await starting;
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Y');
+  });
+
+  it('sends a speed outside the range back to the engine, clamped', async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ rate: 3 }));
+    expect(usePlayer.getState().rate).toBe(2);
+    expect(mockSvc.setRate).toHaveBeenCalledWith(2);
+  });
+
   it('takes the book over WITHOUT reloading the engine', async () => {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     const adopted = await usePlayer.getState().adoptLoaded(loadedB({}));

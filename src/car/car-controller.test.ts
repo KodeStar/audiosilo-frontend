@@ -4,6 +4,12 @@ import type { CarSnapshot } from './car-model';
 
 // --- Mocks ---------------------------------------------------------------------------------
 
+type MockBookmarkHandler = (
+  trackIndex: number,
+  positionInTrack: number,
+  book?: { connectionId: string; libraryId: number; path: string },
+) => void;
+
 const mockNative = {
   available: true,
   setSnapshot: jest.fn(async (_json: string) => true),
@@ -11,7 +17,7 @@ const mockNative = {
   consumePendingBookmarks: jest.fn(async (): Promise<unknown[]> => []),
   connection: null as ((connected: boolean) => void) | null,
   playRequest: null as ((id: string) => void) | null,
-  bookmark: null as ((trackIndex: number, positionInTrack: number) => void) | null,
+  bookmark: null as MockBookmarkHandler | null,
   onConnection: jest.fn((h: (connected: boolean) => void) => {
     mockNative.connection = h;
     return () => {
@@ -24,7 +30,7 @@ const mockNative = {
       mockNative.playRequest = null;
     };
   }),
-  onBookmark: jest.fn((h: (trackIndex: number, positionInTrack: number) => void) => {
+  onBookmark: jest.fn((h: MockBookmarkHandler) => {
     mockNative.bookmark = h;
     return () => {
       mockNative.bookmark = null;
@@ -146,9 +152,10 @@ jest.mock('@/api/hooks', () => {
 
 type FakeClient = ReturnType<typeof fakeClient>;
 const mockClients: Record<string, FakeClient> = {};
+let mockSessionReady = true;
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (cid: string) => mockClients[cid] ?? null,
-  sessionReady: () => true,
+  sessionReady: () => mockSessionReady,
 }));
 
 /* eslint-disable import/first */
@@ -161,7 +168,7 @@ import { useLibrarySelection } from '@/stores/library-selection';
 import { useSession, type Connection } from '@/stores/session';
 import { getItem, setItem } from '@/lib/storage';
 
-import { artworkOnDisk, ensureArtwork } from './car-artwork';
+import { artworkOnDisk, ensureArtwork, pruneArtwork } from './car-artwork';
 import {
   forgetCarSync,
   handleCarPlayRequest,
@@ -342,6 +349,7 @@ afterEach(async () => {
   stop = () => {};
   await setItem('audiosilo.carBookmarks', []);
   await setItem('audiosilo.carSeen', false);
+  await setItem('audiosilo.carSnapshotWritten', false);
   jest.clearAllTimers();
   jest.useRealTimers();
 });
@@ -804,6 +812,32 @@ describe('bookmarks from outside the app', () => {
     expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 130);
   });
 
+  it('keeps those whose session has not loaded yet (no connection reads as gone), adding them once it has', async () => {
+    // A session that failed to load (a CarPlay launch with the phone locked): every
+    // connection reads as gone, and dropping the bookmarks would lose them.
+    mockSessionReady = false;
+    try {
+      useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+      mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+        { connectionId: 'c1', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark).not.toHaveBeenCalled();
+      expect(await getItem<unknown[]>('audiosilo.carBookmarks')).toHaveLength(1);
+    } finally {
+      mockSessionReady = true;
+    }
+    // It loads; back in the foreground the drain adds the kept one at its place.
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    appStateListener?.('background');
+    appStateListener?.('active');
+    await settle();
+    expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 130);
+    expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+  });
+
   it('reads a streaming book’s timeline through its item and chapters', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({
@@ -938,5 +972,159 @@ describe('adopting the service’s book (Android)', () => {
     stop = startCarSync();
     await settle();
     expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
+  });
+});
+
+describe('before the launch steps finish', () => {
+  const mockBootstrap = jest.requireMock('@/lib/bootstrap').bootstrapPlayback as jest.Mock;
+  afterEach(() => {
+    mockBootstrap.mockImplementation(async () => {});
+  });
+
+  it('acts on a car request or connect replayed at subscribe only once the stores are hydrated', async () => {
+    // One run, as the real memoised `bootstrapPlayback`: every caller waits on it.
+    let release!: () => void;
+    const launch = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockBootstrap.mockImplementation(() => launch);
+    // Not hydrated yet: no connection (the root layout starts the sync with the launch steps).
+    connect([]);
+    stop = startCarSync();
+    const ref = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    mockNative.connection?.(true);
+    mockNative.playRequest?.(carItemId(ref));
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockStartBookInPlace).not.toHaveBeenCalled();
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    release();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+    // Never a signed-out snapshot over the good one.
+    expect(mockNative.setSnapshot).toHaveBeenCalled();
+    for (const [json] of mockNative.setSnapshot.mock.calls) {
+      expect(JSON.parse(json as string).signedIn).toBe(true);
+    }
+  });
+});
+
+describe("the engine's book", () => {
+  it('adds a bookmark to the book the engine names, even before the store holds it', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    stop = startCarSync();
+    await settle();
+    // The store holds another book (or none yet): the press is D's, file 2 at 30 s.
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0, 500] } },
+    });
+    mockNative.bookmark?.(1, 30, { connectionId: 'c1', libraryId: 2, path: 'D' });
+    await settle();
+    expect(mockAddBookmark).toHaveBeenCalledTimes(1);
+    expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 130);
+  });
+
+  it("lists the Up next queue of the loaded book's server, as the app's Up next does", async () => {
+    connect(['c1', 'c2']);
+    mockCaps.c1 = { queue: true };
+    mockCaps.c2 = { queue: true };
+    const entry = (path: string) => ({
+      library_id: 2,
+      path,
+      added_at: 'x',
+      book: makeBook({ rel_path: path, title: path }),
+    });
+    mockClients.c1 = fakeClient({ queue: [entry('Q1')] });
+    mockClients.c2 = fakeClient({ queue: [entry('Q2')] });
+    usePlayer.setState({
+      nowPlaying: {
+        connectionId: 'c2',
+        libraryId: 2,
+        path: 'X',
+        queue: { offsets: [0], total: 10 },
+      },
+    });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'upnext')!.items.map((i) => i.title)).toEqual(['Q2']);
+  });
+
+  it('still asks native after a check that ran while a book was loading (Android)', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    // A book is loading when the sync starts: that check stands back at once.
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0] } },
+      loadingBook: 'c1:2:A',
+      snapshot: { state: 'loading', trackIndex: 0, position: 0, duration: 100, rate: 1 },
+    });
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState({
+      loadingBook: null,
+      snapshot: { state: 'paused', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    await settle();
+    // Later the service plays another book on its own: the store adopts it.
+    const loaded = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'D',
+      trackIndex: 1,
+      position: 30,
+      rate: 1,
+      playing: true,
+    };
+    mockNative.getLoadedBook.mockResolvedValue(loaded);
+    usePlayer.setState({
+      snapshot: { state: 'playing', trackIndex: 1, position: 30, duration: 100, rate: 1 },
+    });
+    await settle();
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+  });
+});
+
+describe('offline', () => {
+  function unreachable(client: FakeClient) {
+    const offline = new TypeError('Network request failed');
+    client.allProgress.mockRejectedValue(offline);
+    client.queue.mockRejectedValue(offline);
+    client.libraries.mockRejectedValue(offline);
+    client.listBooks.mockRejectedValue(offline);
+  }
+
+  it('keeps the snapshot native has when no server can be read, and its covers', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({
+      progress: [makeProgress({ path: 'P1', position: 60 })],
+      items: { P1: makeBook({ rel_path: 'P1', title: 'Progressing' }) },
+    });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'continue')!.items.map((i) => i.title)).toEqual(['Progressing']);
+
+    // A fresh runtime in the car, away from the server: nothing read, nothing cached.
+    stop();
+    forgetCarSync();
+    mockNative.setSnapshot.mockClear();
+    (pruneArtwork as jest.Mock).mockClear();
+    unreachable(mockClients.c1);
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+    expect(pruneArtwork).not.toHaveBeenCalled();
+  });
+
+  it('still writes what it has when no snapshot was ever written', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    unreachable(mockClients.c1);
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'downloads')!.items.map((i) => i.title)).toEqual(['Downloaded D']);
   });
 });

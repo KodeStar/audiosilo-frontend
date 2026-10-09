@@ -30,6 +30,7 @@ public final class AudiosiloCarPlaySceneDelegate: UIResponder, CPTemplateApplica
   ) {
     controller?.stop()
     controller = nil
+    AudiosiloCarEvents.shared.drop("onCarPlayRequest")
     AudiosiloCarEvents.shared.send("onCarConnection", ["connected": false])
   }
 }
@@ -269,6 +270,8 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.tapTimeout) { [weak self] in
       guard let self = self, self.pendingTap?.generation == generation else { return }
       self.finishTap(push: false)
+      // Given up on: JS must not start it later (a slow cold boot), as on Android.
+      AudiosiloCarEvents.shared.drop("onCarPlayRequest")
     }
   }
 
