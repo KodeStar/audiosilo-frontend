@@ -71,14 +71,17 @@ export function kidsShelf(
   libraryId: number,
 ): Book[] {
   const byPath = new Map(books.map((b) => [b.rel_path, b]));
-  const continuing = progress
-    .filter((p) => p.library_id === libraryId && isInProgress(p) && byPath.has(p.path))
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-    .map((p) => byPath.get(p.path) as Book);
-  const first = new Set(continuing.map((b) => b.rel_path));
-  return [...first]
-    .map((path) => byPath.get(path) as Book)
-    .concat(books.filter((b) => !first.has(b.rel_path)));
+  // A Set of paths, most recent first: a book with two rows is listed once.
+  const first = new Set(
+    progress
+      .filter((p) => p.library_id === libraryId && isInProgress(p) && byPath.has(p.path))
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      .map((p) => p.path),
+  );
+  return [
+    ...[...first].map((path) => byPath.get(path) as Book),
+    ...books.filter((b) => !first.has(b.rel_path)),
+  ];
 }
 
 /**

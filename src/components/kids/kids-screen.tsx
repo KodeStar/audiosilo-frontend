@@ -104,7 +104,7 @@ export function KidsScreen() {
           </View>
           {loaded ? (
             <View className={phone ? 'mt-7' : 'mt-10'}>
-              <KidsPlayer wide={!phone} width={width} />
+              <KidsPlayer width={width} />
             </View>
           ) : null}
           <Text

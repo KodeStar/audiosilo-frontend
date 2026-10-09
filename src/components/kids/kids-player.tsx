@@ -16,39 +16,51 @@ import {
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
+import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** How far "go back a bit" goes. */
 export const KIDS_BACK_SECONDS = 30;
 
-/** Sizes per form: the cover, the play button, the other buttons and the gap between
- * them (STYLEGUIDE section 5: 120 for the kids play button, 64 pt the kids minimum). */
-const SIZES = {
-  phone: { cover: 220, play: 104, button: 72, icon: 28, playIcon: 44, gap: 12 },
-  wide: { cover: 300, play: 120, button: 84, icon: 32, playIcon: 52, gap: 18 },
-} as const;
-
-/** The play button and kids minimum a narrow phone shrinks to. */
+/** The control sizes (STYLEGUIDE section 5: 120 for the kids play button, 64 pt the
+ * kids-mode minimum): big from a column that fits them, else the phone's. */
+const BIG = { play: 120, button: 84, icon: 32, playIcon: 52, gap: 18 };
+const SMALL = { play: 104, button: 72, icon: 28, playIcon: 44, gap: 12 };
+/** What a narrow phone shrinks to. */
 const MIN_PLAY = 88;
 const MIN_BUTTON = 64;
+/** The cover beside the controls, and the gap between them. */
+const COVER_BESIDE = 300;
+const BESIDE_GAP = 40;
 
-export type KidsPlayerSizes = { [K in keyof (typeof SIZES)['phone']]: number };
+const rowWidth = (s: typeof SMALL) => 3 * s.button + s.play + 3 * s.gap;
+
+export type KidsPlayerLayout = typeof SMALL & {
+  /** The cover beside the title and controls (else above them). */
+  beside: boolean;
+  cover: number;
+};
 
 /**
- * The player's sizes for a content column `width` points wide (0: not measured yet): the
- * wide set from a tablet up, else the phone set, shrunk to fit the four buttons in one row
- * on a narrow phone (a 360 dp Android leaves 328), never under the kids minimum.
+ * The player's layout for a content column `width` points wide (0: not measured yet), by
+ * the width rather than the form factor: the cover beside the controls once both fit at
+ * the big sizes (a landscape tablet, a desktop), the big controls under the cover where
+ * only they fit (a portrait tablet), else the phone's sizes, shrunk to keep the four
+ * buttons in one row on a narrow phone (a 360 dp Android leaves 328) but never under the
+ * kids minimum.
  */
-export function kidsPlayerSizes(wide: boolean, width: number): KidsPlayerSizes {
-  if (wide) return SIZES.wide;
-  const p = SIZES.phone;
-  const row = 3 * p.button + p.play + 3 * p.gap;
-  if (width <= 0 || width >= row) return p;
-  const s = width / row;
+export function kidsPlayerLayout(width: number): KidsPlayerLayout {
+  if (width >= COVER_BESIDE + BESIDE_GAP + rowWidth(BIG)) {
+    return { ...BIG, beside: true, cover: COVER_BESIDE };
+  }
+  if (width >= rowWidth(BIG)) return { ...BIG, beside: false, cover: 280 };
+  const phone = { ...SMALL, beside: false, cover: 220 };
+  if (width <= 0 || width >= rowWidth(SMALL)) return phone;
+  const s = width / rowWidth(SMALL);
   return {
-    ...p,
-    button: Math.max(MIN_BUTTON, Math.floor(p.button * s)),
-    play: Math.max(MIN_PLAY, Math.floor(p.play * s)),
+    ...phone,
+    button: Math.max(MIN_BUTTON, Math.floor(SMALL.button * s)),
+    play: Math.max(MIN_PLAY, Math.floor(SMALL.play * s)),
     gap: 8,
   };
 }
@@ -98,7 +110,7 @@ function RoundButton({
  * nothing with no book loaded. The progress line is the view's one pink thing; the play
  * button is ink, as everywhere in Stacks.
  */
-export function KidsPlayer({ wide, width }: { wide: boolean; width: number }) {
+export function KidsPlayer({ width }: { width: number }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
@@ -111,7 +123,7 @@ export function KidsPlayer({ wide, width }: { wide: boolean; width: number }) {
   const rate = usePlayer((s) => s.rate);
   if (!nowPlaying) return null;
 
-  const d = kidsPlayerSizes(wide, width);
+  const d = kidsPlayerLayout(width);
   const segment = currentSegment({
     total: nowPlaying.queue.total,
     bookPosition,
@@ -136,7 +148,8 @@ export function KidsPlayer({ wide, width }: { wide: boolean; width: number }) {
   return (
     <View
       testID="kids-player"
-      className={cn('items-center', wide ? 'flex-row justify-center gap-10' : 'gap-5')}
+      className={cn('items-center', d.beside ? 'flex-row justify-center' : 'gap-5')}
+      style={d.beside ? { gap: BESIDE_GAP } : undefined}
     >
       <BookCover
         connectionId={nowPlaying.connectionId}
@@ -148,11 +161,11 @@ export function KidsPlayer({ wide, width }: { wide: boolean; width: number }) {
         shadow="lg"
         className="rounded-[22px]"
       />
-      <View className={cn('items-center gap-4', wide ? 'max-w-[480px] flex-1' : 'w-full')}>
+      <View className={cn('items-center gap-4', d.beside ? 'max-w-[480px] flex-1' : 'w-full')}>
         <Text
           className={cn(
             'text-center font-display tracking-tight text-foreground',
-            wide ? 'text-4xl' : 'text-3xl',
+            d.beside ? 'text-4xl' : 'text-3xl',
           )}
           numberOfLines={3}
           accessibilityRole="header"
@@ -195,9 +208,15 @@ export function KidsPlayer({ wide, width }: { wide: boolean; width: number }) {
             className="bg-secondary"
             testID="kids-back"
           >
-            {/* The circular arrow, turned to go backwards. */}
-            <View style={{ transform: [{ scaleX: -1 }] }}>
-              <Icon name="rotate" size={d.icon} color={themed.foreground} />
+            {/* The circular arrow turned to go backwards, with the seconds under it (the
+                same arrow unturned is the play button's Try again). */}
+            <View className="items-center">
+              <View style={{ transform: [{ scaleX: -1 }] }}>
+                <Icon name="rotate" size={d.icon - 6} color={themed.foreground} />
+              </View>
+              <Text className="font-sans-semibold text-sm text-foreground" style={tabularNums}>
+                {KIDS_BACK_SECONDS}
+              </Text>
             </View>
           </RoundButton>
           <RoundButton
