@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 
-import { chapterNumberAt, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
+import { chapterNumberAt } from '@/components/library/meta-gating';
 import { contentKey } from '@/lib/content-key';
 import { selectBookKey, selectBookPosition, usePlayer } from '@/playback/store';
 
@@ -89,8 +89,11 @@ const listeningPosition = (live: number | undefined, saved: number | undefined) 
 
 /**
  * The 1-based chapter the listener is in (`chapterNumberAt` on `chapterStarts`, 0 when
- * nothing is known): `useBookPlace`'s `listening` at the spoiler gate's bucket, selected as a
- * NUMBER, so a playing book re-renders the caller only when the chapter changes.
+ * nothing is known): `useBookPlace`'s `listening` rule on the EXACT live place, selected
+ * as a NUMBER, so a playing book re-renders the caller only when the chapter changes.
+ * No bucket is needed for that (the number is the coarse reading), so the chapter turns
+ * over at the boundary itself, never before the listener reaches it. The companion's gate
+ * and the reveal toast read it this way, and agree.
  */
 export function useListeningChapter(
   target: PlayTarget,
@@ -99,10 +102,7 @@ export function useListeningChapter(
 ): number {
   const key = contentKey(target.connectionId, target.libraryId, target.path);
   return usePlayer((s) => {
-    const live =
-      selectPlacedBookKey(s) === key
-        ? bucket(selectBookPosition(s), LIVE_POSITION_BUCKET_S)
-        : undefined;
+    const live = selectPlacedBookKey(s) === key ? selectBookPosition(s) : undefined;
     const position = listeningPosition(live, saved);
     return position == null ? 0 : chapterNumberAt(chapterStarts, position);
   });

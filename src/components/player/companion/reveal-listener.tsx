@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useBookProgress } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
 import type { BookMetaCharacter } from '@/api/types';
-import { chapterNumberAt, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
+import { chapterNumberAt } from '@/components/library/meta-gating';
 import { useBookCommunity } from '@/components/library/use-book-community';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
@@ -14,7 +14,7 @@ import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store
 
 import { usePlayerOnTop, usePlayerSheets } from '../player-sheets';
 import { usePlayingTarget } from '../playing-target';
-import { bucket, selectPlacedBookKey } from '../use-listening-position';
+import { selectPlacedBookKey } from '../use-listening-position';
 import type { PlayTarget } from '../use-play-book';
 import { REVEAL_WATCH_START, revealOnCrossing, watchReveal } from './companion-model';
 import { useCompanion } from './companion-store';
@@ -34,9 +34,10 @@ export function showWhoIsWho(playerOnTop: boolean) {
  * without rendering; the rules are `watchReveal` (only a natural crossing while playing:
  * never a load, a resume, a seek or a skip, though a pause or a file change on the way is
  * fine) and `revealOnCrossing` (never anyone already met this session, never a finished
- * book). The chapter is read exactly as Who's who's gate reads it: the live place in the
- * gate's buckets (`LIVE_POSITION_BUCKET_S`), and only once the book's own place is known
- * (`selectPlacedBookKey`), so the toast and the panel always agree on who is there.
+ * book). The chapter is read exactly as Who's who's gate reads it (`useListeningChapter`):
+ * the exact live place, so the reveal lands at the chapter's start, and only once the
+ * book's own place is known (`selectPlacedBookKey`), so the toast and the panel always
+ * agree on who is there.
  */
 function Watcher({
   target,
@@ -78,7 +79,7 @@ function Watcher({
           ? {
               position,
               playing: selectIsPlaying(s),
-              chapter: chapterNumberAt(starts, bucket(position, LIVE_POSITION_BUCKET_S)),
+              chapter: chapterNumberAt(starts, position),
             }
           : null;
       const seen = watchReveal(watch, next);
