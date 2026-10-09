@@ -21,7 +21,13 @@ import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 
-import { ApiError, type ApiClient, type BookListQuery, type BookMetaOptions } from './client';
+import {
+  ApiError,
+  isPlainSeriesQuery,
+  type ApiClient,
+  type BookListQuery,
+  type BookMetaOptions,
+} from './client';
 import { resolveClient } from './connection-clients';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteError } from './reachability';
@@ -774,6 +780,11 @@ export type LibraryBooksOptions = {
   /** False: read the cache, fetch nothing. */
   enabled?: boolean;
   staleTime?: number;
+  /** A plain series list (`isPlainSeriesQuery`) on a server with `series_books` fetches
+   * its first page through `seriesBooksPage`, in one request with every other series
+   * asked for in the same moment: for a screen of series cards. Only how the first page
+   * is fetched: the cache entry is the same, so a reader without it reuses the answer. */
+  batch?: boolean;
 };
 
 /** A library's indexed books (GET /libraries/{id}/books), page by page on the
@@ -782,37 +793,34 @@ export type LibraryBooksOptions = {
  * `browse_people` (an older server ignores it and would answer with the whole
  * library), so with one the query only runs once the server advertises the flag. A
  * `series` filter waits for `/server` (unless it fails) to learn whether to ask with
- * `memberships` (`series_memberships`). A plain series list (no other filter or sort)
- * on a server with `series_books` fetches its first page through `seriesBooksPage`,
- * one request for every series card on screen; later pages, and every other list, use
- * `listBooks`. Either way the cache entry is the same, so the series page reuses a
- * card's answer. */
+ * `memberships` (`series_memberships`). With `batch`, a plain series list on a server
+ * with `series_books` fetches its first page through `seriesBooksPage` (one request for
+ * every series card on screen); later pages, and every other list, use `listBooks`.
+ * Either way the cache entry is the same, so the series page reuses a card's answer. */
 export function useLibraryBooks(
   libraryId: number,
   query: BookListQuery = {},
   connectionId?: string,
-  { pageSize = BOOKS_PAGE_SIZE, enabled, staleTime }: LibraryBooksOptions = {},
+  { pageSize = BOOKS_PAGE_SIZE, enabled, staleTime, batch }: LibraryBooksOptions = {},
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
-  const narratorOk = useCapability('browse_people', connectionId) === true;
+  // One /server read for every flag below (as `useCapability` reads them: undefined
+  // while not known).
+  const server = useServerInfo(connectionId);
+  const caps = server.data?.capabilities;
+  const narratorOk = !!caps?.browse_people;
   // A series' books are every book in it where the server can say so; a series list
   // waits for the flag (as a narrator one waits for browse_people), so it isn't first
   // answered with the main series' books and then again.
-  const memberships = useCapability('series_memberships', connectionId);
+  const memberships = caps ? !!caps.series_memberships : undefined;
   // (A server whose /server fails is no wait: the list then fails or answers alone.)
-  const serverFailed = useServerInfo(connectionId).isError;
-  const seriesReady = !query.series || memberships !== undefined || serverFailed;
+  const seriesReady = !query.series || memberships !== undefined || server.isError;
   const effective = query.series && memberships ? { ...query, memberships: true } : query;
-  // The batch answers exactly `series` + `memberships` in the default sort. Its flag
-  // comes in the same /server answer `seriesReady` waits for, so a card never asks
-  // alone first and then in a batch.
+  // Its flag comes in the same /server answer `seriesReady` waits for, so a card never
+  // asks alone first and then in a batch.
   const batchedSeries =
-    useCapability('series_books', connectionId) === true &&
-    effective.memberships &&
-    !effective.author &&
-    !effective.narrator &&
-    !effective.sort
+    batch && caps?.series_books && effective.memberships && isPlainSeriesQuery(effective)
       ? effective.series
       : undefined;
   const key = qk.libraryBooks(cid, libraryId, effective);
@@ -820,13 +828,17 @@ export function useLibraryBooks(
     queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
     queryFn:
       api && (!query.narrator || narratorOk) && seriesReady
-        ? ({ pageParam, signal }) =>
-            batchedSeries && pageParam === undefined
-              ? api.seriesBooksPage(libraryId, batchedSeries, { limit: pageSize }, signal)
+        ? // The batched first page never reads `ctx.signal`: react-query cancels (and
+          // throws away) a fetch whose signal was read once its last observer leaves,
+          // but a card scrolled off still has its page coming in the shared request,
+          // and that page should land in the cache rather than be asked for again.
+          (ctx) =>
+            batchedSeries && ctx.pageParam === undefined
+              ? api.seriesBooksPage(libraryId, batchedSeries, { limit: pageSize })
               : api.listBooks(
                   libraryId,
-                  { ...effective, limit: pageSize, cursor: pageParam },
-                  signal,
+                  { ...effective, limit: pageSize, cursor: ctx.pageParam },
+                  ctx.signal,
                 )
         : skipToken,
     initialPageParam: undefined as string | undefined,

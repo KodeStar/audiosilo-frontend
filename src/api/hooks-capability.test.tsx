@@ -309,19 +309,18 @@ describe('capability-gated hooks', () => {
     expect(c1.seriesBooksPage).not.toHaveBeenCalled();
   });
 
-  it("fetches a series list's first page in the batch on series_books, later pages from /books", async () => {
-    const { result } = await mount(
-      { c1: { browse_people: true, series_memberships: true, series_books: true } },
-      () => useLibraryBooks(2, { series: 'City Watch' }),
+  /** Every flag the batch needs. */
+  const batching = { browse_people: true, series_memberships: true, series_books: true };
+  const cardOpts = { batch: true };
+  const cityWatchKey = qk.libraryBooks('c1', 2, { series: 'City Watch', memberships: true });
+
+  it("fetches a card's first page in the batch on series_books, later pages from /books", async () => {
+    const { result } = await mount({ c1: batching }, () =>
+      useLibraryBooks(2, { series: 'City Watch' }, undefined, cardOpts),
     );
     await waitFor(() => expect(result.current.hasNextPage).toBe(true));
     const c1 = mockClients.c1;
-    expect(c1.seriesBooksPage).toHaveBeenCalledWith(
-      2,
-      'City Watch',
-      { limit: 100 },
-      expect.anything(),
-    );
+    expect(c1.seriesBooksPage).toHaveBeenCalledWith(2, 'City Watch', { limit: 100 });
     expect(c1.listBooks).not.toHaveBeenCalled();
     await act(async () => {
       await result.current.fetchNextPage();
@@ -337,36 +336,57 @@ describe('capability-gated hooks', () => {
     expect(c1.seriesBooksPage).toHaveBeenCalledTimes(1);
   });
 
-  it("shares a batched series' cache entry with every reader of the series", async () => {
-    const { result } = await mount(
-      { c1: { browse_people: true, series_memberships: true, series_books: true } },
-      () => ({
-        card: useLibraryBooks(2, { series: 'City Watch' }),
-        page: useAllLibraryBooks(2, { series: 'City Watch' }),
-      }),
-    );
+  it("shares a card's batched first page with the series page, which doesn't batch", async () => {
+    const { result } = await mount({ c1: batching }, () => ({
+      card: useLibraryBooks(2, { series: 'City Watch' }, undefined, cardOpts),
+      page: useAllLibraryBooks(2, { series: 'City Watch' }),
+    }));
     await waitFor(() => expect(result.current.page.complete).toBe(true));
     const c1 = mockClients.c1;
-    // One first page for both, under the key a /books series list has always had.
+    // One first page for both, under the key a /books series list has always had; the
+    // page went on to /books for the rest.
     expect(c1.seriesBooksPage).toHaveBeenCalledTimes(1);
+    expect(c1.listBooks).toHaveBeenCalledTimes(1);
+    expect(c1.listBooks.mock.calls[0][1]).toMatchObject({ cursor: 'p2' });
     expect(result.current.page.books).toEqual([{ title: 'City Watch' }]);
     expect(result.current.card.data?.pages[0].books).toEqual([{ title: 'City Watch' }]);
-    const key = qk.libraryBooks('c1', 2, { series: 'City Watch', memberships: true });
-    expect(queryClients[queryClients.length - 1].getQueryData(key)).toBe(result.current.card.data);
+    expect(queryClients[queryClients.length - 1].getQueryData(cityWatchKey)).toBe(
+      result.current.card.data,
+    );
   });
 
-  it('keeps a series list with another filter or a sort off the batch', async () => {
-    const { result } = await mount(
-      { c1: { browse_people: true, series_memberships: true, series_books: true } },
-      () => [
-        useLibraryBooks(2, { series: 'City Watch', sort: 'title' }),
-        useLibraryBooks(2, { series: 'City Watch', author: 'Terry Pratchett' }),
-        useLibraryBooks(2, {}),
-      ],
-    );
+  it('keeps an un-opted reader and a series list with another filter or sort off the batch', async () => {
+    const { result } = await mount({ c1: batching }, () => [
+      useLibraryBooks(2, { series: 'City Watch' }),
+      useLibraryBooks(2, { series: 'Discworld', sort: 'title' }, undefined, cardOpts),
+      useLibraryBooks(2, { series: 'Discworld', author: 'Terry Pratchett' }, undefined, cardOpts),
+      useLibraryBooks(2, {}, undefined, cardOpts),
+    ]);
     await waitFor(() => expect(result.current.every((q) => q.isSuccess)).toBe(true));
     expect(mockClients.c1.seriesBooksPage).not.toHaveBeenCalled();
-    expect(mockClients.c1.listBooks).toHaveBeenCalledTimes(3);
+    expect(mockClients.c1.listBooks).toHaveBeenCalledTimes(4);
+  });
+
+  it("caches a card's batched page even when the card has gone before it lands", async () => {
+    let answer: (page: { books: { title: string }[] }) => void = () => {};
+    const { result, unmount } = await mount(
+      { c1: batching },
+      () => useLibraryBooks(2, { series: 'City Watch' }, undefined, cardOpts),
+      () =>
+        mockClients.c1.seriesBooksPage.mockReturnValue(new Promise((r) => (answer = r)) as never),
+    );
+    await waitFor(() => expect(result.current.isFetching).toBe(true));
+    await waitFor(() => expect(mockClients.c1.seriesBooksPage).toHaveBeenCalledTimes(1));
+    // Scrolled off: its last observer leaves while the shared request is out.
+    await unmount();
+    await act(async () => answer({ books: [{ title: 'City Watch' }] }));
+    const qc = queryClients[queryClients.length - 1];
+    await waitFor(() =>
+      expect(qc.getQueryData(cityWatchKey)).toEqual({
+        pages: [{ books: [{ title: 'City Watch' }] }],
+        pageParams: [undefined],
+      }),
+    );
   });
 
   it('holds a series list until /server says whether it knows memberships', async () => {
@@ -387,7 +407,7 @@ describe('capability-gated hooks', () => {
     let answer: (info: ServerInfo) => void = () => {};
     const { result } = await mount(
       { c1: {} },
-      () => useLibraryBooks(2, { series: 'City Watch' }),
+      () => useLibraryBooks(2, { series: 'City Watch' }, undefined, cardOpts),
       () => mockClients.c1.serverInfo.mockReturnValue(new Promise((r) => (answer = r))),
     );
     await act(async () =>

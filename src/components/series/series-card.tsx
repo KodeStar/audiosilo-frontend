@@ -34,8 +34,8 @@ function shelfPositions(positions: readonly number[]): number[] {
  * they are ("4 of 7 · 1 in progress"). Its books are fetched when the card first shows
  * (the grid renders only the rows on screen), so a library of 300 series asks for the
  * few on screen, not all of them; on a server with `series_books` the cards that show
- * together are asked for in one request (`useLibraryBooks` -> `seriesBooksPage`), else
- * one per card. Until then the shelf is spine-shaped placeholders at the positions the
+ * together are asked for in one request (`useSeriesBooks` with `batch` ->
+ * `seriesBooksPage`), else one per card. Until then the shelf is spine-shaped placeholders at the positions the
  * series list already gives.
  *
  * Search shows its series results with it too: `heading` replaces the plain name (the
@@ -65,7 +65,7 @@ export function SeriesCard({
 }) {
   const { t } = useTranslation();
   const { openSeries } = useOpen();
-  const { books } = useSeriesBooks(libraryId, series.name, connectionId);
+  const { books } = useSeriesBooks(libraryId, series.name, connectionId, { batch: true });
   const entries =
     books.length > 0 ? localEntries(books, { connectionId, connectionName, progressOf }) : null;
   const gaps = localGaps(series.positions).length;

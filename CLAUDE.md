@@ -446,11 +446,13 @@ and `seriesList` with `useAuthors`/`useNarrators`/`useSeriesList` (`browse_peopl
 `client.listBooks` with `useLibraryBooks` (a `narrator` filter waits for
 `browse_people`; a `series` filter waits for `/server`, then asks with `memberships=1` on
 `series_memberships`, as `useSeriesList` does: a book in several series, `Book.series_list`,
-is matched and counted in each; on `series_books` such a plain series list fetches its first
-page through `client.seriesBooksPage`, which collects every series asked for within 10 ms on
-one library and page size into one `GET /libraries/{id}/series/books?name=...` per 50 names,
-under the same `qk.libraryBooks` key, later pages staying on `/books`; a caller's abort never
-cancels the shared request, which is aborted only once all its callers have left); `client.nextBook` + `useNextBook` (`next_book`, server-resolved: community when it
+is matched and counted in each; with the `batch` option (series cards only) on `series_books`
+a plain series list (`isPlainSeriesQuery`: no key beyond `series`/`memberships`) fetches its
+first page through `client.seriesBooksPage`, a per-(library, page size) `createBatchLoader`
+(`src/lib/batch-loader.ts`) that collects every series asked for within 10 ms into one
+`GET /libraries/{id}/series/books?name=...` per 50 names, under the same `qk.libraryBooks` key,
+later pages staying on `/books`; that branch never reads react-query's `signal`, so a card
+scrolled off still caches its page from the shared request, which nobody cancels); `client.nextBook` + `useNextBook` (`next_book`, server-resolved: community when it
 places its next work, else series -> folder -> none, `source` naming who produced
 `next`; a `work` without `local` is the rail's next work left unplaced; a community
 `next` can be in another library);
@@ -1239,7 +1241,8 @@ colours `spine-colors.ts` (the cover's colour, else a cloth colour from the titl
 Resume chapter N, Play, `QueueButton`, Open on <server>, View on AudioSilo Meta), the "Keep ahead
 offline" card (the one `keepAhead` setting, only where the device can download) and the CC0 credit.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books
-only once on screen, the cards on screen together in one request on `series_books`; Search reuses
+only once on screen, the cards on screen together in one request on `series_books`
+(`useSeriesBooks(..., { batch: true })`; the series page asks plainly and reuses the cache); Search reuses
 the card. Authors / Narrators modes and the person pages are
 `people-mode.tsx` / `person-page.tsx` over `people-model.ts` (letter heads, portraits, books grouped
 by series).

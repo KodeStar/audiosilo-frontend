@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { ApiClient, SERIES_BOOKS_MAX_NAMES } from '@/api/client';
+import { ApiClient, isPlainSeriesQuery, SERIES_BOOKS_MAX_NAMES } from '@/api/client';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -19,6 +19,18 @@ function installFetch(impl: (url: string, init: RequestInit) => FetchResult): je
   });
   globalThis.fetch = mock as unknown as typeof globalThis.fetch;
   return mock;
+}
+
+/** A fetch that never resolves until its signal aborts. */
+function installHangingFetch() {
+  globalThis.fetch = jest.fn(
+    (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+        );
+      }),
+  ) as unknown as typeof globalThis.fetch;
 }
 
 function headerValue(init: RequestInit, name: string): string | undefined {
@@ -539,18 +551,6 @@ describe('ApiClient', () => {
     expect(String(url)).toBe('https://h/api/v1/libraries/2/next?path=Saga%2FBook+2');
     expect(init.method).toBe('GET');
   });
-
-  // A fetch that never resolves until its signal aborts.
-  function installHangingFetch() {
-    globalThis.fetch = jest.fn(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
-          );
-        }),
-    ) as unknown as typeof globalThis.fetch;
-  }
 
   it('surfaces a timeout as TimeoutError, not AbortError (review finding F3)', async () => {
     installHangingFetch();
@@ -1391,34 +1391,6 @@ describe('ApiClient series books (series_books)', () => {
   const namesOf = (fetchMock: jest.Mock, i: number) =>
     new URL(sent(fetchMock, i).url).searchParams.getAll('name');
 
-  /** A fetch that answers only when the test says so, recording each call's signal. */
-  function deferredFetch() {
-    const calls: { url: string; signal: AbortSignal; answer: (body: unknown) => void }[] = [];
-    globalThis.fetch = jest.fn(
-      (input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((resolve, reject) => {
-          const signal = init!.signal!;
-          signal.addEventListener('abort', () =>
-            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
-          );
-          calls.push({
-            url: String(input),
-            signal,
-            answer: (body) =>
-              resolve({
-                ok: true,
-                status: 200,
-                statusText: '',
-                text: () => Promise.resolve(JSON.stringify(body)),
-              } as Response),
-          });
-        }),
-    ) as unknown as typeof globalThis.fetch;
-    return calls;
-  }
-  /** Let the batch window close and the request go out. */
-  const windowCloses = () => new Promise((r) => setTimeout(r, 30));
-
   it('asks for several series at once with the name repeated, the list unwrapped', async () => {
     const fetchMock = installFetch(() => ({
       status: 200,
@@ -1515,85 +1487,29 @@ describe('ApiClient series books (series_books)', () => {
     });
   });
 
-  it('asks /books for a name the answer leaves out', async () => {
-    const fetchMock = installFetch((url) =>
-      url.includes('/series/books')
-        ? { status: 200, body: { series: [{ name: 'A', books: [] }] } }
-        : { status: 200, body: { books: [{ title: 'B1' }] } },
-    );
+  it('rejects a caller whose name the answer leaves out, the others answered', async () => {
+    installFetch(() => ({ status: 200, body: { series: [{ name: 'A', books: [] }] } }));
     const c = new ApiClient('https://h', 'tok');
-    const [, b] = await Promise.all([c.seriesBooksPage(2, 'A'), c.seriesBooksPage(2, 'B')]);
-    expect(b).toEqual({ books: [{ title: 'B1' }] });
-    expect(sent(fetchMock, 1).url).toBe(
-      'https://h/api/v1/libraries/2/books?series=B&memberships=1',
-    );
+    const [a, b] = await Promise.allSettled([c.seriesBooksPage(2, 'A'), c.seriesBooksPage(2, 'B')]);
+    expect(a).toEqual({ status: 'fulfilled', value: { books: [] } });
+    expect(b.status).toBe('rejected');
   });
 
-  it("drops a caller's name when it aborts before the request goes out", async () => {
-    const fetchMock = seriesServer();
-    const c = new ApiClient('https://h', 'tok');
-    const gone = new AbortController();
-    const a = c.seriesBooksPage(2, 'A', {}, gone.signal);
-    const b = c.seriesBooksPage(2, 'B');
-    gone.abort();
-    await expect(a).rejects.toMatchObject({ name: 'AbortError' });
-    await expect(b).resolves.toMatchObject({ books: [{ title: 'B' }] });
-    expect(namesOf(fetchMock, 0)).toEqual(['B']);
+  it('knows a plain series query by having no other key', () => {
+    expect(isPlainSeriesQuery({ series: 'A' })).toBe(true);
+    expect(isPlainSeriesQuery({ series: 'A', memberships: true })).toBe(true);
+    // An unset or empty filter is no filter.
+    expect(isPlainSeriesQuery({ series: 'A', author: undefined, narrator: '' })).toBe(true);
+    expect(isPlainSeriesQuery({})).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', sort: 'title' })).toBe(false);
+    expect(isPlainSeriesQuery({ series: 'A', author: 'X' })).toBe(false);
+    // A key BookListQuery doesn't have today is not answered by the batch either.
+    expect(isPlainSeriesQuery({ series: 'A', genre: 'x' } as never)).toBe(false);
   });
 
-  it('sends nothing when every caller has aborted before the window closes', async () => {
-    const fetchMock = seriesServer();
-    const c = new ApiClient('https://h', 'tok');
-    const gone = new AbortController();
-    const a = c.seriesBooksPage(2, 'A', {}, gone.signal);
-    gone.abort();
-    await expect(a).rejects.toMatchObject({ name: 'AbortError' });
-    await windowCloses();
-    expect(fetchMock).not.toHaveBeenCalled();
-    // An already aborted signal never joins a batch.
-    await expect(c.seriesBooksPage(2, 'A', {}, gone.signal)).rejects.toMatchObject({
-      name: 'AbortError',
-    });
-  });
-
-  it('keeps a shared request going when one of its callers aborts', async () => {
-    const calls = deferredFetch();
-    const c = new ApiClient('https://h', 'tok');
-    const gone = new AbortController();
-    const a = c.seriesBooksPage(2, 'A', {}, gone.signal);
-    const sameName = c.seriesBooksPage(2, 'A');
-    const b = c.seriesBooksPage(2, 'B');
-    await windowCloses();
-    expect(calls).toHaveLength(1);
-    gone.abort();
-    await expect(a).rejects.toMatchObject({ name: 'AbortError' });
-    expect(calls[0].signal.aborted).toBe(false);
-    calls[0].answer({
-      series: [
-        { name: 'A', books: [{ title: 'A' }] },
-        { name: 'B', books: [{ title: 'B' }] },
-      ],
-    });
-    await expect(sameName).resolves.toEqual({ books: [{ title: 'A' }] });
-    await expect(b).resolves.toEqual({ books: [{ title: 'B' }] });
-  });
-
-  it('aborts a request in flight once every caller in it has aborted', async () => {
-    const calls = deferredFetch();
-    const c = new ApiClient('https://h', 'tok');
-    const one = new AbortController();
-    const two = new AbortController();
-    const a = expect(c.seriesBooksPage(2, 'A', {}, one.signal)).rejects.toMatchObject({
-      name: 'AbortError',
-    });
-    const b = expect(c.seriesBooksPage(2, 'B', {}, two.signal)).rejects.toMatchObject({
-      name: 'AbortError',
-    });
-    await windowCloses();
-    one.abort();
-    expect(calls[0].signal.aborted).toBe(false);
-    two.abort();
-    await Promise.all([a, b]);
-    expect(calls[0].signal.aborted).toBe(true);
+  it('gives a batched request the client timeout', async () => {
+    installHangingFetch();
+    const c = new ApiClient('https://h', 'tok', 10); // 10ms timeout
+    await expect(c.seriesBooksPage(2, 'A')).rejects.toMatchObject({ name: 'TimeoutError' });
   });
 });
