@@ -84,6 +84,12 @@ jest.mock('@/components/player/use-playing-pins', () => {
 // Sections with their own data and tests.
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/components/library/book-versions', () => ({ BookVersions: () => null }));
+jest.mock('@/components/house/in-the-house-card', () => ({
+  InTheHouseCard: ({ libraryId, path }: { libraryId: number; path: string }) => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text>{`In the house: ${libraryId}/${path}`}</Text>;
+  },
+}));
 jest.mock('@/components/library/bookmarks-section', () => ({ BookmarksSection: () => null }));
 jest.mock('@/components/library/history-section', () => ({ HistorySection: () => null }));
 jest.mock('@/components/library/notes-section', () => ({ NotesSection: () => null }));
@@ -279,6 +285,13 @@ describe('book page tabs', () => {
       libraryId: 1,
       path: 'Author/Book',
     });
+  });
+});
+
+describe('book page aside', () => {
+  it('asks the In the house card about this book', async () => {
+    await mountAt('desktop');
+    expect(screen.getByText('In the house: 1/Author/Book')).toBeTruthy();
   });
 });
 

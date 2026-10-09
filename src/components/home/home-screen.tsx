@@ -12,6 +12,7 @@ import {
   useFavouritesAll,
   useRecentAll,
 } from '@/api/hooks';
+import { HouseRow } from '@/components/house/house-row';
 import { libraryBooksHref } from '@/components/library/books/books-view';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { libraryModeHref } from '@/components/library/library-modes';
@@ -212,6 +213,11 @@ export function HomeScreen() {
             )}
           </HomeSection>
         ) : null}
+
+        {/* Listening in the house: one section per server where the listener shares and
+            someone else does too (renders nothing otherwise). The connections are the
+            session's for now; profiles (Phase 8 D) hand it the active profile's. */}
+        <HouseRow connections={connections} />
 
         {shelves.length > 0 ? (
           <HomeSection title={t('home.smart.title')} sub={t('home.smart.sub')}>

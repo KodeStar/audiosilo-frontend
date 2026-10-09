@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import type { Book } from '@/api/types';
+import { InTheHouseCard } from '@/components/house/in-the-house-card';
 import type { MatchedBookMeta } from '@/components/library/book-meta';
 import { BookVersions } from '@/components/library/book-versions';
 import { Card } from '@/components/ui/card';
@@ -14,8 +15,8 @@ import type { ListeningFigures } from './book-page-model';
 
 /**
  * The book page's aside (the prototype's right column; between the hero and the tabs on
- * a narrow page): About, Other versions (only when there are), and Your listening (once
- * the book is started).
+ * a narrow page): About, Other versions (only when there are), Your listening (once
+ * the book is started) and In the house (only when someone who shares is on this book).
  */
 export function BookAside({
   book,
@@ -35,6 +36,11 @@ export function BookAside({
       <BookAbout book={book} meta={meta} />
       <BookVersions book={book} connectionId={connectionId} />
       {listening ? <YourListening figures={listening} /> : null}
+      <InTheHouseCard
+        connectionId={connectionId}
+        libraryId={book.library_id}
+        path={book.rel_path}
+      />
     </View>
   );
 }

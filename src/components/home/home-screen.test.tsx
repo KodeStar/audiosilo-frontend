@@ -94,6 +94,13 @@ jest.mock('./use-next-in-series', () => ({ useNextInSeries: () => mockNext }));
 jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
 jest.mock('./use-narrator-shelf', () => ({ useNarratorShelf: () => undefined }));
 jest.mock('./use-sync-pill', () => ({ useSyncPill: () => null }));
+// Listening in the house has its own tests; Home only places it with its connections.
+jest.mock('@/components/house/house-row', () => ({
+  HouseRow: ({ connections }: { connections: { id: string }[] }) => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text>{`House: ${connections.map((c) => c.id).join(',')}`}</Text>;
+  },
+}));
 
 /* eslint-disable import/first */
 import { HomeScreen } from './home-screen';
@@ -145,6 +152,11 @@ describe('HomeScreen', () => {
     expect(
       screen.getByRole('button', { name: 'Older, 30% · 11m left, 30% listened' }),
     ).toBeTruthy();
+  });
+
+  it('places Listening in the house with the signed-in servers', async () => {
+    await mountHome();
+    expect(screen.getByText('House: a')).toBeTruthy();
   });
 
   it('shows what went wrong, with a retry, when progress failed and nothing is shown', async () => {
