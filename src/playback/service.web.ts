@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { routed } from '@/cast/routed-service';
 import { sameOrigin } from '@/lib/same-origin';
 
 import { supportsVoiceBoost } from './effects';
@@ -32,20 +33,17 @@ export function isSwapReady(readyState: number, currentTime: number, target: num
 }
 
 /**
- * Which OS output picker a media element can present, in priority order: Safari / iOS
- * expose `webkitShowPlaybackTargetPicker` (AirPlay → HomePod, AirPlay speakers);
- * Chromium exposes the Remote Playback API (`el.remote.prompt`, used for Cast). Anything
- * else has no in-page picker. Pure + exported so the choice is unit-testable without a
- * real <audio> element.
+ * Which OS output picker a media element can present: Safari / iOS expose
+ * `webkitShowPlaybackTargetPicker` (AirPlay → HomePod, AirPlay speakers). Anything else has
+ * no in-page picker. Chromium's Remote Playback API (`el.remote.prompt()`) is deliberately
+ * NOT used: it hands the receiver the element's own URL, which carries the session token,
+ * and the receiver must never get that. Chromium casts through the Cast Web Sender with a
+ * cast token instead (`src/cast/`). Pure + exported so the choice is unit-testable without
+ * a real <audio> element.
  */
-export type RoutePickerKind = 'airplay' | 'remote' | 'none';
-export function routePickerKind(el: {
-  webkitShowPlaybackTargetPicker?: unknown;
-  remote?: { prompt?: unknown } | null;
-}): RoutePickerKind {
-  if (typeof el.webkitShowPlaybackTargetPicker === 'function') return 'airplay';
-  if (el.remote && typeof el.remote.prompt === 'function') return 'remote';
-  return 'none';
+export type RoutePickerKind = 'airplay' | 'none';
+export function routePickerKind(el: { webkitShowPlaybackTargetPicker?: unknown }): RoutePickerKind {
+  return typeof el.webkitShowPlaybackTargetPicker === 'function' ? 'airplay' : 'none';
 }
 
 /** The numbers of a `DynamicsCompressorNode`, in the units it takes (seconds for the times). */
@@ -110,11 +108,8 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
 const routable = (url: string): boolean =>
   sameOrigin(url, typeof location !== 'undefined' ? location : undefined);
 
-/** A media element augmented with the (non-standard) picker entry points. */
-type RoutePickerEl = {
-  webkitShowPlaybackTargetPicker?: () => void;
-  remote?: { prompt?: () => Promise<void> } | null;
-};
+/** A media element augmented with Safari's (non-standard) picker entry point. */
+type RoutePickerEl = { webkitShowPlaybackTargetPicker?: () => void };
 
 /**
  * The source to give an element for `track` starting `positionInTrack` in, and the
@@ -713,29 +708,15 @@ class WebPlaybackService implements PlaybackService {
 
   async showRoutePicker(): Promise<boolean> {
     const el = this.el() as unknown as RoutePickerEl;
-    switch (routePickerKind(el)) {
-      case 'airplay':
-        // Safari / iOS: opens the native AirPlay route sheet for this element. Can throw
-        // (e.g. InvalidStateError when AirPlay can't be presented); treat that as "not
-        // shown" rather than letting it become an unhandled rejection (the caller uses
-        // `void showRoutePicker()`). Symmetric with the remote branch below.
-        try {
-          el.webkitShowPlaybackTargetPicker?.();
-          return true;
-        } catch {
-          return false;
-        }
-      case 'remote':
-        // Chromium: opens the Cast/Remote Playback chooser; rejects if the user
-        // dismisses it or there are no devices — neither is an error here.
-        try {
-          await el.remote?.prompt?.();
-          return true;
-        } catch {
-          return false;
-        }
-      default:
-        return false;
+    if (routePickerKind(el) !== 'airplay') return false;
+    // Safari / iOS: opens the native AirPlay route sheet for this element. Can throw (e.g.
+    // InvalidStateError when AirPlay can't be presented); treat that as "not shown" rather
+    // than letting it become an unhandled rejection (the caller uses `void showRoutePicker()`).
+    try {
+      el.webkitShowPlaybackTargetPicker?.();
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -822,6 +803,8 @@ class WebPlaybackService implements PlaybackService {
   }
 }
 
+/** The store's one engine: this platform's, behind the Cast route switch (`routed`), which
+ * hands playback to a Cast receiver while a session is connected and back after it. */
 export function createPlaybackService(): PlaybackService {
-  return new WebPlaybackService();
+  return routed(new WebPlaybackService());
 }

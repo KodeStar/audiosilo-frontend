@@ -43,23 +43,17 @@ describe('isSwapReady', () => {
 });
 
 describe('routePickerKind', () => {
-  it('prefers AirPlay when the Safari/iOS picker is available', () => {
-    expect(
-      routePickerKind({
-        webkitShowPlaybackTargetPicker: () => {},
-        remote: { prompt: () => Promise.resolve() }, // AirPlay wins even if both exist
-      }),
-    ).toBe('airplay');
+  it('is AirPlay when the Safari/iOS picker is available', () => {
+    expect(routePickerKind({ webkitShowPlaybackTargetPicker: () => {} })).toBe('airplay');
   });
 
-  it('falls back to the Remote Playback API (Cast) when only it is available', () => {
-    expect(routePickerKind({ remote: { prompt: () => Promise.resolve() } })).toBe('remote');
-  });
-
-  it('is none when neither API is present', () => {
+  it('never offers the Remote Playback API: it would hand the receiver the session token', () => {
+    // A Chromium element: it has `remote.prompt()` and no AirPlay picker.
+    const chromium = { remote: { prompt: () => Promise.resolve() } } as Parameters<
+      typeof routePickerKind
+    >[0];
+    expect(routePickerKind(chromium)).toBe('none');
     expect(routePickerKind({})).toBe('none');
-    expect(routePickerKind({ remote: null })).toBe('none');
-    expect(routePickerKind({ remote: {} })).toBe('none'); // remote object without prompt()
   });
 });
 

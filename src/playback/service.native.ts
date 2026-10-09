@@ -1,5 +1,7 @@
 import type { EventSubscription } from 'expo-modules-core';
 
+import { routed } from '@/cast/routed-service';
+
 import AudiosiloPlayer from '../../modules/audiosilo-player';
 
 import {
@@ -184,6 +186,8 @@ class NativePlaybackService implements PlaybackService {
   }
 }
 
+/** The store's one engine: this platform's, behind the Cast route switch (`routed`), which
+ * hands playback to a Cast receiver while a session is connected and back after it. */
 export function createPlaybackService(): PlaybackService {
-  return new NativePlaybackService();
+  return routed(new NativePlaybackService());
 }

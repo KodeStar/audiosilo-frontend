@@ -181,17 +181,17 @@ export interface PlaybackService {
   setVolume(volume: number): Promise<void>;
   reset(): Promise<void>;
   /**
-   * Present the OS audio-route / casting picker so the user can send playback to
-   * another output: AirPlay on iOS / Safari (→ HomePod, AirPlay speakers), the
-   * media-output switcher on Android (→ Bluetooth e.g. an Echo, Cast devices), and
-   * the Remote Playback API elsewhere. Resolves `true` if a picker was shown.
-   * Optional — engines/platforms without route support omit it.
+   * Present the OS audio-route picker so the user can send playback to another output:
+   * AirPlay on iOS / Safari (→ HomePod, AirPlay speakers) and the media-output switcher on
+   * Android (→ Bluetooth, e.g. an Echo). Resolves `true` if a picker was shown. Optional:
+   * engines/platforms without route support omit it. Chromecast is not a route picker: it
+   * is a playback route of its own (`src/cast/`), with a cast token in the receiver's URLs.
    */
   showRoutePicker?(): Promise<boolean>;
   /**
    * Whether a route picker can be shown right now, so the UI can hide the button
-   * where there's no support (e.g. a desktop browser without Remote Playback or
-   * AirPlay). Native engines return true; web checks the available media APIs.
+   * where there is no support (any browser but Safari, which has AirPlay). Native engines
+   * return true; web checks for the AirPlay picker.
    */
   canShowRoutePicker?(): boolean;
   /**
