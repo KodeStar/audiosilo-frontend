@@ -27,6 +27,7 @@ import { downloadedEntryOf, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
 import i18n from '@/i18n';
 import { bootstrapPlayback } from '@/lib/bootstrap';
+import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { serialQueue } from '@/lib/serial-queue';
@@ -502,8 +503,7 @@ async function write(): Promise<void> {
 
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
-  const ref = parseCarItemId(id);
-  if (!ref) {
+  if (!parseCarItemId(id)) {
     console.warn('[car] not a car item id', id);
     return;
   }
@@ -511,6 +511,9 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   // the root layout's path comes before the launch steps hydrated the session and the
   // downloads: started then, the book would find no connection and no download.
   await bootstrapPlayback();
+  // Read again now the aliases are loaded: an item of a snapshot written before the identity
+  // migration names the old connection id.
+  const ref = parseCarItemId(id)!;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (np && contentKeyOf(np) === contentKeyOf(ref)) {
@@ -596,7 +599,12 @@ function addBookmarks(fresh: CarBookmark[]): Promise<void> {
     await bootstrapPlayback();
     const stored = await getItem<unknown[]>(RETRY_KEY);
     const kept = Array.isArray(stored) ? stored.filter(isCarBookmark) : [];
-    const todo = [...kept, ...fresh];
+    // An old connection id (a bookmark the Android service kept while no JS ran, from before
+    // the identity migration) reads as its new one, now the aliases are loaded.
+    const todo = [...kept, ...fresh].map((b) => ({
+      ...b,
+      connectionId: resolveConnectionId(b.connectionId),
+    }));
     if (todo.length === 0) return;
     const retry: CarBookmark[] = [];
     for (const b of todo) {

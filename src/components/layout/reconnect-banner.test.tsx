@@ -42,7 +42,7 @@ beforeEach(async () => {
     name: 'Hearthside',
     addresses: { home: HOME, away: AWAY },
   });
-  useSession.getState().markNeedsReconnect('srv-1', 'auth');
+  useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
 });
 afterAll(() => {
   Platform.OS = os;
@@ -50,13 +50,13 @@ afterAll(() => {
 
 it('away from home, signs in again through the away address the connection uses now', async () => {
   Platform.OS = 'ios';
-  setAddressPick('srv-1', AWAY);
+  setAddressPick('srv-1.1', AWAY);
   await render(<ReconnectBanner />);
   await fireEvent.press(screen.getByRole('button'));
   expect(useSession.getState().pendingServerUrl).toBe(AWAY);
   expect(mockPush).toHaveBeenCalledWith({
     pathname: '/connect/sign-in',
-    params: { serverName: 'Hearthside', reconnect: 'srv-1' },
+    params: { serverName: 'Hearthside', reconnect: 'srv-1.1' },
   });
 });
 
@@ -68,7 +68,7 @@ it('without a pick, signs in through the paired address', async () => {
 });
 
 it('renders nothing when no connection needs reconnecting', async () => {
-  useSession.getState().clearNeedsReconnect('srv-1');
+  useSession.getState().clearNeedsReconnect('srv-1.1');
   await render(<ReconnectBanner />);
   expect(screen.queryByRole('button')).toBeNull();
 });

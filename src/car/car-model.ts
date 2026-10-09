@@ -5,6 +5,7 @@ import type { Book, Progress } from '@/api/types';
 import { progressAt, splitProgress } from '@/components/home/home-model';
 import { splitDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
+import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
@@ -110,7 +111,9 @@ export function carItemId(ref: BookRef): string {
   );
 }
 
-/** The book a car item id names, or null for anything that isn't one. */
+/** The book a car item id names, or null for anything that isn't one. An id from a snapshot
+ * written before the identity migration names the old connection id: it reads as the new one
+ * (`resolveConnectionId`, once the launch steps loaded the aliases). */
 export function parseCarItemId(id: string): BookRef | null {
   if (typeof id !== 'string' || !id.startsWith(ID_PREFIX)) return null;
   const parts = id.slice(ID_PREFIX.length).split(':');
@@ -126,7 +129,7 @@ export function parseCarItemId(id: string): BookRef | null {
   if (!connectionId || !path || !/^\d+$/.test(lib) || !Number.isSafeInteger(libraryId)) {
     return null;
   }
-  return { connectionId, libraryId, path };
+  return { connectionId: resolveConnectionId(connectionId), libraryId, path };
 }
 
 // --- Labels ---------------------------------------------------------------------------

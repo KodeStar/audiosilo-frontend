@@ -63,4 +63,32 @@ describe('serverResetCid', () => {
   it('returns null for a non-server key', () => {
     expect(serverResetCid(qk.libraries(cid), { server_id: 'a-different-id' })).toBeNull();
   });
+
+  describe('with connection ids that name the user (`<server_id>.<user_id>`)', () => {
+    const conns = [
+      { id: 'srv-a.3', serverId: 'srv-a' },
+      { id: 'srv-a.5', serverId: 'srv-a' },
+    ];
+
+    it("compares the answer with the connection's server, so no connection is flagged by its own server", () => {
+      for (const c of conns) {
+        expect(serverResetCid(qk.server(c.id), { server_id: 'srv-a' }, conns)).toBeNull();
+      }
+      // Also without the list: the id names its server.
+      expect(serverResetCid(qk.server('srv-a.3'), { server_id: 'srv-a' })).toBeNull();
+    });
+
+    it('flags the connection whose server answers with another server_id (rebuilt)', () => {
+      expect(serverResetCid(qk.server('srv-a.5'), { server_id: 'srv-new' }, conns)).toBe(
+        'srv-a.5',
+      );
+    });
+  });
+});
+
+describe('connectionIdFromKey with new-form ids', () => {
+  it('finds an id holding a dot by membership', () => {
+    expect(connectionIdFromKey(qk.libraries('srv-a.3'), ['srv-a.3', 'srv-a.5'])).toBe('srv-a.3');
+    expect(connectionIdFromKey(qk.libraries('srv-a.5'), ['srv-a.3'])).toBeNull();
+  });
 });

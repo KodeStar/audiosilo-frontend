@@ -110,7 +110,8 @@ describe('a pairing link', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
     expect(conn()).toMatchObject({
-      id: 'srv-1',
+      id: 'srv-1.1',
+      serverId: 'srv-1',
       serverUrl: AWAY,
       name: 'Hearthside',
       addresses: { home: HOME, away: AWAY },
@@ -118,7 +119,7 @@ describe('a pairing link', () => {
     // The device's first connection: on to "Your library is ready."
     expect(mockReplace).toHaveBeenCalledWith({
       pathname: '/connect/ready',
-      params: { connection: 'srv-1' },
+      params: { connection: 'srv-1.1' },
     });
   });
 
@@ -261,7 +262,7 @@ describe('the address field', () => {
     await fireEvent.press(screen.getByText('Continue'));
     await fireEvent.press(await screen.findByText('Try the demo'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(conn()).toMatchObject({ id: 'srv-demo', name: 'Hearthside', addresses: { away: AWAY } });
+    expect(conn()).toMatchObject({ id: 'srv-demo.1', name: 'Hearthside', addresses: { away: AWAY } });
   });
 });
 

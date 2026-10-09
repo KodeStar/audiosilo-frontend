@@ -25,8 +25,9 @@ function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
   if (isServerInfoKey(key)) {
     // Public /server success proves nothing about the token - never clears the flag;
     // it only DETECTS a server reset (a differing server_id ⇒ re-pair required).
-    const cid = serverResetCid(key, data);
-    if (cid) useSession.getState().markNeedsReconnect(cid, 'server-reset');
+    const { connections, markNeedsReconnect } = useSession.getState();
+    const cid = serverResetCid(key, data, connections);
+    if (cid) markNeedsReconnect(cid, 'server-reset');
     return;
   }
   // Hot path: fires on EVERY successful fetch, so bail before allocating when nothing

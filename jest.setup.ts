@@ -28,6 +28,19 @@ jest.mock('@react-native-async-storage/async-storage', () => {
         store.clear();
         return Promise.resolve();
       }),
+      // AsyncStorage 3's batch calls (the identity migration reads and writes its documents
+      // in one go).
+      getMany: jest.fn((keys: string[]) =>
+        Promise.resolve(Object.fromEntries(keys.map((k) => [k, store.get(k) ?? null]))),
+      ),
+      setMany: jest.fn((entries: Record<string, string>) => {
+        for (const [k, v] of Object.entries(entries)) store.set(k, v);
+        return Promise.resolve();
+      }),
+      removeMany: jest.fn((keys: string[]) => {
+        for (const k of keys) store.delete(k);
+        return Promise.resolve();
+      }),
     },
   };
 });

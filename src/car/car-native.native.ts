@@ -1,5 +1,7 @@
 import AudiosiloPlayer from '../../modules/audiosilo-player';
 
+import { resolveConnectionId } from '@/lib/connection-id';
+
 import type { CarNative } from './car-native';
 
 /**
@@ -26,10 +28,15 @@ export const carNative: CarNative = {
     }
   },
 
+  // The service's book carries the connection id of the play spec or load that started it,
+  // which can be from before the identity migration (an old car snapshot's spec): it reads as
+  // the new id (`resolveConnectionId`), so the store adopts it once instead of seeing another
+  // book on every check.
   async getLoadedBook() {
     if (!has(AudiosiloPlayer.getLoadedBook)) return null;
     try {
-      return (await AudiosiloPlayer.getLoadedBook!()) ?? null;
+      const loaded = (await AudiosiloPlayer.getLoadedBook!()) ?? null;
+      return loaded && { ...loaded, connectionId: resolveConnectionId(loaded.connectionId) };
     } catch {
       return null;
     }
@@ -72,7 +79,11 @@ export const carNative: CarNative = {
         typeof e.path === 'string' &&
         e.path !== '' &&
         Number.isSafeInteger(e.libraryId)
-          ? { connectionId: e.connectionId, libraryId: e.libraryId as number, path: e.path }
+          ? {
+              connectionId: resolveConnectionId(e.connectionId),
+              libraryId: e.libraryId as number,
+              path: e.path,
+            }
           : undefined;
       handler(trackIndex, position, book);
     });

@@ -47,6 +47,7 @@ export async function finishConnect(input: {
     reconnectId: input.reconnectId,
     answer: mergeAddresses(input.linkAddresses, input.session.addresses),
     known,
+    userId: input.session.user.id,
   });
   const id = await setSession({
     serverUrl: plan.serverUrl,

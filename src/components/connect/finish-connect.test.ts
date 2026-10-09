@@ -45,7 +45,9 @@ beforeEach(async () => {
   });
 });
 
-const conn = (id: string) => useSession.getState().connections.find((c) => c.id === id);
+// The connection a sign-in to `serverId` made (user 1: `<server_id>.1`).
+const conn = (serverId: string) =>
+  useSession.getState().connections.find((c) => c.id === `${serverId}.1`);
 
 it('ends the first sign-in on "Your library is ready." for the new connection', async () => {
   await finishConnect({
@@ -56,7 +58,7 @@ it('ends the first sign-in on "Your library is ready." for the new connection', 
   });
   expect(mockReplace).toHaveBeenCalledWith({
     pathname: '/connect/ready',
-    params: { connection: 'srv-1' },
+    params: { connection: 'srv-1.1' },
   });
   expect(mockDismissTo).not.toHaveBeenCalled();
   expect(conn('srv-1')).toMatchObject({
@@ -88,7 +90,7 @@ it('a reconnect through the away address keeps the address the server was paired
   await finishConnect({
     serverUrl: AWAY,
     session: session('srv-1', { token: 'fresh', addresses: { away: AWAY } }),
-    reconnectId: 'srv-1',
+    reconnectId: 'srv-1.1',
   });
   expect(useSession.getState().connections).toHaveLength(1);
   expect(conn('srv-1')).toMatchObject({
@@ -104,14 +106,14 @@ it('a reset server reached through its away address retires the dead identity', 
     session: session('old'),
     linkAddresses: { home: HOME, away: AWAY },
   });
-  useSession.getState().markNeedsReconnect('old', 'server-reset');
+  useSession.getState().markNeedsReconnect('old.1', 'server-reset');
   await finishConnect({
     serverUrl: AWAY,
     session: session('new', { addresses: { away: AWAY } }),
-    reconnectId: 'old',
+    reconnectId: 'old.1',
   });
   const ids = useSession.getState().connections.map((c) => c.id);
-  expect(ids).toEqual(['new']);
+  expect(ids).toEqual(['new.1']);
   expect(conn('new')).toMatchObject({
     serverUrl: HOME,
     addresses: { home: HOME, away: AWAY },
@@ -148,4 +150,25 @@ describe('the addresses a pairing taught (link merged with the answer, once)', (
   it('stores none when neither said anything', async () => {
     expect(await addressesAfter(undefined, undefined)).toBeUndefined();
   });
+});
+
+it('another user on a server the device has gets a connection of their own, on its paired address', async () => {
+  await finishConnect({
+    serverUrl: HOME,
+    session: session('srv-1'),
+    linkAddresses: { home: HOME, away: AWAY },
+  });
+  const id = await finishConnect({
+    serverUrl: AWAY,
+    session: session('srv-1', { token: 'kit', user: { ...user, id: 7, username: 'kit' } }),
+  });
+  expect(id).toBe('srv-1.7');
+  const conns = useSession.getState().connections;
+  expect(conns.map((c) => [c.id, c.token])).toEqual([
+    ['srv-1.1', 'tok-srv-1'],
+    ['srv-1.7', 'kit'],
+  ]);
+  // Signed in through the away address of a server already paired at home: the paired
+  // address stays the server's, and the home address carries over.
+  expect(conns[1]).toMatchObject({ serverUrl: HOME, addresses: { home: HOME, away: AWAY } });
 });

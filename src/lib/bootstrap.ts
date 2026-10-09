@@ -1,6 +1,7 @@
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import { restoreLanguage } from '@/i18n/language-provider';
+import { loadConnectionAliases } from '@/lib/connection-id';
 import { migrateStorage } from '@/lib/storage-migration';
 import { useLibrarySelection } from '@/stores/library-selection';
 import { useSeriesOrderings } from '@/stores/series-orderings';
@@ -21,11 +22,15 @@ let pending: Promise<void> | null = null;
  *    connection identity scheme changed, everyone re-pairs) and `cacheReset` (the
  *    disposable download/progress cache schema changed, logins intact). Guarded: a
  *    keychain or storage hiccup must never skip the hydration below, which would strand
- *    the app on 'loading' forever.
- * 2. When either axis reset, the downloaded files no longer match the registry (an auth
+ *    the app on 'loading' forever. It also moves legacy connection ids to
+ *    `<server_id>.<user_id>` (the identity migration), before any store reads them.
+ * 2. Load the connection aliases (`loadConnectionAliases`: old id -> new id), so an old id
+ *    arriving from outside (a car item, a widget link, the Android service's book) resolves
+ *    (`resolveConnectionId`) from here on.
+ * 3. When either axis reset, the downloaded files no longer match the registry (an auth
  *    wipe orphans them; a cache-schema bump invalidates them): wipe the whole downloads
  *    root once, or they leak, uncounted, forever.
- * 3. Hydrate the session, settings, downloads, series orderings and library selection, all
+ * 4. Hydrate the session, settings, downloads, series orderings and library selection, all
  *    started together in that order. Resolves once each has settled (a store's own hydrate
  *    has its fail-safe; a rejection is logged, never thrown).
  *
@@ -48,6 +53,7 @@ async function run(): Promise<void> {
   } catch (e) {
     console.warn('[storage] stale-state reset failed', e);
   }
+  await loadConnectionAliases(); // never rejects
   if (didReset && engine.clearAll) {
     try {
       await engine.clearAll();

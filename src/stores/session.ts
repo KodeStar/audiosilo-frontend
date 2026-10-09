@@ -9,6 +9,7 @@ import {
   remember as rememberServer,
   rememberAddresses,
 } from '@/lib/known-servers';
+import { connectionIdOf, serverIdOf } from '@/lib/connection-id';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { hostOf } from '@/lib/pairing';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
@@ -17,11 +18,12 @@ import { getItem, removeItem, setItem } from '@/lib/storage';
 // Multi-connection session: the app can be signed in to several servers at once.
 // Connection metadata is kept in AsyncStorage; each connection's token lives in
 // secure-store under its own key.
-const CONNECTIONS_KEY = 'audiosilo.connections';
+export const CONNECTIONS_KEY = 'audiosilo.connections';
 // The default connection's id. The string is the legacy `activeConnection` name, kept
 // stable so an existing install's persisted default survives the active→default rename.
-const DEFAULT_KEY = 'audiosilo.activeConnection';
-const tokenKey = (id: string) => `audiosilo.token.${id}`;
+export const DEFAULT_KEY = 'audiosilo.activeConnection';
+/** Where a connection's session token lives in the secure store. */
+export const tokenKey = (id: string) => `audiosilo.token.${id}`;
 
 // Pre-multi-server single-session keys, cleared by the storage reset below.
 const LEGACY_SERVER = 'audiosilo.serverUrl';
@@ -37,10 +39,12 @@ const LEGACY_USER = 'audiosilo.user';
 // AUTH version — gates ONLY the auth wipe (connections metadata + secure-store tokens +
 // the default id + the legacy single-session keys). Session tokens never expire
 // server-side, so wiping them is the ONE thing that logs a user out and forces a
-// re-pair. Bump this ONLY when the connection IDENTITY SCHEME itself changes (like v2:
-// connection ids became the server-minted `server_id`, so old, differently-keyed
-// connections can't be re-keyed and must be cleared). Doing so logs EVERY user out - a
-// deliberate, rare, breaking act. NEVER bump it for a cache/scoped-state reason.
+// re-pair. v2 made connection ids the server-minted `server_id`, when the old,
+// differently-keyed connections couldn't be re-keyed and had to be cleared. Doing so logs
+// EVERY user out - a deliberate, rare, breaking act. NEVER bump it for a cache/scoped-state
+// reason, and not for an identity change that CAN be re-keyed: Phase 8's
+// `<server_id>.<user_id>` ids moved every connection with a one-time key migration
+// (`src/lib/identity-migration.ts`) instead, and nobody was signed out.
 const AUTH_STORAGE_VERSION_KEY = 'audiosilo.storageVersion';
 const AUTH_STORAGE_VERSION = 2;
 // CACHE version — gates ONLY the disposable per-server scoped cache (the SCOPED_STORAGE_KEYS
@@ -160,8 +164,8 @@ export type SessionStatus = 'loading' | 'unauthenticated' | 'authenticated';
 
 // Owners of connection-scoped state (downloads, the progress mirror/queue, the
 // query cache, scroll memory) register a cleanup here so `removeConnection` can
-// purge it. Removing a connection orphans its scoped state forever (re-adding a
-// server mints a new id), so each owner must drop the removed id's records. This
+// purge it. Removing a connection orphans its scoped state (nothing else would ever drop
+// it), so each owner must drop the removed id's records. This
 // registry lives here - rather than session.ts importing those modules directly -
 // because they import the session store, and a direct import would cycle.
 const removalCleanups = new Set<(id: string) => void | Promise<void>>();
@@ -178,9 +182,18 @@ export function onConnectionRemoved(fn: (id: string) => void | Promise<void>): (
  * `server_id`, so this identity is gone. */
 export type ReconnectReason = 'auth' | 'server-reset';
 
-/** One signed-in server. `token` is held in memory; persisted to secure-store. */
+/** One user signed in to one server. `token` is held in memory; persisted to secure-store. */
 export type Connection = {
+  /** The connection id, `<server_id>.<user_id>` (`connectionIdOf`); a connection from
+   * before Phase 8 that the key migration has not moved yet keeps its legacy id, the bare
+   * `server_id`. It keys every per-connection store (`contentKey`, the token, the query
+   * cache). Never compare it with a `server_id`: use `serverIdOf`. */
   id: string;
+  /** The server's `server_id`. Set on every connection the session builds (`setSession`;
+   * `hydrate` fills it for one persisted before Phase 8, whose legacy id IS the
+   * `server_id`). Optional in the type only so a bare test fixture still type-checks:
+   * read it through `serverIdOf(conn)`, which falls back to the id. */
+  serverId?: string;
   serverUrl: string;
   name: string;
   token: string;
@@ -200,8 +213,9 @@ export type Connection = {
 };
 
 /** Connection metadata persisted to AsyncStorage (token + the in-memory reconnect flag
- * excluded - see secure-store / `needsReconnect`). */
-type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect'>;
+ * excluded - see secure-store / `needsReconnect`). `serverId` is absent on a connection
+ * saved before Phase 8. */
+export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect'>;
 
 type SessionState = {
   status: SessionStatus;
@@ -219,8 +233,11 @@ type SessionState = {
 
   /** Restore persisted connections on app start. */
   hydrate: () => Promise<void>;
-  /** Add (or update, matched by the server's stable `serverId`) a connection and make
-   * it the default. Returns the connection id (= serverId). */
+  /** Add a connection for `user` on the server `serverId`, or update the one this device
+   * already has for that user there (matched by `serverIdOf` + `user.id`, even at a
+   * different URL), and make it the default. Returns the connection id: the existing one's
+   * (a legacy id stays until the key migration moves it), else `connectionIdOf(serverId,
+   * user.id)`. */
   setSession: (s: {
     serverUrl: string;
     serverId: string;
@@ -355,7 +372,7 @@ export const useSession = create<SessionState>()((set, get) => ({
         const withTokens = await Promise.all(
           meta.map(async (m) => {
             const token = await getSecure(tokenKey(m.id));
-            return token ? ({ ...m, token } as Connection) : null;
+            return token ? ({ ...m, serverId: serverIdOf(m), token } as Connection) : null;
           }),
         );
         const connections = withTokens.filter((c): c is Connection => c !== null);
@@ -381,47 +398,62 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   setSession: async ({ serverUrl, serverId, token, user, name, addresses }) => {
-    // The connection id IS the server-minted server_id: it keys every per-server store
-    // (downloads, the progress mirror/queue, the query cache, scroll memory, the
-    // secure-store token). A blank id would file distinct servers under one shared bucket
-    // and make the default `useApi('')` throw, so refuse it loudly (the connect/sign-in
-    // flows surface this ApiError) rather than silently corrupt scoped state.
+    // The connection id is the server-minted server_id plus the user's id
+    // (`connectionIdOf`): it keys every per-connection store (downloads, the progress
+    // mirror/queue, the query cache, scroll memory, the secure-store token). A blank
+    // server_id would file distinct servers under one shared bucket and make the default
+    // `useApi('')` throw, so refuse it loudly (the connect/sign-in flows surface this
+    // ApiError) rather than silently corrupt scoped state.
     if (!serverId) throw new ApiError(0, 'Server did not return an id (server_id).');
     // The persisted connections first, when they never loaded: the list written below would
     // otherwise hold this server alone and drop every other one.
     if (hydrateFailed) await get().hydrate();
     const existing = get().connections;
-    // Dedupe by the server's stable identity, so re-pairing the same server - even at a
-    // different URL - updates its connection (and refreshes the URL) instead of adding a
-    // duplicate.
-    const prior = existing.find((c) => c.id === serverId);
-    // A rebuilt server mints a NEW server_id at the SAME URL, so any OTHER connection to
-    // this URL under a different id is a stale identity of the same physical server (its
-    // token is dead - flagged needsReconnect='server-reset'). It must be dropped here, or
-    // re-pairing leaves a zombie the reconnect banner keeps re-flagging on every /server hit.
-    const stale = existing.filter((c) => c.id !== serverId && sameUrl(c.serverUrl, serverUrl));
-    // What the device knew of this server's addresses: the connection's, else (a sign-in
-    // again after signing out, from the connect screen's remembered servers) the remembered
-    // server's, so a sign-in through the away address doesn't forget the home one.
-    const knew = prior ? prior.addresses : await knownAddresses(serverId);
+    // Dedupe by the server's stable identity AND the user, so re-pairing the same account -
+    // even at a different URL - updates its connection (and refreshes the URL) instead of
+    // adding a duplicate. Another user on the same server is another connection. A legacy
+    // connection (its id still the bare server_id) is matched the same way and KEEPS its id
+    // until the key migration moves it, so its downloads and saves stay reachable; one saved
+    // without a usable user id is taken to be this user (it was the server's one connection).
+    const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
+    const prior =
+      sameServer.find((c) => c.user?.id === user.id) ??
+      sameServer.find((c) => typeof c.user?.id !== 'number');
+    const id = prior?.id ?? connectionIdOf(serverId, user.id);
+    // A rebuilt server mints a NEW server_id at the SAME URL, so any connection to this URL
+    // whose server_id differs is a stale identity of the same physical server (its token is
+    // dead - flagged needsReconnect='server-reset'). It must be dropped here, or re-pairing
+    // leaves a zombie the reconnect banner keeps re-flagging on every /server hit. Never
+    // because the USER differs: a second person on the same server is not stale.
+    const stale = existing.filter(
+      (c) => c !== prior && serverIdOf(c) !== serverId && sameUrl(c.serverUrl, serverUrl),
+    );
+    // What the device knew of this server's addresses: the connection's, else another
+    // user's connection to the same server, else (a sign-in again after signing out, from
+    // the connect screen's remembered servers) the remembered server's, so a sign-in
+    // through the away address doesn't forget the home one.
+    const knew = prior
+      ? prior.addresses
+      : (sameServer.find((c) => c.addresses)?.addresses ?? (await knownAddresses(serverId)));
     const known = mergeAddresses(knew, addresses);
     const conn: Connection = {
-      id: serverId,
+      id,
+      serverId,
       serverUrl,
-      name: name ?? prior?.name ?? hostOf(serverUrl),
+      name: name ?? prior?.name ?? sameServer[0]?.name ?? hostOf(serverUrl),
       token,
       user,
       addresses: known,
     };
     const surviving = existing.filter((c) => !stale.includes(c));
     const connections = prior
-      ? surviving.map((c) => (c.id === serverId ? conn : c))
+      ? surviving.map((c) => (c === prior ? conn : c))
       : [...surviving, conn];
-    await setSecure(tokenKey(serverId), token);
+    await setSecure(tokenKey(id), token);
     // Best-effort drop each stale identity's dead token. No server revoke - the token is
     // already dead, so there's nothing to call.
     await Promise.all(stale.map((c) => deleteSecure(tokenKey(c.id)).catch(() => undefined)));
-    await persist(connections, serverId);
+    await persist(connections, id);
     // The list just written is the one in memory: settled, even when the hydrate above failed
     // again (unreadable storage, not a locked phone: a sign-in means it is unlocked).
     if (hydrateFailed) hydrateEnded(false);
@@ -430,7 +462,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
-    set({ connections, pendingServerUrl: null, ...mirror(connections, serverId) });
+    set({ connections, pendingServerUrl: null, ...mirror(connections, id) });
     // Purge each dropped stale identity's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
     // never let one block the re-pair.
@@ -443,7 +475,7 @@ export const useSession = create<SessionState>()((set, get) => ({
           console.warn('[session] stale-identity cleanup failed', r.reason);
       }
     }
-    return serverId;
+    return id;
   },
 
   setPendingServerUrl: async (url) => set({ pendingServerUrl: url }),
@@ -468,7 +500,12 @@ export const useSession = create<SessionState>()((set, get) => ({
     if (sameAddresses(conn.addresses, addresses)) return;
     const next = connections.map((c) => (c.id === id ? { ...c, addresses } : c));
     set({ connections: next, ...mirror(next, defaultConnectionId) });
-    await Promise.all([persist(next, defaultConnectionId), rememberAddresses(id, addresses)]);
+    // The remembered server is server-level (no user): keyed by the server's id, not this
+    // connection's.
+    await Promise.all([
+      persist(next, defaultConnectionId),
+      rememberAddresses(serverIdOf(conn), addresses),
+    ]);
   },
 
   setUser: async (user) => {

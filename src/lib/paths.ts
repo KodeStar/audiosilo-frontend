@@ -1,5 +1,7 @@
 import type { Href } from 'expo-router';
 
+import { resolveConnectionId } from '@/lib/connection-id';
+
 /** Reconstruct a rel_path from an Expo Router catch-all param. */
 export function segmentsToPath(seg?: string | string[]): string {
   if (!seg) return '';
@@ -8,9 +10,12 @@ export function segmentsToPath(seg?: string | string[]): string {
 
 /** The single connection id carried by a route's `?connection=` query param, normalized
  * to a string ('' when absent). One definition so the `(app)` scope layout and the
- * offline banner read the param the same way (Expo Router can hand back `string[]`). */
+ * offline banner read the param the same way (Expo Router can hand back `string[]`). An old
+ * id the identity migration moved (a widget or Live Activity link made before it, a web
+ * history entry) reads as its new one (`resolveConnectionId`). */
 export function connectionParam(connection?: string | string[]): string {
-  return Array.isArray(connection) ? (connection[0] ?? '') : (connection ?? '');
+  const id = Array.isArray(connection) ? (connection[0] ?? '') : (connection ?? '');
+  return id ? resolveConnectionId(id) : '';
 }
 
 /** Last path segment, for breadcrumb/title display. */

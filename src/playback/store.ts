@@ -7,6 +7,7 @@ import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
 import { downloadedEntryOf, downloadKey, useDownloads } from '@/downloads/store';
+import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { useSettings } from '@/stores/settings';
@@ -1196,7 +1197,10 @@ async function switchCurrentBookToLocal() {
  * Gives up, changing nothing, when another book started while the item was being read, or a
  * start is still on its way (`startsInFlight`).
  */
-async function adoptLoadedBook(loaded: LoadedBook): Promise<boolean> {
+async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
+  // The service's book can name an old connection id (a play spec from a car snapshot
+  // written before the identity migration): the store keeps the new one.
+  const loaded = { ...service, connectionId: resolveConnectionId(service.connectionId) };
   const before = usePlayer.getState().nowPlaying;
   const api = resolveClient(loaded.connectionId);
   let source: Awaited<ReturnType<typeof bookSourceOf>>;

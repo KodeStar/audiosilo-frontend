@@ -95,6 +95,15 @@ describe('pickAddress', () => {
   it('uses away when home does not answer', async () => {
     expect(await pickAddress(conn(), async () => null)).toBe(AWAY);
   });
+
+  it("matches home against the connection's SERVER, not its id (which names the user too)", async () => {
+    const mine = conn({ id: 'srv-a.3', serverId: 'srv-a' });
+    expect(await pickAddress(mine, async () => 'srv-a')).toBe(HOME);
+    // The id itself is never a server_id: a box answering with it is someone else's.
+    expect(await pickAddress(mine, async () => 'srv-a.3')).toBe(AWAY);
+    // A fixture with only the new-form id reads its server from it.
+    expect(chooseAddress(conn({ id: 'srv-a.3' }), 'srv-a')).toBe(HOME);
+  });
 });
 
 describe('addressKind / isOwnAddress', () => {

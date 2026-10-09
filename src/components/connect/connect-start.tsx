@@ -12,6 +12,7 @@ import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { webOrigin } from '@/lib/base-url';
+import { serverIdOf } from '@/lib/connection-id';
 import { getDeviceName } from '@/lib/device';
 import {
   forget as forgetServer,
@@ -58,7 +59,8 @@ export function ConnectStart() {
   }>();
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const savedUrl = useSession((s) => s.pendingServerUrl);
-  const connectionIds = useSession((s) => s.connections.map((c) => c.id).join('\n'));
+  // The signed-in servers (`serverIdOf`: a connection id also names its user), one line each.
+  const serverIds = useSession((s) => s.connections.map(serverIdOf).join('\n'));
   const [url, setUrl] = useState(savedUrl ?? '');
   const [known, setKnown] = useState<KnownServer[]>([]);
   // Which connect action is in flight (a remembered server's `serverId`, or `'manual'` for
@@ -216,14 +218,14 @@ export function ConnectStart() {
     );
   }
 
-  const offered = knownToOffer(known, connectionIds ? connectionIds.split('\n') : []);
+  const offered = knownToOffer(known, serverIds ? serverIds.split('\n') : []);
   const isWeb = Platform.OS === 'web';
 
   return (
     <ConnectFrame testID="connect-start">
       {/* Adding a server (a connection already exists): a way back to the app. The first
           run has nowhere to go back to. */}
-      {connectionIds ? (
+      {serverIds ? (
         <View className="flex-row justify-end">
           <Button
             variant="ghost"

@@ -1,4 +1,5 @@
 import type { PeopleList, Progress } from '@/api/types';
+import { serverIdOf } from '@/lib/connection-id';
 
 import {
   httpFallback,
@@ -83,6 +84,56 @@ describe('repairPlan', () => {
     expect(repairPlan({ pending: AWAY, serverId: 'x', connections: [] })).toEqual({
       serverUrl: AWAY,
       addresses: undefined,
+    });
+  });
+
+  describe('with connection ids that name the user (`<server_id>.<user_id>`)', () => {
+    const sam = { ...conn, id: 'srv-1.3', serverId: 'srv-1', user: { id: 3 } };
+    const kit = {
+      id: 'srv-1.5',
+      serverId: 'srv-1',
+      serverUrl: 'https://kit.example',
+      user: { id: 5 },
+    };
+
+    it('matches the connection to the server by its server_id, never its id', () => {
+      expect(
+        repairPlan({ pending: AWAY, serverId: 'srv-1', connections: [sam], answer: { away: AWAY } }),
+      ).toEqual({ serverUrl: HOME, addresses: { away: AWAY } });
+      // The id alone (a fixture without serverId) is read the same way.
+      const { serverId: _s, ...bare } = sam;
+      expect(repairPlan({ pending: AWAY, serverId: 'srv-1', connections: [bare] })).toEqual({
+        serverUrl: HOME,
+        addresses: undefined,
+      });
+    });
+
+    it("prefers the signing-in user's own connection on a server with several", () => {
+      expect(
+        repairPlan({
+          pending: 'https://kit.example',
+          serverId: 'srv-1',
+          connections: [sam, kit],
+          userId: 5,
+        }),
+      ).toEqual({ serverUrl: 'https://kit.example', addresses: undefined });
+      // Another user signing in through one of the server's addresses: that server's.
+      expect(
+        repairPlan({ pending: AWAY, serverId: 'srv-1', connections: [sam, kit], userId: 9 }),
+      ).toEqual({ serverUrl: HOME, addresses: undefined });
+    });
+
+    it('carries a reset server over from the reconnect it was started for', () => {
+      expect(
+        repairPlan({
+          pending: AWAY,
+          serverId: 'srv-2',
+          connections: [sam],
+          reconnectId: 'srv-1.3',
+          answer: { away: AWAY },
+          userId: 3,
+        }),
+      ).toEqual({ serverUrl: HOME, addresses: { home: HOME, away: AWAY } });
     });
   });
 });
@@ -192,6 +243,13 @@ it('knownToOffer: only servers this device is not signed in to', () => {
   const b = { serverId: 'b', serverUrl: 'https://b', name: 'B' };
   expect(knownToOffer([a, b], ['a'])).toEqual([b]);
   expect(knownToOffer([a, b], [])).toEqual([a, b]);
+});
+
+it('knownToOffer: fed the signed-in servers (serverIdOf), not connection ids', () => {
+  const a = { serverId: 'a', serverUrl: 'https://a', name: 'A' };
+  const b = { serverId: 'b', serverUrl: 'https://b', name: 'B' };
+  const connections = [{ id: 'a.3', serverId: 'a' }, { id: 'legacy' }];
+  expect(knownToOffer([a, b], connections.map(serverIdOf))).toEqual([b]);
 });
 
 describe('revealOffset', () => {

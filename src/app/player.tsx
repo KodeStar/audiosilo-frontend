@@ -7,12 +7,12 @@ import { useBook, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
 import { Spinner } from '@/components/ui/spinner';
-import { segmentsToPath } from '@/lib/paths';
+import { connectionParam, segmentsToPath } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
   const {
-    connection: connectionId,
+    connection,
     libraryId: libParam,
     path: pathParam,
     position,
@@ -24,6 +24,8 @@ export default function PlayerScreen() {
     position?: string;
     track?: string;
   }>();
+  // Through `connectionParam`: a widget's or Live Activity's link can carry an old id.
+  const connectionId = connectionParam(connection) || undefined;
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
   // The player is a root modal (outside any route scope), so the connection it plays

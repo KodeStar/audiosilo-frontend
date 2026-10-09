@@ -52,7 +52,9 @@ beforeEach(async () => {
   });
 });
 
-const conn = (id: string) => useSession.getState().connections.find((c) => c.id === id);
+// The connection a sign-in to `serverId` made (the test user: `<server_id>.1`).
+const conn = (serverId: string) =>
+  useSession.getState().connections.find((c) => c.id === `${serverId}.1`);
 
 it('names the server and its host, and talks to the server being connected to', async () => {
   await render(<SignInStep server={AWAY} serverName="Hearthside" />);
@@ -121,7 +123,7 @@ it('a reconnect away from home: "At home and away" up front, and the paired addr
     addresses: { home: HOME, away: AWAY },
   });
   mockApi.login.mockResolvedValue({ token: 'fresh', server_id: 'srv-1', user });
-  await render(<SignInStep server={AWAY} serverName="Hearthside" reconnectId="srv-1" />);
+  await render(<SignInStep server={AWAY} serverName="Hearthside" reconnectId="srv-1.1" />);
   expect(screen.getByTestId('addresses-card')).toBeTruthy();
   expect(screen.getByText(HOME)).toBeTruthy();
   expect(screen.getByText(AWAY)).toBeTruthy();

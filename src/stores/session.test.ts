@@ -108,7 +108,7 @@ describe('session store (multi-connection)', () => {
       await new Promise((r) => setTimeout(r, 0));
       const s = useSession.getState();
       expect(s.status).toBe('authenticated');
-      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a', 'srv-b']);
+      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a.1', 'srv-b.1']);
       expect(sessionHydrateFailed()).toBe(false);
     });
 
@@ -123,7 +123,7 @@ describe('session store (multi-connection)', () => {
           .getState()
           .connections.map((c) => c.id)
           .sort(),
-      ).toEqual(['srv-a', 'srv-b', 'srv-c']);
+      ).toEqual(['srv-a.1', 'srv-b.1', 'srv-c.1']);
     });
 
     it('is not ready for the offline replay until a read succeeds (it would drop every save)', async () => {
@@ -137,7 +137,7 @@ describe('session store (multi-connection)', () => {
       await useSession
         .getState()
         .setSession({ serverUrl: 'https://c', serverId: 'srv-c', token: 'tC', user: mkUser('c') });
-      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-c']);
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-c.1']);
       expect(sessionHydrateFailed()).toBe(false);
       expect(onAppState).toBeNull();
     });
@@ -193,7 +193,7 @@ describe('session store (multi-connection)', () => {
       await jest.advanceTimersByTimeAsync(LOCKED_RETRY_MS);
       const s = useSession.getState();
       expect(s.status).toBe('authenticated');
-      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a', 'srv-b']);
+      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a.1', 'srv-b.1']);
       expect(sessionHydrateFailed()).toBe(false);
       expect(sessionReady()).toBe(true);
       expect(console.warn).toHaveBeenCalledTimes(1); // once for the streak, not every try
@@ -215,14 +215,14 @@ describe('session store (multi-connection)', () => {
       .getState()
       .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 'tokB', user: mkUser('b') });
     expect(useSession.getState().connections).toHaveLength(2);
-    expect(useSession.getState().defaultConnectionId).toBe('srv-b'); // last added is the default
+    expect(useSession.getState().defaultConnectionId).toBe('srv-b.1'); // last added is the default
     expect(useSession.getState().user?.username).toBe('b'); // mirror follows the default
 
     reset();
     await useSession.getState().hydrate();
     const s = useSession.getState();
     expect(s.status).toBe('authenticated');
-    expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a', 'srv-b']);
+    expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a.1', 'srv-b.1']);
     expect(s.connections.every((c) => c.token)).toBe(true);
   });
 
@@ -270,7 +270,7 @@ describe('session store (multi-connection)', () => {
     await removeDefault(); // removes b (the default = last added)
     const s = useSession.getState();
     expect(s.connections).toHaveLength(1);
-    expect(s.defaultConnectionId).toBe('srv-a'); // falls back to the remaining one
+    expect(s.defaultConnectionId).toBe('srv-a.1'); // falls back to the remaining one
     expect(s.user?.username).toBe('a'); // mirror follows the new default
     expect(s.status).toBe('authenticated');
     await removeDefault(); // removes the last one
@@ -433,8 +433,8 @@ describe('session store (multi-connection)', () => {
 
     it('marks a connection without removing it or dropping its token', async () => {
       await addA();
-      useSession.getState().markNeedsReconnect('srv-a', 'auth');
-      const c = useSession.getState().connections.find((x) => x.id === 'srv-a')!;
+      useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
+      const c = useSession.getState().connections.find((x) => x.id === 'srv-a.1')!;
       expect(c.needsReconnect).toBe('auth');
       expect(c.token).toBe('t'); // token intact - only a re-pair replaces it
       expect(useSession.getState().connections).toHaveLength(1);
@@ -444,9 +444,9 @@ describe('session store (multi-connection)', () => {
       await addA();
       useSession.getState().markNeedsReconnect('nope', 'auth'); // unknown → ignored
       expect(useSession.getState().connections.find((x) => x.id === 'nope')).toBeUndefined();
-      useSession.getState().markNeedsReconnect('srv-a', 'auth');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
       const ref1 = useSession.getState().connections;
-      useSession.getState().markNeedsReconnect('srv-a', 'auth'); // same reason → no state churn
+      useSession.getState().markNeedsReconnect('srv-a.1', 'auth'); // same reason → no state churn
       expect(useSession.getState().connections).toBe(ref1); // same array reference (no set)
     });
 
@@ -454,16 +454,16 @@ describe('session store (multi-connection)', () => {
       await addA();
       // server-reset is strictly more informative than the frequent authed-401 'auth'; an
       // 'auth' mark must not clobber it.
-      useSession.getState().markNeedsReconnect('srv-a', 'server-reset');
-      useSession.getState().markNeedsReconnect('srv-a', 'auth');
-      expect(useSession.getState().connections.find((x) => x.id === 'srv-a')!.needsReconnect).toBe(
+      useSession.getState().markNeedsReconnect('srv-a.1', 'server-reset');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
+      expect(useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect).toBe(
         'server-reset',
       );
       // The reverse (auth → server-reset) is a valid upgrade.
-      useSession.getState().clearNeedsReconnect('srv-a');
-      useSession.getState().markNeedsReconnect('srv-a', 'auth');
-      useSession.getState().markNeedsReconnect('srv-a', 'server-reset');
-      expect(useSession.getState().connections.find((x) => x.id === 'srv-a')!.needsReconnect).toBe(
+      useSession.getState().clearNeedsReconnect('srv-a.1');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'server-reset');
+      expect(useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect).toBe(
         'server-reset',
       );
     });
@@ -471,18 +471,18 @@ describe('session store (multi-connection)', () => {
     it('clearNeedsReconnect clears the flag and no-ops when unset', async () => {
       await addA();
       const ref0 = useSession.getState().connections;
-      useSession.getState().clearNeedsReconnect('srv-a'); // nothing set → no set()
+      useSession.getState().clearNeedsReconnect('srv-a.1'); // nothing set → no set()
       expect(useSession.getState().connections).toBe(ref0);
-      useSession.getState().markNeedsReconnect('srv-a', 'server-reset');
-      useSession.getState().clearNeedsReconnect('srv-a');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'server-reset');
+      useSession.getState().clearNeedsReconnect('srv-a.1');
       expect(
-        useSession.getState().connections.find((x) => x.id === 'srv-a')!.needsReconnect,
+        useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect,
       ).toBeUndefined();
     });
 
     it('re-pairing (setSession) clears the flag, and it never persists across a hydrate', async () => {
       await addA();
-      useSession.getState().markNeedsReconnect('srv-a', 'auth');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
       // Re-pair the same server (a successful reconnect).
       await useSession.getState().setSession({
         serverUrl: 'https://a',
@@ -491,16 +491,16 @@ describe('session store (multi-connection)', () => {
         user: mkUser('a'),
       });
       expect(
-        useSession.getState().connections.find((x) => x.id === 'srv-a')!.needsReconnect,
+        useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect,
       ).toBeUndefined();
 
       // Flag again, then hydrate from storage: the in-memory flag must not survive (it's
       // recomputed from the next failure, never persisted).
-      useSession.getState().markNeedsReconnect('srv-a', 'auth');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'auth');
       reset();
       await useSession.getState().hydrate();
       expect(
-        useSession.getState().connections.find((x) => x.id === 'srv-a')!.needsReconnect,
+        useSession.getState().connections.find((x) => x.id === 'srv-a.1')!.needsReconnect,
       ).toBeUndefined();
     });
 
@@ -526,7 +526,7 @@ describe('session store (multi-connection)', () => {
       await useSession
         .getState()
         .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't1', user: mkUser('a') });
-      useSession.getState().markNeedsReconnect('srv-a', 'server-reset');
+      useSession.getState().markNeedsReconnect('srv-a.1', 'server-reset');
       const cleanup = jest.fn();
       unsubs.push(onConnectionRemoved(cleanup));
 
@@ -537,15 +537,15 @@ describe('session store (multi-connection)', () => {
 
       const s = useSession.getState();
       expect(s.connections).toHaveLength(1);
-      expect(s.connections[0].id).toBe('srv-b');
+      expect(s.connections[0].id).toBe('srv-b.1');
       expect(s.connections[0].needsReconnect).toBeUndefined(); // fresh identity, no stale flag
       // The stale identity's scoped state is purged and its dead token deleted.
-      expect(cleanup).toHaveBeenCalledWith('srv-a');
-      expect(await SecureStore.getItemAsync('audiosilo.token.srv-a')).toBeNull();
-      expect(await SecureStore.getItemAsync('audiosilo.token.srv-b')).toBe('t2');
+      expect(cleanup).toHaveBeenCalledWith('srv-a.1');
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv-a.1')).toBeNull();
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv-b.1')).toBe('t2');
       // Persisted connections carry only the new id.
       const persisted = JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!);
-      expect(persisted.map((c: { id: string }) => c.id)).toEqual(['srv-b']);
+      expect(persisted.map((c: { id: string }) => c.id)).toEqual(['srv-b.1']);
     });
 
     it('names and matches servers with the shared URL helpers (hostOf, sameUrl)', async () => {
@@ -564,7 +564,7 @@ describe('session store (multi-connection)', () => {
         token: 't2',
         user: mkUser('b'),
       });
-      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b']);
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b.1']);
     });
 
     it('leaves connections to DIFFERENT URLs untouched when adding a new server', async () => {
@@ -579,9 +579,9 @@ describe('session store (multi-connection)', () => {
         .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 'tB', user: mkUser('b') });
 
       const s = useSession.getState();
-      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a', 'srv-b']);
+      expect(s.connections.map((c) => c.id).sort()).toEqual(['srv-a.1', 'srv-b.1']);
       expect(cleanup).not.toHaveBeenCalled(); // a distinct URL is not a stale identity
-      expect(await SecureStore.getItemAsync('audiosilo.token.srv-a')).toBe('tA');
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv-a.1')).toBe('tA');
     });
   });
 
@@ -692,7 +692,7 @@ describe('session store (multi-connection)', () => {
 
     it('a sign-in again after signing out keeps the home address the device remembered', async () => {
       await pair({ home: HOME, away: AWAY });
-      await useSession.getState().removeConnection('srv-a');
+      await useSession.getState().removeConnection('srv-a.1');
       expect(useSession.getState().connections).toHaveLength(0);
       // Signed in again through the away address: the answer cannot know home.
       await pair({ away: AWAY });
@@ -703,7 +703,7 @@ describe('session store (multi-connection)', () => {
 
     it('the remembered server follows learnAddresses', async () => {
       await pair({ home: HOME, away: AWAY });
-      await useSession.getState().learnAddresses('srv-a', { away: 'https://new.example.com' });
+      await useSession.getState().learnAddresses('srv-a.1', { away: 'https://new.example.com' });
       const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
       expect(known[0].addresses).toEqual({ home: HOME, away: 'https://new.example.com' });
     });
@@ -711,14 +711,14 @@ describe('session store (multi-connection)', () => {
     it('learnAddresses merges and persists them, and no-ops when nothing changes', async () => {
       await pair({ home: HOME });
       const before = useSession.getState().connections;
-      await useSession.getState().learnAddresses('srv-a', { home: HOME });
-      await useSession.getState().learnAddresses('srv-a', undefined); // nothing said
+      await useSession.getState().learnAddresses('srv-a.1', { home: HOME });
+      await useSession.getState().learnAddresses('srv-a.1', undefined); // nothing said
       expect(useSession.getState().connections).toBe(before); // nothing changed, no churn
       // An answer read away from home: the away address is new, the home one is kept.
-      await useSession.getState().learnAddresses('srv-a', { away: AWAY });
+      await useSession.getState().learnAddresses('srv-a.1', { away: AWAY });
       expect(addressesOf()).toEqual({ home: HOME, away: AWAY });
       // The server has no away address any more.
-      await useSession.getState().learnAddresses('srv-a', {});
+      await useSession.getState().learnAddresses('srv-a.1', {});
       expect(addressesOf()).toEqual({ home: HOME });
       await useSession.getState().learnAddresses('nope', { home: HOME }); // unknown: no-op
       reset();
@@ -753,37 +753,196 @@ describe('session store (multi-connection)', () => {
       it('two calls for two connections both land, in memory and in storage', async () => {
         await pairBoth();
         await Promise.all([
-          useSession.getState().learnAddresses('srv-a', { home: HOME }),
-          useSession.getState().learnAddresses('srv-b', { home: HOME_B }),
+          useSession.getState().learnAddresses('srv-a.1', { home: HOME }),
+          useSession.getState().learnAddresses('srv-b.1', { home: HOME_B }),
         ]);
         const conns = useSession.getState().connections;
-        expect(byId(conns, 'srv-a')?.addresses).toEqual({ home: HOME });
-        expect(byId(conns, 'srv-b')?.addresses).toEqual({ home: HOME_B });
+        expect(byId(conns, 'srv-a.1')?.addresses).toEqual({ home: HOME });
+        expect(byId(conns, 'srv-b.1')?.addresses).toEqual({ home: HOME_B });
         const stored = await persisted();
-        expect(byId(stored, 'srv-a')?.addresses).toEqual({ home: HOME });
-        expect(byId(stored, 'srv-b')?.addresses).toEqual({ home: HOME_B });
+        expect(byId(stored, 'srv-a.1')?.addresses).toEqual({ home: HOME });
+        expect(byId(stored, 'srv-b.1')?.addresses).toEqual({ home: HOME_B });
         const remembered = await known();
         expect(byId(remembered, 'srv-a')?.addresses).toEqual({ home: HOME });
         expect(byId(remembered, 'srv-b')?.addresses).toEqual({ home: HOME_B });
         reset();
         await useSession.getState().hydrate();
-        expect(byId(useSession.getState().connections, 'srv-a')?.addresses).toEqual({ home: HOME });
-        expect(byId(useSession.getState().connections, 'srv-b')?.addresses).toEqual({
+        expect(byId(useSession.getState().connections, 'srv-a.1')?.addresses).toEqual({ home: HOME });
+        expect(byId(useSession.getState().connections, 'srv-b.1')?.addresses).toEqual({
           home: HOME_B,
         });
       });
 
       it('a connection removed while a call awaits storage is not brought back', async () => {
         await pairBoth();
-        const learning = useSession.getState().learnAddresses('srv-a', { home: HOME });
-        const removing = useSession.getState().removeConnection('srv-a');
+        const learning = useSession.getState().learnAddresses('srv-a.1', { home: HOME });
+        const removing = useSession.getState().removeConnection('srv-a.1');
         await Promise.all([learning, removing]);
-        expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b']);
-        expect((await persisted()).map((c) => c.id)).toEqual(['srv-b']);
+        expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b.1']);
+        expect((await persisted()).map((c) => c.id)).toEqual(['srv-b.1']);
         reset();
         await useSession.getState().hydrate();
-        expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b']);
+        expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b.1']);
       });
+    });
+  });
+
+  // Phase 8: a connection is one user on one server, `<server_id>.<user_id>`.
+  describe('connection identity (server + user)', () => {
+    const user = (id: number, name: string): User => ({ ...mkUser(name), id });
+    const unsubs: (() => void)[] = [];
+    afterEach(() => {
+      while (unsubs.length) unsubs.pop()!();
+    });
+
+    it('two users on one server are two connections, each with its own token', async () => {
+      const cleanup = jest.fn();
+      unsubs.push(onConnectionRemoved(cleanup));
+      const a = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'tA', user: user(3, 'sam') });
+      const b = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'tB', user: user(5, 'kit') });
+      expect([a, b]).toEqual(['srv.3', 'srv.5']);
+      const s = useSession.getState();
+      expect(s.connections.map((c) => [c.id, c.serverId, c.token])).toEqual([
+        ['srv.3', 'srv', 'tA'],
+        ['srv.5', 'srv', 'tB'],
+      ]);
+      expect(s.defaultConnectionId).toBe('srv.5');
+      // Same URL, same server: the first user is NOT a stale identity.
+      expect(cleanup).not.toHaveBeenCalled();
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv.3')).toBe('tA');
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv.5')).toBe('tB');
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv.3', 'srv.5']);
+      // The remembered server is one row (server-level, no user).
+      const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
+      expect(known.map((k: { serverId: string }) => k.serverId)).toEqual(['srv']);
+    });
+
+    it('a second user on a server starts from the addresses and name the device knew for it', async () => {
+      await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv',
+        token: 'tA',
+        user: user(3, 'sam'),
+        name: 'Home library',
+        addresses: { home: 'http://192.168.1.2:8080', away: 'https://a' },
+      });
+      await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv',
+        token: 'tB',
+        user: user(5, 'kit'),
+        addresses: { away: 'https://a' },
+      });
+      const kit = useSession.getState().connections.find((c) => c.id === 'srv.5')!;
+      expect(kit.addresses).toEqual({ home: 'http://192.168.1.2:8080', away: 'https://a' });
+      expect(kit.name).toBe('Home library');
+    });
+
+    it('the same user signing in again replaces their connection in place', async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 't1', user: user(3, 'sam') });
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://b', serverId: 'other', token: 'tO', user: user(1, 'o') });
+      const id = await useSession.getState().setSession({
+        serverUrl: 'https://a.example',
+        serverId: 'srv',
+        token: 't2',
+        user: user(3, 'sam'),
+      });
+      expect(id).toBe('srv.3');
+      const s = useSession.getState();
+      expect(s.connections.map((c) => [c.id, c.serverUrl, c.token])).toEqual([
+        ['srv.3', 'https://a.example', 't2'],
+        ['other.1', 'https://b', 'tO'],
+      ]);
+      expect(s.defaultConnectionId).toBe('srv.3');
+    });
+
+    it('a legacy connection signed in to again KEEPS its id (its downloads and saves stay)', async () => {
+      // Saved before Phase 8: the id is the bare server_id, no serverId field.
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([{ id: 'srv', serverUrl: 'https://a', name: 'A', user: user(3, 'sam') }]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv', 'old');
+      await useSession.getState().hydrate();
+      expect(useSession.getState().connections[0]).toMatchObject({ id: 'srv', serverId: 'srv' });
+      const id = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'new', user: user(3, 'sam') });
+      expect(id).toBe('srv');
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv']);
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv')).toBe('new');
+      // Another user on that server is a new connection next to it, never a stale identity.
+      const other = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'k', user: user(5, 'kit') });
+      expect(other).toBe('srv.5');
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv', 'srv.5']);
+    });
+
+    it('a legacy connection saved without a user id is taken as the one signing in', async () => {
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([{ id: 'srv', serverUrl: 'https://a', name: 'A', user: {} }]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv', 'old');
+      await useSession.getState().hydrate();
+      const id = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'new', user: user(3, 'sam') });
+      expect(id).toBe('srv');
+      expect(useSession.getState().connections).toHaveLength(1);
+    });
+
+    it('a rebuilt server (another server_id at the same URL) still retires every old connection', async () => {
+      const cleanup = jest.fn();
+      unsubs.push(onConnectionRemoved(cleanup));
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't1', user: user(3, 'sam') });
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't2', user: user(5, 'kit') });
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'new', token: 't3', user: user(3, 'sam') });
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['new.3']);
+      expect(cleanup.mock.calls.map(([id]) => id).sort()).toEqual(['old.3', 'old.5']);
+      expect(await SecureStore.getItemAsync('audiosilo.token.old.3')).toBeNull();
+    });
+
+    it('learnAddresses keeps the remembered server keyed by its server_id', async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 't', user: user(3, 'sam') });
+      await useSession.getState().learnAddresses('srv.3', { home: 'http://10.0.0.2' });
+      const known = JSON.parse((await AsyncStorage.getItem('audiosilo.knownServers'))!);
+      expect(known).toEqual([
+        expect.objectContaining({ serverId: 'srv', addresses: { home: 'http://10.0.0.2' } }),
+      ]);
+    });
+
+    it('hydrate fills serverId for a connection persisted without it (its legacy id)', async () => {
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([
+          { id: 'srv', serverUrl: 'https://a', name: 'A', user: user(3, 'sam') },
+          { id: 'two.4', serverUrl: 'https://b', name: 'B', user: user(4, 'b') },
+        ]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv', 't');
+      await SecureStore.setItemAsync('audiosilo.token.two.4', 't');
+      await useSession.getState().hydrate();
+      expect(useSession.getState().connections.map((c) => c.serverId)).toEqual(['srv', 'two']);
     });
   });
 });

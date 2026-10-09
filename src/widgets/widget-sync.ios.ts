@@ -8,6 +8,7 @@ import { AppState } from 'react-native';
 import { resolveClient } from '@/api/connection-clients';
 import { cachedCapability } from '@/api/hooks';
 import type { CoverSize } from '@/api/types';
+import { resolveConnectionId } from '@/lib/connection-id';
 import { onForeground } from '@/lib/when-active';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { type NowPlaying, selectCurrentChapter, usePlayer } from '@/playback/store';
@@ -295,7 +296,10 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
   const unsubTimer = useSleepTimer.subscribe(() => reconcileActivity());
   const unsubForeground = deps.onForeground(() => reconcileActivity());
   const unsubRemoved = onConnectionRemoved((id) => {
-    if (lastProps?.connectionId !== id) return;
+    // What the widget showed can name an old connection id (written before the identity
+    // migration): it is the removed connection's when it resolves to it.
+    const shown = lastProps?.connectionId;
+    if (!shown || resolveConnectionId(shown) !== id) return;
     covers = null;
     coverJob = null;
     deps.clearCovers();
