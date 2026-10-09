@@ -12,6 +12,7 @@ import {
   usableUserId,
 } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
+import { randomUUID } from '@/lib/random';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { CONNECTIONS_KEY, DEFAULT_KEY, type PersistedConnection, tokenKey } from '@/stores/session';
 
@@ -111,15 +112,11 @@ export type IdentityMigrationDeps = {
   newProfileId: () => string;
 };
 
-/** A random RFC 4122 v4 id: `crypto.randomUUID` where the runtime has it (web, newer
- * Hermes), else built from `Math.random` (a device-local id, not a secret). */
+/** A new profile's id: a random RFC 4122 v4 id from expo-crypto's `randomUUID`
+ * (`src/lib/random.ts`, which falls back to the runtime's and then builds one from random
+ * bytes where neither exists). A device-local id, not a secret. */
 export function randomId(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (typeof c?.randomUUID === 'function') return c.randomUUID();
-  const hex = (n: number) =>
-    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-  const variant = (8 + Math.floor(Math.random() * 4)).toString(16);
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-${variant}${hex(3)}-${hex(12)}`;
+  return randomUUID();
 }
 
 /** `loadedConnectionId` could not tell. */
