@@ -2021,5 +2021,39 @@
     "signedOut": "Verbinde in AudioSilo einen Server, um im Auto zu hören",
     "unavailable": "Dieses Buch kann gerade nicht abgespielt werden",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "house": {
+    "title": "Was im Haus gehört wird",
+    "sub": "{{server}} · freiwillig geteilt",
+    "settingsLink": "Einstellungen zum Teilen",
+    "listLabel": "Was auf {{server}} im Haus gehört wird",
+    "inTheHouse": "Im Haus",
+    "chapterN": "Kapitel {{n}}",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "Hört gerade",
+      "paused": "Pausiert",
+      "today": "Heute",
+      "yesterday": "Gestern",
+      "earlier": "Vor Kurzem"
+    },
+    "label": {
+      "playing": "{{name}} hört gerade {{title}}",
+      "paused": "{{name}} hat {{title}} pausiert",
+      "today": "{{name}} hat heute {{title}} gehört",
+      "yesterday": "{{name}} hat gestern {{title}} gehört",
+      "earlier": "{{name}} hat vor Kurzem {{title}} gehört",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Mit dem Haus teilen, was ich höre",
+      "switchLabel": "Auf {{server}} mit dem Haus teilen, was ich höre",
+      "body": "Dein aktuelles Buch erscheint auf der Startseite der anderen auf {{server}}, die ihres ebenfalls teilen. Standardmäßig aus.",
+      "saving": "Wird gespeichert",
+      "loadFailed": "Diese Einstellung konnte nicht geladen werden.",
+      "failed": "Teilen auf {{server}} konnte nicht geändert werden",
+      "failedBody": "Nichts wurde geändert. Prüfe die Verbindung und versuche es erneut.",
+      "demo": "Demo-Konten können nicht teilen, was sie hören."
+    }
   }
 }

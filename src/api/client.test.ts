@@ -1556,3 +1556,99 @@ describe('ApiClient series books (series_books)', () => {
     await expect(c.seriesBooksPage(2, 'A')).rejects.toMatchObject({ name: 'TimeoutError' });
   });
 });
+
+describe('ApiClient household and cast (Phase 8)', () => {
+  const c = () => new ApiClient('https://h', 'tok');
+  // The server's exact answers (audiosilo-server internal/api household_test.go).
+  const houseRow = {
+    user_id: 3,
+    username: 'sam',
+    library_id: 1,
+    path: 'Will Wight/Cradle',
+    title: 'Unsouled',
+    author: 'Will Wight',
+    state: 'playing',
+    position: 1234.5,
+    duration: 36000,
+    chapter: 'Chapter 4',
+    chapter_index: 3,
+    updated_at: '2026-10-09T19:59:30.000Z',
+  };
+
+  it('reads GET /me/household as is', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { share_listening: false } }));
+    await expect(c().household()).resolves.toEqual({ share_listening: false });
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/me/household',
+      method: 'GET',
+      body: undefined,
+    });
+  });
+
+  it('sets it with PUT /me/household { share_listening } only', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { share_listening: true } }));
+    await expect(c().setHousehold(true)).resolves.toEqual({ share_listening: true });
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household',
+      method: 'PUT',
+      body: { share_listening: true },
+      contentType: 'application/json',
+    });
+  });
+
+  it("surfaces a demo account's refusal as a 403 ApiError", async () => {
+    installFetch(() => ({ status: 403, body: { error: 'not available for demo accounts' } }));
+    await expect(c().setHousehold(true)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 403,
+    });
+  });
+
+  it('reads GET /household/listening, every row field round-tripped', async () => {
+    const body = {
+      sharing: true,
+      listening: [
+        houseRow,
+        {
+          ...houseRow,
+          user_id: 4,
+          author: null,
+          duration: null,
+          chapter: null,
+          chapter_index: null,
+          state: 'recent',
+        },
+      ],
+    };
+    const fetchMock = installFetch(() => ({ status: 200, body }));
+    await expect(c().houseListening()).resolves.toEqual(body);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/household/listening',
+      method: 'GET',
+    });
+  });
+
+  it('reads a caller who does not share as { sharing: false, listening: [] }', async () => {
+    installFetch(() => ({ status: 200, body: { sharing: false, listening: [] } }));
+    await expect(c().houseListening()).resolves.toEqual({ sharing: false, listening: [] });
+    installFetch(() => ({ status: 200, body: { sharing: false, listening: null } }));
+    await expect(c().houseListening()).resolves.toEqual({ sharing: false, listening: [] });
+  });
+
+  it('mints with POST /cast/token { library_id, path } and returns { token, expires_at }', async () => {
+    const minted = { token: 'cast-secret', expires_at: '2026-10-10T20:00:00.000Z' };
+    const fetchMock = installFetch(() => ({ status: 201, body: minted }));
+    await expect(c().castToken(2, 'Saga/Book 1')).resolves.toEqual(minted);
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/cast/token',
+      method: 'POST',
+      body: { library_id: 2, path: 'Saga/Book 1' },
+      contentType: 'application/json',
+    });
+  });
+
+  it("surfaces a book outside the caller's access as a 403 ApiError", async () => {
+    installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
+    await expect(c().castToken(2, 'Other/Book')).rejects.toMatchObject({ status: 403 });
+  });
+});

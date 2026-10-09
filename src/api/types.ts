@@ -90,6 +90,17 @@ export type Capabilities = {
    * servers: treat missing as false and never call `/addresses`; the player then keeps
    * the one address it was paired with. */
   addresses?: boolean;
+  /** Whether the server keeps "Listening in the house" (player redesign Phase 8): the
+   * caller's opt-in (`/me/household`, {@link HouseholdSettings}) and what the other
+   * people on the server who share are listening to (`/household/listening`,
+   * {@link HouseListening}). Absent on older servers: treat missing as false, hide the
+   * toggle and the Home row, and never call the routes. */
+  household?: boolean;
+  /** Whether the server mints cast tokens (`POST /cast/token`, {@link CastToken}) and
+   * accepts one as the `?token=` of a book's cover and stream, so a Chromecast receiver
+   * never gets the session token (player redesign Phase 8). Absent on older servers:
+   * treat missing as false and show no Cast button. */
+  cast?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -951,6 +962,52 @@ export type ListeningGoal = { books_per_year: number; updated_at: string };
  * unset), the current calendar `year` (`YYYY`, server time) and the books the caller
  * has `finished` in it. */
 export type ListeningGoalStatus = { goal: ListeningGoal | null; year: string; finished: number };
+
+/** Response of GET and PUT /me/household (capability `household`): whether the caller
+ * shares what they are listening to with the other people on the server. Off by default.
+ * PUT takes the same shape (the field is required). A demo account's PUT is a 403. */
+export type HouseholdSettings = { share_listening: boolean };
+
+/** A housemate's state, from the age of their newest progress save: `playing` within a
+ * minute, `paused` within ten minutes, `recent` within the last 24 hours. */
+export type HouseListeningState = 'playing' | 'paused' | 'recent';
+
+/** One other person on the server who shares, on their newest book (capability
+ * `household`). Never carries a device, an address, an app or a token. */
+export type HouseListeningRow = {
+  user_id: number;
+  username: string;
+  library_id: number;
+  path: string;
+  /** The index's title, else the path's last segment (never empty). */
+  title: string;
+  author: string | null;
+  state: HouseListeningState;
+  /** Seconds into the whole book. */
+  position: number;
+  /** Whole-book seconds; null when unknown. */
+  duration: number | null;
+  /** The chapter at `position` as the server tidies it; null for a single-chapter book,
+   * and for a chapter whose title names nothing ("Track 01"), where `chapter_index`
+   * still says which (show "Chapter N"). */
+  chapter: string | null;
+  /** 0-based; null for a single-chapter or unindexed book. */
+  chapter_index: number | null;
+  /** The newest save, fixed-width UTC milliseconds (`2026-10-09T19:59:30.000Z`). */
+  updated_at: string;
+};
+
+/** Response of GET /household/listening (capability `household`). Reciprocal:
+ * `listening` is `[]` unless the caller shares (`sharing`). Otherwise one row per other
+ * enabled, non-demo person who shares and listened in the last 24 hours, on a book the
+ * caller may see, newest first. */
+export type HouseListening = { sharing: boolean; listening: HouseListeningRow[] };
+
+/** Response of POST /cast/token (capability `cast`): a short-lived (24 h) credential for
+ * ONE book, accepted only as the `?token=` of that book's cover and stream URLs (never as
+ * a header, never on another route or book). `expires_at` is fixed-width UTC
+ * milliseconds. */
+export type CastToken = { token: string; expires_at: string };
 
 /** One of the caller's own signed-in devices (capability `my_devices`): a session (a
  * paired phone, a browser) or an API key. */

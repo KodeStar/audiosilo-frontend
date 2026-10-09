@@ -15,6 +15,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
+import { AppState } from 'react-native';
 
 import { byPosition } from '@/lib/by-position';
 import { contentKey } from '@/lib/content-key';
@@ -44,6 +45,7 @@ import type {
   CollectionPatch,
   Favourite,
   HistoryEntry,
+  HouseListening,
   Library,
   ListeningGoalStatus,
   MyBookmark,
@@ -130,6 +132,9 @@ export const qk = {
   myDevices: (cid: string) => ['myDevices', cid] as const,
   // Home and away addresses, capability `addresses`.
   addresses: (cid: string) => ['addresses', cid] as const,
+  // Listening in the house, capability `household` (player redesign Phase 8).
+  household: (cid: string) => ['household', cid] as const,
+  houseListening: (cid: string) => ['houseListening', cid] as const,
   /** Prefix matching every connection's progress list (refetch on Home). */
   allProgressAll: () => ['progress', 'all'] as const,
   /** Prefix matching every connection's recently added list. */
@@ -531,7 +536,12 @@ function useCapabilityQuery<T>(
   queryKey: (cid: string) => readonly unknown[],
   load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
   connectionId?: string,
-  opts: { ready?: boolean; enabled?: boolean; staleTime?: number } = {},
+  opts: {
+    ready?: boolean;
+    enabled?: boolean;
+    staleTime?: number;
+    refetchInterval?: () => number | false;
+  } = {},
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
@@ -542,6 +552,7 @@ function useCapabilityQuery<T>(
       supported && api && opts.ready !== false ? ({ signal }) => load(api, signal) : skipToken,
     ...(opts.enabled !== undefined ? { enabled: opts.enabled } : {}),
     ...(opts.staleTime !== undefined ? { staleTime: opts.staleTime } : {}),
+    ...(opts.refetchInterval !== undefined ? { refetchInterval: opts.refetchInterval } : {}),
   });
 }
 
@@ -1829,6 +1840,59 @@ export function useRevokeMyDevice(connectionId?: string) {
       void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
       void qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
     },
+  );
+}
+
+/** Whether the caller shares what they are listening to with the house (capability
+ * `household`; `{ share_listening }`, off by default). */
+export function useHousehold(connectionId?: string) {
+  return useCapabilityQuery(
+    'household',
+    qk.household,
+    (api, signal) => api.household(signal),
+    connectionId,
+  );
+}
+
+/** Share (`true`) or stop sharing what the caller is listening to (capability
+ * `household`). Rejects with `CapabilityError` (sending nothing) while the server's
+ * flag is off or not known yet; never hand that to `noteError`. A demo account is
+ * refused by the server (403). Stores the answer and refreshes the house, which a
+ * change of the caller's own choice opens or empties (it is reciprocal). */
+export function useSetHousehold(connectionId?: string) {
+  return useCapabilityMutation(
+    'household',
+    connectionId,
+    (api, share: boolean) => api.setHousehold(share),
+    ({ qc, cid }, settings) => {
+      void qc.invalidateQueries({ queryKey: qk.houseListening(cid) });
+      return storeAnswer(qc, qk.household(cid), () => settings);
+    },
+  );
+}
+
+/** How often the house is asked again while the app is in the foreground. */
+export const HOUSE_POLL_MS = 60_000;
+
+/** The house polls only while the app is in the foreground: a suspended or hidden app
+ * asks nothing (the foreground refresh, `src/lib/app-resume.ts`, reads it again on
+ * return, which restarts the interval). React Query's own focus check covers a hidden
+ * web tab; AppState covers native, where nothing tells React Query about focus. */
+export function housePollInterval(): number | false {
+  return AppState.currentState === 'active' ? HOUSE_POLL_MS : false;
+}
+
+/** What the other people who share are listening to (capability `household`): `[]`
+ * unless the caller shares. Polled every minute while the app is in the foreground
+ * (`HOUSE_POLL_MS`). `enabled: false` holds it (no request at all), e.g. for a screen
+ * that is not focused or a caller known not to share. */
+export function useHouseListening(connectionId?: string, opts: { enabled?: boolean } = {}) {
+  return useCapabilityQuery<HouseListening>(
+    'household',
+    qk.houseListening,
+    (api, signal) => api.houseListening(signal),
+    connectionId,
+    { ready: opts.enabled !== false, refetchInterval: housePollInterval },
   );
 }
 
