@@ -2,6 +2,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { downloadedEntryOf } from '@/downloads/store';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
 import { usePlayer } from '@/playback/store';
+import { mayActFor } from '@/stores/profiles';
 
 import type { PlayTarget } from './play-route';
 
@@ -63,12 +64,15 @@ async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
  * end of a book (`advanceTo`), which can run while the app is in the background, where
  * presenting the player modal is not possible (iOS cannot present a view controller from
  * the background; the app came back to a black screen). Resolves `false` when the book is
- * not downloaded and its connection is gone; rejects when the book could not be fetched.
+ * not downloaded and its connection is gone, or it is not the listening person's
+ * (`mayActFor`: refused before anything is fetched); rejects when the book could not be
+ * fetched.
  */
 export async function startBookInPlace(
   target: PlayTarget,
   opts: StartOptions = {},
 ): Promise<boolean> {
+  if (!mayActFor(target.connectionId)) return false;
   const source = await startSourceOf(target);
   if (!source) return false;
   // The speed goes in with the start: set after it, the book audibly began at another.

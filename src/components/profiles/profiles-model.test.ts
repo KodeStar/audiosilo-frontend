@@ -1,5 +1,5 @@
 import i18n from '@/i18n';
-import { otherOwner, type Profile } from '@/stores/profiles';
+import type { Profile } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
 
 import {
@@ -47,17 +47,6 @@ describe('profiles model', () => {
     expect(asksAtLaunch({ askAtLaunch: true, profiles: [chris, sam] })).toBe(true);
     expect(asksAtLaunch({ askAtLaunch: false, profiles: [chris, sam] })).toBe(false);
     expect(asksAtLaunch({ askAtLaunch: true, profiles: [chris] })).toBe(false);
-  });
-
-  it("finds the other person a link's connection belongs to", () => {
-    const doc = { profiles: [chris, sam], activeProfileId: 'p' };
-    expect(otherOwner(doc, 'a.2')).toBe(sam);
-    expect(otherOwner(doc, 'a.1')).toBeNull();
-    expect(otherOwner(doc, 'gone')).toBeNull();
-    expect(otherOwner(doc, '')).toBeNull();
-    // Nobody chosen (the person listening left): a link to anyone's book meets the gate,
-    // the PIN included.
-    expect(otherOwner({ ...doc, activeProfileId: null }, 'a.1')?.id).toBe(doc.profiles[0].id);
   });
 
   it('rounds a wait up to whole seconds', () => {

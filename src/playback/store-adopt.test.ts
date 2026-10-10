@@ -76,6 +76,7 @@ jest.mock('@/api/connection-clients', () => ({
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { setConnectionAliases } from '@/lib/connection-id';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import { onPickedUpAgain, usePlayer } from './store';
@@ -175,6 +176,32 @@ afterEach(() => {
 });
 
 describe('adoptLoaded', () => {
+  // Decision 7 regression (Phase 8): `mayActFor` inside the adoption, which both the
+  // Android car path and a Cast session resumed with a receiver's book go through.
+  it("never adopts another person's book (an old car play spec, a receiver's book after a switch)", async () => {
+    try {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'sam', name: 'Sam', connectionIds: ['c9'] },
+          { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+        ],
+        activeProfileId: 'sam',
+      });
+      expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: true }))).toBe(false);
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      useProfiles.setState({ activeProfileId: null });
+      expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: true }))).toBe(false);
+      // Once they are the one listening, theirs is adopted.
+      useProfiles.setState({ activeProfileId: 'alex' });
+      expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: false }))).toBe(true);
+      expect(usePlayer.getState().nowPlaying?.connectionId).toBe('c1');
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
   it("asks for another device's newer place before its first save when the book plays", async () => {
     // The engine's place was never checked against the server: a car start plays the place
     // its snapshot was built with, and the tablet may have played on since.

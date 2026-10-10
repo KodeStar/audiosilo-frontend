@@ -10,6 +10,7 @@ import { downloadedEntryOf, downloadKey, useDownloads } from '@/downloads/store'
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
+import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -743,6 +744,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     startTrack,
     startSpeed,
   ) => {
+    // Only the person listening's books (Phase 8, `mayActFor`): every way a book starts
+    // comes through here, so none can save to another person's account.
+    if (!mayActFor(connectionId)) return;
     // In flight until it ends: an adoption reading meanwhile stands back (`startsInFlight`).
     startsInFlight++;
     try {
@@ -1201,6 +1205,10 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   // The service's book can name an old connection id (a play spec from a car snapshot
   // written before the identity migration): the store keeps the new one.
   const loaded = { ...service, connectionId: resolveConnectionId(service.connectionId) };
+  // Another person's book (a car play spec of an older snapshot, a receiver's book of a
+  // Cast session resumed after a switch) is never adopted: nothing of it saves to their
+  // account (`mayActFor`).
+  if (!mayActFor(loaded.connectionId)) return false;
   const before = usePlayer.getState().nowPlaying;
   const api = resolveClient(loaded.connectionId);
   let source: Awaited<ReturnType<typeof bookSourceOf>>;

@@ -804,7 +804,7 @@ describe('play requests', () => {
     }
   });
 
-  it("quietly refuses another person's book (an item of an older snapshot)", async () => {
+  it("leaves another person's book to the start, which refuses it (an older snapshot's item)", async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     useProfiles.setState({
       hydrated: true,
@@ -814,21 +814,11 @@ describe('play requests', () => {
       ],
       activeProfileId: 'sam',
     });
-    usePlayer.setState({
-      nowPlaying: { ...ref, queue: { offsets: [0], total: 100 } },
-      snapshot: { state: 'paused', trackIndex: 0, position: 40, duration: 100, rate: 1 },
-    });
+    // `startBookInPlace` holds the rule (`mayActFor`, tested with it): the car keeps no copy.
+    mockStartBookInPlace.mockResolvedValueOnce(false);
     await handleCarPlayRequest(carItemId(ref));
-    expect(mockStartBookInPlace).not.toHaveBeenCalled();
-    expect(usePlayer.getState().toggle).not.toHaveBeenCalled();
-    // Nobody chosen (the person listening left): nobody's book.
-    useProfiles.setState({ activeProfileId: null });
-    await handleCarPlayRequest(carItemId({ ...ref, connectionId: 'c2' }));
-    expect(mockStartBookInPlace).not.toHaveBeenCalled();
-    // Their own book plays.
-    useProfiles.setState({ activeProfileId: 'sam' });
-    await handleCarPlayRequest(carItemId({ ...ref, connectionId: 'c2' }));
-    expect(mockStartBookInPlace).toHaveBeenCalledWith({ ...ref, connectionId: 'c2' });
+    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("another person's"));
     warn.mockRestore();
   });
 
@@ -1023,7 +1013,7 @@ describe('adopting the service’s book (Android)', () => {
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
   });
 
-  it("never adopts another person's book the service started (no saves to their account)", async () => {
+  it("hands another person's book to the adoption, which refuses it (no saves to their account)", async () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
     mockNative.getLoadedBook.mockResolvedValue(loaded);
     useProfiles.setState({
@@ -1036,8 +1026,8 @@ describe('adopting the service’s book (Android)', () => {
     });
     stop = startCarSync();
     await settle();
-    expect(mockNative.getLoadedBook).toHaveBeenCalled();
-    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+    // `adoptLoaded` holds the rule (`mayActFor`, tested in store-adopt.test.ts).
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
   });
 
   it('leaves the player alone when it already has that book, or one is loading', async () => {

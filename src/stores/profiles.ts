@@ -458,6 +458,23 @@ export function otherOwner(doc: ProfilesRead, connectionId: string): Profile | n
   return owner && owner.id !== doc.activeProfileId ? owner : null;
 }
 
+/**
+ * Whether a book of `connectionId` may play for the person listening on this device: never
+ * while nobody is chosen (`mustChoose`), never another person's (`otherOwner`: playing it
+ * would save to their account without their PIN). A connection no profile holds is not
+ * refused (no profiles at all, or a session not read yet: a CarPlay launch with the phone
+ * locked still plays its downloads, as before profiles). The ONE rule: the playback store
+ * enforces it at every start (`playBook`, `startBookInPlace`, `adoptLoaded`: the player
+ * route, the car, a Cast session resumed with a receiver's book), and screens only offer
+ * the switch (`OtherPersonGate`).
+ */
+export function mayActFor(
+  connectionId: string,
+  doc: ProfilesRead = useProfiles.getState(),
+): boolean {
+  return !mustChoose(doc) && otherOwner(doc, connectionId) === null;
+}
+
 /** The active profile's connections, in the session's order (every connection while
  * there is no profile, none while someone must be chosen). Framework-free: the car
  * snapshot, the widget. */

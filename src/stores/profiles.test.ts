@@ -10,7 +10,9 @@ import {
   askOnSecondPerson,
   connectionsOfProfile,
   deleteProfile,
+  mayActFor,
   mustChoose,
+  otherOwner,
   parseProfilesDoc,
   placeConnection,
   placeInDoc,
@@ -300,6 +302,31 @@ describe('connectionsOfProfile', () => {
     expect(connectionsOfProfile([A1, B1], visibleConnectionIds(doc({ profiles: [p] })))).toEqual(
       [],
     );
+  });
+});
+
+describe('otherOwner / mayActFor', () => {
+  const chris = { id: 'p', name: 'Chris', connectionIds: ['a.1'] };
+  const sam = { id: 's', name: 'Sam', connectionIds: ['a.2'] };
+  const both = { profiles: [chris, sam], activeProfileId: 'p' };
+
+  it("finds the other person a link's connection belongs to", () => {
+    expect(otherOwner(both, 'a.2')).toBe(sam);
+    expect(otherOwner(both, 'a.1')).toBeNull();
+    expect(otherOwner(both, 'gone')).toBeNull();
+    expect(otherOwner(both, '')).toBeNull();
+    // Nobody chosen (the person listening left): a link to anyone's book meets the gate,
+    // the PIN included.
+    expect(otherOwner({ ...both, activeProfileId: null }, 'a.1')).toBe(chris);
+  });
+
+  it("only the person listening's books may play; a connection nobody holds may", () => {
+    expect(mayActFor('a.1', both)).toBe(true);
+    expect(mayActFor('a.2', both)).toBe(false);
+    expect(mayActFor('a.1', { ...both, activeProfileId: null })).toBe(false);
+    // Not read yet, or no profiles at all (as before profiles): not refused.
+    expect(mayActFor('elsewhere.1', both)).toBe(true);
+    expect(mayActFor('a.2', { profiles: [], activeProfileId: null })).toBe(true);
   });
 });
 

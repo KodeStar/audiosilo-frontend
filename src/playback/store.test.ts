@@ -131,6 +131,7 @@ import { queryClient } from '@/api/provider';
 import { engine as downloadEngine } from '@/downloads/engine';
 import { isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import { flushConnection } from './progress-sync';
@@ -1006,6 +1007,33 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 // --- per-connection scoping of saves + the download hot-swap -----------------
 
 describe('connection scoping', () => {
+  // Decision 7 regression (Phase 8): the one "only the person listening may play" rule
+  // (`mayActFor`) is enforced here, so the player route, the car and every start obey it.
+  it("never starts another person's book, nor anyone's while nobody is chosen", async () => {
+    try {
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'sam', name: 'Sam', connectionIds: ['c9'] },
+          { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+        ],
+        activeProfileId: 'sam',
+      });
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      useProfiles.setState({ activeProfileId: null });
+      await usePlayer.getState().playBook('c9', 2, makeBook(), undefined, 0);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      // The listening person's own book plays.
+      useProfiles.setState({ activeProfileId: 'sam' });
+      await usePlayer.getState().playBook('c9', 2, makeBook(), undefined, 0);
+      expect(usePlayer.getState().nowPlaying?.connectionId).toBe('c9');
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
   it('persist stamps the connectionId of the loaded connection into the save', async () => {
     await usePlayer.getState().playBook('c9', 2, makeBook(), undefined, 0);
 
