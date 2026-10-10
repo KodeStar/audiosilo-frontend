@@ -2,8 +2,9 @@ import { Stack } from 'expo-router';
 import { store } from 'expo-router/build/global-state/router-store';
 import { act, renderRouter } from 'expo-router/testing-library';
 
-import { useProfiles } from '@/stores/profiles';
+import { resetProfilesForTests } from '@/stores/profiles';
 import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
+import { seedProfile } from '@/testing/seed-profile';
 
 import { KidsRouteGuard } from './kids-route-guard';
 
@@ -25,23 +26,7 @@ function mount(initialUrl: string) {
   return renderRouter(tree, { initialUrl }) as unknown as Promise<unknown>;
 }
 
-const setProfile = (kids: boolean) =>
-  useProfiles.setState({
-    profiles: [
-      {
-        id: 'p',
-        name: 'Leo',
-        connectionIds: ['srv.1'],
-        ...(kids ? { kids: { bedtime: '19:30' } } : {}),
-      },
-    ],
-    activeProfileId: 'p',
-    hydrated: true,
-  });
-
-afterEach(() => {
-  useProfiles.setState({ profiles: [], activeProfileId: null, hydrated: false });
-});
+afterEach(resetProfilesForTests);
 
 it.each([
   ['Home', '/'],
@@ -50,7 +35,7 @@ it.each([
   ['settings', '/settings'],
   ['downloads', '/downloads'],
 ])('sends a kids profile from %s to /kids', async (_name, url) => {
-  setProfile(true);
+  seedProfile({ kids: true });
   await mount(url);
   await nav(() => {});
   expect(routeInfo().pathname).toBe('/kids');
@@ -58,7 +43,7 @@ it.each([
 });
 
 it('sends a kids profile from the full player (a widget link) back to /kids', async () => {
-  setProfile(true);
+  seedProfile({ kids: true });
   await mount('/player?connection=c&libraryId=1&path=x');
   await nav(() => {});
   expect(routeInfo().pathname).toBe('/kids');
@@ -66,7 +51,7 @@ it('sends a kids profile from the full player (a widget link) back to /kids', as
 });
 
 it('pops the end credits off kids mode rather than stacking a second /kids', async () => {
-  setProfile(true);
+  seedProfile({ kids: true });
   await mount('/kids');
   await nav(() => router.push('/finished'));
   await nav(() => {});
@@ -76,7 +61,7 @@ it('pops the end credits off kids mode rather than stacking a second /kids', asy
 });
 
 it('lets a kids profile open "Who\'s listening?" and the connect flow', async () => {
-  setProfile(true);
+  seedProfile({ kids: true });
   await mount('/kids');
   await nav(() => router.push('/connect'));
   await nav(() => {});
@@ -84,17 +69,17 @@ it('lets a kids profile open "Who\'s listening?" and the connect flow', async ()
 });
 
 it('moves a profile that becomes a kids profile while on Home', async () => {
-  setProfile(false);
+  seedProfile();
   await mount('/');
   await nav(() => {});
   expect(routeInfo().pathname).toBe('/');
-  await act(async () => setProfile(true));
+  await act(async () => seedProfile({ kids: true }));
   await nav(() => {});
   expect(routeInfo().pathname).toBe('/kids');
 });
 
 it('leaves a grown-up profile where it is', async () => {
-  setProfile(false);
+  seedProfile();
   await mount('/search');
   await nav(() => {});
   expect(routeInfo().pathname).toBe('/search');

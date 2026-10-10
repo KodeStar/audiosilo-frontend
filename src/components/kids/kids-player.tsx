@@ -6,10 +6,12 @@ import { stepSegment, currentSegment } from '@/components/player/transport';
 import { BookCover } from '@/components/library/book-cover';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { cn } from '@/lib/utils';
+import { wallClockSeconds } from '@/playback/rate';
 import {
   selectBookPosition,
   selectCurrentChapter,
@@ -20,7 +22,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** How far "go back a bit" goes. */
-export const KIDS_BACK_SECONDS = 30;
+const KIDS_BACK_SECONDS = 30;
 
 /** The control sizes (STYLEGUIDE section 5: 120 for the kids play button, 64 pt the
  * kids-mode minimum): big from a column that fits them, else the phone's. */
@@ -134,7 +136,7 @@ export function KidsPlayer({ width }: { width: number }) {
   const fraction = Math.min(1, Math.max(0, segment.elapsed / segment.length));
   const minutesLeft = Math.max(
     1,
-    Math.ceil((segment.length - segment.elapsed) / Math.max(0.1, rate) / 60),
+    Math.ceil(wallClockSeconds(segment.length - segment.elapsed, rate) / 60),
   );
   const chapterName = chapter ? chapterLabel(chapter, t) : '';
   const isError = state === 'error';
@@ -187,9 +189,9 @@ export function KidsPlayer({ width }: { width: number }) {
           accessibilityRole="progressbar"
           accessibilityLabel={t('kids.player.progress')}
           accessibilityValue={{ min: 0, max: 100, now: Math.round(fraction * 100) }}
-          className="h-3 w-full max-w-[360px] overflow-hidden rounded-full bg-muted"
+          className="w-full max-w-[360px]"
         >
-          <View className="h-full rounded-full bg-brand" style={{ width: `${fraction * 100}%` }} />
+          <ProgressBar fraction={fraction} className="h-3" />
         </View>
         <View className="flex-row items-center justify-center" style={{ gap: d.gap }}>
           <RoundButton
