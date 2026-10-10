@@ -38,7 +38,6 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
   const themed = useThemeColors();
   const { scheme, toggleScheme } = useTheme();
   const user = useSession((s) => s.user);
-  const allConnections = useSession((s) => s.connections);
   // The person listening: their servers only (Phase 8).
   const connections = useProfileConnections();
   const defaultId = useSession((s) => s.defaultConnectionId);
@@ -48,7 +47,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
   const { choose, dialog } = useChooseProfile();
   if (!user || !defaultId) return null;
 
-  const name = active ? profileName(active, allConnections, t) : user.username;
+  const name = active ? profileName(active, t) : user.username;
   const others = profiles.filter((p) => p.id !== active?.id);
 
   const defaultConnection = connections.find((c) => c.id === defaultId);
@@ -96,7 +95,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
             <Icon name="check" size={15} color={themed.mutedForeground} />
           </DropdownMenuItem>
           {others.map((p) => {
-            const other = profileName(p, allConnections, t);
+            const other = profileName(p, t);
             return (
               <DropdownMenuItem
                 key={p.id}

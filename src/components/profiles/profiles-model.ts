@@ -9,16 +9,10 @@ import type { Connection } from '@/stores/session';
  * Household), pure so they're tested apart from them.
  */
 
-/** A profile's name for the screen: its own, else its first server's username, else a
- * neutral word (a profile named before usernames were known). */
-export function profileName(
-  profile: Profile,
-  connections: readonly Connection[],
-  t: TFunction,
-): string {
-  if (profile.name.trim()) return profile.name.trim();
-  const first = connectionsOfProfile(connections, profile.connectionIds)[0];
-  return first?.user?.username || t('profiles.someone');
+/** A profile's name for the screen: its own (the store fills an empty one from its first
+ * server's username, `reconcileProfiles`), else a neutral word (no username known yet). */
+export function profileName(profile: Profile, t: TFunction): string {
+  return profile.name.trim() || t('profiles.someone');
 }
 
 /** The servers a profile listens on, as one line: "Hearthside", "Hearthside + 1 more". */

@@ -6,7 +6,6 @@ import { TABS } from '@/components/shell/destinations';
 import { readPin, type StoredPin } from '@/lib/profile-pin';
 import { popTabToRoot } from '@/lib/root-stack';
 import { type Profile, setProfileHasPin, switchProfile, useProfiles } from '@/stores/profiles';
-import { useSession } from '@/stores/session';
 
 import { PinDialog } from './pin-dialog';
 import { profileName } from './profiles-model';
@@ -60,7 +59,6 @@ export function leavePicker(): void {
  */
 export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
   const { t } = useTranslation();
-  const connections = useSession((s) => s.connections);
   /** The person whose PIN is asked, with the PIN as `choose` read it (the prompt checks
    * against it instead of reading the secure store again; absent when that read failed,
    * and the prompt then reads, and says it couldn't check). */
@@ -103,7 +101,7 @@ export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
       mode="check"
       profileId={pinFor?.profile.id ?? ''}
       stored={pinFor?.stored}
-      name={pinFor ? profileName(pinFor.profile, connections, t) : ''}
+      name={pinFor ? profileName(pinFor.profile, t) : ''}
       onDone={() => {
         const p = pinFor?.profile;
         setPinFor(null);

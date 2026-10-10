@@ -187,7 +187,7 @@ function PersonButton({
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const name = profileName(profile, connections, t);
+  const name = profileName(profile, t);
   const status = profileStatus(profile, connections, active, t);
   const label = [name, status, profile.hasPin && !active ? t('profiles.picker.needsPin') : null]
     .filter(Boolean)

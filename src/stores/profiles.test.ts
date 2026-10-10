@@ -237,6 +237,27 @@ describe('reconcileProfiles', () => {
     expect(next.askAtLaunch).toBe(true);
   });
 
+  it('names a profile with no name after its first connection, keeping any name it has', () => {
+    const d = doc({
+      profiles: [
+        { id: 'p', name: '', connectionIds: [B1.id, A1.id] },
+        { id: 's', name: ' Sammy ', connectionIds: [A2.id] },
+      ],
+      activeProfileId: 'p',
+    });
+    const next = reconcileProfiles(d, [A1, A2, B1], A1.id, ids);
+    // The first in the session's order (A1, chris), and a name trimmed.
+    expect(next.profiles.map((p) => p.name)).toEqual(['chris', 'Sammy']);
+    // No username known yet: still empty (the screen says "Someone"), filled once it is.
+    const nameless = { ...A1, user: { ...A1.user, username: '' } };
+    const blank = doc({
+      profiles: [{ id: 'p', name: '', connectionIds: [A1.id] }],
+      activeProfileId: 'p',
+    });
+    expect(reconcileProfiles(blank, [nameless], A1.id, ids)).toBe(blank);
+    expect(reconcileProfiles(blank, [A1], A1.id, ids).profiles[0].name).toBe('chris');
+  });
+
   it('with no connections, no profiles', () => {
     const d = doc({
       profiles: [{ id: 'p', name: 'chris', connectionIds: [A1.id] }],

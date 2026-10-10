@@ -158,7 +158,7 @@ function PersonCard({
   onRemove: (name: string) => void;
 }) {
   const { t } = useTranslation();
-  const name = profileName(profile, connections, t);
+  const name = profileName(profile, t);
   const [renaming, setRenaming] = useState(false);
   const [pin, setPin] = useState<PinFlow>(null);
   const kids = profile.kids;

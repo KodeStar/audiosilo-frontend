@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { useActiveProfile, useProfiles } from '@/stores/profiles';
-import { useSession } from '@/stores/session';
 
 import { profileName } from './profiles-model';
 import { openProfiles } from './use-choose-profile';
@@ -20,9 +19,8 @@ export function ListeningAsCard() {
   const { t } = useTranslation();
   const active = useActiveProfile();
   const count = useProfiles((s) => s.profiles.length);
-  const connections = useSession((s) => s.connections);
   if (!active) return null;
-  const name = profileName(active, connections, t);
+  const name = profileName(active, t);
   return (
     <Card className="flex-row items-center gap-3 p-4" testID="listening-as">
       <View style={{ margin: 4 }}>

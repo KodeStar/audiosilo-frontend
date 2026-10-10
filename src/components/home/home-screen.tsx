@@ -159,7 +159,7 @@ export function HomeScreen() {
           onLayout={(e) => setColumnWidth(e.nativeEvent.layout.width)}
         >
           <Greeting
-            name={profile ? profileName(profile, connections, t) : user?.username}
+            name={profile ? profileName(profile, t) : user?.username}
             sync={sync}
             servers={connections.length}
           />
@@ -224,7 +224,7 @@ export function HomeScreen() {
 
         {/* Listening in the house: one section per server where the listener shares and
             someone else does too (renders nothing otherwise). The connections are the
-            session's for now; profiles (Phase 8 D) hand it the active profile's. */}
+            person listening's (`useProfileConnections`). */}
         <HouseRow connections={connections} />
 
         {shelves.length > 0 ? (

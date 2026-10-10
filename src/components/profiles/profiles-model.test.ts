@@ -24,10 +24,10 @@ const chris: Profile = { id: 'p', name: 'Chris', connectionIds: ['a.1', 'b.1'] }
 const sam: Profile = { id: 's', name: '', connectionIds: ['a.2'] };
 
 describe('profiles model', () => {
-  it('names a profile by its own name, else its first server user', () => {
-    expect(profileName(chris, conns, t)).toBe('Chris');
-    expect(profileName(sam, conns, t)).toBe('sam');
-    expect(profileName({ id: 'x', name: ' ', connectionIds: [] }, conns, t)).toBe('Someone');
+  it('names a profile by its name (the store fills it), else a neutral word', () => {
+    expect(profileName(chris, t)).toBe('Chris');
+    expect(profileName({ ...chris, name: ' Chris ' }, t)).toBe('Chris');
+    expect(profileName({ id: 'x', name: ' ', connectionIds: [] }, t)).toBe('Someone');
   });
 
   it('lists servers in one line', () => {

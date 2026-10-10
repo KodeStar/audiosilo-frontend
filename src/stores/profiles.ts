@@ -53,7 +53,8 @@ export type KidsSettings = {
 export interface Profile {
   /** Local and random (a UUID); never sent anywhere. */
   id: string;
-  /** Defaults to the first connection's `user.username`; editable on this device. */
+  /** Defaults to the first connection's `user.username` (the reconcile fills an empty
+   * one); editable on this device. Read it through `profileName`. */
   name: string;
   /** At most one per server (`serverIdOf`). */
   connectionIds: string[];
@@ -187,6 +188,10 @@ function holdsServer(
  *    active (`mustChoose`): the next person may have a PIN, so they are chosen on "Who's
  *    listening?", never assumed. Only a document built from nothing (no profiles before)
  *    starts with someone: the default connection's profile, else the first.
+ * 6. Every profile has a name (trimmed): its own, else its first connection's username in
+ *    the session's order (a profile made before the username was known gets it once the
+ *    session has it), so screens read `profile.name` (`profileName`) and never the raw
+ *    connections for it.
  */
 export function reconcileProfiles(
   doc: ProfilesDoc,
@@ -245,6 +250,11 @@ export function reconcileProfiles(
           null)
         : null;
   }
+  profiles = profiles.map((p) => {
+    const name =
+      p.name.trim() || usernameOf(connections.find((c) => p.connectionIds.includes(c.id)));
+    return name === p.name ? p : { ...p, name };
+  });
   const next: ProfilesDoc = { ...doc, profiles, activeProfileId };
   return sameDoc(next, doc) ? doc : next;
 }

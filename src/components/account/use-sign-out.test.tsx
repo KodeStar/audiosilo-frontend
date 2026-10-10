@@ -26,7 +26,7 @@ jest.mock('@/playback/store', () => ({ teardownBeforeTokenRevoke: jest.fn(async 
 /* eslint-disable import/first */
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 
-import { useSignOut } from './use-sign-out';
+import { freshAccountUser, useSignOut } from './use-sign-out';
 /* eslint-enable import/first */
 
 // renderHook is incompatible with this jest-expo + React 19 setup, so mount a probe
@@ -127,5 +127,32 @@ describe('useSignOut', () => {
     // Unknown flags + offline → no dead-end warning; clear locally instead.
     await waitFor(() => expect(mockSessionState.removeConnection).toHaveBeenCalledWith('c1'));
     expect(hook().confirmVisible).toBe(false);
+  });
+});
+
+describe('freshAccountUser', () => {
+  const known = { id: 1, username: 'sam', has_password: false } as User;
+  const unknown = { id: 1, username: 'sam' } as User;
+
+  it('keeps a user whose flags are known, asks /me otherwise and saves the answer', async () => {
+    const api = { me: jest.fn(async () => known) };
+    const save = jest.fn();
+    expect(await freshAccountUser(known, api as never, save)).toBe(known);
+    expect(api.me).not.toHaveBeenCalled();
+    expect(await freshAccountUser(unknown, api as never, save)).toBe(known);
+    expect(save).toHaveBeenCalledWith(known);
+  });
+
+  it('offline, or with no client, decides on what it has', async () => {
+    const api = {
+      me: jest.fn(async () => {
+        throw new Error('offline');
+      }),
+    };
+    const save = jest.fn();
+    expect(await freshAccountUser(unknown, api as never, save)).toBe(unknown);
+    expect(await freshAccountUser(unknown, null, save)).toBe(unknown);
+    expect(await freshAccountUser(null, api as never, save)).toBeNull();
+    expect(save).not.toHaveBeenCalled();
   });
 });

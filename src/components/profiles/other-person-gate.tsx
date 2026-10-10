@@ -7,7 +7,6 @@ import { Screen } from '@/components/ui/screen';
 import { Text } from '@/components/ui/text';
 import { backOrHome } from '@/lib/back-or-home';
 import type { Profile } from '@/stores/profiles';
-import { useSession } from '@/stores/session';
 
 import { profileName } from './profiles-model';
 import { useChooseProfile } from './use-choose-profile';
@@ -20,9 +19,8 @@ import { useChooseProfile } from './use-choose-profile';
  */
 export function OtherPersonGate({ profile }: { profile: Profile }) {
   const { t } = useTranslation();
-  const connections = useSession((s) => s.connections);
   const { choose, switching, dialog } = useChooseProfile({ stay: true });
-  const name = profileName(profile, connections, t);
+  const name = profileName(profile, t);
   return (
     <Screen testID="other-person-gate">
       <View className="flex-1 items-center justify-center gap-4 px-6">

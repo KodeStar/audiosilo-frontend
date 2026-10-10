@@ -26,6 +26,7 @@ const mockSignOut = jest.fn(async (id: string) => {
   await require('@/stores/session').useSession.getState().removeConnection(id);
 });
 jest.mock('@/components/account/use-sign-out', () => ({
+  ...jest.requireActual('@/components/account/use-sign-out'),
   signOutConnection: (id: string) => mockSignOut(id),
 }));
 const mockCaps: Record<string, { household?: boolean }> = {};

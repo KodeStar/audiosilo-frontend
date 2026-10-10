@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useApiRegistry } from '@/api/provider';
-import { signOutConnection } from '@/components/account/use-sign-out';
+import { freshAccountUser, signOutConnection } from '@/components/account/use-sign-out';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
-import { accountFlagsKnown, needsPasswordWarning } from '@/lib/account';
+import { needsPasswordWarning } from '@/lib/account';
 import { clearPin } from '@/lib/profile-pin';
 import { connectionsOfProfile, deleteProfile, type Profile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -47,16 +47,9 @@ export function useRemovePerson(): {
     const servers = connectionsOfProfile(useSession.getState().connections, profile.connectionIds);
     const warned: Connection[] = [];
     for (const c of servers) {
-      let user = c.user;
-      const api = clients.get(c.id);
-      if (user && !accountFlagsKnown(user) && api) {
-        try {
-          user = await api.me();
-          void setConnectionUser(c.id, user);
-        } catch {
-          // offline: decide on what we have (as the account page's sign-out does)
-        }
-      }
+      const user = await freshAccountUser(c.user, clients.get(c.id), (fresh) => {
+        void setConnectionUser(c.id, fresh);
+      });
       if (needsPasswordWarning(user)) warned.push(c);
     }
     setPending({ profile, name, servers, warned });
