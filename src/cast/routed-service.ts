@@ -73,11 +73,6 @@ export class RoutedPlaybackService implements PlaybackService {
     }
   }
 
-  /** Is a Cast session the route now? */
-  isCasting(): boolean {
-    return this.mode === 'cast';
-  }
-
   /** The cast route, while there is one. */
   castRoute(): CastPlaybackService | null {
     return this.cast;

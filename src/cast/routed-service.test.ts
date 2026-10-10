@@ -137,7 +137,7 @@ describe('RoutedPlaybackService', () => {
     expect(t.seen.some((s) => s.state === 'idle')).toBe(false);
     expect(t.local.calls.slice(-2)).toEqual(['local.pause', 'local.reset']);
     expect(cast.calls).toEqual(['cast.load(1,120)', 'cast.setRate(1.5)', 'cast.play']);
-    expect(t.router.isCasting()).toBe(true);
+    expect(t.router.castRoute()).not.toBeNull();
     expect(t.seen.at(-1)).toMatchObject({ state: 'playing', trackIndex: 1, position: 120 });
   });
 
@@ -178,7 +178,7 @@ describe('RoutedPlaybackService', () => {
     const t = setup();
     const cast = fakeCast();
     await t.router.beginCast(cast as unknown as CastPlaybackService);
-    expect(t.router.isCasting()).toBe(true); // nothing loaded: the route switches at once
+    expect(t.router.castRoute()).not.toBeNull(); // nothing loaded: the route switches at once
     await t.router.load(TRACKS, 0, 50, [], BOOK);
     expect(cast.calls).toEqual(['cast.load(0,50)']);
     expect(t.local.calls).toEqual([]);
@@ -193,7 +193,7 @@ describe('RoutedPlaybackService', () => {
     t.router.onCastFailed = failed;
     await t.router.beginCast(cast as unknown as CastPlaybackService);
     expect(failed).toHaveBeenCalledWith(expect.any(CastBlockedError));
-    expect(t.router.isCasting()).toBe(false);
+    expect(t.router.castRoute()).toBeNull();
     expect(t.local.calls.slice(-2)).toEqual(['local.load(1,120)', 'local.setRate(1.5)']);
     expect(cast.detach).toHaveBeenCalled();
     await t.router.play();
@@ -210,7 +210,7 @@ describe('RoutedPlaybackService', () => {
     await t.router.load(TRACKS, 1, 7, [], BOOK);
     expect(t.local.calls).toEqual(['local.load(1,7)']);
     expect(failed).toHaveBeenCalled();
-    expect(t.router.isCasting()).toBe(false);
+    expect(t.router.castRoute()).toBeNull();
   });
 
   it('hands the book back when the session ends: paused, at the receiver place, never playing', async () => {
@@ -221,7 +221,7 @@ describe('RoutedPlaybackService', () => {
     cast.emit({ state: 'playing', trackIndex: 0, position: 444 });
     const before = t.local.calls.length;
     await t.router.endCast();
-    expect(t.router.isCasting()).toBe(false);
+    expect(t.router.castRoute()).toBeNull();
     expect(cast.detach).toHaveBeenCalled();
     const paused = t.seen.filter((s) => s.state === 'paused').at(-1);
     expect(paused).toMatchObject({ trackIndex: 0, position: 444 });
@@ -246,7 +246,7 @@ describe('RoutedPlaybackService', () => {
     await t.router.endCast();
     finishLoad();
     await begin;
-    expect(t.router.isCasting()).toBe(false);
+    expect(t.router.castRoute()).toBeNull();
     expect(t.local.calls.filter((c) => c.startsWith('local.load')).at(-1)).toBe(
       'local.load(1,120)',
     );

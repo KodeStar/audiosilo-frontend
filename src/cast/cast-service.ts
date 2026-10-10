@@ -119,11 +119,6 @@ export class CastPlaybackService implements PlaybackService {
     this.unsubs = [];
   }
 
-  /** The book loaded on the receiver, if any (the route switch hands it back to the phone). */
-  loadedBook(): BookRef | null {
-    return this.loaded?.book ?? null;
-  }
-
   /** Read the receiver's status now (bounded) and fold it in, so the place handed back to
    * the phone or saved before iOS suspends the app is the receiver's latest. */
   async refresh(): Promise<void> {
