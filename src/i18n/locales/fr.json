@@ -2089,6 +2089,9 @@
       "action": "Quitter le mode enfant"
     },
     "bedtime": {
+      "nowTitle": "C'est l'heure du coucher",
+      "timerLeft_one": "Minuterie de sommeil active, encore {{count}} minute",
+      "timerLeft_other": "Minuterie de sommeil active, encore {{count}} minutes",
       "at": "L'heure du coucher est à {{time}}",
       "now": "La minuterie de sommeil démarre quand une histoire commence",
       "later": "Après l'heure du coucher, une histoire s'arrête toute seule au bout de 20 minutes et le son baisse doucement."

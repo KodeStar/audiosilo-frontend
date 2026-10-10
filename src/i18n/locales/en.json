@@ -2089,6 +2089,9 @@
       "action": "Leave kids mode"
     },
     "bedtime": {
+      "nowTitle": "It's bedtime",
+      "timerLeft_one": "Sleep timer on, {{count}} minute left",
+      "timerLeft_other": "Sleep timer on, {{count}} minutes left",
       "at": "Bedtime is at {{time}}",
       "now": "Sleep timer comes on when a story starts",
       "later": "After bedtime, a story stops by itself after 20 minutes and the sound fades out slowly."

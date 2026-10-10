@@ -2089,6 +2089,9 @@
       "action": "Kindermodus verlassen"
     },
     "bedtime": {
+      "nowTitle": "Es ist Schlafenszeit",
+      "timerLeft_one": "Schlaf-Timer an, noch {{count}} Minute",
+      "timerLeft_other": "Schlaf-Timer an, noch {{count}} Minuten",
       "at": "Schlafenszeit ist um {{time}}",
       "now": "Der Schlaf-Timer startet, wenn eine Geschichte beginnt",
       "later": "Nach der Schlafenszeit hört eine Geschichte nach 20 Minuten von selbst auf, und der Ton wird langsam leiser."

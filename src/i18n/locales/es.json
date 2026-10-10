@@ -2089,6 +2089,9 @@
       "action": "Salir del modo infantil"
     },
     "bedtime": {
+      "nowTitle": "Es la hora de dormir",
+      "timerLeft_one": "Temporizador de sueño activo, queda {{count}} minuto",
+      "timerLeft_other": "Temporizador de sueño activo, quedan {{count}} minutos",
       "at": "La hora de dormir es a las {{time}}",
       "now": "El temporizador de sueño se activa cuando empieza un cuento",
       "later": "Después de la hora de dormir, un cuento se para solo a los 20 minutos y el sonido baja poco a poco."

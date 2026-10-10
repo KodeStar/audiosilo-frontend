@@ -2089,6 +2089,9 @@
       "action": "Esci dalla modalità bambini"
     },
     "bedtime": {
+      "nowTitle": "È l'ora della nanna",
+      "timerLeft_one": "Timer di spegnimento attivo, manca {{count}} minuto",
+      "timerLeft_other": "Timer di spegnimento attivo, mancano {{count}} minuti",
       "at": "L'ora della nanna è alle {{time}}",
       "now": "Il timer di spegnimento parte quando inizia una storia",
       "later": "Dopo l'ora della nanna, una storia si ferma da sola dopo 20 minuti e il suono si abbassa piano piano."

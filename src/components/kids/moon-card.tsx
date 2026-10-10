@@ -6,12 +6,14 @@ import { Text } from '@/components/ui/text';
 import { formatTimeOfDay } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { isBedtime } from '@/playback/auto-sleep-controller';
+import { useSleepTimer } from '@/playback/sleep-timer';
 import { ScopedThemeColors, useThemeColors } from '@/theme/use-theme-colors';
 
 /**
  * Kids mode's bedtime card (the prototype's moon card): "Bedtime is at 19:30", and what
  * happens then. Inside the bedtime window (until 06:00, `isBedtime`, re-read every 30 s)
- * it says the sleep timer comes on when a story starts; before it, what bedtime does.
+ * it says it is bedtime, and that the sleep timer comes on when a story starts, or, while
+ * a timer runs, the minutes it has left; before it, what bedtime does.
  */
 export function MoonCard({ bedtime }: { bedtime: string }) {
   return (
@@ -28,6 +30,13 @@ function MoonCardBody({ bedtime }: { bedtime: string }) {
   const themed = useThemeColors();
   const now = useNow(30_000);
   const inside = isBedtime(bedtime, new Date(now));
+  // A duration timer counting down (the bedtime rule arms one): its minutes left, rounded
+  // up, so "1 minute" lasts until the fade.
+  const minutesLeft = useSleepTimer((s) =>
+    (s.phase === 'running' || s.phase === 'ending') && s.endsAt !== null && s.remaining !== null
+      ? Math.max(1, Math.ceil(s.remaining / 60))
+      : null,
+  );
   return (
     <View
       accessible
@@ -37,10 +46,16 @@ function MoonCardBody({ bedtime }: { bedtime: string }) {
       <Icon name="moon" size={30} color={themed.warning} />
       <View className="flex-1 gap-1">
         <Text className="font-display text-xl text-foreground">
-          {t('kids.bedtime.at', { time: formatTimeOfDay(bedtime) })}
+          {inside
+            ? t('kids.bedtime.nowTitle')
+            : t('kids.bedtime.at', { time: formatTimeOfDay(bedtime) })}
         </Text>
         <Text className="font-sans text-base text-muted-foreground">
-          {inside ? t('kids.bedtime.now') : t('kids.bedtime.later')}
+          {minutesLeft !== null
+            ? t('kids.bedtime.timerLeft', { count: minutesLeft })
+            : inside
+              ? t('kids.bedtime.now')
+              : t('kids.bedtime.later')}
         </Text>
       </View>
     </View>

@@ -58,6 +58,7 @@ jest.mock('@/lib/layout', () => ({
 /* eslint-disable import/first */
 import { toast } from '@/components/ui/toast';
 import { formatTimeOfDay } from '@/lib/format';
+import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 
 import { HOLD_MS } from './grown-ups-button';
@@ -91,7 +92,26 @@ it('greets the child and says when bedtime is', async () => {
 it('says the sleep timer comes on, inside the bedtime window', async () => {
   jest.setSystemTime(new Date(2026, 9, 10, 20, 15));
   await render(<KidsScreen />);
+  // It is bedtime now: not "Bedtime is at 7:30 PM" in the middle of the night.
+  expect(screen.getByText("It's bedtime")).toBeTruthy();
+  expect(screen.queryByText(/Bedtime is at/)).toBeNull();
   expect(screen.getByText('Sleep timer comes on when a story starts')).toBeTruthy();
+});
+
+it('says the sleep timer is on, with its minutes left, while it runs', async () => {
+  jest.setSystemTime(new Date(2026, 9, 11, 2, 5));
+  useSleepTimer.setState({
+    phase: 'running',
+    endsAt: Date.now() + 12 * 60_000 + 10_000,
+    remaining: 12 * 60 + 10,
+  });
+  try {
+    await render(<KidsScreen />);
+    expect(screen.getByText("It's bedtime")).toBeTruthy();
+    expect(screen.getByText('Sleep timer on, 13 minutes left')).toBeTruthy();
+  } finally {
+    await act(async () => useSleepTimer.setState({ phase: 'idle', endsAt: null, remaining: null }));
+  }
 });
 
 it('plays a story through the one play path when its tile is tapped', async () => {
