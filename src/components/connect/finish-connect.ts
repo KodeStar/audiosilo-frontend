@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import type { AuthSession, ServerAddresses } from '@/api/types';
 import { connectForNewProfile } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
-import { serverIdOf } from '@/lib/connection-id';
+import { priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
 import { activeProfile, placeConnection, profileOf, switchProfile } from '@/stores/profiles';
@@ -55,10 +55,7 @@ export async function finishConnect(input: {
   const newPerson = connectForNewProfile();
   // A connection the device already had (a re-pair) keeps its person; read before the
   // session adds a new one (the profiles reconcile places it at once).
-  const sameServer = connections.filter((c) => serverIdOf(c) === serverId);
-  const existing =
-    sameServer.find((c) => c.user?.id === input.session.user.id) ??
-    sameServer.find((c) => typeof c.user?.id !== 'number');
+  const existing = priorConnection(connections, serverId, input.session.user.id);
   const hadProfile = existing ? profileOf(existing.id) : null;
   const id = await setSession({
     serverUrl: plan.serverUrl,

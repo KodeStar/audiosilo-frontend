@@ -1,5 +1,5 @@
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
-import { serverIdOf } from '@/lib/connection-id';
+import { priorConnection, serverIdOf } from '@/lib/connection-id';
 import type { KnownServer } from '@/lib/known-servers';
 import { normalizeUrl, type PairingScan } from '@/lib/pairing';
 import {
@@ -67,9 +67,11 @@ export function repairPlan(input: {
   userId?: number;
 }): { serverUrl: string; addresses: ServerAddresses | undefined } {
   const { pending, serverId, connections, reconnectId, answer, known, userId } = input;
-  const onServer = connections.filter((c) => serverIdOf(c) === serverId);
+  // The connection the session will update (`priorConnection`), else another user's on
+  // the same server (its address is the server's own all the same).
   const same =
-    (userId !== undefined ? onServer.find((c) => c.user?.id === userId) : undefined) ?? onServer[0];
+    (userId !== undefined ? priorConnection(connections, serverId, userId) : undefined) ??
+    connections.find((c) => serverIdOf(c) === serverId);
   if (same && isOwnAddress(pending, same)) {
     return { serverUrl: same.serverUrl, addresses: answer };
   }

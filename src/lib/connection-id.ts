@@ -26,10 +26,13 @@ import { getItem } from '@/lib/storage';
 /** Where the migration records `{ [legacyId]: newId }` (never wiped by a storage reset). */
 export const CONNECTION_ALIASES_KEY = 'audiosilo.connectionAliases';
 
+const isUserId = (id: unknown): id is number =>
+  typeof id === 'number' && Number.isSafeInteger(id) && id > 0;
+
 /** A user id that can be part of a connection id (a positive safe integer), else null. */
 export function usableUserId(user: unknown): number | null {
   const id = (user as { id?: unknown } | null | undefined)?.id;
-  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : null;
+  return isUserId(id) ? id : null;
 }
 
 /**
@@ -38,7 +41,7 @@ export function usableUserId(user: unknown): number | null {
  * gives the legacy form, the bare `server_id`, which keeps working everywhere.
  */
 export function connectionIdOf(serverId: string, userId: number | null | undefined): string {
-  return usableUserId({ id: userId }) === null ? serverId : `${serverId}.${userId}`;
+  return isUserId(userId) ? `${serverId}.${userId}` : serverId;
 }
 
 const NEW_FORM = /^(.+)\.(\d+)$/;
@@ -47,10 +50,8 @@ const NEW_FORM = /^(.+)\.(\d+)$/;
  * bare `server_id`, so it names no user. */
 export function parseConnectionId(id: string): { serverId: string; userId?: number } {
   const m = NEW_FORM.exec(id);
-  if (m) {
-    const userId = Number(m[2]);
-    if (Number.isSafeInteger(userId) && userId > 0) return { serverId: m[1], userId };
-  }
+  const userId = m ? Number(m[2]) : null;
+  if (m && isUserId(userId)) return { serverId: m[1], userId };
   return { serverId: id };
 }
 
@@ -64,6 +65,24 @@ export function isLegacyConnectionId(id: string): boolean {
  * compare a connection with a `server_id` or with another connection's server. */
 export function serverIdOf(conn: { id: string; serverId?: string }): string {
   return conn.serverId || parseConnectionId(conn.id).serverId;
+}
+
+/**
+ * The connection this device already has for `userId` on the server `serverId` (matched by
+ * `serverIdOf` and `user.id`, at any URL), else one saved without a numeric user id (from
+ * before user ids were kept: it was the server's one connection, so it is taken to be this
+ * user). Undefined for a user new to this device. The one rule the session's `setSession`
+ * (which connection a sign-in updates), the connect flow (which person it keeps) and
+ * `repairPlan` (which address it keeps) share.
+ */
+export function priorConnection<
+  C extends { id: string; serverId?: string; user?: { id?: unknown } | null },
+>(connections: readonly C[], serverId: string, userId: number): C | undefined {
+  const onServer = connections.filter((c) => serverIdOf(c) === serverId);
+  return (
+    onServer.find((c) => c.user?.id === userId) ??
+    onServer.find((c) => typeof c.user?.id !== 'number')
+  );
 }
 
 // --- Aliases ----------------------------------------------------------------------------
@@ -88,17 +107,8 @@ export function parseAliases(raw: unknown): Record<string, string> {
  * at launch (`bootstrapPlayback`); before that it maps nothing.
  */
 export function resolveConnectionId(id: string): string {
-  let current = id;
-  // A chain can't happen (a new id is never moved again), but a corrupt document must not
-  // loop: follow at most a few steps.
-  for (let i = 0; i < 4; i++) {
-    const next = Object.prototype.hasOwnProperty.call(aliases, current)
-      ? aliases[current]
-      : undefined;
-    if (!next || next === current) break;
-    current = next;
-  }
-  return current;
+  // One step: a new id is never moved again, so there is no chain to follow.
+  return Object.hasOwn(aliases, id) ? aliases[id] : id;
 }
 
 /** Replace the in-memory aliases (the migration, after recording them; tests). */

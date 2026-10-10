@@ -10,6 +10,7 @@ import {
   loadConnectionAliases,
   parseAliases,
   parseConnectionId,
+  priorConnection,
   resolveConnectionId,
   serverIdOf,
   setConnectionAliases,
@@ -92,6 +93,22 @@ describe('serverIdOf', () => {
   });
 });
 
+describe('priorConnection', () => {
+  const on = (id: string, serverId: string, user?: { id?: unknown }) => ({ id, serverId, user });
+
+  it("finds the user's connection on the server, else one saved without a user id", () => {
+    const legacy = on('srv', 'srv', {});
+    const sam = on('srv.2', 'srv', { id: 2 });
+    const other = on('elsewhere.1', 'elsewhere', { id: 1 });
+    expect(priorConnection([legacy, sam, other], 'srv', 2)).toBe(sam);
+    expect(priorConnection([legacy, sam, other], 'srv', 1)).toBe(legacy);
+    expect(priorConnection([sam, other], 'srv', 1)).toBeUndefined();
+    expect(priorConnection([sam, other], 'elsewhere', 1)).toBe(other);
+    // A legacy connection with no serverId is matched by what its id says.
+    expect(priorConnection([{ id: 'srv', user: { id: 5 } }], 'srv', 5)?.id).toBe('srv');
+  });
+});
+
 describe('aliases', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
@@ -105,7 +122,7 @@ describe('aliases', () => {
     expect(resolveConnectionId('')).toBe('');
   });
 
-  it('never loops on a corrupt chain', () => {
+  it('a corrupt chain is one step, never a loop', () => {
     setConnectionAliases({ a: 'b', b: 'a' });
     expect(['a', 'b']).toContain(resolveConnectionId('a'));
   });
