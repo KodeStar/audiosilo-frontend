@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import { Portrait } from '@/components/series/portrait';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
-import { useNow } from '@/lib/use-now';
+import { useToday } from '@/lib/use-day-label';
 
 import { houseCopy, houseRowKey, rowsForBook } from './house-model';
 import { useHouseRows } from './use-house-rows';
@@ -31,7 +31,7 @@ export function InTheHouseCard({
   const { t } = useTranslation();
   const focused = useIsFocused();
   const rows = rowsForBook(useHouseRows(connectionId, focused), libraryId, path);
-  const now = useNow(60_000, rows.length > 0);
+  const today = useToday();
   if (rows.length === 0) return null;
   return (
     <Card testID="in-the-house" className="gap-3">
@@ -39,7 +39,7 @@ export function InTheHouseCard({
         {t('house.inTheHouse')}
       </Text>
       {rows.map((r) => {
-        const copy = houseCopy(r, now, t);
+        const copy = houseCopy(r, today, t);
         return (
           <View
             key={houseRowKey(r)}

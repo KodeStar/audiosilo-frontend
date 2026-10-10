@@ -4,6 +4,7 @@ import { activeProfile, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import {
+  type AutoSleepConfig,
   type AutoSleepDecision,
   canAutoSleepArm,
   decideAutoSleep,
@@ -46,7 +47,7 @@ export const KIDS_BEDTIME_UNTIL = '06:00';
 
 /** How long a story plays at bedtime before the timer fades it out (a duration timer, so
  * it fades like any other). */
-export const KIDS_BEDTIME_MINUTES = 20;
+const KIDS_BEDTIME_MINUTES = 20;
 
 /** Whether `now` (local wall clock) is inside a kids profile's bedtime window, from
  * `bedtime` ('HH:MM') until `KIDS_BEDTIME_UNTIL`, across midnight. A bedtime of 06:00
@@ -56,48 +57,37 @@ export function isBedtime(bedtime: string, now: Date): boolean {
 }
 
 /**
- * The bedtime rule of a kids profile: inside its window, every story that starts or
- * resumes gets a `KIDS_BEDTIME_MINUTES` timer, unless the book is blocked for the session
- * (a timer on it was cancelled: the same anti-nag rule as the setting's). Pure. It
- * REPLACES the device-wide auto sleep setting while a kids profile is active (a grown-up's
- * "end of chapter from 22:00" is not a child's bedtime), and the setting is untouched for
- * everyone else.
+ * The auto sleep rule that applies now. A kids profile's bedtime: always on, from its
+ * bedtime until `KIDS_BEDTIME_UNTIL`, a `KIDS_BEDTIME_MINUTES` timer on every story that
+ * starts or resumes. It REPLACES the device-wide setting while a kids profile is active (a
+ * grown-up's "end of chapter from 22:00" is not a child's bedtime). Everyone else: the
+ * device-wide setting, untouched. Either way `decideAutoSleep` applies it, with the same
+ * anti-nag memory.
  */
-export function decideBedtime(input: {
-  bedtime: string;
-  now: Date;
-  bookKey: string | null;
-  memory: AutoSleepMemory;
-}): AutoSleepDecision {
-  if (!canAutoSleepArm(input.memory, input.bookKey)) return { arm: 'none' };
-  if (!isBedtime(input.bedtime, input.now)) return { arm: 'none' };
-  return { arm: 'duration', minutes: KIDS_BEDTIME_MINUTES };
-}
-
-/** The active profile's kids bedtime, or null for a grown-up (or no profile). */
-function kidsBedtime(): string | null {
-  return activeProfile()?.kids?.bedtime ?? null;
-}
-
-/** Whether anything can arm right now: the device-wide setting is on, or the active
- * profile is in kids mode (whose bedtime rule is always on). */
-function autoSleepOn(): boolean {
-  return kidsBedtime() !== null || useSettings.getState().autoSleepTimer;
-}
-
-/** The decision for the book playing now: the kids profile's bedtime rule, else the
- * device-wide setting's. */
-function decideNow(bookKey: string | null): AutoSleepDecision {
-  const now = new Date();
-  const bedtime = kidsBedtime();
-  if (bedtime !== null) return decideBedtime({ bedtime, now, bookKey, memory: blocked });
+export function effectiveAutoSleepConfig(): AutoSleepConfig {
+  const bedtime = activeProfile()?.kids?.bedtime;
+  if (bedtime != null) {
+    return { enabled: true, from: bedtime, until: KIDS_BEDTIME_UNTIL, type: KIDS_BEDTIME_MINUTES };
+  }
   const settings = useSettings.getState();
-  return decideAutoSleep({
+  return {
     enabled: settings.autoSleepTimer,
     from: settings.autoSleepFrom,
     until: settings.autoSleepUntil,
     type: settings.autoSleepType,
-    now,
+  };
+}
+
+/** Whether anything can arm right now (`effectiveAutoSleepConfig`'s rule is on). */
+function autoSleepOn(): boolean {
+  return effectiveAutoSleepConfig().enabled;
+}
+
+/** The decision for the book playing now, by the rule that applies. */
+function decideNow(bookKey: string | null): AutoSleepDecision {
+  return decideAutoSleep({
+    ...effectiveAutoSleepConfig(),
+    now: new Date(),
     bookKey,
     memory: blocked,
   });
@@ -115,8 +105,8 @@ function decideNow(bookKey: string | null): AutoSleepDecision {
  * It listens to three things:
  * 1. the SETTING, which attaches/detaches the player watch (and takes effect the moment
  *    it is switched on, rather than at the next play edge), and the active PROFILE: a
- *    kids profile's bedtime rule (`decideBedtime`) replaces the setting while it is the
- *    active one, and is always on;
+ *    kids profile's bedtime rule replaces the setting while it is the active one, and is
+ *    always on (`effectiveAutoSleepConfig`);
  * 2. the PLAYER, for the transition into `playing` (see `watchPlayer`);
  * 3. the sleep timer's one event, `onSleepTimerEnded`, for how each timer ended.
  *
@@ -175,7 +165,7 @@ export function startAutoSleep(): () => void {
     // one that fades and pauses the book mid-drive sends the driver to the phone. The poll
     // goes on, so a book still playing once the car is gone is armed then.
     if (isCarConnected()) return;
-    // A kids profile's bedtime rule, else the device-wide setting (`decideNow`).
+    // A kids profile's bedtime rule, else the device-wide setting (`effectiveAutoSleepConfig`).
     const decision = decideNow(selectBookKey(usePlayer.getState()));
     if (decision.arm === 'none') return;
     if (decision.arm === 'duration') timer.startDuration(decision.minutes);
@@ -240,8 +230,11 @@ export function startAutoSleep(): () => void {
     poll.stop();
   }
 
-  /** Attach or detach the player watch to follow `autoSleepOn()`: the setting, or a kids
-   * profile becoming (or no longer being) the active one. */
+  /** Attach or detach the player watch to follow `autoSleepOn()`, derived from both
+   * stores: the setting, or a kids profile becoming (or no longer being) the active one
+   * (switching to or from a kids profile, or turning kids mode on or off, changes which
+   * rule applies, and whether any does). Any change of either store re-derives it; only a
+   * change of the answer does anything. */
   let on = autoSleepOn();
   function follow() {
     const next = autoSleepOn();
@@ -251,11 +244,7 @@ export function startAutoSleep(): () => void {
     else stopWatchingPlayer();
   }
 
-  const unsubscribeSettings = useSettings.subscribe((state, prev) => {
-    if (state.autoSleepTimer !== prev.autoSleepTimer) follow();
-  });
-  // Kids mode is a property of the active profile: switching to or from a kids profile
-  // (or turning kids mode on or off) changes which rule applies, and whether any does.
+  const unsubscribeSettings = useSettings.subscribe(() => follow());
   const unsubscribeProfiles = useProfiles.subscribe(() => follow());
 
   const unsubscribeEnded = onSleepTimerEnded((outcome) => {

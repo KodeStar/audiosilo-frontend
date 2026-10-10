@@ -2050,7 +2050,6 @@
     "settingsLink": "Sharing settings",
     "listLabel": "Listening in the house on {{server}}",
     "inTheHouse": "In the house",
-    "chapterN": "Chapter {{n}}",
     "line": "{{when}} · {{chapter}}",
     "when": {
       "playing": "Listening now",

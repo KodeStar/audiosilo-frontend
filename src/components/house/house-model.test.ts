@@ -3,9 +3,7 @@ import i18n from '@/i18n';
 
 import {
   chapterName,
-  daysAgo,
   houseCardWidth,
-  houseColumns,
   houseCopy,
   houseWhen,
   rowsForBook,
@@ -36,21 +34,6 @@ function row(over: Partial<HouseListeningRow> = {}): HouseListeningRow {
   };
 }
 
-describe('daysAgo', () => {
-  it('counts local calendar days, not 24-hour spans', () => {
-    const now = local(9, 0, 10);
-    expect(daysAgo(iso(local(9, 0, 5)), now)).toBe(0);
-    // Twenty minutes ago, but before midnight: yesterday.
-    expect(daysAgo(iso(local(8, 23, 50)), now)).toBe(1);
-    expect(daysAgo(iso(local(7, 12)), now)).toBe(2);
-  });
-
-  it('reads a save from a clock ahead of ours as today, and an unreadable time as null', () => {
-    expect(daysAgo(iso(local(10, 9)), local(9, 22))).toBe(0);
-    expect(daysAgo('not a time', local(9, 22))).toBeNull();
-  });
-});
-
 describe('houseWhen', () => {
   const now = local(9, 21);
   it('keeps the server’s playing and paused', () => {
@@ -65,6 +48,14 @@ describe('houseWhen', () => {
     );
     expect(houseWhen(row({ state: 'recent', updated_at: iso(local(6, 23)) }), now)).toBe('earlier');
     expect(houseWhen(row({ state: 'recent', updated_at: 'garbage' }), now)).toBe('today');
+  });
+
+  it('counts local calendar days, not 24-hour spans', () => {
+    const recent = (ms: number) => row({ state: 'recent', updated_at: iso(ms) });
+    // Twenty minutes ago, but before midnight: yesterday.
+    expect(houseWhen(recent(local(8, 23, 50)), local(9, 0, 10))).toBe('yesterday');
+    // A save from a clock ahead of ours is today.
+    expect(houseWhen(recent(local(10, 9)), local(9, 22))).toBe('today');
   });
 });
 
@@ -138,19 +129,14 @@ describe('houseCopy', () => {
 });
 
 describe('the Home grid', () => {
-  it('fits cards at least 250 wide, one on a phone or before measuring', () => {
-    expect(houseColumns(0, false)).toBe(1);
-    expect(houseColumns(1200, true)).toBe(1);
-    expect(houseColumns(511, false)).toBe(1);
-    expect(houseColumns(512, false)).toBe(2);
-    expect(houseColumns(1100, false)).toBe(4);
-  });
-
-  it('splits the width between the columns, floored so the last card never wraps', () => {
-    expect(houseCardWidth(0, false)).toBeUndefined();
-    expect(houseCardWidth(400, true)).toBe(400);
-    expect(houseCardWidth(513, false)).toBe(250);
-    const w = houseCardWidth(1101, false)!;
+  it('fits cards at least 250 wide, one on a phone, full width before measuring', () => {
+    expect(houseCardWidth(0, 'tablet')).toBeUndefined();
+    expect(houseCardWidth(400, 'phone')).toBe(400);
+    expect(houseCardWidth(511, 'tablet')).toBe(511);
+    expect(houseCardWidth(513, 'tablet')).toBe(250);
+    // Floored, so the last card never wraps.
+    const w = houseCardWidth(1101, 'desktop')!;
+    expect(w).toBe(266);
     expect(4 * w + 3 * 12).toBeLessThanOrEqual(1101);
   });
 });

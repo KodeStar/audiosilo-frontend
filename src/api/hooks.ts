@@ -1844,13 +1844,17 @@ export function useRevokeMyDevice(connectionId?: string) {
 }
 
 /** Whether the caller shares what they are listening to with the house (capability
- * `household`; `{ share_listening }`, off by default). */
+ * `household`; `{ share_listening }`, off by default). Fresh until the app restarts:
+ * Home and every book page read it, and it only changes through `useSetHousehold`,
+ * which stores the server's answer (a change made on another device shows on the next
+ * launch). */
 export function useHousehold(connectionId?: string) {
   return useCapabilityQuery(
     'household',
     qk.household,
     (api, signal) => api.household(signal),
     connectionId,
+    { staleTime: Infinity },
   );
 }
 

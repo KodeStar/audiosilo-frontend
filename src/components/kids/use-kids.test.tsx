@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { Book, Library, Progress } from '@/api/types';
@@ -7,8 +7,12 @@ import type { Book, Library, Progress } from '@/api/types';
 const mockClient = {
   serverInfo: jest.fn(async () => ({ capabilities: {} })),
   libraries: jest.fn(async (): Promise<Library[]> => []),
-  listBooks: jest.fn(async (_lib: number) => ({ books: [] as Book[], next_cursor: '' })),
+  listBooks: jest.fn(async (_lib: number, _q: { cursor?: string }) => ({
+    books: [] as Book[],
+    next_cursor: '',
+  })),
   allProgress: jest.fn(async (): Promise<Progress[]> => []),
+  item: jest.fn(async (lib: number, path: string) => book(path, lib)),
 };
 // Lazy: the factory runs before `mockClient` is initialised (the imports are hoisted).
 jest.mock('@/api/provider', () =>
@@ -17,8 +21,9 @@ jest.mock('@/api/provider', () =>
     'srv.7': {
       serverInfo: () => mockClient.serverInfo(),
       libraries: () => mockClient.libraries(),
-      listBooks: (lib: number) => mockClient.listBooks(lib),
+      listBooks: (lib: number, q: { cursor?: string }) => mockClient.listBooks(lib, q),
       allProgress: () => mockClient.allProgress(),
+      item: (lib: number, path: string) => mockClient.item(lib, path),
     },
   }),
 );
@@ -27,8 +32,9 @@ jest.mock('@/api/provider', () =>
 import { useReachability } from '@/api/reachability';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
-import { type KidsSettings, useProfiles } from '@/stores/profiles';
+import { type KidsSettings, resetProfilesForTests } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
+import { seedProfile } from '@/testing/seed-profile';
 
 import { useKidsStories } from './use-kids';
 /* eslint-enable import/first */
@@ -54,19 +60,21 @@ const CONN = {
 
 function setKids(kids: KidsSettings) {
   useSession.setState({ connections: [CONN], defaultConnectionId: CONN.id });
-  useProfiles.setState({
-    profiles: [{ id: 'p', name: 'Leo', connectionIds: [CONN.id], kids }],
-    activeProfileId: 'p',
-    hydrated: true,
-  });
+  seedProfile({ connectionIds: [CONN.id], kids });
 }
 
-function mount() {
+function mount(onRender?: () => void) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useKidsStories(), { wrapper });
+  return renderHook(
+    () => {
+      onRender?.();
+      return useKidsStories();
+    },
+    { wrapper },
+  );
 }
 
 beforeEach(() => {
@@ -82,7 +90,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  useProfiles.setState({ profiles: [], activeProfileId: null, hydrated: false });
+  resetProfilesForTests();
   useSession.setState({ connections: [], defaultConnectionId: null });
 });
 
@@ -184,4 +192,80 @@ it('shows the downloaded stories while the server is unreachable', async () => {
     const s = result.current.stories;
     expect(s.status === 'ready' && s.offline && s.books.map((b) => b.rel_path)).toEqual(['saved']);
   });
+});
+
+it('starts with a story in progress that is not on the first page yet', async () => {
+  setKids({ bedtime: '19:30', library: { connectionId: CONN.id, libraryId: 2 } });
+  mockClient.allProgress.mockResolvedValue([
+    {
+      library_id: 2,
+      path: 'deep',
+      position: 60,
+      duration: 600,
+      finished: false,
+      playback_speed: 1,
+      version: 0,
+      device_id: 'd',
+      updated_at: '2026-10-01T00:00:00.000Z',
+    },
+  ]);
+  const { result } = await mount();
+  await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+  const s = result.current.stories;
+  expect(s.status === 'ready' && s.books.map((b) => b.rel_path)).toEqual(['deep', 'a', 'b', 'c']);
+  expect(mockClient.item).toHaveBeenCalledWith(2, 'deep');
+});
+
+it('asks for the next page of stories only when the grid nears its end', async () => {
+  setKids({ bedtime: '19:30', library: { connectionId: CONN.id, libraryId: 2 } });
+  mockClient.listBooks.mockImplementation(async (_lib: number, q: { cursor?: string }) =>
+    q.cursor ? { books: [book('d')], next_cursor: '' } : { books: [book('a')], next_cursor: 'p2' },
+  );
+  const { result } = await mount();
+  await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+  let s = result.current.stories;
+  expect(s.status === 'ready' && [s.books.map((b) => b.rel_path), s.more]).toEqual([
+    ['a'],
+    'available',
+  ]);
+  expect(mockClient.listBooks).toHaveBeenCalledTimes(1);
+
+  await act(async () => result.current.loadMore());
+  await waitFor(() => {
+    s = result.current.stories;
+    expect(s.status === 'ready' && [s.books.map((b) => b.rel_path), s.more]).toEqual([
+      ['a', 'd'],
+      'none',
+    ]);
+  });
+});
+
+it('does not re-render on a download progress tick', async () => {
+  setKids({ bedtime: '19:30' });
+  const entry = {
+    connectionId: CONN.id,
+    libraryId: 1,
+    path: 'saving',
+    title: 'saving',
+    status: 'downloading',
+    progress: 0.1,
+    bytes: 10,
+    totalBytes: 100,
+    manifest: {
+      book: book('saving', 1),
+      chapters: null,
+      files: [],
+      coverUri: null,
+      savedAt: '2026-10-01T00:00:00.000Z',
+    },
+  } as DownloadEntry;
+  useDownloads.setState({ entries: { k: entry } });
+  let renders = 0;
+  const { result } = await mount(() => void renders++);
+  await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+  const before = renders;
+  await act(async () =>
+    useDownloads.setState({ entries: { k: { ...entry, progress: 0.5, bytes: 50 } } }),
+  );
+  expect(renders).toBe(before);
 });

@@ -88,14 +88,20 @@ export function recordAutoSleepOutcome(
   return next;
 }
 
-export type AutoSleepInput = {
-  /** The `autoSleepTimer` setting. */
+/** The rule that applies: the device-wide setting's, or a kids profile's bedtime
+ * (`effectiveAutoSleepConfig` in the controller picks one). */
+export type AutoSleepConfig = {
+  /** Whether anything may arm (the `autoSleepTimer` setting; always on at bedtime). */
   enabled: boolean;
   /** Window bounds, local wall-clock "HH:MM". */
   from: string;
   until: string;
-  /** What an auto-armed timer should do. */
-  type: AutoSleepType;
+  /** What an auto-armed timer should do: the setting's choice, or a duration in minutes
+   * (a kids profile's bedtime timer). */
+  type: AutoSleepType | number;
+};
+
+export type AutoSleepInput = AutoSleepConfig & {
   /** Now, for the window test (injected so this stays pure). */
   now: Date;
   /** Identity of the book that just started playing; null when nothing is loaded. */

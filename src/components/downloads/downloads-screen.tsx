@@ -12,10 +12,10 @@ import { Text } from '@/components/ui/text';
 import {
   groupByServer,
   type ServerRef,
-  splitDownloads,
   statusSignature,
   storageBar,
   unsupportedReason,
+  visibleDownloads,
 } from '@/downloads/downloads-view';
 import { type KeepAheadSlot } from '@/downloads/keep-ahead';
 import { useKeepAhead } from '@/downloads/keep-ahead-controller';
@@ -121,8 +121,9 @@ export function DownloadsScreen() {
     servers.find((s) => s.id === id)?.name ?? t('downloads.storage.unknownServer');
   const { active, ready } = useMemo(
     () =>
-      splitDownloads(
-        Object.values(entries).filter((e) => servers.some((s) => s.id === e.connectionId)),
+      visibleDownloads(
+        entries,
+        servers.map((s) => s.id),
       ),
     [entries, servers],
   );
