@@ -134,7 +134,7 @@ describe('DockedPlayer', () => {
       'Playback speed, 1.25×',
       'Sleep timer',
       'Add a bookmark',
-      'AirPlay or Cast',
+      'Audio output',
       'Expand player',
       'Open the full player for The Way of Kings',
     ]) {

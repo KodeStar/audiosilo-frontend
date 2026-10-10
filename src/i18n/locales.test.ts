@@ -16,4 +16,11 @@ describe('locales', () => {
     expect(l.downloads.rules.modeHint).toBeTruthy();
     expect('autoDownload' in l.settings.upNext).toBe(false);
   });
+
+  // The output pill opens AirPlay (iOS, Safari) or Android's output switcher; casting has
+  // its own button (src/cast). Its name must not promise Cast.
+  it.each(Object.entries(LOCALES))('%s names the output pill without Cast', (_, l) => {
+    expect(l.player.routePicker.label).toBeTruthy();
+    expect(l.player.routePicker.label).not.toMatch(/cast|airplay/i);
+  });
 });

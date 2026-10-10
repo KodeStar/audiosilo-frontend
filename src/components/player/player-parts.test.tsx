@@ -126,7 +126,7 @@ describe('touch targets on native', () => {
       'More',
       'Playback speed, 1.25×',
       'Add a bookmark',
-      'AirPlay or Cast',
+      'Audio output',
       "Who's who",
       'Chapters',
     ]) {
