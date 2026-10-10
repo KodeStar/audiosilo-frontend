@@ -6,6 +6,7 @@ import {
   splitDownloads,
   storageBar,
   unsupportedReason,
+  visibleDownloads,
 } from './downloads-view';
 import type { DownloadEntry, DownloadStatus } from './types';
 
@@ -60,6 +61,20 @@ describe('splitDownloads', () => {
     ]);
     expect(active.map((e) => e.path)).toEqual(['run', 'q1', 'q2', 'failed']);
     expect(ready.map((e) => e.path)).toEqual(['new', 'old']);
+  });
+});
+
+describe('visibleDownloads', () => {
+  it("splits only the given connections' (the person listening's) downloads", () => {
+    const entries = {
+      mine: entry('mine', 'downloaded', { connectionId: 'a' }),
+      running: entry('running', 'downloading', { connectionId: 'a' }),
+      theirs: entry('theirs', 'downloaded', { connectionId: 'b' }),
+    };
+    const { active, ready } = visibleDownloads(entries, ['a']);
+    expect(active.map((e) => e.path)).toEqual(['running']);
+    expect(ready.map((e) => e.path)).toEqual(['mine']);
+    expect(visibleDownloads(entries, [])).toEqual({ active: [], ready: [] });
   });
 });
 

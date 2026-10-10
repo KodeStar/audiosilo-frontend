@@ -1,4 +1,5 @@
 import type { Book, Library, Progress } from '@/api/types';
+import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
 import { isInProgress } from '@/lib/progress-view';
 import type { KidsSettings } from '@/stores/profiles';
@@ -94,14 +95,8 @@ export function kidsDownloads(
   connectionId: string,
   libraryId: number | null,
 ): Book[] {
-  return Object.values(entries)
-    .filter(
-      (e) =>
-        e.status === 'downloaded' &&
-        e.connectionId === connectionId &&
-        (libraryId === null || e.libraryId === libraryId),
-    )
-    .sort((a, b) => b.manifest.savedAt.localeCompare(a.manifest.savedAt))
+  return visibleDownloads(entries, [connectionId])
+    .ready.filter((e) => libraryId === null || e.libraryId === libraryId)
     .map((e) => e.manifest.book);
 }
 

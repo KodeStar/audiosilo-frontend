@@ -3,7 +3,7 @@ import type { TFunction } from 'i18next';
 import type { SourcedProgress } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
 import { progressAt, splitProgress } from '@/components/home/home-model';
-import { splitDownloads } from '@/downloads/downloads-view';
+import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
@@ -188,10 +188,7 @@ export function downloadedEntries(
   entries: Record<string, DownloadEntry>,
   connectionIds: readonly string[],
 ): DownloadEntry[] {
-  const theirs = new Set(connectionIds);
-  return splitDownloads(
-    Object.values(entries).filter((e) => theirs.has(e.connectionId)),
-  ).ready.slice(0, CAR_TAB_LIMITS.downloads);
+  return visibleDownloads(entries, connectionIds).ready.slice(0, CAR_TAB_LIMITS.downloads);
 }
 
 // --- Items ----------------------------------------------------------------------------

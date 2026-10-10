@@ -62,6 +62,21 @@ export function splitDownloads(entries: Iterable<DownloadEntry>): {
   return { active, ready };
 }
 
+/**
+ * The downloads a person may see: the entries of `connectionIds` (the person listening's,
+ * Phase 8 profiles), split as `splitDownloads` splits them. The device keeps every
+ * person's downloads (and they keep playing for their owner), but each surface lists only
+ * the listener's: the Downloads page, the car's Downloads tab and kids mode's offline
+ * stories all read them here.
+ */
+export function visibleDownloads(
+  entries: Record<string, DownloadEntry>,
+  connectionIds: readonly string[],
+): { active: DownloadEntry[]; ready: DownloadEntry[] } {
+  const theirs = new Set(connectionIds);
+  return splitDownloads(Object.values(entries).filter((e) => theirs.has(e.connectionId)));
+}
+
 export type ServerRef = { id: string; name: string };
 
 export type ServerGroup = {

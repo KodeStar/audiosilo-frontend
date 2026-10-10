@@ -5,6 +5,7 @@ import { allProgressQuery, librariesQuery, useAllLibraryBooks } from '@/api/hook
 import { useOptionalApi } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
 import type { Book, Library } from '@/api/types';
+import { statusSignature } from '@/downloads/downloads-view';
 import { useDownloads } from '@/downloads/store';
 import { type Profile, useActiveProfile, useProfileConnections } from '@/stores/profiles';
 
@@ -59,10 +60,13 @@ export function useKidsStories(): {
   const books = useAllLibraryBooks(library?.id ?? 0, {}, cid ?? '', { enabled: !!library });
   const progress = useQuery(allProgressQuery(cid ?? '', client));
   const offline = useReachability((s) => (cid ? s.online[cid] === false : false));
-  const entries = useDownloads((s) => s.entries);
+  // Re-read when a download lands or goes, never on a progress tick (which would
+  // re-render the whole kids screen several times a second while one downloads).
+  const downloadsSig = useDownloads((s) => statusSignature(s.entries));
   const downloaded = useMemo(
-    () => (cid ? kidsDownloads(entries, cid, library?.id ?? null) : []),
-    [entries, cid, library?.id],
+    () => (cid ? kidsDownloads(useDownloads.getState().entries, cid, library?.id ?? null) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read on the signature
+    [downloadsSig, cid, library?.id],
   );
   const shelf = useMemo(
     () => (library ? kidsShelf(books.books, progress.data ?? [], library.id) : []),
