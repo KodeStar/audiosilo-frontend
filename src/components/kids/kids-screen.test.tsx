@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import type { Book } from '@/api/types';
 
@@ -51,6 +52,7 @@ jest.mock('./use-kids', () => ({
     connectionId: 'c',
     library: null,
     retry: mockRetry,
+    loadMore: jest.fn(),
   }),
 }));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'phone';
@@ -126,6 +128,7 @@ it('starts a story in place when its tile is tapped, never opening the full play
     status: 'ready',
     books: [book('kids/b', 'B'), book('kids/a', 'A')],
     offline: false,
+    more: 'none',
   };
   await render(<KidsScreen />);
   const tiles = screen.getAllByRole('button', { name: /^Play / });
@@ -137,7 +140,7 @@ it('starts a story in place when its tile is tapped, never opening the full play
 });
 
 it('plays the loaded story on rather than starting it again', async () => {
-  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false };
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
   mockLoadedKey = contentKey('c', 3, 'kids/a');
   await render(<KidsScreen />);
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
@@ -151,7 +154,7 @@ it('plays the loaded story on rather than starting it again', async () => {
 });
 
 it('says so when a story will not start', async () => {
-  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false };
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
   mockStart.mockRejectedValueOnce(new Error('gone'));
   await render(<KidsScreen />);
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
@@ -184,7 +187,7 @@ it('has loading, empty, error and offline states', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
   expect(mockRetry).toHaveBeenCalled();
 
-  mockStories = { status: 'ready', books: [book('saved')], offline: true };
+  mockStories = { status: 'ready', books: [book('saved')], offline: true, more: 'none' };
   await view.rerender(<KidsScreen />);
   expect(screen.getByTestId('kids-offline-note')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Play saved' })).toBeTruthy();
@@ -198,8 +201,39 @@ it('goes to "Who\'s listening?" after a grown-up holds for 2 seconds', async () 
 });
 
 it('offers no way into search, settings or downloads', async () => {
-  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false };
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
   await render(<KidsScreen />);
   const labels = screen.getAllByRole('button').map((b) => b.props.accessibilityLabel);
   expect(labels).toEqual(['Grown-ups', 'Play A']);
+});
+
+it('asks again under the grid when a further page of stories failed', async () => {
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'failed' };
+  await render(<KidsScreen />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+  expect(mockRetry).toHaveBeenCalled();
+
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'loading' };
+  await render(<KidsScreen />);
+  expect(screen.getByTestId('kids-more-loading')).toBeTruthy();
+});
+
+it('lays the stories out in rows by the measured width, at most 1200 wide', async () => {
+  mockLayout = 'desktop';
+  mockStories = {
+    status: 'ready',
+    books: ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((p) => book(`kids/${p}`, p)),
+    offline: false,
+    more: 'none',
+  };
+  await render(<KidsScreen />);
+  await fireEvent(screen.getByTestId('kids-page'), 'layout', {
+    nativeEvent: { layout: { width: 1600, height: 900 } },
+  });
+  // 1200 wide (1600 less the 36 gutters, capped): six 180 tiles with five 24 gaps.
+  const widths = screen
+    .getAllByRole('button', { name: /^Play / })
+    .map((b) => StyleSheet.flatten(b.props.style)?.width);
+  expect(new Set(widths)).toEqual(new Set([180]));
+  expect(widths).toHaveLength(7);
 });

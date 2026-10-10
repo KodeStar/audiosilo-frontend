@@ -3,9 +3,10 @@ import type { DownloadEntry } from '@/downloads/types';
 
 import {
   kidsAllowsPath,
-  kidsColumns,
   kidsConnectionId,
+  kidsContinuePaths,
   kidsDownloads,
+  kidsGrid,
   kidsLibrary,
   kidsShelf,
 } from './kids-model';
@@ -81,30 +82,48 @@ describe('kidsLibrary', () => {
   });
 });
 
-describe('kidsShelf', () => {
-  const books = [book('a'), book('b'), book('c'), book('d')];
-
-  it('puts the stories in progress first, most recent first, then the rest in order', () => {
+describe('kidsContinuePaths', () => {
+  it('lists the stories in progress, most recent first', () => {
     const rows = [
       progress('c', { updated_at: '2026-10-01T10:00:00.000Z' }),
       progress('d', { updated_at: '2026-10-03T10:00:00.000Z' }),
     ];
-    expect(kidsShelf(books, rows, 1).map((b) => b.rel_path)).toEqual(['d', 'c', 'a', 'b']);
+    expect(kidsContinuePaths(rows, 1)).toEqual(['d', 'c']);
   });
 
-  it('keeps finished and unstarted stories in the rest, in the server order', () => {
-    const rows = [progress('b', { finished: true }), progress('c', { position: 0 })];
-    expect(kidsShelf(books, rows, 1).map((b) => b.rel_path)).toEqual(['a', 'b', 'c', 'd']);
+  it('leaves out finished and unstarted stories', () => {
+    expect(
+      kidsContinuePaths([progress('b', { finished: true }), progress('c', { position: 0 })], 1),
+    ).toEqual([]);
   });
 
-  it("ignores another library's progress and progress for books no longer listed", () => {
-    const rows = [progress('b', { library_id: 2 }), progress('gone')];
-    expect(kidsShelf(books, rows, 1).map((b) => b.rel_path)).toEqual(['a', 'b', 'c', 'd']);
+  it("ignores another library's progress", () => {
+    expect(kidsContinuePaths([progress('b', { library_id: 2 })], 1)).toEqual([]);
   });
 
   it('lists each story once', () => {
-    const shelf = kidsShelf(books, [progress('a'), progress('a')], 1);
-    expect(shelf.map((b) => b.rel_path)).toEqual(['a', 'b', 'c', 'd']);
+    expect(kidsContinuePaths([progress('a'), progress('a')], 1)).toEqual(['a']);
+  });
+});
+
+describe('kidsShelf', () => {
+  const books = [book('a'), book('b'), book('c'), book('d')];
+
+  it('puts the stories in progress first, then the rest in the server order', () => {
+    expect(kidsShelf([book('d'), book('c')], books).map((b) => b.rel_path)).toEqual([
+      'd',
+      'c',
+      'a',
+      'b',
+    ]);
+  });
+
+  it('keeps a story in progress first while its page is not loaded yet', () => {
+    expect(kidsShelf([book('z')], books).map((b) => b.rel_path)).toEqual(['z', 'a', 'b', 'c', 'd']);
+  });
+
+  it('is the listed books alone with nothing in progress', () => {
+    expect(kidsShelf([], books)).toEqual(books);
   });
 });
 
@@ -173,12 +192,18 @@ describe('kidsAllowsPath', () => {
   });
 });
 
-describe('kidsColumns', () => {
-  it('fits as many tiles as the width allows, never fewer than two', () => {
-    expect(kidsColumns(368, 150, 16)).toBe(2);
-    expect(kidsColumns(800, 180, 24)).toBe(4);
-    expect(kidsColumns(1200, 180, 24)).toBe(6);
-    expect(kidsColumns(0, 180, 24)).toBe(2);
-    expect(kidsColumns(200, 180, 24)).toBe(2);
+describe('kidsGrid', () => {
+  it('fits as many 180 tiles as the width allows wider, never fewer than two', () => {
+    expect(kidsGrid(800, 'tablet').columns).toBe(4);
+    expect(kidsGrid(1200, 'desktop')).toMatchObject({ columns: 6, tile: 180, columnGap: 24 });
+    expect(kidsGrid(300, 'tablet').columns).toBe(2);
+  });
+
+  it('keeps two columns on a phone', () => {
+    expect(kidsGrid(368, 'phone')).toMatchObject({ columns: 2, tile: 176, columnGap: 16 });
+  });
+
+  it('has a tile width before the column is measured', () => {
+    expect(kidsGrid(0, 'phone')).toMatchObject({ columns: 2, tile: 150 });
   });
 });

@@ -21,6 +21,9 @@ export type EmptyStateProps = {
   action?: { label: string; onPress: () => void; icon?: IconName };
   /** `card`: on a quiet card, for a state inside a page (a list's empty or failed load). */
   variant?: 'plain' | 'card';
+  /** `large`: kids mode's bigger words and its big ink button (STYLEGUIDE section 5: 64 pt
+   * the kids-mode minimum). */
+  size?: 'default' | 'large';
   className?: string;
 };
 
@@ -37,10 +40,12 @@ export function EmptyState({
   hint,
   action,
   variant = 'plain',
+  size = 'default',
   className,
 }: EmptyStateProps) {
   const themed = useThemeColors();
   const card = variant === 'card';
+  const large = size === 'large';
   return (
     // cn: a caller's padding (e.g. a tab panel's py-6) must beat the default on every
     // platform, not only where the stylesheet happens to order it last.
@@ -54,13 +59,13 @@ export function EmptyState({
       {art ?? <Icon name={icon} size={40} color={themed.mutedForeground} />}
       <Text
         variant={art || card ? 'heading' : 'title'}
-        className="text-center"
+        className={cn('text-center', large && 'font-display text-2xl')}
         accessibilityRole="header"
       >
         {title}
       </Text>
       {hint ? (
-        <Text variant="muted" className="max-w-[440px] text-center">
+        <Text variant="muted" className={cn('max-w-[440px] text-center', large && 'text-base')}>
           {hint}
         </Text>
       ) : null}
@@ -68,10 +73,10 @@ export function EmptyState({
         <Button
           title={action.label}
           icon={action.icon}
-          variant={card ? 'outline' : 'secondary'}
-          size={card ? 'sm' : undefined}
+          variant={large ? 'default' : card ? 'outline' : 'secondary'}
+          size={large ? 'xl' : card ? 'sm' : undefined}
           onPress={action.onPress}
-          className={card ? undefined : 'mt-2'}
+          className={card && !large ? undefined : 'mt-2'}
         />
       ) : null}
     </View>
