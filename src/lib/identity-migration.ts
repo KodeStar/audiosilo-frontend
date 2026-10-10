@@ -336,10 +336,18 @@ export async function migrateConnectionIdentity(
       CONNECTIONS_KEY,
       IDENTITY_VERSION_KEY,
       IDENTITY_PLAN_KEY,
+      CONNECTION_ALIASES_KEY,
     ]);
     connections = readConnections(parse(raw[CONNECTIONS_KEY]));
     done = parse(raw[IDENTITY_VERSION_KEY]) === IDENTITY_VERSION;
     stored = parseAliases(parse(raw[IDENTITY_PLAN_KEY]));
+    // The aliases `resolveConnectionId` reads, loaded with this read instead of one of their
+    // own every launch (`bootstrapPlayback` reads them itself only when this read failed).
+    // Any the migration set in this runtime are kept.
+    setConnectionAliases({
+      ...parseAliases(parse(raw[CONNECTION_ALIASES_KEY])),
+      ...connectionAliases(),
+    });
   } catch (e) {
     return aborted('read', e);
   }
@@ -368,18 +376,23 @@ export async function migrateConnectionIdentity(
     if (loaded === UNKNOWN || (loaded && involved.has(loaded))) return aborted('busy');
   }
 
-  // 2. Tokens: copy and verify every one before anything else changes.
+  // 2. Tokens: copy and verify every one before anything else changes. Each connection's
+  // read, copy and read-back is one chain, the chains side by side (secure-store calls are
+  // slow, and the launch waits on this); any failure aborts with nothing else changed.
   const present = liveIds();
   try {
-    for (const [from, to] of moves) {
-      if (!present.has(from)) continue; // a plan entry whose connection is gone
-      const token = await getSecure(tokenKey(from));
-      if (token == null) continue; // no token: the session drops it at hydrate anyway
-      await setSecure(tokenKey(to), token);
-      if ((await getSecure(tokenKey(to))) !== token) {
-        throw new Error('the token copy did not read back');
-      }
-    }
+    await Promise.all(
+      moves
+        .filter(([from]) => present.has(from)) // a plan entry whose connection is gone
+        .map(async ([from, to]) => {
+          const token = await getSecure(tokenKey(from));
+          if (token == null) return; // no token: the session drops it at hydrate anyway
+          await setSecure(tokenKey(to), token);
+          if ((await getSecure(tokenKey(to))) !== token) {
+            throw new Error('the token copy did not read back');
+          }
+        }),
+    );
   } catch (e) {
     return aborted('tokens', e);
   }

@@ -1,9 +1,18 @@
 const calls: string[] = [];
 const mockMigrate = jest.fn(async () => {
   calls.push('migrate');
-  return { authReset: false, cacheReset: false };
+  return {
+    authReset: false,
+    cacheReset: false,
+    identity: { status: 'skipped' } as { status: string; step?: string },
+  };
 });
 jest.mock('@/lib/storage-migration', () => ({ migrateStorage: () => mockMigrate() }));
+
+const mockLoadAliases = jest.fn(async () => {
+  calls.push('aliases');
+});
+jest.mock('@/lib/connection-id', () => ({ loadConnectionAliases: () => mockLoadAliases() }));
 
 const mockClearAll = jest.fn(async () => {
   calls.push('clearAll');
@@ -71,6 +80,36 @@ describe('bootstrapPlayback', () => {
     expect(mockClearAll).not.toHaveBeenCalled();
   });
 
+  // The identity migration's first read loads the aliases; a read of their own only when
+  // that read failed (or the migration threw before it).
+  it('reads the connection aliases itself only when the migration could not', async () => {
+    await bootstrapPlayback();
+    expect(mockLoadAliases).not.toHaveBeenCalled();
+
+    forgetBootstrap();
+    mockMigrate.mockImplementationOnce(async () => {
+      calls.push('migrate');
+      return { authReset: false, cacheReset: false, identity: { status: 'aborted', step: 'read' } };
+    });
+    calls.length = 0;
+    await bootstrapPlayback();
+    expect(calls.filter((c) => c !== 'language').slice(0, 3)).toEqual([
+      'migrate',
+      'aliases',
+      'session',
+    ]);
+
+    forgetBootstrap();
+    mockLoadAliases.mockClear();
+    mockMigrate.mockImplementationOnce(async () => {
+      throw new Error('storage');
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await bootstrapPlayback();
+    warn.mockRestore();
+    expect(mockLoadAliases).toHaveBeenCalledTimes(1);
+  });
+
   // The car's headless task has no LanguageProvider: the launch steps apply the language.
   it('applies the listener’s language alongside, and resolves only once it is applied', async () => {
     let applied: () => void = () => {};
@@ -98,8 +137,8 @@ describe('bootstrapPlayback', () => {
   });
 
   it.each([
-    ['auth', { authReset: true, cacheReset: false }],
-    ['cache', { authReset: false, cacheReset: true }],
+    ['auth', { authReset: true, cacheReset: false, identity: { status: 'skipped' } }],
+    ['cache', { authReset: false, cacheReset: true, identity: { status: 'skipped' } }],
   ])('wipes the downloads root before hydrating after a %s reset', async (_axis, result) => {
     mockMigrate.mockImplementationOnce(async () => {
       calls.push('migrate');

@@ -411,6 +411,16 @@ describe('migrateConnectionIdentity', () => {
     });
   });
 
+  it('loads the stored aliases with its first read, even with nothing to move', async () => {
+    await set('audiosilo.connectionAliases', { old: 'old.2' });
+    expect(await migrateConnectionIdentity(deps())).toEqual({ status: 'skipped' });
+    expect(resolveConnectionId('old')).toBe('old.2');
+    // A done run, too (the launch reads them nowhere else).
+    setConnectionAliases({});
+    expect(await migrateConnectionIdentity(deps())).toEqual({ status: 'skipped' });
+    expect(resolveConnectionId('old')).toBe('old.2');
+  });
+
   it('keeps aliases an earlier run recorded', async () => {
     await seedLegacyInstall();
     await set('audiosilo.connectionAliases', { gone: 'gone.1' });

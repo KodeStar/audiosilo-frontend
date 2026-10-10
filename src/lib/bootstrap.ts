@@ -25,9 +25,10 @@ let pending: Promise<void> | null = null;
  *    keychain or storage hiccup must never skip the hydration below, which would strand
  *    the app on 'loading' forever. It also moves legacy connection ids to
  *    `<server_id>.<user_id>` (the identity migration), before any store reads them.
- * 2. Load the connection aliases (`loadConnectionAliases`: old id -> new id), so an old id
- *    arriving from outside (a car item, a widget link, the Android service's book) resolves
- *    (`resolveConnectionId`) from here on.
+ * 2. The connection aliases (old id -> new id) are loaded, so an old id arriving from
+ *    outside (a car item, a widget link, the Android service's book) resolves
+ *    (`resolveConnectionId`) from here on: by the identity migration's first read, else
+ *    (that read failed, or the migration never ran) by `loadConnectionAliases`.
  * 3. When either axis reset, the downloaded files no longer match the registry (an auth
  *    wipe orphans them; a cache-schema bump invalidates them): wipe the whole downloads
  *    root once, or they leak, uncounted, forever.
@@ -48,13 +49,15 @@ export function bootstrapPlayback(): Promise<void> {
 async function run(): Promise<void> {
   const language = restoreLanguage(); // never rejects
   let didReset = false;
+  let aliasesLoaded = false;
   try {
-    const { authReset, cacheReset } = await migrateStorage();
+    const { authReset, cacheReset, identity } = await migrateStorage();
     didReset = authReset || cacheReset;
+    aliasesLoaded = !(identity.status === 'aborted' && identity.step === 'read');
   } catch (e) {
     console.warn('[storage] stale-state reset failed', e);
   }
-  await loadConnectionAliases(); // never rejects
+  if (!aliasesLoaded) await loadConnectionAliases(); // never rejects
   if (didReset && engine.clearAll) {
     try {
       await engine.clearAll();
