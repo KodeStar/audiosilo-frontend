@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { BASE_URL as BASE } from '@/lib/base-url';
+import { legacyIdOf } from '@/lib/connection-id';
 
 import type { DownloadEngine, DownloadProgressCb } from './types';
 
@@ -34,9 +35,11 @@ function slug(path: string): string {
 
 /** Same-origin, in-scope url prefix for a book's files (ends with `/`). The extra
  * `<connectionId>` segment scopes downloads per server; public/sw.js matches these
- * by `includes('/_offline/')`, so the extra segment needs no service-worker change. */
+ * by `includes('/_offline/')`, so the extra segment needs no service-worker change. A
+ * connection the identity migration moved keeps its files under its legacy id
+ * (`legacyIdOf`): the web never moves them (no `moveConnection` here). */
 function bookPrefix(connectionId: string, libraryId: number, path: string): string {
-  return `${location.origin}${BASE}/_offline/${connectionId}/${libraryId}/${slug(path)}/`;
+  return `${location.origin}${BASE}/_offline/${legacyIdOf(connectionId)}/${libraryId}/${slug(path)}/`;
 }
 
 /** Resolve true once our service worker controls this page (it serves the cached
@@ -253,38 +256,6 @@ export const engine: DownloadEngine = {
       );
     } catch {
       // best-effort cleanup
-    }
-  },
-
-  // `/_offline/<from>/...` becomes `/_offline/<to>/...` (the identity migration). The Cache
-  // API can't rename, so each file is put again under its new url, its body streamed from
-  // the cached one (never buffered whole: a book can be gigabytes), and only then deleted
-  // under the old one: one file at a time, so the cache never holds two copies of more than
-  // one file (the quota). A file already at the new url (a run cut short) is kept as it is
-  // (a `put` lands whole or not at all). Idempotent; rejects on the first file that can't
-  // move.
-  async moveConnection(fromId, toId) {
-    if (!supported || fromId === toId) return;
-    const base = `${location.origin}${BASE}/_offline/`;
-    const fromPrefix = `${base}${fromId}/`;
-    const toPrefix = `${base}${toId}/`;
-    const cache = await caches.open(MEDIA_CACHE);
-    const keys = (await cache.keys()).filter((req) => req.url.startsWith(fromPrefix));
-    for (const req of keys) {
-      const dest = toPrefix + req.url.slice(fromPrefix.length);
-      if (!(await cache.match(dest))) {
-        const res = await cache.match(req);
-        if (!res) continue; // gone meanwhile
-        await cache.put(
-          dest,
-          new Response(res.body, {
-            status: res.status,
-            statusText: res.statusText,
-            headers: res.headers,
-          }),
-        );
-      }
-      await cache.delete(req);
     }
   },
 

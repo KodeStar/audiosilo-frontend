@@ -8,7 +8,12 @@ import { resolveLibrarySelection } from '@/stores/library-selection';
 import { profileConnectionIds, resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { connectionAliases, resolveConnectionId, setConnectionAliases } from './connection-id';
+import {
+  connectionAliases,
+  legacyIdOf,
+  resolveConnectionId,
+  setConnectionAliases,
+} from './connection-id';
 import {
   ID_DOCUMENTS,
   IDENTITY_PLAN_KEY,
@@ -516,7 +521,30 @@ describe('migrateConnectionIdentity', () => {
       expect(await snapshotDocuments()).toEqual(before);
       expect(dirs).toEqual({ srvA: ['srvA-book'], srvB: ['srvB-book'], srvC: ['srvC-book'] });
       expect(await token('srvA')).toBe('tokA');
+      // Put back: nothing new in memory either.
+      expect(resolveConnectionId('srvA')).toBe('srvA');
 
+      storage.setMany.mockImplementation(realSetMany);
+      profileIds = 0;
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'migrated' });
+      await expectMigrated();
+    });
+
+    it('a document write that fails and cannot be put back: the moves are known in memory', async () => {
+      await seedLegacyInstall();
+      storage.setMany.mockImplementation(async (entries: Record<string, string>) => {
+        const pairs = Object.entries(entries);
+        await realSetMany(Object.fromEntries(pairs.slice(0, Math.ceil(pairs.length / 2))));
+        throw new Error('disk full');
+      });
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({
+        status: 'aborted',
+        step: 'documents',
+      });
+      // A document already naming a new id reaches its connection, and on the web its files
+      // under the legacy id, until the stored plan finishes next launch.
+      expect(resolveConnectionId('srvA')).toBe('srvA.3');
+      expect(legacyIdOf('srvB.7')).toBe('srvB');
       storage.setMany.mockImplementation(realSetMany);
       profileIds = 0;
       expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'migrated' });

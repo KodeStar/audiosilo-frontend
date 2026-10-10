@@ -50,10 +50,11 @@ import { type PersistedConnection, tokenKey } from '@/stores/session';
  *    back. Any failure (a CarPlay launch with the phone locked) aborts with nothing else
  *    changed. Old tokens are never deleted here, and a copy is never undone (a run cut
  *    short may already have documents naming the new id).
- * 3. Record the plan, then move the files: native `downloads/<old>` -> `downloads/<new>`, web
- *    the Cache API's `/_offline/<old>/` -> `/_offline/<new>/` (`engine.moveConnection`). A
- *    failure moves back what this run moved and aborts: the registry still names the old
- *    ids, so the files must stay where it says.
+ * 3. Record the plan, then move the files: native `downloads/<old>` -> `downloads/<new>`
+ *    (`engine.moveConnection`). A failure moves back what this run moved and aborts: the
+ *    registry still names the old ids, so the files must stay where it says. The web moves
+ *    nothing: its engine keeps a moved connection's files under the legacy id, mapped
+ *    through the aliases (`legacyIdOf`), so the registry's new ids find them.
  * 4. Rewrite every document naming a connection id in ONE `setMany` (the list below), plus
  *    the aliases (`resolveConnectionId`) and the first profiles document, and forget that a
  *    car snapshot was written (the next one is built fresh, even offline). A failed write
@@ -471,8 +472,11 @@ export async function migrateConnectionIdentity(
       await moveBack(deps, moved);
     } catch (restoreError) {
       // The documents are part old, part new: leave the files where they are now. The
-      // stored plan finishes the move next launch (every rewrite is idempotent).
+      // stored plan finishes the move next launch (every rewrite is idempotent). Meanwhile
+      // the moves are known in memory, so a document that already names a new id reaches
+      // its connection (and, on the web, its files under the legacy id).
       console.warn('[identity] could not put the documents back', restoreError);
+      setConnectionAliases({ ...connectionAliases(), ...plan });
     }
     return aborted('documents', e);
   }

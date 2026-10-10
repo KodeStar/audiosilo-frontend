@@ -627,8 +627,9 @@ function afterLaunch(task: () => void) {
  * cover), so the (connectionId, libraryId, path, fileName) → live-uri mapping lives
  * here too; `engine.localUri` supplies the container-current absolute uri (native) or
  * the virtual cache url (web). Recomputing from the entry's own connection id is also
- * what carries a download across the identity migration, which moves the files and
- * rewrites `connectionId` but not the stored uris. A no-op only for an engine without
+ * what carries a download across the identity migration, which rewrites `connectionId`
+ * but not the stored uris (and moves the files on native; the web engine finds them under
+ * the legacy id, `legacyIdOf`). A no-op only for an engine without
  * `localUri` (no offline storage).
  */
 function relocateEntry(e: DownloadEntry): DownloadEntry {

@@ -38,6 +38,8 @@ const cache = {
 
 const ORIGIN = 'https://books.example.com';
 let engine: DownloadEngine;
+// The engine's own copy of the alias table (it is loaded in isolation below).
+let setConnectionAliases: (next: Record<string, string>) => void;
 
 beforeAll(() => {
   const g = globalThis as Record<string, unknown>;
@@ -47,6 +49,9 @@ beforeAll(() => {
   jest.isolateModules(() => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     engine = (require('./engine.web') as { engine: DownloadEngine }).engine;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    ({ setConnectionAliases } =
+      require('@/lib/connection-id') as typeof import('@/lib/connection-id'));
   });
 });
 
@@ -60,56 +65,37 @@ const at = (id: string, rest: string) => `${ORIGIN}/_offline/${id}/${rest}`;
 const put = (url: string, body: string) =>
   store.set(url, { body, headers: { 'Content-Length': String(body.length) }, status: 200 });
 
-describe('engine.web moveConnection', () => {
-  it('puts every file of the connection under the new id, then drops the old ones', async () => {
-    put(at('srv', '1/Book-abc/0.mp3'), 'audio');
-    put(at('srv', '1/Book-abc/cover.jpg'), 'cover');
-    put(at('srv', '2/Other-1/meta.json'), '{}');
-    put(at('srvX', '1/Not-mine/0.mp3'), 'x'); // shares a prefix, not the id
-    put(`${ORIGIN}/_offline/__probe__`, '0');
-    await engine.moveConnection!('srv', 'srv.3');
-    expect([...store.keys()].sort()).toEqual(
-      [
-        at('srv.3', '1/Book-abc/0.mp3'),
-        at('srv.3', '1/Book-abc/cover.jpg'),
-        at('srv.3', '2/Other-1/meta.json'),
-        at('srvX', '1/Not-mine/0.mp3'),
-        `${ORIGIN}/_offline/__probe__`,
-      ].sort(),
+describe('engine.web, a connection the identity migration moved', () => {
+  afterEach(() => setConnectionAliases({}));
+
+  it('moves no file: the web has no moveConnection (the launch never copies)', () => {
+    expect(engine.moveConnection).toBeUndefined();
+  });
+
+  it("finds, writes and removes the moved connection's files under its legacy id", async () => {
+    // Where the files were downloaded, before the migration.
+    const audio = engine.localUri!('srv', 1, 'Book', '0.mp3');
+    expect(audio).toMatch(`${ORIGIN}/_offline/srv/1/`);
+    put(audio, 'audio');
+    put(at('srvX', '1/Book-abc/0.mp3'), 'x'); // shares a prefix, not the id
+    setConnectionAliases({ srv: 'srv.3' });
+
+    // The registry's new id reads the file where it always was.
+    expect(engine.localUri!('srv.3', 1, 'Book', '0.mp3')).toBe(audio);
+    expect(await engine.fileExists(engine.localUri!('srv.3', 1, 'Book', '0.mp3'))).toBe(true);
+    expect(await engine.writeText!('srv.3', 1, 'Book', 'meta.json', '{}')).toBe(true);
+    expect(store.has(engine.localUri!('srv', 1, 'Book', 'meta.json'))).toBe(true);
+    expect([...store.keys()].some((k) => k.includes('/_offline/srv.3/'))).toBe(false);
+
+    await engine.removeBook('srv.3', 1, 'Book');
+    expect([...store.keys()]).toEqual([at('srvX', '1/Book-abc/0.mp3')]);
+  });
+
+  it('a connection nobody moved (a new one, or one still legacy) uses its own id', () => {
+    setConnectionAliases({ srv: 'srv.3' });
+    expect(engine.localUri!('other.2', 1, 'Book', '0.mp3')).toMatch(
+      `${ORIGIN}/_offline/other.2/1/`,
     );
-    expect(store.get(at('srv.3', '1/Book-abc/0.mp3'))).toEqual({
-      body: 'audio',
-      headers: { 'Content-Length': '5' },
-      status: 200,
-    });
-    // The engine's own url for the new id is where the file now is.
-    expect(engine.localUri!('srv.3', 1, 'Book', '0.mp3')).toMatch(`${ORIGIN}/_offline/srv.3/1/`);
-  });
-
-  it('a file already at the new url (a run cut short) is kept as it is', async () => {
-    put(at('srv', '1/B-1/0.mp3'), 'old');
-    put(at('srv.3', '1/B-1/0.mp3'), 'moved');
-    await engine.moveConnection!('srv', 'srv.3');
-    expect(store.get(at('srv.3', '1/B-1/0.mp3'))?.body).toBe('moved');
-    expect(store.has(at('srv', '1/B-1/0.mp3'))).toBe(false);
-  });
-
-  it('is a no-op with nothing under the old id', async () => {
-    put(at('srv.3', '1/B-1/0.mp3'), 'a');
-    await engine.moveConnection!('srv', 'srv.3');
-    expect(cache.put).not.toHaveBeenCalled();
-    expect([...store.keys()]).toEqual([at('srv.3', '1/B-1/0.mp3')]);
-  });
-
-  it('rejects on a file it cannot put, never having dropped one it had not copied; moving back restores', async () => {
-    put(at('srv', '1/A-1/0.mp3'), 'a');
-    put(at('srv', '1/B-2/0.mp3'), 'b');
-    failPut = (url) => url === at('srv.3', '1/B-2/0.mp3');
-    await expect(engine.moveConnection!('srv', 'srv.3')).rejects.toThrow(/Quota/);
-    expect(store.get(at('srv', '1/B-2/0.mp3'))?.body).toBe('b'); // still where it was
-    expect(store.get(at('srv.3', '1/A-1/0.mp3'))?.body).toBe('a'); // the one that moved
-    failPut = null;
-    await engine.moveConnection!('srv.3', 'srv');
-    expect([...store.keys()].sort()).toEqual([at('srv', '1/A-1/0.mp3'), at('srv', '1/B-2/0.mp3')]);
+    expect(engine.localUri!('srv', 1, 'Book', '0.mp3')).toMatch(`${ORIGIN}/_offline/srv/1/`);
   });
 });

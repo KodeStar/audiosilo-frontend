@@ -180,7 +180,9 @@ export interface DownloadEngine {
    * Idempotent and resumable: nothing under `fromId` is done; a run cut short finishes,
    * keeping what already reached `toId`. Rejects when a file could not be moved (the files
    * that did stay at `toId`; moving back is the same call reversed). Omitted where there is
-   * no offline storage.
+   * no offline storage, and on the web, which keeps a moved connection's files under its
+   * legacy id instead (`legacyIdOf`: the Cache API can't rename, and a copy of every file
+   * held the launch).
    */
   moveConnection?(fromId: string, toId: string): Promise<void>;
   /** Total bytes used by all downloads. */

@@ -7,6 +7,7 @@ import {
   connectionAliases,
   connectionIdOf,
   isLegacyConnectionId,
+  legacyIdOf,
   loadConnectionAliases,
   parseAliases,
   parseConnectionId,
@@ -120,6 +121,17 @@ describe('aliases', () => {
     expect(resolveConnectionId('srv.3')).toBe('srv.3');
     expect(resolveConnectionId('other')).toBe('other');
     expect(resolveConnectionId('')).toBe('');
+  });
+
+  it('legacyIdOf turns an alias round: the id a moved connection had', () => {
+    setConnectionAliases({ srv: 'srv.3', other: 'other.1' });
+    expect(legacyIdOf('srv.3')).toBe('srv');
+    expect(legacyIdOf('other.1')).toBe('other');
+    expect(legacyIdOf('srv')).toBe('srv');
+    expect(legacyIdOf('new.4')).toBe('new.4');
+    expect(legacyIdOf('constructor')).toBe('constructor');
+    setConnectionAliases({});
+    expect(legacyIdOf('srv.3')).toBe('srv.3');
   });
 
   it('a corrupt chain is one step, never a loop', () => {

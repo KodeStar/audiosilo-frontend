@@ -86,6 +86,8 @@ export function priorConnection<
 // --- Aliases ----------------------------------------------------------------------------
 
 let aliases: Readonly<Record<string, string>> = {};
+/** `aliases` turned round: `{ [newId]: legacyId }` (`legacyIdOf`). */
+let legacyIds: Readonly<Record<string, string>> = {};
 
 /** Only string -> string pairs whose two sides differ survive a stored document. */
 export function parseAliases(raw: unknown): Record<string, string> {
@@ -109,9 +111,23 @@ export function resolveConnectionId(id: string): string {
   return Object.hasOwn(aliases, id) ? aliases[id] : id;
 }
 
+/**
+ * The legacy id the migration moved `id` from, else `id` itself. The web keeps a moved
+ * connection's downloaded files under that id (`engine.web.ts`): the Cache API can't rename,
+ * and copying every offline file on the launch path held a large offline library's first
+ * paint for as long as the copy took. Every engine call maps through this, so the registry's
+ * new ids find the files where they always were.
+ */
+export function legacyIdOf(id: string): string {
+  return Object.hasOwn(legacyIds, id) ? legacyIds[id] : id;
+}
+
 /** Replace the in-memory aliases (the migration, after recording them; tests). */
 export function setConnectionAliases(next: Record<string, string>): void {
   aliases = Object.freeze(parseAliases(next));
+  const back: Record<string, string> = {};
+  for (const [from, to] of Object.entries(aliases)) if (!Object.hasOwn(back, to)) back[to] = from;
+  legacyIds = Object.freeze(back);
 }
 
 /** The in-memory aliases (the migration merges new ones into them). */
