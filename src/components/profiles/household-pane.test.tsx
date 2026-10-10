@@ -44,6 +44,7 @@ jest.mock('@/components/house/house-sharing-row', () => {
 
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
+import { formatTimeOfDay } from '@/lib/format';
 import { checkPin, setPin } from '@/lib/profile-pin';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -116,6 +117,14 @@ describe('Settings > Household', () => {
     await fireEvent(screen.getByLabelText('Kids mode for Leo'), 'onCheckedChange', true);
     expect(leo()?.kids).toEqual({ bedtime: '19:30' });
     expect(screen.getByText('The first one (Kids)')).toBeTruthy();
+    // One clock for every bedtime time: the reader's (12 h in this test's locale), never a
+    // fixed 24 h "06:00" next to "7:30 PM".
+    expect(
+      screen.getByText(
+        `From then until ${formatTimeOfDay('06:00')}, playing starts a 20 minute sleep timer`,
+      ),
+    ).toBeTruthy();
+    expect(formatTimeOfDay('06:00')).toBe('6:00 AM');
     await fireEvent.press(screen.getByLabelText('Bedtime, 30 minutes later'));
     expect(leo()?.kids?.bedtime).toBe('20:00');
     await fireEvent(screen.getByLabelText('Kids mode for Leo'), 'onCheckedChange', false);

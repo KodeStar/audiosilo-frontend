@@ -2198,7 +2198,7 @@
       "librariesFailed": "Impossibile caricare le librerie.",
       "noLibraries": "Questo account non vede nessuna libreria. Chiedi a chi amministra il server di condividerne una.",
       "bedtime": "Ora della nanna",
-      "bedtimeBody": "Da quell'ora fino alle 06:00, la riproduzione avvia un timer di spegnimento di 20 minuti"
+      "bedtimeBody": "Da quell'ora fino alle {{until}}, la riproduzione avvia un timer di spegnimento di 20 minuti"
     },
     "remove": {
       "label": "Rimuovi da questo dispositivo",

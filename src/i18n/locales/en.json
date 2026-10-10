@@ -2198,7 +2198,7 @@
       "librariesFailed": "Couldn't load the libraries.",
       "noLibraries": "This account sees no libraries. Ask the server's admin to share one.",
       "bedtime": "Bedtime",
-      "bedtimeBody": "From then until 06:00, playing starts a 20 minute sleep timer"
+      "bedtimeBody": "From then until {{until}}, playing starts a 20 minute sleep timer"
     },
     "remove": {
       "label": "Remove from this device",

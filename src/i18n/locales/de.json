@@ -2198,7 +2198,7 @@
       "librariesFailed": "Die Bibliotheken konnten nicht geladen werden.",
       "noLibraries": "Dieses Konto sieht keine Bibliothek. Bitte die Person, die den Server verwaltet, eine freizugeben.",
       "bedtime": "Schlafenszeit",
-      "bedtimeBody": "Ab dann bis 06:00 startet das Abspielen einen 20-Minuten-Schlaftimer"
+      "bedtimeBody": "Ab dann bis {{until}} startet das Abspielen einen 20-Minuten-Schlaftimer"
     },
     "remove": {
       "label": "Von diesem Gerät entfernen",

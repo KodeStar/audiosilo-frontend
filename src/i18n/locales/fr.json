@@ -2198,7 +2198,7 @@
       "librariesFailed": "Impossible de charger les bibliothèques.",
       "noLibraries": "Ce compte ne voit aucune bibliothèque. Demandez à l'administrateur du serveur d'en partager une.",
       "bedtime": "Heure du coucher",
-      "bedtimeBody": "De cette heure jusqu'à 06:00, la lecture lance une minuterie de sommeil de 20 minutes"
+      "bedtimeBody": "De cette heure jusqu'à {{until}}, la lecture lance une minuterie de sommeil de 20 minutes"
     },
     "remove": {
       "label": "Retirer de cet appareil",

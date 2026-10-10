@@ -13,6 +13,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { TimeStepper } from '@/components/ui/time-stepper';
+import { formatTimeOfDay } from '@/lib/format';
+import { KIDS_BEDTIME_UNTIL } from '@/playback/auto-sleep-controller';
 import {
   DEFAULT_BEDTIME,
   type Profile,
@@ -264,7 +266,12 @@ function PersonCard({
           <SettingRow label={libraryLabel} description={t('profiles.kids.libraryBody')}>
             <KidsLibraryPicker profile={profile} label={libraryLabel} />
           </SettingRow>
-          <SettingRow label={bedtimeLabel} description={t('profiles.kids.bedtimeBody')}>
+          <SettingRow
+            label={bedtimeLabel}
+            description={t('profiles.kids.bedtimeBody', {
+              until: formatTimeOfDay(KIDS_BEDTIME_UNTIL),
+            })}
+          >
             <TimeStepper
               value={kids.bedtime}
               onChange={(bedtime) => setProfileKids(profile.id, { ...kids, bedtime })}

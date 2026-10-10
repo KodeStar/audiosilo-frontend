@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next';
 
+import { formatTimeOfDay } from '@/lib/format';
 import { connectionsOfProfile, type Profile, type ProfilesDoc } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
 
@@ -40,7 +41,9 @@ export function profileStatus(
   active: boolean,
   t: TFunction,
 ): string {
-  if (profile.kids) return t('profiles.status.kids', { time: profile.kids.bedtime });
+  // On the reader's clock, like every other bedtime on screen (`formatTimeOfDay`).
+  if (profile.kids)
+    return t('profiles.status.kids', { time: formatTimeOfDay(profile.kids.bedtime) });
   if (active) return t('profiles.status.listening');
   return serversLine(profile, connections, t);
 }

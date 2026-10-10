@@ -69,7 +69,7 @@ describe("Who's listening?", () => {
     expect(screen.getByText("Who's listening?")).toBeTruthy();
     expect(screen.getByLabelText('Chris, Listening now')).toBeTruthy();
     expect(screen.getByLabelText('Sam, Hearthside')).toBeTruthy();
-    expect(screen.getByLabelText('Leo, Kids mode · bedtime 19:30')).toBeTruthy();
+    expect(screen.getByLabelText('Leo, Kids mode · bedtime 7:30 PM')).toBeTruthy();
     // One ring: the person listening.
     expect(
       screen.getAllByTestId('person-avatar-ring', { includeHiddenElements: true }),

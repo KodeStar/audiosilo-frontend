@@ -40,7 +40,8 @@ describe('profiles model', () => {
     expect(profileStatus(chris, conns, true, t)).toBe('Listening now');
     expect(profileStatus(chris, conns, false, t)).toBe('Hearthside + 1 more');
     const leo: Profile = { ...sam, kids: { bedtime: '19:30' } };
-    expect(profileStatus(leo, conns, true, t)).toBe('Kids mode · bedtime 19:30');
+    // The reader's clock (12 h here), as the kids card and the Household row show it.
+    expect(profileStatus(leo, conns, true, t)).toBe('Kids mode · bedtime 7:30 PM');
   });
 
   it('asks at launch only with two or more people and the setting on', () => {
