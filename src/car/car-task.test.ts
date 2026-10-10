@@ -26,6 +26,9 @@ jest.mock('./car-controller', () => ({
   carSyncReady: jest.fn(async () => {
     calls.push('ready');
   }),
+  handleCarConnection: jest.fn((connected: boolean) => {
+    calls.push(`connection:${connected}`);
+  }),
 }));
 jest.mock('./car-connection', () => ({ isCarConnected: () => mockCarConnected }));
 let mockConnection: ((connected: boolean) => void) | null = null;
@@ -103,6 +106,41 @@ describe('runCarTask', () => {
     calls.length = 0;
     await run();
     expect(calls).toEqual(['bootstrap', 'start', 'ready']);
+  });
+});
+
+describe('startCarWork (iOS: the car start without the React tree)', () => {
+  /** A fresh copy of the module: its once-per-runtime state starts clean. */
+  function freshStart(): typeof import('./car-task').startCarWork {
+    let start!: typeof import('./car-task').startCarWork;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      start = require('./car-task').startCarWork;
+    });
+    return start;
+  }
+
+  it('runs the launch steps, the address pick, the place reconcile and the car sync, then hands the connect on', async () => {
+    const startCarWork = freshStart();
+    await startCarWork(() => true);
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start', 'connection:true']);
+    expect(mockStop).not.toHaveBeenCalled(); // never stopped
+  });
+
+  it('starts once per runtime, however many connects arrive (the root layout adds only shared starts)', async () => {
+    const startCarWork = freshStart();
+    await Promise.all([startCarWork(() => true), startCarWork(() => true)]);
+    await startCarWork(() => true);
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start', 'connection:true']);
+  });
+
+  it('hands on the state heard last: a car that left during the start is not connected', async () => {
+    const startCarWork = freshStart();
+    let connected = true;
+    const done = startCarWork(() => connected);
+    connected = false;
+    await done;
+    expect(calls[calls.length - 1]).toBe('connection:false');
   });
 });
 

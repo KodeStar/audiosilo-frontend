@@ -909,7 +909,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     service from the background, and we already run inside one) and then the headless task
     `AudiosiloCar`, even in an already running runtime (React Native fires JS timers with no
     activity resumed only while a task runs, and the snapshot writes are timers). `index.ts`
-    (`package.json` `main`) imports `src/car/register-car-task` (empty except on Android)
+    (`package.json` `main`) imports `src/car/register-car-task` (empty on the web; iOS: see CarPlay below)
     **before** `expo-router/entry`. `runCarTask` (`car-task.ts`) runs `bootstrapPlayback()`,
     starts address routing, the place reconcile and the car sync, and resolves once no car is
     connected and the player has been idle `CAR_TASK_IDLE_MS` (30 s).
@@ -943,6 +943,25 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   the saved place and the queue rules) and pushes Now Playing once the engine reports the book
   (gives up after 10 s); Now Playing reads the engine's chapter info and adds a chapter list, a
   rate button and a bookmark button. Car events wait in `AudiosiloCarEvents` until JS listens.
+  - **A CarPlay-first launch never renders the React tree.** React Native runs in the
+    parking window, which never gets a layout pass, and expo-router's `ExpoRoot` wraps the app
+    in a `SafeAreaProvider` with no initial metrics on native, which renders nothing until the
+    native provider reports insets (it needs a layout pass). The bundle and its timers run,
+    but the root layout and everything it starts don't, until the phone app opens. So **iOS
+    starts the car's work without the tree, like Android's headless task**:
+    `register-car-task.ios.ts` (imported first from `index.ts`) listens for the car connection
+    and on a connect runs `startCarWork` (`car-task.ts`): `bootstrapPlayback`, the address
+    pick, the place reconcile and the car sync, once per runtime (the root layout's later
+    starts are shared ones). Its listener is the first, so it gets the connect native queued
+    before JS listened; it hands that on through `handleCarConnection` (the sync's own
+    listener registers later and never sees it). Play requests and bookmarks are the sync's
+    listeners, so a tap queued natively is answered as soon as the sync runs. **Anything new a
+    car needs on iOS must be started from `startCarWork`, never only from a screen or the
+    root layout.**
+  - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
+    and iOS moves the data container on an update or restore; `CarArtworkPath` reads a missing
+    file from the same `Documents/`/`Library/` path in the current container (never outside
+    it). Covered by `modules/audiosilo-player/ios/SelfCheck/run.sh`.
 - **Tokens on a locked phone** (`src/lib/secure-store.ts`). CarPlay starts books with the phone
   in a pocket, and the default `WHEN_UNLOCKED` keychain item can't be read then. On iOS tokens
   live in their own keychain service, `audiosilo.tokens.afu`, written `AFTER_FIRST_UNLOCK`: a

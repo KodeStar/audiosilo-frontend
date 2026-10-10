@@ -1,6 +1,6 @@
 // Host self-check for the pure Swift parts of the iOS engine (no simulator needed):
 //   modules/audiosilo-player/ios/SelfCheck/run.sh
-// Compiled with swiftc together with ../ChapterClips.swift and ../VoiceBoostDSP.swift.
+// Compiled with swiftc together with ../ChapterClips.swift, ../VoiceBoostDSP.swift and ../CarArtworkPath.swift.
 // Excluded from the pod (AudiosiloPlayer.podspec `exclude_files`). Exits non-zero on failure.
 
 import AVFoundation
@@ -292,6 +292,48 @@ do {
   check(near(t2.elapsed, 50) && t2.duration == 150, "Three to EOF: 50 of 150: \(t2)")
   let t3 = clips.nowPlayingTimes(clip: 2, position: 300, fileDuration: nil)
   check(near(t3.elapsed, 50) && t3.duration == nil, "Three, file end unknown: no duration yet")
+}
+
+// MARK: - CarArtworkPath
+
+do {
+  // An app update moved the data container from OLD to NEW (both real UUID shapes).
+  let old = "/var/mobile/Containers/Data/Application/0A1B2C3D-0000-4000-8000-000000000001"
+  let new = "/var/mobile/Containers/Data/Application/9F8E7D6C-0000-4000-8000-000000000002"
+  let onDisk: Set<String> = [
+    "\(new)/Documents/car-artwork/abc.jpg",
+    "\(new)/Documents/downloads/c1/1/My%20Book/cover.jpg".removingPercentEncoding!,
+    "\(new)/Library/Caches/x.jpg",
+    "/etc/passwd",
+  ]
+  let exists = { (p: String) in onDisk.contains(p) }
+  let resolve = { (uri: String) in CarArtworkPath.resolve(uri, home: new, exists: exists) }
+
+  check(resolve("file://\(old)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg",
+        "a car cover under the old container is read from the new one")
+  check(resolve("file://\(old)/Documents/downloads/c1/1/My%20Book/cover.jpg") == "\(new)/Documents/downloads/c1/1/My Book/cover.jpg",
+        "a download's cover (percent-encoded) is re-rooted, decoded")
+  check(resolve("file:///private\(old)/Library/Caches/x.jpg") == "\(new)/Library/Caches/x.jpg",
+        "a /private/var path and Library/ re-root too")
+  check(resolve("file://\(new)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg",
+        "a file that exists is read as it is")
+  check(resolve("file://\(old)/Documents/car-artwork/gone.jpg") == nil, "missing in both containers: nil")
+  check(resolve("file://\(new)/Documents/car-artwork/gone.jpg") == nil, "missing in the current container: nil")
+  check(resolve("file://\(old)/Documents/../../../../../../etc/passwd") == nil
+        && CarArtworkPath.reroot("\(old)/Documents/../../etc/passwd", home: new) == nil,
+        "a `..` never leaves the container")
+  check(CarArtworkPath.reroot("\(old)/tmp/x.jpg", home: new) == nil, "only Documents/ or Library/ move")
+  check(CarArtworkPath.reroot("\(old)/Documents", home: new) == nil, "a bare folder is no file")
+  check(CarArtworkPath.reroot("/var/mobile/Containers/Shared/AppGroup/0A1B2C3D-0000-4000-8000-000000000001/x.jpg",
+                              home: new) == nil, "an App Group path is never re-rooted")
+  check(CarArtworkPath.reroot("/var/mobile/Containers/Data/Application/not-a-uuid/Documents/x.jpg", home: new) == nil,
+        "the container segment must be a UUID")
+  check(resolve("file:///etc/passwd") == "/etc/passwd" && resolve("https://example.com/x.jpg") == nil
+        && resolve("not a uri") == nil,
+        "an existing file is read as it is (as before); a URL or junk is not a file")
+  let sim = "/Users/me/Library/Developer/CoreSimulator/Devices/D7A1D0E8-0000-4000-8000-000000000003/data/Containers/Data/Application/0A1B2C3D-0000-4000-8000-000000000001"
+  check(CarArtworkPath.reroot("\(sim)/Documents/car-artwork/abc.jpg", home: new + "/") == "\(new)/Documents/car-artwork/abc.jpg",
+        "a Simulator path anchors on the app's container, not the Mac's Library; a trailing / on home is fine")
 }
 
 print("\(checks - failures)/\(checks) checks passed")
