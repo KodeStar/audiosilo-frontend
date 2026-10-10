@@ -2050,7 +2050,6 @@
     "settingsLink": "Einstellungen zum Teilen",
     "listLabel": "Was auf {{server}} im Haus gehört wird",
     "inTheHouse": "Im Haus",
-    "chapterN": "Kapitel {{n}}",
     "line": "{{when}} · {{chapter}}",
     "when": {
       "playing": "Hört gerade",

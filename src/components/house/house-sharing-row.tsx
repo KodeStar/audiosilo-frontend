@@ -3,19 +3,18 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { ApiError } from '@/api/client';
-import { CapabilityError, useCapability, useHousehold, useSetHousehold } from '@/api/hooks';
+import { CapabilityError, useHousehold, useSetHousehold } from '@/api/hooks';
 import { SettingRow } from '@/components/settings/settings-row';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { useSession } from '@/stores/session';
+import { useConnectionName } from '@/stores/session';
 
 /**
  * "Share what I'm listening to with the house" for ONE connection (Settings > Household;
- * the pane renders one per connection of the active profile, inside its `SettingsCard`).
- * Hidden when the server lacks `household` (or while that is not known yet, or the
- * connection is gone). The switch moves at once (optimistic) and settles on the server's
+ * the pane renders one per connection of the active profile whose server has
+ * `household`, inside its `SettingsCard`). Hidden when the connection is gone. The switch moves at once (optimistic) and settles on the server's
  * answer; a refusal puts it back and says so in a toast (a demo account gets its own
  * words). While the setting loads, or a change is in flight, the switch waits disabled;
  * a load that failed offers Retry.
@@ -28,12 +27,11 @@ export function HouseSharingRow({
   first?: boolean;
 }) {
   const { t } = useTranslation();
-  const supported = useCapability('household', connectionId);
-  const server = useSession((s) => s.connections.find((c) => c.id === connectionId)?.name);
+  const server = useConnectionName(connectionId);
   const settings = useHousehold(connectionId);
   const set = useSetHousehold(connectionId);
   const [optimistic, setOptimistic] = useState<boolean | null>(null);
-  if (supported !== true || server === undefined) return null;
+  if (!server) return null;
 
   const loaded = settings.data !== undefined;
   const value = optimistic ?? settings.data?.share_listening ?? false;
@@ -46,7 +44,7 @@ export function HouseSharingRow({
       // optimistic value below never flickers.
       await set.mutateAsync(share);
     } catch (e) {
-      // Never sent (the server lost the flag meanwhile): the row hides itself.
+      // Never sent (the server lost the flag meanwhile): the pane drops the row.
       if (e instanceof CapabilityError) return;
       toast(
         e instanceof ApiError && e.status === 403

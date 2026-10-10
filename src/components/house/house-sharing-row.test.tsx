@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { HouseholdSettings } from '@/api/types';
 
-let mockSupported: boolean | undefined = true;
 let mockSettings: {
   data?: HouseholdSettings;
   isError: boolean;
@@ -13,14 +12,12 @@ jest.mock('@/api/hooks', () => {
   class CapabilityError extends Error {}
   return {
     CapabilityError,
-    useCapability: () => mockSupported,
     useHousehold: () => mockSettings,
     useSetHousehold: () => ({ mutateAsync: (share: boolean) => mockMutate(share) }),
   };
 });
 jest.mock('@/stores/session', () => ({
-  useSession: (sel: (s: object) => unknown) =>
-    sel({ connections: [{ id: 'c1', name: 'Hearthside' }] }),
+  useConnectionName: (id: string) => (id === 'c1' ? 'Hearthside' : ''),
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
@@ -46,7 +43,6 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
-  mockSupported = true;
   mockSettings = { data: { share_listening: false }, isError: false, refetch: jest.fn() };
   mockMutate.mockReset();
   mockToast.mockReset();
@@ -62,16 +58,6 @@ describe('HouseSharingRow', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByRole('switch', { name: SWITCH })).not.toBeChecked();
-  });
-
-  it('is hidden on a server without household, or while that is unknown', async () => {
-    mockSupported = false;
-    await render(<HouseSharingRow connectionId="c1" />);
-    expect(screen.toJSON()).toBeNull();
-
-    mockSupported = undefined;
-    await render(<HouseSharingRow connectionId="c1" />);
-    expect(screen.toJSON()).toBeNull();
   });
 
   it('is hidden for a connection that is gone', async () => {

@@ -10,7 +10,7 @@ import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { openSettings, useOpen } from '@/lib/open';
-import { useNow } from '@/lib/use-now';
+import { useToday } from '@/lib/use-day-label';
 import type { Connection } from '@/stores/session';
 
 import { HOUSE_GAP, houseCardWidth, houseCopy, houseRowKey } from './house-model';
@@ -41,13 +41,13 @@ export function HouseRow({ connections }: { connections: readonly Connection[] }
 function HouseSection({ connection, active }: { connection: Connection; active: boolean }) {
   const { t } = useTranslation();
   const rows = useHouseRows(connection.id, active);
-  const phone = useLayout() === 'phone';
+  const layout = useLayout();
   const [width, setWidth] = useState(0);
   // "Earlier today" turns into "Yesterday" at midnight.
-  const now = useNow(60_000, rows.length > 0);
+  const today = useToday();
   if (rows.length === 0) return null;
 
-  const cardWidth = houseCardWidth(width, phone);
+  const cardWidth = houseCardWidth(width, layout);
   return (
     <HomeSection
       title={t('house.title')}
@@ -68,7 +68,7 @@ function HouseSection({ connection, active }: { connection: Connection; active: 
             testID="house-card-slot"
             style={{ width: cardWidth ?? '100%' }}
           >
-            <HouseCard connectionId={connection.id} row={r} now={now} />
+            <HouseCard connectionId={connection.id} row={r} today={today} />
           </View>
         ))}
       </View>
@@ -78,18 +78,18 @@ function HouseSection({ connection, active }: { connection: Connection; active: 
 
 /** One housemate: their avatar and name, the book's title and state line, its cover.
  * Tapping opens the book's page on this connection. */
-export function HouseCard({
+function HouseCard({
   connectionId,
   row,
-  now,
+  today,
 }: {
   connectionId: string;
   row: HouseListeningRow;
-  now: number;
+  today: number;
 }) {
   const { t } = useTranslation();
   const { openBook } = useOpen();
-  const copy = houseCopy(row, now, t);
+  const copy = houseCopy(row, today, t);
   return (
     <PressableRow
       testID="house-card"
