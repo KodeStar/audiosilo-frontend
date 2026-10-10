@@ -49,7 +49,7 @@ jest.mock('@/components/profiles/other-person-gate', () => {
 /* eslint-disable import/first */
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 
-import { ContentScope } from './content-scope';
+import { ContentScope, useRouteConnection } from './content-scope';
 /* eslint-enable import/first */
 
 beforeEach(() => {
@@ -163,5 +163,45 @@ describe('ContentScope and the people on this device (Phase 8)', () => {
     await mount();
     expect(screen.getByText('content')).toBeTruthy();
     expect(scopedTo).toBe('a.1');
+  });
+});
+
+// The root modals (the player, the end credits, the Year story) sit outside any scope and
+// follow the same rule through the hook.
+describe('useRouteConnection (the root modals)', () => {
+  function RootModal({ connection }: { connection?: string }) {
+    const { cid, gate } = useRouteConnection(connection);
+    return gate ?? <Text>{`modal-${cid}`}</Text>;
+  }
+  const show = async (connection?: string) => {
+    await act(async () => {
+      render(<RootModal connection={connection} />);
+    });
+  };
+
+  it('shows the screen for a signed-in connection, or for none (the fallback scope)', async () => {
+    mockConnections = [{ id: 'c1' }];
+    await show('c1');
+    expect(screen.getByText('modal-c1')).toBeTruthy();
+    await show(undefined);
+    expect(screen.getByText('modal-')).toBeTruthy();
+  });
+
+  it("an unknown connection gets the not-found state; another person's, the gate", async () => {
+    mockConnections = [{ id: 'c1' }, { id: 'c2' }];
+    await show('gone');
+    expect(screen.getByTestId('unknown-connection')).toBeTruthy();
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'p', name: 'Chris', connectionIds: ['c1'] },
+        { id: 's', name: 'Sam', connectionIds: ['c2'] },
+      ],
+      activeProfileId: 'p',
+    });
+    await show('c2');
+    expect(screen.getByText('gate-Sam')).toBeTruthy();
+    await show('c1');
+    expect(screen.getByText('modal-c1')).toBeTruthy();
   });
 });

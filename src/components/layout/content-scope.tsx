@@ -1,11 +1,12 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import type { ReactElement, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConnectionScope } from '@/api/provider';
 import { OtherPersonGate } from '@/components/profiles/other-person-gate';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
+import { backOrHome } from '@/lib/back-or-home';
 import { connectionParam } from '@/lib/paths';
 import { otherOwner, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -35,12 +36,29 @@ import { useSession } from '@/stores/session';
  */
 export function ContentScope({ children }: { children: ReactNode }) {
   const { connection } = useLocalSearchParams<{ connection?: string | string[] }>();
+  const { cid, gate } = useRouteConnection(connection);
+  return gate ?? <ConnectionScope connectionId={cid}>{children}</ConnectionScope>;
+}
+
+/**
+ * The rule every route that carries `?connection=` follows, in one place: the content
+ * screens through `ContentScope`, and the root modals (the player, the end credits, the
+ * Year in listening story), which sit outside any scope, directly. The param is read
+ * through `connectionParam` (an old id a widget or a car snapshot carries resolves);
+ * `gate` is what to show instead of the screen: a not-found state for a connection that
+ * isn't signed in, `OtherPersonGate` for another person's (switch first, their PIN rules
+ * apply). Null when the screen may show; `cid` is '' without a param (the caller's
+ * fallback scope).
+ */
+export function useRouteConnection(connection: string | string[] | undefined): {
+  cid: string;
+  gate: ReactElement | null;
+} {
   const cid = connectionParam(connection);
   const known = useSession((s) => !cid || s.connections.some((c) => c.id === cid));
   const owner = useProfiles((s) => otherOwner(s, cid));
-  if (!known) return <UnknownConnection />;
-  if (owner) return <OtherPersonGate profile={owner} />;
-  return <ConnectionScope connectionId={cid}>{children}</ConnectionScope>;
+  const gate = !known ? <UnknownConnection /> : owner ? <OtherPersonGate profile={owner} /> : null;
+  return { cid, gate };
 }
 
 function UnknownConnection() {
@@ -54,7 +72,7 @@ function UnknownConnection() {
         hint={t('shell.unknownConnection.hint')}
         action={{
           label: t('shell.unknownConnection.back'),
-          onPress: () => (router.canGoBack() ? router.back() : router.dismissTo('/')),
+          onPress: backOrHome,
         }}
       />
     </Screen>

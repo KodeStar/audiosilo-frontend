@@ -5,12 +5,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBook, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import { useRouteConnection } from '@/components/layout/content-scope';
 import { PlayerView } from '@/components/player/player-view';
-import { OtherPersonGate } from '@/components/profiles/other-person-gate';
 import { Spinner } from '@/components/ui/spinner';
-import { connectionParam, segmentsToPath } from '@/lib/paths';
+import { segmentsToPath } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
-import { otherOwner, useProfiles } from '@/stores/profiles';
 
 export default function PlayerScreen() {
   const {
@@ -26,8 +25,12 @@ export default function PlayerScreen() {
     position?: string;
     track?: string;
   }>();
-  // Through `connectionParam`: a widget's or Live Activity's link can carry an old id.
-  const connectionId = connectionParam(connection) || undefined;
+  // The route-connection rule (`useRouteConnection`): an old id (a widget's or Live
+  // Activity's link) resolves; an unknown connection or another person's (Phase 8: switch
+  // first, never start their book silently) shows its gate instead of the player.
+  const { cid: param, gate } = useRouteConnection(connection);
+  const gated = gate !== null;
+  const connectionId = param || undefined;
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
   // The player is a root modal (outside any route scope), so the connection it plays
@@ -35,9 +38,6 @@ export default function PlayerScreen() {
   // mini-player just re-shows nowPlaying).
   const cid = useCid(connectionId);
   const insets = useSafeAreaInsets();
-  // A link to another person's book on this device (Phase 8): switch to them first, never
-  // start their book silently.
-  const owner = useProfiles((s) => otherOwner(s, connectionId ?? ''));
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const seekBook = usePlayer((s) => s.seekBook);
@@ -71,7 +71,10 @@ export default function PlayerScreen() {
   // chapters would be missing. Start point priority: explicit position (bookmark
   // jump) > resume. If this book is already playing, only honor an explicit jump.
   useEffect(() => {
-    if (owner || !book || Number.isNaN(libraryId) || chaptersQuery.isLoading) return;
+    // Not while the gate shows: the store would refuse the start anyway (`mayActFor`), but
+    // the latch below must not record a start that never happened, or the book would not
+    // start once the listener switched.
+    if (gated || !book || Number.isNaN(libraryId) || chaptersQuery.isLoading) return;
     const posParam = position !== undefined ? Number(position) : undefined;
     const hasPos = posParam !== undefined && !Number.isNaN(posParam);
     const trackParam = track !== undefined ? Number(track) : undefined;
@@ -120,10 +123,10 @@ export default function PlayerScreen() {
     nowPlaying,
     seekBook,
     goToTrack,
-    owner,
+    gated,
   ]);
 
-  if (owner) return <OtherPersonGate profile={owner} />;
+  if (gate) return gate;
 
   if (!book && !nowPlaying) {
     return (

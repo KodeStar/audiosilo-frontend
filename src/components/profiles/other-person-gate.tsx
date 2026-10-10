@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -6,6 +5,7 @@ import { PersonAvatar } from '@/components/house/person-avatar';
 import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
 import { Text } from '@/components/ui/text';
+import { backOrHome } from '@/lib/back-or-home';
 import type { Profile } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -34,11 +34,7 @@ export function OtherPersonGate({ profile }: { profile: Profile }) {
           {t('profiles.gate.body', { name })}
         </Text>
         <View className="flex-row flex-wrap justify-center gap-2 pt-2">
-          <Button
-            variant="ghost"
-            title={t('profiles.gate.back')}
-            onPress={() => (router.canGoBack() ? router.back() : router.dismissTo('/'))}
-          />
+          <Button variant="ghost" title={t('profiles.gate.back')} onPress={backOrHome} />
           <Button
             testID="other-person-switch"
             title={t('profiles.gate.switch', { name })}
