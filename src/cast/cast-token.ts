@@ -1,5 +1,5 @@
 import type { CastToken } from '@/api/types';
-import { contentKey } from '@/lib/content-key';
+import { contentKey, isKeyOf } from '@/lib/content-key';
 
 /**
  * Cast tokens (capability `cast`, `POST /cast/token`): the receiver never gets the session
@@ -61,8 +61,7 @@ export function createCastTokenCache(now: () => number = Date.now): CastTokenCac
         tokens.clear();
         return;
       }
-      const prefix = `${connectionId}:`;
-      for (const key of [...tokens.keys()]) if (key.startsWith(prefix)) tokens.delete(key);
+      for (const key of [...tokens.keys()]) if (isKeyOf(key, connectionId)) tokens.delete(key);
     },
   };
 }
