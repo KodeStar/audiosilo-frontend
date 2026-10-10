@@ -180,10 +180,18 @@ export function continueRefs(
   return out;
 }
 
-/** The downloaded books, newest download first (the Downloads page's ready list),
- * `CAR_TAB_LIMITS.downloads` at most. */
-export function downloadedEntries(entries: Record<string, DownloadEntry>): DownloadEntry[] {
-  return splitDownloads(Object.values(entries)).ready.slice(0, CAR_TAB_LIMITS.downloads);
+/** The downloaded books of `connectionIds` (the person listening's: the device keeps
+ * every person's downloads, and the car must list only theirs, as every other tab does),
+ * newest download first (the Downloads page's ready list), `CAR_TAB_LIMITS.downloads` at
+ * most. */
+export function downloadedEntries(
+  entries: Record<string, DownloadEntry>,
+  connectionIds: readonly string[],
+): DownloadEntry[] {
+  const theirs = new Set(connectionIds);
+  return splitDownloads(
+    Object.values(entries).filter((e) => theirs.has(e.connectionId)),
+  ).ready.slice(0, CAR_TAB_LIMITS.downloads);
 }
 
 // --- Items ----------------------------------------------------------------------------

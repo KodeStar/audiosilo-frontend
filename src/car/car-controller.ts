@@ -21,6 +21,7 @@ import { queryClient } from '@/api/provider';
 import type { Book, Progress, QueueEntry } from '@/api/types';
 import { progressAt } from '@/components/home/home-model';
 import { startBookInPlace } from '@/components/player/start-book';
+import { otherOwner } from '@/components/profiles/profiles-model';
 import { queueConnectionId } from '@/components/upnext/up-next-model';
 import { statusSignature } from '@/downloads/downloads-view';
 import { downloadedEntryOf, useDownloads } from '@/downloads/store';
@@ -50,7 +51,7 @@ import {
   resolveLibrarySelection,
   useLibrarySelection,
 } from '@/stores/library-selection';
-import { profileConnections, useProfiles } from '@/stores/profiles';
+import { mustChoose, profileConnections, useProfiles } from '@/stores/profiles';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
@@ -353,7 +354,10 @@ async function buildAndWrite(): Promise<void> {
         return { ref, book: e.book ?? null, progress: progressOf(ref) };
       })
     : null;
-  const downloads = downloadedEntries(useDownloads.getState().entries).map((e): CarBook => {
+  const downloads = downloadedEntries(
+    useDownloads.getState().entries,
+    conns.map((c) => c.id),
+  ).map((e): CarBook => {
     const ref = bookRefOf(e);
     return { ref, book: e.manifest.book, progress: progressOf(ref) };
   });
@@ -502,6 +506,15 @@ async function write(): Promise<void> {
 
 // --- Play requests ------------------------------------------------------------------------
 
+/** Whether a book of `connectionId` may play for the person listening: not while nobody is
+ * chosen (`mustChoose`), never another person's (`otherOwner`). A connection no profile
+ * holds is not refused here: a session that could not be read yet (a CarPlay launch with
+ * the phone locked) still plays its downloads, as before profiles. */
+function mayPlayHere(connectionId: string): boolean {
+  const doc = useProfiles.getState();
+  return !mustChoose(doc) && otherOwner(doc, resolveConnectionId(connectionId)) === null;
+}
+
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
   if (!parseCarItemId(id)) {
@@ -515,6 +528,13 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   // Read again now the aliases are loaded: an item of a snapshot written before the identity
   // migration names the old connection id.
   const ref = parseCarItemId(id)!;
+  // Only the person listening's books (Phase 8): an item of a snapshot written before a
+  // switch, or before the car's lists were limited to them, may name another person's
+  // book; playing it would save to their account without their PIN. Quietly nothing.
+  if (!mayPlayHere(ref.connectionId)) {
+    console.warn("[car] not the listening person's book");
+    return;
+  }
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (np && contentKeyOf(np) === contentKeyOf(ref)) {
@@ -671,6 +691,9 @@ function checkLoadedBook(): Promise<void> {
       if (asked.loadingBook) return;
       const loaded = await carNative.getLoadedBook();
       if (!loaded) return;
+      // Another person's book (a play spec of an older snapshot that native started with no
+      // JS): never adopted, so nothing of it saves to their account.
+      if (!mayPlayHere(loaded.connectionId)) return;
       const player = usePlayer.getState();
       if (player.loadingBook || player.nowPlaying !== asked.nowPlaying) return;
       if (player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded)) return;

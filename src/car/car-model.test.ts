@@ -220,7 +220,16 @@ describe('downloadedEntries', () => {
       c: makeEntry({ path: 'c', status: 'downloading' }),
       d: makeEntry({ path: 'd', status: 'error' }),
     };
-    expect(downloadedEntries(entries).map((e) => e.path)).toEqual(['b', 'a']);
+    expect(downloadedEntries(entries, ['c1']).map((e) => e.path)).toEqual(['b', 'a']);
+  });
+
+  it("lists only the given connections' (the person listening's) downloads", () => {
+    const entries = {
+      mine: makeEntry({ connectionId: 'c1', path: 'mine' }),
+      theirs: makeEntry({ connectionId: 'c2', path: 'theirs' }),
+    };
+    expect(downloadedEntries(entries, ['c1']).map((e) => e.path)).toEqual(['mine']);
+    expect(downloadedEntries(entries, [])).toEqual([]);
   });
 });
 

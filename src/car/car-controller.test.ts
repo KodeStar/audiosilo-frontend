@@ -696,6 +696,29 @@ describe('startCarSync', () => {
     expect(tab(lastSnapshot(), 'continue')!.items.map((i) => i.title)).toEqual(["Sam's book"]);
   });
 
+  it("lists only the active profile's downloads (no play spec for another person's)", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({});
+    mockClients.c2 = fakeClient({});
+    useDownloads.setState({
+      entries: { 'c1:2:Mine': downloaded('c1', 'Mine'), 'c2:2:Theirs': downloaded('c2', 'Theirs') },
+    });
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c1'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c2'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    stop = startCarSync();
+    await settle();
+    const snap = lastSnapshot();
+    expect(tab(snap, 'downloads')!.items.map((i) => i.title)).toEqual(['Downloaded Mine']);
+    expect(JSON.stringify(snap)).not.toContain('Theirs');
+  });
+
   it('takes a connect handed on by the iOS car start (its listener got the queued one), like its own listener does', async () => {
     await setItem('audiosilo.carSeen', false);
     connect(['c1']);
@@ -779,6 +802,34 @@ describe('play requests', () => {
     } finally {
       setConnectionAliases({});
     }
+  });
+
+  it("quietly refuses another person's book (an item of an older snapshot)", async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    usePlayer.setState({
+      nowPlaying: { ...ref, queue: { offsets: [0], total: 100 } },
+      snapshot: { state: 'paused', trackIndex: 0, position: 40, duration: 100, rate: 1 },
+    });
+    await handleCarPlayRequest(carItemId(ref));
+    expect(mockStartBookInPlace).not.toHaveBeenCalled();
+    expect(usePlayer.getState().toggle).not.toHaveBeenCalled();
+    // Nobody chosen (the person listening left): nobody's book.
+    useProfiles.setState({ activeProfileId: null });
+    await handleCarPlayRequest(carItemId({ ...ref, connectionId: 'c2' }));
+    expect(mockStartBookInPlace).not.toHaveBeenCalled();
+    // Their own book plays.
+    useProfiles.setState({ activeProfileId: 'sam' });
+    await handleCarPlayRequest(carItemId({ ...ref, connectionId: 'c2' }));
+    expect(mockStartBookInPlace).toHaveBeenCalledWith({ ...ref, connectionId: 'c2' });
+    warn.mockRestore();
   });
 
   it('ignores an id that is not a car item, and logs a failed start', async () => {
@@ -970,6 +1021,23 @@ describe('adopting the service’s book (Android)', () => {
     stop = startCarSync();
     await settle();
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+  });
+
+  it("never adopts another person's book the service started (no saves to their account)", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockNative.getLoadedBook.mockResolvedValue(loaded);
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    stop = startCarSync();
+    await settle();
+    expect(mockNative.getLoadedBook).toHaveBeenCalled();
+    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
   });
 
   it('leaves the player alone when it already has that book, or one is loading', async () => {
