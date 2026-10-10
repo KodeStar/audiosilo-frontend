@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 
 import {
   type CastButtonProps,
+  castButtonWhenSupported,
   castLabel,
   DrawnCastButton,
   explainBlocked,
 } from './cast-button-parts';
-import { ensureCastReady, requestCastSession, useCast } from './cast-state';
+import { ensureCastReady, requestCastSession } from './cast-state';
 import { useCastButton } from './use-cast-button';
 
 /**
@@ -16,11 +17,7 @@ import { useCastButton } from './use-cast-button';
  * shows for a book it can cast, so a page that never offers casting never loads it. Pressing it opens Chrome's
  * Cast chooser (which also stops a running cast).
  */
-export function CastButton(props: CastButtonProps) {
-  // Nothing (and no server read) on a device that can't cast.
-  const supported = useCast((s) => s.supported);
-  return supported ? <ShownCastButton {...props} /> : null;
-}
+export const CastButton = castButtonWhenSupported(ShownCastButton);
 
 function ShownCastButton(props: CastButtonProps) {
   const { t } = useTranslation();

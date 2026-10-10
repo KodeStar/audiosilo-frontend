@@ -7,11 +7,11 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
   type CastButtonProps,
+  castButtonWhenSupported,
   castLabel,
   DrawnCastButton,
   explainBlocked,
 } from './cast-button-parts';
-import { useCast } from './cast-state';
 import { useCastButton } from './use-cast-button';
 
 /**
@@ -21,11 +21,7 @@ import { useCastButton } from './use-cast-button';
  * `cast` and this binary has the Cast module (see `useCastButton`). A book that can't be
  * cast gets a button of ours instead that says why.
  */
-export function CastButton(props: CastButtonProps) {
-  // Nothing (and no server read) on a device that can't cast.
-  const supported = useCast((s) => s.supported);
-  return supported ? <ShownCastButton {...props} /> : null;
-}
+export const CastButton = castButtonWhenSupported(ShownCastButton);
 
 function ShownCastButton(props: CastButtonProps) {
   const { t } = useTranslation();

@@ -97,7 +97,6 @@ export class CastPlaybackService implements PlaybackService {
   private askedMove: { until: number } | null = null;
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
-  private rate = 1;
   /** When the JS last set the speed: a status still carrying the old one is not the
    * receiver changing it. */
   private rateAskedAt = 0;
@@ -119,11 +118,6 @@ export class CastPlaybackService implements PlaybackService {
     this.unsubs = [];
   }
 
-  /** The book loaded on the receiver, if any (the route switch hands it back to the phone). */
-  loadedBook(): BookRef | null {
-    return this.loaded?.book ?? null;
-  }
-
   /** Read the receiver's status now (bounded) and fold it in, so the place handed back to
    * the phone or saved before iOS suspends the app is the receiver's latest. */
   async refresh(): Promise<void> {
@@ -136,14 +130,7 @@ export class CastPlaybackService implements PlaybackService {
    * and file jumps can reload it: the tracks the store built for the receiver's book.
    */
   async adoptQueue(tracks: PlaybackTrack[], book: BookRef): Promise<void> {
-    const { items } = await this.prepare(tracks, book);
-    this.loaded = {
-      tracks,
-      book,
-      items,
-      urls: items.map((i) => i.url),
-      offsets: items.map(() => 0),
-    };
+    this.loaded = await this.prepareLoaded(tracks, book);
   }
 
   // --- PlaybackService ----------------------------------------------------
@@ -165,14 +152,7 @@ export class CastPlaybackService implements PlaybackService {
     if (!book) throw new Error('A cast needs the book it is loading');
     this.loadsInFlight++;
     try {
-      const { items } = await this.prepare(tracks, book);
-      this.loaded = {
-        tracks,
-        book,
-        items,
-        urls: items.map((i) => i.url),
-        offsets: items.map(() => 0),
-      };
+      this.loaded = await this.prepareLoaded(tracks, book);
       await this.sendQueue(startIndex, positionInTrack, false);
       this.update({
         state: 'ready',
@@ -225,7 +205,9 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   async setRate(rate: number) {
-    this.rate = rate;
+    // Held at once (emitted once the receiver took it): a status or a reload meanwhile
+    // already reads the asked speed.
+    this.snapshot = { ...this.snapshot, rate };
     this.rateAskedAt = this.now();
     await this.remote.setRate(rate).catch(() => undefined);
     this.update({ rate });
@@ -253,7 +235,6 @@ export class CastPlaybackService implements PlaybackService {
 
   adoptPlace(snapshot: PlaybackSnapshot) {
     this.snapshot = { ...snapshot };
-    this.rate = snapshot.rate;
     this.see();
   }
 
@@ -278,6 +259,12 @@ export class CastPlaybackService implements PlaybackService {
     this.askedMove = { until: this.now() + ASKED_MOVE_MS };
   }
 
+  /** The receiver's queue for a book, as sent from its start (no item requested mid-file). */
+  private async prepareLoaded(tracks: PlaybackTrack[], book: BookRef): Promise<Loaded> {
+    const { items } = await this.prepare(tracks, book);
+    return { tracks, book, items, urls: items.map((i) => i.url), offsets: items.map(() => 0) };
+  }
+
   /** Load the queue on the receiver starting at `(index, position)`. */
   private async sendQueue(index: number, position: number, autoplay: boolean) {
     const loaded = this.loaded;
@@ -294,7 +281,7 @@ export class CastPlaybackService implements PlaybackService {
         items,
         startIndex: i,
         startTime: start.offset > 0 ? 0 : Math.max(0, position),
-        rate: this.rate,
+        rate: this.snapshot.rate,
         autoplay,
         book: loaded.book,
         title: loaded.tracks[0]?.album || loaded.tracks[0]?.title || '',
@@ -341,12 +328,11 @@ export class CastPlaybackService implements PlaybackService {
     // The receiver's speed, when it changed by itself (not one we just set).
     if (
       status.rate > 0 &&
-      Math.abs(status.rate - this.rate) > 0.01 &&
+      Math.abs(status.rate - this.snapshot.rate) > 0.01 &&
       state === 'playing' &&
       !this.askedMove &&
       this.now() - this.rateAskedAt > ASKED_MOVE_MS
     ) {
-      this.rate = status.rate;
       patch.rate = status.rate;
       this.rateChange?.(status.rate);
     }
@@ -405,7 +391,7 @@ export class CastPlaybackService implements PlaybackService {
       position: this.snapshot.position,
       at: this.now(),
       playing: this.snapshot.state === 'playing',
-      rate: this.snapshot.rate || this.rate || 1,
+      rate: this.snapshot.rate || 1,
     };
   }
 

@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import type { ComponentType } from 'react';
 
 import { ControlPill, type PillLook } from '@/components/player/control-pill';
 import { toast } from '@/components/ui/toast';
@@ -7,6 +8,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { CastGlyph } from './cast-glyph';
 import type { CastBlockReason } from './cast-media';
 import type { CastButtonModel } from './cast-button-model';
+import { useCast } from './cast-state';
 
 /** Where a Cast button sits: the full player's action row (an outline pill) or the docked
  * player's (a ghost pill). The caller passes its own row's size and slop, so the button
@@ -19,6 +21,17 @@ export type CastButtonProps = {
   compact?: boolean;
   testID?: string;
 };
+
+/** A platform's Cast button: `Shown` on a device that can cast, nothing (and no server read)
+ * on one that can't. */
+export function castButtonWhenSupported(
+  Shown: ComponentType<CastButtonProps>,
+): ComponentType<CastButtonProps> {
+  return function CastButton(props: CastButtonProps) {
+    const supported = useCast((s) => s.supported);
+    return supported ? <Shown {...props} /> : null;
+  };
+}
 
 /** Explain why this book can't be cast. */
 export function explainBlocked(t: TFunction, reason: CastBlockReason) {

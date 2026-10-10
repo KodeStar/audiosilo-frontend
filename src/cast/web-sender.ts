@@ -12,7 +12,7 @@ export const CAST_SENDER_URL =
   'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
 
 /** How long the script may take to say it is ready (ms) before casting counts as unavailable. */
-export const CAST_SENDER_TIMEOUT_MS = 15_000;
+const CAST_SENDER_TIMEOUT_MS = 15_000;
 
 /** The parts of `window` the loader reads. */
 export type SenderWindow = {

@@ -84,10 +84,6 @@ export function startCastSync(
   /** The last read of the receiver's place as the session ends: the hand-back waits for it. */
   let finalRead: Promise<void> = Promise.resolve();
   const cleanups: (() => void)[] = [];
-  const withRouter = (fn: (r: RoutedPlaybackService) => void) => {
-    const r = currentRouter();
-    if (r) fn(r);
-  };
 
   const connect = async (
     type: 'started' | 'resumed',
@@ -140,23 +136,21 @@ export function startCastSync(
         break;
       case 'suspended':
         // iOS stops the sender in the background: save where the receiver is now.
-        withRouter((r) => r.checkpoint());
+        currentRouter()?.checkpoint();
         break;
       case 'ending':
         // A last read of the receiver's place while the session can still answer.
-        withRouter((r) => {
-          finalRead = r.castRoute()?.refresh() ?? Promise.resolve();
-        });
+        finalRead = currentRouter()?.castRoute()?.refresh() ?? Promise.resolve();
         break;
-      case 'ended':
+      case 'ended': {
         generation++;
         useCast.setState({ status: 'off', deviceName: null });
-        withRouter((r) => {
-          const read = finalRead;
-          finalRead = Promise.resolve();
-          void read.then(() => r.endCast());
-        });
+        const router = currentRouter();
+        const read = finalRead;
+        finalRead = Promise.resolve();
+        if (router) void read.then(() => router.endCast());
         break;
+      }
     }
   };
 
@@ -178,7 +172,7 @@ export function startCastSync(
   // receiver's place is saved as it goes.
   const appState = AppState.addEventListener('change', (state) => {
     if (state === 'background' && useCast.getState().status === 'connected') {
-      withRouter((r) => r.checkpoint());
+      currentRouter()?.checkpoint();
     }
   });
   cleanups.push(() => appState.remove());

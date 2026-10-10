@@ -1,4 +1,5 @@
 import type { Book, ChaptersResponse } from '@/api/types';
+import { isLoopbackHost, urlHost } from '@/lib/url-host';
 import { isBrowserUndecodable, transcodeUrlAt } from '@/playback/transcode';
 import type { BookRef, PlaybackTrack } from '@/playback/types';
 
@@ -16,7 +17,7 @@ import type { CastItem, CastMediaStatus } from './types';
  * or the AC-3 family. A book in one of these casts through the server's transcoder
  * (`?transcode=1`) when it has one.
  */
-export const CAST_UNPLAYABLE_CODECS: ReadonlySet<string> = new Set([
+const CAST_UNPLAYABLE_CODECS: ReadonlySet<string> = new Set([
   'alac',
   'ac3',
   'eac3',
@@ -55,26 +56,14 @@ export type CastBlockReason =
   /** The book's server connection is gone (a downloaded book whose sign-in failed). */
   | 'no-connection';
 
-/** The host part of an absolute http(s) URL, lower-cased, without brackets (IPv6) or port.
- * A regex rather than `URL.hostname`: React Native's URL polyfill does not implement it. */
-export function urlHost(url: string): string | null {
-  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)/i.exec(url.trim());
-  if (!m) return null;
-  return m[1].replace(/^\[|\]$/g, '').toLowerCase();
-}
-
 /**
  * Can a Cast receiver (another device on the network) fetch from this address? Not one
- * that means "this device": `localhost` (and `*.localhost`), the loopback range, `::1` and
- * the unspecified `0.0.0.0`. A relative or unparseable address can't be handed over either.
+ * that means "this device" (`isLoopbackHost`). A relative or unparseable address can't be
+ * handed over either.
  */
 export function isReachableByReceiver(baseUrl: string): boolean {
   const host = urlHost(baseUrl);
-  if (!host) return false;
-  if (host === 'localhost' || host.endsWith('.localhost')) return false;
-  if (host === '::1' || host === '0.0.0.0' || host === '::') return false;
-  if (/^127\.\d+\.\d+\.\d+$/.test(host)) return false;
-  return true;
+  return host !== null && !isLoopbackHost(host);
 }
 
 /**
@@ -241,7 +230,7 @@ export type SeenPlace = {
 };
 
 /** How far (seconds) the receiver may be from where it should be before it counts as moved. */
-export const JUMP_TOLERANCE_S = 5;
+const JUMP_TOLERANCE_S = 5;
 
 /**
  * Did the receiver move by itself (the TV remote, Google Home, the Cast notification, another
@@ -253,13 +242,12 @@ export const JUMP_TOLERANCE_S = 5;
 export function isUnaskedJump(
   prev: SeenPlace | null,
   next: { trackIndex: number; position: number; at: number },
-  tolerance = JUMP_TOLERANCE_S,
 ): boolean {
   if (!prev) return false;
   const elapsed = Math.max(0, (next.at - prev.at) / 1000) * (prev.playing ? prev.rate : 0);
   if (next.trackIndex === prev.trackIndex) {
-    return Math.abs(next.position - (prev.position + elapsed)) > tolerance;
+    return Math.abs(next.position - (prev.position + elapsed)) > JUMP_TOLERANCE_S;
   }
-  if (next.trackIndex === prev.trackIndex + 1) return next.position > elapsed + tolerance;
+  if (next.trackIndex === prev.trackIndex + 1) return next.position > elapsed + JUMP_TOLERANCE_S;
   return true;
 }

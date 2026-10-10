@@ -257,14 +257,12 @@ describe('CastPlaybackService', () => {
     await t.svc.reset();
     expect(t.remote.stop).toHaveBeenCalled();
     expect(t.svc.getSnapshot().state).toBe('idle');
-    expect(t.svc.loadedBook()).toBeNull();
   });
 
   it('adopts a session it did not load: its place, then its queue for later jumps', async () => {
     const t = setup();
     t.svc.adoptPlace({ state: 'playing', trackIndex: 1, position: 300, duration: 600, rate: 1.25 });
     await t.svc.adoptQueue(TRACKS, BOOK);
-    expect(t.svc.loadedBook()).toEqual(BOOK);
     t.status({
       playerState: 'playing',
       contentId: 'https://h/stream?path=A/B/01.mp3&token=CAST',

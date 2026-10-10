@@ -1,7 +1,7 @@
 import {
   createPlaybackService,
   isSwapReady,
-  routePickerKind,
+  hasAirPlayPicker,
   sourceFor,
   VOICE_BOOST_COMPRESSOR,
   VOICE_BOOST_LIMITER,
@@ -42,18 +42,18 @@ describe('isSwapReady', () => {
   });
 });
 
-describe('routePickerKind', () => {
-  it('is AirPlay when the Safari/iOS picker is available', () => {
-    expect(routePickerKind({ webkitShowPlaybackTargetPicker: () => {} })).toBe('airplay');
+describe('hasAirPlayPicker', () => {
+  it('is true when the Safari/iOS picker is available', () => {
+    expect(hasAirPlayPicker({ webkitShowPlaybackTargetPicker: () => {} })).toBe(true);
   });
 
   it('never offers the Remote Playback API: it would hand the receiver the session token', () => {
     // A Chromium element: it has `remote.prompt()` and no AirPlay picker.
     const chromium = { remote: { prompt: () => Promise.resolve() } } as Parameters<
-      typeof routePickerKind
+      typeof hasAirPlayPicker
     >[0];
-    expect(routePickerKind(chromium)).toBe('none');
-    expect(routePickerKind({})).toBe('none');
+    expect(hasAirPlayPicker(chromium)).toBe(false);
+    expect(hasAirPlayPicker({})).toBe(false);
   });
 });
 

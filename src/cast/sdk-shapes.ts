@@ -106,7 +106,7 @@ const IDLE_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /** Our book from an item's custom data, when it is ours. */
-export function bookOfCustomData(data: unknown): BookRef | null {
+function bookOfCustomData(data: unknown): BookRef | null {
   if (!data || typeof data !== 'object') return null;
   const d = data as Json;
   if (

@@ -10,7 +10,6 @@ import {
   isUnaskedJump,
   itemStartingAt,
   trackFilePath,
-  urlHost,
 } from './cast-media';
 import type { CastMediaStatus } from './types';
 
@@ -70,12 +69,6 @@ describe('isReachableByReceiver', () => {
     ['https://user@books.example.com', true],
   ])('%s -> %s', (url, ok) => {
     expect(isReachableByReceiver(url)).toBe(ok);
-  });
-
-  it('reads the host without URL.hostname (React Native does not implement it)', () => {
-    expect(urlHost('https://Books.Example.com:8443/api')).toBe('books.example.com');
-    expect(urlHost('http://[::1]:80')).toBe('::1');
-    expect(urlHost('nope')).toBeNull();
   });
 });
 

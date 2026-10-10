@@ -98,10 +98,10 @@ describe('startCastSync', () => {
     driver.fire({ type: 'started', remote: remote(), deviceName: 'Living room' });
     await flush();
     expect(useCast.getState()).toMatchObject({ status: 'connected', deviceName: 'Living room' });
-    expect(router.isCasting()).toBe(true);
+    expect(router.castRoute()).not.toBeNull();
     driver.fire({ type: 'ended' });
     await flush();
-    expect(router.isCasting()).toBe(false);
+    expect(router.castRoute()).toBeNull();
     expect(useCast.getState().status).toBe('off');
     stop();
   });
@@ -114,7 +114,7 @@ describe('startCastSync', () => {
     await flush();
     const router = routed(localEngine()); // the first play
     await flush();
-    expect(router.isCasting()).toBe(true);
+    expect(router.castRoute()).not.toBeNull();
     stop();
   });
 
@@ -127,7 +127,7 @@ describe('startCastSync', () => {
     await flush();
     const router = routed(localEngine());
     await flush();
-    expect(router.isCasting()).toBe(false);
+    expect(router.castRoute()).toBeNull();
     stop();
   });
 
@@ -160,7 +160,7 @@ describe('startCastSync', () => {
     });
     const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
     await flush();
-    expect(router.isCasting()).toBe(true);
+    expect(router.castRoute()).not.toBeNull();
     expect(mockAdopt).toHaveBeenCalledWith({
       connectionId: 'srv.1',
       libraryId: 2,
