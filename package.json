@@ -95,5 +95,6 @@
     "test": "node scripts/gen-tokens.mjs --check && node --test scripts/gen-tokens.test.mjs && node scripts/check-styles.cjs && jest",
     "format": "prettier --check ."
   },
+  "license": "AGPL-3.0-only",
   "private": true
 }
