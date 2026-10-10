@@ -2073,6 +2073,51 @@
       "demo": "Las cuentas de demostración no pueden compartir lo que escuchan."
     }
   },
+  "kids": {
+    "greeting": "Hola, {{name}}",
+    "greetingNoName": "Hola",
+    "grownUps": {
+      "label": "Adultos",
+      "button": "Adultos: mantener pulsado",
+      "holding": "Sigue pulsando",
+      "hint": "Mantén pulsado para salir del modo infantil",
+      "action": "Salir del modo infantil"
+    },
+    "bedtime": {
+      "at": "La hora de dormir es a las {{time}}",
+      "now": "El temporizador de sueño se activa cuando empieza un cuento",
+      "later": "Después de la hora de dormir, un cuento se para solo a los 20 minutos y el sonido baja poco a poco."
+    },
+    "player": {
+      "play": "Reproducir",
+      "pause": "Pausa",
+      "retry": "Reintentar",
+      "previous": "Capítulo anterior",
+      "next": "Capítulo siguiente",
+      "back_one": "Retroceder {{count}} segundo",
+      "back_other": "Retroceder {{count}} segundos",
+      "progress": "Cuánto llevas de este capítulo",
+      "chapterLeft_one": "{{chapter}} · queda {{count}} minuto",
+      "chapterLeft_other": "{{chapter}} · quedan {{count}} minutos"
+    },
+    "stories": {
+      "title": "Tus cuentos",
+      "play": "Escuchar {{title}}",
+      "playing": "Sonando",
+      "loading": "Buscando tus cuentos",
+      "emptyTitle": "Todavía no hay cuentos aquí",
+      "emptyBody": "Pide a un adulto que añada algunos en {{server}}.",
+      "errorTitle": "Ahora no se pueden cargar los cuentos",
+      "errorBody": "{{server}} no responde. No se ha perdido nada.",
+      "offlineBody": "No se puede acceder a {{server}} y no hay cuentos guardados en este dispositivo.",
+      "retry": "Reintentar",
+      "onDevice": "Estos cuentos están guardados en este dispositivo."
+    },
+    "startFailed": {
+      "title": "Ese cuento no se puede iniciar ahora",
+      "body": "Prueba con otro o pide ayuda a un adulto."
+    }
+  },
   "profiles": {
     "someone": "Alguien",
     "status": {

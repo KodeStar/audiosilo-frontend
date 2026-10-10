@@ -1,7 +1,10 @@
 import { isCarConnected } from '@/car/car-connection';
+import { withinAutoSleepWindow } from '@/lib/hhmm';
+import { activeProfile, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import {
+  type AutoSleepDecision,
   canAutoSleepArm,
   decideAutoSleep,
   EMPTY_AUTO_SLEEP_MEMORY,
@@ -37,6 +40,69 @@ const POLL_MS = 60_000;
  */
 let blocked: AutoSleepMemory = EMPTY_AUTO_SLEEP_MEMORY;
 
+/** Kids mode's bedtime ends here, local time: from the profile's bedtime until this, a
+ * story that starts or resumes gets a sleep timer (Phase 8). */
+export const KIDS_BEDTIME_UNTIL = '06:00';
+
+/** How long a story plays at bedtime before the timer fades it out (a duration timer, so
+ * it fades like any other). */
+export const KIDS_BEDTIME_MINUTES = 20;
+
+/** Whether `now` (local wall clock) is inside a kids profile's bedtime window, from
+ * `bedtime` ('HH:MM') until `KIDS_BEDTIME_UNTIL`, across midnight. A bedtime of 06:00
+ * itself is a zero-length window (never), as `withinAutoSleepWindow` reads it. */
+export function isBedtime(bedtime: string, now: Date): boolean {
+  return withinAutoSleepWindow(bedtime, KIDS_BEDTIME_UNTIL, now);
+}
+
+/**
+ * The bedtime rule of a kids profile: inside its window, every story that starts or
+ * resumes gets a `KIDS_BEDTIME_MINUTES` timer, unless the book is blocked for the session
+ * (a timer on it was cancelled: the same anti-nag rule as the setting's). Pure. It
+ * REPLACES the device-wide auto sleep setting while a kids profile is active (a grown-up's
+ * "end of chapter from 22:00" is not a child's bedtime), and the setting is untouched for
+ * everyone else.
+ */
+export function decideBedtime(input: {
+  bedtime: string;
+  now: Date;
+  bookKey: string | null;
+  memory: AutoSleepMemory;
+}): AutoSleepDecision {
+  if (!canAutoSleepArm(input.memory, input.bookKey)) return { arm: 'none' };
+  if (!isBedtime(input.bedtime, input.now)) return { arm: 'none' };
+  return { arm: 'duration', minutes: KIDS_BEDTIME_MINUTES };
+}
+
+/** The active profile's kids bedtime, or null for a grown-up (or no profile). */
+function kidsBedtime(): string | null {
+  return activeProfile()?.kids?.bedtime ?? null;
+}
+
+/** Whether anything can arm right now: the device-wide setting is on, or the active
+ * profile is in kids mode (whose bedtime rule is always on). */
+function autoSleepOn(): boolean {
+  return kidsBedtime() !== null || useSettings.getState().autoSleepTimer;
+}
+
+/** The decision for the book playing now: the kids profile's bedtime rule, else the
+ * device-wide setting's. */
+function decideNow(bookKey: string | null): AutoSleepDecision {
+  const now = new Date();
+  const bedtime = kidsBedtime();
+  if (bedtime !== null) return decideBedtime({ bedtime, now, bookKey, memory: blocked });
+  const settings = useSettings.getState();
+  return decideAutoSleep({
+    enabled: settings.autoSleepTimer,
+    from: settings.autoSleepFrom,
+    until: settings.autoSleepUntil,
+    type: settings.autoSleepType,
+    now,
+    bookKey,
+    memory: blocked,
+  });
+}
+
 /**
  * Run the nightly auto sleep timer for the life of the app. Returns a teardown.
  *
@@ -48,7 +114,9 @@ let blocked: AutoSleepMemory = EMPTY_AUTO_SLEEP_MEMORY;
  *
  * It listens to three things:
  * 1. the SETTING, which attaches/detaches the player watch (and takes effect the moment
- *    it is switched on, rather than at the next play edge);
+ *    it is switched on, rather than at the next play edge), and the active PROFILE: a
+ *    kids profile's bedtime rule (`decideBedtime`) replaces the setting while it is the
+ *    active one, and is always on;
  * 2. the PLAYER, for the transition into `playing` (see `watchPlayer`);
  * 3. the sleep timer's one event, `onSleepTimerEnded`, for how each timer ended.
  *
@@ -107,16 +175,8 @@ export function startAutoSleep(): () => void {
     // one that fades and pauses the book mid-drive sends the driver to the phone. The poll
     // goes on, so a book still playing once the car is gone is armed then.
     if (isCarConnected()) return;
-    const settings = useSettings.getState();
-    const decision = decideAutoSleep({
-      enabled: settings.autoSleepTimer,
-      from: settings.autoSleepFrom,
-      until: settings.autoSleepUntil,
-      type: settings.autoSleepType,
-      now: new Date(),
-      bookKey: selectBookKey(usePlayer.getState()),
-      memory: blocked,
-    });
+    // A kids profile's bedtime rule, else the device-wide setting (`decideNow`).
+    const decision = decideNow(selectBookKey(usePlayer.getState()));
     if (decision.arm === 'none') return;
     if (decision.arm === 'duration') timer.startDuration(decision.minutes);
     // No options, which is `allowEndOfBook: false` said quietly: an automatic arm may
@@ -137,7 +197,7 @@ export function startAutoSleep(): () => void {
    * session.
    */
   function startPolling() {
-    if (!useSettings.getState().autoSleepTimer) return;
+    if (!autoSleepOn()) return;
     if (useSleepTimer.getState().phase !== 'idle') return;
     if (!canAutoSleepArm(blocked, selectBookKey(usePlayer.getState()))) return;
     poll.start();
@@ -180,11 +240,23 @@ export function startAutoSleep(): () => void {
     poll.stop();
   }
 
-  const unsubscribeSettings = useSettings.subscribe((state, prev) => {
-    if (state.autoSleepTimer === prev.autoSleepTimer) return;
-    if (state.autoSleepTimer) watchPlayer();
+  /** Attach or detach the player watch to follow `autoSleepOn()`: the setting, or a kids
+   * profile becoming (or no longer being) the active one. */
+  let on = autoSleepOn();
+  function follow() {
+    const next = autoSleepOn();
+    if (next === on) return;
+    on = next;
+    if (next) watchPlayer();
     else stopWatchingPlayer();
+  }
+
+  const unsubscribeSettings = useSettings.subscribe((state, prev) => {
+    if (state.autoSleepTimer !== prev.autoSleepTimer) follow();
   });
+  // Kids mode is a property of the active profile: switching to or from a kids profile
+  // (or turning kids mode on or off) changes which rule applies, and whether any does.
+  const unsubscribeProfiles = useProfiles.subscribe(() => follow());
 
   const unsubscribeEnded = onSleepTimerEnded((outcome) => {
     blocked = recordAutoSleepOutcome(blocked, outcome.bookKey, outcome.reason);
@@ -202,10 +274,11 @@ export function startAutoSleep(): () => void {
     if (selectIsPlaying(usePlayer.getState())) startPolling();
   });
 
-  if (useSettings.getState().autoSleepTimer) watchPlayer();
+  if (on) watchPlayer();
 
   return () => {
     unsubscribeSettings();
+    unsubscribeProfiles();
     unsubscribeEnded();
     stopWatchingPlayer();
   };

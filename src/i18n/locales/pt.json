@@ -2073,6 +2073,51 @@
       "demo": "As contas de demonstração não podem partilhar o que ouvem."
     }
   },
+  "kids": {
+    "greeting": "Olá, {{name}}",
+    "greetingNoName": "Olá",
+    "grownUps": {
+      "label": "Adultos",
+      "button": "Adultos: manter premido",
+      "holding": "Continua a premir",
+      "hint": "Mantém premido para sair do modo crianças",
+      "action": "Sair do modo crianças"
+    },
+    "bedtime": {
+      "at": "A hora de dormir é às {{time}}",
+      "now": "O temporizador de sono liga-se quando uma história começa",
+      "later": "Depois da hora de dormir, uma história para sozinha ao fim de 20 minutos e o som vai baixando devagar."
+    },
+    "player": {
+      "play": "Reproduzir",
+      "pause": "Pausa",
+      "retry": "Tentar de novo",
+      "previous": "Capítulo anterior",
+      "next": "Capítulo seguinte",
+      "back_one": "Recuar {{count}} segundo",
+      "back_other": "Recuar {{count}} segundos",
+      "progress": "Quanto já ouviste deste capítulo",
+      "chapterLeft_one": "{{chapter}} · falta {{count}} minuto",
+      "chapterLeft_other": "{{chapter}} · faltam {{count}} minutos"
+    },
+    "stories": {
+      "title": "As tuas histórias",
+      "play": "Ouvir {{title}}",
+      "playing": "A tocar",
+      "loading": "À procura das tuas histórias",
+      "emptyTitle": "Ainda não há histórias aqui",
+      "emptyBody": "Pede a um adulto para adicionar algumas em {{server}}.",
+      "errorTitle": "Não é possível carregar as histórias agora",
+      "errorBody": "{{server}} não está a responder. Não se perdeu nada.",
+      "offlineBody": "Não é possível ligar a {{server}} e não há histórias guardadas neste dispositivo.",
+      "retry": "Tentar de novo",
+      "onDevice": "Estas histórias estão guardadas neste dispositivo."
+    },
+    "startFailed": {
+      "title": "Essa história não arranca agora",
+      "body": "Experimenta outra ou pede ajuda a um adulto."
+    }
+  },
   "profiles": {
     "someone": "Alguém",
     "status": {

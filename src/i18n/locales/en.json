@@ -2073,6 +2073,51 @@
       "demo": "Demo accounts can't share what they listen to."
     }
   },
+  "kids": {
+    "greeting": "Hi {{name}}",
+    "greetingNoName": "Hi there",
+    "grownUps": {
+      "label": "Grown-ups",
+      "button": "Grown-ups: hold",
+      "holding": "Keep holding",
+      "hint": "Hold to leave kids mode",
+      "action": "Leave kids mode"
+    },
+    "bedtime": {
+      "at": "Bedtime is at {{time}}",
+      "now": "Sleep timer comes on when a story starts",
+      "later": "After bedtime, a story stops by itself after 20 minutes and the sound fades out slowly."
+    },
+    "player": {
+      "play": "Play",
+      "pause": "Pause",
+      "retry": "Try again",
+      "previous": "Previous chapter",
+      "next": "Next chapter",
+      "back_one": "Go back {{count}} second",
+      "back_other": "Go back {{count}} seconds",
+      "progress": "How far into this chapter",
+      "chapterLeft_one": "{{chapter}} · {{count}} minute left",
+      "chapterLeft_other": "{{chapter}} · {{count}} minutes left"
+    },
+    "stories": {
+      "title": "Your stories",
+      "play": "Play {{title}}",
+      "playing": "Playing",
+      "loading": "Finding your stories",
+      "emptyTitle": "No stories here yet",
+      "emptyBody": "Ask a grown-up to add some on {{server}}.",
+      "errorTitle": "The stories can't load right now",
+      "errorBody": "{{server}} isn't answering. Nothing is lost.",
+      "offlineBody": "{{server}} can't be reached and there are no stories saved on this device.",
+      "retry": "Try again",
+      "onDevice": "These stories are saved on this device."
+    },
+    "startFailed": {
+      "title": "That story won't start right now",
+      "body": "Try another one, or ask a grown-up."
+    }
+  },
   "profiles": {
     "someone": "Someone",
     "status": {

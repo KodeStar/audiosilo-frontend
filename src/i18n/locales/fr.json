@@ -2073,6 +2073,51 @@
       "demo": "Les comptes de démonstration ne peuvent pas partager ce qu’ils écoutent."
     }
   },
+  "kids": {
+    "greeting": "Bonjour {{name}}",
+    "greetingNoName": "Bonjour",
+    "grownUps": {
+      "label": "Adultes",
+      "button": "Adultes : maintenir",
+      "holding": "Continue d'appuyer",
+      "hint": "Maintenir pour quitter le mode enfant",
+      "action": "Quitter le mode enfant"
+    },
+    "bedtime": {
+      "at": "L'heure du coucher est à {{time}}",
+      "now": "La minuterie de sommeil démarre quand une histoire commence",
+      "later": "Après l'heure du coucher, une histoire s'arrête toute seule au bout de 20 minutes et le son baisse doucement."
+    },
+    "player": {
+      "play": "Lecture",
+      "pause": "Pause",
+      "retry": "Réessayer",
+      "previous": "Chapitre précédent",
+      "next": "Chapitre suivant",
+      "back_one": "Reculer de {{count}} seconde",
+      "back_other": "Reculer de {{count}} secondes",
+      "progress": "Où on en est dans ce chapitre",
+      "chapterLeft_one": "{{chapter}} · encore {{count}} minute",
+      "chapterLeft_other": "{{chapter}} · encore {{count}} minutes"
+    },
+    "stories": {
+      "title": "Tes histoires",
+      "play": "Écouter {{title}}",
+      "playing": "En cours",
+      "loading": "On cherche tes histoires",
+      "emptyTitle": "Pas encore d'histoires ici",
+      "emptyBody": "Demande à un adulte d'en ajouter sur {{server}}.",
+      "errorTitle": "Les histoires ne se chargent pas pour l'instant",
+      "errorBody": "{{server}} ne répond pas. Rien n'est perdu.",
+      "offlineBody": "{{server}} est injoignable et aucune histoire n'est enregistrée sur cet appareil.",
+      "retry": "Réessayer",
+      "onDevice": "Ces histoires sont enregistrées sur cet appareil."
+    },
+    "startFailed": {
+      "title": "Cette histoire ne démarre pas pour l'instant",
+      "body": "Essaie une autre histoire ou demande à un adulte."
+    }
+  },
   "profiles": {
     "someone": "Quelqu'un",
     "status": {

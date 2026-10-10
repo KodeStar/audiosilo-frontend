@@ -46,8 +46,14 @@ export function playRoute(input: {
 /** The book page's route name in the shell's stacks (`src/app/(app)/.../book/[libraryId]`). */
 const BOOK_ROUTE = 'book/[libraryId]';
 
-/** Where the navigator is for a press on `target`: whether the full player is on top and
- * whether the page on screen is the book's own (its route params are `bookHref`'s). */
+/** Kids mode's screen (`src/app/kids.tsx`, a root route; under a cold kids launch the only
+ * one, with no shell under it). It is its own player: a book starts there in place and
+ * never opens the full player, which kids mode doesn't allow (Phase 8). */
+const KIDS_ROUTE = 'kids';
+
+/** Where the navigator is for a press on `target`: whether the full player (or kids mode's
+ * own player) is on top and whether the page on screen is the book's own (its route params
+ * are `bookHref`'s). */
 export function navFor(
   state: NavState | undefined,
   target: PlayTarget,
@@ -55,7 +61,7 @@ export function navFor(
   const route = focusedRoute(state);
   const params = (route?.params ?? {}) as Record<string, unknown>;
   return {
-    playerOnTop: topRootRoute(state) === 'player',
+    playerOnTop: topRootRoute(state) === 'player' || route?.name === KIDS_ROUTE,
     bookOnTop:
       route?.name === BOOK_ROUTE &&
       params.connection === target.connectionId &&
