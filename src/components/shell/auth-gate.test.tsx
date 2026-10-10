@@ -70,6 +70,18 @@ describe('AuthGate and profiles (Phase 8)', () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
+  it('does not ask again when the picker is already open (a cold load of /profiles)', async () => {
+    useProfiles.setState({
+      hydrated: true,
+      profiles: two,
+      activeProfileId: 'chris',
+      askAtLaunch: true,
+    });
+    mockTop = 'profiles';
+    await mount();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it('does not ask with the setting off', async () => {
     useProfiles.setState({
       hydrated: true,

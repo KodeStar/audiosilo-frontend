@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -10,7 +9,7 @@ import { useActiveProfile, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { profileName } from './profiles-model';
-import { PROFILES_HREF } from './use-choose-profile';
+import { openProfiles } from './use-choose-profile';
 
 /**
  * "Listening as <name>" with the way to "Who's listening?" (switch, add someone): the
@@ -41,7 +40,7 @@ export function ListeningAsCard() {
         variant="outline"
         size="sm"
         icon={count > 1 ? 'users' : 'plus'}
-        onPress={() => router.push(PROFILES_HREF)}
+        onPress={openProfiles}
       />
     </Card>
   );

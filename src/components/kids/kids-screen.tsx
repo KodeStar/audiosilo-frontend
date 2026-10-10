@@ -1,4 +1,4 @@
-import { type Href, router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, View } from 'react-native';
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Book } from '@/api/types';
 import { usePlayBook } from '@/components/player/use-play-book';
+import { openProfiles } from '@/components/profiles/use-choose-profile';
 import { Screen } from '@/components/ui/screen';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
@@ -23,7 +24,6 @@ import { useKidsProfile, useKidsStories } from './use-kids';
 
 /** "Who's listening?" (`src/app/profiles.tsx`, workstream D): where leaving kids mode
  * goes, and where the chosen profile's PIN is asked. */
-const PROFILES_HREF = '/profiles' as Href;
 
 /** The widest the page's content gets. */
 const MAX_WIDTH = 1200;
@@ -97,7 +97,7 @@ export function KidsScreen() {
             >
               {name ? t('kids.greeting', { name }) : t('kids.greetingNoName')}
             </Text>
-            <GrownUpsButton onExit={() => router.push(PROFILES_HREF)} />
+            <GrownUpsButton onExit={openProfiles} />
           </View>
           <View className="mt-5">
             <MoonCard bedtime={profile?.kids?.bedtime ?? DEFAULT_BEDTIME} />

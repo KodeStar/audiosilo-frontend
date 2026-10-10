@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PersonAvatar } from '@/components/house/person-avatar';
 import { profileName } from '@/components/profiles/profiles-model';
-import { PROFILES_HREF, useChooseProfile } from '@/components/profiles/use-choose-profile';
+import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose-profile';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { openJournal, openSettings } from '@/lib/open';
@@ -115,7 +115,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
               </DropdownMenuItem>
             );
           })}
-          <DropdownMenuItem icon="users" onPress={() => router.push(PROFILES_HREF)}>
+          <DropdownMenuItem icon="users" onPress={openProfiles}>
             <Text>{t('profiles.picker.title')}</Text>
           </DropdownMenuItem>
           <DropdownMenuSeparator />

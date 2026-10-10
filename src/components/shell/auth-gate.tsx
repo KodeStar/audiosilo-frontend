@@ -1,9 +1,9 @@
-import { Redirect, router, useIsFocused } from 'expo-router';
+import { Redirect, useIsFocused } from 'expo-router';
 import { useEffect, type ReactNode } from 'react';
 
 import { useOptionalApi } from '@/api/provider';
 import { asksAtLaunch, takeLaunchDecision } from '@/components/profiles/profiles-model';
-import { PROFILES_HREF } from '@/components/profiles/use-choose-profile';
+import { openProfiles } from '@/components/profiles/use-choose-profile';
 import { useKidsActive } from '@/components/kids/use-kids';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
@@ -22,6 +22,8 @@ import { useSession } from '@/stores/session';
  * layout-level global param). Aggregated screens (Home/Search) carry no connection and
  * default to the fallback scope, so nothing is wrapped here.
  */
+const pickerOnTop = () => topRootRoute(currentNavState()) === 'profiles';
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const status = useSession((s) => s.status);
   const setUser = useSession((s) => s.setUser);
@@ -63,11 +65,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (choose) {
       // This picker is the launch's question too: not asked again once answered.
       takeLaunchDecision();
-      if (focused && topRootRoute(currentNavState()) !== 'profiles') router.push(PROFILES_HREF);
+      if (focused && !pickerOnTop()) openProfiles();
       return;
     }
     if (!takeLaunchDecision()) return;
-    if (asksAtLaunch(useProfiles.getState())) router.push(PROFILES_HREF);
+    // Already open (a cold load of /profiles itself): that is this launch's question.
+    if (asksAtLaunch(useProfiles.getState()) && !pickerOnTop()) openProfiles();
   }, [status, profilesHydrated, choose, focused]);
 
   // The profiles too (Phase 8): the shell must not mount for a moment as the wrong person

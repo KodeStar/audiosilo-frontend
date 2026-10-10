@@ -19,8 +19,8 @@ import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { ADD_SOMEONE_HREF } from './connect-intent';
-import { profileName, profileStatus } from './profiles-model';
-import { leavePicker, useChooseProfile } from './use-choose-profile';
+import { profileName, profileStatus, takeLaunchDecision } from './profiles-model';
+import { forgetPickerOpener, leavePicker, useChooseProfile } from './use-choose-profile';
 
 /** Room around a ringed avatar (`PersonAvatar` draws its ring outside its box). */
 const RING_ROOM = 4;
@@ -47,6 +47,13 @@ export function ProfilesScreen() {
   const connections = useSession((s) => s.connections);
   const { choose, switching, dialog } = useChooseProfile();
   const size = phone ? 76 : 96;
+
+  // On screen, it IS this launch's "Who's listening?" (a cold load of /profiles, a reload
+  // while it was open): the auth gate must not ask again once it is closed.
+  useEffect(() => {
+    takeLaunchDecision();
+    return forgetPickerOpener;
+  }, []);
 
   // Android's back can't leave it either while someone must be chosen.
   useEffect(() => {

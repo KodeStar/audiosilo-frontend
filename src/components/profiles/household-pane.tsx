@@ -28,7 +28,7 @@ import { KidsLibraryPicker } from './kids-library-picker';
 import { PinDialog } from './pin-dialog';
 import { profileName, serversLine } from './profiles-model';
 import { RenameDialog } from './rename-dialog';
-import { PROFILES_HREF, useChooseProfile } from './use-choose-profile';
+import { openProfiles, useChooseProfile } from './use-choose-profile';
 import { useRemovePerson } from './use-remove-person';
 import { clearPin } from '@/lib/profile-pin';
 
@@ -77,7 +77,7 @@ export function HouseholdPane() {
             title={t('profiles.picker.title')}
             icon="users"
             variant="outline"
-            onPress={() => router.push(PROFILES_HREF)}
+            onPress={openProfiles}
           />
           <Button
             title={t('profiles.add.label')}

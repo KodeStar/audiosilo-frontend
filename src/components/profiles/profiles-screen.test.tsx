@@ -26,7 +26,9 @@ import { setPin } from '@/lib/profile-pin';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
+import { resetLaunchDecisionForTests, takeLaunchDecision } from './profiles-model';
 import { ProfilesScreen } from './profiles-screen';
+import { forgetPickerOpener, openProfiles } from './use-choose-profile';
 /* eslint-enable import/first */
 
 const conn = (id: string, name: string, username: string) =>
@@ -41,6 +43,8 @@ const conn = (id: string, name: string, username: string) =>
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  forgetPickerOpener();
+  resetLaunchDecisionForTests();
   await AsyncStorage.clear();
   resetProfilesForTests();
   useSession.setState({
@@ -94,6 +98,7 @@ describe("Who's listening?", () => {
   });
 
   it('the person listening just goes back', async () => {
+    openProfiles();
     await mountWithPortal(<ProfilesScreen />);
     await fireEvent.press(screen.getByLabelText('Chris, Listening now'));
     expect(mockRouter.back).toHaveBeenCalled();
@@ -112,10 +117,31 @@ describe("Who's listening?", () => {
     expect(await screen.findByText("Enter Sam's PIN")).toBeTruthy();
   });
 
-  it('closes back to where the listener was', async () => {
+  it('closes back to where the listener was when the app opened it', async () => {
+    openProfiles();
+    expect(mockRouter.push).toHaveBeenCalledWith('/profiles');
     await mountWithPortal(<ProfilesScreen />);
     await fireEvent.press(screen.getByTestId('profiles-close'));
     expect(mockRouter.back).toHaveBeenCalled();
+    expect(mockRouter.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it('a cold load of the picker (a reload while open): Close is Home in one press, and the launch is decided', async () => {
+    // The root stack has the (app) anchor under it, so there IS something to go back to,
+    // but nobody was there: Home, and the auth gate must not ask again.
+    mockRouter.canGoBack.mockReturnValue(true);
+    await mountWithPortal(<ProfilesScreen />);
+    expect(takeLaunchDecision()).toBe(false);
+    await fireEvent.press(screen.getByTestId('profiles-close'));
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith('/');
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    // The same with no history at all.
+    mockRouter.dismissTo.mockClear();
+    mockRouter.canGoBack.mockReturnValue(false);
+    openProfiles();
+    await fireEvent.press(screen.getByTestId('profiles-close'));
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith('/');
+    mockRouter.canGoBack.mockReturnValue(true);
   });
 
   it('a spinner while the profiles load; an empty state with nobody', async () => {
