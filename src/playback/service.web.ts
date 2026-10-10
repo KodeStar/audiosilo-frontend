@@ -33,7 +33,7 @@ export function isSwapReady(readyState: number, currentTime: number, target: num
 }
 
 /**
- * Which OS output picker a media element can present: Safari / iOS expose
+ * Whether a media element can present the OS output picker: Safari / iOS expose
  * `webkitShowPlaybackTargetPicker` (AirPlay → HomePod, AirPlay speakers). Anything else has
  * no in-page picker. Chromium's Remote Playback API (`el.remote.prompt()`) is deliberately
  * NOT used: it hands the receiver the element's own URL, which carries the session token,
@@ -41,9 +41,10 @@ export function isSwapReady(readyState: number, currentTime: number, target: num
  * cast token instead (`src/cast/`). Pure + exported so the choice is unit-testable without
  * a real <audio> element.
  */
-export type RoutePickerKind = 'airplay' | 'none';
-export function routePickerKind(el: { webkitShowPlaybackTargetPicker?: unknown }): RoutePickerKind {
-  return typeof el.webkitShowPlaybackTargetPicker === 'function' ? 'airplay' : 'none';
+export function hasAirPlayPicker(el: {
+  webkitShowPlaybackTargetPicker?: unknown;
+}): el is { webkitShowPlaybackTargetPicker: () => void } {
+  return typeof el.webkitShowPlaybackTargetPicker === 'function';
 }
 
 /** The numbers of a `DynamicsCompressorNode`, in the units it takes (seconds for the times). */
@@ -703,17 +704,17 @@ class WebPlaybackService implements PlaybackService {
 
   canShowRoutePicker(): boolean {
     if (typeof Audio === 'undefined') return false;
-    return routePickerKind(this.el() as unknown as RoutePickerEl) !== 'none';
+    return hasAirPlayPicker(this.el() as unknown as RoutePickerEl);
   }
 
   async showRoutePicker(): Promise<boolean> {
     const el = this.el() as unknown as RoutePickerEl;
-    if (routePickerKind(el) !== 'airplay') return false;
+    if (!hasAirPlayPicker(el)) return false;
     // Safari / iOS: opens the native AirPlay route sheet for this element. Can throw (e.g.
     // InvalidStateError when AirPlay can't be presented); treat that as "not shown" rather
     // than letting it become an unhandled rejection (the caller uses `void showRoutePicker()`).
     try {
-      el.webkitShowPlaybackTargetPicker?.();
+      el.webkitShowPlaybackTargetPicker();
       return true;
     } catch {
       return false;
