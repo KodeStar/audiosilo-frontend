@@ -286,8 +286,8 @@ type PlayerState = {
    * downloaded copy, and return the book's identity for a follow-on UI flow. Null when
    * nothing is playing. */
   finishBook: () => FinishedBook | null;
-  /** Present the OS audio-route / casting picker (AirPlay, Android output switcher, web
-   * Remote Playback). No-op if the engine doesn't support it. */
+  /** Present the OS audio-route picker (AirPlay on iOS and in Safari, the Android output
+   * switcher; Cast has its own button). No-op if the engine doesn't support it. */
   showRoutePicker: () => Promise<void>;
   /** Android: take over the book the playback SERVICE has loaded (the car started
    * it, or it kept playing while the app's JS restarted) WITHOUT reloading the engine: the
