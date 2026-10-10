@@ -12,7 +12,7 @@ import { PinDialog } from './pin-dialog';
 import { profileName } from './profiles-model';
 
 /** The way into "Who's listening?" (a root route over the app). */
-export const PROFILES_HREF = '/profiles';
+const PROFILES_HREF = '/profiles';
 
 /** Whether the picker on screen was opened from inside the app (`openProfiles`), with a
  * page of the app under it to go back to. Else it was loaded cold (a reload while it was
@@ -34,7 +34,7 @@ export function forgetPickerOpener(): void {
 /** Back to the app after another person was chosen: every tab back at its root (a page of
  * the previous person's, a book on their server, must not stay under the new person's
  * tabs), then Home. A kids profile is taken on from there by the auth gate. */
-export function homeForNewPerson(): void {
+function homeForNewPerson(): void {
   openedInApp = false;
   for (const tab of TABS) popTabToRoot(tab.name);
   router.dismissTo('/');

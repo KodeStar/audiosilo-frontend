@@ -54,17 +54,6 @@ export function asksAtLaunch(doc: Pick<ProfilesDoc, 'profiles' | 'askAtLaunch'>)
   return doc.askAtLaunch && doc.profiles.length >= 2;
 }
 
-/** The person a content link's connection belongs to when that is not the active person
- * (the link must switch first), else null (the active person's, or no profile yet). */
-export function otherOwner(
-  doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'>,
-  connectionId: string,
-): Profile | null {
-  if (!connectionId) return null;
-  const owner = doc.profiles.find((p) => p.connectionIds.includes(connectionId));
-  return owner && owner.id !== doc.activeProfileId ? owner : null;
-}
-
 /** How a PIN wait reads: whole seconds, rounded up (never "0 s" while still waiting). */
 export function waitSeconds(ms: number): number {
   return Math.max(1, Math.ceil(ms / 1000));

@@ -73,21 +73,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (asksAtLaunch(useProfiles.getState()) && !pickerOnTop()) openProfiles();
   }, [status, profilesHydrated, choose, focused]);
 
-  // The profiles too (Phase 8): the shell must not mount for a moment as the wrong person
-  // (or as a kids profile's grown-up tabs) before they have loaded, nor at all while
-  // nobody is chosen (no one's pages, not even the last person's, behind the picker).
-  if (status === 'loading' || (status === 'authenticated' && (!profilesHydrated || choose))) {
-    return (
-      <Screen>
-        <Spinner center />
-      </Screen>
-    );
-  }
   if (status === 'unauthenticated') return <Redirect href="/connect" />;
-  // Phase 8 kids mode: a kids profile never gets the shell (tabs, search, settings,
-  // downloads, the web command palette); the root layout's `KidsRouteGuard` takes it to
-  // `/kids`, and this holds the screen until it has.
-  if (kids) {
+  // A spinner while the session loads; and the profiles too (Phase 8): the shell must not
+  // mount for a moment as the wrong person (or as a kids profile's grown-up tabs) before
+  // they have loaded, nor at all while nobody is chosen (no one's pages, not even the last
+  // person's, behind the picker). A kids profile never gets the shell (tabs, search,
+  // settings, downloads, the web command palette): the root layout's `KidsRouteGuard`
+  // takes it to `/kids`, and this holds the screen until it has.
+  if (status === 'loading' || !profilesHydrated || choose || kids) {
     return (
       <Screen>
         <Spinner center />

@@ -6,6 +6,7 @@ import type { User } from '@/api/types';
 import { initialProfiles, PROFILES_KEY } from '@/lib/identity-migration';
 import {
   activeProfile,
+  askOnSecondPerson,
   connectionsOfProfile,
   deleteProfile,
   mustChoose,
@@ -227,7 +228,7 @@ describe('reconcileProfiles', () => {
       profiles: [{ id: 'p', name: 'chris', connectionIds: [A1.id] }],
       activeProfileId: 'p',
     });
-    const next = reconcileProfiles(d, [A1, A2], A1.id, ids);
+    const next = askOnSecondPerson(d, reconcileProfiles(d, [A1, A2], A1.id, ids));
     expect(next.profiles).toHaveLength(2);
     expect(next.activeProfileId).toBe('p');
     expect(next.askAtLaunch).toBe(true);
@@ -249,14 +250,16 @@ describe('placeInDoc (the connect flow)', () => {
   });
 
   it('joins the active profile when it has no connection to the server', () => {
-    const { doc: next, profileId } = placeInDoc(base, B1, [A1, B1], {}, ids);
+    const { doc: placed, profileId } = placeInDoc(base, B1, [A1, B1], {}, ids);
+    const next = askOnSecondPerson(base, placed);
     expect(profileId).toBe('p');
     expect(next.profiles).toEqual([{ id: 'p', name: 'chris', connectionIds: [A1.id, B1.id] }]);
     expect(next.askAtLaunch).toBe(false);
   });
 
   it('another user on a server the active profile has: a new profile, made active', () => {
-    const { doc: next, profileId } = placeInDoc(base, A2, [A1, A2], {}, ids);
+    const { doc: placed, profileId } = placeInDoc(base, A2, [A1, A2], {}, ids);
+    const next = askOnSecondPerson(base, placed);
     expect(profileId).toBe('p1');
     expect(next.profiles[1]).toEqual({ id: 'p1', name: 'sam', connectionIds: [A2.id] });
     expect(next.activeProfileId).toBe('p1');
@@ -342,6 +345,31 @@ describe('the store', () => {
     expect(activeProfile()?.connectionIds).toEqual([C3.id]);
     expect(profileConnectionIds()).toEqual([C3.id]);
     expect(profileOf(A1.id)?.connectionIds).toEqual([A1.id]);
+  });
+
+  it('asks at launch once a second person appears, whichever way they came', async () => {
+    setSession([A1], A1.id);
+    await useProfiles.getState().hydrate();
+    expect(useProfiles.getState().askAtLaunch).toBe(false);
+    // The reconcile gives another user of the same server a profile of their own.
+    await act(async () => setSession([A1, A2], A1.id));
+    expect(useProfiles.getState().profiles).toHaveLength(2);
+    expect(useProfiles.getState().askAtLaunch).toBe(true);
+    // Turned off by the listener: a third person does not turn it back on.
+    setAskAtLaunch(false);
+    await act(async () => setSession([A1, A2, C3], A1.id));
+    placeConnection(C3.id, { newProfile: true });
+    expect(useProfiles.getState().profiles).toHaveLength(3);
+    expect(useProfiles.getState().askAtLaunch).toBe(false);
+  });
+
+  it('the connect flow adding a second person asks at launch', async () => {
+    setSession([A1], A1.id);
+    await useProfiles.getState().hydrate();
+    await act(async () => setSession([A1, C3], A1.id));
+    expect(useProfiles.getState().askAtLaunch).toBe(false);
+    placeConnection(C3.id, { newProfile: true });
+    expect(useProfiles.getState().askAtLaunch).toBe(true);
   });
 
   it('kids, PIN mirror, rename and ask-at-launch are persisted', async () => {

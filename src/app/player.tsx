@@ -7,11 +7,10 @@ import { useBook, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { PlayerView } from '@/components/player/player-view';
 import { OtherPersonGate } from '@/components/profiles/other-person-gate';
-import { otherOwner } from '@/components/profiles/profiles-model';
 import { Spinner } from '@/components/ui/spinner';
 import { connectionParam, segmentsToPath } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
-import { useProfiles } from '@/stores/profiles';
+import { otherOwner, useProfiles } from '@/stores/profiles';
 
 export default function PlayerScreen() {
   const {

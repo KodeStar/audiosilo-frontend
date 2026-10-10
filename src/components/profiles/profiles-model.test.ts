@@ -1,10 +1,9 @@
 import i18n from '@/i18n';
-import type { Profile } from '@/stores/profiles';
+import { otherOwner, type Profile } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
 
 import {
   asksAtLaunch,
-  otherOwner,
   profileName,
   profileStatus,
   resetLaunchDecisionForTests,

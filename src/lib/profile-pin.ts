@@ -19,9 +19,9 @@ import { setProfileHasPin, useProfiles } from '@/stores/profiles';
  */
 
 export const PIN_LENGTH = 4;
-export const PIN_ITERATIONS = 10_000;
+const PIN_ITERATIONS = 10_000;
 /** Wrong tries in a row before the prompt makes the person wait. */
-export const PIN_MAX_TRIES = 5;
+const PIN_MAX_TRIES = 5;
 /** How long it waits then. */
 export const PIN_LOCK_MS = 30_000;
 

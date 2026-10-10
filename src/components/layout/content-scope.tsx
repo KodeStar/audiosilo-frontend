@@ -4,11 +4,10 @@ import { useTranslation } from 'react-i18next';
 
 import { ConnectionScope } from '@/api/provider';
 import { OtherPersonGate } from '@/components/profiles/other-person-gate';
-import { otherOwner } from '@/components/profiles/profiles-model';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
 import { connectionParam } from '@/lib/paths';
-import { useProfiles } from '@/stores/profiles';
+import { otherOwner, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 /**

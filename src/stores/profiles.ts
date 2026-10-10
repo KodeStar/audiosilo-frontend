@@ -2,7 +2,9 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 
 import { serverIdOf } from '@/lib/connection-id';
-import { initialProfiles, PROFILES_KEY, randomId } from '@/lib/identity-migration';
+import { parseHhMm } from '@/lib/hhmm';
+import { initialProfiles, PROFILES_KEY } from '@/lib/identity-migration';
+import { randomUUID } from '@/lib/random';
 import { getItem, setItem } from '@/lib/storage';
 import {
   type Connection,
@@ -72,8 +74,6 @@ export interface ProfilesDoc {
 /** The kids mode bedtime a profile starts with. */
 export const DEFAULT_BEDTIME = '19:30';
 
-const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 const EMPTY_DOC: ProfilesDoc = {
   version: 1,
   profiles: [],
@@ -90,7 +90,9 @@ function isObject(v: unknown): v is Record<string, unknown> {
 function parseKids(raw: unknown): KidsSettings | undefined {
   if (!isObject(raw)) return undefined;
   const bedtime =
-    typeof raw.bedtime === 'string' && HHMM.test(raw.bedtime) ? raw.bedtime : DEFAULT_BEDTIME;
+    typeof raw.bedtime === 'string' && parseHhMm(raw.bedtime) !== null
+      ? raw.bedtime
+      : DEFAULT_BEDTIME;
   const lib = raw.library;
   const library =
     isObject(lib) &&
@@ -193,7 +195,7 @@ export function reconcileProfiles(
   doc: ProfilesDoc,
   connections: readonly ProfileConnection[],
   defaultId: string | null,
-  newId: () => string = randomId,
+  newId: () => string = randomUUID,
 ): ProfilesDoc {
   const byId = new Map(connections.map((c) => [c.id, c]));
   const placed = new Set<string>();
@@ -220,7 +222,7 @@ export function reconcileProfiles(
   let activeProfileId = doc.activeProfileId;
   if (unplaced.length > 0) {
     if (profiles.length === 0) {
-      const built = initialProfiles(unplaced as Connection[], defaultId, newId);
+      const built = initialProfiles(unplaced, defaultId, newId);
       profiles = built.profiles;
       activeProfileId = built.activeProfileId;
     } else {
@@ -246,14 +248,7 @@ export function reconcileProfiles(
           null)
         : null;
   }
-  // A second person appeared on a device that had one: ask who's listening at launch.
-  const second = doc.profiles.length === 1 && profiles.length >= 2;
-  const next: ProfilesDoc = {
-    ...doc,
-    profiles,
-    activeProfileId,
-    askAtLaunch: doc.askAtLaunch || second,
-  };
+  const next: ProfilesDoc = { ...doc, profiles, activeProfileId };
   return sameDoc(next, doc) ? doc : next;
 }
 
@@ -270,7 +265,7 @@ export function placeInDoc(
   conn: ProfileConnection,
   connections: readonly ProfileConnection[],
   opts: { newProfile?: boolean },
-  newId: () => string = randomId,
+  newId: () => string = randomUUID,
 ): { doc: ProfilesDoc; profileId: string } {
   const byId = new Map(connections.map((c) => [c.id, c]));
   byId.set(conn.id, conn);
@@ -279,13 +274,7 @@ export function placeInDoc(
   if (!opts.newProfile && current && current.id === doc.activeProfileId) {
     return { doc, profileId: current.id };
   }
-  const without = doc.profiles
-    .map((p) =>
-      p.connectionIds.includes(conn.id)
-        ? { ...p, connectionIds: p.connectionIds.filter((id) => id !== conn.id) }
-        : p,
-    )
-    .filter((p) => p.connectionIds.length > 0);
+  const without = withoutConnection(doc.profiles, conn.id);
   const active = without.find((p) => p.id === doc.activeProfileId);
   if (!opts.newProfile && active && !holdsServer(active, serverIdOf(conn), byId)) {
     return {
@@ -299,17 +288,37 @@ export function placeInDoc(
     };
   }
   const created = newProfileFor(conn, newId);
-  const profiles = [...without, created];
   return {
-    doc: {
-      ...doc,
-      profiles,
-      activeProfileId: created.id,
-      // A second person on this device: ask who's listening when the app opens.
-      askAtLaunch: doc.askAtLaunch || (without.length === 1 && profiles.length === 2),
-    },
+    doc: { ...doc, profiles: [...without, created], activeProfileId: created.id },
     profileId: created.id,
   };
+}
+
+/** `profiles` with `connectionId` taken out of the one holding it; a profile left with no
+ * connection is dropped. */
+function withoutConnection(profiles: readonly Profile[], connectionId: string): Profile[] {
+  return profiles
+    .map((p) =>
+      p.connectionIds.includes(connectionId)
+        ? { ...p, connectionIds: p.connectionIds.filter((id) => id !== connectionId) }
+        : p,
+    )
+    .filter((p) => p.connectionIds.length > 0);
+}
+
+/** `doc` with `profiles`: the active person stays when still among them, else nobody is
+ * active until someone is chosen (`mustChoose`). */
+function withProfiles(doc: ProfilesDoc, profiles: Profile[]): ProfilesDoc {
+  const kept = profiles.some((p) => p.id === doc.activeProfileId);
+  return { ...doc, profiles, activeProfileId: kept ? doc.activeProfileId : null };
+}
+
+/** A second person appeared on a device that had one (the reconcile placed a connection
+ * of its own, or the connect flow added someone): ask who's listening at launch from now
+ * on. The one place the rule lives (`commit`). */
+export function askOnSecondPerson(prev: ProfilesDoc, next: ProfilesDoc): ProfilesDoc {
+  const second = prev.profiles.length === 1 && next.profiles.length >= 2;
+  return second && !next.askAtLaunch ? { ...next, askAtLaunch: true } : next;
 }
 
 /** The connections of `ids` (a profile's), in the session's order; every connection when
@@ -375,12 +384,16 @@ const docOf = (s: ProfilesDoc): ProfilesDoc => ({
 });
 
 /** Set and persist a new document (only once hydrated: before that the stored one isn't
- * known, and a write would replace it). */
-function commit(next: ProfilesDoc): void {
+ * known, and a write would replace it), asking at launch once a second person appears
+ * (`askOnSecondPerson`). */
+function commit(change: ProfilesDoc): void {
   const state = useProfiles.getState();
-  if (!state.hydrated || sameDoc(next, docOf(state))) return;
-  useProfiles.setState(docOf(next));
-  void setItem(PROFILES_KEY, docOf(next));
+  if (!state.hydrated) return;
+  const prev = docOf(state);
+  const next = docOf(askOnSecondPerson(prev, change));
+  if (sameDoc(next, prev)) return;
+  useProfiles.setState(next);
+  void setItem(PROFILES_KEY, next);
 }
 
 /** Whether the session's connection list means what it says (loaded, not a failed read). */
@@ -389,7 +402,7 @@ function sessionSettled(): boolean {
 }
 
 /** Bring the document in line with the session's connections, once both are loaded. */
-export function reconcileNow(): void {
+function reconcileNow(): void {
   if (!useProfiles.getState().hydrated || !sessionSettled()) return;
   const { connections, defaultConnectionId } = useSession.getState();
   commit(reconcileProfiles(docOf(useProfiles.getState()), connections, defaultConnectionId));
@@ -400,15 +413,8 @@ export function reconcileNow(): void {
  * reconciles; this also covers a removal while the list counts as unsettled). */
 function onRemoved(id: string): void {
   const s = useProfiles.getState();
-  if (!s.hydrated || !s.profiles.some((p) => p.connectionIds.includes(id))) return;
-  const profiles = s.profiles
-    .map((p) => ({ ...p, connectionIds: p.connectionIds.filter((x) => x !== id) }))
-    .filter((p) => p.connectionIds.length > 0);
-  // The active person left: nobody until someone is chosen (`mustChoose`).
-  const activeProfileId = profiles.some((p) => p.id === s.activeProfileId)
-    ? s.activeProfileId
-    : null;
-  commit({ ...docOf(s), profiles, activeProfileId });
+  if (!s.hydrated || !profileOf(id, s)) return;
+  commit(withProfiles(docOf(s), withoutConnection(s.profiles, id)));
 }
 
 function hydrateProfiles(): Promise<void> {
@@ -433,17 +439,26 @@ function hydrateProfiles(): Promise<void> {
 
 // --- Reads ----------------------------------------------------------------------------------
 
+type ProfilesRead = Pick<ProfilesDoc, 'profiles' | 'activeProfileId'>;
+
 /** The active profile (null with no profiles). Framework-free. */
-export function activeProfile(state: ProfilesDoc = useProfiles.getState()): Profile | null {
+export function activeProfile(state: ProfilesRead = useProfiles.getState()): Profile | null {
   return state.profiles.find((p) => p.id === state.activeProfileId) ?? null;
 }
 
 /** The profile holding `connectionId`, if any. */
 export function profileOf(
   connectionId: string,
-  state: ProfilesDoc = useProfiles.getState(),
+  state: Pick<ProfilesDoc, 'profiles'> = useProfiles.getState(),
 ): Profile | null {
   return state.profiles.find((p) => p.connectionIds.includes(connectionId)) ?? null;
+}
+
+/** The person a content link's connection belongs to when that is not the active person
+ * (the link must switch first), else null (the active person's, or no profile yet). */
+export function otherOwner(doc: ProfilesRead, connectionId: string): Profile | null {
+  const owner = connectionId ? profileOf(connectionId, doc) : null;
+  return owner && owner.id !== doc.activeProfileId ? owner : null;
 }
 
 /** The active profile's connections, in the session's order (every connection while
@@ -468,7 +483,7 @@ export function useMustChoose(): boolean {
 
 /** The active profile, or null. */
 export function useActiveProfile(): Profile | null {
-  return useProfiles((s) => s.profiles.find((p) => p.id === s.activeProfileId) ?? null);
+  return useProfiles(activeProfile);
 }
 
 /** The active profile's connections, in the session's order: every user-facing list of
@@ -529,12 +544,7 @@ export function deleteProfile(profileId: string): void {
   const s = useProfiles.getState();
   const profiles = s.profiles.filter((p) => p.id !== profileId);
   if (profiles.length === s.profiles.length) return;
-  commit({
-    ...docOf(s),
-    profiles,
-    // The active person removed: nobody until someone is chosen (`mustChoose`).
-    activeProfileId: s.activeProfileId === profileId ? null : s.activeProfileId,
-  });
+  commit(withProfiles(docOf(s), profiles));
 }
 
 /**

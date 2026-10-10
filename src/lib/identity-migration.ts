@@ -14,6 +14,7 @@ import {
 import { contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import type { ProfilesDoc } from '@/stores/profiles';
 import { CONNECTIONS_KEY, DEFAULT_KEY, type PersistedConnection, tokenKey } from '@/stores/session';
 
 /**
@@ -52,7 +53,7 @@ import { CONNECTIONS_KEY, DEFAULT_KEY, type PersistedConnection, tokenKey } from
  */
 
 export const IDENTITY_VERSION_KEY = 'audiosilo.identityVersion';
-export const IDENTITY_VERSION = 2;
+const IDENTITY_VERSION = 2;
 /** The moves of a run that has not finished, `{ legacyId: newId }`. */
 export const IDENTITY_PLAN_KEY = 'audiosilo.identityPlan';
 /** The profiles document (`src/stores/profiles.ts` owns it; the migration writes the first). */
@@ -94,30 +95,15 @@ export type IdentityMigrationResult =
   | { status: 'migrated'; moved: Record<string, string> }
   | { status: 'aborted'; step: IdentityMigrationStep; error?: unknown };
 
-/** The profiles document as the migration first writes it (`src/stores/profiles.ts`). */
-export type InitialProfilesDoc = {
-  version: 1;
-  profiles: { id: string; name: string; connectionIds: string[] }[];
-  activeProfileId: string | null;
-  askAtLaunch: boolean;
-};
-
 export type IdentityMigrationDeps = {
   /** The downloads engine's move (absent where there are no downloads). */
   moveConnection?: (fromId: string, toId: string) => Promise<void>;
   /** The connection of the book the Android playback service holds, else null; `unknown`
    * when the service did not say in time (the run waits for a launch where it does). */
   loadedConnectionId: () => Promise<string | null | typeof UNKNOWN>;
-  /** A new profile's id. */
+  /** A new profile's id (a random v4 UUID, `randomUUID`: device-local, not a secret). */
   newProfileId: () => string;
 };
-
-/** A new profile's id: a random RFC 4122 v4 id from expo-crypto's `randomUUID`
- * (`src/lib/random.ts`, which falls back to the runtime's and then builds one from random
- * bytes where neither exists). A device-local id, not a secret. */
-export function randomId(): string {
-  return randomUUID();
-}
 
 /** `loadedConnectionId` could not tell. */
 export const UNKNOWN = Symbol('unknown');
@@ -143,7 +129,7 @@ function defaultDeps(): IdentityMigrationDeps {
         clearTimeout(timer);
       }
     },
-    newProfileId: randomId,
+    newProfileId: randomUUID,
   };
 }
 
@@ -276,12 +262,12 @@ export const rewrite = {
  * connection's user (the default connection's for the profile that holds it), which is the
  * active one.
  */
-export function initialProfiles(
-  connections: readonly PersistedConnection[],
+export function initialProfiles<C extends Pick<PersistedConnection, 'id' | 'serverId' | 'user'>>(
+  connections: readonly C[],
   defaultId: string | null,
   newId: () => string,
-): InitialProfilesDoc {
-  const groups: PersistedConnection[][] = [];
+): ProfilesDoc {
+  const groups: C[][] = [];
   for (const c of connections) {
     const server = serverIdOf(c);
     const home = groups.find((g) => !g.some((m) => serverIdOf(m) === server));

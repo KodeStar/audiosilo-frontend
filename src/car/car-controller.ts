@@ -21,7 +21,6 @@ import { queryClient } from '@/api/provider';
 import type { Book, Progress, QueueEntry } from '@/api/types';
 import { progressAt } from '@/components/home/home-model';
 import { startBookInPlace } from '@/components/player/start-book';
-import { otherOwner } from '@/components/profiles/profiles-model';
 import { queueConnectionId } from '@/components/upnext/up-next-model';
 import { statusSignature } from '@/downloads/downloads-view';
 import { downloadedEntryOf, useDownloads } from '@/downloads/store';
@@ -51,7 +50,7 @@ import {
   resolveLibrarySelection,
   useLibrarySelection,
 } from '@/stores/library-selection';
-import { mustChoose, profileConnections, useProfiles } from '@/stores/profiles';
+import { mustChoose, otherOwner, profileConnections, useProfiles } from '@/stores/profiles';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 

@@ -19,7 +19,6 @@ import {
   initialProfiles,
   migrateConnectionIdentity,
   planMoves,
-  randomId,
   rekey,
   UNKNOWN,
 } from './identity-migration';
@@ -674,21 +673,6 @@ describe('rekey', () => {
     expect(rekey(plan, 'ab:1:x')).toBe('ab:1:x');
     expect(rekey(plan, 'no-colon')).toBe('no-colon');
   });
-});
-
-it('randomId is a v4 UUID', () => {
-  expect(randomId()).toMatch(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-  );
-  const c = globalThis.crypto;
-  try {
-    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
-    expect(randomId()).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    );
-  } finally {
-    Object.defineProperty(globalThis, 'crypto', { value: c, configurable: true });
-  }
 });
 
 it('rewrites every scoped document the stores own (keys kept in step with their owners)', () => {
