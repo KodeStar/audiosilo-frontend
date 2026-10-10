@@ -35,6 +35,8 @@ describe('decideAutoSleep', () => {
 
   it('arms a duration timer for a minutes type', () => {
     expect(decideAutoSleep(input({ type: '45' }))).toEqual({ arm: 'duration', minutes: 45 });
+    // A kids profile's bedtime rule hands its minutes over as a number.
+    expect(decideAutoSleep(input({ type: 20 }))).toEqual({ arm: 'duration', minutes: 20 });
   });
 
   it('does nothing when the feature is off', () => {
