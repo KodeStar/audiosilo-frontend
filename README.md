@@ -1,5 +1,11 @@
 # AudioSilo Frontend
 
+> **Use of AI:** AudioSilo is developed by me (a human), with assistance from AI, primarily Claude Code, to help me write, clean up, document, and review the code. That doesn't mean the app is generated on autopilot or "vibe coded". Nothing goes out until I've read it, tested it, and decided it belongs. AI is what lets one person keep up this pace, and I think it's important to disclose that.
+
+![The AudioSilo player](.github/assets/screenshot.webp)
+
+[Website](https://audiosilo.app) · [Player](https://audiosilo.app/player) · [Docs](https://docs.audiosilo.app) · [Discord](https://discord.gg/nFFqRbkRn6) · [Sponsor](https://github.com/sponsors/KodeStar)
+
 The audiobook **player** for [audiosilo-server](https://github.com/kodestar/audiosilo-server) -
 one Expo / React Native codebase shipping to **web PWA + iOS + Android**.
 
@@ -59,3 +65,17 @@ and push to `main`, and **gates merges**. After changing dependencies, run
 `npm install` and **commit the updated `package-lock.json` in sync** - CI uses
 `npm ci` (frozen lockfile). The web-export image build
 ([`web.yml`](.github/workflows/web.yml)) stays separate.
+
+## License
+
+The player is licensed under the **GNU Affero General Public License v3.0**
+(`AGPL-3.0-only`), the same licence as
+[audiosilo-server](https://github.com/KodeStar/audiosilo-server). See
+[LICENSE](LICENSE).
+
+Two exceptions are not covered by the AGPL. The icon glyphs vendored in
+[`src/components/ui/icon-data.ts`](src/components/ui/icon-data.ts) are
+[Font Awesome Pro](https://fontawesome.com/license) icons, used under the Font
+Awesome Pro licence; reusing them outside AudioSilo needs your own Font Awesome
+Pro licence. The bundled Google Fonts typefaces are under the SIL Open Font
+License.
