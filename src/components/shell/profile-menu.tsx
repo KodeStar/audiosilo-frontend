@@ -11,8 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { PersonAvatar } from '@/components/house/person-avatar';
 import { profileName } from '@/components/profiles/profiles-model';
+import { Portrait } from '@/components/series/portrait';
 import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose-profile';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
@@ -70,7 +70,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
             Platform.select({ web: 'cursor-pointer hover:border-border-strong' }),
           )}
         >
-          <PersonAvatar name={name} size={30} />
+          <Portrait name={name} kind="user" size={30} />
           {showName ? (
             <Text variant="label" numberOfLines={1} className="max-w-[140px]">
               {name}
@@ -86,9 +86,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
             accessibilityState={{ selected: true }}
             className="py-1.5"
           >
-            <View style={{ margin: 4 }}>
-              <PersonAvatar name={name} size={24} ring />
-            </View>
+            <Portrait name={name} kind="user" size={24} ring />
             <Text numberOfLines={1} className="flex-1">
               {name}
             </Text>
@@ -104,9 +102,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
                 accessibilityLabel={t('profiles.menu.switchTo', { name: other })}
                 className="py-1.5"
               >
-                <View style={{ margin: 4 }}>
-                  <PersonAvatar name={other} size={24} />
-                </View>
+                <Portrait name={other} kind="user" size={24} ring={false} />
                 <Text numberOfLines={1} className="flex-1">
                   {other}
                 </Text>

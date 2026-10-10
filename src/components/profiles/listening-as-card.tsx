@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { PersonAvatar } from '@/components/house/person-avatar';
+import { Portrait } from '@/components/series/portrait';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
@@ -23,9 +23,7 @@ export function ListeningAsCard() {
   const name = profileName(active, t);
   return (
     <Card className="flex-row items-center gap-3 p-4" testID="listening-as">
-      <View style={{ margin: 4 }}>
-        <PersonAvatar name={name} size={40} ring />
-      </View>
+      <Portrait name={name} kind="user" size={40} ring />
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="eyebrow">{t('profiles.menu.listeningAs')}</Text>
         <Text variant="title" numberOfLines={1}>

@@ -71,9 +71,7 @@ describe("Who's listening?", () => {
     expect(screen.getByLabelText('Sam, Hearthside')).toBeTruthy();
     expect(screen.getByLabelText('Leo, Kids mode · bedtime 7:30 PM')).toBeTruthy();
     // One ring: the person listening.
-    expect(
-      screen.getAllByTestId('person-avatar-ring', { includeHiddenElements: true }),
-    ).toHaveLength(1);
+    expect(screen.getAllByTestId('portrait-ring', { includeHiddenElements: true })).toHaveLength(1);
     await fireEvent.press(screen.getByTestId('profiles-add'));
     expect(mockRouter.push).toHaveBeenCalledWith('/connect?add=1&profile=new');
   });
@@ -110,9 +108,9 @@ describe("Who's listening?", () => {
     await setPin('sam', '2468');
     await mountWithPortal(<ProfilesScreen />);
     expect(screen.queryByTestId('profiles-close')).toBeNull();
-    expect(
-      screen.queryAllByTestId('person-avatar-ring', { includeHiddenElements: true }),
-    ).toHaveLength(0);
+    expect(screen.queryAllByTestId('portrait-ring', { includeHiddenElements: true })).toHaveLength(
+      0,
+    );
     await fireEvent.press(screen.getByLabelText('Sam, Hearthside, asks for a PIN'));
     expect(await screen.findByText("Enter Sam's PIN")).toBeTruthy();
   });

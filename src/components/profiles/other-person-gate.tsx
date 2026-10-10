@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { PersonAvatar } from '@/components/house/person-avatar';
+import { Portrait } from '@/components/series/portrait';
 import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
 import { Text } from '@/components/ui/text';
@@ -24,7 +24,7 @@ export function OtherPersonGate({ profile }: { profile: Profile }) {
   return (
     <Screen testID="other-person-gate">
       <View className="flex-1 items-center justify-center gap-4 px-6">
-        <PersonAvatar name={name} size={72} />
+        <Portrait name={name} kind="user" size={72} />
         <Text variant="heading" accessibilityRole="header" className="text-center">
           {t('profiles.gate.title', { name })}
         </Text>

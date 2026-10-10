@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import type { HouseListeningRow } from '@/api/types';
 import { HomeSection } from '@/components/home/home-section';
 import { BookCover } from '@/components/library/book-cover';
+import { Portrait } from '@/components/series/portrait';
 import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
@@ -14,7 +15,6 @@ import { useNow } from '@/lib/use-now';
 import type { Connection } from '@/stores/session';
 
 import { HOUSE_GAP, houseCardWidth, houseCopy, houseRowKey } from './house-model';
-import { PersonAvatar } from './person-avatar';
 import { useHouseRows } from './use-house-rows';
 
 const AVATAR = 38;
@@ -98,7 +98,7 @@ export function HouseCard({
       onPress={() => openBook(connectionId, row.library_id, row.path)}
       className="min-h-[62px] flex-row items-center gap-3 rounded-card py-3 pl-3 pr-3.5"
     >
-      <PersonAvatar name={row.username} size={AVATAR} />
+      <Portrait name={row.username} kind="user" size={AVATAR} />
       <View className="min-w-0 flex-1 gap-px">
         <View className="flex-row items-center gap-1.5">
           <Text variant="label" numberOfLines={1} className="shrink">

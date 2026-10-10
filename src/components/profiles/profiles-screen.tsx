@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useEffect } from 'react';
 import { BackHandler, Platform, ScrollView, View } from 'react-native';
 
-import { PersonAvatar } from '@/components/house/person-avatar';
+import { Portrait, RING_ROOM } from '@/components/series/portrait';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -21,9 +21,6 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { ADD_SOMEONE_HREF } from './connect-intent';
 import { profileName, profileStatus, takeLaunchDecision } from './profiles-model';
 import { forgetPickerOpener, leavePicker, useChooseProfile } from './use-choose-profile';
-
-/** Room around a ringed avatar (`PersonAvatar` draws its ring outside its box). */
-const RING_ROOM = 4;
 
 /**
  * "Who's listening?" (`/profiles`, a full-screen root route; STYLEGUIDE section 8 "Profile
@@ -206,10 +203,13 @@ function PersonButton({
       )}
       style={{ width: size + 40 }}
     >
-      <View style={{ margin: RING_ROOM }}>
-        <PersonAvatar name={name} size={size} ring={active} />
+      <View>
+        <Portrait name={name} kind="user" size={size} ring={active} />
         {switching ? (
-          <View className="absolute inset-0 items-center justify-center rounded-full bg-overlay">
+          <View
+            className="absolute items-center justify-center rounded-full bg-overlay"
+            style={{ left: RING_ROOM, top: RING_ROOM, width: size, height: size }}
+          >
             <Spinner />
           </View>
         ) : null}

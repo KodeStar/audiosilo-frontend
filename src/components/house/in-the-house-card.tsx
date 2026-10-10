@@ -2,12 +2,12 @@ import { useIsFocused } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { Portrait } from '@/components/series/portrait';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { useNow } from '@/lib/use-now';
 
 import { houseCopy, houseRowKey, rowsForBook } from './house-model';
-import { PersonAvatar } from './person-avatar';
 import { useHouseRows } from './use-house-rows';
 
 const AVATAR = 28;
@@ -47,7 +47,7 @@ export function InTheHouseCard({
             accessibilityLabel={copy.label}
             className="flex-row items-center gap-2.5"
           >
-            <PersonAvatar name={r.username} size={AVATAR} />
+            <Portrait name={r.username} kind="user" size={AVATAR} />
             <View className="min-w-0 flex-1">
               <Text variant="label" numberOfLines={1}>
                 {r.username}

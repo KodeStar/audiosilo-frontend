@@ -5,7 +5,7 @@ import { View } from 'react-native';
 
 import { useCapabilitiesAll } from '@/api/hooks';
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
-import { PersonAvatar } from '@/components/house/person-avatar';
+import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -179,9 +179,7 @@ function PersonCard({
   return (
     <SettingsCard testID={`household-person-${profile.id}`}>
       <View className="flex-row items-center gap-3 py-3.5">
-        <View style={{ margin: 4 }}>
-          <PersonAvatar name={name} size={36} ring={active} />
-        </View>
+        <Portrait name={name} kind="user" size={36} ring={active} />
         <View className="min-w-0 flex-1 gap-0.5">
           <Text variant="label" numberOfLines={1} accessibilityRole="header">
             {name}
