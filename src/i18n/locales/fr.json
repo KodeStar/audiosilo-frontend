@@ -1483,6 +1483,11 @@
     "browseHere": "Explorer la démo ici"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Pas connecté à ce serveur",
+      "hint": "Ce lien concerne un serveur auquel cet appareil n'est plus connecté.",
+      "back": "Retour"
+    },
     "home": "Accueil AudioSilo",
     "offline": "Hors ligne · les téléchargements sont lus",
     "serverMore_one": "{{name}} + {{count}} autre",

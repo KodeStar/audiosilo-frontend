@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 // Capture the connection id ContentScope publishes as the scope, plus any redirect. A
@@ -18,13 +18,17 @@ jest.mock('@/api/provider', () => ({
   },
 }));
 
-// The route's own local param drives the scope; flip it per test. Redirect is a spy so we
-// can assert the unknown-connection guard fires without a real router.
+// The route's own local param drives the scope; flip it per test. A Redirect would be a
+// spy: an unknown connection must never render one (it fired on every focus of its tab).
 const mockRedirect = jest.fn((_props: { href: unknown }) => null);
+const mockRouter = { canGoBack: jest.fn(() => true), back: jest.fn(), dismissTo: jest.fn() };
 let mockParams: Record<string, unknown> = {};
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
   Redirect: (props: { href: unknown }) => mockRedirect(props),
+  get router() {
+    return mockRouter;
+  },
 }));
 
 let mockConnections: { id: string }[] = [];
@@ -54,6 +58,7 @@ beforeEach(() => {
   mockParams = {};
   mockConnections = [];
   mockRedirect.mockClear();
+  jest.clearAllMocks();
 });
 
 const Probe = () => <Text>content</Text>;
@@ -93,16 +98,25 @@ describe('ContentScope resolves the scope from the route local param (not the de
     expect(scopedTo).toBe('c2');
   });
 
-  it('redirects home (no scope, no children) when the id is not a signed-in connection', async () => {
+  it('says so (no scope, no children, no redirect) when the id is not a signed-in connection', async () => {
     mockParams = { connection: 'ghost' };
     mockConnections = [{ id: 'c1' }];
 
     await mount();
 
-    expect(mockRedirect).toHaveBeenCalledWith({ href: '/' });
+    // A not-found state, never a <Redirect>: left in a tab stack, a redirect fired on every
+    // focus of the tab, so the tab flashed blank and jumped Home on each tap.
+    expect(mockRedirect).not.toHaveBeenCalled();
+    expect(screen.getByText('Not signed in to that server')).toBeTruthy();
     // Guarded: the children never render, so a sub-component's useApi() can't throw.
     expect(screen.queryByText('content')).toBeNull();
     expect(scopedTo).toBeUndefined();
+    // Its way out goes back once (or Home with no history).
+    await fireEvent.press(screen.getByText('Go back'));
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    mockRouter.canGoBack.mockReturnValueOnce(false);
+    await fireEvent.press(screen.getByText('Go back'));
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith('/');
   });
 
   it("defaults to '' when the route carries no connection (aggregated screens)", async () => {

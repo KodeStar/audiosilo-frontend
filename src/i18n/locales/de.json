@@ -1483,6 +1483,11 @@
     "browseHere": "Demo hier durchstöbern"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Nicht bei diesem Server angemeldet",
+      "hint": "Dieser Link gehört zu einem Server, bei dem dieses Gerät nicht mehr angemeldet ist.",
+      "back": "Zurück"
+    },
     "home": "AudioSilo-Startseite",
     "offline": "Offline · Downloads spielen",
     "serverMore_one": "{{name}} + {{count}} weiterer",

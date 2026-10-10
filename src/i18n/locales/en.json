@@ -1483,6 +1483,11 @@
     "browseHere": "Browse the demo here"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Not signed in to that server",
+      "hint": "This link is for a server this device is no longer signed in to.",
+      "back": "Go back"
+    },
     "home": "AudioSilo home",
     "offline": "Offline · downloads play",
     "serverMore_one": "{{name}} + {{count}} more",

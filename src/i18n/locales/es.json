@@ -1483,6 +1483,11 @@
     "browseHere": "Explorar la demo aquí"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Sin sesión en ese servidor",
+      "hint": "Este enlace es de un servidor en el que este dispositivo ya no tiene sesión iniciada.",
+      "back": "Volver"
+    },
     "home": "Inicio de AudioSilo",
     "offline": "Sin conexión · las descargas se reproducen",
     "serverMore_one": "{{name}} + {{count}} más",

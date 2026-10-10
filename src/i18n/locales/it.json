@@ -1483,6 +1483,11 @@
     "browseHere": "Esplora la demo qui"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Accesso non effettuato a quel server",
+      "hint": "Questo link è di un server a cui questo dispositivo non ha più accesso.",
+      "back": "Indietro"
+    },
     "home": "Home di AudioSilo",
     "offline": "Offline · i download si riproducono",
     "serverMore_one": "{{name}} + un altro",
