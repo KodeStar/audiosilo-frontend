@@ -42,11 +42,15 @@ export const carNative: CarNative = {
     }
   },
 
+  // Queued while no JS ran, possibly before the identity migration: each reads on the new
+  // connection id (`resolveConnectionId`), like the loaded book and a bookmark press.
   async consumePendingBookmarks() {
     if (!has(AudiosiloPlayer.consumePendingBookmarks)) return [];
     try {
       const list = await AudiosiloPlayer.consumePendingBookmarks!();
-      return Array.isArray(list) ? list : [];
+      return Array.isArray(list)
+        ? list.map((b) => ({ ...b, connectionId: resolveConnectionId(b.connectionId) }))
+        : [];
     } catch {
       return [];
     }

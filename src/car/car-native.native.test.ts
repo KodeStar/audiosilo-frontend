@@ -54,6 +54,17 @@ describe('car-native (iOS and Android): old connection ids from the native side'
     expect(await carNative.getLoadedBook()).toBeNull();
   });
 
+  it('bookmarks queued while no JS ran name their new connection', async () => {
+    mockModule.consumePendingBookmarks.mockResolvedValueOnce([
+      { connectionId: 'srv', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+      { connectionId: 'other.1', libraryId: 2, path: 'E', trackIndex: 0, position: 5 },
+    ]);
+    expect(await carNative.consumePendingBookmarks()).toEqual([
+      { connectionId: 'srv.3', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+      { connectionId: 'other.1', libraryId: 2, path: 'E', trackIndex: 0, position: 5 },
+    ]);
+  });
+
   it("a bookmark press names the engine's book on its new connection", () => {
     const pressed = jest.fn();
     carNative.onBookmark(pressed);

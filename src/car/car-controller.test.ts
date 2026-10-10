@@ -960,12 +960,14 @@ describe('bookmarks from outside the app', () => {
       connect(['srv.3']);
       mockClients['srv.3'] = fakeClient({});
       useDownloads.setState({ entries: { 'srv.3:2:D': downloaded('srv.3', 'D') } });
-      // One kept from an earlier drain, one the Android service queued while no JS ran.
+      // One kept from an earlier drain (read back here, so resolved here); one the Android
+      // service queued while no JS ran, which the native adapter already resolved
+      // (`car-native.native.test.ts`).
       await setItem('audiosilo.carBookmarks', [
         { connectionId: 'srv', libraryId: 2, path: 'D', position: 12 },
       ]);
       mockNative.consumePendingBookmarks.mockResolvedValueOnce([
-        { connectionId: 'srv', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+        { connectionId: 'srv.3', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
       ]);
       stop = startCarSync();
       await settle();

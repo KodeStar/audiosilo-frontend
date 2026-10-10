@@ -606,13 +606,15 @@ function addBookmarks(fresh: CarBookmark[]): Promise<void> {
     // read as a connection that is gone and be dropped, the kept ones with them.
     await bootstrapPlayback();
     const stored = await getItem<unknown[]>(RETRY_KEY);
-    const kept = Array.isArray(stored) ? stored.filter(isCarBookmark) : [];
-    // An old connection id (a bookmark the Android service kept while no JS ran, from before
-    // the identity migration) reads as its new one, now the aliases are loaded.
-    const todo = [...kept, ...fresh].map((b) => ({
-      ...b,
-      connectionId: resolveConnectionId(b.connectionId),
-    }));
+    // A kept one is read back here, so an old connection id in it (kept before the identity
+    // migration) reads as its new one, now the aliases are loaded. The fresh ones come
+    // through the native adapter, which resolved theirs (`car-native.native.ts`).
+    const kept = Array.isArray(stored)
+      ? stored
+          .filter(isCarBookmark)
+          .map((b) => ({ ...b, connectionId: resolveConnectionId(b.connectionId) }))
+      : [];
+    const todo = [...kept, ...fresh];
     if (todo.length === 0) return;
     const retry: CarBookmark[] = [];
     for (const b of todo) {
