@@ -100,8 +100,8 @@ describe("Who's listening?", () => {
     expect(mockRouter.dismissTo).not.toHaveBeenCalled();
   });
 
-  it('when someone must be chosen: no way out, and the one made active is chosen too', async () => {
-    useProfiles.setState({ chooseRequired: true, activeProfileId: 'sam' });
+  it('when someone must be chosen: no way out, nobody ringed, everyone asks for their PIN', async () => {
+    useProfiles.setState({ activeProfileId: null });
     await setPin('sam', '2468');
     await mountWithPortal(<ProfilesScreen />);
     expect(screen.queryByTestId('profiles-close')).toBeNull();

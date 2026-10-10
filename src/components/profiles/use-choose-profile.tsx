@@ -30,8 +30,8 @@ export function leavePicker(): void {
 }
 
 /**
- * Choosing a person: the active one just goes back (unless someone must be chosen,
- * `chooseRequired`); a profile with a PIN asks for it
+ * Choosing a person: the active one just goes back (while someone must be chosen,
+ * `mustChoose`, nobody is active); a profile with a PIN asks for it
  * first (`PinDialog`; a mirror whose hash the secure store doesn't have any more counts as
  * no PIN); then `switchProfile` and Home (`homeForNewPerson`). `stay`: switch where the
  * listener is (a link to another person's book that switches first) instead of going Home.
@@ -55,10 +55,9 @@ export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
 
   const choose = async (profile: Profile) => {
     if (switching) return;
-    const { activeProfileId, chooseRequired } = useProfiles.getState();
-    // The person already listening goes back, unless the app only made them active
-    // because the last one left (`chooseRequired`): then they are chosen like anyone.
-    if (profile.id === activeProfileId && !chooseRequired) {
+    // The person already listening goes back. Nobody is while someone must be chosen
+    // (`mustChoose`): then everyone is chosen like anyone, PIN and all.
+    if (profile.id === useProfiles.getState().activeProfileId) {
       if (!stay) leavePicker();
       return;
     }

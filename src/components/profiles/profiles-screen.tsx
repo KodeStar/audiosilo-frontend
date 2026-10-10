@@ -14,7 +14,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-import { type Profile, useProfiles } from '@/stores/profiles';
+import { type Profile, useMustChoose, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -40,8 +40,9 @@ export function ProfilesScreen() {
   const hydrated = useProfiles((s) => s.hydrated);
   const profiles = useProfiles((s) => s.profiles);
   const activeId = useProfiles((s) => s.activeProfileId);
-  // The last person left: someone must be chosen, so there is no way out but choosing.
-  const required = useProfiles((s) => s.chooseRequired);
+  // The person listening left: someone must be chosen, so there is no way out but
+  // choosing (persisted, so a reload is the same).
+  const required = useMustChoose();
   const status = useSession((s) => s.status);
   const connections = useSession((s) => s.connections);
   const { choose, switching, dialog } = useChooseProfile();
@@ -119,7 +120,7 @@ export function ProfilesScreen() {
                   key={p.id}
                   profile={p}
                   connections={connections}
-                  active={p.id === activeId && !required}
+                  active={p.id === activeId}
                   switching={switching === p.id}
                   disabled={switching !== null}
                   size={size}

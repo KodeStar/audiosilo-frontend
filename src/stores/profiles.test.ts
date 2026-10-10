@@ -7,6 +7,8 @@ import { initialProfiles, PROFILES_KEY } from '@/lib/identity-migration';
 import {
   activeProfile,
   connectionsOfProfile,
+  deleteProfile,
+  mustChoose,
   parseProfilesDoc,
   placeConnection,
   placeInDoc,
@@ -23,6 +25,7 @@ import {
   useActiveProfile,
   useProfileConnections,
   useProfiles,
+  visibleConnectionIds,
 } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
@@ -105,7 +108,7 @@ describe('parseProfilesDoc', () => {
     }
   });
 
-  it('drops broken profiles, duplicate ids and an unknown active id; keeps kids + hasPin', () => {
+  it('drops broken profiles and duplicate ids; an unknown active id is nobody; keeps kids + hasPin', () => {
     const parsed = parseProfilesDoc({
       version: 1,
       profiles: [
@@ -133,9 +136,24 @@ describe('parseProfilesDoc', () => {
           kids: { bedtime: '19:30', library: { connectionId: 'y', libraryId: 2 } },
         },
       ],
-      activeProfileId: 'a',
+      // Never the first person by default: they may have a PIN (`mustChoose`).
+      activeProfileId: null,
       askAtLaunch: true,
     });
+  });
+
+  it('keeps nobody active across a reload (someone must be chosen)', () => {
+    const stored = doc({
+      profiles: [
+        { id: 'a', name: 'Alex', connectionIds: ['x.1'], hasPin: true },
+        { id: 's', name: 'Sam', connectionIds: ['y.2'] },
+      ],
+      activeProfileId: null,
+    });
+    const parsed = parseProfilesDoc(JSON.parse(JSON.stringify(stored)));
+    expect(parsed.activeProfileId).toBeNull();
+    expect(mustChoose(parsed)).toBe(true);
+    expect(visibleConnectionIds(parsed)).toEqual([]);
   });
 });
 
@@ -167,8 +185,10 @@ describe('reconcileProfiles', () => {
     });
     const next = reconcileProfiles(d, [A1, B1], A1.id, ids);
     expect(next.profiles).toEqual([{ id: 'p', name: 'chris', connectionIds: [A1.id, B1.id] }]);
-    // The active one went: the profile holding the default connection.
-    expect(next.activeProfileId).toBe('p');
+    // The active one went: nobody, until someone is chosen (with their PIN), never the
+    // profile holding the default connection.
+    expect(next.activeProfileId).toBeNull();
+    expect(mustChoose(next)).toBe(true);
   });
 
   it('never keeps two connections of one server in a profile', () => {
@@ -266,6 +286,16 @@ describe('connectionsOfProfile', () => {
   it("keeps the session's order and falls back to every connection with no profile", () => {
     expect(connectionsOfProfile([A1, B1, C3], [C3.id, A1.id])).toEqual([A1, C3]);
     expect(connectionsOfProfile([A1, B1], null)).toEqual([A1, B1]);
+  });
+
+  it('visibleConnectionIds: the active profile, none while nobody is chosen, all with no profiles', () => {
+    const p = { id: 'p', name: 'chris', connectionIds: [A1.id] };
+    expect(visibleConnectionIds(doc({ profiles: [p], activeProfileId: 'p' }))).toEqual([A1.id]);
+    expect(visibleConnectionIds(doc({ profiles: [p], activeProfileId: null }))).toEqual([]);
+    expect(visibleConnectionIds(doc())).toBeNull();
+    expect(connectionsOfProfile([A1, B1], visibleConnectionIds(doc({ profiles: [p] })))).toEqual(
+      [],
+    );
   });
 });
 
@@ -409,22 +439,65 @@ describe('switchProfile', () => {
       await useSession.getState().removeConnection(A1.id);
     });
     expect(useSession.getState().defaultConnectionId).toBe(B1.id);
-    // Removing B1 too deletes Chris's profile: Sam becomes active, with his default.
+    // Removing B1 too deletes Chris's profile: nobody is active (Sam must be chosen, with
+    // his PIN, not assumed), persisted, and nobody's connections show.
     await act(async () => {
       await useSession.getState().removeConnection(B1.id);
     });
-    expect(activeProfile()?.connectionIds).toEqual([A2.id]);
+    expect(activeProfile()).toBeNull();
+    expect(mustChoose(useProfiles.getState())).toBe(true);
+    expect(profileConnectionIds()).toEqual([]);
+    const stored = JSON.parse((await AsyncStorage.getItem(PROFILES_KEY))!) as ProfilesDoc;
+    expect(stored.activeProfileId).toBeNull();
+    await switchProfile(profileOf(A2.id)!.id);
+    expect(mustChoose(useProfiles.getState())).toBe(false);
     expect(useSession.getState().defaultConnectionId).toBe(A2.id);
-    // Chris left: Sam must be chosen (with his PIN), not assumed.
-    expect(useProfiles.getState().chooseRequired).toBe(true);
-    await switchProfile(activeProfile()!.id);
-    expect(useProfiles.getState().chooseRequired).toBe(false);
   });
 
   it('removing someone who is not listening asks nobody to choose', async () => {
     await act(async () => {
       await useSession.getState().removeConnection(A2.id);
     });
-    expect(useProfiles.getState().chooseRequired).toBe(false);
+    expect(mustChoose(useProfiles.getState())).toBe(false);
+    expect(activeProfile()?.connectionIds).toEqual([A1.id, B1.id]);
+  });
+
+  it('removing the active person (deleteProfile) leaves nobody active, across a reload', async () => {
+    const sam = profileOf(A2.id)!;
+    await switchProfile(sam.id);
+    // "Remove from this device": their connection signed out, then the profile deleted.
+    await act(async () => {
+      await useSession.getState().removeConnection(A2.id);
+    });
+    deleteProfile(sam.id);
+    expect(mustChoose(useProfiles.getState())).toBe(true);
+    // A cold start reads the same: nobody, so "Who's listening?" asks (Chris's PIN).
+    resetProfilesForTests();
+    await useProfiles.getState().hydrate();
+    expect(activeProfile()).toBeNull();
+    expect(mustChoose(useProfiles.getState())).toBe(true);
+    expect(profileConnectionIds()).toEqual([]);
+  });
+
+  it('deleting a profile that is not active keeps the active one', async () => {
+    const sam = profileOf(A2.id)!.id;
+    deleteProfile(sam);
+    expect(activeProfile()?.connectionIds).toEqual([A1.id, B1.id]);
+  });
+
+  it('a sign-in while nobody is chosen is a new person, made active; a re-pair is nobody', async () => {
+    await act(async () => {
+      await useSession.getState().removeConnection(A1.id);
+      await useSession.getState().removeConnection(B1.id);
+    });
+    expect(mustChoose(useProfiles.getState())).toBe(true);
+    // A re-pair of Sam's connection (already his) places nothing and switches nobody.
+    expect(profileOf(A2.id)).not.toBeNull();
+    // A new account signed in: a profile of its own (they just proved who they are).
+    setSession([A2, C3], A2.id);
+    const placed = placeConnection(C3.id);
+    expect(activeProfile()?.id).toBe(placed);
+    expect(activeProfile()?.connectionIds).toEqual([C3.id]);
+    expect(profileOf(A2.id)?.id).not.toBe(placed);
   });
 });

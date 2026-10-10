@@ -55,6 +55,9 @@ describe('profiles model', () => {
     expect(otherOwner(doc, 'a.1')).toBeNull();
     expect(otherOwner(doc, 'gone')).toBeNull();
     expect(otherOwner(doc, '')).toBeNull();
+    // Nobody chosen (the person listening left): a link to anyone's book meets the gate,
+    // the PIN included.
+    expect(otherOwner({ ...doc, activeProfileId: null }, 'a.1')?.id).toBe(doc.profiles[0].id);
   });
 
   it('rounds a wait up to whole seconds', () => {

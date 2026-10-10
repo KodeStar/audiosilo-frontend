@@ -1,4 +1,4 @@
-import { Redirect, router } from 'expo-router';
+import { Redirect, router, useIsFocused } from 'expo-router';
 import { useEffect, type ReactNode } from 'react';
 
 import { useOptionalApi } from '@/api/provider';
@@ -9,7 +9,7 @@ import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { accountFlagsKnown } from '@/lib/account';
 import { currentNavState, topRootRoute } from '@/lib/root-stack';
-import { useProfiles } from '@/stores/profiles';
+import { useMustChoose, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 /**
@@ -51,23 +51,29 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // "Who's listening?" at a cold launch (Phase 8): once per launch, with two or more people
   // on this device and the setting on. Pushed over the app (a root route), so choosing the
   // person already listening goes back to where the launch was going (a link's page).
+  // The person listening left this device and someone else is left (`mustChoose`, which
+  // is persisted: a reload or a cold start is the same): they choose, with their PIN,
+  // before the app is anyone's. The shell stays unmounted meanwhile (below), and coming
+  // back to it (web history's Back over the picker) opens the picker again.
   const profilesHydrated = useProfiles((s) => s.hydrated);
+  const choose = useMustChoose();
+  const focused = useIsFocused();
   useEffect(() => {
     if (status !== 'authenticated' || !profilesHydrated) return;
+    if (choose) {
+      // This picker is the launch's question too: not asked again once answered.
+      takeLaunchDecision();
+      if (focused && topRootRoute(currentNavState()) !== 'profiles') router.push(PROFILES_HREF);
+      return;
+    }
     if (!takeLaunchDecision()) return;
     if (asksAtLaunch(useProfiles.getState())) router.push(PROFILES_HREF);
-  }, [status, profilesHydrated]);
-  // The person listening left this device and someone else is left: they choose (with
-  // their PIN) before the app is theirs.
-  const chooseRequired = useProfiles((s) => s.chooseRequired);
-  useEffect(() => {
-    if (status !== 'authenticated' || !chooseRequired) return;
-    if (topRootRoute(currentNavState()) !== 'profiles') router.push(PROFILES_HREF);
-  }, [status, chooseRequired]);
+  }, [status, profilesHydrated, choose, focused]);
 
   // The profiles too (Phase 8): the shell must not mount for a moment as the wrong person
-  // (or as a kids profile's grown-up tabs) before they have loaded.
-  if (status === 'loading' || (status === 'authenticated' && !profilesHydrated)) {
+  // (or as a kids profile's grown-up tabs) before they have loaded, nor at all while
+  // nobody is chosen (no one's pages, not even the last person's, behind the picker).
+  if (status === 'loading' || (status === 'authenticated' && (!profilesHydrated || choose))) {
     return (
       <Screen>
         <Spinner center />

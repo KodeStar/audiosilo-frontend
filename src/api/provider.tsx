@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'r
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
 import { flushConnection } from '@/playback/progress-sync';
-import { connectionsOfProfile, useProfiles } from '@/stores/profiles';
+import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/stores/profiles';
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
@@ -244,9 +244,8 @@ export function useOptionalApi(connectionId?: string): ApiClient | null {
  * per-server queries and their merge). */
 export function useApis(): ApiConnection[] {
   const { clients, connections } = useContext(ApiContext);
-  const ids = useProfiles(
-    (s) => s.profiles.find((p) => p.id === s.activeProfileId)?.connectionIds ?? null,
-  );
+  // None while someone must be chosen (`mustChoose`): nothing of anyone shows.
+  const ids = useProfiles(visibleConnectionIds);
   return useMemo(
     () =>
       connectionsOfProfile(connections, ids)

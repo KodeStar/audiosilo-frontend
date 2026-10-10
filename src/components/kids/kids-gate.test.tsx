@@ -7,7 +7,7 @@ import { useSession } from '@/stores/session';
 
 // The `(app)` gate's kids half: a kids profile never mounts the shell (the root layout's
 // `KidsRouteGuard` moves it to /kids; see kids-route-guard.test.tsx).
-jest.mock('expo-router', () => ({ Redirect: () => null }));
+jest.mock('expo-router', () => ({ Redirect: () => null, useIsFocused: () => true }));
 
 const setProfile = (kids: boolean) =>
   useProfiles.setState({

@@ -134,7 +134,9 @@ export function parseProfilesDoc(raw: unknown): ProfilesDoc {
   return {
     version: 1,
     profiles,
-    activeProfileId: active && seen.has(active) ? active : (profiles[0]?.id ?? null),
+    // Nobody (or someone who is not on the device any more) is never read as the first
+    // person: that person may have a PIN, and nobody gave it (`mustChoose`).
+    activeProfileId: active && seen.has(active) ? active : null,
     askAtLaunch: raw.askAtLaunch === true,
   };
 }
@@ -182,8 +184,10 @@ function holdsServer(
  *    `initialProfiles` (one profile, one per server); else the active profile when it has
  *    no connection to that server, else the first profile without one, else a profile of
  *    their own (not made active: nobody chose to switch).
- * 5. The active profile is still there: else the one holding the default connection, else
- *    the first.
+ * 5. The active profile is still there. When it is gone and others are left, NOBODY is
+ *    active (`mustChoose`): the next person may have a PIN, so they are chosen on "Who's
+ *    listening?", never assumed. Only a document built from nothing (no profiles before)
+ *    starts with someone: the default connection's profile, else the first.
  */
 export function reconcileProfiles(
   doc: ProfilesDoc,
@@ -236,9 +240,11 @@ export function reconcileProfiles(
 
   if (!profiles.some((p) => p.id === activeProfileId)) {
     activeProfileId =
-      profiles.find((p) => defaultId !== null && p.connectionIds.includes(defaultId))?.id ??
-      profiles[0]?.id ??
-      null;
+      doc.profiles.length === 0
+        ? (profiles.find((p) => defaultId !== null && p.connectionIds.includes(defaultId))?.id ??
+          profiles[0]?.id ??
+          null)
+        : null;
   }
   // A second person appeared on a device that had one: ask who's listening at launch.
   const second = doc.profiles.length === 1 && profiles.length >= 2;
@@ -307,7 +313,8 @@ export function placeInDoc(
 }
 
 /** The connections of `ids` (a profile's), in the session's order; every connection when
- * there is no profile (`ids` null: not hydrated yet, or nobody is signed in). */
+ * there is no profile (`ids` null: not hydrated yet, or nobody is signed in). Pass
+ * `visibleConnectionIds(doc)`, which is empty (not null) while nobody is chosen. */
 export function connectionsOfProfile<C extends { id: string }>(
   connections: readonly C[],
   ids: readonly string[] | null | undefined,
@@ -316,24 +323,44 @@ export function connectionsOfProfile<C extends { id: string }>(
   return connections.filter((c) => ids.includes(c.id));
 }
 
+/** No connections: what a person sees while nobody is chosen (one array, so a selector
+ * returning it doesn't re-render). */
+const NO_IDS: readonly string[] = Object.freeze([]);
+
+/**
+ * Whether someone must be chosen on "Who's listening?" before the app is anyone's: there
+ * are people on this device and none of them is active (the active person left: signed
+ * out of their last server, or removed). Persisted (it IS `activeProfileId: null`), so a
+ * reload or a cold start asks again, and nothing of anyone shows meanwhile: the auth gate
+ * holds the shell, every person-facing list is empty (`visibleConnectionIds`), the car
+ * lists nothing, the widget clears and a link to anyone's book meets `OtherPersonGate`.
+ */
+export function mustChoose(doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'>): boolean {
+  return doc.profiles.length > 0 && !doc.profiles.some((p) => p.id === doc.activeProfileId);
+}
+
+/** The ids of the connections a person may see: the active profile's; none while someone
+ * must be chosen (`mustChoose`); null (every connection) with no profiles at all (not
+ * hydrated yet, or the device has nobody, as before profiles). */
+export function visibleConnectionIds(
+  doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'>,
+): readonly string[] | null {
+  const active = doc.profiles.find((p) => p.id === doc.activeProfileId);
+  if (active) return active.connectionIds;
+  return doc.profiles.length > 0 ? NO_IDS : null;
+}
+
 // --- The store ------------------------------------------------------------------------------
 
 type ProfilesState = ProfilesDoc & {
   /** The stored document has been read (and reconciled once the session settles). */
   hydrated: boolean;
-  /** The active person left this device (signed out of their last server, removed) while
-   * others remain: the next one was made active only so the app has someone, and
-   * "Who's listening?" must be answered (with that person's PIN, where they set one)
-   * before anyone uses the app. In memory: a relaunch asks anyway when it should
-   * (`askAtLaunch`). Cleared by `switchProfile`. */
-  chooseRequired: boolean;
   hydrate: () => Promise<void>;
 };
 
 export const useProfiles = create<ProfilesState>()(() => ({
   ...EMPTY_DOC,
   hydrated: false,
-  chooseRequired: false,
   hydrate: () => hydrateProfiles(),
 }));
 
@@ -352,12 +379,7 @@ const docOf = (s: ProfilesDoc): ProfilesDoc => ({
 function commit(next: ProfilesDoc): void {
   const state = useProfiles.getState();
   if (!state.hydrated || sameDoc(next, docOf(state))) return;
-  // The active person went and someone else is left: they must be chosen, not assumed.
-  const left =
-    state.activeProfileId !== null &&
-    !next.profiles.some((p) => p.id === state.activeProfileId) &&
-    next.profiles.length > 0;
-  useProfiles.setState({ ...docOf(next), ...(left ? { chooseRequired: true } : {}) });
+  useProfiles.setState(docOf(next));
   void setItem(PROFILES_KEY, docOf(next));
 }
 
@@ -382,9 +404,10 @@ function onRemoved(id: string): void {
   const profiles = s.profiles
     .map((p) => ({ ...p, connectionIds: p.connectionIds.filter((x) => x !== id) }))
     .filter((p) => p.connectionIds.length > 0);
+  // The active person left: nobody until someone is chosen (`mustChoose`).
   const activeProfileId = profiles.some((p) => p.id === s.activeProfileId)
     ? s.activeProfileId
-    : (profiles[0]?.id ?? null);
+    : null;
   commit({ ...docOf(s), profiles, activeProfileId });
 }
 
@@ -424,17 +447,23 @@ export function profileOf(
 }
 
 /** The active profile's connections, in the session's order (every connection while
- * there is no profile). Framework-free: the car snapshot, the widget. */
+ * there is no profile, none while someone must be chosen). Framework-free: the car
+ * snapshot, the widget. */
 export function profileConnections(): Connection[] {
   return connectionsOfProfile(
     useSession.getState().connections,
-    activeProfile()?.connectionIds ?? null,
+    visibleConnectionIds(useProfiles.getState()),
   );
 }
 
 /** The ids of `profileConnections()`. */
 export function profileConnectionIds(): string[] {
   return profileConnections().map((c) => c.id);
+}
+
+/** Whether someone must be chosen before the app is anyone's (`mustChoose`). */
+export function useMustChoose(): boolean {
+  return useProfiles(mustChoose);
 }
 
 /** The active profile, or null. */
@@ -447,9 +476,7 @@ export function useActiveProfile(): Profile | null {
  * neither changes. */
 export function useProfileConnections(): Connection[] {
   const connections = useSession((s) => s.connections);
-  const ids = useProfiles(
-    (s) => s.profiles.find((p) => p.id === s.activeProfileId)?.connectionIds ?? null,
-  );
+  const ids = useProfiles(visibleConnectionIds);
   return useMemo(() => connectionsOfProfile(connections, ids), [connections, ids]);
 }
 
@@ -505,8 +532,8 @@ export function deleteProfile(profileId: string): void {
   commit({
     ...docOf(s),
     profiles,
-    activeProfileId:
-      s.activeProfileId === profileId ? (profiles[0]?.id ?? null) : s.activeProfileId,
+    // The active person removed: nobody until someone is chosen (`mustChoose`).
+    activeProfileId: s.activeProfileId === profileId ? null : s.activeProfileId,
   });
 }
 
@@ -547,7 +574,6 @@ export async function switchProfile(profileId: string): Promise<void> {
   const target = s.profiles.find((p) => p.id === profileId);
   if (!target) return;
   commit({ ...docOf(s), activeProfileId: profileId });
-  useProfiles.setState({ chooseRequired: false });
   // Required on use: the player store imports most of the app (and, through the API
   // provider, this module), so a static import would be a cycle at load.
   const { usePlayer } =
@@ -577,5 +603,5 @@ export function resetProfilesForTests(): void {
   hydration = null;
   unsubscribeSession?.();
   unsubscribeSession = null;
-  useProfiles.setState({ ...EMPTY_DOC, hydrated: false, chooseRequired: false });
+  useProfiles.setState({ ...EMPTY_DOC, hydrated: false });
 }
