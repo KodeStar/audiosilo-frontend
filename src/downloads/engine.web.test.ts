@@ -47,11 +47,11 @@ beforeAll(() => {
   g.location = { origin: ORIGIN };
   g.Response = FakeResponse;
   jest.isolateModules(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    /* eslint-disable @typescript-eslint/no-require-imports */
     engine = (require('./engine.web') as { engine: DownloadEngine }).engine;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     ({ setConnectionAliases } =
       require('@/lib/connection-id') as typeof import('@/lib/connection-id'));
+    /* eslint-enable @typescript-eslint/no-require-imports */
   });
 });
 

@@ -42,6 +42,8 @@ jest.mock('@/playback/store', () => {
 /* eslint-disable import/first */
 import PlayerScreen from '@/app/player';
 import { usePlayer } from '@/playback/store';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
+import { useSession } from '@/stores/session';
 /* eslint-enable import/first */
 
 type Loaded = { connectionId: string; libraryId: number; path: string } | null;
@@ -59,6 +61,9 @@ const routeTo = (jump: { position?: string; track?: string }) => {
 };
 
 beforeEach(() => {
+  // The route's connection is signed in (an unknown one gets the not-found state:
+  // `useRouteConnection`).
+  useSession.setState({ connections: [{ id: 'c' } as never] });
   setNowPlaying(null);
   mockSeekBook.mockReset();
   mockGoToTrack.mockReset();
@@ -107,5 +112,27 @@ describe('the player route', () => {
     await act(async () => setNowPlaying(THIS_BOOK));
     expect(mockSeekBook).not.toHaveBeenCalled();
     expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the gate for another person's book, and starts it once they are chosen", async () => {
+    try {
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'me', name: 'Chris', connectionIds: ['mine'] },
+          { id: 'sam', name: 'Sam', connectionIds: ['c'] },
+        ],
+        activeProfileId: 'me',
+      });
+      routeTo({});
+      const r = await render(<PlayerScreen />);
+      expect(r.getByTestId('other-person-gate', { includeHiddenElements: true })).toBeTruthy();
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      // The switch: the start the gate held back happens now (no latch recorded it).
+      await act(async () => useProfiles.setState({ activeProfileId: 'sam' }));
+      expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    } finally {
+      resetProfilesForTests();
+    }
   });
 });
