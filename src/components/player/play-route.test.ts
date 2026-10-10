@@ -101,21 +101,4 @@ describe('navFor', () => {
     });
     expect(navFor(undefined, target)).toEqual({ playerOnTop: false, bookOnTop: false });
   });
-
-  it('counts kids mode as a player on top, with or without the shell under it', () => {
-    // A cold kids launch replaces the shell: kids mode is the root stack's only route.
-    const kidsOnly: NavState = { index: 0, routes: [{ name: 'kids' }] };
-    expect(navFor(kidsOnly, target)).toEqual({ playerOnTop: true, bookOnTop: false });
-    expect(navFor(withPage({}, 'kids'), target)).toEqual({ playerOnTop: true, bookOnTop: false });
-    // So a phone starts the story in place instead of pushing the full player.
-    expect(
-      playRoute({
-        phone: true,
-        loaded: false,
-        toggle: false,
-        viaBookPage: false,
-        ...navFor(kidsOnly, target),
-      }),
-    ).toEqual({ kind: 'start' });
-  });
 });

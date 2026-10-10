@@ -12,9 +12,9 @@ jest.mock('expo-router', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-const mockPlayBook = jest.fn(async (..._a: unknown[]) => {});
-jest.mock('@/components/player/use-play-book', () => ({
-  usePlayBook: () => mockPlayBook,
+const mockStart = jest.fn(async (..._a: unknown[]) => true);
+jest.mock('@/components/player/start-book', () => ({
+  startBookInPlace: (...a: unknown[]) => mockStart(...a),
 }));
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
@@ -25,12 +25,16 @@ jest.mock('./kids-player', () => ({
     return <Text>kids player</Text>;
   },
 }));
+const mockToggle = jest.fn(async () => {});
+let mockLoadedKey: string | null = null;
+let mockLive = false;
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
-    usePlayer: create(() => ({ nowPlaying: null })),
-    selectBookKey: () => null,
+    usePlayer: create(() => ({ nowPlaying: null, toggle: () => mockToggle() })),
+    selectBookKey: () => mockLoadedKey,
     selectIsPlaying: () => false,
+    selectIsTransportLive: () => mockLive,
   };
 });
 let mockStories: KidsStories = { status: 'loading' };
@@ -57,6 +61,7 @@ jest.mock('@/lib/layout', () => ({
 
 /* eslint-disable import/first */
 import { toast } from '@/components/ui/toast';
+import { contentKey } from '@/lib/content-key';
 import { formatTimeOfDay } from '@/lib/format';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
@@ -74,6 +79,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockStories = { status: 'loading' };
   mockLayout = 'phone';
+  mockLoadedKey = null;
+  mockLive = false;
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -114,7 +121,7 @@ it('says the sleep timer is on, with its minutes left, while it runs', async () 
   }
 });
 
-it('plays a story through the one play path when its tile is tapped', async () => {
+it('starts a story in place when its tile is tapped, never opening the full player', async () => {
   mockStories = {
     status: 'ready',
     books: [book('kids/b', 'B'), book('kids/a', 'A')],
@@ -124,12 +131,28 @@ it('plays a story through the one play path when its tile is tapped', async () =
   const tiles = screen.getAllByRole('button', { name: /^Play / });
   expect(tiles.map((t) => t.props.accessibilityLabel)).toEqual(['Play B', 'Play A']);
   await fireEvent.press(screen.getByRole('button', { name: 'Play A' }));
-  expect(mockPlayBook).toHaveBeenCalledWith({ connectionId: 'c', libraryId: 3, path: 'kids/a' });
+  expect(mockStart).toHaveBeenCalledWith({ connectionId: 'c', libraryId: 3, path: 'kids/a' });
+  // Kids mode is its own player: on a phone too, nothing pushes /player.
+  expect(mockPush).not.toHaveBeenCalled();
+});
+
+it('plays the loaded story on rather than starting it again', async () => {
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false };
+  mockLoadedKey = contentKey('c', 3, 'kids/a');
+  await render(<KidsScreen />);
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
+  expect(mockToggle).toHaveBeenCalledTimes(1);
+  expect(mockStart).not.toHaveBeenCalled();
+
+  // Already playing: a tap leaves it playing.
+  mockLive = true;
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
+  expect(mockToggle).toHaveBeenCalledTimes(1);
 });
 
 it('says so when a story will not start', async () => {
   mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false };
-  mockPlayBook.mockRejectedValueOnce(new Error('gone'));
+  mockStart.mockRejectedValueOnce(new Error('gone'));
   await render(<KidsScreen />);
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
   expect(toast).toHaveBeenCalledWith(

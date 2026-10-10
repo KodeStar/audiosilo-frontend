@@ -6,14 +6,16 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Book } from '@/api/types';
-import { usePlayBook } from '@/components/player/use-play-book';
+import type { PlayTarget } from '@/components/player/play-route';
+import { startBookInPlace } from '@/components/player/start-book';
 import { openProfiles } from '@/components/profiles/use-choose-profile';
 import { Screen } from '@/components/ui/screen';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
+import { contentKey } from '@/lib/content-key';
 import { cn } from '@/lib/utils';
-import { usePlayer } from '@/playback/store';
+import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
 import { DEFAULT_BEDTIME } from '@/stores/profiles';
 
 import { GrownUpsButton } from './grown-ups-button';
@@ -29,6 +31,21 @@ import { useKidsProfile, useKidsStories } from './use-kids';
 const MAX_WIDTH = 1200;
 
 /**
+ * Play a story. Kids mode is its own player: a story starts in place
+ * (`startBookInPlace`) on every layout and never opens the full player, which kids mode
+ * doesn't allow; the story already loaded plays on (a tap never pauses it: the big play
+ * button does that). Rejects when the story couldn't be fetched.
+ */
+async function playStory(target: PlayTarget): Promise<void> {
+  const store = usePlayer.getState();
+  if (selectBookKey(store) === contentKey(target.connectionId, target.libraryId, target.path)) {
+    if (!selectIsTransportLive(store)) await store.toggle();
+    return;
+  }
+  await startBookInPlace(target);
+}
+
+/**
  * Kids mode (Phase 8, the route `/kids`, STYLEGUIDE "Profile picker and kids mode"): the
  * whole app for a profile in kids mode. "Hi Leo" and the Grown-ups hold, the bedtime card,
  * the story playing now in a big simple player (`KidsPlayer`, which replaces the full
@@ -36,11 +53,9 @@ const MAX_WIDTH = 1200;
  * continue-listening first). No search, settings, downloads page or Up next: the gate and
  * `KidsRouteGuard` keep a kids profile here.
  *
- * A story starts through `usePlayBook`, which starts it in place here on every layout
- * (`navFor` counts this screen as a player on top), and the page scrolls back up to the
- * player. On Android the back button does nothing here while the shell sits under this
- * screen (going back would only bounce off the gate); with nothing under it, it leaves the
- * app as usual.
+ * A story starts in place (`playStory`), and the page scrolls back up to the player. On
+ * Android the back button does nothing here while the shell sits under this screen (going
+ * back would only bounce off the gate); with nothing under it, it leaves the app as usual.
  */
 export function KidsScreen() {
   const { t } = useTranslation();
@@ -51,7 +66,6 @@ export function KidsScreen() {
   const profile = useKidsProfile();
   const { stories, connectionId, retry } = useKidsStories();
   const loaded = usePlayer((s) => s.nowPlaying !== null);
-  const playBook = usePlayBook();
   const scroll = useRef<ScrollView>(null);
   const [width, setWidth] = useState(0);
 
@@ -65,7 +79,7 @@ export function KidsScreen() {
   const onPlay = (book: Book) => {
     if (!connectionId) return;
     scroll.current?.scrollTo({ y: 0, animated: !reduced });
-    playBook({ connectionId, libraryId: book.library_id, path: book.rel_path }).catch(() => {
+    playStory({ connectionId, libraryId: book.library_id, path: book.rel_path }).catch(() => {
       toast({ title: t('kids.startFailed.title'), description: t('kids.startFailed.body') });
     });
   };
