@@ -10,6 +10,7 @@ import {
   type ServerIdProbe,
 } from '@/lib/server-address';
 import { isInProgress } from '@/lib/progress-view';
+import { isLoopbackHost } from '@/lib/url-host';
 
 /**
  * The connect flow's rules (onboarding: connect, sign in, "Your library is ready."),
@@ -137,7 +138,7 @@ export function looksLikeHomeAddress(url: string): boolean {
     return false;
   }
   host = host.replace(/^\[|\]$/g, '').toLowerCase();
-  if (!host || host === 'localhost' || host === '::1' || /^127\./.test(host)) return false;
+  if (!host || isLoopbackHost(host)) return false;
   if (isPrivateV4(host) || isPrivateV6(host)) return true;
   if (/^\d+(\.\d+){3}$/.test(host) || host.includes(':')) return false;
   return /\.(local|lan|home\.arpa)$/.test(host) || !host.includes('.');

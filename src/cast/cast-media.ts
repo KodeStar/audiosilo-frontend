@@ -1,4 +1,5 @@
 import type { Book, ChaptersResponse } from '@/api/types';
+import { isLoopbackHost, urlHost } from '@/lib/url-host';
 import { isBrowserUndecodable, transcodeUrlAt } from '@/playback/transcode';
 import type { BookRef, PlaybackTrack } from '@/playback/types';
 
@@ -55,26 +56,14 @@ export type CastBlockReason =
   /** The book's server connection is gone (a downloaded book whose sign-in failed). */
   | 'no-connection';
 
-/** The host part of an absolute http(s) URL, lower-cased, without brackets (IPv6) or port.
- * A regex rather than `URL.hostname`: React Native's URL polyfill does not implement it. */
-export function urlHost(url: string): string | null {
-  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)/i.exec(url.trim());
-  if (!m) return null;
-  return m[1].replace(/^\[|\]$/g, '').toLowerCase();
-}
-
 /**
  * Can a Cast receiver (another device on the network) fetch from this address? Not one
- * that means "this device": `localhost` (and `*.localhost`), the loopback range, `::1` and
- * the unspecified `0.0.0.0`. A relative or unparseable address can't be handed over either.
+ * that means "this device" (`isLoopbackHost`). A relative or unparseable address can't be
+ * handed over either.
  */
 export function isReachableByReceiver(baseUrl: string): boolean {
   const host = urlHost(baseUrl);
-  if (!host) return false;
-  if (host === 'localhost' || host.endsWith('.localhost')) return false;
-  if (host === '::1' || host === '0.0.0.0' || host === '::') return false;
-  if (/^127\.\d+\.\d+\.\d+$/.test(host)) return false;
-  return true;
+  return host !== null && !isLoopbackHost(host);
 }
 
 /**
