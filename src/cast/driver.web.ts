@@ -12,7 +12,7 @@ import { loadCastSender, webCastSupported, type SenderWindow } from './web-sende
 
 /**
  * The web's Cast driver: the Cast Web Sender (CAF, `cast.framework` + `chrome.cast`), loaded
- * on first need (`web-sender.ts`), Chromium in a secure context only. It replaces the
+ * on first need (`web-sender.ts`), Chromium on https pages only. It replaces the
  * element's Remote Playback prompt (`service.web.ts`), which would hand the receiver the
  * session token in the element's URL: this sends the cast-token URLs the shared cast engine
  * builds. Only the few framework calls the app needs are typed here.
@@ -229,10 +229,9 @@ function initOnce(): Promise<boolean> {
     if (!w || !webCastSupported(w)) return false;
     const ok = await loadCastSender(w, document as unknown as Parameters<typeof loadCastSender>[1]);
     const g = globals();
-    if (!ok || !g) {
-      ready = null; // a later need may try again
-      return false;
-    }
+    // Kept: the sender loads at most once per page (`loadCastSender`), so a later need
+    // would fail the same way.
+    if (!ok || !g) return false;
     const ctx = g.cast.framework.CastContext.getInstance();
     ctx.setOptions({
       receiverApplicationId: g.chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,

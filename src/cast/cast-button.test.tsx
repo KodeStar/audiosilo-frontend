@@ -46,9 +46,10 @@ describe('the web Cast button', () => {
     expect(screen.getByLabelText('Casting to Living room')).toBeTruthy();
   });
 
-  it('explains instead of casting a book it cannot', async () => {
+  it('explains instead of casting a book it cannot, and loads no sender for it', async () => {
     mockModel = { ...mockModel, blocked: 'local-address' };
     await render(<WebCastButton />);
+    expect(mockReady).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByLabelText('Cast, not available for this book'));
     expect(mockRequest).not.toHaveBeenCalled();
     expect(mockToast).toHaveBeenCalledWith(

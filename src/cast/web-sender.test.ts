@@ -17,10 +17,21 @@ const IOS_CHROME_UA =
 const FIREFOX_UA = 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0';
 
 describe('webCastSupported', () => {
-  it('is Chromium in a secure context only', () => {
-    const chrome = { isSecureContext: true, navigator: { userAgent: CHROME_UA }, chrome: {} };
+  it('is Chromium on an https page only', () => {
+    const chrome = {
+      isSecureContext: true,
+      location: { protocol: 'https:' },
+      navigator: { userAgent: CHROME_UA },
+      chrome: {},
+    };
     expect(webCastSupported(chrome)).toBe(true);
-    expect(webCastSupported({ ...chrome, isSecureContext: false })).toBe(false); // plain http
+    expect(
+      webCastSupported({ ...chrome, isSecureContext: false, location: { protocol: 'http:' } }),
+    ).toBe(false); // plain http
+    // http://localhost is a secure context, but the sender's scheme-relative framework loads
+    // would go out as http:// and break on the CSP.
+    expect(webCastSupported({ ...chrome, location: { protocol: 'http:' } })).toBe(false);
+    expect(webCastSupported({ ...chrome, location: undefined })).toBe(false);
     expect(webCastSupported({ isSecureContext: true, navigator: { userAgent: SAFARI_UA } })).toBe(
       false,
     );
@@ -88,22 +99,32 @@ describe('loadCastSender', () => {
     expect(scripts).toHaveLength(1);
   });
 
-  it('resolves false when the API is unavailable, the script fails or nothing answers, and may retry', async () => {
+  it('resolves false when the API is unavailable, the script fails or nothing answers', async () => {
     let page = fakePage();
     const unavailable = loadCastSender(page.win, page.doc);
     page.win.__onGCastApiAvailable?.(false, 'no');
     await expect(unavailable).resolves.toBe(false);
 
+    forgetCastSender();
     page = fakePage();
     const failed = loadCastSender(page.win, page.doc);
     page.scripts[0].onerror?.(new Error('blocked'));
     await expect(failed).resolves.toBe(false);
 
+    forgetCastSender();
     page = fakePage();
     const silent = loadCastSender(page.win, page.doc, 1000);
     jest.advanceTimersByTime(1000);
     await expect(silent).resolves.toBe(false);
-    loadCastSender(page.win, page.doc);
-    expect(page.scripts).toHaveLength(2); // a later need tries again
+  });
+
+  it('loads at most once per page: a failure is kept, not retried on every Cast button', async () => {
+    const page = fakePage();
+    const failed = loadCastSender(page.win, page.doc);
+    page.scripts[0].onerror?.(new Error('blocked'));
+    await expect(failed).resolves.toBe(false);
+    await expect(loadCastSender(page.win, page.doc)).resolves.toBe(false);
+    await expect(loadCastSender(page.win, page.doc)).resolves.toBe(false);
+    expect(page.scripts).toHaveLength(1);
   });
 });

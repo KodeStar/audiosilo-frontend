@@ -1,8 +1,8 @@
 /**
  * The Cast Web Sender, loaded on first need (never at startup: most listeners never cast, and
- * the script is Google's). Chromium only, in a secure context (the framework refuses
- * anything else), from `www.gstatic.com`, which the server's web CSP allows in `script-src`
- * for exactly this (capability `cast`).
+ * the script is Google's). Chromium only, on an https page (below), from `www.gstatic.com`,
+ * which the server's web CSP allows in `script-src` for exactly this (capability `cast`), and
+ * at most once per page.
  *
  * Framework-free and given its `window`/`document`, so the loader is testable without a
  * browser.
@@ -17,6 +17,7 @@ export const CAST_SENDER_TIMEOUT_MS = 15_000;
 /** The parts of `window` the loader reads. */
 export type SenderWindow = {
   isSecureContext?: boolean;
+  location?: { protocol?: string };
   navigator?: { userAgent?: string; userAgentData?: { brands?: { brand: string }[] } };
   chrome?: unknown;
   __onGCastApiAvailable?: (available: boolean, reason?: string) => void;
@@ -44,18 +45,25 @@ export function isChromium(win: SenderWindow): boolean {
   return /\bChrome\/\d+/.test(ua) && !/\bCriOS\//.test(ua) && win.chrome !== undefined;
 }
 
-/** Can this page cast at all (without loading anything)? Chromium in a secure context. */
+/**
+ * Can this page cast at all (without loading anything)? Chromium on an https page. A secure
+ * context alone is not enough: `http://localhost` is one, but `cast_sender.js` loads its
+ * framework from scheme-relative `//www.gstatic.com/...` URLs, which become `http://` there
+ * and are refused by the CSP's `script-src https://www.gstatic.com` (never widened for
+ * this). A receiver could not reach a localhost server anyway.
+ */
 export function webCastSupported(win: SenderWindow | undefined): boolean {
   if (!win) return false;
-  return win.isSecureContext === true && isChromium(win);
+  return win.isSecureContext === true && win.location?.protocol === 'https:' && isChromium(win);
 }
 
 let loading: Promise<boolean> | null = null;
 
 /**
- * Load the sender once; resolves whether the Cast framework is available (false: a script
- * error, the API saying it isn't, or no answer within `CAST_SENDER_TIMEOUT_MS`). A failed load
- * may be retried by a later call.
+ * Load the sender once per page; resolves whether the Cast framework is available (false: a
+ * script error, the API saying it isn't, or no answer within `CAST_SENDER_TIMEOUT_MS`). A
+ * failure is kept too: a page that could not load it once would only fail (and log CSP or
+ * network errors) again each time a Cast button mounts. A reload tries again.
  */
 export function loadCastSender(
   win: SenderWindow,
@@ -70,7 +78,6 @@ export function loadCastSender(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (!ok) loading = null;
       resolve(ok);
     };
     const timer = setTimeout(() => settle(false), timeoutMs);
