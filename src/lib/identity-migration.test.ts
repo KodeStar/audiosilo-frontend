@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 import { OFFLINE_SERVERS_KEY } from '@/downloads/offline-meta';
 import { DRIFT_STORAGE_KEY, pruneDrifts } from '@/playback/drift';
 import { parseTimeSaved } from '@/playback/time-saved';
+import { resolveLibrarySelection } from '@/stores/library-selection';
+import { profileConnectionIds, resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { connectionAliases, resolveConnectionId, setConnectionAliases } from './connection-id';
@@ -265,6 +267,76 @@ describe('migrateConnectionIdentity', () => {
       ['srvC', 'srvC', 'tokC'],
     ]);
     expect(s.defaultConnectionId).toBe('srvA.3');
+  });
+
+  // The Pixel device pass (Phase 8, item 9): a demo connection first and the default, then
+  // two fixture servers where the user is alex, id 2, on both. After the update the
+  // Library and the car showed fixture B: not the migration's doing (this proves the
+  // default and a stored pick survive it, the session and the profiles), but the
+  // no-pick fallback taking whichever server answered first (`resolveLibrarySelection`).
+  describe("the device pass's three connections", () => {
+    const demoUser = { id: 57, username: 'demo-x', role: 'user' };
+    const alex = { id: 2, username: 'alex', role: 'user' };
+    const DEMO = 'jXVyhtNwYeFXefnS7tWlTw';
+    const A = 'lrqIfd20UOAJuELBt2NnKQ';
+    const B = 'mn3NYY0QM8xEl0ZnU-srAA';
+
+    async function seed(pick: { connectionId: string; libraryId: number } | null) {
+      await set('audiosilo.connections', [
+        { id: DEMO, serverUrl: 'https://demo.audiosilo.app', name: 'Demo', user: demoUser },
+        { id: B, serverUrl: 'http://127.0.0.1:8082', name: "Maya's Shelf", user: alex },
+        { id: A, serverUrl: 'http://127.0.0.1:8081', name: 'Hearthside', user: alex },
+      ]);
+      await set('audiosilo.activeConnection', DEMO);
+      for (const id of [DEMO, A, B]) await SecureStore.setItemAsync(`audiosilo.token.${id}`, id);
+      if (pick) await set('audiosilo.librarySelection', { selection: pick });
+      await set('audiosilo.storageVersion', 2);
+    }
+
+    async function hydrateAll() {
+      useSession.setState({ status: 'loading', connections: [], defaultConnectionId: null });
+      resetProfilesForTests();
+      await useSession.getState().hydrate();
+      await useProfiles.getState().hydrate();
+    }
+
+    afterEach(async () => {
+      for (const id of [DEMO, A, B, `${DEMO}.57`, `${A}.2`, `${B}.2`]) {
+        await SecureStore.deleteItemAsync(`audiosilo.token.${id}`);
+      }
+    });
+
+    it('keeps the default connection, the order and a stored pick', async () => {
+      await seed({ connectionId: DEMO, libraryId: 1 });
+      await migrateConnectionIdentity(deps());
+      await hydrateAll();
+      const ids = [`${DEMO}.57`, `${B}.2`, `${A}.2`];
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(ids);
+      expect(useSession.getState().defaultConnectionId).toBe(`${DEMO}.57`);
+      // One person (three servers): everything stays theirs, in the same order.
+      expect(useProfiles.getState().profiles.map((p) => p.connectionIds)).toEqual([ids]);
+      expect(profileConnectionIds()).toEqual(ids);
+      const stored = { connectionId: `${DEMO}.57`, libraryId: 1 };
+      expect(await get('audiosilo.librarySelection')).toEqual({ selection: stored });
+      // The stored pick wins whatever answers first.
+      const groups = ids.map((connectionId) => ({
+        connectionId,
+        connectionName: connectionId,
+        libraryIds: [1],
+        status: 'ready' as const,
+      }));
+      expect(
+        resolveLibrarySelection(stored, groups, { connectionId: `${B}.2`, libraryId: 1 }),
+      ).toEqual(stored);
+    });
+
+    it('with no stored pick, none is invented (the fallback is by order of arrival)', async () => {
+      await seed(null);
+      await migrateConnectionIdentity(deps());
+      await hydrateAll();
+      expect(useSession.getState().defaultConnectionId).toBe(`${DEMO}.57`);
+      expect(await get('audiosilo.librarySelection')).toBeUndefined();
+    });
   });
 
   it("the stores' own parsers read the rewritten documents", async () => {
