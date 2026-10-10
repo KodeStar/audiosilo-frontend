@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react-native';
 
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { setAddressPick, useAddressRoute } from './address-route';
@@ -50,7 +51,38 @@ describe('useApis', () => {
   });
 });
 
+describe('useApis and the people on this device (Phase 8)', () => {
+  beforeEach(() => resetProfilesForTests());
+
+  // Every aggregated screen (Home, Search and the palette, the Library picker, You, the
+  // Journal) reads its servers here: another person's must never be among them.
+  it("is the person listening's connections only, and follows a switch", async () => {
+    seen.length = 0;
+    useSession.setState({
+      connections: [
+        { id: 'a.1', name: 'Hearthside', serverUrl: 'https://h', token: 't' },
+        { id: 'a.2', name: 'Hearthside', serverUrl: 'https://h', token: 'u' },
+        { id: 'b.1', name: 'Maya', serverUrl: 'https://m', token: 't' },
+      ],
+    } as never);
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a.1', 'b.1'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['a.2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    await render(ui(0));
+    expect(seen.at(-1)!.map((a) => a.connection.id)).toEqual(['a.1', 'b.1']);
+    await act(async () => useProfiles.setState({ activeProfileId: 'sam' }));
+    expect(seen.at(-1)!.map((a) => a.connection.id)).toEqual(['a.2']);
+  });
+});
+
 describe('ApiProvider clients', () => {
+  beforeEach(() => resetProfilesForTests());
+
   // A switch between a server's home and away address must reach every request the
   // provider's clients make (queries, mutations, media URLs).
   it('rebuilds a connection client on the address the player picked', async () => {

@@ -84,6 +84,7 @@ jest.mock('@/downloads/keep-ahead-controller', () => {
 /* eslint-disable import/first */
 import { useKeepAhead } from '@/downloads/keep-ahead-controller';
 import { useDownloads } from '@/downloads/store';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import { DownloadsScreen } from './downloads-screen';
@@ -147,6 +148,7 @@ function setEntries(...pairs: [string, DownloadEntry][]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetProfilesForTests();
   mockLayout = 'desktop';
   mockProgress = [];
   mockCaps = {};
@@ -257,6 +259,27 @@ describe('DownloadsScreen', () => {
     expect(screen.getByText('Remove this download?')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
     expect(store().remove).toHaveBeenCalledWith('b', 1, 'Emma');
+  });
+
+  it("lists only the person listening's downloads (another person's stay theirs)", async () => {
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a'] },
+        { id: 'maya', name: 'Maya', connectionIds: ['b'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    setEntries(
+      entry('Dune', 'downloaded', { totalBytes: 2048 }),
+      entry('Emma', 'downloaded', { connectionId: 'b', totalBytes: 1024 }),
+      entry('Persuasion', 'downloading', { connectionId: 'b' }),
+    );
+    await mount();
+    expect(screen.getByText('Dune')).toBeTruthy();
+    expect(screen.queryByText('Emma')).toBeNull();
+    expect(screen.queryByText('Persuasion')).toBeNull();
+    expect(screen.queryByText("Maya's Shelf · 1 KB")).toBeNull();
   });
 
   it('shows the books keep-ahead is holding back, and cancelling declines them', async () => {

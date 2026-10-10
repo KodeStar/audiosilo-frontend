@@ -73,6 +73,7 @@ jest.mock('@/playback/store', () => {
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { usePlayerSheets } from '@/components/player/player-sheets';
@@ -87,6 +88,7 @@ const entry = (path: string): QueueEntry => ({
 const lastToast = () => mockToast.mock.calls.at(-1)?.[0];
 
 beforeEach(() => {
+  resetProfilesForTests();
   queryClient.clear();
   mockQueue = [entry('A'), entry('B'), entry('C')];
   mockAdd.mockReset().mockResolvedValue([]);
@@ -104,6 +106,23 @@ describe('useUpNextConnection', () => {
     useSession.setState({
       connections: [{ id: 'a' }, { id: 'b' }] as never,
       defaultConnectionId: 'b',
+    });
+    const { result } = await renderHook(() => useUpNextConnection());
+    expect(result.current).toBe('b');
+  });
+
+  it("never shows another person's queue: the default is someone else's, so the listener's first", async () => {
+    useSession.setState({
+      connections: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] as never,
+      defaultConnectionId: 'a',
+    });
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['b', 'c'] },
+      ],
+      activeProfileId: 'sam',
     });
     const { result } = await renderHook(() => useUpNextConnection());
     expect(result.current).toBe('b');

@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { ReconnectBanner } from './reconnect-banner';
@@ -24,6 +25,7 @@ const AWAY = 'https://books.example.com';
 
 const os = Platform.OS;
 beforeEach(async () => {
+  resetProfilesForTests();
   await AsyncStorage.clear();
   mockPush.mockClear();
   useAddressRoute.setState({ picks: {} });
@@ -71,4 +73,21 @@ it('renders nothing when no connection needs reconnecting', async () => {
   useSession.getState().clearNeedsReconnect('srv-1.1');
   await render(<ReconnectBanner />);
   expect(screen.queryByRole('button')).toBeNull();
+});
+
+describe('ReconnectBanner and the people on this device (Phase 8)', () => {
+  it("asks only about the person listening's servers", async () => {
+    const id = useSession.getState().connections[0].id;
+    useSession.getState().markNeedsReconnect(id, 'auth');
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['other.1'] },
+        { id: 'sam', name: 'Sam', connectionIds: [id] },
+      ],
+      activeProfileId: 'chris',
+    });
+    const view = await render(<ReconnectBanner />);
+    expect(view.toJSON()).toBeNull();
+  });
 });

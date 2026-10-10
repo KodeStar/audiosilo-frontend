@@ -33,11 +33,23 @@ jest.mock('@/stores/session', () => ({
     selector({ connections: mockConnections }),
 }));
 
+jest.mock('@/components/profiles/other-person-gate', () => {
+  const { Text: RNText } = jest.requireActual('react-native');
+  return {
+    OtherPersonGate: ({ profile }: { profile: { name: string } }) => (
+      <RNText>{`gate-${profile.name}`}</RNText>
+    ),
+  };
+});
+
 /* eslint-disable import/first */
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
+
 import { ContentScope } from './content-scope';
 /* eslint-enable import/first */
 
 beforeEach(() => {
+  resetProfilesForTests();
   scopedTo = undefined;
   mockParams = {};
   mockConnections = [];
@@ -102,5 +114,40 @@ describe('ContentScope resolves the scope from the route local param (not the de
     // Empty scope -> useCid() falls back to the default connection; never redirects.
     expect(scopedTo).toBe('');
     expect(mockRedirect).not.toHaveBeenCalled();
+  });
+});
+
+describe('ContentScope and the people on this device (Phase 8)', () => {
+  it("never shows another person's content silently: it offers to switch to them first", async () => {
+    mockConnections = [{ id: 'a.1' }, { id: 'a.2' }];
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a.1'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['a.2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    mockParams = { connection: 'a.2' };
+    await mount();
+    expect(screen.getByText('gate-Sam')).toBeTruthy();
+    expect(screen.queryByText('content')).toBeNull();
+    expect(scopedTo).toBeUndefined();
+  });
+
+  it("opens the person listening's own content", async () => {
+    mockConnections = [{ id: 'a.1' }, { id: 'a.2' }];
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a.1'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['a.2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    mockParams = { connection: 'a.1' };
+    await mount();
+    expect(screen.getByText('content')).toBeTruthy();
+    expect(scopedTo).toBe('a.1');
   });
 });
