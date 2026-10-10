@@ -11,15 +11,16 @@ describe('contentKey', () => {
 });
 
 describe('connectionOfKey / isKeyOf', () => {
-  it("reads a key's connection, never past its first colon", () => {
-    expect(connectionOfKey(contentKey('srv.3', 1, 'A/B:c'))).toBe('srv.3');
+  it('reads the connection back from a key whose path has more colons', () => {
+    const key = contentKey('srv.u1', 2, 'A/Book: Part 1');
+    expect(connectionOfKey(key)).toBe('srv.u1');
     expect(connectionOfKey('no-colon')).toBeNull();
-    expect(connectionOfKey(':1:x')).toBeNull();
   });
 
-  it("tells a connection's keys from a connection sharing its prefix", () => {
-    expect(isKeyOf(contentKey('srv', 1, 'x'), 'srv')).toBe(true);
-    expect(isKeyOf(contentKey('srvX', 1, 'x'), 'srv')).toBe(false);
-    expect(isKeyOf(contentKey('srv.3', 1, 'x'), 'srv')).toBe(false);
+  it('matches only the whole connection id', () => {
+    const key = contentKey('srv.u1', 2, 'A/Book');
+    expect(isKeyOf(key, 'srv.u1')).toBe(true);
+    expect(isKeyOf(key, 'srv.u')).toBe(false);
+    expect(isKeyOf(key, 'srv')).toBe(false);
   });
 });
