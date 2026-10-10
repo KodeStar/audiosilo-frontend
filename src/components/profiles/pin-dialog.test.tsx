@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { TextInput } from 'react-native';
 
 import { checkPin, notePinTry, resetPinTriesForTests, setPin } from '@/lib/profile-pin';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
@@ -55,6 +56,20 @@ describe('PinDialog, check', () => {
     expect(screen.getByText("That PIN doesn't match")).toBeTruthy();
     expect(screen.getByTestId('pin-field').props.value).toBe('');
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('keeps the field (and the keyboard) through a check and after a wrong PIN', async () => {
+    const focus = jest.spyOn(TextInput.prototype, 'focus');
+    await fireEvent.changeText(screen.getByTestId('pin-field'), '1111');
+    // Checking: still editable (a non-editable field blurs on native and drops the sheet).
+    expect(screen.getByTestId('pin-field').props.editable).not.toBe(false);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByText("That PIN doesn't match")).toBeTruthy();
+    expect(screen.getByTestId('pin-field').props.value).toBe('');
+    expect(focus).toHaveBeenCalled();
+    focus.mockRestore();
   });
 
   it('ignores letters and submits at four digits', async () => {

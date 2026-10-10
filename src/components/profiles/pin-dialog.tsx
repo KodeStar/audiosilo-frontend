@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { type TextInput, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -108,6 +108,17 @@ function PinDialogBody({
   });
   const now = useNow(1000, lockedUntil > 0);
   const waiting = lockedUntil > now;
+  const field = useRef<TextInput>(null);
+  // The field stays editable while a PIN is checked (10,000 hash rounds): a field that
+  // turns non-editable loses focus on native, the keyboard closes and the sheet drops, so
+  // the next try needed a tap first. Input that arrives meanwhile is ignored (`onChange`).
+  // After a wrong PIN, and when a wait is over, it has the focus (and the keyboard) again.
+  const refocus = () => field.current?.focus();
+  const wasWaiting = useRef(waiting);
+  useEffect(() => {
+    if (wasWaiting.current && !waiting) refocus();
+    wasWaiting.current = waiting;
+  }, [waiting]);
   const offset = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: offset.get() }] }));
 
@@ -144,6 +155,7 @@ function PinDialogBody({
     }
     setPinValue('');
     shake();
+    refocus();
     const wait = pinLockedFor(profileId);
     if (wait > 0) {
       // The wait says it all, and nothing once it is over.
@@ -165,6 +177,7 @@ function PinDialogBody({
       setFirst(null);
       setPinValue('');
       shake();
+      refocus();
       setError(t('profiles.pin.mismatch'));
       return;
     }
@@ -182,6 +195,7 @@ function PinDialogBody({
   };
 
   const onChange = (raw: string) => {
+    if (busy) return;
     const digits = raw.replace(/\D/g, '').slice(0, PIN_LENGTH);
     setPinValue(digits);
     if (digits.length > 0 && error && !waiting) setError(null);
@@ -225,7 +239,8 @@ function PinDialogBody({
           autoFocus
           autoComplete="off"
           textContentType="none"
-          editable={!waiting && !busy}
+          ref={field}
+          editable={!waiting}
           accessibilityLabel={t('profiles.pin.fieldLabel', { name })}
           className="text-center font-mono text-2xl tracking-[0.6em]"
         />
