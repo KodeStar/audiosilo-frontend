@@ -60,14 +60,15 @@ export class RoutedPlaybackService implements PlaybackService {
     if (local.swapTo) {
       const swap = local.swapTo.bind(local);
       this.swapTo = async (tracks, startIndex, positionInTrack, chapters, book) => {
+        const load = { tracks, chapters, book };
         // While casting, the receiver streams from the server whatever the phone holds:
         // only remember the local files, for when the book comes back to the phone.
         if (this.mode !== 'local') {
-          this.lastLoad = { tracks, chapters, book };
+          this.lastLoad = load;
           return true;
         }
         const ok = await swap(tracks, startIndex, positionInTrack, chapters, book);
-        if (ok) this.lastLoad = { tracks, chapters, book };
+        if (ok) this.lastLoad = load;
         return ok;
       };
     }
@@ -90,14 +91,16 @@ export class RoutedPlaybackService implements PlaybackService {
     if (this.cast) await this.endCast();
     this.mode = 'switching';
     this.cast = cast;
+    /** This session is still the route (not mid-switch, not replaced or ended). */
+    const live = () => this.mode === 'cast' && this.cast === cast;
     this.castUnsub = cast.subscribe((s) => {
-      if (this.mode === 'cast' && this.cast === cast) this.forward(s);
+      if (live()) this.forward(s);
     });
     cast.onRemoteMove((trackIndex, position) => {
-      if (this.mode === 'cast' && this.cast === cast) this.remoteMove?.(trackIndex, position);
+      if (live()) this.remoteMove?.(trackIndex, position);
     });
     cast.onRateChange((rate) => {
-      if (this.mode === 'cast' && this.cast === cast) this.rateChange?.(rate);
+      if (live()) this.rateChange?.(rate);
     });
 
     const at = this.snapshot;
