@@ -2142,7 +2142,8 @@
     },
     "connect": {
       "title": "Adicionar alguém a este dispositivo.",
-      "lead": "A pessoa inicia sessão com a própria conta, no seu servidor ou no dela. Cada um mantém o seu ponto em cada livro."
+      "lead": "A pessoa inicia sessão com a própria conta, no seu servidor ou no dela. Cada um mantém o seu ponto em cada livro.",
+      "knownHeading": "Servidores deste dispositivo"
     },
     "menu": {
       "listeningAs": "A ouvir como",

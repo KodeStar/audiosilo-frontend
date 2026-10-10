@@ -113,27 +113,34 @@ export function ProbeNotice({
   );
 }
 
-/** A remembered server as a one-tap "Reconnect to <name>" row, with its forget button. */
+/** A remembered server as a one-tap "Reconnect to <name>" row, with its forget button.
+ * `newPerson` ("Add someone"): "Sign in to <name>", since it signs in someone new, not
+ * the account this device had. */
 export function KnownServerRow({
   entry,
   busy,
   disabled,
+  newPerson = false,
   onReconnect,
   onForget,
 }: {
   entry: KnownServer;
   busy: boolean;
   disabled: boolean;
+  newPerson?: boolean;
   onReconnect: () => void;
   onForget: () => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
+  const action = newPerson
+    ? t('connect.probe.signInTo', { name: entry.name })
+    : t('reconnect.connect.action', { name: entry.name });
   return (
     <View className="flex-row items-center gap-2">
       <PressableRow
         accessibilityRole="button"
-        accessibilityLabel={t('reconnect.connect.action', { name: entry.name })}
+        accessibilityLabel={action}
         accessibilityHint={hostOf(entry.serverUrl)}
         aria-busy={busy || undefined}
         disabled={disabled}
@@ -143,7 +150,7 @@ export function KnownServerRow({
         <ServerMark name={entry.name} />
         <View className="min-w-0 flex-1">
           <Text variant="label" numberOfLines={1}>
-            {t('reconnect.connect.action', { name: entry.name })}
+            {action}
           </Text>
           <Text variant="caption" numberOfLines={1}>
             {hostOf(entry.serverUrl)}

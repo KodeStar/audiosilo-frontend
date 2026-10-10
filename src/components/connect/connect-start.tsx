@@ -365,13 +365,16 @@ export function ConnectStart() {
       ) : null}
       {offered.length > 0 ? (
         <View className="gap-2" role="list">
-          <Text variant="eyebrow">{t('reconnect.connect.heading')}</Text>
+          <Text variant="eyebrow">
+            {newPerson ? t('profiles.connect.knownHeading') : t('reconnect.connect.heading')}
+          </Text>
           {offered.map((entry) => (
             <KnownServerRow
               key={entry.serverId}
               entry={entry}
               busy={busy === entry.serverId}
               disabled={busy !== null}
+              newPerson={newPerson}
               onReconnect={() => void onReconnect(entry)}
               onForget={() => onForget(entry.serverId)}
             />

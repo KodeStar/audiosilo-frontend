@@ -2142,7 +2142,8 @@
     },
     "connect": {
       "title": "Add someone to this device.",
-      "lead": "They sign in with their own account on your server or theirs. Everyone keeps their own place in every book."
+      "lead": "They sign in with their own account on your server or theirs. Everyone keeps their own place in every book.",
+      "knownHeading": "Servers on this device"
     },
     "menu": {
       "listeningAs": "Listening as",

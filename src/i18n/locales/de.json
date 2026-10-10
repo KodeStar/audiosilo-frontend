@@ -2142,7 +2142,8 @@
     },
     "connect": {
       "title": "Eine Person zu diesem Gerät hinzufügen.",
-      "lead": "Sie meldet sich mit ihrem eigenen Konto an, auf deinem Server oder ihrem. Alle behalten ihre eigene Stelle in jedem Buch."
+      "lead": "Sie meldet sich mit ihrem eigenen Konto an, auf deinem Server oder ihrem. Alle behalten ihre eigene Stelle in jedem Buch.",
+      "knownHeading": "Server auf diesem Gerät"
     },
     "menu": {
       "listeningAs": "Hört als",

@@ -2142,7 +2142,8 @@
     },
     "connect": {
       "title": "Aggiungi qualcuno a questo dispositivo.",
-      "lead": "Accede con il proprio account, sul tuo server o sul suo. Ognuno mantiene il proprio punto in ogni libro."
+      "lead": "Accede con il proprio account, sul tuo server o sul suo. Ognuno mantiene il proprio punto in ogni libro.",
+      "knownHeading": "Server di questo dispositivo"
     },
     "menu": {
       "listeningAs": "In ascolto come",

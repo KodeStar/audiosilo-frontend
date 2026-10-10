@@ -2142,7 +2142,8 @@
     },
     "connect": {
       "title": "Ajouter quelqu'un sur cet appareil.",
-      "lead": "La personne se connecte avec son propre compte, sur votre serveur ou le sien. Chacun garde sa place dans chaque livre."
+      "lead": "La personne se connecte avec son propre compte, sur votre serveur ou le sien. Chacun garde sa place dans chaque livre.",
+      "knownHeading": "Serveurs de cet appareil"
     },
     "menu": {
       "listeningAs": "Écoute en tant que",
