@@ -10,12 +10,12 @@ import {
   clearPin,
   constantTimeEqual,
   hashPin,
-  hasStoredPin,
   isValidPin,
   notePinTry,
   PIN_LOCK_MS,
   pinKey,
   pinLockedFor,
+  readPin,
   resetPinTriesForTests,
   setPin,
 } from './profile-pin';
@@ -59,21 +59,35 @@ const join = (a: Uint8Array, b: Uint8Array) => new Uint8Array([...a, ...b]);
 const profileId = () => profileOf(conn.id)!.id;
 
 describe('hashPin', () => {
-  it('is SHA-256 over salt + PIN, then over salt + the previous digest', () => {
+  it('is SHA-256 over salt + PIN, then over salt + the previous digest', async () => {
     const salt = '00112233445566778899aabbccddeeff';
     const s = bytes(salt);
     let d = createHash('sha256')
       .update(join(s, new TextEncoder().encode('1234')))
       .digest();
     for (let i = 1; i < 25; i++) d = createHash('sha256').update(join(s, d)).digest();
-    expect(hashPin('1234', salt, 25)).toBe(toHex(d));
+    expect(await hashPin('1234', salt, 25)).toBe(toHex(d));
+    // Across chunk boundaries (1,000 rounds each) too.
+    for (let i = 25; i < 2_500; i++) d = createHash('sha256').update(join(s, d)).digest();
+    expect(await hashPin('1234', salt, 2_500)).toBe(toHex(d));
   });
 
-  it('differs by salt and by PIN', () => {
+  it('differs by salt and by PIN', async () => {
     const a = '00'.repeat(16);
     const b = '01'.repeat(16);
-    expect(hashPin('1234', a, 3)).not.toBe(hashPin('1234', b, 3));
-    expect(hashPin('1234', a, 3)).not.toBe(hashPin('1235', a, 3));
+    expect(await hashPin('1234', a, 3)).not.toBe(await hashPin('1234', b, 3));
+    expect(await hashPin('1234', a, 3)).not.toBe(await hashPin('1235', a, 3));
+  });
+
+  it('lets the UI run between chunks of rounds', async () => {
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 0);
+    try {
+      await hashPin('1234', '00'.repeat(16), 10_000);
+    } finally {
+      clearInterval(timer);
+    }
+    expect(ticks).toBeGreaterThan(0);
   });
 });
 
@@ -89,9 +103,9 @@ describe('PIN storage', () => {
       hash: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
     expect(raw).not.toContain('4821');
-    expect(record.hash).toBe(hashPin('4821', record.salt));
+    expect(record.hash).toBe(await hashPin('4821', record.salt));
     expect(profileOf(conn.id)?.hasPin).toBe(true);
-    expect(await hasStoredPin(profileId())).toBe(true);
+    expect(await readPin(profileId())).toEqual(record);
   });
 
   it('checks the right PIN and refuses a wrong one', async () => {
@@ -99,6 +113,17 @@ describe('PIN storage', () => {
     expect(await checkPin(profileId(), '4821')).toBe(true);
     expect(await checkPin(profileId(), '4812')).toBe(false);
     expect(await checkPin(profileId(), '48210')).toBe(false);
+  });
+
+  it('checks against a PIN the caller already read, without reading it again', async () => {
+    await setPin(profileId(), '4821');
+    const stored = await readPin(profileId());
+    const SecureStore = jest.requireMock('expo-secure-store') as { getItemAsync: jest.Mock };
+    const reads = SecureStore.getItemAsync.mock.calls.length;
+    expect(await checkPin(profileId(), '4821', stored)).toBe(true);
+    expect(await checkPin(profileId(), '4812', stored)).toBe(false);
+    expect(await checkPin(profileId(), '4821', null)).toBe(false);
+    expect(SecureStore.getItemAsync.mock.calls.length).toBe(reads);
   });
 
   it('a new salt each time the PIN is set', async () => {
@@ -125,7 +150,7 @@ describe('PIN storage', () => {
 
   it('a corrupt record counts as no PIN', async () => {
     await setSecure(pinKey(profileId()), '{"v":1,"salt":"zz"}');
-    expect(await hasStoredPin(profileId())).toBe(false);
+    expect(await readPin(profileId())).toBeNull();
     expect(await checkPin(profileId(), '1234')).toBe(false);
   });
 

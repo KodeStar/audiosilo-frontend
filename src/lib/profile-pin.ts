@@ -1,6 +1,6 @@
 import { randomBytes, toHex } from '@/lib/random';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
-import { sha256, utf8 } from '@/lib/sha256';
+import { chainSalted, hexOfWords, sha256, utf8, wordsOf } from '@/lib/sha256';
 import { setProfileHasPin, useProfiles } from '@/stores/profiles';
 
 /**
@@ -14,8 +14,9 @@ import { setProfileHasPin, useProfiles } from '@/stores/profiles';
  * Only a salted, iterated hash is stored, in the secure store under
  * `audiosilo.profilePin.<profileId>` as JSON `{ v: 1, salt, iterations, hash }`: `salt`
  * is 16 random bytes (hex), `hash` (hex) is SHA-256 over salt + PIN, then over salt + the
- * previous digest, `iterations` (10,000) digests in all. Compared in constant time. The
- * profile mirrors `hasPin` so screens know without reading the secure store.
+ * previous digest, `iterations` (10,000) digests in all (`chainSalted`, in chunks that let
+ * the UI paint between them). Compared in constant time. The profile mirrors `hasPin` so
+ * screens know without reading the secure store.
  */
 
 export const PIN_LENGTH = 4;
@@ -28,6 +29,14 @@ export const PIN_LOCK_MS = 30_000;
 export const pinKey = (profileId: string) => `audiosilo.profilePin.${profileId}`;
 
 type PinRecord = { v: 1; salt: string; iterations: number; hash: string };
+
+/** A profile's stored PIN, as `readPin` read it: handed to `checkPin` so a check right
+ * after the read doesn't read the secure store again. */
+export type StoredPin = Readonly<PinRecord>;
+
+/** Rounds hashed between two yields to the UI (`hashPin`). */
+const ROUNDS_PER_CHUNK = 1_000;
+const nextTick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 /** Exactly four digits. */
 export function isValidPin(pin: string): boolean {
@@ -47,12 +56,25 @@ function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   return out;
 }
 
-/** The stored hash of `pin` under `saltHex` (pure). */
-export function hashPin(pin: string, saltHex: string, iterations = PIN_ITERATIONS): string {
+/** The stored hash of `pin` under `saltHex` (16 bytes, hex). The rounds run in chunks with
+ * a yield between them, so a slow phone keeps painting (the field, the keyboard) while a
+ * PIN is set or checked. */
+export async function hashPin(
+  pin: string,
+  saltHex: string,
+  iterations = PIN_ITERATIONS,
+): Promise<string> {
   const salt = fromHex(saltHex);
-  let digest = sha256(concat(salt, utf8(pin)));
-  for (let i = 1; i < iterations; i++) digest = sha256(concat(salt, digest));
-  return toHex(digest);
+  if (salt.length !== 16) throw new Error('A PIN salt is 16 bytes');
+  const saltWords = wordsOf(salt);
+  const digest = wordsOf(sha256(concat(salt, utf8(pin))));
+  for (let done = 1; done < iterations;) {
+    const rounds = Math.min(ROUNDS_PER_CHUNK, iterations - done);
+    chainSalted(saltWords, digest, rounds);
+    done += rounds;
+    if (done < iterations) await nextTick();
+  }
+  return hexOfWords(digest);
 }
 
 /** Equal strings, compared without stopping at the first difference. */
@@ -91,25 +113,31 @@ export async function setPin(profileId: string, pin: string): Promise<void> {
     v: 1,
     salt,
     iterations: PIN_ITERATIONS,
-    hash: hashPin(pin, salt),
+    hash: await hashPin(pin, salt),
   };
   await setSecure(pinKey(profileId), JSON.stringify(record));
   setProfileHasPin(profileId, true);
   attempts.delete(profileId);
 }
 
-/** Whether `pin` is the profile's PIN. False when it has none stored. Rejects when the
- * secure store can't be read. */
-export async function checkPin(profileId: string, pin: string): Promise<boolean> {
-  const record = parseRecord(await getSecure(pinKey(profileId)));
+/** Whether `pin` is the profile's PIN: against `stored` when the caller just read it
+ * (`readPin`), else against what the secure store holds. False when it has none stored.
+ * Rejects when the secure store can't be read. */
+export async function checkPin(
+  profileId: string,
+  pin: string,
+  stored?: StoredPin | null,
+): Promise<boolean> {
+  const record = stored === undefined ? await readPin(profileId) : stored;
   if (!record || !isValidPin(pin)) return false;
-  return constantTimeEqual(hashPin(pin, record.salt, record.iterations), record.hash);
+  return constantTimeEqual(await hashPin(pin, record.salt, record.iterations), record.hash);
 }
 
-/** Whether a PIN is stored for the profile (an install restored without its secure store
- * has the mirror and no hash: the profile then has no PIN). */
-export async function hasStoredPin(profileId: string): Promise<boolean> {
-  return parseRecord(await getSecure(pinKey(profileId))) !== null;
+/** The PIN stored for the profile, or null when there is none (an install restored without
+ * its secure store has the mirror and no hash: the profile then has no PIN). Rejects when
+ * the secure store can't be read. */
+export async function readPin(profileId: string): Promise<StoredPin | null> {
+  return parseRecord(await getSecure(pinKey(profileId)));
 }
 
 /** Remove a profile's PIN. */

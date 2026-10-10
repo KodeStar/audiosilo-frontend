@@ -2,8 +2,11 @@
  * SHA-256 (FIPS 180-4) in plain JS, synchronous. The profile PIN hash iterates it 10,000
  * times (`profile-pin.ts`): through expo-crypto that is 10,000 asynchronous native calls
  * (or SubtleCrypto promises on the web, where `crypto.subtle` exists only in a secure
- * context, so a player served over plain HTTP on the LAN has none). Here it is a few
- * milliseconds on Hermes and the same everywhere. Checked against the standard's test
+ * context, so a player served over plain HTTP on the LAN has none). Those rounds go through
+ * `chainSalted`, a one-block SHA-256 that allocates nothing per round: about 170 ms for all
+ * 10,000 without a JIT on an M-class Mac (Hermes on a phone is slower, a mid-range Android
+ * several times so), which is why `hashPin` runs them in chunks that let the UI paint. The
+ * general `sha256` is for one-off digests. Both are checked against the standard's test
  * vectors and node's `crypto` (`sha256.test.ts`).
  */
 
@@ -87,4 +90,92 @@ export function sha256(data: Uint8Array): Uint8Array {
   const outView = new DataView(out.buffer);
   for (let i = 0; i < 8; i++) outView.setUint32(i * 4, h[i]);
   return out;
+}
+
+// --- The PIN chain: one fixed block per round ----------------------------------------------
+
+/** The initial hash value (FIPS 180-4 5.3.3), as signed 32-bit words. */
+const IV = new Int32Array([
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+]);
+/** The message schedule, reused by every round (`chainSalted` never awaits). */
+const W = new Int32Array(64);
+
+/** `bytes` as big-endian 32-bit words (a length that is a multiple of 4). */
+export function wordsOf(bytes: Uint8Array): Int32Array {
+  const out = new Int32Array(bytes.length >> 2);
+  for (let i = 0; i < out.length; i++) {
+    const o = i * 4;
+    out[i] = (bytes[o] << 24) | (bytes[o + 1] << 16) | (bytes[o + 2] << 8) | bytes[o + 3];
+  }
+  return out;
+}
+
+/** 32-bit words as lowercase hex, big-endian (a digest's usual spelling). */
+export function hexOfWords(words: Int32Array): string {
+  let out = '';
+  for (let i = 0; i < words.length; i++) out += (words[i] >>> 0).toString(16).padStart(8, '0');
+  return out;
+}
+
+/**
+ * `rounds` more links of a salted chain, in place: `digest` (8 words) becomes
+ * SHA-256(salt + digest), `rounds` times over. The salt is 4 words (16 bytes), so the
+ * message is always 48 bytes: ONE block, padded the same way every round (the 0x80 byte,
+ * then the length, 384 bits). So a round is one compression over a schedule array reused
+ * for all of them, with no allocation, no DataView and no destructuring, which is what the
+ * general `sha256` spends most of a short message's time on.
+ */
+export function chainSalted(salt: Int32Array, digest: Int32Array, rounds: number): void {
+  const w = W;
+  for (let r = 0; r < rounds; r++) {
+    w[0] = salt[0];
+    w[1] = salt[1];
+    w[2] = salt[2];
+    w[3] = salt[3];
+    for (let i = 0; i < 8; i++) w[4 + i] = digest[i];
+    w[12] = 0x80000000 | 0;
+    w[13] = 0;
+    w[14] = 0;
+    w[15] = 384;
+    for (let i = 16; i < 64; i++) {
+      const x = w[i - 15];
+      const y = w[i - 2];
+      const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+      const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+    }
+    let a = IV[0];
+    let b = IV[1];
+    let c = IV[2];
+    let d = IV[3];
+    let e = IV[4];
+    let f = IV[5];
+    let g = IV[6];
+    let h = IV[7];
+    for (let i = 0; i < 64; i++) {
+      const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + K[i] + w[i]) | 0;
+      const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) | 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    digest[0] = (IV[0] + a) | 0;
+    digest[1] = (IV[1] + b) | 0;
+    digest[2] = (IV[2] + c) | 0;
+    digest[3] = (IV[3] + d) | 0;
+    digest[4] = (IV[4] + e) | 0;
+    digest[5] = (IV[5] + f) | 0;
+    digest[6] = (IV[6] + g) | 0;
+    digest[7] = (IV[7] + h) | 0;
+  }
 }

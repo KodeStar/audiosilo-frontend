@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { TABS } from '@/components/shell/destinations';
-import { hasStoredPin } from '@/lib/profile-pin';
+import { readPin, type StoredPin } from '@/lib/profile-pin';
 import { popTabToRoot } from '@/lib/root-stack';
 import { type Profile, setProfileHasPin, switchProfile, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -61,7 +61,10 @@ export function leavePicker(): void {
 export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
   const { t } = useTranslation();
   const connections = useSession((s) => s.connections);
-  const [pinFor, setPinFor] = useState<Profile | null>(null);
+  /** The person whose PIN is asked, with the PIN as `choose` read it (the prompt checks
+   * against it instead of reading the secure store again; absent when that read failed,
+   * and the prompt then reads, and says it couldn't check). */
+  const [pinFor, setPinFor] = useState<{ profile: Profile; stored?: StoredPin } | null>(null);
   const [switching, setSwitching] = useState<string | null>(null);
 
   const finish = async (profile: Profile) => {
@@ -84,9 +87,9 @@ export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
     }
     if (profile.hasPin) {
       // An unreadable store still asks: the prompt says it couldn't check.
-      const stored = await hasStoredPin(profile.id).catch(() => true);
-      if (stored) {
-        setPinFor(profile);
+      const stored = await readPin(profile.id).catch(() => undefined);
+      if (stored !== null) {
+        setPinFor({ profile, stored });
         return;
       }
       setProfileHasPin(profile.id, false);
@@ -98,10 +101,11 @@ export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
     <PinDialog
       open={pinFor !== null}
       mode="check"
-      profileId={pinFor?.id ?? ''}
-      name={pinFor ? profileName(pinFor, connections, t) : ''}
+      profileId={pinFor?.profile.id ?? ''}
+      stored={pinFor?.stored}
+      name={pinFor ? profileName(pinFor.profile, connections, t) : ''}
       onDone={() => {
-        const p = pinFor;
+        const p = pinFor?.profile;
         setPinFor(null);
         if (p) void finish(p);
       }}

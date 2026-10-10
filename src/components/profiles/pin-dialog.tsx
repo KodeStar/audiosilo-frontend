@@ -29,6 +29,7 @@ import {
   PIN_LOCK_MS,
   pinLockedFor,
   setPin,
+  type StoredPin,
 } from '@/lib/profile-pin';
 import { useNow } from '@/lib/use-now';
 
@@ -53,6 +54,7 @@ export function PinDialog({
   open,
   mode,
   profileId,
+  stored,
   name,
   title,
   onDone,
@@ -61,6 +63,9 @@ export function PinDialog({
   open: boolean;
   mode: PinDialogMode;
   profileId: string;
+  /** `check`: the PIN as the caller just read it (`readPin`), so the check doesn't read
+   * the secure store again. Absent: the check reads it. */
+  stored?: StoredPin;
   /** The person's name, for the title and the field's label. */
   name: string;
   /** A title of the caller's ("Enter your current PIN"), else the mode's. */
@@ -76,6 +81,7 @@ export function PinDialog({
           key={mode}
           mode={mode}
           profileId={profileId}
+          stored={stored}
           name={name}
           title={title}
           onDone={onDone}
@@ -90,6 +96,7 @@ export function PinDialog({
 function PinDialogBody({
   mode,
   profileId,
+  stored,
   name,
   title,
   onDone,
@@ -140,7 +147,7 @@ function PinDialogBody({
     setBusy(true);
     let right = false;
     try {
-      right = await checkPin(profileId, value);
+      right = await checkPin(profileId, value, stored);
     } catch {
       setBusy(false);
       setPinValue('');

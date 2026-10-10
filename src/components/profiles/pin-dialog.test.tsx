@@ -19,12 +19,17 @@ beforeEach(async () => {
   });
 });
 
+/** checkPin / setPin are async (10,000 hash rounds, in chunks with a yield between): let
+ * them land. */
+async function settle() {
+  await act(async () => {
+    for (let i = 0; i < 15; i++) await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
 async function type(value: string) {
   await fireEvent.changeText(screen.getByTestId('pin-field'), value);
-  // checkPin / setPin are async (10,000 hash rounds): let them land.
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 0));
-  });
+  await settle();
 }
 
 describe('PinDialog, check', () => {
@@ -63,9 +68,7 @@ describe('PinDialog, check', () => {
     await fireEvent.changeText(screen.getByTestId('pin-field'), '1111');
     // Checking: still editable (a non-editable field blurs on native and drops the sheet).
     expect(screen.getByTestId('pin-field').props.editable).not.toBe(false);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    await settle();
     expect(screen.getByText("That PIN doesn't match")).toBeTruthy();
     expect(screen.getByTestId('pin-field').props.value).toBe('');
     expect(focus).toHaveBeenCalled();

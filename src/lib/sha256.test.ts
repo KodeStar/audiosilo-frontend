@@ -1,5 +1,5 @@
 import { toHex as hex } from './random';
-import { sha256, utf8 } from './sha256';
+import { chainSalted, hexOfWords, sha256, utf8, wordsOf } from './sha256';
 
 // Node's own implementation, as the reference (the app's tsconfig has no node types).
 type NodeHash = { update: (d: Uint8Array) => NodeHash; digest: () => Uint8Array };
@@ -37,5 +37,27 @@ describe('sha256', () => {
     } finally {
       globalThis.TextEncoder = saved;
     }
+  });
+});
+
+describe('chainSalted (the PIN chain)', () => {
+  it("is SHA-256 over salt + the previous digest, round after round, like node's", () => {
+    const salt = new Uint8Array(16).map((_, i) => (i * 37 + 11) & 0xff);
+    let ref: Uint8Array = createHash('sha256').update(utf8('4821')).digest();
+    const digest = wordsOf(new Uint8Array(ref));
+    for (const rounds of [1, 2, 7]) {
+      for (let i = 0; i < rounds; i++) {
+        ref = createHash('sha256')
+          .update(new Uint8Array([...salt, ...ref]))
+          .digest();
+      }
+      chainSalted(wordsOf(salt), digest, rounds);
+      expect(hexOfWords(digest)).toBe(hex(ref));
+    }
+  });
+
+  it('reads and spells words big-endian', () => {
+    const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0x00, 0x00, 0x00, 0x01]);
+    expect(hexOfWords(wordsOf(bytes))).toBe('deadbeef00000001');
   });
 });
