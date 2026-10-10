@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { contentKey } from '@/lib/content-key';
+import { CONNECTION_ALIASES_KEY } from '@/lib/storage-keys';
 
 import {
-  CONNECTION_ALIASES_KEY,
   connectionAliases,
   connectionIdOf,
   isLegacyConnectionId,

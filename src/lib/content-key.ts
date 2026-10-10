@@ -13,3 +13,16 @@ export function contentKey(connectionId: string, libraryId: number, path: string
 export function contentKeyOf(b: { connectionId: string; libraryId: number; path: string }): string {
   return contentKey(b.connectionId, b.libraryId, b.path);
 }
+
+/** The connection id a `contentKey` starts with (a connection id never holds `:`, so the
+ * first one ends it), or null for a key with none. */
+export function connectionOfKey(key: string): string | null {
+  const at = key.indexOf(':');
+  return at > 0 ? key.slice(0, at) : null;
+}
+
+/** Whether `key` (a `contentKey`, or any key built on one) belongs to `connectionId`: the
+ * purge of a removed connection's records. */
+export function isKeyOf(key: string, connectionId: string): boolean {
+  return key.startsWith(`${connectionId}:`);
+}

@@ -1,4 +1,5 @@
 import { getItem } from '@/lib/storage';
+import { CONNECTION_ALIASES_KEY, isRecord } from '@/lib/storage-keys';
 
 /**
  * The connection id: which signed-in account on which server a piece of state belongs to.
@@ -22,9 +23,6 @@ import { getItem } from '@/lib/storage';
  * bookmark the Android service queued while no JS ran, a web history entry) are mapped to
  * their new id by `resolveConnectionId`, from the aliases the migration recorded.
  */
-
-/** Where the migration records `{ [legacyId]: newId }` (never wiped by a storage reset). */
-export const CONNECTION_ALIASES_KEY = 'audiosilo.connectionAliases';
 
 const isUserId = (id: unknown): id is number =>
   typeof id === 'number' && Number.isSafeInteger(id) && id > 0;
@@ -92,8 +90,8 @@ let aliases: Readonly<Record<string, string>> = {};
 /** Only string -> string pairs whose two sides differ survive a stored document. */
 export function parseAliases(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {};
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
-  for (const [from, to] of Object.entries(raw as Record<string, unknown>)) {
+  if (!isRecord(raw)) return out;
+  for (const [from, to] of Object.entries(raw)) {
     if (from && typeof to === 'string' && to && to !== from) out[from] = to;
   }
   return out;

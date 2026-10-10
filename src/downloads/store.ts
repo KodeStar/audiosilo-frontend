@@ -8,6 +8,7 @@ import type { Book, ChaptersResponse } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
+import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { onConnectionRemoved } from '@/stores/session';
@@ -42,8 +43,6 @@ import type {
   DownloadOutcome,
   StorageEstimate,
 } from './types';
-
-const KEY = 'audiosilo.downloads';
 
 export const downloadKey = contentKey;
 
@@ -96,7 +95,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   supported: engine.supported,
 
   hydrate: async () => {
-    const saved = (await getItem<Registry>(KEY)) ?? {};
+    const saved = (await getItem<Registry>(DOWNLOADS_KEY)) ?? {};
     const cleaned: Registry = {};
     for (const raw of Object.values(saved)) {
       // Re-resolve stored file uris against the live storage root first: the app's
@@ -454,7 +453,7 @@ function persist(): Promise<void> {
     pendingSave.watch.remove();
     pendingSave = null;
   }
-  return setItem(KEY, useDownloads.getState().entries);
+  return setItem(DOWNLOADS_KEY, useDownloads.getState().entries);
 }
 
 /** Save the registry within `PERSIST_EVERY_MS`: a book of many files lands one file at

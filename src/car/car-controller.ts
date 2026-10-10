@@ -32,6 +32,10 @@ import { contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
+import {
+  CAR_BOOKMARKS_KEY as RETRY_KEY,
+  CAR_SNAPSHOT_WRITTEN_KEY as WRITTEN_KEY,
+} from '@/lib/storage-keys';
 import { onForeground } from '@/lib/when-active';
 import { buildBookQueue, toBookPosition } from '@/playback/book-queue';
 import { bookSourceOf } from '@/playback/book-source';
@@ -127,12 +131,8 @@ const COVER_SIZE = 320;
 const ARTWORK_CONCURRENCY = 3;
 /** Items read at once. */
 const ITEM_CONCURRENCY = 4;
-/** Car bookmarks that couldn't reach their server yet (retried at the next drain). */
-const RETRY_KEY = 'audiosilo.carBookmarks';
 /** Set once a car (CarPlay or Android Auto) has connected on this device. */
 const CAR_SEEN_KEY = 'audiosilo.carSeen';
-/** Set once native has been handed a snapshot on this device (it keeps the last one). */
-const WRITTEN_KEY = 'audiosilo.carSnapshotWritten';
 
 /** Started (`startCarSync`), and how many callers hold it. */
 let active = false;

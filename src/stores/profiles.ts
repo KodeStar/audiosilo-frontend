@@ -3,9 +3,10 @@ import { create } from 'zustand';
 
 import { serverIdOf } from '@/lib/connection-id';
 import { parseHhMm } from '@/lib/hhmm';
-import { initialProfiles, PROFILES_KEY } from '@/lib/identity-migration';
+import { initialProfiles } from '@/lib/identity-migration';
 import { randomUUID } from '@/lib/random';
 import { getItem, setItem } from '@/lib/storage';
+import { isRecord, PROFILES_KEY } from '@/lib/storage-keys';
 import {
   type Connection,
   onConnectionRemoved,
@@ -83,19 +84,15 @@ const EMPTY_DOC: ProfilesDoc = {
 
 // --- Parsing ------------------------------------------------------------------------------
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === 'object' && !Array.isArray(v);
-}
-
 function parseKids(raw: unknown): KidsSettings | undefined {
-  if (!isObject(raw)) return undefined;
+  if (!isRecord(raw)) return undefined;
   const bedtime =
     typeof raw.bedtime === 'string' && parseHhMm(raw.bedtime) !== null
       ? raw.bedtime
       : DEFAULT_BEDTIME;
   const lib = raw.library;
   const library =
-    isObject(lib) &&
+    isRecord(lib) &&
     typeof lib.connectionId === 'string' &&
     lib.connectionId &&
     typeof lib.libraryId === 'number' &&
@@ -107,7 +104,7 @@ function parseKids(raw: unknown): KidsSettings | undefined {
 }
 
 function parseProfile(raw: unknown): Profile | null {
-  if (!isObject(raw) || typeof raw.id !== 'string' || !raw.id) return null;
+  if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id) return null;
   const ids = Array.isArray(raw.connectionIds)
     ? [...new Set(raw.connectionIds.filter((x): x is string => typeof x === 'string' && !!x))]
     : [];
@@ -124,7 +121,7 @@ function parseProfile(raw: unknown): Profile | null {
 /** A stored document, validated: anything unreadable is an empty document (rebuilt from
  * the session by `reconcileProfiles`). */
 export function parseProfilesDoc(raw: unknown): ProfilesDoc {
-  if (!isObject(raw) || raw.version !== 1 || !Array.isArray(raw.profiles)) return EMPTY_DOC;
+  if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.profiles)) return EMPTY_DOC;
   const seen = new Set<string>();
   const profiles: Profile[] = [];
   for (const p of raw.profiles.map(parseProfile)) {

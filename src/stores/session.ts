@@ -14,14 +14,18 @@ import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { hostOf } from '@/lib/pairing';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
 import { getItem, removeItem, setItem } from '@/lib/storage';
+import {
+  CONNECTIONS_KEY,
+  DEFAULT_CONNECTION_KEY as DEFAULT_KEY,
+  DOWNLOADS_KEY,
+  OFFLINE_SERVERS_KEY,
+  PROGRESS_MIRROR_KEY,
+  PROGRESS_QUEUE_KEY,
+} from '@/lib/storage-keys';
 
 // Multi-connection session: the app can be signed in to several servers at once.
-// Connection metadata is kept in AsyncStorage; each connection's token lives in
-// secure-store under its own key.
-export const CONNECTIONS_KEY = 'audiosilo.connections';
-// The default connection's id. The string is the legacy `activeConnection` name, kept
-// stable so an existing install's persisted default survives the active→default rename.
-export const DEFAULT_KEY = 'audiosilo.activeConnection';
+// Connection metadata is kept in AsyncStorage (`CONNECTIONS_KEY`, the default's id under
+// `DEFAULT_KEY`); each connection's token lives in secure-store under its own key.
 /** Where a connection's session token lives in the secure store. */
 export const tokenKey = (id: string) => `audiosilo.token.${id}`;
 
@@ -54,16 +58,15 @@ const AUTH_STORAGE_VERSION = 2;
 // This is the knob to reach for on cache churn.
 const CACHE_VERSION_KEY = 'audiosilo.cacheVersion';
 const CACHE_STORAGE_VERSION = 1;
-// Per-server scoped storage owned by other stores. Duplicated here so the reset is
-// self-contained and can run before those stores hydrate (avoiding a store loading
-// orphaned, wrongly-keyed data). Wiped on a cache bump, and also folded into an auth
-// wipe (the connections that owned this cache are gone, so it's orphaned too).
+// Per-server scoped storage owned by other stores, named from the leaf `storage-keys` so
+// the reset is self-contained and can run before those stores hydrate (avoiding a store
+// loading orphaned, wrongly-keyed data). Wiped on a cache bump, and also folded into an
+// auth wipe (the connections that owned this cache are gone, so it's orphaned too).
 const SCOPED_STORAGE_KEYS = [
-  'audiosilo.downloads',
-  'audiosilo.progressMirror',
-  'audiosilo.progressQueue',
-  // Each connection's kept `/server` answer for offline reading (`OFFLINE_SERVERS_KEY`).
-  'audiosilo.offlineServers',
+  DOWNLOADS_KEY,
+  PROGRESS_MIRROR_KEY,
+  PROGRESS_QUEUE_KEY,
+  OFFLINE_SERVERS_KEY,
 ];
 
 /** Outcome of `resetStaleStorage`: the two axes reset independently. */

@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { engine } from '@/downloads/engine';
 import {
-  CONNECTION_ALIASES_KEY,
   connectionAliases,
   connectionIdOf,
   isLegacyConnectionId,
@@ -11,11 +10,27 @@ import {
   setConnectionAliases,
   usableUserId,
 } from '@/lib/connection-id';
-import { contentKey } from '@/lib/content-key';
+import { connectionOfKey, contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import {
+  CAR_BOOKMARKS_KEY,
+  CAR_SNAPSHOT_WRITTEN_KEY,
+  CONNECTION_ALIASES_KEY,
+  CONNECTIONS_KEY,
+  DEFAULT_CONNECTION_KEY,
+  DOWNLOADS_KEY,
+  DRIFT_STORAGE_KEY,
+  isRecord,
+  LIBRARY_SELECTION_KEY,
+  OFFLINE_SERVERS_KEY,
+  PROFILES_KEY,
+  PROGRESS_MIRROR_KEY,
+  PROGRESS_QUEUE_KEY,
+  TIME_SAVED_KEY,
+} from '@/lib/storage-keys';
 import type { ProfilesDoc } from '@/stores/profiles';
-import { CONNECTIONS_KEY, DEFAULT_KEY, type PersistedConnection, tokenKey } from '@/stores/session';
+import { type PersistedConnection, tokenKey } from '@/stores/session';
 
 /**
  * The one-time connection identity migration (Phase 8): every connection saved with a
@@ -56,36 +71,22 @@ export const IDENTITY_VERSION_KEY = 'audiosilo.identityVersion';
 const IDENTITY_VERSION = 2;
 /** The moves of a run that has not finished, `{ legacyId: newId }`. */
 export const IDENTITY_PLAN_KEY = 'audiosilo.identityPlan';
-/** The profiles document (`src/stores/profiles.ts` owns it; the migration writes the first). */
-export const PROFILES_KEY = 'audiosilo.profiles';
-
-// Every document that names a connection id. Duplicated here (like `SCOPED_STORAGE_KEYS` in
-// session.ts) so the migration reads no store module: they hydrate after it.
+// Every document that names a connection id (their shapes: `storage-keys.ts`). Named from
+// the leaf `storage-keys` so the migration reads no store module: they hydrate after it.
 export const ID_DOCUMENTS = {
   connections: CONNECTIONS_KEY,
-  defaultId: DEFAULT_KEY,
-  /** Registry keyed by `contentKey`; each entry's `connectionId`. */
-  downloads: 'audiosilo.downloads',
-  /** Keyed by `contentKey`; each value's `connectionId`. */
-  progressMirror: 'audiosilo.progressMirror',
-  /** Array of saves, each with a `connectionId`. */
-  progressQueue: 'audiosilo.progressQueue',
-  /** Keyed by connection id. */
-  offlineServers: 'audiosilo.offlineServers',
-  /** Array of car bookmarks to retry, each with a `connectionId`. */
-  carBookmarks: 'audiosilo.carBookmarks',
-  /** `{ selection: { connectionId, libraryId } }`. */
-  librarySelection: 'audiosilo.librarySelection',
-  /** `{ lifetime, books }`, books keyed by `contentKey`. */
-  timeSaved: 'audiosilo.timeSaved',
-  /** Keyed by `contentKey`. */
-  driftOffs: 'audiosilo.driftOffs',
+  defaultId: DEFAULT_CONNECTION_KEY,
+  downloads: DOWNLOADS_KEY,
+  progressMirror: PROGRESS_MIRROR_KEY,
+  progressQueue: PROGRESS_QUEUE_KEY,
+  offlineServers: OFFLINE_SERVERS_KEY,
+  carBookmarks: CAR_BOOKMARKS_KEY,
+  librarySelection: LIBRARY_SELECTION_KEY,
+  timeSaved: TIME_SAVED_KEY,
+  driftOffs: DRIFT_STORAGE_KEY,
   aliases: CONNECTION_ALIASES_KEY,
   profiles: PROFILES_KEY,
 } as const;
-
-/** Native keeps the car snapshot it was last handed; this says one was (car-controller.ts). */
-export const CAR_SNAPSHOT_WRITTEN_KEY = 'audiosilo.carSnapshotWritten';
 
 /** Which step stopped a run (nothing after it changed; it runs again next launch). */
 export type IdentityMigrationStep = 'read' | 'busy' | 'tokens' | 'plan' | 'files' | 'documents';
@@ -148,12 +149,9 @@ function parse(raw: string | null | undefined): unknown {
   }
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
-
 function readConnections(raw: unknown): PersistedConnection[] {
   return Array.isArray(raw)
-    ? raw.filter((c): c is PersistedConnection => isObject(c) && typeof c.id === 'string' && !!c.id)
+    ? raw.filter((c): c is PersistedConnection => isRecord(c) && typeof c.id === 'string' && !!c.id)
     : [];
 }
 
@@ -181,25 +179,22 @@ export function planMoves(
 type Plan = Readonly<Record<string, string>>;
 
 const mapId = (plan: Plan, id: unknown): unknown =>
-  typeof id === 'string' && Object.prototype.hasOwnProperty.call(plan, id) ? plan[id] : id;
+  typeof id === 'string' && Object.hasOwn(plan, id) ? plan[id] : id;
 
-/** A `contentKey` (`<connectionId>:<libraryId>:<path>`) with its connection id mapped. A
- * connection id never holds `:`, so the first one ends it. */
+/** A `contentKey` (`<connectionId>:<libraryId>:<path>`) with its connection id mapped. */
 export function rekey(plan: Plan, key: string): string {
-  const at = key.indexOf(':');
-  if (at <= 0) return key;
-  const id = key.slice(0, at);
-  return Object.prototype.hasOwnProperty.call(plan, id) ? plan[id] + key.slice(at) : key;
+  const id = connectionOfKey(key);
+  return id !== null && Object.hasOwn(plan, id) ? plan[id] + key.slice(id.length) : key;
 }
 
 function withConnectionId<T>(plan: Plan, v: T): T {
-  return isObject(v) && typeof v.connectionId === 'string'
+  return isRecord(v) && typeof v.connectionId === 'string'
     ? ({ ...v, connectionId: mapId(plan, v.connectionId) } as T)
     : v;
 }
 
 function rekeyRecord(plan: Plan, doc: unknown, mapValue = <T>(v: T) => v): unknown {
-  if (!isObject(doc)) return doc;
+  if (!isRecord(doc)) return doc;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(doc)) out[rekey(plan, k)] = mapValue(v);
   return out;
@@ -210,19 +205,19 @@ export const rewrite = {
   connections(plan: Plan, doc: unknown): unknown {
     if (!Array.isArray(doc)) return doc;
     return doc.map((c: unknown) => {
-      if (!isObject(c) || typeof c.id !== 'string') return c;
+      if (!isRecord(c) || typeof c.id !== 'string') return c;
       const conn = c as PersistedConnection;
       return { ...conn, id: mapId(plan, conn.id), serverId: serverIdOf(conn) };
     });
   },
   defaultId: (plan: Plan, doc: unknown): unknown => mapId(plan, doc),
   downloads(plan: Plan, doc: unknown): unknown {
-    if (!isObject(doc)) return doc;
+    if (!isRecord(doc)) return doc;
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc)) {
       const e = withConnectionId(plan, v);
       const key =
-        isObject(e) &&
+        isRecord(e) &&
         typeof e.connectionId === 'string' &&
         typeof e.libraryId === 'number' &&
         typeof e.path === 'string'
@@ -237,7 +232,7 @@ export const rewrite = {
   progressQueue: (plan: Plan, doc: unknown): unknown =>
     Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc,
   offlineServers(plan: Plan, doc: unknown): unknown {
-    if (!isObject(doc)) return doc;
+    if (!isRecord(doc)) return doc;
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc)) out[mapId(plan, k) as string] = v;
     return out;
@@ -245,11 +240,11 @@ export const rewrite = {
   carBookmarks: (plan: Plan, doc: unknown): unknown =>
     Array.isArray(doc) ? doc.map((b: unknown) => withConnectionId(plan, b)) : doc,
   librarySelection(plan: Plan, doc: unknown): unknown {
-    if (!isObject(doc) || !isObject(doc.selection)) return doc;
+    if (!isRecord(doc) || !isRecord(doc.selection)) return doc;
     return { ...doc, selection: withConnectionId(plan, doc.selection) };
   },
   timeSaved(plan: Plan, doc: unknown): unknown {
-    if (!isObject(doc) || !isObject(doc.books)) return doc;
+    if (!isRecord(doc) || !isRecord(doc.books)) return doc;
     return { ...doc, books: rekeyRecord(plan, doc.books) };
   },
   driftOffs: (plan: Plan, doc: unknown): unknown => rekeyRecord(plan, doc),
@@ -289,11 +284,11 @@ export function initialProfiles<C extends Pick<PersistedConnection, 'id' | 'serv
 
 /** An existing profiles document with its connection ids mapped (and deduplicated). */
 function remapProfiles(plan: Plan, doc: unknown): unknown {
-  if (!isObject(doc) || !Array.isArray(doc.profiles)) return doc;
+  if (!isRecord(doc) || !Array.isArray(doc.profiles)) return doc;
   return {
     ...doc,
     profiles: doc.profiles.map((p: unknown) =>
-      isObject(p) && Array.isArray(p.connectionIds)
+      isRecord(p) && Array.isArray(p.connectionIds)
         ? {
             ...p,
             connectionIds: [...new Set(p.connectionIds.map((id: unknown) => mapId(plan, id)))],
@@ -437,11 +432,11 @@ export async function migrateConnectionIdentity(
   const existingProfiles = parse(before[PROFILES_KEY]);
   put(
     PROFILES_KEY,
-    isObject(existingProfiles)
+    isRecord(existingProfiles)
       ? remapProfiles(plan, existingProfiles)
       : initialProfiles(
           migrated,
-          (mapId(plan, parse(before[DEFAULT_KEY])) as string | null) ?? null,
+          (mapId(plan, parse(before[DEFAULT_CONNECTION_KEY])) as string | null) ?? null,
           deps.newProfileId,
         ),
   );

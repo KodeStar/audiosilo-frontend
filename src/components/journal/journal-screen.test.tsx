@@ -3,7 +3,7 @@ import type { Bookmark, HistoryEntry, MyBookmark, MyNote } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { formatWallClock } from '@/lib/format';
 import { setItem } from '@/lib/storage';
-import { DRIFT_STORAGE_KEY } from '@/playback/drift';
+import { DRIFT_STORAGE_KEY } from '@/lib/storage-keys';
 import { useSession } from '@/stores/session';
 import { mountWithPortal } from '@/testing/render-overlay';
 

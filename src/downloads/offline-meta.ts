@@ -8,6 +8,7 @@ import type { Book, BookMeta, BookMetaWork, ServerInfo } from '@/api/types';
 import { metaEnabledFor } from '@/components/library/meta-gating';
 import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { getItem, setItem } from '@/lib/storage';
+import { isRecord, OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
 
@@ -76,16 +77,14 @@ export type OfflineMeta = {
   server?: ServerSnapshot;
 };
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 const isWork = (v: unknown): v is BookMetaWork =>
-  isObject(v) && typeof v.id === 'string' && v.id.length > 0;
+  isRecord(v) && typeof v.id === 'string' && v.id.length > 0;
 
 /** A stored `/server` snapshot, or undefined when it is not one. */
 function parseSnapshot(raw: unknown): ServerSnapshot | undefined {
-  return isObject(raw) &&
-    isObject(raw.info) &&
-    isObject(raw.info.capabilities) &&
+  return isRecord(raw) &&
+    isRecord(raw.info) &&
+    isRecord(raw.info.capabilities) &&
     typeof raw.savedAt === 'number'
     ? (raw as ServerSnapshot)
     : undefined;
@@ -95,10 +94,10 @@ function parseSnapshot(raw: unknown): ServerSnapshot | undefined {
  * or from a future version): the caller then simply goes without (and fetches it again
  * when it can). The envelope's inner fields are trusted like a server answer. */
 export function parseOfflineMeta(raw: unknown): OfflineMeta | null {
-  if (!isObject(raw) || raw.v !== 1) return null;
+  if (!isRecord(raw) || raw.v !== 1) return null;
   const { savedAt, meta, works, server } = raw;
   if (typeof savedAt !== 'number' || !Number.isFinite(savedAt)) return null;
-  if (!isObject(meta) || typeof meta.matched !== 'boolean') return null;
+  if (!isRecord(meta) || typeof meta.matched !== 'boolean') return null;
   if (meta.matched && !isWork(meta.work)) return null;
   const envelope = { ...meta } as Record<string, unknown>;
   if (envelope.previous !== undefined) {
@@ -188,15 +187,10 @@ export function seedServerSnapshot(connectionId: string, snapshot: ServerSnapsho
   seedQuery(qk.server(connectionId), snapshot.info, snapshot.savedAt);
 }
 
-/** Where each connection's last `/server` answer is kept for offline use: one small
- * document, by connection id (wiped with the rest of the scoped cache on a storage
- * reset: `SCOPED_STORAGE_KEYS` in `stores/session.ts` names it too). */
-export const OFFLINE_SERVERS_KEY = 'audiosilo.offlineServers';
-
 /** The kept `/server` answers, by connection id (none when unreadable). */
 export async function readServerSnapshots(): Promise<Record<string, ServerSnapshot>> {
   const raw = await getItem<unknown>(OFFLINE_SERVERS_KEY);
-  if (!isObject(raw)) return {};
+  if (!isRecord(raw)) return {};
   const out: Record<string, ServerSnapshot> = {};
   for (const [cid, v] of Object.entries(raw)) {
     const snapshot = parseSnapshot(v);

@@ -5,18 +5,21 @@ import type { Progress } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
+import {
+  PROGRESS_MIRROR_KEY as MIRROR_KEY,
+  PROGRESS_QUEUE_KEY as QUEUE_KEY,
+} from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
 
-const QUEUE_KEY = 'audiosilo.progressQueue';
 const DEVICE_KEY = 'audiosilo.deviceId';
-// Durable, never-pruned mirror of the last-known progress per (connection, library,
-// path). Unlike the offline queue (cleared once a save syncs), this survives sync so a
-// returning listener can resume even when the server momentarily can't be reached - the
-// fix for "an in-progress book restarted from 0 because the resume fetch failed".
-const MIRROR_KEY = 'audiosilo.progressMirror';
+// `MIRROR_KEY`: the durable, never-pruned mirror of the last-known progress per
+// (connection, library, path). Unlike the offline queue (cleared once a save syncs), this
+// survives sync so a returning listener can resume even when the server momentarily can't
+// be reached - the fix for "an in-progress book restarted from 0 because the resume fetch
+// failed".
 
 let deviceIdCache: string | null = null;
 

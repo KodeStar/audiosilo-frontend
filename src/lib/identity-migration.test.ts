@@ -2,8 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import { OFFLINE_SERVERS_KEY } from '@/downloads/offline-meta';
-import { DRIFT_STORAGE_KEY, pruneDrifts } from '@/playback/drift';
+import { pruneDrifts } from '@/playback/drift';
 import { parseTimeSaved } from '@/playback/time-saved';
 import { resolveLibrarySelection } from '@/stores/library-selection';
 import { profileConnectionIds, resetProfilesForTests, useProfiles } from '@/stores/profiles';
@@ -11,7 +10,6 @@ import { useSession } from '@/stores/session';
 
 import { connectionAliases, resolveConnectionId, setConnectionAliases } from './connection-id';
 import {
-  CAR_SNAPSHOT_WRITTEN_KEY,
   ID_DOCUMENTS,
   IDENTITY_PLAN_KEY,
   IDENTITY_VERSION_KEY,
@@ -22,6 +20,7 @@ import {
   rekey,
   UNKNOWN,
 } from './identity-migration';
+import { CAR_SNAPSHOT_WRITTEN_KEY, DRIFT_STORAGE_KEY, OFFLINE_SERVERS_KEY } from './storage-keys';
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
@@ -673,9 +672,4 @@ describe('rekey', () => {
     expect(rekey(plan, 'ab:1:x')).toBe('ab:1:x');
     expect(rekey(plan, 'no-colon')).toBe('no-colon');
   });
-});
-
-it('rewrites every scoped document the stores own (keys kept in step with their owners)', () => {
-  expect(ID_DOCUMENTS.offlineServers).toBe(OFFLINE_SERVERS_KEY);
-  expect(ID_DOCUMENTS.driftOffs).toBe(DRIFT_STORAGE_KEY);
 });

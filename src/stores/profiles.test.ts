@@ -3,7 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, renderHook } from '@testing-library/react-native';
 
 import type { User } from '@/api/types';
-import { initialProfiles, PROFILES_KEY } from '@/lib/identity-migration';
+import { initialProfiles } from '@/lib/identity-migration';
+import { PROFILES_KEY } from '@/lib/storage-keys';
 import {
   activeProfile,
   askOnSecondPerson,
