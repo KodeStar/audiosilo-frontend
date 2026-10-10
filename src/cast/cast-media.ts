@@ -16,7 +16,7 @@ import type { CastItem, CastMediaStatus } from './types';
  * or the AC-3 family. A book in one of these casts through the server's transcoder
  * (`?transcode=1`) when it has one.
  */
-export const CAST_UNPLAYABLE_CODECS: ReadonlySet<string> = new Set([
+const CAST_UNPLAYABLE_CODECS: ReadonlySet<string> = new Set([
   'alac',
   'ac3',
   'eac3',
@@ -241,7 +241,7 @@ export type SeenPlace = {
 };
 
 /** How far (seconds) the receiver may be from where it should be before it counts as moved. */
-export const JUMP_TOLERANCE_S = 5;
+const JUMP_TOLERANCE_S = 5;
 
 /**
  * Did the receiver move by itself (the TV remote, Google Home, the Cast notification, another
@@ -253,13 +253,12 @@ export const JUMP_TOLERANCE_S = 5;
 export function isUnaskedJump(
   prev: SeenPlace | null,
   next: { trackIndex: number; position: number; at: number },
-  tolerance = JUMP_TOLERANCE_S,
 ): boolean {
   if (!prev) return false;
   const elapsed = Math.max(0, (next.at - prev.at) / 1000) * (prev.playing ? prev.rate : 0);
   if (next.trackIndex === prev.trackIndex) {
-    return Math.abs(next.position - (prev.position + elapsed)) > tolerance;
+    return Math.abs(next.position - (prev.position + elapsed)) > JUMP_TOLERANCE_S;
   }
-  if (next.trackIndex === prev.trackIndex + 1) return next.position > elapsed + tolerance;
+  if (next.trackIndex === prev.trackIndex + 1) return next.position > elapsed + JUMP_TOLERANCE_S;
   return true;
 }
