@@ -39,6 +39,8 @@ public enum AudiosiloScenes {
     var sceneDelegates: [AnyClass] = [AudiosiloPhoneSceneDelegate.self]
 #if canImport(CarPlay)
     sceneDelegates.append(AudiosiloCarPlaySceneDelegate.self)
+    // Before any scene connects: React Native's Appearance must not crash on the CarPlay scene.
+    CarPlaySceneWindows.install()
 #endif
     _ = sceneDelegates
   }
