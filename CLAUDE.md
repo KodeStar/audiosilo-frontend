@@ -933,9 +933,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   updates the plugin and its fixture. **Plugin order**: mods of one kind run in REVERSE
   registration order, so **no plugin that rewrites the AppDelegate may be listed after
   `withCarPlay` in `app.json`** (its edit would run first and break the match). The
-  `com.apple.developer.carplay-audio` entitlement is added only with **`AUDIOSILO_CARPLAY=1`**
-  at prebuild: a device build carrying it can't be signed until Apple grants it, and without
-  it iOS never connects the CarPlay scene (the scene code still ships). The phone scene
+  `com.apple.developer.carplay-audio` entitlement is added **by default** (Apple granted it
+  2026-10-09; app.audiosilo and app.audiosilo.dev carry the capability); `AUDIOSILO_CARPLAY=0`
+  at prebuild leaves it out for a signing identity without the grant, and without it iOS never
+  connects the CarPlay scene (the scene code still ships). The phone scene
   delegate rebuilds launch options from `connectionOptions` and re-feeds URLs and user
   activities to the app delegate: **pairing deep links, cold and warm, are the regression to
   check** after any change here. The templates (`AudiosiloCarPlaySceneDelegate.swift`): a tab
