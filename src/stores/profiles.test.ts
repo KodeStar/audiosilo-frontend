@@ -21,10 +21,12 @@ import {
   type ProfilesDoc,
   reconcileProfiles,
   renameProfile,
+  replaceInDoc,
   resetProfilesForTests,
   setAskAtLaunch,
   setProfileHasPin,
   setProfileKids,
+  staleToRetire,
   switchProfile,
   useActiveProfile,
   useProfileConnections,
@@ -653,5 +655,64 @@ describe('switchProfile', () => {
     expect(activeProfile()?.id).toBe(placed);
     expect(activeProfile()?.connectionIds).toEqual([C3.id]);
     expect(profileOf(A2.id)?.id).not.toBe(placed);
+  });
+});
+
+describe('staleToRetire (a sign-in to a server that was reset)', () => {
+  const doc = {
+    hydrated: true,
+    hydrationFailed: false,
+    activeProfileId: 'a',
+    profiles: [
+      { id: 'a', name: 'Alex', connectionIds: ['old.1', 'x.1'] },
+      { id: 'b', name: 'Bea', connectionIds: ['old.2'] },
+    ],
+  };
+
+  it("retires the signer's own: the reconnect's person, else the person listening", () => {
+    expect(staleToRetire(['old.1', 'old.2'], doc)).toEqual(['old.1']);
+    expect(staleToRetire(['old.1', 'old.2'], doc, { reconnectId: 'old.2' })).toEqual(['old.2']);
+  });
+
+  it('retires nobody for a new person, nobody chosen, or profiles not read', () => {
+    expect(staleToRetire(['old.1'], doc, { newPerson: true })).toEqual([]);
+    expect(staleToRetire(['old.1'], { ...doc, activeProfileId: null })).toEqual([]);
+    expect(staleToRetire(['old.1'], { ...doc, hydrated: false })).toEqual([]);
+    expect(staleToRetire(['old.1'], { ...doc, hydrationFailed: true })).toEqual([]);
+  });
+
+  it('retires every one with nobody on the device', () => {
+    expect(staleToRetire(['old.1', 'old.2'], { ...doc, profiles: [] })).toEqual(['old.1', 'old.2']);
+  });
+});
+
+describe('replaceInDoc', () => {
+  it("puts the new id in the old one's place, keeping the person, and moves a kids pick", () => {
+    const doc: ProfilesDoc = {
+      version: 1,
+      activeProfileId: 'k',
+      askAtLaunch: true,
+      profiles: [
+        { id: 'g', name: 'Gran', connectionIds: ['old.1', 'new.9'] },
+        {
+          id: 'k',
+          name: 'Leo',
+          connectionIds: ['x.4', 'old.2'],
+          hasPin: true,
+          kids: { library: { connectionId: 'old.2', libraryId: 5 }, bedtime: '19:00' },
+        },
+      ],
+    };
+    expect(replaceInDoc(doc, 'old.2', 'new.9').profiles).toEqual([
+      { id: 'g', name: 'Gran', connectionIds: ['old.1'] },
+      {
+        id: 'k',
+        name: 'Leo',
+        connectionIds: ['x.4', 'new.9'],
+        hasPin: true,
+        kids: { library: { connectionId: 'new.9', libraryId: 5 }, bedtime: '19:00' },
+      },
+    ]);
+    expect(replaceInDoc(doc, 'nobody', 'new.9')).toBe(doc);
   });
 });

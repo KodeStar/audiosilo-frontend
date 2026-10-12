@@ -11,6 +11,7 @@ import { isRecord, PROFILES_KEY } from '@/lib/storage-keys';
 import {
   type Connection,
   onConnectionRemoved,
+  onConnectionReplaced,
   sessionHydrateFailed,
   useSession,
 } from '@/stores/session';
@@ -314,6 +315,57 @@ function withoutConnection(profiles: readonly Profile[], connectionId: string): 
     .filter((p) => p.connectionIds.length > 0);
 }
 
+/**
+ * `doc` with `newId` in the place of `oldId` (a sign-in to a server that was reset retired
+ * the person's dead identity, `retire` on the session's `setSession`): the profile that held
+ * the old id holds the new one, at the same place, and a kids library picked on the old one
+ * names the new one (the library may not exist there any more: kids mode then shows the
+ * first, `kidsLibrary`). The profile's id, name, PIN and kids settings stay. `doc` itself
+ * when no profile holds `oldId`.
+ */
+export function replaceInDoc(doc: ProfilesDoc, oldId: string, newId: string): ProfilesDoc {
+  const holder = doc.profiles.find((p) => p.connectionIds.includes(oldId));
+  if (!holder) return doc;
+  const profiles = doc.profiles.map((p) => {
+    // The new id leaves any profile the reconcile may already have put it in.
+    const ids = p.connectionIds.filter((id) => id !== newId);
+    if (p !== holder)
+      return ids.length === p.connectionIds.length ? p : { ...p, connectionIds: ids };
+    const kids =
+      p.kids?.library?.connectionId === oldId
+        ? { ...p.kids, library: { ...p.kids.library, connectionId: newId } }
+        : p.kids;
+    return {
+      ...p,
+      connectionIds: ids.map((id) => (id === oldId ? newId : id)),
+      ...(kids ? { kids } : {}),
+    };
+  });
+  return { ...doc, profiles: profiles.filter((p) => p.connectionIds.length > 0) };
+}
+
+/**
+ * Which stale identities (`staleIds`, the session's `staleIdentities` for a sign-in: the
+ * same address under another `server_id`, a server that was reset) a sign-in may retire:
+ * only those of the person signing in, the profile holding `reconnectId` (the reconnect
+ * banner's connection) or, without one, the person listening. "Add someone" retires
+ * nobody's (a new person owns none of them). Another person's stay on the device, flagged,
+ * for them to sign in again: retiring them would delete that person (profile, PIN, kids
+ * settings). With nobody on the device every one goes (there is no one else); while the
+ * profiles are unread (not hydrated, or the read failed) none does (whose they are is not
+ * known).
+ */
+export function staleToRetire(
+  staleIds: readonly string[],
+  state: Pick<ProfilesState, 'profiles' | 'activeProfileId' | 'hydrated' | 'hydrationFailed'>,
+  opts: { reconnectId?: string; newPerson?: boolean } = {},
+): string[] {
+  if (!state.hydrated || state.hydrationFailed || opts.newPerson) return [];
+  if (state.profiles.length === 0) return [...staleIds];
+  const owner = opts.reconnectId ? profileOf(opts.reconnectId, state) : activeProfile(state);
+  return owner ? staleIds.filter((id) => owner.connectionIds.includes(id)) : [];
+}
+
 /** `doc` with `profiles`: the active person stays when still among them, else nobody is
  * active until someone is chosen (`mustChoose`). */
 function withProfiles(doc: ProfilesDoc, profiles: Profile[]): ProfilesDoc {
@@ -428,6 +480,14 @@ function onRemoved(id: string): void {
   commit(withProfiles(docOf(s), withoutConnection(s.profiles, id)));
 }
 
+/** A sign-in replaced the person's stale identity (`replaceInDoc`): run by the session just
+ * before its list changes, so the reconcile that follows finds the new id placed. */
+function onReplaced(oldId: string, newId: string): void {
+  const s = useProfiles.getState();
+  if (!s.hydrated) return;
+  commit(replaceInDoc(docOf(s), oldId, newId));
+}
+
 function hydrateProfiles(): Promise<void> {
   hydration ??= (async () => {
     // A read that fails is retried, never taken as a missing document: reconciling an empty
@@ -457,9 +517,11 @@ function hydrateProfiles(): Promise<void> {
         if (s.connections !== prev.connections || s.status !== prev.status) reconcileNow();
       });
       const unsubRemoved = onConnectionRemoved(onRemoved);
+      const unsubReplaced = onConnectionReplaced(onReplaced);
       unsubscribeSession = () => {
         unsubChanges();
         unsubRemoved();
+        unsubReplaced();
       };
     }
     reconcileNow();

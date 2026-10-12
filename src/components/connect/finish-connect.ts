@@ -7,8 +7,15 @@ import i18n from '@/i18n';
 import { priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
-import { activeProfile, placeConnection, profileOf, switchProfile } from '@/stores/profiles';
-import { sessionHydrateFailed, useSession } from '@/stores/session';
+import {
+  activeProfile,
+  placeConnection,
+  profileOf,
+  staleToRetire,
+  switchProfile,
+  useProfiles,
+} from '@/stores/profiles';
+import { sessionHydrateFailed, staleIdentities, useSession } from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
 
@@ -62,11 +69,27 @@ export async function finishConnect(input: {
   // A connection the device already had (a re-pair) keeps its person; read before the
   // session adds a new one (the profiles reconcile places it at once).
   const existing = priorConnection(connections, serverId, input.session.user.id);
-  const hadProfile = existing ? profileOf(existing.id) : null;
-  // Kids mode signs in again only as a connection this device has (a re-pair keeps its
-  // person): anyone or anything new would join or replace the child's profile without a
-  // grown-up (`mayAddPerson`; "Who's listening?" disables "Add someone" the same way).
-  if ((newPerson || !existing) && !mayAddPerson()) {
+  // A server that was reset (another server_id at this address): only the stale identity
+  // of the person signing in is retired, and the new connection takes its place in their
+  // profile; anyone else's stays for them (`staleToRetire`).
+  const retire = existing
+    ? []
+    : staleToRetire(
+        staleIdentities(connections, serverId, plan.serverUrl).map((c) => c.id),
+        useProfiles.getState(),
+        { reconnectId: input.reconnectId, newPerson },
+      );
+  const replaced = retire[0];
+  const hadProfile = existing
+    ? profileOf(existing.id)
+    : replaced !== undefined
+      ? profileOf(replaced)
+      : null;
+  // Kids mode signs in again only as a connection this device has (a re-pair, or the
+  // child's own identity on a server that was reset, keeps its person): anyone or anything
+  // new would join or replace the child's profile without a grown-up (`mayAddPerson`;
+  // "Who's listening?" disables "Add someone" the same way).
+  if ((newPerson || (!existing && replaced === undefined)) && !mayAddPerson()) {
     throw new Error(i18n.t('profiles.add.chooseAdult'));
   }
   const id = await setSession({
@@ -76,6 +99,7 @@ export async function finishConnect(input: {
     user: input.session.user,
     ...(input.name ? { name: input.name } : {}),
     addresses: plan.addresses,
+    retire,
   });
   await placeSignedIn(id, hadProfile?.id ?? null, newPerson);
   if (first) router.replace(readyHref(id));

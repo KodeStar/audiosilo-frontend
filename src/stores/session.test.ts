@@ -8,6 +8,7 @@ import {
   hasExistingInstall,
   LOCKED_RETRY_MS,
   onConnectionRemoved,
+  onConnectionReplaced,
   resetStaleStorage,
   sessionHydrateFailed,
   useSession,
@@ -530,10 +531,15 @@ describe('session store (multi-connection)', () => {
       const cleanup = jest.fn();
       unsubs.push(onConnectionRemoved(cleanup));
 
-      // Re-pair the SAME URL under a fresh server_id (the rebuilt server).
-      await useSession
-        .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'srv-b', token: 't2', user: mkUser('b') });
+      // Re-pair the SAME URL under a fresh server_id (the rebuilt server), as the person
+      // whose identity it was (`retire`, named by the connect flow).
+      await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv-b',
+        token: 't2',
+        user: mkUser('b'),
+        retire: ['srv-a.1'],
+      });
 
       const s = useSession.getState();
       expect(s.connections).toHaveLength(1);
@@ -563,6 +569,7 @@ describe('session store (multi-connection)', () => {
         serverId: 'srv-b',
         token: 't2',
         user: mkUser('b'),
+        retire: ['srv-a.1'],
       });
       expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-b.1']);
     });
@@ -911,7 +918,34 @@ describe('session store (multi-connection)', () => {
       expect(useSession.getState().connections).toHaveLength(1);
     });
 
-    it('a rebuilt server (another server_id at the same URL) still retires every old connection', async () => {
+    it("a rebuilt server: re-pairing retires only the named identity, never another person's", async () => {
+      const cleanup = jest.fn();
+      const replaced = jest.fn();
+      unsubs.push(onConnectionRemoved(cleanup), onConnectionReplaced(replaced));
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't1', user: user(3, 'sam') });
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't2', user: user(5, 'kit') });
+      await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'new',
+        token: 't3',
+        user: user(3, 'sam'),
+        retire: ['old.3'],
+      });
+      const conns = useSession.getState().connections;
+      expect(conns.map((c) => c.id)).toEqual(['old.5', 'new.3']);
+      expect(cleanup.mock.calls.map(([id]) => id)).toEqual(['old.3']);
+      expect(replaced).toHaveBeenCalledWith('old.3', 'new.3');
+      expect(await SecureStore.getItemAsync('audiosilo.token.old.3')).toBeNull();
+      // Kit's identity stays, token and all, flagged for Kit to sign in again.
+      expect(conns[0].needsReconnect).toBe('server-reset');
+      expect(await SecureStore.getItemAsync('audiosilo.token.old.5')).toBe('t2');
+    });
+
+    it('a rebuilt server: without `retire` nobody is dropped (the safe default)', async () => {
       const cleanup = jest.fn();
       unsubs.push(onConnectionRemoved(cleanup));
       await useSession
@@ -919,13 +953,12 @@ describe('session store (multi-connection)', () => {
         .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't1', user: user(3, 'sam') });
       await useSession
         .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't2', user: user(5, 'kit') });
-      await useSession
-        .getState()
         .setSession({ serverUrl: 'https://a', serverId: 'new', token: 't3', user: user(3, 'sam') });
-      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['new.3']);
-      expect(cleanup.mock.calls.map(([id]) => id).sort()).toEqual(['old.3', 'old.5']);
-      expect(await SecureStore.getItemAsync('audiosilo.token.old.3')).toBeNull();
+      expect(useSession.getState().connections.map((c) => [c.id, c.needsReconnect])).toEqual([
+        ['old.3', 'server-reset'],
+        ['new.3', undefined],
+      ]);
+      expect(cleanup).not.toHaveBeenCalled();
     });
 
     it('learnAddresses keeps the remembered server keyed by its server_id', async () => {

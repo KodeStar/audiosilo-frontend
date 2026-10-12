@@ -179,6 +179,35 @@ export function onConnectionRemoved(fn: (id: string) => void | Promise<void>): (
   return () => removalCleanups.delete(fn);
 }
 
+// Told when a sign-in retires a stale identity in favour of the new connection (a server
+// that was reset, signed in to again by the same person): the profiles store moves the new
+// id into the person that held the old one, so their PIN, name and kids settings stay.
+// Called synchronously just before the session's list changes, so the reconcile that
+// change triggers already finds the new id placed. A registry for the same cycle reason as
+// `onConnectionRemoved`.
+const replacementHooks = new Set<(oldId: string, newId: string) => void>();
+
+/** Register a hook run when a sign-in replaces a stale identity (`retire`). Returns an
+ * unsubscribe fn. */
+export function onConnectionReplaced(fn: (oldId: string, newId: string) => void): () => void {
+  replacementHooks.add(fn);
+  return () => replacementHooks.delete(fn);
+}
+
+/**
+ * The stale identities a sign-in to `serverId` at `serverUrl` finds: connections to the
+ * same address under ANOTHER `server_id` (a rebuilt server mints a new id at the same URL,
+ * so their tokens are dead). Never because the user differs: a second person on the same
+ * server is not stale. Which of them the sign-in may retire is the caller's (`retire`).
+ */
+export function staleIdentities<C extends { id: string; serverId?: string; serverUrl: string }>(
+  connections: readonly C[],
+  serverId: string,
+  serverUrl: string,
+): C[] {
+  return connections.filter((c) => serverIdOf(c) !== serverId && sameUrl(c.serverUrl, serverUrl));
+}
+
 /** Why a connection needs the user to re-pair before it works again. `auth` = the
  * session token was rejected (HTTP 401 - admin revoked it, or it's otherwise dead);
  * `server-reset` = the server was rebuilt from scratch and now reports a different
@@ -253,6 +282,14 @@ type SessionState = {
      * erase what a newer pairing taught it); present is merged with it
      * (`mergeAddresses`). */
     addresses?: ServerAddresses;
+    /** The stale identities at this address (`staleIdentities`: a server that was reset)
+     * this sign-in retires: the person signing in's own (`finishConnect` names them). Each
+     * is dropped with its token and scoped state, and the new connection takes its place in
+     * that person's profile (`onConnectionReplaced`). Every OTHER stale identity is kept,
+     * flagged `server-reset`: it is another person's, theirs to sign in again, and dropping
+     * it would delete them (their profile, PIN and kids settings) from the device. Absent:
+     * none is retired. */
+    retire?: readonly string[];
   }) => Promise<string>;
   /** Remember the server URL mid-connect, before authenticating. */
   setPendingServerUrl: (url: string) => Promise<void>;
@@ -405,7 +442,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     }
   },
 
-  setSession: async ({ serverUrl, serverId, token, user, name, addresses }) => {
+  setSession: async ({ serverUrl, serverId, token, user, name, addresses, retire }) => {
     // The connection id is the server-minted server_id plus the user's id
     // (`connectionIdOf`): it keys every per-connection store (downloads, the progress
     // mirror/queue, the query cache, scroll memory, the secure-store token). A blank
@@ -426,14 +463,14 @@ export const useSession = create<SessionState>()((set, get) => ({
     const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
     const prior = priorConnection(existing, serverId, user.id);
     const id = prior?.id ?? connectionIdOf(serverId, user.id);
-    // A rebuilt server mints a NEW server_id at the SAME URL, so any connection to this URL
+    // A rebuilt server mints a NEW server_id at the SAME URL, so a connection to this URL
     // whose server_id differs is a stale identity of the same physical server (its token is
-    // dead - flagged needsReconnect='server-reset'). It must be dropped here, or re-pairing
-    // leaves a zombie the reconnect banner keeps re-flagging on every /server hit. Never
-    // because the USER differs: a second person on the same server is not stale.
-    const stale = existing.filter(
-      (c) => c !== prior && serverIdOf(c) !== serverId && sameUrl(c.serverUrl, serverUrl),
-    );
+    // dead). The person signing in's own (`retire`) is dropped here, or re-pairing leaves a
+    // zombie the reconnect banner keeps re-flagging on every /server hit. Anyone else's
+    // stays, flagged 'server-reset' for them: never delete another person from the device.
+    const candidates = staleIdentities(existing, serverId, serverUrl).filter((c) => c !== prior);
+    const stale = candidates.filter((c) => retire?.includes(c.id));
+    const kept = new Set(candidates.filter((c) => !stale.includes(c)));
     // What the device knew of this server's addresses: the connection's, else another
     // user's connection to the same server, else (a sign-in again after signing out, from
     // the connect screen's remembered servers) the remembered server's, so a sign-in
@@ -451,7 +488,9 @@ export const useSession = create<SessionState>()((set, get) => ({
       user,
       addresses: known,
     };
-    const surviving = existing.filter((c) => !stale.includes(c));
+    const surviving = existing
+      .filter((c) => !stale.includes(c))
+      .map((c) => (kept.has(c) ? { ...c, needsReconnect: 'server-reset' as const } : c));
     const connections = prior
       ? surviving.map((c) => (c === prior ? conn : c))
       : [...surviving, conn];
@@ -466,6 +505,16 @@ export const useSession = create<SessionState>()((set, get) => ({
     // Remember this server durably (no token) so the connect screen can offer a one-tap
     // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
     await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
+    // The person keeps their profile: the new connection takes the retired one's place.
+    for (const c of stale) {
+      for (const fn of replacementHooks) {
+        try {
+          fn(c.id, id);
+        } catch (e) {
+          console.warn('[session] connection-replaced hook failed', e);
+        }
+      }
+    }
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
     set({ connections, pendingServerUrl: null, ...mirror(connections, id) });

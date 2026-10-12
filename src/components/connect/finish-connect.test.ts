@@ -110,6 +110,10 @@ it('a reconnect through the away address keeps the address the server was paired
 });
 
 it('a reset server reached through its away address retires the dead identity', async () => {
+  /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+  const { resetProfilesForTests, useProfiles } = require('@/stores/profiles');
+  resetProfilesForTests();
+  await useProfiles.getState().hydrate();
   await finishConnect({
     serverUrl: HOME,
     session: session('old'),
@@ -274,6 +278,85 @@ describe('placing the new connection in a profile (Phase 8)', () => {
     await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
     expect(profiles().activeProfile()?.name).toBe('chris');
     expect(people()).toHaveLength(2);
+  });
+
+  describe('a server that was reset (another server_id at the same address)', () => {
+    const kit: User = { ...user, id: 9, username: 'kit' };
+    /** Chris (PIN) and Sam on one server, Sam listening; then the server is rebuilt. */
+    const household = async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('old') });
+      await finishConnect({ serverUrl: AWAY, session: session('old', { user: sam }) });
+      const chris = profiles().profileOf('old.1')!.id;
+      await setPin(chris, '1357');
+      profiles().setProfileHasPin(chris, true);
+      useSession.getState().markNeedsReconnect('old.1', 'server-reset');
+      useSession.getState().markNeedsReconnect('old.2', 'server-reset');
+      return { chris, sam: profiles().profileOf('old.2')!.id };
+    };
+
+    it("re-pairing retires only the signer's dead identity, never another person", async () => {
+      const ids = await household();
+      const removed: string[] = [];
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      const off = require('@/stores/session').onConnectionRemoved((id: string) => {
+        removed.push(id);
+      });
+      try {
+        // Sam's reconnect banner: the rebuilt server, Sam's new account there.
+        await finishConnect({
+          serverUrl: AWAY,
+          session: session('new', { user: kit }),
+          reconnectId: 'old.2',
+        });
+      } finally {
+        off();
+      }
+      expect(removed).toEqual(['old.2']);
+      // Sam's profile now holds the new connection; Chris is still on the device, PIN and
+      // all, his connection kept (flagged for him to sign in again).
+      expect(people()).toEqual([
+        ['chris', ['old.1']],
+        ['sam', ['new.9']],
+      ]);
+      expect(profiles().profileOf('new.9')?.id).toBe(ids.sam);
+      expect(profiles().activeProfile()?.id).toBe(ids.sam);
+      expect(await checkPin(ids.chris, '1357')).toBe(true);
+      expect(profiles().profileOf('old.1')?.hasPin).toBe(true);
+      const old = useSession.getState().connections.find((c) => c.id === 'old.1');
+      expect(old?.needsReconnect).toBe('server-reset');
+      expect(await SecureStore.getItemAsync('audiosilo.token.old.1')).toBe('tok-old');
+    });
+
+    it('"Add someone" on a reset server retires nobody\'s identity', async () => {
+      await household();
+      intent().setConnectForNewProfile(true);
+      await finishConnect({ serverUrl: AWAY, session: session('new', { user: kit }) });
+      expect(people()).toEqual([
+        ['chris', ['old.1']],
+        ['sam', ['old.2']],
+        ['kit', ['new.9']],
+      ]);
+    });
+
+    it('a kids profile signs in again to its own reset server, and stays in kids mode', async () => {
+      const ids = await household();
+      profiles().setProfileKids(ids.sam, {
+        library: { connectionId: 'old.2', libraryId: 3 },
+        bedtime: '19:00',
+      });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('new', { user: kit }),
+        reconnectId: 'old.2',
+      });
+      const kid = profiles().activeProfile();
+      expect(kid?.id).toBe(ids.sam);
+      expect(kid?.connectionIds).toEqual(['new.9']);
+      expect(kid?.kids).toEqual({
+        library: { connectionId: 'new.9', libraryId: 3 },
+        bedtime: '19:00',
+      });
+    });
   });
 
   it("a re-pair after the session's read failed stays with its own person, PIN and all", async () => {
