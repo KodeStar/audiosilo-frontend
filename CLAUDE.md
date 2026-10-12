@@ -149,7 +149,13 @@ the downloads registry + on-disk/Cache-API files, the progress mirror + offline
 replay queue, and browse scroll memory all key on `(connectionId, library_id,
 path)`, not just `(library_id, path)`. Without the connection id two servers'
 libraries bleed together and the offline queue could replay one server's positions
-onto another. The seam is `src/api/connection-clients.ts` - framework-free modules
+onto another. **A connection is one user on one server**, so its id is
+`<server_id>.<user_id>` (`connectionIdOf`, `src/lib/connection-id.ts`; two people signed in to
+one server are two connections with their own tokens, downloads, progress and cache). Never
+split an id yourself, never compare one with a `server_id` (compare servers through
+`serverIdOf(conn)`), and keep every id-keyed document's key in `src/lib/storage-keys.ts` (one
+leaf module the launch-time migrations read without importing the stores; add a new
+connection-keyed document to `ID_DOCUMENTS` in the identity migration too). The seam is `src/api/connection-clients.ts` - framework-free modules
 (progress-sync, the downloads store) resolve a connection id to its `ApiClient`
 (`resolveClient`) and gate on the session having hydrated (`sessionReady`) before
 reading storage, without importing React; removing/signing out of a connection
@@ -161,9 +167,11 @@ can never log anyone out (`{ authReset, cacheReset }`):
 - **`AUTH_STORAGE_VERSION`** gates the auth wipe (connections + their secure-store session
   tokens). Session tokens never expire server-side, so wiping them is the ONLY thing that
   logs a user out and forces a re-pair. Bump it **ONLY** when the connection *identity
-  scheme itself* changes (like v2: ids became the server-minted `server_id`) - a
-  deliberate, rare, breaking act that logs **everyone** out. **Never bump it for a cache
-  reason.**
+  scheme itself* changes AND can't be re-keyed (like v2: ids became the server-minted
+  `server_id`) - a deliberate, rare, breaking act that logs **everyone** out. **Never bump it
+  for a cache reason**, and not for an identity change that can be re-keyed: Phase 8's
+  `<server_id>.<user_id>` ids moved every connection with the identity migration (below) and
+  nobody was signed out.
 - **`CACHE_STORAGE_VERSION`** gates the disposable per-server cache (downloads + the
   progress mirror/queue + the on-disk downloads root). Bump **this** for any scoped-state /
   cache schema change: it wipes that cache (it re-downloads / re-syncs from the server)
@@ -180,6 +188,27 @@ without it.
 `migrateStorage()` first writes the theme default (see Theme below), so the existing-install signal is read
 before the reset can rewrite the session keys - no effect-order contract.
 See `src/api/client.ts` + `src/api/types.ts`.
+
+**Connection identity migration (Phase 8, `src/lib/identity-migration.ts`)**, run by `migrateStorage()`
+after the reset and before any store hydrates: every connection saved with a legacy id (the bare
+`server_id`) moves to `<server_id>.<user_id>` with everything keyed by it (`ID_DOCUMENTS`), and
+nobody is signed out. Tokens are copied and read back first (any failure, such as a CarPlay launch
+with the phone locked, aborts with nothing changed); then the plan is stored
+(`audiosilo.identityPlan`) and from there it only goes **forward**: native download folders move
+(`engine.moveConnection`, never reversed), every document is rewritten in one `setMany`, the
+aliases (`{ legacyId: newId }`, `audiosilo.connectionAliases`, never wiped) and the first profiles
+document are written, the version is recorded, and only then are the old tokens and the plan
+deleted. Every rewrite maps through the plan, so a run cut short is finished by the next with the
+same plan; `migrateStorage` retries a few times holding every reader, then gives up for this launch
+with `identityMovePending` set, so downloads and the offline queue keep what names an id no
+connection has yet instead of pruning it. Nothing moves while the Android service holds a book of
+a connection being moved (`busy`). A connection with no usable `user.id` stays legacy, and a
+legacy id must keep working everywhere (`Connection.serverId` is optional for it: read it through
+`serverIdOf`). **Old ids arriving from outside** (a widget link, a car snapshot item, a bookmark
+the Android service queued, web history) go through `resolveConnectionId` (`connectionParam` does
+it for routes; `resolveClient` too, as a safety net). **The web moves no files**: the Cache API
+can't rename, so `engine.web.ts` keeps a moved connection's files under its legacy id
+(`legacyIdOf`) while the registry uses the new one.
 
 **API envelopes** (from the Go handlers): auth returns `{ token, user }`; `/me`
 returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cursor }`,
@@ -241,8 +270,8 @@ wrong-password 401 on `/auth/login` can't false-flag a reconnect. The React Quer
 the query key by membership against the live ids, `connectionIdFromKey`, since keys are
 connection-scoped but not at a fixed index), and detecting a **server reset** by
 piggybacking on the existing `useServerInfo()` fetch - a successful public `/server`
-response whose `server_id` differs from the connection id flags `server-reset` (that public
-success is skipped for flag-clearing, since it proves nothing about the token).
+response whose `server_id` differs from the connection's (`serverIdOf`) flags `server-reset`
+(that public success is skipped for flag-clearing, since it proves nothing about the token).
 
 The flag is a per-connection `Connection.needsReconnect?: 'auth' | 'server-reset'` in
 `src/stores/session.ts` (`markNeedsReconnect`/`clearNeedsReconnect`) - **in-memory only**
@@ -250,10 +279,14 @@ The flag is a per-connection `Connection.needsReconnect?: 'auth' | 'server-reset
 never removes the connection or its token (only a successful `setSession` re-pair replaces
 the token) - and `markNeedsReconnect` never downgrades a `server-reset` flag to `auth`, so
 frequent authed 401s can't clobber the rarer, more informative server-reset reason. A
-re-pair additionally retires any *stale same-URL connection under a different `server_id`*
-(a rebuilt server mints a new id, so the old identity's dead token + scoped state are
-dropped via the `onConnectionRemoved` registry rather than left as a zombie the banner
-keeps re-flagging). It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
+re-pair of a reset server (a *stale same-URL connection under a different `server_id`*,
+`staleIdentities`) retires **only the signer's own** stale identity (`setSession({ retire })`;
+`finishConnect` names them with `staleToRetire`: the reconnect banner's person, else the person
+listening, nobody's for "Add someone"): its dead token and scoped state go through the
+`onConnectionRemoved` registry, and the new connection takes its place in that person's profile
+(`onConnectionReplaced`, so their PIN and kids settings stay). Every other person's stale
+identity stays, flagged `server-reset`, for them to sign in again: never delete another person
+from the device. A kids profile may sign in again to its own reset server. It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
 rendered by the shell beside the offline banner - under the phone header, or under the top bar
 on tablet/desktop); tapping it pre-fills `pendingServerUrl`
 and routes into the EXISTING connect → sign-in screens to re-enter a code/password.
@@ -332,6 +365,72 @@ user-minted, non-expiring bearer tokens (dashboards, cron). It is **capability-g
 returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated`);
 the list is metadata-only (`ApiKey`, with `last_seen`). Strings under
 `settings.apiKeys.*`.
+
+**Profiles and PIN (Phase 8, `src/stores/profiles.ts`, `src/components/profiles/`).** A profile
+is a PERSON on this device: a device-local group of connections, at most one per server, with an
+optional 4-digit PIN and kids mode. One document, `audiosilo.profiles` (the identity migration
+writes the first, `initialProfiles`), hydrated in `bootstrapPlayback()` and kept consistent with
+the session by `reconcileProfiles` (a removed connection leaves its profile, an empty profile is
+deleted, an unplaced connection goes to the active person unless they have that server); the
+connect flow places a new sign-in with `placeConnection` (another user on a server the active
+person has, or "Add someone" `ADD_SOMEONE_HREF`, is a new person). **Background work keeps ALL
+connections** (the offline queue, downloads, address routing, car bookmarks: a switch must never
+make another person's saves unroutable); **every list a person SEES is the active profile's**
+(`useProfileConnections` / `profileConnections`, never `useSession((s) => s.connections)`; the car
+snapshot and the widget follow `activeProfileId`). The rules:
+- **`mayActFor(cid)`** is the one play rule, enforced in the playback store at every start
+  (`playBook`, `startBookInPlace`, `adoptLoaded`: the player route, the car, a resumed Cast
+  session): never another person's book, never while nobody is chosen. Screens only offer the
+  switch.
+- **Routes carrying `?connection=`** follow `useRouteConnection` (`content-scope.tsx`; `ContentScope`
+  for the content screens, called directly by the root routes: player, end credits, year,
+  `/connect/ready`): an unknown connection gets a not-found state, another person's gets
+  `OtherPersonGate` (switch first, their PIN asked).
+- **Nobody chosen** (`mustChoose`: the active person left and others remain; persisted as
+  `activeProfileId: null`): the auth gate holds the shell and opens "Who's listening?"
+  (`/profiles`, a root full-screen modal); every person-facing list is empty
+  (`visibleConnectionIds`), the car lists nothing, the widget clears. A cold launch asks once
+  when `askAtLaunch` (turned on when a second person appears).
+- **Switching** (`switchProfile`, through `useChooseProfile`): the PIN first when there is one,
+  then the other person's playing book is stopped (paused, saved, unloaded) and the default
+  connection moves to the new person's first.
+- **The PIN's authority is the secure store** (`src/lib/profile-pin.ts`, `audiosilo.profilePin.<id>`:
+  a salted, 10,000-round SHA-256 chain, constant-time compare, 5 tries then a 30 s wait). The
+  profile's `hasPin` is only a mirror: a hash the mirror lost still asks (and repairs it), and
+  setting a PIN over a stored one asks for it first. SHA-256 is pure JS (`src/lib/sha256.ts`:
+  no subtle crypto on a plain-http web origin, and an async digest per round was too slow),
+  hashed in chunks that let the UI paint. A forgotten PIN: remove that person from the device.
+- **A document that can't be read** is retried (`HYDRATE_ATTEMPTS`), never taken as missing
+  (rebuilding it would drop every PIN and kids setting). Then: with someone signed in the store
+  stays shut (`hydrationFailed`: nothing shows or plays, nobody new signs in) and reads again
+  on the foreground; with nobody signed in (web storage blocked) it runs `unread`, in memory,
+  for whoever signs in now, never writing the document and never placing a connection it did
+  not see signed in.
+
+**Kids mode (Phase 8, `src/components/kids/`, route `/kids`).** A profile's `kids` settings
+(library, bedtime). The whole app for that profile is `/kids`: `KidsRouteGuard` (root layout)
+sends it back from anywhere but `/kids`, `/profiles` and `/connect` (`kidsAllowsPath`), and sends
+a grown-up off `/kids`; the auth gate never mounts the shell for it. The page is ONE `FlashList`
+(`KidsStoriesList`: the header, then the library as big cover tiles, stories in progress first,
+paged as it scrolls; offline, the picked library's downloads, `kidsOfflineLibraryId`); a story
+starts in place with `startBookInPlace` (never the full player), played by `KidsPlayer`. The
+Grown-ups button is a 2 s hold that opens "Who's listening?", where PINs apply; the shell's
+reconnect banner shows on the kids screen too. **Bedtime** is the auto sleep rule while a kids
+profile is active (`effectiveAutoSleepConfig` in `auto-sleep-controller.ts`: from its bedtime
+until `KIDS_BEDTIME_UNTIL`, a `KIDS_BEDTIME_MINUTES` timer on every story; never in the car).
+**The gate**: nobody new signs in while a kids profile listens and a grown-up is on the device
+(`mayAddPerson`: "Add someone", a new server and the demo are refused in `finishConnect`; signing
+in again as its own connection is not), and kids mode is never turned on for the last grown-up
+(`mayTurnOnKids`; a device already without one keeps "Add someone" as its way out).
+
+**Listening in the house (Phase 8, capability `household`, `src/components/house/`).** A person
+who shares (`HouseSharingRow` in Settings > Household, `useSetHousehold`) sees what the others on
+that server who share are listening to: the Home row (`HouseRow`, after "Next in your series") and
+the book page aside's `InTheHouseCard`. `useHouseRows(cid, active)` asks `useHousehold` first and
+polls `useHouseListening` (`HOUSE_POLL_MS`, foreground only) only while the caller shares and the
+surface is on screen; loading, errors and "not sharing" all read as no rows. The pure rules
+(`house-model.ts`) compute the local calendar day by hand (Hermes has no
+`Intl.RelativeTimeFormat`). Strings under `house.*`.
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
@@ -749,8 +848,14 @@ media GETs only.
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
   `server_id` id scheme) can't be re-keyed, so the one-time `resetStaleStorage()` bump
   clears the registry and `engine.clearAll()` wipes the whole downloads root once (run
-  by `bootstrapPlayback` before the stores hydrate). `onConnectionRemoved` deletes a removed
-  server's downloaded files.
+  by `bootstrapPlayback` before the stores hydrate). The Phase 8 identity migration moves the
+  native folders to the new ids; the web keeps them under the legacy id (`legacyIdOf`).
+  `onConnectionRemoved` deletes a removed server's downloaded files. **Each surface lists only
+  the person listening's downloads** through `visibleDownloads(entries, ids)`
+  (`src/downloads/downloads-view.ts`: the Downloads page, the car's Downloads tab, kids mode's
+  offline stories); the device keeps everyone's, and they keep playing for their owner.
+  Downloads no connection in the session holds (a connection that left without its purge) are
+  `orphanDownloads`: the Downloads page lists them under "Not signed in", to remove only.
 - **Stream the file, not the book.** A track URL must be a real audio file
   (a chapter's `file_path` or a `BookFile.rel_path`) - **never** a folder/book path.
   `book-queue.ts` builds tracks from `files`, else derives distinct files from the
@@ -878,7 +983,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   lists once one was written). Every write, play request, adoption and bookmark drain waits for
   `bootstrapPlayback()`. It answers `onCarPlayRequest` (`handleCarPlayRequest`: the loaded book
   plays on, never restarted; any other starts through `startBookInPlace` from its saved place,
-  a downloaded one from its download) and **bookmarks**: `carNative.onBookmark` (the module's
+  a downloaded one from its download; **while casting it ends the cast first**, `endCastForCar`:
+  the receiver's place comes home, then the book plays in the car, never on a TV the driver
+  can't hear) and **bookmarks**: `carNative.onBookmark` (the module's
   `onRemoteBookmark`, carrying the engine's own book) adds one through the framework-free
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
@@ -981,6 +1088,42 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   the foreground; any other failure is `unauthenticated`. While `sessionHydrateFailed()`,
   nothing may treat the empty connection list as real (the offline queue keeps its saves, car
   bookmarks are kept, the car snapshot isn't rewritten as signed out).
+
+**Chromecast (Phase 8, capability `cast`, `src/cast/`)**: react-native-google-cast 4.9.1 on
+native (the Default Media Receiver; `plugins/withCast.js`, listed before `withCarPlay`, pins the
+Cast framework and keeps the SDK's own notification on Android, whose foreground service keeps the
+app saving while Media3 is unloaded), the Cast Web Sender on web (Chromium on https only, loaded
+on first need). NOT device-verified (no Cast device yet).
+- **A route, not a second player (decision 7).** `createPlaybackService()` returns
+  `routed(engine)`: a `RoutedPlaybackService` forwards every call to the phone's engine or,
+  while a session is connected, to the `CastPlaybackService` over that session's `CastRemote`,
+  and forwards only that route's snapshots, so the store, `book-queue` and `progress-sync` drive
+  a cast exactly as they drive the phone. Switching is a pause on one side and a paused load on
+  the other: the router emits `paused` at the handed-over place (the store saves it); a cast
+  started while playing plays on, and the phone never plays by itself when a cast ends.
+  `startCastSync` (root layout) follows the driver's session events; `endCastForCar` and
+  `stopCasting` end a session from the app.
+- **The receiver never gets the session token**: `prepareCast` builds the queue with cast tokens
+  (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before
+  it expires, drops expired ones and forgets a removed connection's), on the connection's address
+  in use (`effectiveUrl`), and refuses with `CastBlockedError` (no `cast`, an address another
+  device can't reach, a codec neither the receiver nor the server's transcoder handles). A
+  downloaded book casts from its server. The web's Remote Playback prompt is NOT used (it would
+  hand over the element's URL, token included).
+- **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
+  its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
+  stands back, and the receiver's rejection of a replaced queue is not a failure. The native
+  driver drops a start reported after its session ended.
+- **Foreign media** is told by stream address (`streamIdentity`: the route and its `path` /
+  `transcode`, whatever base, token or `t=`): another sender's book or another app's media on the
+  receiver is ignored (never paused, stopped or saved as ours) until this device loads again. On
+  the web only the tab that started a session follows it (`sessionStorage`; other tabs leave
+  the origin's session without stopping the receiver).
+- **Transcoded streams** can't seek on the receiver: a seek or a jump to another file reloads
+  the queue from there (`&t=`, the offset added back to every place read); an idle `finished`
+  before the last file's end is a stream that died (`isEarlyTranscodeEnd`), reloaded at the
+  place, never the book's end. Not while casting: Smart speed, Voice boost, auto-rewind and the
+  volume (the sleep timer's fade would set the TV's).
 
 **Widgets and the Live Activity (iOS only)** (`src/widgets/`, `expo-widgets` 56.0.27, whose
 Android side is a stub, so `widget-sync.ts` is the no-op everywhere else).
@@ -1636,15 +1779,16 @@ src/app/            Expo Router routes ((app) tab groups, connect/, player + fin
 src/api/            client.ts, types.ts, hooks.ts (React Query), provider.tsx
 src/playback/       PlaybackService + web/native engines, store, book-queue, book-source, progress-sync, effects, time-saved
 src/car/            CarPlay + Android Auto JS: snapshot model, car sync controller, headless task, native seam
+src/cast/           Chromecast: the routed service, the cast engine, cast tokens, native + web drivers
 src/widgets/        iOS widget + sleep timer Live Activity ('widget' functions, model, sync)
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
-src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, you/ (the You hub: stats/, year/), settings/ (Settings panes), account/ (the account page), connect/ (onboarding), library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/
-src/stores/         Zustand: session, search, settings, series-orderings
+src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, you/ (the You hub: stats/, year/), settings/ (Settings panes), account/ (the account page), connect/ (onboarding), library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/, profiles/ (people, PIN, Household), kids/ (kids mode), house/ (listening in the house)
+src/stores/         Zustand: session, profiles, search, settings, series-orderings, library-selection
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider
-src/lib/            storage, secure-store, bootstrap (launch steps), native-intent, device, paths, format, register-sw
+src/lib/            storage (+ storage-keys), secure-store, bootstrap (launch steps), storage + identity migrations, connection-id, profile-pin, sha256, native-intent, device, paths, format, register-sw
 modules/audiosilo-player/   the native playback module (ios/ Swift, android/ Kotlin, src/ its TS surface)
-plugins/            config plugins: withCarPlay, withWidgetsNoPush, withXcode26SwiftUICoreFix
+plugins/            config plugins: withCast, withCarPlay, withWidgetsNoPush, withXcode26SwiftUICoreFix
 index.ts            app entry: registers the car task, then expo-router/entry
 ```
 
