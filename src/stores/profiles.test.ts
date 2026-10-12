@@ -362,6 +362,52 @@ describe('the store', () => {
     expect(JSON.parse((await AsyncStorage.getItem(PROFILES_KEY))!)).toEqual(first);
   });
 
+  it('finding 4: retries a failed read without replacing PIN or kids protections', async () => {
+    const doc = {
+      version: 1,
+      profiles: [
+        {
+          id: 'protected',
+          name: 'Child',
+          connectionIds: [A1.id],
+          hasPin: true,
+          kids: { bedtime: '20:00' },
+        },
+      ],
+      activeProfileId: 'protected',
+      askAtLaunch: false,
+    };
+    await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(doc));
+    setSession([A1], A1.id);
+    const read = AsyncStorage.getItem as jest.Mock;
+    const original = read.getMockImplementation()!;
+    read.mockRejectedValueOnce(new Error('io'));
+    jest.useFakeTimers();
+    try {
+      const run = useProfiles.getState().hydrate();
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      expect(useProfiles.getState().hydrated).toBe(false);
+      expect(mayActFor(A1.id)).toBe(false);
+      expect(profileConnectionIds()).toEqual([]);
+      expect(await AsyncStorage.getItem(PROFILES_KEY)).toBe(JSON.stringify(doc));
+      await jest.advanceTimersByTimeAsync(1000);
+      await run;
+      expect(useProfiles.getState().profiles).toEqual(doc.profiles);
+      expect(await AsyncStorage.getItem(PROFILES_KEY)).toBe(JSON.stringify(doc));
+    } finally {
+      read.mockImplementation(original);
+      jest.useRealTimers();
+    }
+  });
+
+  it('a document that reads but does not parse counts as missing (no endless wait)', async () => {
+    await AsyncStorage.setItem(PROFILES_KEY, '{not json');
+    setSession([A1], A1.id);
+    await useProfiles.getState().hydrate();
+    expect(useProfiles.getState().hydrated).toBe(true);
+    expect(useProfiles.getState().profiles.map((p) => p.connectionIds)).toEqual([[A1.id]]);
+  });
+
   it('rebuilds a missing document once the session has loaded, and persists it', async () => {
     await useProfiles.getState().hydrate();
     // The session is still loading: nothing is decided from its empty list.

@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMemo } from 'react';
 import { create } from 'zustand';
 
@@ -5,7 +6,7 @@ import { serverIdOf } from '@/lib/connection-id';
 import { parseHhMm } from '@/lib/hhmm';
 import { initialProfiles } from '@/lib/identity-migration';
 import { randomUUID } from '@/lib/random';
-import { getItem, setItem } from '@/lib/storage';
+import { setItem } from '@/lib/storage';
 import { isRecord, PROFILES_KEY } from '@/lib/storage-keys';
 import {
   type Connection,
@@ -359,8 +360,9 @@ export function mustChoose(doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'
  * must be chosen (`mustChoose`); null (every connection) with no profiles at all (not
  * hydrated yet, or the device has nobody, as before profiles). */
 export function visibleConnectionIds(
-  doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'>,
+  doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'> & { hydrationFailed?: boolean },
 ): readonly string[] | null {
+  if (doc.hydrationFailed) return NO_IDS;
   const active = doc.profiles.find((p) => p.id === doc.activeProfileId);
   if (active) return active.connectionIds;
   return doc.profiles.length > 0 ? NO_IDS : null;
@@ -371,12 +373,14 @@ export function visibleConnectionIds(
 type ProfilesState = ProfilesDoc & {
   /** The stored document has been read (and reconciled once the session settles). */
   hydrated: boolean;
+  hydrationFailed: boolean;
   hydrate: () => Promise<void>;
 };
 
 export const useProfiles = create<ProfilesState>()(() => ({
   ...EMPTY_DOC,
   hydrated: false,
+  hydrationFailed: false,
   hydrate: () => hydrateProfiles(),
 }));
 
@@ -426,8 +430,27 @@ function onRemoved(id: string): void {
 
 function hydrateProfiles(): Promise<void> {
   hydration ??= (async () => {
-    const doc = parseProfilesDoc(await getItem<unknown>(PROFILES_KEY));
-    useProfiles.setState({ ...doc, hydrated: true });
+    // A read that fails is retried, never taken as a missing document: reconciling an empty
+    // one would replace every profile (new ids, no PIN, no kids settings). A document that
+    // reads but does not parse cannot get better by waiting, so it counts as missing.
+    let raw: string | null;
+    for (;;) {
+      try {
+        raw = await AsyncStorage.getItem(PROFILES_KEY);
+        break;
+      } catch {
+        useProfiles.setState({ hydrationFailed: true });
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+    let parsed: unknown = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      // corrupt: as missing (see above)
+    }
+    const doc = parseProfilesDoc(parsed);
+    useProfiles.setState({ ...doc, hydrated: true, hydrationFailed: false });
     // Registered once hydrated (nothing to keep consistent before).
     if (!unsubscribeSession) {
       const unsubChanges = useSession.subscribe((s, prev) => {
@@ -446,7 +469,9 @@ function hydrateProfiles(): Promise<void> {
 
 // --- Reads ----------------------------------------------------------------------------------
 
-type ProfilesRead = Pick<ProfilesDoc, 'profiles' | 'activeProfileId'>;
+type ProfilesRead = Pick<ProfilesDoc, 'profiles' | 'activeProfileId'> & {
+  hydrationFailed?: boolean;
+};
 
 /** The active profile (null with no profiles). Framework-free. */
 export function activeProfile(state: ProfilesRead = useProfiles.getState()): Profile | null {
@@ -482,7 +507,7 @@ export function mayActFor(
   connectionId: string,
   doc: ProfilesRead = useProfiles.getState(),
 ): boolean {
-  return !mustChoose(doc) && otherOwner(doc, connectionId) === null;
+  return !doc.hydrationFailed && !mustChoose(doc) && otherOwner(doc, connectionId) === null;
 }
 
 /** The active profile's connections, in the session's order (every connection while
@@ -637,5 +662,5 @@ export function resetProfilesForTests(): void {
   hydration = null;
   unsubscribeSession?.();
   unsubscribeSession = null;
-  useProfiles.setState({ ...EMPTY_DOC, hydrated: false });
+  useProfiles.setState({ ...EMPTY_DOC, hydrated: false, hydrationFailed: false });
 }

@@ -1,5 +1,10 @@
 import { randomBytes, toHex } from '@/lib/random';
-import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import {
+  deleteSecure,
+  deleteSecureStrict,
+  getSecureStrict,
+  setSecureStrict,
+} from '@/lib/secure-store';
 import { chainSalted, hexOfWords, sha256, utf8, wordsOf } from '@/lib/sha256';
 import { setProfileHasPin, useProfiles } from '@/stores/profiles';
 
@@ -115,7 +120,7 @@ export async function setPin(profileId: string, pin: string): Promise<void> {
     iterations: PIN_ITERATIONS,
     hash: await hashPin(pin, salt),
   };
-  await setSecure(pinKey(profileId), JSON.stringify(record));
+  await setSecureStrict(pinKey(profileId), JSON.stringify(record));
   setProfileHasPin(profileId, true);
   attempts.delete(profileId);
 }
@@ -137,12 +142,12 @@ export async function checkPin(
  * its secure store has the mirror and no hash: the profile then has no PIN). Rejects when
  * the secure store can't be read. */
 export async function readPin(profileId: string): Promise<StoredPin | null> {
-  return parseRecord(await getSecure(pinKey(profileId)));
+  return parseRecord(await getSecureStrict(pinKey(profileId)));
 }
 
 /** Remove a profile's PIN. */
 export async function clearPin(profileId: string): Promise<void> {
-  await deleteSecure(pinKey(profileId));
+  await deleteSecureStrict(pinKey(profileId));
   setProfileHasPin(profileId, false);
   attempts.delete(profileId);
 }

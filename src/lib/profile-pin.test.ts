@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { toHex } from '@/lib/random';
@@ -184,5 +185,43 @@ describe('constantTimeEqual', () => {
     expect(constantTimeEqual('abc', 'abd')).toBe(false);
     expect(constantTimeEqual('abc', 'abcd')).toBe(false);
     expect(constantTimeEqual('', '')).toBe(true);
+  });
+});
+
+describe('finding 10: web PIN storage fails closed', () => {
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const os = Platform.OS;
+  afterEach(() => {
+    Platform.OS = os;
+    if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  });
+
+  it.each(['throws', 'silently drops'])('refuses a PIN write that %s', async (failure) => {
+    Platform.OS = 'web';
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        setItem: () => {
+          if (failure === 'throws') throw new Error('quota');
+        },
+        getItem: () => null,
+      },
+    });
+    await expect(setPin(profileId(), '1234')).rejects.toThrow();
+    expect(profileOf(conn.id)?.hasPin).not.toBe(true);
+  });
+
+  it('distinguishes an unreadable hash from an absent PIN', async () => {
+    Platform.OS = 'web';
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => {
+          throw new Error('read denied');
+        },
+      },
+    });
+    await expect(readPin(profileId())).rejects.toThrow('read denied');
   });
 });
