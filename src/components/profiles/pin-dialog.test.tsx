@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
+import { useState } from 'react';
 import { Keyboard, TextInput } from 'react-native';
 
 import { checkPin, notePinTry, resetPinTriesForTests, setPin } from '@/lib/profile-pin';
@@ -27,16 +28,48 @@ async function settle() {
   });
 }
 
-/** Records, in order, the keyboard going (`Keyboard.dismiss`), the field's focus and blur,
- * and the caller's callbacks: the keyboard must go BEFORE the caller closes the prompt. */
+/** Records, in order, the keyboard going (`Keyboard.dismiss`, with whether the PIN field
+ * was still on screen then), the field's focus, and the caller's callbacks. */
 function trackKeyboard() {
   const order: string[] = [];
   const spies = [
-    jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => void order.push('dismiss')),
+    jest
+      .spyOn(Keyboard, 'dismiss')
+      .mockImplementation(
+        () => void order.push(screen.queryByTestId('pin-field') ? 'dismiss:field' : 'dismiss:gone'),
+      ),
     jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => void order.push('focus')),
-    jest.spyOn(TextInput.prototype, 'blur').mockImplementation(() => void order.push('blur')),
   ];
   return { order, restore: () => spies.forEach((s) => s.mockRestore()) };
+}
+
+/** The prompt as its callers use it: closed by its own `onDone` / `onCancel`. */
+function ClosingPin({
+  mode,
+  onDone,
+  onCancel,
+}: {
+  mode: 'check' | 'set';
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <PinDialog
+      open={open}
+      mode={mode}
+      profileId="sam"
+      name="Sam"
+      onDone={() => {
+        onDone();
+        setOpen(false);
+      }}
+      onCancel={() => {
+        onCancel();
+        setOpen(false);
+      }}
+    />
+  );
 }
 
 async function type(value: string) {
@@ -107,27 +140,6 @@ describe('PinDialog, check', () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
-  // Android (Pixel 6a): the field was removed with the number pad up and the keyboard
-  // stayed, as a full QWERTY one, over "Who's listening?" and then Home.
-  it('a right PIN gives the keyboard up before the caller switches, and nothing refocuses', async () => {
-    const kb = trackKeyboard();
-    onDone.mockImplementation(() => kb.order.push('done'));
-    await type('4821');
-    expect(kb.order).toEqual(['blur', 'dismiss', 'done']);
-    kb.restore();
-  });
-
-  it('Cancel and the close button give the keyboard up before the caller closes', async () => {
-    const kb = trackKeyboard();
-    onCancel.mockImplementation(() => kb.order.push('cancel'));
-    await fireEvent.press(screen.getByText('Cancel'));
-    expect(kb.order).toEqual(['blur', 'dismiss', 'cancel']);
-    kb.order.length = 0;
-    await fireEvent.press(screen.getByLabelText('Close'));
-    expect(kb.order).toEqual(['dismiss', 'cancel']);
-    kb.restore();
-  });
-
   it('a wrong PIN still being checked when Cancel is pressed does not refocus', async () => {
     const kb = trackKeyboard();
     await fireEvent.changeText(screen.getByTestId('pin-field'), '1111');
@@ -181,18 +193,6 @@ describe('PinDialog, set', () => {
     expect(useProfiles.getState().profiles[0].hasPin).toBe(true);
   });
 
-  it('gives the keyboard up before the caller closes, once the PIN is saved', async () => {
-    const kb = trackKeyboard();
-    const onDone = jest.fn(() => kb.order.push('done'));
-    await mountWithPortal(
-      <PinDialog open mode="set" profileId="sam" name="Sam" onDone={onDone} onCancel={() => {}} />,
-    );
-    await type('1357');
-    await type('1357');
-    expect(kb.order).toEqual(['blur', 'dismiss', 'done']);
-    kb.restore();
-  });
-
   it('starts again when the two entries differ', async () => {
     const onDone = jest.fn();
     await mountWithPortal(
@@ -203,5 +203,54 @@ describe('PinDialog, set', () => {
     expect(screen.getByText("Those PINs don't match. Choose one again.")).toBeTruthy();
     expect(screen.getByText('Choose a 4-digit PIN')).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();
+  });
+});
+
+// Android (Pixel 6a): the field was removed with the number pad up and the keyboard
+// stayed, as a full QWERTY one, over "Who's listening?" and then Home. The shared Dialog
+// releases it while the field is still on screen, however the prompt closes.
+describe('PinDialog, the keyboard on close', () => {
+  it('a right PIN: released with the field still on screen, and nothing refocuses', async () => {
+    const kb = trackKeyboard();
+    const onDone = jest.fn(() => void kb.order.push('done'));
+    await setPin('sam', '4821');
+    await mountWithPortal(<ClosingPin mode="check" onDone={onDone} onCancel={() => {}} />);
+    await type('4821');
+    expect(kb.order).toEqual(['done', 'dismiss:field']);
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    kb.restore();
+  });
+
+  it('Cancel: released before the field goes', async () => {
+    const kb = trackKeyboard();
+    await setPin('sam', '4821');
+    await mountWithPortal(<ClosingPin mode="check" onDone={() => {}} onCancel={() => {}} />);
+    await fireEvent.press(screen.getByText('Cancel'));
+    expect(kb.order).toEqual(['dismiss:field']);
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    kb.restore();
+  });
+
+  it('the close button: released before onCancel', async () => {
+    const kb = trackKeyboard();
+    await setPin('sam', '4821');
+    await mountWithPortal(
+      <ClosingPin mode="check" onDone={() => {}} onCancel={() => void kb.order.push('cancel')} />,
+    );
+    await fireEvent.press(screen.getByLabelText('Close'));
+    expect(kb.order[0]).toBe('dismiss:field');
+    expect(kb.order).toContain('cancel');
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    kb.restore();
+  });
+
+  it('a saved PIN: released with the field still on screen', async () => {
+    const kb = trackKeyboard();
+    await mountWithPortal(<ClosingPin mode="set" onDone={() => {}} onCancel={() => {}} />);
+    await type('1357');
+    await type('1357');
+    expect(kb.order).toEqual(['dismiss:field']);
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    kb.restore();
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Keyboard, type TextInput, View } from 'react-native';
+import { type TextInput, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -50,11 +50,9 @@ export type PinDialogMode = 'check' | 'set';
  *
  * The caller owns visibility and what happens after (switch, change, remove).
  *
- * However it closes (a right PIN, a saved one, Cancel, the close button, the backdrop,
- * Android's back), the field gives the keyboard up FIRST (`releaseKeyboard`), while it is
- * still on screen and focused. Left to its unmount, the field was removed with the number
- * pad up: Android kept the keyboard shown on the window's fallback input (a full QWERTY
- * keyboard with no field) over "Who's listening?" and then Home, every time.
+ * The shared Dialog gives the number pad up before the prompt's field goes, however it
+ * closes (`useReleaseOnClose`; Android kept a QWERTY keyboard up over "Who's listening?"
+ * and Home otherwise).
  */
 export function PinDialog({
   open,
@@ -80,14 +78,7 @@ export function PinDialog({
   onCancel: () => void;
 }) {
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (o) return;
-        releaseKeyboard();
-        onCancel();
-      }}
-    >
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       {open ? (
         <PinDialogBody
           // A new step (check, then set) starts empty.
@@ -103,12 +94,6 @@ export function PinDialog({
       ) : null}
     </Dialog>
   );
-}
-
-/** Blur the focused field (the PIN's) and close the software keyboard. Before the prompt
- * closes, never after: a field already being removed can't hide it any more on Android. */
-function releaseKeyboard(): void {
-  Keyboard.dismiss();
 }
 
 /** Mounted only while open, so each opening starts empty. */
@@ -153,12 +138,9 @@ function PinDialogBody({
   const refocus = () => {
     if (!closed.current) field.current?.focus();
   };
-  /** Close the prompt (done or cancelled): the keyboard goes first, then the caller acts
-   * (switches person, navigates, opens the next step). */
+  /** Close the prompt (done or cancelled): nothing it was still doing acts after this. */
   const leave = (then: () => void) => {
     closed.current = true;
-    field.current?.blur();
-    releaseKeyboard();
     then();
   };
   const wasWaiting = useRef(waiting);
