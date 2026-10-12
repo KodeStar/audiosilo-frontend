@@ -432,7 +432,7 @@ describe('the player the server serves', () => {
 
   it('falls back to the address field, filled in with its origin, when its server does not answer', async () => {
     mockApi.serverInfo.mockRejectedValue(new TypeError('Failed to fetch'));
-    await remember({ serverId: 'srv-2', serverUrl: AWAY, name: 'Elsewhere' });
+    await remember({ serverId: 'srv-2', serverUrl: HOME, name: 'Elsewhere' });
     await render(<ConnectStart />);
     await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
     expect(screen.getByLabelText('Server address').props.value).toBe(ORIGIN);

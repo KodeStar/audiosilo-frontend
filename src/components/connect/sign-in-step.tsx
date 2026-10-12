@@ -8,6 +8,7 @@ import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
@@ -168,7 +169,13 @@ export function SignInStep({
       ) : null}
 
       <Button size="lg" title={t('connect.signIn.submit')} loading={loading} onPress={onSubmit} />
-      <BackToStart onPress={() => router.dismissTo('/connect')} />
+      {/* The served player's "Back" goes back: to its found card, or to the app the reconnect
+          banner was tapped in (the first step there offers no way back into this reconnect). */}
+      <BackToStart
+        onPress={() =>
+          servedOrigin() && router.canGoBack() ? router.back() : router.dismissTo('/connect')
+        }
+      />
     </ConnectFrame>
   );
 }

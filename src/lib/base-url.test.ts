@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { IS_DEV, servedOrigin, webOrigin } from '@/lib/base-url';
+import { IS_DEV, onlyOwnServer, servedOrigin, webOrigin } from '@/lib/base-url';
 
 // base-url.ts branches on Platform.OS at call time, so we flip it per case.
 function setPlatform(os: string) {
@@ -73,5 +73,18 @@ describe('servedOrigin', () => {
         process.env.NODE_ENV = env;
       }
     });
+  });
+});
+
+describe('onlyOwnServer', () => {
+  const ORIGIN = 'https://books.example.com';
+
+  it('is true on the served player signed in only to its own origin', () => {
+    expect(onlyOwnServer(ORIGIN, [ORIGIN, `${ORIGIN}/`])).toBe(true);
+  });
+
+  it('is false with a server on another origin, or with no served origin', () => {
+    expect(onlyOwnServer(ORIGIN, [ORIGIN, 'http://192.168.1.20:8080'])).toBe(false);
+    expect(onlyOwnServer(null, [ORIGIN])).toBe(false);
   });
 });

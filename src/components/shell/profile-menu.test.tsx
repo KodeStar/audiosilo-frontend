@@ -110,9 +110,21 @@ describe('ProfileMenu', () => {
 
   it('offers no other server on the player the server serves', async () => {
     mockServed = 'https://books.example';
+    useSession.setState((s) => ({
+      connections: s.connections.map((c) => ({ ...c, serverUrl: 'https://books.example' })),
+    }));
     await open();
     expect(screen.getByText('Hearthside')).toBeTruthy();
     expect(screen.queryByText('Add a server')).toBeNull();
+  });
+
+  it('still adds servers on a web build hosted beside its servers', async () => {
+    mockServed = 'https://player.example';
+    useSession.setState((s) => ({
+      connections: s.connections.map((c) => ({ ...c, serverUrl: 'https://books.example' })),
+    }));
+    await open();
+    expect(screen.getByText('Add a server')).toBeTruthy();
   });
 
   it('opens the account on the default server', async () => {

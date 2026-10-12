@@ -12,7 +12,7 @@ import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { touchTarget } from '@/components/ui/touch-target';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
-import { servedOrigin } from '@/lib/base-url';
+import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
@@ -129,7 +129,10 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
           </RowSurface>
         ))}
         {/* The served web player reaches only its own server. */}
-        {servedOrigin() ? null : (
+        {onlyOwnServer(
+          servedOrigin(),
+          connections.map((c) => c.serverUrl),
+        ) ? null : (
           <Button
             title={t('account.connections.add')}
             icon="plus"

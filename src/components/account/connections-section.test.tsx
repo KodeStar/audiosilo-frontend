@@ -67,6 +67,12 @@ describe('ConnectionsSection', () => {
     expect(screen.queryByText('Add a server')).toBeNull();
   });
 
+  it('still adds servers on a web build hosted beside its servers', async () => {
+    mockServed = 'https://player.example';
+    await render(<ConnectionsSection onRemove={jest.fn()} />);
+    expect(screen.getByText('Add a server')).toBeTruthy();
+  });
+
   it('gives the remove button a 44 pt target on native', async () => {
     const prev = Platform.OS;
     try {
