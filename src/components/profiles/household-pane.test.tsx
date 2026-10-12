@@ -176,6 +176,19 @@ describe('Settings > Household', () => {
     dismiss.mockRestore();
   });
 
+  it("lets the PIN row's description wrap beside Change and Remove", async () => {
+    await setPin('leo', '1111');
+    await mount();
+    expect(screen.getByText('Asked when someone switches to Leo').props.numberOfLines).toBe(
+      undefined,
+    );
+    // The words take the room the buttons leave (`flex-1`): a `shrink` column was cut to
+    // one line on Android ("... switches to").
+    const words = String(screen.getByTestId('household-pin-leo-text').props.className).split(' ');
+    expect(words).toContain('flex-1');
+    expect(words).not.toContain('shrink');
+  });
+
   it('"Set a PIN" over a PIN the mirror lost asks for that PIN first (never overwrites it)', async () => {
     await setPin('leo', '1111');
     // A stale document (another tab, a failed write) dropped the mirror; the hash stays.

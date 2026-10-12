@@ -232,6 +232,7 @@ function PersonCard({
       </SettingRow>
 
       <SettingRow
+        testID={`household-pin-${profile.id}`}
         label={t('profiles.pin.label')}
         description={
           profile.hasPin ? t('profiles.pin.onBody', { name }) : t('profiles.pin.offBody')
