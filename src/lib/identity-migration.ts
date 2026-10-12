@@ -38,8 +38,10 @@ import { type PersistedConnection, tokenKey } from '@/stores/session';
  * with everything keyed by it, and NOBODY is signed out. Run by `migrateStorage()` after
  * `resetStaleStorage()` and before any store hydrates or any lazy reader runs.
  *
- * Ordered so a crash, a locked keychain or a failed write at ANY step leaves a working app
- * (legacy ids keep working everywhere; it simply runs again next launch):
+ * Before the plan, a failure leaves legacy data usable and the run waits for next launch.
+ * Once the plan is stored the run only goes forward (`recoveryRequired`): `migrateStorage`
+ * retries it a few times with every reader held, so a passing failure never shows the
+ * stores half-moved documents (download pruning and queue replay would drop them):
  *
  * 1. Read the connections; plan `{ legacyId: newId }` for each with a usable `user.id`
  *    (plus the plan a run cut short left, `IDENTITY_PLAN_KEY`). A connection with no
@@ -51,16 +53,18 @@ import { type PersistedConnection, tokenKey } from '@/stores/session';
  *    changed. Old tokens are never deleted here, and a copy is never undone (a run cut
  *    short may already have documents naming the new id).
  * 3. Record the plan, then move the files: native `downloads/<old>` -> `downloads/<new>`
- *    (`engine.moveConnection`). A failure moves back what this run moved and aborts: the
- *    registry still names the old ids, so the files must stay where it says. The web moves
+ *    (`engine.moveConnection`). A failure keeps the plan and the next try goes on from
+ *    there. Moves are idempotent and never reversed (a retry cannot tell which moves an
+ *    earlier process made, and the documents may already name the new ids). The web moves
  *    nothing: its engine keeps a moved connection's files under the legacy id, mapped
  *    through the aliases (`legacyIdOf`), so the registry's new ids find them.
  * 4. Rewrite every document naming a connection id in ONE `setMany` (the list below), plus
  *    the aliases (`resolveConnectionId`) and the first profiles document, and forget that a
  *    car snapshot was written (the next one is built fresh, even offline). A failed write
- *    puts the documents back as they were and moves the files back.
- * 5. Mark it done (`IDENTITY_VERSION_KEY` = 2).
- * 6. Delete the old tokens and the plan, best effort (a later launch finishes them).
+ *    (iOS and the web write key by key) keeps the plan; the next try finishes it.
+ * 5. Record the schema version (`IDENTITY_VERSION_KEY` = 2).
+ * 6. Delete the old tokens and the plan. Removing this plan completes this transaction;
+ *    a leftover plan is replayed regardless of the schema version.
  *
  * Every rewrite maps ids through the plan, so it is idempotent: a run cut short mid-write
  * (`setMany` is not atomic on iOS or the web) is finished by the next run with the same
@@ -89,13 +93,14 @@ export const ID_DOCUMENTS = {
   profiles: PROFILES_KEY,
 } as const;
 
-/** Which step stopped a run (nothing after it changed; it runs again next launch). */
+/** Which step stopped a run (`recoveryRequired`: a stored plan, so the documents may be
+ * half rewritten). */
 export type IdentityMigrationStep = 'read' | 'busy' | 'tokens' | 'plan' | 'files' | 'documents';
 
 export type IdentityMigrationResult =
   | { status: 'skipped' }
   | { status: 'migrated'; moved: Record<string, string> }
-  | { status: 'aborted'; step: IdentityMigrationStep; error?: unknown };
+  | { status: 'aborted'; step: IdentityMigrationStep; error?: unknown; recoveryRequired?: boolean };
 
 export type IdentityMigrationDeps = {
   /** The downloads engine's move (absent where there are no downloads). */
@@ -293,6 +298,9 @@ function remapProfiles(plan: Plan, doc: unknown): unknown {
         ? {
             ...p,
             connectionIds: [...new Set(p.connectionIds.map((id: unknown) => mapId(plan, id)))],
+            ...(isRecord(p.kids) && isRecord(p.kids.library)
+              ? { kids: { ...p.kids, library: withConnectionId(plan, p.kids.library) } }
+              : {}),
           }
         : p,
     ),
@@ -311,21 +319,18 @@ async function cleanUp(plan: Plan, liveIds: ReadonlySet<string>): Promise<void> 
   await AsyncStorage.removeItem(IDENTITY_PLAN_KEY).catch(() => undefined);
 }
 
-/** Move back what this run moved (newest first). Best effort: a failure here is logged. */
-async function moveBack(deps: IdentityMigrationDeps, moved: [string, string][]): Promise<void> {
-  for (const [from, to] of [...moved].reverse()) {
-    try {
-      await deps.moveConnection?.(to, from);
-    } catch (e) {
-      console.warn('[identity] could not move the files back', from, e);
-    }
-  }
-}
-
 /** Run the migration (see the file comment). Never rejects. */
 export async function migrateConnectionIdentity(
   deps: IdentityMigrationDeps = defaultDeps(),
 ): Promise<IdentityMigrationResult> {
+  // A stored plan is a forward-only transaction: until it is removed the documents may be
+  // half moved, so a stop asks `migrateStorage` to try again before the readers run. True
+  // until the read says (a read that fails cannot tell whether there is a plan).
+  let recoveryRequired = true;
+  const abort = (step: IdentityMigrationStep, error?: unknown): IdentityMigrationResult => ({
+    ...aborted(step, error),
+    ...(recoveryRequired ? { recoveryRequired: true } : {}),
+  });
   // 1. Read. Straight from AsyncStorage (its reads reject on a storage error, where
   // `getItem` would answer null): a document that could not be read must never be taken as
   // empty and written over.
@@ -342,6 +347,7 @@ export async function migrateConnectionIdentity(
     connections = readConnections(parse(raw[CONNECTIONS_KEY]));
     done = parse(raw[IDENTITY_VERSION_KEY]) === IDENTITY_VERSION;
     stored = parseAliases(parse(raw[IDENTITY_PLAN_KEY]));
+    recoveryRequired = Object.keys(stored).length > 0;
     // The aliases `resolveConnectionId` reads, loaded with this read instead of one of their
     // own every launch (`bootstrapPlayback` reads them itself only when this read failed).
     // Any the migration set in this runtime are kept.
@@ -350,13 +356,12 @@ export async function migrateConnectionIdentity(
       ...connectionAliases(),
     });
   } catch (e) {
-    return aborted('read', e);
+    return abort('read', e);
   }
   const liveIds = () => new Set(connections.map((c) => c.id));
   const fresh = planMoves(connections, {});
-  if (done && Object.keys(fresh).length === 0) {
-    // A run that stopped after its mark: only its clean-up is left.
-    if (Object.keys(stored).length > 0) await cleanUp(stored, liveIds());
+  if (done && Object.keys(fresh).length === 0 && !recoveryRequired) {
+    // The version describes the schema, never completion of a pending transaction.
     return { status: 'skipped' };
   }
   const plan = planMoves(connections, stored);
@@ -374,7 +379,7 @@ export async function migrateConnectionIdentity(
     // (Either side of a move: the id it reports may already read through an alias.)
     const loaded = await deps.loadedConnectionId().catch(() => null);
     const involved = new Set(moves.flat());
-    if (loaded === UNKNOWN || (loaded && involved.has(loaded))) return aborted('busy');
+    if (loaded === UNKNOWN || (loaded && involved.has(loaded))) return abort('busy');
   }
 
   // 2. Tokens: copy and verify every one before anything else changes. Each connection's
@@ -395,7 +400,7 @@ export async function migrateConnectionIdentity(
         }),
     );
   } catch (e) {
-    return aborted('tokens', e);
+    return abort('tokens', e);
   }
 
   // 3. The plan, so a run cut short from here on finishes with the same moves; then files.
@@ -403,19 +408,17 @@ export async function migrateConnectionIdentity(
     try {
       await AsyncStorage.setItem(IDENTITY_PLAN_KEY, JSON.stringify(plan));
     } catch (e) {
-      return aborted('plan', e);
+      return abort('plan', e);
     }
   }
-  const moved: [string, string][] = [];
+  recoveryRequired = moves.length > 0;
   try {
     for (const [from, to] of moves) {
       if (!deps.moveConnection) break;
       await deps.moveConnection(from, to);
-      moved.push([from, to]);
     }
   } catch (e) {
-    await moveBack(deps, moved);
-    return aborted('files', e);
+    return abort('files', e);
   }
 
   // 4. Documents: read every one (strictly), rewrite, write the changed ones at once.
@@ -424,8 +427,7 @@ export async function migrateConnectionIdentity(
   try {
     before = await AsyncStorage.getMany([...keys]);
   } catch (e) {
-    await moveBack(deps, moved);
-    return aborted('documents', e);
+    return abort('documents', e);
   }
   const next: Record<string, string> = {};
   const put = (key: string, value: unknown) => {
@@ -457,28 +459,8 @@ export async function migrateConnectionIdentity(
   try {
     if (Object.keys(next).length > 0) await AsyncStorage.setMany(next);
   } catch (e) {
-    // Put back what was there (a write that failed part-way: iOS and the web write key by
-    // key), then the files, which must stay where the documents say.
-    try {
-      const restore: Record<string, string> = {};
-      const absent: string[] = [];
-      for (const key of Object.keys(next)) {
-        const raw = before[key];
-        if (raw == null) absent.push(key);
-        else restore[key] = raw;
-      }
-      await AsyncStorage.setMany(restore);
-      if (absent.length) await AsyncStorage.removeMany(absent);
-      await moveBack(deps, moved);
-    } catch (restoreError) {
-      // The documents are part old, part new: leave the files where they are now. The
-      // stored plan finishes the move next launch (every rewrite is idempotent). Meanwhile
-      // the moves are known in memory, so a document that already names a new id reaches
-      // its connection (and, on the web, its files under the legacy id).
-      console.warn('[identity] could not put the documents back', restoreError);
-      setConnectionAliases({ ...connectionAliases(), ...plan });
-    }
-    return aborted('documents', e);
+    // Part written, maybe: the plan stays, and the next try rewrites from it.
+    return abort('documents', e);
   }
   // A fresh car snapshot is built (and written even offline) instead of native keeping the
   // one with the old ids.

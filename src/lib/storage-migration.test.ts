@@ -78,4 +78,74 @@ describe('migrateStorage', () => {
     expect(a).toBe(b);
     await a;
   });
+
+  it('a stored plan that keeps failing stops holding the launch after a few tries', async () => {
+    await AsyncStorage.setItem('audiosilo.storageVersion', JSON.stringify(2));
+    await AsyncStorage.setItem(
+      'audiosilo.connections',
+      JSON.stringify([{ id: 'srv', serverUrl: 'https://a', name: 'A', user: { id: 3 } }]),
+    );
+    await AsyncStorage.setItem('audiosilo.identityPlan', JSON.stringify({ srv: 'srv.3' }));
+    const store = SecureStore as unknown as { getItemAsync: (k: string) => Promise<unknown> };
+    const original = store.getItemAsync;
+    const read = jest.fn(() => Promise.reject(new Error('keychain locked')));
+    store.getItemAsync = read;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.useFakeTimers();
+    try {
+      const run = migrateStorage();
+      await jest.advanceTimersByTimeAsync(10_000);
+      const result = await run;
+      expect(result.identity).toMatchObject({
+        status: 'aborted',
+        step: 'tokens',
+        recoveryRequired: true,
+      });
+      expect(read).toHaveBeenCalledTimes(5);
+      // The plan stays for a later launch to finish.
+      expect(await AsyncStorage.getItem('audiosilo.identityPlan')).not.toBeNull();
+    } finally {
+      store.getItemAsync = original;
+      warn.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+});
+
+it('finding 2: holds bootstrap readers until a partial transaction is reconciled', async () => {
+  await AsyncStorage.clear();
+  forgetStorageMigration();
+  await AsyncStorage.setItem('audiosilo.storageVersion', '2');
+  await AsyncStorage.setItem(
+    'audiosilo.connections',
+    JSON.stringify([{ id: 'srv', serverUrl: 'https://a', name: 'A', user: { id: 3 } }]),
+  );
+  await AsyncStorage.setItem('audiosilo.progressQueue', JSON.stringify([{ connectionId: 'srv' }]));
+  await SecureStore.setItemAsync('audiosilo.token.srv', 'tok');
+  const store = AsyncStorage.setMany as jest.Mock;
+  const original = store.getMockImplementation()!;
+  store.mockImplementationOnce(async (entries: Record<string, string>) => {
+    await AsyncStorage.setItem('audiosilo.progressQueue', entries['audiosilo.progressQueue']);
+    throw new Error('disk full');
+  });
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  jest.useFakeTimers();
+  try {
+    let ready = false;
+    const run = migrateStorage().then(() => {
+      ready = true;
+    });
+    for (let i = 0; i < 100; i++) await Promise.resolve();
+    expect(ready).toBe(false);
+    await jest.advanceTimersByTimeAsync(1000);
+    await run;
+    expect(JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!)[0].id).toBe('srv.3');
+    expect(
+      JSON.parse((await AsyncStorage.getItem('audiosilo.progressQueue'))!)[0].connectionId,
+    ).toBe('srv.3');
+  } finally {
+    store.mockImplementation(original);
+    warn.mockRestore();
+    jest.useRealTimers();
+  }
 });

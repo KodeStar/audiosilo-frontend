@@ -8,12 +8,7 @@ import { resolveLibrarySelection } from '@/stores/library-selection';
 import { profileConnectionIds, resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import {
-  connectionAliases,
-  legacyIdOf,
-  resolveConnectionId,
-  setConnectionAliases,
-} from './connection-id';
+import { connectionAliases, resolveConnectionId, setConnectionAliases } from './connection-id';
 import {
   ID_DOCUMENTS,
   IDENTITY_PLAN_KEY,
@@ -437,7 +432,7 @@ describe('migrateConnectionIdentity', () => {
     });
   });
 
-  describe('stops, changing nothing the app reads, and runs again next launch', () => {
+  describe('failures defer safely or hold readers until forward recovery', () => {
     it('a locked keychain at the second token (a CarPlay launch with the phone locked)', async () => {
       Platform.OS = 'ios';
       await seedLegacyInstall();
@@ -478,76 +473,35 @@ describe('migrateConnectionIdentity', () => {
       expect(await token('srvA')).toBe('tokA');
     });
 
-    it('a file that cannot move: what moved goes back', async () => {
+    it('keeps a failed file move pending and completes it forward', async () => {
       await seedLegacyInstall();
-      const before = await snapshotDocuments();
       failMove = (from) => from === 'srvB';
       expect(await migrateConnectionIdentity(deps())).toMatchObject({
         status: 'aborted',
         step: 'files',
+        recoveryRequired: true,
       });
-      expect(moveConnection.mock.calls).toEqual([
-        ['srvA', 'srvA.3'],
-        ['srvB', 'srvB.7'],
-        ['srvA.3', 'srvA'], // moved back
-      ]);
-      expect(dirs).toEqual({ srvA: ['srvA-book'], srvB: ['srvB-book'], srvC: ['srvC-book'] });
-      expect(await snapshotDocuments()).toEqual(before);
-      // The tokens it copied stay (harmless); the old ones are all there.
-      expect(await token('srvA')).toBe('tokA');
-      expect(await token('srvB')).toBe('tokB');
-
+      expect(dirs['srvA.3']).toEqual(['srvA-book']);
+      expect(dirs.srvB).toEqual(['srvB-book']);
       failMove = null;
-      expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'migrated' });
+      await migrateConnectionIdentity(deps());
       await expectMigrated();
     });
 
-    it('a document write that fails: documents restored, files moved back', async () => {
+    it('finding 2: a partial document write requires recovery before readers run', async () => {
       await seedLegacyInstall();
-      const before = await snapshotDocuments();
-      let calls = 0;
-      storage.setMany.mockImplementation(async (entries: Record<string, string>) => {
-        calls++;
-        if (calls > 1) return realSetMany(entries); // the restore
-        // Half written, then the disk is full (iOS and the web write key by key).
-        const pairs = Object.entries(entries);
-        await realSetMany(Object.fromEntries(pairs.slice(0, Math.ceil(pairs.length / 2))));
+      storage.setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
+        await realSetMany({ [ID_DOCUMENTS.progressQueue]: entries[ID_DOCUMENTS.progressQueue] });
         throw new Error('disk full');
       });
       expect(await migrateConnectionIdentity(deps())).toMatchObject({
         status: 'aborted',
         step: 'documents',
+        recoveryRequired: true,
       });
-      expect(await snapshotDocuments()).toEqual(before);
-      expect(dirs).toEqual({ srvA: ['srvA-book'], srvB: ['srvB-book'], srvC: ['srvC-book'] });
-      expect(await token('srvA')).toBe('tokA');
-      // Put back: nothing new in memory either.
-      expect(resolveConnectionId('srvA')).toBe('srvA');
-
-      storage.setMany.mockImplementation(realSetMany);
+      expect(await get(IDENTITY_PLAN_KEY)).toEqual({ srvA: 'srvA.3', srvB: 'srvB.7' });
       profileIds = 0;
-      expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'migrated' });
-      await expectMigrated();
-    });
-
-    it('a document write that fails and cannot be put back: the moves are known in memory', async () => {
-      await seedLegacyInstall();
-      storage.setMany.mockImplementation(async (entries: Record<string, string>) => {
-        const pairs = Object.entries(entries);
-        await realSetMany(Object.fromEntries(pairs.slice(0, Math.ceil(pairs.length / 2))));
-        throw new Error('disk full');
-      });
-      expect(await migrateConnectionIdentity(deps())).toMatchObject({
-        status: 'aborted',
-        step: 'documents',
-      });
-      // A document already naming a new id reaches its connection, and on the web its files
-      // under the legacy id, until the stored plan finishes next launch.
-      expect(resolveConnectionId('srvA')).toBe('srvA.3');
-      expect(legacyIdOf('srvB.7')).toBe('srvB');
-      storage.setMany.mockImplementation(realSetMany);
-      profileIds = 0;
-      expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'migrated' });
+      await migrateConnectionIdentity(deps());
       await expectMigrated();
     });
 
@@ -584,6 +538,66 @@ describe('migrateConnectionIdentity', () => {
       });
       expect(await get(IDENTITY_VERSION_KEY)).toBeUndefined();
     });
+  });
+
+  it('finding 13: remaps the selected kids library with its profile connections', async () => {
+    await seedLegacyInstall();
+    await set(ID_DOCUMENTS.profiles, {
+      version: 1,
+      activeProfileId: 'child',
+      askAtLaunch: false,
+      profiles: [
+        {
+          id: 'child',
+          name: 'Child',
+          connectionIds: ['srvA', 'srvB'],
+          kids: { bedtime: '20:00', library: { connectionId: 'srvB', libraryId: 7 } },
+        },
+      ],
+    });
+    await migrateConnectionIdentity(deps());
+    expect(await get(ID_DOCUMENTS.profiles)).toMatchObject({
+      profiles: [
+        {
+          connectionIds: ['srvA.3', 'srvB.7'],
+          kids: { bedtime: '20:00', library: { connectionId: 'srvB.7', libraryId: 7 } },
+        },
+      ],
+    });
+  });
+
+  it('finding 1: finishes a pending transaction despite an older completion marker', async () => {
+    await seedLegacyInstall();
+    await set(IDENTITY_VERSION_KEY, 2);
+    await set(IDENTITY_PLAN_KEY, { srvA: 'srvA.3', srvB: 'srvB.7' });
+    const connections = (await get(ID_DOCUMENTS.connections)) as { id: string }[];
+    await set(
+      ID_DOCUMENTS.connections,
+      connections.map((c) => ({
+        ...c,
+        id: c.id === 'srvA' ? 'srvA.3' : c.id === 'srvB' ? 'srvB.7' : c.id,
+      })),
+    );
+    await migrateConnectionIdentity(deps());
+    expect(await get(ID_DOCUMENTS.progressQueue)).toEqual([
+      save('srvB.7', 'Two'),
+      save('srvA.3', 'Book/One'),
+    ]);
+    expect(await get(ID_DOCUMENTS.downloads)).toHaveProperty(['srvA.3:1:Book/One']);
+    expect(await get(ID_DOCUMENTS.aliases)).toEqual({ srvA: 'srvA.3', srvB: 'srvB.7' });
+  });
+
+  it('finding 3: retry read failure never reverses files moved by a previous process', async () => {
+    await seedLegacyInstall();
+    await migrateConnectionIdentity(deps());
+    await AsyncStorage.removeItem(IDENTITY_VERSION_KEY);
+    await set(IDENTITY_PLAN_KEY, { srvA: 'srvA.3', srvB: 'srvB.7' });
+    storage.getMany.mockImplementationOnce(realGetMany).mockRejectedValueOnce(new Error('read'));
+    expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'aborted' });
+    expect(dirs['srvA.3']).toEqual(['srvA-book']);
+    expect(dirs['srvB.7']).toEqual(['srvB-book']);
+    expect(dirs.srvA).toBeUndefined();
+    expect(await get(ID_DOCUMENTS.downloads)).toHaveProperty(['srvA.3:1:Book/One']);
   });
 
   describe('a run cut short (the app killed) is finished by the next one', () => {
@@ -634,7 +648,7 @@ describe('migrateConnectionIdentity', () => {
       // As if the old tokens' delete and the plan's removal never ran.
       await SecureStore.setItemAsync('audiosilo.token.srvA', 'tokA');
       await set(IDENTITY_PLAN_KEY, { srvA: 'srvA.3', srvB: 'srvB.7' });
-      expect(await migrateConnectionIdentity(deps())).toEqual({ status: 'skipped' });
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'migrated' });
       expect(await token('srvA')).toBeNull();
       expect(await get(IDENTITY_PLAN_KEY)).toBeUndefined();
       expect(await token('srvA.3')).toBe('tokA');

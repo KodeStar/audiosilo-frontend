@@ -8,6 +8,10 @@ export type StorageMigrationResult = StorageResetResult & { identity: IdentityMi
 
 let pending: Promise<StorageMigrationResult> | null = null;
 
+/** How many times a stored identity plan is retried before the launch goes on without it. */
+const RECOVERY_ATTEMPTS = 5;
+const RECOVERY_RETRY_MS = 1_000;
+
 /**
  * The launch-time storage migration, ONE memoised run that every reader awaits (the root
  * layout before the stores hydrate, ThemeProvider before it reads the theme), so nothing
@@ -20,7 +24,11 @@ let pending: Promise<StorageMigrationResult> | null = null;
  * 2. `resetStaleStorage` (the auth/cache version axes).
  * 3. The connection identity migration (`migrateConnectionIdentity`): legacy connection ids
  *    (the bare `server_id`) move to `<server_id>.<user_id>` with every store keyed by them,
- *    nobody signed out. It never rejects; one that stopped runs again next launch.
+ *    nobody signed out. Before a plan is written, a stopped run waits for next launch. Once
+ *    a plan is stored (documents may be half rewritten), it retries here a few times with
+ *    every reader held, so a passing storage hiccup never reaches download pruning or queue
+ *    replay; a failure that persists (a playing car book, a locked keychain) stops holding
+ *    the launch after `RECOVERY_ATTEMPTS` and the plan finishes on a later launch.
  */
 export function migrateStorage(): Promise<StorageMigrationResult> {
   pending ??= run();
@@ -37,17 +45,21 @@ async function run(): Promise<StorageMigrationResult> {
   }
   const reset = await resetStaleStorage();
   let identity: IdentityMigrationResult;
-  try {
-    identity = await migrateConnectionIdentity();
-  } catch (error) {
-    identity = { status: 'aborted', step: 'read', error };
-  }
-  if (identity.status === 'aborted') {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      identity = await migrateConnectionIdentity();
+    } catch (error) {
+      identity = { status: 'aborted', step: 'read', error, recoveryRequired: true };
+    }
+    if (identity.status !== 'aborted') break;
     console.warn(
       '[storage] connection identity migration stopped at',
       identity.step,
       identity.error,
     );
+    // The theme and every store wait on this run: never hold the launch for good.
+    if (!identity.recoveryRequired || attempt >= RECOVERY_ATTEMPTS) break;
+    await new Promise<void>((resolve) => setTimeout(resolve, RECOVERY_RETRY_MS));
   }
   return { ...reset, identity };
 }
