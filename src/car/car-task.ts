@@ -4,7 +4,7 @@ import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 
 import { isCarConnected } from './car-connection';
-import { carSyncReady, handleCarConnection, startCarSync } from './car-controller';
+import { carSyncReady, startCarSync } from './car-controller';
 import { carNative } from './car-native';
 
 /** How long the player must stay idle before the task says it is done. */
@@ -13,34 +13,18 @@ export const CAR_TASK_IDLE_MS = 30_000;
 /**
  * The car's headless task (Android): the playback service booted the JS runtime with no
  * activity (a car asked to play a book native can't start alone, a book it started must save
- * its place, a bookmark was pressed). It runs the launch steps the root layout runs before any
- * screen (`bootstrapPlayback`, the same memoised run, so an activity opened later on this
- * runtime doesn't repeat them; among them the listener's language, for the snapshot's
- * labels), then starts the car sync, which adopts the service's book and adds the pending
- * bookmarks.
- *
- * Two app-lifetime controllers the root layout starts in an activity are started here too,
- * since nothing else would run them in this runtime: the address pick (a connection paired on
- * its home address must reach its server from the car, through its away address) and the
- * place reconcile (a book the car started from its snapshot place picks up another device's
- * newer place before its first save). Both are shared starts, so an activity opened later on
- * this runtime doesn't run them twice.
- *
- * None of them is stopped here: the JS runtime outlives the task, and a later car event
- * (a play request, a bookmark) must still find its listeners.
- *
- * Resolves (the task is over) once no car is connected and the player has been idle,
- * nothing playing or buffering, for `CAR_TASK_IDLE_MS`, or at once when the car disconnects
- * while it is idle. A connected car keeps it running even with nothing playing: React Native
- * runs JS timers with no activity resumed only while a task runs, and the car sync's snapshot
- * writes are timers (its lists would stay as they were for the rest of the drive). JS timers
- * may not fire with the phone's screen off, so the idle check also runs on every player
- * change; the service ends the task when it no longer needs JS (`JsRuntime.release`).
+ * its place, a bookmark was pressed). It starts the car's stack (`startCarStack`), waits for
+ * the car sync's first steps, then resolves (the task is over) once no car is connected and
+ * the player has been idle, nothing playing or buffering, for `CAR_TASK_IDLE_MS`, or at once
+ * when the car disconnects while it is idle. A connected car keeps it running even with
+ * nothing playing: React Native runs JS timers with no activity resumed only while a task
+ * runs, and the car sync's snapshot writes are timers (its lists would stay as they were for
+ * the rest of the drive). JS timers may not fire with the phone's screen off, so the idle
+ * check also runs on every player change; the service ends the task when it no longer needs
+ * JS (`JsRuntime.release`).
  */
 export async function runCarTask(): Promise<void> {
-  await bootstrapPlayback();
-  startAppControllers();
-  startCarSync();
+  await startCarStack();
   await carSyncReady();
   await untilIdle(CAR_TASK_IDLE_MS);
 }
@@ -52,33 +36,44 @@ let carWork: Promise<void> | null = null;
  * connects). A CarPlay-first launch runs React Native in a parking window that never gets a
  * layout pass, so expo-router's SafeAreaProvider (no initial metrics on native) never hears
  * its insets and renders nothing: the root layout, and every launch step and controller it
- * starts, never runs until the phone app opens. So this starts what `runCarTask` starts on
- * Android (the launch steps, the address pick, the place reconcile, the car sync), once per
- * runtime; the root layout's own starts later are shared ones and add nothing. Nothing is
- * stopped: the car's requests must keep finding their listeners.
- *
- * `connected` is the connection state the caller's listener heard last: that listener
- * registers first, so the connect native queued before JS listened reaches it and never the
- * sync's own listener, and is handed on here once the sync runs.
+ * starts, never runs until the phone app opens. So this starts the car's stack once per
+ * runtime, as Android's headless task does. The connect itself reaches the car sync through
+ * `isCarConnected()` (the iOS listener records it; a sync starting while a car is connected
+ * runs its connect path). A start that failed is forgotten, so the next connect tries again.
  */
-export function startCarWork(connected: () => boolean): Promise<void> {
-  carWork ??= (async () => {
-    await bootstrapPlayback();
-    startAppControllers();
-    startCarSync();
-    handleCarConnection(connected());
-  })();
+export function startCarWork(): Promise<void> {
+  carWork ??= startCarStack().catch((err: unknown) => {
+    carWork = null;
+    throw err;
+  });
   return carWork;
+}
+
+/**
+ * What a car needs with no screen, on both platforms: the launch steps the root layout runs
+ * before any screen (`bootstrapPlayback`, among them the listener's language for the
+ * snapshot's labels), the address pick (a connection paired on its home address must reach
+ * its server from the car, through its away address), the place reconcile (a book the car
+ * started from its snapshot place picks up another device's newer place before its first
+ * save) and the car sync. All are shared starts, so the root layout's own later starts add
+ * nothing; none is stopped, since the JS runtime outlives the car's work and a later car
+ * event (a play request, a bookmark) must still find its listeners.
+ */
+async function startCarStack(): Promise<void> {
+  await bootstrapPlayback();
+  startAppControllers();
+  startCarSync();
 }
 
 let controllersStarted = false;
 
-/** The address pick and the place reconcile, once per runtime (see `runCarTask`). */
+/** The address pick and the place reconcile, once per runtime (marked started only once both
+ * are, so a start that threw is tried again; each is a shared start). */
 function startAppControllers() {
   if (controllersStarted) return;
-  controllersStarted = true;
   startAddressRouting();
   startPlaceReconcile();
+  controllersStarted = true;
 }
 
 /** Resolves once no car is connected and the player has not been live (playing or loading)

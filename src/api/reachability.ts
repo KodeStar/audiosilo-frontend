@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { type Connection, onConnectionRemoved } from '@/stores/session';
 
 import { ApiError, type ApiClient } from './client';
+import { resolveClient } from './connection-clients';
 
 /**
  * Per-connection reachability: tracks whether EACH signed-in server is currently
@@ -21,7 +22,9 @@ type ReachabilityState = { online: Record<string, boolean> };
 export const useReachability = create<ReachabilityState>(() => ({ online: {} }));
 
 // The live client map (set by ApiProvider), so the probe can reach any offline
-// connection's server directly.
+// connection's server directly. With no provider mounted (the car's start without the
+// React tree: Android's headless task, a CarPlay-first launch) it stays empty, and the probe
+// builds the client from the session (`resolveClient`, on the address in use now) instead.
 let clients: Map<string, ApiClient> = new Map();
 let probe: ReturnType<typeof setInterval> | null = null;
 let probing = false;
@@ -122,7 +125,7 @@ async function runProbe() {
   try {
     await Promise.all(
       offline.map(async (cid) => {
-        const client = clients.get(cid);
+        const client = clients.get(cid) ?? resolveClient(cid);
         if (!client) return; // connection gone; removal purges its state
         try {
           await client.serverInfo();

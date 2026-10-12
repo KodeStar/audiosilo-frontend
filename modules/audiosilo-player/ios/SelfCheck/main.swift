@@ -306,8 +306,12 @@ do {
     "\(new)/Library/Caches/x.jpg",
     "/etc/passwd",
   ]
-  let exists = { (p: String) in onDisk.contains(p) }
-  let resolve = { (uri: String) in CarArtworkPath.resolve(uri, home: new, exists: exists) }
+  var reads: [String] = []
+  let read = { (p: String) -> String? in
+    reads.append(p)
+    return onDisk.contains(p) ? p : nil
+  }
+  let resolve = { (uri: String) in CarArtworkPath.resolve(uri, home: new, read: read) }
 
   check(resolve("file://\(old)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg",
         "a car cover under the old container is read from the new one")
@@ -315,8 +319,14 @@ do {
         "a download's cover (percent-encoded) is re-rooted, decoded")
   check(resolve("file:///private\(old)/Library/Caches/x.jpg") == "\(new)/Library/Caches/x.jpg",
         "a /private/var path and Library/ re-root too")
-  check(resolve("file://\(new)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg",
-        "a file that exists is read as it is")
+  reads = []
+  check(resolve("file://\(new)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg"
+        && reads == ["\(new)/Documents/car-artwork/abc.jpg"],
+        "a file that exists is read as it is, in one read")
+  reads = []
+  check(resolve("file://\(old)/Documents/car-artwork/abc.jpg") != nil
+        && reads == ["\(old)/Documents/car-artwork/abc.jpg", "\(new)/Documents/car-artwork/abc.jpg"],
+        "the re-rooted path is read only after the path as it is fails")
   check(resolve("file://\(old)/Documents/car-artwork/gone.jpg") == nil, "missing in both containers: nil")
   check(resolve("file://\(new)/Documents/car-artwork/gone.jpg") == nil, "missing in the current container: nil")
   check(resolve("file://\(old)/Documents/../../../../../../etc/passwd") == nil
@@ -334,6 +344,9 @@ do {
   let sim = "/Users/me/Library/Developer/CoreSimulator/Devices/D7A1D0E8-0000-4000-8000-000000000003/data/Containers/Data/Application/0A1B2C3D-0000-4000-8000-000000000001"
   check(CarArtworkPath.reroot("\(sim)/Documents/car-artwork/abc.jpg", home: new + "/") == "\(new)/Documents/car-artwork/abc.jpg",
         "a Simulator path anchors on the app's container, not the Mac's Library; a trailing / on home is fine")
+  let nested = "Documents/downloads/c1/1/Containers/Data/Application/9F8E7D6C-0000-4000-8000-000000000009/Library/cover.jpg"
+  check(CarArtworkPath.reroot("\(old)/\(nested)", home: new) == "\(new)/\(nested)",
+        "a container-shaped folder inside the container (a server path) never anchors the move")
 }
 
 print("\(checks - failures)/\(checks) checks passed")

@@ -17,9 +17,10 @@ const { withAppDelegate, withEntitlementsPlist, withInfoPlist } = require('expo/
  *     phone scene adopts later. The template text is matched exactly; any other text fails the
  *     prebuild loudly (a silent miss would ship a black screen: a scene app whose React Native
  *     never starts in a scene window).
- *  3. Entitlements: `com.apple.developer.carplay-audio` ONLY with `AUDIOSILO_CARPLAY=1` at
- *     prebuild. A device build carrying it cannot be signed until Apple grants it; without it
- *     iOS simply never connects a CarPlay scene (the scene code still ships).
+ *  3. Entitlements: `com.apple.developer.carplay-audio` by default (Apple granted it to the team on
+ *     2026-10-09; both App IDs carry the capability). `AUDIOSILO_CARPLAY=0` at prebuild leaves it
+ *     out, for a signing identity without the grant; without it iOS simply never connects a
+ *     CarPlay scene (the scene code still ships).
  *
  * Plugin order: a plugin that rewrites the AppDelegate must NOT be listed after this one in
  * app.json. Mods of one kind run in REVERSE registration order, so a plugin listed after this
@@ -123,14 +124,19 @@ function patchAppDelegate(contents) {
     .replace(TEMPLATE_WINDOW, STARTER);
 }
 
-/** Entitlements: the CarPlay audio entitlement, opt-in. Removed when the flag is off so a
- * non-clean prebuild cannot keep a stale one.
+/** The values of `AUDIOSILO_CARPLAY` that leave the entitlement out (any case): `0` and the other
+ * usual spellings of off, so an opt-out spelled `false` doesn't ship one a team can't sign. */
+const CARPLAY_OFF = new Set(['0', 'false', 'off', 'no']);
+
+/** Entitlements: the CarPlay audio entitlement, on unless `AUDIOSILO_CARPLAY=0`. Removed when
+ * opted out so a non-clean prebuild cannot keep a stale one.
  * @param {Record<string, unknown>} entitlements
  * @param {Record<string, string | undefined>} [env]
  */
 function applyCarPlayEntitlement(entitlements, env = process.env) {
   const next = { ...entitlements };
-  if (env.AUDIOSILO_CARPLAY === '1') next[CARPLAY_ENTITLEMENT] = true;
+  const off = CARPLAY_OFF.has((env.AUDIOSILO_CARPLAY ?? '').trim().toLowerCase());
+  if (!off) next[CARPLAY_ENTITLEMENT] = true;
   else delete next[CARPLAY_ENTITLEMENT];
   return next;
 }

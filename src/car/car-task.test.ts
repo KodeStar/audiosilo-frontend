@@ -26,9 +26,6 @@ jest.mock('./car-controller', () => ({
   carSyncReady: jest.fn(async () => {
     calls.push('ready');
   }),
-  handleCarConnection: jest.fn((connected: boolean) => {
-    calls.push(`connection:${connected}`);
-  }),
 }));
 jest.mock('./car-connection', () => ({ isCarConnected: () => mockCarConnected }));
 let mockConnection: ((connected: boolean) => void) | null = null;
@@ -120,27 +117,36 @@ describe('startCarWork (iOS: the car start without the React tree)', () => {
     return start;
   }
 
-  it('runs the launch steps, the address pick, the place reconcile and the car sync, then hands the connect on', async () => {
+  it('runs the launch steps, the address pick, the place reconcile and the car sync, never stopping them', async () => {
     const startCarWork = freshStart();
-    await startCarWork(() => true);
-    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start', 'connection:true']);
-    expect(mockStop).not.toHaveBeenCalled(); // never stopped
+    await startCarWork();
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start']);
+    expect(mockStop).not.toHaveBeenCalled();
   });
 
   it('starts once per runtime, however many connects arrive (the root layout adds only shared starts)', async () => {
     const startCarWork = freshStart();
-    await Promise.all([startCarWork(() => true), startCarWork(() => true)]);
-    await startCarWork(() => true);
-    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start', 'connection:true']);
+    await Promise.all([startCarWork(), startCarWork()]);
+    await startCarWork();
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start']);
   });
 
-  it('hands on the state heard last: a car that left during the start is not connected', async () => {
-    const startCarWork = freshStart();
-    let connected = true;
-    const done = startCarWork(() => connected);
-    connected = false;
-    await done;
-    expect(calls[calls.length - 1]).toBe('connection:false');
+  it('tries again on the next connect after a start that failed', async () => {
+    let startCarWork!: typeof import('./car-task').startCarWork;
+    let startCarSync!: jest.Mock;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      startCarWork = require('./car-task').startCarWork;
+      // The same isolated mock the fresh car-task imported.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      startCarSync = require('./car-controller').startCarSync;
+    });
+    startCarSync.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    await expect(startCarWork()).rejects.toThrow('boom');
+    await startCarWork();
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'bootstrap', 'start']);
   });
 });
 
