@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { act, renderHook } from '@testing-library/react-native';
+import { AppState } from 'react-native';
 
 import type { User } from '@/api/types';
 import { initialProfiles } from '@/lib/identity-migration';
@@ -10,6 +11,8 @@ import {
   askOnSecondPerson,
   connectionsOfProfile,
   deleteProfile,
+  HYDRATE_ATTEMPTS,
+  HYDRATE_RETRY_MS,
   mayActFor,
   mayTurnOnKids,
   mustChoose,
@@ -401,6 +404,90 @@ describe('the store', () => {
       read.mockImplementation(original);
       jest.useRealTimers();
     }
+  });
+
+  describe('finding 5: a document that never reads (web storage blocked)', () => {
+    let read: jest.Mock;
+    let original: (key: string) => Promise<string | null>;
+    beforeEach(() => {
+      read = AsyncStorage.getItem as jest.Mock;
+      original = read.getMockImplementation()!;
+      read.mockImplementation((key: string) =>
+        key === PROFILES_KEY ? Promise.reject(new Error('SecurityError')) : original(key),
+      );
+      read.mockClear();
+      jest.useFakeTimers();
+    });
+    afterEach(() => {
+      read.mockImplementation(original);
+      jest.useRealTimers();
+    });
+
+    /** Hydrate through every attempt; resolves (the launch steps go on). */
+    async function hydrateGivingUp() {
+      const run = useProfiles.getState().hydrate();
+      await jest.advanceTimersByTimeAsync(HYDRATE_ATTEMPTS * HYDRATE_RETRY_MS);
+      await run;
+    }
+
+    it('with nobody signed in, stops waiting and lets someone sign in, in memory only', async () => {
+      setSession([]);
+      const write = AsyncStorage.setItem as jest.Mock;
+      write.mockClear();
+      await hydrateGivingUp();
+      expect(read.mock.calls.filter(([k]) => k === PROFILES_KEY)).toHaveLength(HYDRATE_ATTEMPTS);
+      expect(useProfiles.getState()).toMatchObject({
+        hydrated: true,
+        hydrationFailed: false,
+        unread: true,
+      });
+      // A sign-in (the connect flow): that person gets a profile and their book plays.
+      setSession([A1], A1.id);
+      expect(placeConnection(A1.id)).not.toBeNull();
+      expect(mayActFor(A1.id)).toBe(true);
+      expect(profileConnectionIds()).toEqual([A1.id]);
+      // A connection this run did not see signed in (the session's list read later) is
+      // nobody's here: never shown, never played (its person may have a PIN).
+      await act(async () => setSession([A1, B1], A1.id));
+      expect(profileOf(B1.id)).toBeNull();
+      expect(mayActFor(B1.id)).toBe(false);
+      expect(profileConnectionIds()).toEqual([A1.id]);
+      // The document it never read is never written over.
+      expect(write.mock.calls.filter(([k]) => k === PROFILES_KEY)).toHaveLength(0);
+    });
+
+    it('with someone signed in, stops waiting but stays shut, and reads again in the front', async () => {
+      const stored = {
+        version: 1,
+        profiles: [{ id: 'kid', name: 'Kid', connectionIds: [A1.id], kids: { bedtime: '19:30' } }],
+        activeProfileId: 'kid',
+        askAtLaunch: false,
+      };
+      await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(stored));
+      setSession([A1], A1.id);
+      let onAppState: ((s: string) => void) | null = null;
+      const listen = jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+        _t: string,
+        h: (s: string) => void,
+      ) => {
+        onAppState = h;
+        return { remove: () => (onAppState = null) };
+      }) as unknown as typeof AppState.addEventListener);
+      try {
+        await hydrateGivingUp();
+        expect(useProfiles.getState().hydrationFailed).toBe(true);
+        expect(mayActFor(A1.id)).toBe(false);
+        expect(profileConnectionIds()).toEqual([]);
+        // Storage answers again; the app comes to the front.
+        read.mockImplementation(original);
+        await act(async () => onAppState?.('active'));
+        expect(useProfiles.getState().profiles).toEqual(stored.profiles);
+        expect(useProfiles.getState().hydrationFailed).toBe(false);
+        expect(onAppState).toBeNull();
+      } finally {
+        listen.mockRestore();
+      }
+    });
   });
 
   it("a failed read of the session's connections never reads as everyone signed out", async () => {

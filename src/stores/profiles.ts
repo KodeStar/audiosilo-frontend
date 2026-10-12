@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMemo } from 'react';
+import { AppState, type NativeEventSubscription } from 'react-native';
 import { create } from 'zustand';
 
 import { serverIdOf } from '@/lib/connection-id';
@@ -412,20 +413,33 @@ export function mustChoose(doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'
  * must be chosen (`mustChoose`); null (every connection) with no profiles at all (not
  * hydrated yet, or the device has nobody, as before profiles). */
 export function visibleConnectionIds(
-  doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'> & { hydrationFailed?: boolean },
+  doc: Pick<ProfilesDoc, 'profiles' | 'activeProfileId'> & {
+    hydrationFailed?: boolean;
+    unread?: boolean;
+  },
 ): readonly string[] | null {
   if (doc.hydrationFailed) return NO_IDS;
   const active = doc.profiles.find((p) => p.id === doc.activeProfileId);
   if (active) return active.connectionIds;
-  return doc.profiles.length > 0 ? NO_IDS : null;
+  // The stored document was never read (`unread`): people may be on this device that this
+  // run does not know, so "no profiles" never means "everyone's".
+  return doc.profiles.length > 0 || doc.unread ? NO_IDS : null;
 }
 
 // --- The store ------------------------------------------------------------------------------
 
 type ProfilesState = ProfilesDoc & {
-  /** The stored document has been read (and reconciled once the session settles). */
+  /** The stored document has been read (and reconciled once the session settles), or the
+   * store gave up on it with nobody signed in (`unread`). */
   hydrated: boolean;
+  /** The stored document can't be read (yet): nothing of anyone shows or plays. */
   hydrationFailed: boolean;
+  /** The stored document could not be read and nobody was signed in this run (web with
+   * site data blocked): the store runs in memory, for the people who sign in now only. It
+   * never writes the document (it never read it), never places a connection it did not
+   * see signed in (`placeConnection`), and a connection no profile holds is nobody's to
+   * see or play (another person's, maybe, with a PIN this run can't check). */
+  unread?: boolean;
   hydrate: () => Promise<void>;
 };
 
@@ -433,8 +447,16 @@ export const useProfiles = create<ProfilesState>()(() => ({
   ...EMPTY_DOC,
   hydrated: false,
   hydrationFailed: false,
+  unread: false,
   hydrate: () => hydrateProfiles(),
 }));
+
+/** How many times a read of the document that throws is tried (`HYDRATE_RETRY_MS` apart)
+ * before the store stops waiting on it (`giveUpOnRead`). The launch steps wait on the
+ * hydrate, so it must end: a read that never works (web storage blocked) held the app on
+ * its first screen forever. */
+export const HYDRATE_ATTEMPTS = 5;
+export const HYDRATE_RETRY_MS = 1000;
 
 let hydration: Promise<void> | null = null;
 let unsubscribeSession: (() => void) | null = null;
@@ -456,7 +478,8 @@ function commit(change: ProfilesDoc): void {
   const next = docOf(askOnSecondPerson(prev, change));
   if (sameDoc(next, prev)) return;
   useProfiles.setState(next);
-  void setItem(PROFILES_KEY, next);
+  // A document never read is never written over (`unread`).
+  if (!state.unread) void setItem(PROFILES_KEY, next);
 }
 
 /** Whether the session's connection list means what it says (loaded, not a failed read). */
@@ -466,9 +489,13 @@ function sessionSettled(): boolean {
 
 /** Bring the document in line with the session's connections, once both are loaded. */
 function reconcileNow(): void {
-  if (!useProfiles.getState().hydrated || !sessionSettled()) return;
+  const state = useProfiles.getState();
+  if (!state.hydrated || !sessionSettled()) return;
   const { connections, defaultConnectionId } = useSession.getState();
-  commit(reconcileProfiles(docOf(useProfiles.getState()), connections, defaultConnectionId));
+  // Unread: only the connections already placed (signed in this run, `placeConnection`)
+  // take part; any other is left in no profile, so nobody sees or plays it.
+  const known = state.unread ? connections.filter((c) => profileOf(c.id, state)) : connections;
+  commit(reconcileProfiles(docOf(state), known, defaultConnectionId));
   void alignDefaultConnection();
 }
 
@@ -488,43 +515,105 @@ function onReplaced(oldId: string, newId: string): void {
   commit(replaceInDoc(docOf(s), oldId, newId));
 }
 
+/** Keep the document consistent with the session from now on (once: nothing to keep
+ * consistent before the store has a document). */
+function followSession(): void {
+  if (unsubscribeSession) return;
+  const unsubChanges = useSession.subscribe((s, prev) => {
+    if (s.connections !== prev.connections || s.status !== prev.status) reconcileNow();
+  });
+  const unsubRemoved = onConnectionRemoved(onRemoved);
+  const unsubReplaced = onConnectionReplaced(onReplaced);
+  unsubscribeSession = () => {
+    unsubChanges();
+    unsubRemoved();
+    unsubReplaced();
+  };
+}
+
+/** Take the stored document that was read (`raw`; null when there is none). A document
+ * that reads but does not parse cannot get better by waiting, so it counts as missing. */
+function adopt(raw: string | null): void {
+  stopRetrying();
+  let parsed: unknown = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    // corrupt: as missing
+  }
+  const doc = parseProfilesDoc(parsed);
+  useProfiles.setState({ ...doc, hydrated: true, hydrationFailed: false, unread: false });
+  followSession();
+  reconcileNow();
+}
+
+/** Asks for the document again when the app comes back to the front, while it can't be
+ * read and someone is signed in (`giveUpOnRead`). */
+let retryWhenActive: NativeEventSubscription | null = null;
+/** Waits for the session to settle before deciding how to give up. */
+let awaitSession: (() => void) | null = null;
+
+function stopRetrying(): void {
+  retryWhenActive?.remove();
+  retryWhenActive = null;
+  awaitSession?.();
+  awaitSession = null;
+}
+
+/**
+ * The document could not be read `HYDRATE_ATTEMPTS` times: stop holding the launch steps,
+ * and never bypass a PIN. Decided once the session has settled:
+ * - Someone is signed in (their connections loaded): they may have a PIN or a kids profile
+ *   this run can't know, so the store stays failed (`hydrationFailed`: nothing of anyone
+ *   shows or plays, nobody new signs in) and reads again whenever the app comes to the
+ *   front.
+ * - Nobody is (web with site data blocked: the session could not read its list either):
+ *   there is nobody to protect from this run, so the store runs `unread`, in memory, and
+ *   whoever signs in now gets a profile of their own.
+ */
+function giveUpOnRead(): void {
+  const decide = (): boolean => {
+    const session = useSession.getState();
+    if (session.status === 'loading') return false;
+    if (session.connections.length > 0) {
+      retryWhenActive ??= AppState.addEventListener('change', (next) => {
+        if (next !== 'active') return;
+        AsyncStorage.getItem(PROFILES_KEY).then(adopt, () => undefined);
+      });
+      return true;
+    }
+    useProfiles.setState({ ...EMPTY_DOC, hydrated: true, hydrationFailed: false, unread: true });
+    followSession();
+    reconcileNow();
+    return true;
+  };
+  if (decide()) return;
+  awaitSession = useSession.subscribe(() => {
+    if (!decide()) return;
+    awaitSession?.();
+    awaitSession = null;
+  });
+}
+
 function hydrateProfiles(): Promise<void> {
   hydration ??= (async () => {
     // A read that fails is retried, never taken as a missing document: reconciling an empty
-    // one would replace every profile (new ids, no PIN, no kids settings). A document that
-    // reads but does not parse cannot get better by waiting, so it counts as missing.
-    let raw: string | null;
-    for (;;) {
+    // one would replace every profile (new ids, no PIN, no kids settings). After
+    // `HYDRATE_ATTEMPTS` the store stops waiting (`giveUpOnRead`), safely.
+    for (let attempt = 1; ; attempt++) {
+      let raw: string | null;
       try {
         raw = await AsyncStorage.getItem(PROFILES_KEY);
-        break;
       } catch {
         useProfiles.setState({ hydrationFailed: true });
-        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+        if (attempt >= HYDRATE_ATTEMPTS) break;
+        await new Promise<void>((resolve) => setTimeout(resolve, HYDRATE_RETRY_MS));
+        continue;
       }
+      adopt(raw);
+      return;
     }
-    let parsed: unknown = null;
-    try {
-      parsed = raw ? JSON.parse(raw) : null;
-    } catch {
-      // corrupt: as missing (see above)
-    }
-    const doc = parseProfilesDoc(parsed);
-    useProfiles.setState({ ...doc, hydrated: true, hydrationFailed: false });
-    // Registered once hydrated (nothing to keep consistent before).
-    if (!unsubscribeSession) {
-      const unsubChanges = useSession.subscribe((s, prev) => {
-        if (s.connections !== prev.connections || s.status !== prev.status) reconcileNow();
-      });
-      const unsubRemoved = onConnectionRemoved(onRemoved);
-      const unsubReplaced = onConnectionReplaced(onReplaced);
-      unsubscribeSession = () => {
-        unsubChanges();
-        unsubRemoved();
-        unsubReplaced();
-      };
-    }
-    reconcileNow();
+    giveUpOnRead();
   })();
   return hydration;
 }
@@ -533,6 +622,7 @@ function hydrateProfiles(): Promise<void> {
 
 type ProfilesRead = Pick<ProfilesDoc, 'profiles' | 'activeProfileId'> & {
   hydrationFailed?: boolean;
+  unread?: boolean;
 };
 
 /** The active profile (null with no profiles). Framework-free. */
@@ -569,7 +659,10 @@ export function mayActFor(
   connectionId: string,
   doc: ProfilesRead = useProfiles.getState(),
 ): boolean {
-  return !doc.hydrationFailed && !mustChoose(doc) && otherOwner(doc, connectionId) === null;
+  if (doc.hydrationFailed) return false;
+  // Unread: only the people who signed in this run, and only their own connections.
+  if (doc.unread) return activeProfile(doc)?.connectionIds.includes(connectionId) ?? false;
+  return !mustChoose(doc) && otherOwner(doc, connectionId) === null;
 }
 
 /** The active profile's connections, in the session's order (every connection while
@@ -744,5 +837,6 @@ export function resetProfilesForTests(): void {
   hydration = null;
   unsubscribeSession?.();
   unsubscribeSession = null;
-  useProfiles.setState({ ...EMPTY_DOC, hydrated: false, hydrationFailed: false });
+  stopRetrying();
+  useProfiles.setState({ ...EMPTY_DOC, hydrated: false, hydrationFailed: false, unread: false });
 }
