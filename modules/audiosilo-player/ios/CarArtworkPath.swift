@@ -35,8 +35,10 @@ enum CarArtworkPath {
   /// `.` or `..` component (which could leave that folder).
   static func reroot(_ path: String, home: String) -> String? {
     let parts = path.split(separator: "/").map(String.init)
-    // The last `Containers/Data/Application/<UUID>` in the path is the app's container.
-    guard let uuid = parts.indices.dropFirst(3).last(where: { i in
+    // The first `Containers/Data/Application/<UUID>` in the path is the app's container (on a
+    // device and in the Simulator alike); a later one is inside it (a download's folders come
+    // from the server's paths), so it never anchors the move.
+    guard let uuid = parts.indices.dropFirst(3).first(where: { i in
       parts[i - 3] == "Containers" && parts[i - 2] == "Data" && parts[i - 1] == "Application"
         && UUID(uuidString: parts[i]) != nil
     }) else { return nil }

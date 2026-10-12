@@ -71,12 +71,16 @@ describe('withCarPlay: AppDelegate', () => {
 });
 
 describe('withCarPlay: entitlement', () => {
-  it('adds the CarPlay audio entitlement by default and leaves it out only with AUDIOSILO_CARPLAY=0', () => {
+  it('adds the CarPlay audio entitlement by default and leaves it out with AUDIOSILO_CARPLAY=0 (or false, off, no)', () => {
     const on = { [CARPLAY_ENTITLEMENT]: true };
     expect(applyCarPlayEntitlement({}, {})).toEqual(on);
     expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: '1' })).toEqual(on);
     expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: 'true' })).toEqual(on);
     expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: '0' })).toEqual({});
+    // The other usual spellings of off opt out too.
+    for (const off of ['false', 'FALSE', 'off', 'no', ' 0 ']) {
+      expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: off })).toEqual({});
+    }
   });
 
   it('removes a stale entitlement when opted out and keeps other keys', () => {

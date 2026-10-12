@@ -39,10 +39,13 @@ let carWork: Promise<void> | null = null;
  * starts, never runs until the phone app opens. So this starts the car's stack once per
  * runtime, as Android's headless task does. The connect itself reaches the car sync through
  * `isCarConnected()` (the iOS listener records it; a sync starting while a car is connected
- * runs its connect path).
+ * runs its connect path). A start that failed is forgotten, so the next connect tries again.
  */
 export function startCarWork(): Promise<void> {
-  carWork ??= startCarStack();
+  carWork ??= startCarStack().catch((err: unknown) => {
+    carWork = null;
+    throw err;
+  });
   return carWork;
 }
 
@@ -64,12 +67,13 @@ async function startCarStack(): Promise<void> {
 
 let controllersStarted = false;
 
-/** The address pick and the place reconcile, once per runtime. */
+/** The address pick and the place reconcile, once per runtime (marked started only once both
+ * are, so a start that threw is tried again; each is a shared start). */
 function startAppControllers() {
   if (controllersStarted) return;
-  controllersStarted = true;
   startAddressRouting();
   startPlaceReconcile();
+  controllersStarted = true;
 }
 
 /** Resolves once no car is connected and the player has not been live (playing or loading)

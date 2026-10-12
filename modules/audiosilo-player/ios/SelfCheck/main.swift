@@ -344,6 +344,9 @@ do {
   let sim = "/Users/me/Library/Developer/CoreSimulator/Devices/D7A1D0E8-0000-4000-8000-000000000003/data/Containers/Data/Application/0A1B2C3D-0000-4000-8000-000000000001"
   check(CarArtworkPath.reroot("\(sim)/Documents/car-artwork/abc.jpg", home: new + "/") == "\(new)/Documents/car-artwork/abc.jpg",
         "a Simulator path anchors on the app's container, not the Mac's Library; a trailing / on home is fine")
+  let nested = "Documents/downloads/c1/1/Containers/Data/Application/9F8E7D6C-0000-4000-8000-000000000009/Library/cover.jpg"
+  check(CarArtworkPath.reroot("\(old)/\(nested)", home: new) == "\(new)/\(nested)",
+        "a container-shaped folder inside the container (a server path) never anchors the move")
 }
 
 print("\(checks - failures)/\(checks) checks passed")

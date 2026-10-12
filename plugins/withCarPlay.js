@@ -124,6 +124,10 @@ function patchAppDelegate(contents) {
     .replace(TEMPLATE_WINDOW, STARTER);
 }
 
+/** The values of `AUDIOSILO_CARPLAY` that leave the entitlement out (any case): `0` and the other
+ * usual spellings of off, so an opt-out spelled `false` doesn't ship one a team can't sign. */
+const CARPLAY_OFF = new Set(['0', 'false', 'off', 'no']);
+
 /** Entitlements: the CarPlay audio entitlement, on unless `AUDIOSILO_CARPLAY=0`. Removed when
  * opted out so a non-clean prebuild cannot keep a stale one.
  * @param {Record<string, unknown>} entitlements
@@ -131,7 +135,8 @@ function patchAppDelegate(contents) {
  */
 function applyCarPlayEntitlement(entitlements, env = process.env) {
   const next = { ...entitlements };
-  if (env.AUDIOSILO_CARPLAY !== '0') next[CARPLAY_ENTITLEMENT] = true;
+  const off = CARPLAY_OFF.has((env.AUDIOSILO_CARPLAY ?? '').trim().toLowerCase());
+  if (!off) next[CARPLAY_ENTITLEMENT] = true;
   else delete next[CARPLAY_ENTITLEMENT];
   return next;
 }

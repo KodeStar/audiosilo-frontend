@@ -130,6 +130,24 @@ describe('startCarWork (iOS: the car start without the React tree)', () => {
     await startCarWork();
     expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start']);
   });
+
+  it('tries again on the next connect after a start that failed', async () => {
+    let startCarWork!: typeof import('./car-task').startCarWork;
+    let startCarSync!: jest.Mock;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      startCarWork = require('./car-task').startCarWork;
+      // The same isolated mock the fresh car-task imported.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      startCarSync = require('./car-controller').startCarSync;
+    });
+    startCarSync.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    await expect(startCarWork()).rejects.toThrow('boom');
+    await startCarWork();
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'bootstrap', 'start']);
+  });
 });
 
 describe('untilIdle', () => {

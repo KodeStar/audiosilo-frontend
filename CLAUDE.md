@@ -890,8 +890,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `startBookInPlace`, `adoptLoaded` and the car's play specs share it, so the car and the
   phone start a book at the same place.
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
-  car sync) is read by `auto-sleep-controller.ts`, so the nightly timer never pauses a driver.
-  It is its own module so neither reader imports the car sync.
+  car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
+  `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module
+  so no reader imports the car sync.
 - **Android Auto.** `LibraryCallback` + `CarBrowseTree` answer browsing from the snapshot;
   `ArtworkProvider` serves only covers the current snapshot names inside the app's data
   directory. `playFromCar`: the book already loaded plays on; a downloaded book starts from its
@@ -958,9 +959,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     listened; it records it with `setCarConnected` (`car-connection.ts`), and the car sync,
     starting while `isCarConnected()` is true, runs its connect path once itself (the sync's
     own listener registers later and never sees that connect). Play requests and bookmarks are
-    the sync's listeners, so a tap queued natively is answered as soon as the sync runs.
-    **Anything new a car needs must be started from `startCarStack`, never only from a screen
-    or the root layout.**
+    the sync's listeners, so a tap queued natively is answered as soon as the sync runs. With
+    no `ApiProvider` mounted the reachability probe builds its client from the session
+    (`resolveClient`), so a server that dropped out mid-drive comes back (and its queued saves
+    flush). **Anything new a car needs must be started from `startCarStack`, never only from a
+    screen or the root layout.**
   - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
     and iOS moves the data container on an update or restore; when a cover can't be read
     where the snapshot names it, `CarArtworkPath` reads the same `Documents/`/`Library/` path in
