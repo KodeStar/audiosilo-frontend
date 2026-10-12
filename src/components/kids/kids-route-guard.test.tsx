@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import { store } from 'expo-router/build/global-state/router-store';
 import { act, renderRouter } from 'expo-router/testing-library';
 
-import { resetProfilesForTests } from '@/stores/profiles';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
 import { seedProfile } from '@/testing/seed-profile';
 
@@ -85,4 +85,24 @@ it('leaves a grown-up profile where it is', async () => {
   expect(routeInfo().pathname).toBe('/search');
   await nav(() => router.push('/player'));
   expect(routeInfo().pathname).toBe('/player');
+});
+
+it("sends a grown-up off kids mode's screen and takes it off the stack", async () => {
+  seedProfile({ kids: true });
+  await mount('/');
+  await nav(() => {});
+  expect(rootRoutes()).toEqual(['kids']);
+  // A grown-up on kids mode's screen (it stays under the shell after leaving kids mode
+  // through "Who's listening?", so back, a swipe or web history land there).
+  await act(async () => seedProfile());
+  await nav(() => {});
+  expect(routeInfo().pathname).toBe('/');
+  expect(rootRoutes()).toEqual(['(app)']);
+});
+
+it('waits for the profiles before moving anyone off /kids', async () => {
+  useProfiles.setState({ hydrated: false });
+  await mount('/kids');
+  await nav(() => {});
+  expect(routeInfo().pathname).toBe('/kids');
 });

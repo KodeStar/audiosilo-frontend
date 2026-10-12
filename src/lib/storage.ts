@@ -13,6 +13,22 @@ export async function getItem<T>(key: string): Promise<T | null> {
   }
 }
 
+/**
+ * `getItem` for a document that must never be read as missing when it could not be read
+ * (the session's connections: an empty list there would be taken as everyone signed out,
+ * and the profiles reconcile would delete every person with their PIN and kids mode). A
+ * storage error rejects; a value that does not parse is still null.
+ */
+export async function getItemStrict<T>(key: string): Promise<T | null> {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 export async function setItem(key: string, value: unknown): Promise<void> {
   try {
     await AsyncStorage.setItem(key, JSON.stringify(value));

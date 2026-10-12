@@ -400,6 +400,37 @@ describe('the store', () => {
     }
   });
 
+  it("a failed read of the session's connections never reads as everyone signed out", async () => {
+    // A parent with a PIN and a child in kids mode; the connections list can't be read
+    // this launch (a storage error the session's own read used to swallow as "none").
+    const stored = {
+      version: 1,
+      profiles: [
+        { id: 'parent', name: 'Parent', connectionIds: [A1.id], hasPin: true },
+        { id: 'kid', name: 'Kid', connectionIds: [A2.id], kids: { bedtime: '19:30' } },
+      ],
+      activeProfileId: 'kid',
+      askAtLaunch: true,
+    };
+    await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(stored));
+    const read = AsyncStorage.getItem as jest.Mock;
+    const original = read.getMockImplementation()!;
+    read.mockImplementation((key: string) =>
+      key === 'audiosilo.connections' ? Promise.reject(new Error('io')) : original(key),
+    );
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await Promise.all([useSession.getState().hydrate(), useProfiles.getState().hydrate()]);
+      expect(useProfiles.getState().profiles).toEqual(stored.profiles);
+      expect(JSON.parse((await AsyncStorage.getItem(PROFILES_KEY))!)).toEqual(stored);
+    } finally {
+      read.mockImplementation(original);
+      warn.mockRestore();
+      // A read that works ends the failed hydrate for the tests after this one.
+      await useSession.getState().hydrate();
+    }
+  });
+
   it('a document that reads but does not parse counts as missing (no endless wait)', async () => {
     await AsyncStorage.setItem(PROFILES_KEY, '{not json');
     setSession([A1], A1.id);

@@ -2,12 +2,14 @@ import { activeProfile, useProfiles } from '@/stores/profiles';
 
 /**
  * Whether the connect flow on screen signs in a NEW person ("Add someone" on "Who's
- * listening?", `/connect?add=1&profile=new`). `/connect` sets it from its own param while
- * it is mounted (the sign-in step is pushed over it, so it stays mounted through the flow)
- * and clears it when it unmounts (the flow finished or was left); `finishConnect` reads it
- * to place the new connection in a profile of its own (`placeConnection`). Module state,
- * not a route param, because every way in (a pairing link, a code, a password, the demo)
- * ends in `finishConnect` from a different screen.
+ * listening?", `/connect?add=1&profile=new`). A `/connect` with `profile=new` sets it, an
+ * explicit "Add a server" (`add=1` without it) clears it, and it is cleared when the flow
+ * is left (`connect/_layout.tsx` unmounts); a `/connect` with neither param keeps it, since
+ * the flow's own steps produce one (the QR scan replaces its screen with a `/connect` that
+ * carries only the link, "Use another server" returns with no params). `finishConnect`
+ * reads it to place the new connection in a profile of its own (`placeConnection`).
+ * Module state, not a route param, because every way in (a pairing link, a code, a
+ * password, the demo) ends in `finishConnect` from a different screen.
  */
 let newPerson = false;
 

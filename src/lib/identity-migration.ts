@@ -350,9 +350,16 @@ export async function migrateConnectionIdentity(
     recoveryRequired = Object.keys(stored).length > 0;
     // The aliases `resolveConnectionId` reads, loaded with this read instead of one of their
     // own every launch (`bootstrapPlayback` reads them itself only when this read failed).
-    // Any the migration set in this runtime are kept.
+    // Any the migration set in this runtime are kept. So are the moves of a run cut short
+    // whose connections already carry their new ids (the documents are written key by key
+    // on iOS and the web, the aliases after them): records still naming an old id find
+    // their connection even if this run can't finish (the web's files, the queue). A move
+    // the connections don't show yet is not aliased: the old id is still the live one.
+    const live = new Set(connections.map((c) => c.id));
+    const landed = Object.fromEntries(Object.entries(stored).filter(([, to]) => live.has(to)));
     setConnectionAliases({
       ...parseAliases(parse(raw[CONNECTION_ALIASES_KEY])),
+      ...landed,
       ...connectionAliases(),
     });
   } catch (e) {

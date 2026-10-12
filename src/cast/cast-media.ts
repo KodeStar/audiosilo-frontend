@@ -219,6 +219,25 @@ export function castTrackIndex(status: CastMediaStatus, sentUrls: string[]): num
   return null;
 }
 
+/**
+ * What a stream URL plays, whatever address, cast token or start (`t=`) it was built with:
+ * its route from `/libraries/` on (the whole path for any other URL) and its other query
+ * parameters (`path`, `transcode`), in order. A receiver's `contentId` is compared with the
+ * URLs sent through it: a session adopted after a relaunch, or a phone that moved from its
+ * home address to its away one, built them with another token or base, and another app's
+ * media on the same receiver matches none of them.
+ */
+export function streamIdentity(url: string): string {
+  const q = url.indexOf('?');
+  const path = (q < 0 ? url : url.slice(0, q)).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '');
+  const lib = path.indexOf('/libraries/');
+  const params = (q < 0 ? '' : url.slice(q + 1))
+    .split('&')
+    .filter((p) => p !== '' && !p.startsWith('token=') && !p.startsWith('t='))
+    .sort();
+  return `${lib >= 0 ? path.slice(lib) : path}?${params.join('&')}`;
+}
+
 /** A place on the receiver as last seen: the track, the position in it, when, and whether it
  * was playing at what speed (to extrapolate where it should be now). */
 export type SeenPlace = {

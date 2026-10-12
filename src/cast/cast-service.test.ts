@@ -169,6 +169,87 @@ describe('CastPlaybackService', () => {
     expect(t.remote.loads[1].book).toEqual(BOOK);
   });
 
+  it("another app's media on the same receiver (none of our data) is not this book's place", async () => {
+    const t = setup();
+    await t.svc.load(TRACKS, 2, 500, [], BOOK); // the book's last file, at 500
+    t.status({ contentId: t.url(2), book: BOOK, position: 500 });
+    t.tick(10_000);
+    // A Home Assistant announcement, a podcast app: its own URL, a one-item queue.
+    const theirs = {
+      contentId: 'https://cdn.example/news.mp3',
+      currentItemId: 7,
+      queueItemIds: [7],
+    };
+    t.status({ ...theirs, position: 30 });
+    t.progress(31);
+    t.status({ ...theirs, playerState: 'idle', idleReason: 'finished', position: 0 });
+    // Never this book's place, never a move, never the book's end.
+    expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 500, state: 'paused' });
+    expect(t.moves).toEqual([]);
+    // Playing here puts this book back on the receiver, at its place.
+    await t.svc.play();
+    expect(t.remote.loads.at(-1)).toMatchObject({ book: BOOK, startIndex: 2, startTime: 500 });
+  });
+
+  it("a receiver another sender took over: this phone's controls leave their media alone", async () => {
+    const t = setup();
+    await t.svc.load(TRACKS, 0, 600, [], BOOK);
+    t.status({ contentId: t.url(0), book: BOOK, position: 600 });
+    const bobs = { ...BOOK, connectionId: 'srv.9' };
+    t.status({ customIndex: 0, position: 30, book: bobs, contentId: t.url(0) });
+    expect(t.svc.getSnapshot().state).toBe('paused');
+    // A speed change, a pause, a seek, a chapter in another file, a stop (a switch of
+    // person, Mark as finished): none of them reaches the receiver.
+    await t.svc.setRate(1.8);
+    await t.svc.pause();
+    await t.svc.seekTo(900);
+    await t.svc.skipToTrack(1, 20);
+    await t.svc.reset();
+    expect(t.remote.setRate).not.toHaveBeenCalled();
+    expect(t.remote.pause).not.toHaveBeenCalled();
+    expect(t.remote.seek).not.toHaveBeenCalled();
+    expect(t.remote.stop).not.toHaveBeenCalled();
+    expect(t.remote.loads).toHaveLength(1);
+  });
+
+  it('a load that was started earlier but prepared later stands back for the newer one', async () => {
+    const fake = fakeRemote();
+    const gates: (() => void)[] = [];
+    const prepare: PrepareCast = (tracks, book) =>
+      new Promise((resolve) => {
+        gates.push(() => resolve({ items: buildCastItems(tracks, book, urls, false) }));
+      });
+    const svc = new CastPlaybackService(fake.remote, prepare);
+    const other = { ...BOOK, path: 'C/D' };
+    const first = svc.load(TRACKS, 0, 50, [], BOOK); // its cast token is being minted
+    const second = svc.load(TRACKS, 1, 20, [], other); // its token was cached
+    gates[1]();
+    await second;
+    gates[0]();
+    await first;
+    // The receiver keeps the newer book, and that is the book whose statuses count.
+    expect(fake.remote.loads.map((l) => l.book)).toEqual([other]);
+    fake.status({ contentId: fake.remote.loads[0].items[1].url, book: other, position: 25 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 25 });
+  });
+
+  it("a queue the receiver rejected because a newer one replaced it is not this load's failure", async () => {
+    const t = setup();
+    let reject!: (e: unknown) => void;
+    (t.remote.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, r) => {
+          reject = r;
+        }),
+    );
+    const first = t.svc.load(TRACKS, 0, 0, [], BOOK);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    await t.svc.skipToTrack(2, 0); // a chapter in another file before the load answered
+    reject(new Error('REPLACED'));
+    await expect(first).resolves.toBeUndefined();
+    expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 0 });
+  });
+
   it('a receiver book named by its legacy connection id is still ours', async () => {
     const { setConnectionAliases } =
       jest.requireActual<typeof import('@/lib/connection-id')>('@/lib/connection-id');

@@ -12,6 +12,20 @@ import type { CastPlaybackService } from './cast-service';
 /** What the store last asked to load: the route switch reloads it on the other side. */
 type LastLoad = { tracks: PlaybackTrack[]; chapters?: PlaybackChapter[]; book?: BookRef };
 
+/** Whether two loads are the same book (`rememberLoad` swaps in the phone's own copy of the
+ * loaded book: another object, the same book). */
+function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return (
+    !!a.book &&
+    !!b.book &&
+    a.book.connectionId === b.book.connectionId &&
+    a.book.libraryId === b.book.libraryId &&
+    a.book.path === b.book.path
+  );
+}
+
 type Mode = 'local' | 'cast' | 'switching';
 
 /**
@@ -37,6 +51,13 @@ export class RoutedPlaybackService implements PlaybackService {
   private snapshot: PlaybackSnapshot;
   private listeners = new Set<(s: PlaybackSnapshot) => void>();
   private lastLoad: LastLoad | null = null;
+  /** A book `load` sent to the receiver that has not landed there yet, and where it was
+   * asked to start: until it lands the receiver's snapshot is still the previous book's,
+   * so a session ending meanwhile hands this place back instead (`endCast`). */
+  private pending: { load: LastLoad; trackIndex: number; position: number } | null = null;
+  /** The hand-back of a session that ended, while it runs (a load the end interrupted
+   * waits for it: `load`). */
+  private ending: Promise<void> | null = null;
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
   /** Called when a book can't be cast (the session glue explains it and ends the session);
@@ -122,7 +143,10 @@ export class RoutedPlaybackService implements PlaybackService {
     try {
       await cast.load(load.tracks, place.trackIndex, place.position, load.chapters, load.book);
       if (!current()) {
-        await cast.reset();
+        // A reset while the book was on its way (a switch of person, a stop): take it off
+        // the receiver. A newer book started meanwhile (`load`) owns the receiver, and a
+        // session that ended has nothing of ours to stop: both are left alone.
+        if (this.lastLoad === null && this.cast === cast) await cast.reset();
         return;
       }
       await cast.setRate(place.rate);
@@ -146,14 +170,39 @@ export class RoutedPlaybackService implements PlaybackService {
   async endCast(): Promise<void> {
     const cast = this.cast;
     if (!cast) return;
-    // Mid-handover (the session ended while the book was on its way to the receiver) the
-    // phone's engine is already unloaded: the place to restore is the one being handed over.
+    const run = this.handBack(cast);
+    this.ending = run;
+    try {
+      await run;
+    } finally {
+      if (this.ending === run) this.ending = null;
+    }
+  }
+
+  private async handBack(cast: CastPlaybackService): Promise<void> {
     const generation = ++this.generation;
-    const at = this.mode === 'cast' ? cast.getSnapshot() : this.snapshot;
+    // A book started on the receiver that has not landed there yet comes back at the place
+    // it was started at: the receiver's snapshot is still the previous book's, and that
+    // place mapped onto this book is one it never had. Mid-handover (the session ended
+    // while the book was on its way to the receiver) the phone's engine is already
+    // unloaded: the place to restore is the one being handed over.
+    const pending =
+      this.pending && sameBookLoad(this.pending.load, this.lastLoad) ? this.pending : null;
+    this.pending = null;
+    const at: PlaybackSnapshot = pending
+      ? {
+          ...this.snapshot,
+          trackIndex: pending.trackIndex,
+          position: pending.position,
+          duration: pending.load.tracks[pending.trackIndex]?.duration ?? 0,
+        }
+      : this.mode === 'cast'
+        ? cast.getSnapshot()
+        : this.snapshot;
     this.mode = 'switching';
     this.dropCast();
     const load = this.lastLoad;
-    if (load && at.state !== 'idle' && at.state !== 'ended') {
+    if (load && (pending || (at.state !== 'idle' && at.state !== 'ended'))) {
       const place = { ...at, state: 'paused' as const };
       this.forward(place);
       await this.loadLocal(load, place);
@@ -171,10 +220,18 @@ export class RoutedPlaybackService implements PlaybackService {
     this.remoteMove?.(s.trackIndex, s.position);
   }
 
-  /** A session the app did not load (relaunched mid-cast): remember the queue the store
-   * built for the receiver's book, so a later switch back to the phone can load it. */
+  /** The queue of a book the store took over without `load` (a Cast session the app did
+   * not load, relaunched mid-cast; the Android service's book, `adoptLoaded`), or the
+   * phone's own copy of the loaded book (its download landed while casting): a session
+   * that starts later hands it to the receiver, and one that ends hands it back. */
   rememberLoad(load: LastLoad): void {
     this.lastLoad = load;
+  }
+
+  /** On a receiver, or on its way there: the receiver streams the book from the server
+   * whatever the phone holds. */
+  isCasting(): boolean {
+    return this.cast !== null;
   }
 
   private dropCast() {
@@ -227,21 +284,46 @@ export class RoutedPlaybackService implements PlaybackService {
     chapters?: PlaybackChapter[],
     book?: BookRef,
   ) {
-    this.lastLoad = { tracks, chapters, book };
+    const mine: LastLoad = { tracks, chapters, book };
+    this.lastLoad = mine;
+    // A book started while a handover is on its way to the receiver supersedes the one
+    // being handed over: the handover stands back (`current()`) and this book goes to the
+    // receiver itself. Loaded on the phone instead, it would play there, out of the app's
+    // reach, while the receiver played the old book and the store saved its place as this
+    // one's.
+    if (this.mode === 'switching' && this.cast) {
+      this.generation++;
+      this.mode = 'cast';
+      // The handover may not have unloaded the phone yet (it stands back from here): the
+      // old book must not stay loaded there, playable from the lock screen out of reach.
+      await this.local.reset().catch(() => undefined);
+    }
     const cast = this.mode === 'cast' ? this.cast : null;
     if (!cast) {
       await this.local.load(tracks, startIndex, positionInTrack, chapters, book);
       return;
     }
+    this.pending = { load: mine, trackIndex: startIndex, position: positionInTrack };
     try {
       await cast.load(tracks, startIndex, positionInTrack, chapters, book);
     } catch (err) {
+      // A newer book (or a reset) took over while this one was on its way: the receiver
+      // answers a load another replaced with a rejection, which is no failure of this book.
+      // (The phone's own copy of this book, remembered meanwhile, is still this book.)
+      if (!sameBookLoad(this.lastLoad, mine)) return;
+      // The session ended meanwhile: its hand-back put this book on the phone, paused at
+      // the place it was started at, and it never plays there by itself: this start fails.
+      if (this.cast !== cast) {
+        await this.ending;
+        throw err;
+      }
       // This book can't go to the receiver: it plays here, and the session is let go.
-      if (this.cast !== cast) throw err;
       this.dropCast();
       this.mode = 'local';
       await this.local.load(tracks, startIndex, positionInTrack, chapters, book);
       this.onCastFailed?.(err);
+    } finally {
+      if (this.pending?.load === mine) this.pending = null;
     }
   }
 
@@ -266,6 +348,7 @@ export class RoutedPlaybackService implements PlaybackService {
   async reset() {
     this.generation++;
     this.lastLoad = null;
+    this.pending = null;
     // A handover can still have a remote load in flight while route() is local.
     this.mode = this.cast ? 'cast' : 'local';
     await Promise.all([this.local.reset(), this.cast?.reset()]);

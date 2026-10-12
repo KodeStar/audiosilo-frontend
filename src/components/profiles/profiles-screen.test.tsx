@@ -95,6 +95,22 @@ describe("Who's listening?", () => {
     await waitFor(() => expect(useProfiles.getState().activeProfileId).toBe('sam'));
   });
 
+  it('asks for a PIN the secure store holds even when the mirror lost it (a stale web tab)', async () => {
+    await setPin('sam', '2468');
+    // Another tab (or a failed document write) left the profile without its mirror.
+    useProfiles.setState({
+      profiles: useProfiles
+        .getState()
+        .profiles.map((p) => (p.id === 'sam' ? { ...p, hasPin: undefined } : p)),
+    });
+    await mountWithPortal(<ProfilesScreen />);
+    await fireEvent.press(screen.getByLabelText('Sam, Hearthside'));
+    expect(await screen.findByText("Enter Sam's PIN")).toBeTruthy();
+    expect(useProfiles.getState().activeProfileId).toBe('chris');
+    // The mirror is repaired, so the picker shows the key again.
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'sam')?.hasPin).toBe(true);
+  });
+
   it('the person listening just goes back', async () => {
     openProfiles();
     await mountWithPortal(<ProfilesScreen />);

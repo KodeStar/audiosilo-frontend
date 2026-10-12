@@ -27,7 +27,7 @@ jest.mock('@/stores/profiles', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create } = require('zustand');
   return {
-    useProfiles: create(() => ({ activeProfileId: 'chris' })),
+    useProfiles: create(() => ({ activeProfileId: 'chris', hydrated: true })),
     profileConnectionIds: () => mockProfile.ids,
   };
 });
@@ -197,7 +197,7 @@ beforeEach(() => {
   mockConnections.ids = ['srv'];
   mockRemoval.fns.clear();
   mockProfile.ids = ['srv'];
-  useProfiles.setState({ activeProfileId: 'chris' });
+  useProfiles.setState({ activeProfileId: 'chris', hydrated: true });
 });
 
 afterEach(() => {
@@ -299,6 +299,25 @@ describe('the Continue listening widget and profiles', () => {
     useProfiles.setState({ activeProfileId: 'sam' });
     expect(h.writes.at(-1)).toEqual({ emptyText: 'Play a book and it shows up here.' });
     expect(h.deps.clearCovers).toHaveBeenCalled();
+  });
+
+  it('keeps the book through the launch read of the profiles (not a switch)', async () => {
+    // A cold launch: the profiles store starts with nobody and reads the stored person
+    // while the session's connections are still loading (none yet).
+    useProfiles.setState({ activeProfileId: null, hydrated: false });
+    mockProfile.ids = [];
+    const left = {
+      title: 'Left',
+      isPlaying: false,
+      connectionId: 'srv',
+      deepLink: 'audiosilo://player?connection=srv',
+    };
+    const h = harness({ timeline: [left] });
+    run(h);
+    await flush();
+    useProfiles.setState({ activeProfileId: 'chris', hydrated: true });
+    expect(h.writes).toEqual([]);
+    expect(h.deps.clearCovers).not.toHaveBeenCalled();
   });
 });
 

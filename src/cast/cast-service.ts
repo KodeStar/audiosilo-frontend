@@ -17,6 +17,7 @@ import {
   isUnaskedJump,
   itemStartingAt,
   type SeenPlace,
+  streamIdentity,
 } from './cast-media';
 import type { PrepareCast } from './cast-prepare';
 import type { CastItem, CastMediaStatus, CastRemote } from './types';
@@ -85,6 +86,17 @@ function sameBook(a: BookRef, b: BookRef): boolean {
   );
 }
 
+/** Whether the receiver plays media that is not this loaded book: another AudioSilo
+ * sender's book (its items name it), or any other app's media on the same Default Media
+ * Receiver (its items name nothing of ours, and its URL is not one of our streams). A
+ * status naming no URL can't be told apart, and counts as ours. */
+function isForeign(status: CastMediaStatus, loaded: Loaded): boolean {
+  if (status.book) return !sameBook(status.book, loaded.book);
+  if (!status.contentId) return false;
+  const id = streamIdentity(status.contentId);
+  return !loaded.urls.some((u) => streamIdentity(u) === id);
+}
+
 /**
  * Casting as a playback route (decision 7: not a second player). Implements the same
  * `PlaybackService` the local engines do, over one connected session's `CastRemote`, so the
@@ -108,6 +120,13 @@ export class CastPlaybackService implements PlaybackService {
   private unsubs: (() => void)[] = [];
   private loaded: Loaded | null = null;
   private loadsInFlight = 0;
+  /** Bumped by every `load` and `reset`: a load whose number moved on while it prepared (a
+   * newer book was started, or the route was reset) stands back, never sending its queue
+   * over the newer one or taking `loaded` from it. */
+  private loadSeq = 0;
+  /** Bumped by every queue sent: the receiver answers a LOAD a newer one replaced with a
+   * rejection (both SDKs), which is that newer one's business, not a failure. */
+  private queueSeq = 0;
   /** The receiver has no media of ours (stopped from elsewhere): the next play reloads. */
   private needsReload = false;
   /** The receiver plays another sender's book (another person's phone loaded theirs): its
@@ -155,7 +174,10 @@ export class CastPlaybackService implements PlaybackService {
     book: BookRef,
     status?: CastMediaStatus,
   ): Promise<void> {
+    const seq = this.loadSeq;
     const loaded = await this.prepareLoaded(tracks, book);
+    // A book loaded (or a reset) while this one prepared owns the receiver now.
+    if (seq !== this.loadSeq) return;
     // A transcoded item the receiver was given mid-file counts from its `&t=`: without that
     // offset every place read from the receiver would be that far early (and saved so).
     const index = status ? castTrackIndex(status, loaded.urls) : null;
@@ -181,10 +203,16 @@ export class CastPlaybackService implements PlaybackService {
     book?: BookRef,
   ) {
     if (!book) throw new Error('A cast needs the book it is loading');
+    const seq = ++this.loadSeq;
     this.loadsInFlight++;
     try {
-      this.loaded = await this.prepareLoaded(tracks, book);
-      await this.sendQueue(startIndex, positionInTrack, false);
+      const loaded = await this.prepareLoaded(tracks, book);
+      // A newer load (or a reset) came while this one prepared (its cast token can take a
+      // round trip a cached one doesn't): it owns the receiver, this one stands back.
+      if (seq !== this.loadSeq) return;
+      this.loaded = loaded;
+      if (!(await this.sendQueue(startIndex, positionInTrack, false))) return;
+      if (seq !== this.loadSeq) return;
       this.update({
         state: 'ready',
         trackIndex: startIndex,
@@ -205,15 +233,26 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   async pause() {
+    // Another sender's book is on the receiver: ours is already paused, theirs is theirs.
+    if (this.foreignMedia) return;
     await this.remote.pause();
   }
 
   async seekTo(positionInTrack: number) {
+    if (this.foreignMedia) {
+      // Ours waits for the next play, which loads it back at this place (`needsReload`).
+      this.update({ position: positionInTrack });
+      this.see();
+      return;
+    }
     const item = this.loaded?.items[this.snapshot.trackIndex];
     this.askMove();
     if (item?.transcoded || this.needsReload) {
-      // The receiver can't seek a transcoded stream: ask for it from there.
-      await this.sendQueue(this.snapshot.trackIndex, positionInTrack, this.isLive());
+      // The receiver can't seek a transcoded stream: ask for it from there. A newer queue
+      // (or a reset) that replaced this one has the place now.
+      if (!(await this.sendQueue(this.snapshot.trackIndex, positionInTrack, this.isLive()))) {
+        return;
+      }
     } else {
       await this.remote.seek(positionInTrack);
     }
@@ -223,10 +262,20 @@ export class CastPlaybackService implements PlaybackService {
 
   async skipToTrack(index: number, positionInTrack = 0) {
     if (!this.loaded) return;
+    if (this.foreignMedia) {
+      // As `seekTo`: the next play loads ours back there.
+      this.update({
+        trackIndex: index,
+        position: positionInTrack,
+        duration: this.loaded.tracks[index]?.duration ?? 0,
+      });
+      this.see();
+      return;
+    }
     this.askMove();
     // The v4 native SDK has no "jump to item": reload the queue from there (it keeps the
-    // speed and the play state).
-    await this.sendQueue(index, positionInTrack, this.isLive());
+    // speed and the play state). A newer queue (or a reset) that replaced it wins.
+    if (!(await this.sendQueue(index, positionInTrack, this.isLive()))) return;
     this.update({
       trackIndex: index,
       position: positionInTrack,
@@ -240,7 +289,8 @@ export class CastPlaybackService implements PlaybackService {
     // already reads the asked speed.
     this.snapshot = { ...this.snapshot, rate };
     this.rateAskedAt = this.now();
-    await this.remote.setRate(rate).catch(() => undefined);
+    // Another sender's book keeps its own speed: ours goes with our next load.
+    if (!this.foreignMedia) await this.remote.setRate(rate).catch(() => undefined);
     this.update({ rate });
   }
 
@@ -249,10 +299,14 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   async reset() {
+    this.loadSeq++;
+    this.queueSeq++;
     this.loaded = null;
     this.seen = null;
     this.needsReload = false;
-    await this.remote.stop().catch(() => undefined);
+    // Another sender's book on the receiver is theirs: only ours is ever stopped (and
+    // theirs stays ignored until this phone loads a book again, `sendQueue`).
+    if (!this.foreignMedia) await this.remote.stop().catch(() => undefined);
     this.update({ ...INITIAL_SNAPSHOT, rate: this.snapshot.rate });
   }
 
@@ -296,10 +350,13 @@ export class CastPlaybackService implements PlaybackService {
     return { tracks, book, items, urls: items.map((i) => i.url), offsets: items.map(() => 0) };
   }
 
-  /** Load the queue on the receiver starting at `(index, position)`. */
-  private async sendQueue(index: number, position: number, autoplay: boolean) {
+  /** Load the queue on the receiver starting at `(index, position)`. Resolves whether this
+   * is still the latest queue sent (false: a newer one replaced it, and the receiver's
+   * rejection of this one was that one's doing). */
+  private async sendQueue(index: number, position: number, autoplay: boolean): Promise<boolean> {
     const loaded = this.loaded;
-    if (!loaded) return;
+    if (!loaded) return false;
+    const q = ++this.queueSeq;
     this.foreignMedia = false;
     const i = Math.max(0, Math.min(index, loaded.items.length - 1));
     const start = itemStartingAt(loaded.items[i], position);
@@ -309,16 +366,23 @@ export class CastPlaybackService implements PlaybackService {
     this.askMove();
     this.loadsInFlight++;
     try {
-      await this.remote.load({
-        items,
-        startIndex: i,
-        startTime: start.offset > 0 ? 0 : Math.max(0, position),
-        rate: this.snapshot.rate,
-        autoplay,
-        book: loaded.book,
-        title: loaded.tracks[0]?.album || loaded.tracks[0]?.title || '',
-      });
+      try {
+        await this.remote.load({
+          items,
+          startIndex: i,
+          startTime: start.offset > 0 ? 0 : Math.max(0, position),
+          rate: this.snapshot.rate,
+          autoplay,
+          book: loaded.book,
+          title: loaded.tracks[0]?.album || loaded.tracks[0]?.title || '',
+        });
+      } catch (err) {
+        if (q !== this.queueSeq) return false;
+        throw err;
+      }
+      if (q !== this.queueSeq) return false;
       this.needsReload = false;
+      return true;
     } finally {
       this.loadsInFlight--;
     }
@@ -337,7 +401,7 @@ export class CastPlaybackService implements PlaybackService {
     }
     const loaded = this.loaded;
     if (this.foreignMedia) return;
-    if (loaded && status.book && !sameBook(status.book, loaded.book)) {
+    if (loaded && isForeign(status, loaded)) {
       // Our own load's earlier statuses can still name the book it replaces.
       if (this.loadsInFlight > 0) return;
       this.foreignMedia = true;

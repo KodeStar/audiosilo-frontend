@@ -1,3 +1,4 @@
+import { setIdentityMovePending } from '@/lib/connection-id';
 import { type IdentityMigrationResult, migrateConnectionIdentity } from '@/lib/identity-migration';
 import { getItem, setItem } from '@/lib/storage';
 import { hasExistingInstall, resetStaleStorage, type StorageResetResult } from '@/stores/session';
@@ -61,6 +62,9 @@ async function run(): Promise<StorageMigrationResult> {
     if (!identity.recoveryRequired || attempt >= RECOVERY_ATTEMPTS) break;
     await new Promise<void>((resolve) => setTimeout(resolve, RECOVERY_RETRY_MS));
   }
+  // Given up with a plan stored: the readers keep what names an id no connection has yet
+  // (`identityMovePending`), rather than pruning it as gone, until a launch finishes it.
+  setIdentityMovePending(identity.status === 'aborted' && identity.recoveryRequired === true);
   return { ...reset, identity };
 }
 

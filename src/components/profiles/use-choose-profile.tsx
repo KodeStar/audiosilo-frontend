@@ -52,8 +52,10 @@ export function leavePicker(): void {
 /**
  * Choosing a person: the active one just goes back (while someone must be chosen,
  * `mustChoose`, nobody is active); a profile with a PIN asks for it
- * first (`PinDialog`; a mirror whose hash the secure store doesn't have any more counts as
- * no PIN); then `switchProfile` and Home (`homeForNewPerson`). `stay`: switch where the
+ * first (`PinDialog`). Whether there is one is the secure store's answer, read for every
+ * choice: a hash the mirror lost still asks (and repairs the mirror), and a mirror whose
+ * hash the secure store doesn't have any more counts as no PIN. Then `switchProfile` and
+ * Home (`homeForNewPerson`). `stay`: switch where the
  * listener is (a link to another person's book that switches first) instead of going Home.
  * Render `dialog` somewhere in the screen (it portals).
  */
@@ -83,11 +85,19 @@ export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
       if (!stay) leavePicker();
       return;
     }
+    // The secure store says whether there is a PIN, never the profile's mirror (`hasPin`)
+    // alone: the mirror is written best effort with the whole profiles document, which a
+    // failed write or a second web tab holding an older document can leave without it.
+    const stored = await readPin(profile.id).catch(() => undefined);
+    if (stored) {
+      if (!profile.hasPin) setProfileHasPin(profile.id, true);
+      setPinFor({ profile, stored });
+      return;
+    }
     if (profile.hasPin) {
       // An unreadable store still asks: the prompt says it couldn't check.
-      const stored = await readPin(profile.id).catch(() => undefined);
-      if (stored !== null) {
-        setPinFor({ profile, stored });
+      if (stored === undefined) {
+        setPinFor({ profile });
         return;
       }
       setProfileHasPin(profile.id, false);

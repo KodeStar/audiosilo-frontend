@@ -157,6 +157,23 @@ describe('Settings > Household', () => {
     await waitFor(async () => expect(await checkPin('leo', '2222')).toBe(true));
   });
 
+  it('"Set a PIN" over a PIN the mirror lost asks for that PIN first (never overwrites it)', async () => {
+    await setPin('leo', '1111');
+    // A stale document (another tab, a failed write) dropped the mirror; the hash stays.
+    useProfiles.setState({
+      profiles: useProfiles
+        .getState()
+        .profiles.map((p) => (p.id === 'leo' ? { ...p, hasPin: undefined } : p)),
+    });
+    await mount();
+    await fireEvent.press(screen.getByLabelText('Set a PIN for Leo'));
+    expect(await screen.findByText("Enter Leo's current PIN")).toBeTruthy();
+    expect(leo()?.hasPin).toBe(true);
+    await fireEvent.changeText(screen.getByTestId('pin-field'), '9999');
+    expect(await screen.findByText("That PIN doesn't match")).toBeTruthy();
+    expect(await checkPin('leo', '1111')).toBe(true);
+  });
+
   it('renames a person on this device', async () => {
     await mount();
     await fireEvent.press(screen.getByLabelText('Rename Leo'));

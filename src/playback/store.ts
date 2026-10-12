@@ -304,8 +304,13 @@ type PlayerState = {
  * position/slip guards (they exist to protect an in-progress place, not a deliberate
  * completion) and records the whole-book duration so the book reads as 100% done. */
 async function persist(opts?: { forceFinished?: boolean }) {
-  const { nowPlaying, snapshot, rate } = usePlayer.getState();
+  const { nowPlaying, snapshot, rate, loadingBook } = usePlayer.getState();
   if (!nowPlaying) return;
+  // A book whose load has not landed has no place here yet: the snapshot is still the
+  // PREVIOUS book's (`loadingBook`), and mapped through this book's queue it is a place
+  // this book never had (a switch of person, a sleep timer or a stall mid-start would save
+  // it; a forced finish is the listener's own).
+  if (loadingBook && !opts?.forceFinished) return;
   // A downloaded book started while its connection wasn't there (a session that could not
   // be read yet: a CarPlay launch with the phone locked) saves from when it is back.
   apiRef ??= resolveClient(nowPlaying.connectionId);
@@ -860,20 +865,28 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       set({ rate: speed, nowPlaying, loadingBook });
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
-      await svc.load(
-        queue.tracks,
-        index,
-        positionInTrack,
-        queue.chapterClips,
-        bookRefOf(nowPlaying),
-      );
-      if (get().loadingBook === key) set({ loadingBook: null });
+      try {
+        await svc.load(
+          queue.tracks,
+          index,
+          positionInTrack,
+          queue.chapterClips,
+          bookRefOf(nowPlaying),
+        );
+      } finally {
+        // Also when the load failed: a `loadingBook` left behind would hold every save and
+        // every remote move of whatever plays next.
+        if (get().loadingBook === key) set({ loadingBook: null });
+      }
       if (!current()) {
         // Switched away while it loaded: the switch's `stop` reset the engine before this
         // load landed in it, so reset again (a set `nowPlaying` means `stop` has not yet).
         if (!get().nowPlaying) await svc.reset();
         return;
       }
+      // Another book was started while this one loaded (a second tap, Up next): that start
+      // owns the engine now, so this one neither sets its speed nor plays.
+      if (selectBookKey(get()) !== key) return;
       await svc.setRate(speed);
       if (!current()) return;
       await startEngine(svc);
@@ -1013,11 +1026,17 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   },
 
   stop: async () => {
+    const stopping = selectBookKey(get());
     clearPlaybackIntent();
     stopSaveLoop();
     await persist();
+    // Another book was started while the place saved (a switch of person whose route
+    // starts the new person's book at once): it owns the engine now, and a reset would cut
+    // it off and leave the player with nothing.
+    if (selectBookKey(get()) !== stopping) return;
     invalidateProgressLists();
     if (service) await service.reset();
+    if (selectBookKey(get()) !== stopping) return;
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
 
@@ -1169,7 +1188,16 @@ async function switchCurrentBookToLocal() {
   const wasPlaying = snapshot.state === 'playing';
   const svc = await ensureService();
 
-  if (svc.swapTo) {
+  if (svc.isCasting?.()) {
+    // Casting: the receiver streams the book from the server whatever the phone holds (a
+    // cast builds server URLs from the tracks' paths), so a reload would only interrupt
+    // it. The route keeps the phone's copy for when the book comes back to the phone.
+    svc.rememberLoad?.({
+      tracks: queue.tracks,
+      chapters: queue.chapterClips,
+      book: bookRefOf(nowPlaying),
+    });
+  } else if (svc.swapTo) {
     // Gapless: keep streaming until the local file is buffered at this position. The
     // swap can be refused (e.g. the local source isn't servable on web) - in that
     // case leave nowPlaying on the streaming queue so playback keeps going.
@@ -1278,6 +1306,13 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   // playing one at once, below.
   pausedAt = loaded.playing ? null : 0;
   svc.adoptPlace?.(snapshot);
+  // And its queue: a Cast session started later hands this book to the receiver (never
+  // taking the route with the phone still playing it), and an ended one hands it back.
+  svc.rememberLoad?.({
+    tracks: queue.tracks,
+    chapters: queue.chapterClips,
+    book: bookRefOf(loaded),
+  });
   usePlayer.setState({
     nowPlaying: nowPlayingOf(loaded, book, queue, api, local),
     rate,

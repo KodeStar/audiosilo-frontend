@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 import type { AuthSession, User } from '@/api/types';
+import { checkPin, setPin } from '@/lib/profile-pin';
+import { CONNECTIONS_KEY, PROFILES_KEY } from '@/lib/storage-keys';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
@@ -271,5 +274,52 @@ describe('placing the new connection in a profile (Phase 8)', () => {
     await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
     expect(profiles().activeProfile()?.name).toBe('chris');
     expect(people()).toHaveLength(2);
+  });
+
+  it("a re-pair after the session's read failed stays with its own person, PIN and all", async () => {
+    const bea: User = { ...user, id: 7, username: 'bea' };
+    const a = { id: 'srvA.1', serverId: 'srvA', serverUrl: 'https://a', name: 'A', user };
+    const b = { id: 'srvB.7', serverId: 'srvB', serverUrl: 'https://b', name: 'B', user: bea };
+    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([a, b]));
+    await SecureStore.setItemAsync('audiosilo.token.srvA.1', 'ta');
+    await SecureStore.setItemAsync('audiosilo.token.srvB.7', 'tb');
+    const household = [
+      { id: 'pa', name: 'Alex', connectionIds: ['srvA.1'] },
+      { id: 'pb', name: 'Bea', connectionIds: ['srvB.7'], hasPin: true },
+    ];
+    await AsyncStorage.setItem(
+      PROFILES_KEY,
+      JSON.stringify({ version: 1, profiles: household, activeProfileId: 'pa', askAtLaunch: true }),
+    );
+    await setPin('pb', '2468');
+    profiles().resetProfilesForTests();
+    useSession.setState({ status: 'loading', connections: [] });
+    // One token read throws at launch: the session's read fails (the connect screen shows).
+    const get = SecureStore.getItemAsync as jest.Mock;
+    const read = get.getMockImplementation()!;
+    let thrown = false;
+    get.mockImplementation((k: string) => {
+      if (k === 'audiosilo.token.srvA.1' && !thrown) {
+        thrown = true;
+        return Promise.reject(new Error('keystore busy'));
+      }
+      return read(k);
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await Promise.all([
+        useSession.getState().hydrate(),
+        profiles().useProfiles.getState().hydrate(),
+      ]);
+      expect(thrown).toBe(true);
+      // Bea signs in again from there: her connection stays hers, and so does her PIN.
+      await finishConnect({ serverUrl: 'https://b', session: session('srvB', { user: bea }) });
+      expect(profiles().useProfiles.getState().profiles).toEqual(household);
+      expect(profiles().activeProfile()?.name).toBe('Alex');
+      expect(await checkPin('pb', '2468')).toBe(true);
+    } finally {
+      get.mockImplementation(read);
+      warn.mockRestore();
+    }
   });
 });

@@ -5,6 +5,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
+import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
@@ -121,6 +122,11 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
         seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
       } else if (revived) {
         cleaned[key] = revived;
+      } else if (identityMovePending()) {
+        // The identity migration gave up mid-move this launch: the files can be under the
+        // new id while this entry names the old one (or the reverse). Kept as stored,
+        // never dropped and deleted; the launch that finishes the move finds them.
+        cleaned[key] = raw;
       } else {
         void engine.removeBook(e.connectionId, e.libraryId, e.path);
       }

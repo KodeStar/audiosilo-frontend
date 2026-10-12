@@ -2,6 +2,7 @@ import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteError, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
+import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
@@ -376,7 +377,10 @@ export async function flushQueue(): Promise<void> {
       [...groups].map(async ([cid, saves]) => {
         if (!isReachable(cid)) return saves; // this server known down; keep its saves queued
         const client = resolveClient(cid);
-        if (!client) return []; // connection removed - unroutable, drop the whole group
+        // A connection removed: unroutable, drop the whole group. Not while an identity
+        // move is on its way (`identityMovePending`): the id can be one the documents
+        // moved and the connections don't show yet, so the saves wait for that launch.
+        if (!client) return identityMovePending() ? saves : [];
         return flushGroup(cid, client, saves);
       }),
     );

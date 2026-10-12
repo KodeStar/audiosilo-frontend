@@ -337,6 +337,182 @@ describe('RoutedPlaybackService', () => {
   });
 });
 
+const OTHER = { connectionId: 'srv.3', libraryId: 2, path: 'C/D' };
+const OTHER_TRACKS: PlaybackTrack[] = [
+  { id: '2:C/D/1.mp3', url: 'file:///c1.mp3', title: 'D', duration: 900 },
+];
+
+/** A cast whose next `load` waits until the test lets it go. */
+function heldCast() {
+  const cast = fakeCast();
+  const held: { finish: () => void; fail: (e: unknown) => void }[] = [];
+  (cast.load as jest.Mock).mockImplementationOnce(
+    (_t: unknown, index: number, position: number) =>
+      new Promise<void>((resolve, reject) => {
+        cast.calls.push(`cast.load(${index},${position})`);
+        held.push({ finish: resolve, fail: reject });
+      }),
+  );
+  return { cast, held };
+}
+const settle = async () => {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+};
+
+describe('RoutedPlaybackService: a book started while the route is changing', () => {
+  afterEach(() => forgetRouter());
+
+  it('a book started during a handover goes to the receiver; the handover stands back', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const { cast, held } = heldCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    expect(held).toHaveLength(1); // the old book is on its way to the receiver
+    // The listener starts another book meanwhile.
+    const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+    await settle();
+    held[0].finish();
+    await handover;
+    await start;
+    await t.router.play();
+    // The new book went to the receiver and plays there; nothing plays on the phone.
+    expect(cast.calls).toContain('cast.load(0,30)');
+    expect(cast.calls.filter((c) => c === 'cast.play')).toHaveLength(1);
+    expect(t.local.calls).not.toContain('local.load(0,30)');
+    expect(cast.reset).not.toHaveBeenCalled(); // the receiver keeps the new book
+    expect(t.router.isCasting()).toBe(true);
+  });
+
+  it('a load the receiver rejected because a newer one replaced it keeps the session', async () => {
+    const t = setup();
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    const failed = jest.fn();
+    t.router.onCastFailed = failed;
+    let reject!: (e: unknown) => void;
+    (cast.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, r) => {
+          reject = r;
+        }),
+    );
+    const first = t.router.load(TRACKS, 0, 0, [], BOOK);
+    await settle();
+    await t.router.load(OTHER_TRACKS, 0, 0, [], OTHER); // a second tap
+    reject(new Error('REPLACED'));
+    await first;
+    expect(failed).not.toHaveBeenCalled();
+    expect(t.router.castRoute()).toBe(cast);
+    expect(t.local.calls.some((c) => c.startsWith('local.load'))).toBe(false);
+  });
+
+  it('a session that ends while a new book is on its way hands back that book at its own start', async () => {
+    const t = setup();
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    await t.router.load(TRACKS, 1, 500, [], BOOK); // book A on the receiver, file 2 at 500
+    cast.emit({ state: 'playing', trackIndex: 1, position: 500 });
+    let reject!: (e: unknown) => void;
+    (cast.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, r) => {
+          reject = r;
+        }),
+    );
+    const start = t.router.load(OTHER_TRACKS, 0, 10, [], OTHER); // book C, at 10
+    await settle();
+    // The TV goes off meanwhile; the phone's engine takes a moment to load C back.
+    let loaded!: () => void;
+    (t.local.load as jest.Mock).mockImplementationOnce(
+      (_t: unknown, index: number, position: number) =>
+        new Promise<void>((resolve) => {
+          t.local.calls.push(`local.load(${index},${position})`);
+          loaded = resolve;
+        }),
+    );
+    const ended = t.router.endCast();
+    reject(new Error('No session'));
+    let settled = false;
+    void start.catch(() => undefined).finally(() => (settled = true));
+    await settle();
+    expect(settled).toBe(false); // the start waits for the hand-back
+    loaded();
+    await ended;
+    // The start fails (the phone never plays by itself when a cast ends)...
+    await expect(start).rejects.toThrow('No session');
+    // ...and C is back on the phone where it was started, paused, never at A's place.
+    expect(t.local.calls).toContain('local.load(0,10)');
+    expect(t.local.calls).not.toContain('local.load(1,500)');
+    expect(t.local.calls).not.toContain('local.play');
+    expect(t.seen.at(-1)).toMatchObject({ state: 'paused', trackIndex: 0, position: 10 });
+  });
+
+  it("the phone's copy of a book on its way, remembered meanwhile, is still that book", async () => {
+    const t = setup();
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    await t.router.load(TRACKS, 1, 500, [], BOOK);
+    cast.emit({ state: 'playing', trackIndex: 1, position: 500 });
+    let reject!: (e: unknown) => void;
+    (cast.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, r) => {
+          reject = r;
+        }),
+    );
+    const start = t.router.load(OTHER_TRACKS, 0, 10, [], OTHER);
+    await settle();
+    // C's download lands meanwhile: the store hands the route the phone's copy.
+    t.router.rememberLoad({
+      tracks: OTHER_TRACKS.map((x) => ({ ...x })),
+      chapters: [],
+      book: OTHER,
+    });
+    await t.router.endCast();
+    reject(new Error('No session'));
+    await expect(start).rejects.toThrow('No session');
+    expect(t.local.calls).toContain('local.load(0,10)'); // its own start, not A's place
+  });
+
+  it('a book started during a handover unloads the old book from the phone', async () => {
+    const t = setup();
+    await playingLocally(t);
+    let paused!: () => void;
+    (t.local.pause as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          t.local.calls.push('local.pause');
+          paused = resolve;
+        }),
+    );
+    const cast = fakeCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER); // before the pause landed
+    paused();
+    await handover;
+    await start;
+    expect(t.local.calls).toContain('local.reset');
+    expect(cast.calls).toContain('cast.load(0,30)');
+  });
+
+  it("hands over a book the store took over without loading it (the Android service's)", async () => {
+    // The native bridge's adoptPlace seeds its snapshot (here: as an emit).
+    const holder: { local?: Fake } = {};
+    const t = setup({ adoptPlace: (snap) => holder.local?.emit(snap) });
+    holder.local = t.local;
+    // The store adopted the service's book: its place and its queue, never a load.
+    t.router.adoptPlace({ ...INITIAL_SNAPSHOT, state: 'playing', trackIndex: 1, position: 80 });
+    t.router.rememberLoad({ tracks: TRACKS, chapters: [], book: BOOK });
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    // The phone stops, and the receiver gets the book at that place and plays it.
+    expect(t.local.calls).toEqual(expect.arrayContaining(['local.pause', 'local.reset']));
+    expect(cast.calls).toEqual(expect.arrayContaining(['cast.load(1,80)', 'cast.play']));
+  });
+});
+
 describe('the one router', () => {
   afterEach(() => forgetRouter());
 

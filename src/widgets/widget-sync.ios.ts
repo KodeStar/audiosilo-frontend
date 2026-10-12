@@ -311,9 +311,12 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
     clearWidget();
   });
   // Another person on this device (a profile switch): the widget shows nobody's book
-  // until theirs plays. Their own book (a connection of the new profile) stays.
+  // until theirs plays. Their own book (a connection of the new profile) stays. The
+  // store's first read at launch (nobody -> the stored person) is not a switch: the widget
+  // was written for that person, and the session's connections are not loaded yet then
+  // (its keychain reads land after the profiles document), so it would read as nobody's.
   const unsubProfiles = useProfiles.subscribe((s, prev) => {
-    if (s.activeProfileId === prev.activeProfileId) return;
+    if (!prev.hydrated || s.activeProfileId === prev.activeProfileId) return;
     const shown = lastProps?.connectionId;
     if (!shown || profileConnectionIds().includes(resolveConnectionId(shown))) return;
     clearWidget();

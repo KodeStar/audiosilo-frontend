@@ -26,11 +26,15 @@ export default function ConnectRoute() {
     token?: string;
     profile?: string;
   }>();
-  // "Add someone" (`profile=new`): the connection this flow makes is a new person's.
+  // "Add someone" (`profile=new`): the connection this flow makes is a new person's. The
+  // intent is the whole flow's, not this screen's params: the QR scan replaces its own
+  // screen with another /connect that carries only the link, and "Use another server"
+  // comes back here with no params, so neither may clear it. An explicit "Add a server"
+  // (`add=1` without it) does, and so does leaving the flow (`connect/_layout.tsx`).
   useEffect(() => {
-    setConnectForNewProfile(profile === 'new');
-    return () => setConnectForNewProfile(false);
-  }, [profile]);
+    if (profile === 'new') setConnectForNewProfile(true);
+    else if (add === '1') setConnectForNewProfile(false);
+  }, [add, profile]);
   const [bounce] = useState(
     () => status === 'authenticated' && !add && !token && !pendingServerUrl,
   );

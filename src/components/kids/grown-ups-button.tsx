@@ -68,6 +68,11 @@ export function GrownUpsButton({ onExit }: { onExit: () => void }) {
     <Pressable
       onPressIn={start}
       onPressOut={stop}
+      // A touch held on the web: Chromium fires `contextmenu` about half a second in, and
+      // react-native-web ends the press there (onPressOut, which cancels the hold) unless a
+      // long-press handler is set. With one it keeps the press, so the 2 s hold can finish
+      // on an Android browser too. The hold itself stays the press in/out.
+      onLongPress={() => undefined}
       accessibilityRole="button"
       accessibilityLabel={t('kids.grownUps.label')}
       accessibilityHint={t('kids.grownUps.hint')}

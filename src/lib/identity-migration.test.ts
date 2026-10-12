@@ -642,6 +642,33 @@ describe('migrateConnectionIdentity', () => {
       await expectMigrated();
     });
 
+    it("a retry that can't finish still routes the moved connections' records", async () => {
+      await seedLegacyInstall();
+      const revive = dieDuringSetMany(() => 1); // the connections list landed, nothing else
+      void migrateConnectionIdentity(deps());
+      await new Promise((r) => setTimeout(r, 20));
+      revive();
+      setConnectionAliases({}); // a new launch: nothing in memory
+      storage.setMany.mockRejectedValue(new Error('disk full')); // and it can't finish either
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({
+        status: 'aborted',
+        step: 'documents',
+      });
+      // The registry, the queue and the web's files still name the old ids: they find the
+      // connections the list already names.
+      expect(resolveConnectionId('srvA')).toBe('srvA.3');
+      expect(resolveConnectionId('srvB')).toBe('srvB.7');
+    });
+
+    it('a plan whose connections have not moved yet is not aliased (the old ids are live)', async () => {
+      await seedLegacyInstall();
+      storage.setMany.mockRejectedValue(new Error('disk full')); // no document lands
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({ step: 'documents' });
+      setConnectionAliases({}); // a new launch
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({ step: 'documents' });
+      expect(connectionAliases()).toEqual({});
+    });
+
     it('after the mark, before the clean-up', async () => {
       await seedLegacyInstall();
       await migrateConnectionIdentity(deps());

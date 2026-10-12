@@ -19,6 +19,7 @@ import {
   DEFAULT_BEDTIME,
   type Profile,
   setAskAtLaunch,
+  setProfileHasPin,
   setProfileKids,
   useProfileConnections,
   useProfiles,
@@ -32,7 +33,7 @@ import { profileName, serversLine } from './profiles-model';
 import { RenameDialog } from './rename-dialog';
 import { openProfiles, useChooseProfile } from './use-choose-profile';
 import { useRemovePerson } from './use-remove-person';
-import { clearPin } from '@/lib/profile-pin';
+import { clearPin, readPin } from '@/lib/profile-pin';
 
 /**
  * Settings > App > Household and sharing (Phase 8): the people on this device, each with
@@ -166,6 +167,18 @@ function PersonCard({
   const libraryLabel = t('profiles.kids.library');
   const bedtimeLabel = t('profiles.kids.bedtime');
 
+  // A PIN the secure store holds is only ever changed after it is given, even when the
+  // profile's mirror (`hasPin`) lost it (see `useChooseProfile`): never overwritten.
+  const startSetPin = async () => {
+    const stored = await readPin(profile.id).catch(() => undefined);
+    if (stored) {
+      setProfileHasPin(profile.id, true);
+      setPin({ step: 'check', then: 'set' });
+      return;
+    }
+    setPin({ step: 'set' });
+  };
+
   const pinVerified = () => {
     if (pin?.step !== 'check') return;
     if (pin.then === 'set') {
@@ -245,7 +258,7 @@ function PersonCard({
             variant="ghost"
             size="sm"
             icon="key"
-            onPress={() => setPin({ step: 'set' })}
+            onPress={() => void startSetPin()}
           />
         )}
       </SettingRow>

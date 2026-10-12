@@ -232,6 +232,21 @@ export interface PlaybackService {
    * native bridge has an engine it did not load.
    */
   adoptPlace?(snapshot: PlaybackSnapshot): void;
+  /**
+   * The queue of a book the store took over without `load` (`adoptLoaded`: the Android
+   * service's book, a Cast receiver's), or the phone's own copy of the loaded book (its
+   * download landed while casting). The Cast route switch (`RoutedPlaybackService`) hands
+   * this queue to a receiver when a session starts, and back to the phone when it ends.
+   * Optional: only the route switch keeps one.
+   */
+  rememberLoad?(load: {
+    tracks: PlaybackTrack[];
+    chapters?: PlaybackChapter[];
+    book?: BookRef;
+  }): void;
+  /** Whether playback is on a Cast receiver, or on its way there (the route switch). A
+   * receiver streams the book from the server whatever the phone holds. */
+  isCasting?(): boolean;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

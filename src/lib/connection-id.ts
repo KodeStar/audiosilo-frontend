@@ -142,3 +142,21 @@ export async function loadConnectionAliases(): Promise<void> {
   // Keep any the migration set in this runtime (a reload of the document can't lose them).
   setConnectionAliases({ ...stored, ...aliases });
 }
+
+// --- A move still on its way ------------------------------------------------------------
+
+let movePending = false;
+
+/** Set by the launch migration (`migrateStorage`) when it gave up on a stored identity plan:
+ * until a later launch finishes it, the documents can be half moved (the native files
+ * already under the new id, the registry or the queue still naming the old one, or the
+ * reverse), so a record naming an id no connection has is kept, never dropped as a
+ * connection that is gone (the downloads registry, the offline save queue). */
+export function setIdentityMovePending(pending: boolean): void {
+  movePending = pending;
+}
+
+/** Whether an identity move is still on its way (`setIdentityMovePending`). */
+export function identityMovePending(): boolean {
+  return movePending;
+}

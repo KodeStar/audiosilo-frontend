@@ -1,11 +1,16 @@
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 
+import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { useSession } from '@/stores/session';
 
 export default function ConnectLayout() {
   const status = useSession((s) => s.status);
+  // "Add someone" holds for the whole flow (`connect/index.tsx` sets it), until the flow
+  // is left: the next flow starts as a sign-in of the person listening again.
+  useEffect(() => () => setConnectForNewProfile(false), []);
   if (status === 'loading') {
     return (
       <Screen>

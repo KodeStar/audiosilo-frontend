@@ -13,7 +13,7 @@ import { connectionIdOf, priorConnection, serverIdOf } from '@/lib/connection-id
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { hostOf } from '@/lib/pairing';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
-import { getItem, removeItem, setItem } from '@/lib/storage';
+import { getItem, getItemStrict, removeItem, setItem } from '@/lib/storage';
 import {
   CONNECTIONS_KEY,
   DEFAULT_CONNECTION_KEY as DEFAULT_KEY,
@@ -369,9 +369,11 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   hydrate: async () => {
     try {
+      // Strict: a list that could not be read is a failed hydrate (retried, and nothing
+      // reconciles against it), never "no connections" (`getItem` would answer null).
       const [meta, defaultId] = await Promise.all([
-        getItem<PersistedConnection[]>(CONNECTIONS_KEY),
-        getItem<string>(DEFAULT_KEY),
+        getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY),
+        getItemStrict<string>(DEFAULT_KEY),
       ]);
 
       if (meta && meta.length) {

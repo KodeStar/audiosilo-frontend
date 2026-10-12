@@ -157,3 +157,22 @@ export function fromSdkStatus(s: SdkStatus | null | undefined): CastMediaStatus 
     book: bookOfCustomData(custom),
   };
 }
+
+/**
+ * A status read with the receiver's place as of NOW. A native SDK status holds the
+ * position of the receiver's last status message, and a receiver that simply plays sends
+ * none (iOS asks every 10 s, Android never), so that position can be minutes or hours old;
+ * the SDK's approximate stream position (`live`) is it plus the time since, at the
+ * receiver's speed. Used while the media plays or buffers. A live 0 or none (a session
+ * already gone) keeps the status' own.
+ */
+export function withLivePosition(
+  status: CastMediaStatus | null,
+  live: number | null | undefined,
+): CastMediaStatus | null {
+  if (!status || (status.playerState !== 'playing' && status.playerState !== 'buffering')) {
+    return status;
+  }
+  if (typeof live !== 'number' || !Number.isFinite(live) || live <= 0) return status;
+  return { ...status, position: live };
+}

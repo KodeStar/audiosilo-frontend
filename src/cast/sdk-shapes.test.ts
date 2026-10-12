@@ -1,5 +1,5 @@
-import { fromSdkStatus, mediaInfoOf, nativeLoadRequest } from './sdk-shapes';
-import type { CastItem, CastQueueLoad } from './types';
+import { fromSdkStatus, mediaInfoOf, nativeLoadRequest, withLivePosition } from './sdk-shapes';
+import type { CastItem, CastMediaStatus, CastQueueLoad } from './types';
 
 const BOOK = { connectionId: 'srv.3', libraryId: 2, path: 'A/B' };
 const item = (index: number, extra: Partial<CastItem> = {}): CastItem => ({
@@ -115,5 +115,25 @@ describe('fromSdkStatus', () => {
     const s = fromSdkStatus({ playerState: 'paused', mediaInfo: { customData: { foo: 1 } } });
     expect(s?.book).toBeNull();
     expect(s?.customIndex).toBeNull();
+  });
+});
+
+describe('withLivePosition (the session-end read hands back where the receiver is now)', () => {
+  const status = (playerState: CastMediaStatus['playerState'], position = 100) =>
+    ({ playerState, idleReason: null, position, rate: 1 }) as CastMediaStatus;
+
+  it('takes the live estimate while the receiver plays or buffers', () => {
+    // The status is from the receiver's last message (an hour ago); live is now.
+    expect(withLivePosition(status('playing'), 3700)?.position).toBe(3700);
+    expect(withLivePosition(status('buffering'), 3700)?.position).toBe(3700);
+  });
+
+  it("keeps the status' own place when paused, idle, or without a usable estimate", () => {
+    expect(withLivePosition(status('paused'), 3700)?.position).toBe(100);
+    expect(withLivePosition(status('idle'), 3700)?.position).toBe(100);
+    expect(withLivePosition(status('playing'), 0)?.position).toBe(100); // a session gone
+    expect(withLivePosition(status('playing'), null)?.position).toBe(100);
+    expect(withLivePosition(status('playing'), Number.NaN)?.position).toBe(100);
+    expect(withLivePosition(null, 3700)).toBeNull();
   });
 });

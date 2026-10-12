@@ -7,7 +7,7 @@ import GoogleCast, {
   RemoteMediaClient,
 } from 'react-native-google-cast';
 
-import { fromSdkStatus, nativeLoadRequest, type SdkStatus } from './sdk-shapes';
+import { fromSdkStatus, nativeLoadRequest, type SdkStatus, withLivePosition } from './sdk-shapes';
 import type { CastDriver, CastMediaStatus, CastRemote, CastSessionEvent } from './types';
 
 /** A status read gets this long (ms): the Android SDK's getters can hang (react-native-google-
@@ -48,9 +48,15 @@ function remoteOf(client: RemoteMediaClient): CastRemote {
     seek: (position) => client.seek({ position }),
     setRate: (rate) => client.setPlaybackRate(rate),
     stop: () => client.stop(),
+    // The status' own position is where the receiver was at its last status message (it
+    // sends none while it simply plays): the place read here, which the session's last read
+    // saves and hands back to the phone, takes the SDK's live estimate (`withLivePosition`).
     readStatus: async (): Promise<CastMediaStatus | null> => {
-      const s = await withTimeout(client.getMediaStatus(), READ_TIMEOUT_MS);
-      return fromSdkStatus(s as SdkStatus | null);
+      const [s, live] = await Promise.all([
+        withTimeout(client.getMediaStatus(), READ_TIMEOUT_MS),
+        withTimeout(client.getStreamPosition(), READ_TIMEOUT_MS),
+      ]);
+      return withLivePosition(fromSdkStatus(s as SdkStatus | null), live);
     },
     onStatus: (handler) => {
       const sub = client.onMediaStatusUpdated((s: MediaStatus | null) =>
@@ -62,6 +68,10 @@ function remoteOf(client: RemoteMediaClient): CastRemote {
       const sub = client.onMediaProgressUpdated((progress) => {
         if (typeof progress === 'number' && Number.isFinite(progress)) handler(progress);
       }, 1);
+      // The library starts its iOS progress timer only when a media status arrives, and a
+      // session resumed after a relaunch got its status before anything listened (and a
+      // receiver that simply plays sends no more): ask for one, so the ticks start now.
+      void client.requestStatus().catch(() => undefined);
       return () => sub.remove();
     },
   };

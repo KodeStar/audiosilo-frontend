@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
+import { identityMovePending } from './connection-id';
 import { forgetStorageMigration, migrateStorage } from './storage-migration';
 
 describe('migrateStorage', () => {
@@ -50,6 +51,7 @@ describe('migrateStorage', () => {
       cacheReset: false,
       identity: { status: 'migrated', moved: { srv: 'srv.3' } },
     });
+    expect(identityMovePending()).toBe(false);
     expect(await SecureStore.getItemAsync('audiosilo.token.srv.3')).toBe('tok');
   });
 
@@ -102,8 +104,10 @@ describe('migrateStorage', () => {
         recoveryRequired: true,
       });
       expect(read).toHaveBeenCalledTimes(5);
-      // The plan stays for a later launch to finish.
+      // The plan stays for a later launch to finish, and until then the readers keep what
+      // names an id no connection has (never pruned as gone).
       expect(await AsyncStorage.getItem('audiosilo.identityPlan')).not.toBeNull();
+      expect(identityMovePending()).toBe(true);
     } finally {
       store.getItemAsync = original;
       warn.mockRestore();

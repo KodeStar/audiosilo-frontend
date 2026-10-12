@@ -8,7 +8,7 @@ import { priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
 import { activeProfile, placeConnection, profileOf, switchProfile } from '@/stores/profiles';
-import { useSession } from '@/stores/session';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
 
@@ -40,6 +40,11 @@ export async function finishConnect(input: {
   reconnectId?: string;
 }): Promise<string> {
   const serverId = input.session.server_id;
+  // The connections first, when they never loaded (a failed session read leaves the
+  // connect screen up): whose sign-in this is is read from them, and an unread list would
+  // take a re-pair for a new connection (`placeConnection` would pull it out of its
+  // person's profile, their PIN with it, into the one listening).
+  if (sessionHydrateFailed()) await useSession.getState().hydrate();
   // The remembered server, for a sign-in again after signing out (`repairPlan`).
   const known = (await listKnownServers()).find((k) => k.serverId === serverId);
   const { connections, setSession } = useSession.getState();
