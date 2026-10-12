@@ -3,10 +3,11 @@ import { AppState, Platform } from 'react-native';
 import { toast } from '@/components/ui/toast';
 import i18n from '@/i18n';
 import { bootstrapPlayback } from '@/lib/bootstrap';
-import { usePlayer } from '@/playback/store';
+import { initializePlayback, usePlayer } from '@/playback/store';
 import { bookRefOf } from '@/playback/types';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { castStreamOffset } from './cast-media';
 import { CastBlockedError, type PrepareCast, prepareCast } from './cast-prepare';
 import { CastPlaybackService } from './cast-service';
 import { castTokens } from './cast-token';
@@ -49,7 +50,7 @@ async function adoptReceiverBook(
   const adopted = await usePlayer.getState().adoptLoaded({
     ...book,
     trackIndex: typeof status.customIndex === 'number' ? status.customIndex : 0,
-    position: Number.isFinite(status.position) ? status.position : 0,
+    position: (Number.isFinite(status.position) ? status.position : 0) + castStreamOffset(status),
     rate: status.rate,
     playing,
   });
@@ -60,7 +61,7 @@ async function adoptReceiverBook(
     chapters: np.queue.chapterClips,
     book: bookRefOf(np),
   });
-  await cast.adoptQueue(np.queue.tracks, bookRefOf(np)).catch((err) => {
+  await cast.adoptQueue(np.queue.tracks, bookRefOf(np), status).catch((err) => {
     console.warn('[cast] could not rebuild the receiver queue', err);
   });
 }
@@ -93,6 +94,8 @@ export function startCastSync(
     const gen = generation;
     useCast.setState({ status: 'connected', deviceName: deviceName ?? null });
     await bootstrapPlayback(); // the session's books need the stores hydrated
+    if (gen !== generation || stopped) return;
+    if (type === 'resumed' && !currentRouter()) await initializePlayback();
     if (gen !== generation || stopped) return;
     cleanups.push(
       // The store creates its engine (and with it the router) on the first play: a session

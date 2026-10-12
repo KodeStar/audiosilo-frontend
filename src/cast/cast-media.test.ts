@@ -5,6 +5,7 @@ import {
   castBlockReason,
   castContentType,
   castNeedsTranscode,
+  castStreamOffset,
   castTrackIndex,
   isReachableByReceiver,
   isUnaskedJump,
@@ -180,6 +181,18 @@ describe('castTrackIndex', () => {
     expect(castTrackIndex(status({ currentItemId: 12, queueItemIds: [10, 11, 12] }), sent)).toBe(2);
     expect(castTrackIndex(status({ customIndex: 9 }), sent)).toBeNull();
     expect(castTrackIndex(status({}), sent)).toBeNull();
+  });
+});
+
+describe('castStreamOffset', () => {
+  const at = (contentId: string | null) =>
+    castStreamOffset({ playerState: 'playing', position: 0, rate: 1, contentId });
+  it("reads a transcoded item's start, and nothing else", () => {
+    expect(at('https://h/stream?path=a.m4b&transcode=1&token=x&t=1800.5')).toBe(1800.5);
+    expect(at('https://h/stream?path=a.m4b&transcode=1&token=x')).toBe(0);
+    expect(at('https://h/stream?path=a.mp3&token=x&t=90')).toBe(0); // not transcoded
+    expect(at('https://h/stream?transcode=1&t=junk')).toBe(0);
+    expect(at(null)).toBe(0);
   });
 });
 

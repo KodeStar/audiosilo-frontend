@@ -5,14 +5,20 @@ jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) 
 jest.mock('@/lib/bootstrap', () => ({ bootstrapPlayback: async () => {} }));
 const mockAdopt = jest.fn(async () => false);
 const mockPlayer = { nowPlaying: null as unknown, adoptLoaded: mockAdopt };
-jest.mock('@/playback/store', () => ({ usePlayer: { getState: () => mockPlayer } }));
+const mockInitialize = jest.fn(async () => {
+  if (!currentRouter()) routed(localEngine());
+});
+jest.mock('@/playback/store', () => ({
+  initializePlayback: () => mockInitialize(),
+  usePlayer: { getState: () => mockPlayer },
+}));
 jest.mock('@/stores/session', () => ({ onConnectionRemoved: () => () => {} }));
 
 /* eslint-disable import/first */
 import { CastBlockedError } from './cast-prepare';
 import { startCastSync } from './cast-session';
 import { useCast } from './cast-state';
-import { forgetRouter, routed } from './routed-service';
+import { currentRouter, forgetRouter, routed } from './routed-service';
 import type { CastDriver, CastRemote, CastSessionEvent } from './types';
 /* eslint-enable import/first */
 
@@ -75,6 +81,8 @@ describe('startCastSync', () => {
     forgetRouter();
     useCast.setState({ supported: null, status: 'off', deviceName: null });
     mockToast.mockClear();
+    mockAdopt.mockClear();
+    mockInitialize.mockClear();
     mockPlayer.nowPlaying = null;
   });
 
@@ -170,6 +178,48 @@ describe('startCastSync', () => {
       rate: 1.5,
       playing: true,
     });
+    stop();
+  });
+
+  it('finding 11: adoption adds the transcode starting offset to receiver time', async () => {
+    routed(localEngine());
+    const driver = fakeDriver();
+    const rx = remote();
+    (rx.readStatus as jest.Mock).mockResolvedValue({
+      playerState: 'playing',
+      position: 20,
+      rate: 1,
+      customIndex: 0,
+      book: { connectionId: 'srv.1', libraryId: 2, path: 'B' },
+      contentId: 'https://h/stream?transcode=1&t=1800',
+    });
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    driver.fire({ type: 'resumed', remote: rx });
+    await flush();
+    expect(mockAdopt).toHaveBeenCalledWith(expect.objectContaining({ position: 1820 }));
+    stop();
+  });
+
+  it('finding 12: a cold resumed session initializes its router and reads the receiver', async () => {
+    expect(currentRouter()).toBeNull();
+    const driver = fakeDriver();
+    const rx = remote();
+    (driver.current as jest.Mock).mockResolvedValue({ remote: rx });
+    (rx.readStatus as jest.Mock).mockResolvedValue({
+      playerState: 'playing',
+      position: 80,
+      rate: 1,
+      customIndex: 0,
+      book: { connectionId: 'srv.1', libraryId: 2, path: 'B' },
+    });
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+    expect(currentRouter()?.castRoute()).not.toBeNull();
+    expect(mockAdopt).toHaveBeenCalledWith(expect.objectContaining({ position: 80 }));
+    expect(rx.load).not.toHaveBeenCalled();
+    expect(rx.play).not.toHaveBeenCalled();
     stop();
   });
 

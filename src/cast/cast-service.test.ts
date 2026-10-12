@@ -111,6 +111,78 @@ describe('castState', () => {
 });
 
 describe('CastPlaybackService', () => {
+  it('finding 11: an adopted transcoded item keeps the offset its stream started at', async () => {
+    const t = setup({ transcode: true });
+    const status: CastMediaStatus = {
+      playerState: 'playing',
+      customIndex: 0,
+      position: 20,
+      rate: 1,
+      book: BOOK,
+      // Sent by the app's previous run: its cast token is not the one this run mints.
+      contentId: 'https://h/stream?path=A/B/00.mp3&transcode=1&token=OLD&t=1800',
+    };
+    // As `adoptReceiverBook` does: the store adopts the place (the router hands it on).
+    t.svc.adoptPlace({ state: 'playing', trackIndex: 0, position: 1820, duration: 600, rate: 1 });
+    await t.svc.adoptQueue(TRACKS, BOOK, status);
+    t.tick(1000);
+    t.progress(21);
+    expect(t.svc.getSnapshot().position).toBe(1821);
+    t.status({ ...status, position: 22 });
+    expect(t.svc.getSnapshot().position).toBe(1822);
+    expect(t.moves).toEqual([]);
+  });
+
+  it('an adopted session follows the receiver into the next file despite its older token', async () => {
+    const t = setup();
+    const at = (i: number) => `https://h/stream?path=A/B/0${i}.mp3&token=OLD`;
+    t.svc.adoptPlace({ state: 'playing', trackIndex: 0, position: 595, duration: 600, rate: 1 });
+    await t.svc.adoptQueue(TRACKS, BOOK, {
+      playerState: 'playing',
+      customIndex: 0,
+      position: 595,
+      rate: 1,
+      book: BOOK,
+      contentId: at(0),
+    });
+    t.tick(6000);
+    t.status({ customIndex: 1, position: 1, book: BOOK, contentId: at(1) });
+    expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 1, state: 'playing' });
+  });
+
+  it("finding 6: another person's book on the receiver is not this book's place", async () => {
+    const t = setup();
+    await t.svc.load(TRACKS, 0, 600, [], BOOK);
+    t.status({ contentId: t.url(0), book: BOOK, position: 600 });
+    t.tick(10_000);
+    // Bob's phone loads his book (his connection) on the same receiver.
+    const bobs = { ...BOOK, connectionId: 'srv.9' };
+    t.status({ customIndex: 0, position: 30, rate: 2, book: bobs, contentId: t.url(0) });
+    t.progress(31);
+    t.status({ customIndex: 0, position: 32, rate: 2, book: bobs, contentId: t.url(0) });
+    expect(t.svc.getSnapshot()).toMatchObject({ position: 600, rate: 1, state: 'paused' });
+    expect(t.moves).toEqual([]);
+    expect(t.rates).toEqual([]);
+    // Playing here again puts this book back on the receiver, at its place.
+    await t.svc.play();
+    expect(t.remote.loads).toHaveLength(2);
+    expect(t.remote.loads[1].book).toEqual(BOOK);
+  });
+
+  it('a receiver book named by its legacy connection id is still ours', async () => {
+    const { setConnectionAliases } =
+      jest.requireActual<typeof import('@/lib/connection-id')>('@/lib/connection-id');
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 10, [], BOOK);
+      t.status({ contentId: t.url(0), book: { ...BOOK, connectionId: 'srv' }, position: 12 });
+      expect(t.svc.getSnapshot()).toMatchObject({ position: 12, state: 'playing' });
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   it('loads the whole book as a queue at the store place, paused, and reports ready', async () => {
     const t = setup();
     await t.svc.setRate(1.5);

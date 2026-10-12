@@ -1,3 +1,5 @@
+import { resolveConnectionId } from '@/lib/connection-id';
+import { contentKeyOf } from '@/lib/content-key';
 import {
   type BookRef,
   INITIAL_SNAPSHOT,
@@ -9,7 +11,13 @@ import {
   type PlaybackTrack,
 } from '@/playback/types';
 
-import { castTrackIndex, isUnaskedJump, itemStartingAt, type SeenPlace } from './cast-media';
+import {
+  castStreamOffset,
+  castTrackIndex,
+  isUnaskedJump,
+  itemStartingAt,
+  type SeenPlace,
+} from './cast-media';
 import type { PrepareCast } from './cast-prepare';
 import type { CastItem, CastMediaStatus, CastRemote } from './types';
 
@@ -68,6 +76,15 @@ export function castState(
   }
 }
 
+/** The same book of the same person (a receiver's `customData` can name a legacy
+ * connection id, from a load before the identity migration). */
+function sameBook(a: BookRef, b: BookRef): boolean {
+  return (
+    contentKeyOf({ ...a, connectionId: resolveConnectionId(a.connectionId) }) ===
+    contentKeyOf({ ...b, connectionId: resolveConnectionId(b.connectionId) })
+  );
+}
+
 /**
  * Casting as a playback route (decision 7: not a second player). Implements the same
  * `PlaybackService` the local engines do, over one connected session's `CastRemote`, so the
@@ -93,6 +110,10 @@ export class CastPlaybackService implements PlaybackService {
   private loadsInFlight = 0;
   /** The receiver has no media of ours (stopped from elsewhere): the next play reloads. */
   private needsReload = false;
+  /** The receiver plays another sender's book (another person's phone loaded theirs): its
+   * statuses and progress are not this book's place, so they are ignored until this phone
+   * loads (`sendQueue`) or adopts (`adoptQueue`) a book again. */
+  private foreignMedia = false;
   private seen: SeenPlace | null = null;
   private askedMove: { until: number } | null = null;
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
@@ -129,8 +150,18 @@ export class CastPlaybackService implements PlaybackService {
    * Give a session the app did not load (it was relaunched mid-cast) its queue, so seeks
    * and file jumps can reload it: the tracks the store built for the receiver's book.
    */
-  async adoptQueue(tracks: PlaybackTrack[], book: BookRef): Promise<void> {
-    this.loaded = await this.prepareLoaded(tracks, book);
+  async adoptQueue(
+    tracks: PlaybackTrack[],
+    book: BookRef,
+    status?: CastMediaStatus,
+  ): Promise<void> {
+    const loaded = await this.prepareLoaded(tracks, book);
+    // A transcoded item the receiver was given mid-file counts from its `&t=`: without that
+    // offset every place read from the receiver would be that far early (and saved so).
+    const index = status ? castTrackIndex(status, loaded.urls) : null;
+    if (status && index !== null) loaded.offsets[index] = castStreamOffset(status);
+    this.foreignMedia = false;
+    this.loaded = loaded;
   }
 
   // --- PlaybackService ----------------------------------------------------
@@ -269,6 +300,7 @@ export class CastPlaybackService implements PlaybackService {
   private async sendQueue(index: number, position: number, autoplay: boolean) {
     const loaded = this.loaded;
     if (!loaded) return;
+    this.foreignMedia = false;
     const i = Math.max(0, Math.min(index, loaded.items.length - 1));
     const start = itemStartingAt(loaded.items[i], position);
     const items = loaded.items.map((it, n) => (n === i ? start.item : it));
@@ -304,6 +336,15 @@ export class CastPlaybackService implements PlaybackService {
       return;
     }
     const loaded = this.loaded;
+    if (this.foreignMedia) return;
+    if (loaded && status.book && !sameBook(status.book, loaded.book)) {
+      // Our own load's earlier statuses can still name the book it replaces.
+      if (this.loadsInFlight > 0) return;
+      this.foreignMedia = true;
+      this.needsReload = true; // a play here puts this book back on the receiver
+      this.update({ state: 'paused' });
+      return;
+    }
     const index = loaded ? castTrackIndex(status, loaded.urls) : null;
     const trackIndex = index ?? this.snapshot.trackIndex;
     const lastTrack = !loaded || trackIndex >= loaded.items.length - 1;
@@ -344,7 +385,7 @@ export class CastPlaybackService implements PlaybackService {
    * should be is dropped and the status asked for (it says which file); only statuses
    * report moves. */
   private onProgress(position: number) {
-    if (!this.loaded || !Number.isFinite(position)) return;
+    if (!this.loaded || this.foreignMedia || !Number.isFinite(position)) return;
     const offset = this.loaded.offsets[this.snapshot.trackIndex] ?? 0;
     const next = position + offset;
     if (

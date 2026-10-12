@@ -117,6 +117,30 @@ async function playingLocally(t: ReturnType<typeof setup>) {
 describe('RoutedPlaybackService', () => {
   afterEach(() => forgetRouter());
 
+  it('finding 8: reset cancels a Cast handover awaiting its load', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const cast = fakeCast();
+    let finish!: () => void;
+    (cast.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(finish).toBeDefined();
+    await t.router.reset();
+    expect(cast.reset).toHaveBeenCalled();
+    finish();
+    await handover;
+    expect(cast.play).not.toHaveBeenCalled();
+    expect(t.router.getSnapshot().state).toBe('idle');
+    await t.router.endCast();
+    expect(t.local.load).toHaveBeenCalledTimes(1);
+  });
+
   it('is the phone engine, transparently, while nothing casts', async () => {
     const t = setup();
     await playingLocally(t);

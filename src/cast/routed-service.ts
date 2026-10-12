@@ -31,6 +31,7 @@ type Mode = 'local' | 'cast' | 'switching';
  */
 export class RoutedPlaybackService implements PlaybackService {
   private mode: Mode = 'local';
+  private generation = 0;
   private cast: CastPlaybackService | null = null;
   private castUnsub: (() => void) | null = null;
   private snapshot: PlaybackSnapshot;
@@ -89,6 +90,8 @@ export class RoutedPlaybackService implements PlaybackService {
   async beginCast(cast: CastPlaybackService): Promise<void> {
     if (this.cast === cast) return;
     if (this.cast) await this.endCast();
+    const generation = ++this.generation;
+    const current = () => generation === this.generation && this.cast === cast;
     this.mode = 'switching';
     this.cast = cast;
     /** This session is still the route (not mid-switch, not replaced or ended). */
@@ -111,17 +114,23 @@ export class RoutedPlaybackService implements PlaybackService {
     }
     const wasPlaying = at.state === 'playing' || at.state === 'loading';
     await this.local.pause().catch(() => undefined);
+    if (!current()) return;
     const place = { ...at, ...pick(this.local.getSnapshot()), state: 'paused' as const };
     this.forward(place);
     await this.local.reset().catch(() => undefined);
+    if (!current()) return;
     try {
       await cast.load(load.tracks, place.trackIndex, place.position, load.chapters, load.book);
+      if (!current()) {
+        await cast.reset();
+        return;
+      }
       await cast.setRate(place.rate);
-      if (this.cast !== cast) return; // the session ended meanwhile
+      if (!current()) return; // the session ended meanwhile
       this.mode = 'cast';
       if (wasPlaying) await cast.play();
     } catch (err) {
-      if (this.cast !== cast) return;
+      if (!current()) return;
       this.dropCast();
       await this.loadLocal(load, place);
       this.mode = 'local';
@@ -139,6 +148,7 @@ export class RoutedPlaybackService implements PlaybackService {
     if (!cast) return;
     // Mid-handover (the session ended while the book was on its way to the receiver) the
     // phone's engine is already unloaded: the place to restore is the one being handed over.
+    const generation = ++this.generation;
     const at = this.mode === 'cast' ? cast.getSnapshot() : this.snapshot;
     this.mode = 'switching';
     this.dropCast();
@@ -148,7 +158,7 @@ export class RoutedPlaybackService implements PlaybackService {
       this.forward(place);
       await this.loadLocal(load, place);
     }
-    this.mode = 'local';
+    if (generation === this.generation) this.mode = 'local';
   }
 
   /** Save the cast's place now: the iPhone is about to be suspended (the Cast SDK stops
@@ -254,8 +264,11 @@ export class RoutedPlaybackService implements PlaybackService {
     return this.route().setVolume(volume);
   }
   async reset() {
+    this.generation++;
     this.lastLoad = null;
-    await this.route().reset();
+    // A handover can still have a remote load in flight while route() is local.
+    this.mode = this.cast ? 'cast' : 'local';
+    await Promise.all([this.local.reset(), this.cast?.reset()]);
   }
   canShowRoutePicker() {
     return this.local.canShowRoutePicker?.() ?? false;

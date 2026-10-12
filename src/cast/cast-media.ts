@@ -251,3 +251,16 @@ export function isUnaskedJump(
   if (next.trackIndex === prev.trackIndex + 1) return next.position > elapsed + JUMP_TOLERANCE_S;
   return true;
 }
+
+/** Where in its file a transcoded item's receiver clock starts (its URL's `&t=`,
+ * `itemStartingAt`); 0 for a direct stream. A session resumed after a relaunch reads it
+ * back from the receiver, since the app no longer knows what it sent. */
+export function castStreamOffset(status: CastMediaStatus): number {
+  // Split by hand like `transcodeUrlAt`: React Native's `URL` has no working `searchParams`.
+  const q = status.contentId?.indexOf('?') ?? -1;
+  if (q < 0) return 0;
+  const params = status.contentId!.slice(q + 1).split('&');
+  if (!params.includes('transcode=1')) return 0;
+  const t = Number(params.find((p) => p.startsWith('t='))?.slice(2));
+  return Number.isFinite(t) && t > 0 ? t : 0;
+}
