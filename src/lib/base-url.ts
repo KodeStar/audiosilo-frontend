@@ -26,3 +26,13 @@ export function webOrigin(): string | null {
   }
   return null;
 }
+
+/**
+ * The server this web build was served by, or `null`. A production web build is the player the
+ * server serves at `/web`, so its origin IS the server, and the server's CSP (`connect-src
+ * 'self'`) lets it reach no other: there is no address to ask for and no second server to add.
+ * `null` on native and under the Metro dev server, which is not the server.
+ */
+export function servedOrigin(): string | null {
+  return IS_DEV ? null : webOrigin();
+}

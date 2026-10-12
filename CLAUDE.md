@@ -304,7 +304,13 @@ bounce when it opens and when it is back on top, never while the flow is over it
 `pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
 the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new
 field there; Android edge to edge doesn't resize the window). The cascade panel is generated art:
-never put fake titles on it.
+never put fake titles on it. **The served player** (`servedOrigin()`, `src/lib/base-url.ts`: a
+production web build, whose origin IS the server and whose CSP, `connect-src 'self'`, reaches no
+other) asks for no address: `/connect` asks its own origin who it is and shows the found card
+(Sign in, Try the demo) with no field or remembered servers, falling back to the field filled with
+the origin only when that fails; "Add a server" (profile menu, Account) is hidden there and the
+sign-in step's "Another server" reads "Back". Metro dev (`npm run web`) is not the server and keeps
+the field.
 
 **Account page (Phase 5).** One server's account is `AccountSection({ connectionId? })`
 (`src/components/account/account-section.tsx`): the `/account?connection=<cid>` route renders it,

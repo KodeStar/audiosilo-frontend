@@ -380,6 +380,8 @@
       "title": "Vos livres audio, depuis votre propre serveur.",
       "lead": "Saisissez l'adresse que votre administrateur vous a donnée, ou scannez le code affiché sur son écran.",
       "leadWeb": "Saisissez l'adresse que votre administrateur vous a donnée, ou collez le lien d'appairage qu'il vous a envoyé.",
+      "leadServed": "Connectez-vous avec le code ou le mot de passe que votre administrateur vous a donné, ou collez le lien d'appairage qu'il vous a envoyé.",
+      "finding": "Recherche de votre serveur…",
       "continue": "Continuer"
     },
     "signIn": {

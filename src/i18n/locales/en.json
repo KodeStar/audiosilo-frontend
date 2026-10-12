@@ -380,6 +380,8 @@
       "title": "Your audiobooks, from your own server.",
       "lead": "Enter the address your admin gave you, or scan the code from their screen.",
       "leadWeb": "Enter the address your admin gave you, or paste the pairing link they sent.",
+      "leadServed": "Sign in with the code or password your admin gave you, or paste the pairing link they sent.",
+      "finding": "Finding your server…",
       "continue": "Continue"
     },
     "signIn": {

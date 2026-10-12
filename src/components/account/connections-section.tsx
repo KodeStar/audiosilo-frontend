@@ -12,6 +12,7 @@ import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { touchTarget } from '@/components/ui/touch-target';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
+import { servedOrigin } from '@/lib/base-url';
 import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
@@ -127,13 +128,16 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
             </AnimatedPressable>
           </RowSurface>
         ))}
-        <Button
-          title={t('account.connections.add')}
-          icon="plus"
-          variant="secondary"
-          onPress={() => router.push('/connect?add=1')}
-          className="self-start"
-        />
+        {/* The served web player reaches only its own server. */}
+        {servedOrigin() ? null : (
+          <Button
+            title={t('account.connections.add')}
+            icon="plus"
+            variant="secondary"
+            onPress={() => router.push('/connect?add=1')}
+            className="self-start"
+          />
+        )}
       </View>
     </View>
   );

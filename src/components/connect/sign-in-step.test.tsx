@@ -16,6 +16,11 @@ jest.mock('expo-router', () => ({
   },
 }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test device' }));
+let mockServed: string | null = null;
+jest.mock('@/lib/base-url', () => ({
+  ...jest.requireActual('@/lib/base-url'),
+  servedOrigin: () => mockServed,
+}));
 
 const mockApi = { redeemCode: jest.fn(), exchange: jest.fn(), login: jest.fn() };
 const mockBases: string[] = [];
@@ -40,6 +45,7 @@ const HOME = 'http://192.168.1.20:8080';
 const AWAY = 'https://books.example.com';
 
 beforeEach(async () => {
+  mockServed = null;
   await AsyncStorage.clear();
   jest.clearAllMocks();
   mockBases.length = 0;
@@ -140,5 +146,13 @@ it('no "At home and away" card for a new server before anything is redeemed', as
 it('"Another server" goes back to the first step', async () => {
   await render(<SignInStep server={AWAY} />);
   await fireEvent.press(screen.getByText('Another server'));
+  expect(mockDismissTo).toHaveBeenCalledWith('/connect');
+});
+
+it('is only "Back" on the player the server serves, which has no other server', async () => {
+  mockServed = AWAY;
+  await render(<SignInStep server={AWAY} />);
+  expect(screen.queryByText('Another server')).toBeNull();
+  await fireEvent.press(screen.getByText('Back'));
   expect(mockDismissTo).toHaveBeenCalledWith('/connect');
 });

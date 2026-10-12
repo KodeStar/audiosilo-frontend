@@ -32,6 +32,16 @@ jest.mock('@/lib/layout', () => ({
   useLayout: () => mockLayout,
 }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test device' }));
+// The player the server serves at /web: its own origin, else (native, Metro dev) none.
+let mockServed: string | null = null;
+jest.mock('@/lib/base-url', () => {
+  const actual = jest.requireActual('@/lib/base-url');
+  return {
+    ...actual,
+    servedOrigin: () => mockServed,
+    webOrigin: () => mockServed ?? actual.webOrigin(),
+  };
+});
 
 // Each bare client the flow builds, by base URL.
 const mockApi = {
@@ -81,6 +91,7 @@ beforeEach(async () => {
   mockParams = {};
   mockLayout = 'phone';
   mockCanGoBack = true;
+  mockServed = null;
   Platform.OS = 'ios';
   useSession.setState({
     status: 'unauthenticated',
@@ -382,6 +393,70 @@ describe('the web', () => {
     expect(screen.getByText(/isn't an AudioSilo pairing link/)).toBeTruthy();
     expect(mockApi.exchange).not.toHaveBeenCalled();
   });
+});
+
+describe('the player the server serves', () => {
+  const ORIGIN = 'https://books.example.com';
+  beforeEach(() => {
+    Platform.OS = 'web';
+    mockServed = ORIGIN;
+  });
+
+  it('asks its own server, shows what it found with Sign in, and asks for no address', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
+    await remember({ serverId: 'srv-1', serverUrl: ORIGIN, name: 'Hearthside' });
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(mockBases).toEqual([ORIGIN]);
+    expect(screen.queryByLabelText('Server address')).toBeNull();
+    expect(screen.queryByText('Continue')).toBeNull();
+    // The remembered server can only be this one, which the card already offers.
+    expect(screen.queryByText(/Reconnect to/)).toBeNull();
+    expect(screen.getByText(/Sign in with the code or password/)).toBeTruthy();
+    // A pairing link for this server still pairs.
+    expect(screen.getByText('I have a pairing link')).toBeTruthy();
+    expect(useSession.getState().pendingServerUrl).toBe(ORIGIN);
+    await fireEvent.press(screen.getByText('Sign in'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { serverName: 'Hearthside' },
+    });
+  });
+
+  it('offers the demo when the server runs one, without going on by itself', async () => {
+    mockApi.serverInfo.mockResolvedValue(info({ demo: { enabled: true } }));
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Try the demo')).toBeTruthy());
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the address field, filled in with its origin, when its server does not answer', async () => {
+    mockApi.serverInfo.mockRejectedValue(new TypeError('Failed to fetch'));
+    await remember({ serverId: 'srv-2', serverUrl: AWAY, name: 'Elsewhere' });
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
+    expect(screen.getByLabelText('Server address').props.value).toBe(ORIGIN);
+    expect(screen.getByText("Couldn't reach books.example.com")).toBeTruthy();
+    // It can reach no other server, so it offers none.
+    expect(screen.queryByText(/Reconnect to/)).toBeNull();
+  });
+
+  it('exchanges a pairing link at its origin without asking who it is first', async () => {
+    mockParams = { token: 'tok' };
+    mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+    expect(screen.queryByText('Found Hearthside')).toBeNull();
+  });
+});
+
+it('asks for the address under the Metro dev server', async () => {
+  Platform.OS = 'web';
+  await render(<ConnectStart />);
+  expect(screen.getByLabelText('Server address').props.value).toBe('');
+  expect(mockApi.serverInfo).not.toHaveBeenCalled();
 });
 
 it('shows the cover cascade beside the steps on a desktop, not on a phone', async () => {
