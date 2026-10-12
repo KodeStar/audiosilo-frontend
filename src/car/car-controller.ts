@@ -54,7 +54,7 @@ import {
   resolveLibrarySelection,
   useLibrarySelection,
 } from '@/stores/library-selection';
-import { profileConnections, useProfiles } from '@/stores/profiles';
+import { mayActFor, profileConnections, useProfiles } from '@/stores/profiles';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
@@ -304,7 +304,17 @@ let missingArtwork = new Map<string, { name: string; url: string }>();
 /** Whether native keeps a snapshot from before (`WRITTEN_KEY`), read once; null until then. */
 let wroteBefore: boolean | null = null;
 
+const SNAPSHOT_OWNER_KEY = 'audiosilo.carSnapshotOwner';
+const snapshotOwner = () =>
+  JSON.stringify([
+    useProfiles.getState().activeProfileId,
+    profileConnections()
+      .map((c) => c.id)
+      .sort(),
+  ]);
+
 async function buildAndWrite(): Promise<void> {
+  const owner = snapshotOwner();
   // The session's connections never loaded (a locked keychain at a CarPlay launch): the
   // snapshot native kept is better than a signed-out one (its downloads still play).
   if (sessionHydrateFailed()) return;
@@ -316,7 +326,7 @@ async function buildAndWrite(): Promise<void> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const live: LivePlace | null =
-    np && player.snapshot.state !== 'ended'
+    np && mayActFor(np.connectionId) && player.snapshot.state !== 'ended'
       ? {
           ref: bookRefOf(np),
           position: selectBookPosition(player),
@@ -331,11 +341,11 @@ async function buildAndWrite(): Promise<void> {
   // Signed in, yet no server's list could be read or found cached (a fresh runtime away from
   // every server: the car's offline case): the snapshot native kept from last time is better
   // than one with empty lists, and its covers are still wanted. Nothing is written or pruned
-  // until a server's lists can be read; only a device that never wrote one writes what it
-  // has (its downloads).
+  // until a server's lists can be read, unless the owner changed or is unknown. Then write
+  // the current person's downloads so native cannot start the previous person's books.
   if (signedIn && known.size === 0) {
     wroteBefore ??= (await getItem<boolean>(WRITTEN_KEY)) === true;
-    if (wroteBefore) return;
+    if (wroteBefore && (await getItem<string>(SNAPSHOT_OWNER_KEY)) === owner) return;
   }
   const progressByKey = new Map<string, Progress>();
   for (const r of rows) progressByKey.set(contentKeyOf(progressAt(r)), r);
@@ -426,6 +436,7 @@ async function buildAndWrite(): Promise<void> {
     },
   );
   // Serialized once: the body is what is compared, and the date goes in front of it.
+  if (snapshotOwner() !== owner) return;
   const bodyJson = JSON.stringify(body);
   if (
     bodyJson !== lastBody &&
@@ -434,6 +445,7 @@ async function buildAndWrite(): Promise<void> {
     ))
   ) {
     lastBody = bodyJson;
+    await setItem(SNAPSHOT_OWNER_KEY, owner);
     if (wroteBefore !== true) {
       wroteBefore = true;
       void setItem(WRITTEN_KEY, true);
@@ -681,11 +693,24 @@ function checkLoadedBook(): Promise<void> {
       const loaded = await carNative.getLoadedBook();
       if (!loaded) return;
       // Another person's book (a play spec of an older snapshot that native started with no
-      // JS) is refused by the adoption itself (`mayActFor`).
+      // JS): never adopted, and stopped here, since nothing else would stop it (the store
+      // has no book to stop). Its id may be a legacy one (`resolveConnectionId`).
+      const refused = (b: { connectionId: string }) =>
+        !mayActFor(resolveConnectionId(b.connectionId));
       const player = usePlayer.getState();
       if (player.loadingBook || player.nowPlaying !== asked.nowPlaying) return;
+      if (refused(loaded)) {
+        await carNative.stopPlayback?.();
+        request(true);
+        return;
+      }
       if (player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded)) return;
       if (await player.adoptLoaded(loaded)) request(true);
+      else if (refused(loaded)) {
+        // The person switched while the adoption read the book: stop it if still loaded.
+        const current = await carNative.getLoadedBook();
+        if (current && refused(current)) await carNative.stopPlayback?.();
+      }
     } catch (err) {
       console.warn('[car] adopting the loaded book failed', err);
     }

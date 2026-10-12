@@ -17,6 +17,8 @@ import type {
 export type CarNative = {
   /** The binary has the car functions (`setCarSnapshot`). */
   available: boolean;
+  /** Stop a native book refused by ownership checks, without adopting or saving it. */
+  stopPlayback?: () => Promise<void>;
   /** Hand native the car snapshot (JSON). Resolves false when it could not. */
   setSnapshot: (json: string) => Promise<boolean>;
   /** Android: the book the playback service has loaded, else null (iOS: always null). */

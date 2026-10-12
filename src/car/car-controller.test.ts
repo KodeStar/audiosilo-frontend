@@ -12,6 +12,7 @@ type MockBookmarkHandler = (
 
 const mockNative = {
   available: true,
+  stopPlayback: jest.fn(async () => {}),
   setSnapshot: jest.fn(async (_json: string) => true),
   getLoadedBook: jest.fn(async (): Promise<unknown> => null),
   consumePendingBookmarks: jest.fn(async (): Promise<unknown[]> => []),
@@ -1015,7 +1016,7 @@ describe('adopting the service’s book (Android)', () => {
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
   });
 
-  it("hands another person's book to the adoption, which refuses it (no saves to their account)", async () => {
+  it('finding 9: stops unauthorized native audio without adopting or saving it', async () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
     mockNative.getLoadedBook.mockResolvedValue(loaded);
     useProfiles.setState({
@@ -1028,8 +1029,32 @@ describe('adopting the service’s book (Android)', () => {
     });
     stop = startCarSync();
     await settle();
-    // `adoptLoaded` holds the rule (`mayActFor`, tested in store-adopt.test.ts).
-    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+    expect(mockNative.stopPlayback).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+  });
+
+  it("finding 9: stops another person's book named by its legacy connection id", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockNative.stopPlayback.mockClear();
+    // A play spec from a snapshot written before the identity migration.
+    mockNative.getLoadedBook.mockResolvedValue({ ...loaded, connectionId: 'srv' });
+    setConnectionAliases({ srv: 'c1' });
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    try {
+      stop = startCarSync();
+      await settle();
+      expect(mockNative.stopPlayback).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('leaves the player alone when it already has that book, or one is loading', async () => {
@@ -1276,6 +1301,36 @@ describe('offline', () => {
     await settle(SETTLE_MS + MIN_GAP_MS);
     expect(mockNative.setSnapshot).not.toHaveBeenCalled();
     expect(pruneArtwork).not.toHaveBeenCalled();
+  });
+
+  it('finding 9: an offline profile switch replaces the previous native snapshot', async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({});
+    mockClients.c2 = fakeClient({});
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'alice',
+      profiles: [
+        { id: 'alice', name: 'Alice', connectionIds: ['c1'] },
+        { id: 'bob', name: 'Bob', connectionIds: ['c2'] },
+      ],
+    });
+    useDownloads.setState({
+      entries: { 'c1:2:D': downloaded('c1', 'D'), 'c2:2:E': downloaded('c2', 'E') },
+    });
+    stop = startCarSync();
+    await settle();
+    mockNative.setSnapshot.mockClear();
+    unreachable(mockClients.c1);
+    unreachable(mockClients.c2);
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0] } },
+    });
+    useProfiles.setState({ activeProfileId: 'bob' });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).toHaveBeenCalled();
+    expect(tab(lastSnapshot(), 'continue')?.items ?? []).toEqual([]);
+    expect(tab(lastSnapshot(), 'downloads')!.items.map((i) => i.title)).toEqual(['Downloaded E']);
   });
 
   it('still writes what it has when no snapshot was ever written', async () => {

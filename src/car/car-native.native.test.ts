@@ -6,6 +6,7 @@ import type { CarNative } from './car-native';
 type Handler = (event: Record<string, unknown>) => void;
 const mockHandlers = new Map<string, Handler>();
 const mockModule = {
+  reset: jest.fn(async () => {}),
   setCarSnapshot: jest.fn(async () => {}),
   getLoadedBook: jest.fn(async (): Promise<unknown> => null),
   consumePendingBookmarks: jest.fn(async (): Promise<unknown[]> => []),
@@ -77,4 +78,16 @@ describe('car-native (iOS and Android): old connection ids from the native side'
     });
     expect(pressed).toHaveBeenCalledWith(0, 9, { connectionId: 'srv.3', libraryId: 2, path: 'D' });
   });
+});
+
+it('finding 9: native ownership refusal resets playback and feature-detects older binaries', async () => {
+  await carNative.stopPlayback?.();
+  expect(mockModule.reset).toHaveBeenCalled();
+  const reset = mockModule.reset;
+  Object.assign(mockModule, { reset: undefined });
+  try {
+    await expect(carNative.stopPlayback?.()).resolves.toBeUndefined();
+  } finally {
+    mockModule.reset = reset;
+  }
 });

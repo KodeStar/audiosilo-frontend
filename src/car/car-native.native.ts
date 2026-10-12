@@ -17,6 +17,10 @@ const available = has(AudiosiloPlayer.setCarSnapshot);
 export const carNative: CarNative = {
   available,
 
+  async stopPlayback() {
+    if (has(AudiosiloPlayer.reset)) await AudiosiloPlayer.reset();
+  },
+
   async setSnapshot(json) {
     if (!available) return false;
     try {

@@ -586,6 +586,11 @@ function restoreOutputGain(svc: PlaybackService) {
  * bridges would each re-emit every native event with their own file index. */
 let servicePending: Promise<PlaybackService> | null = null;
 
+/** Initialize the shared router for a restored session without starting any media. */
+export async function initializePlayback(): Promise<void> {
+  await ensureService();
+}
+
 function ensureService(): Promise<PlaybackService> {
   if (service) return Promise.resolve(service);
   servicePending ??= createService().finally(() => {
@@ -747,6 +752,10 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // Only the person listening's books (Phase 8, `mayActFor`): every way a book starts
     // comes through here, so none can save to another person's account.
     if (!mayActFor(connectionId)) return;
+    // Asked again after each await that could outlast a switch of person (`switchProfile`
+    // stops only a book that is already `nowPlaying`): a start still looking up its place
+    // must not load, play or save someone else's book once they have gone.
+    const current = () => mayActFor(connectionId);
     // In flight until it ends: an adoption reading meanwhile stands back (`startsInFlight`).
     startsInFlight++;
     try {
@@ -795,6 +804,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
       if (startBookPosition === undefined && startTrack === undefined) {
         const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
+        if (!current()) return;
         if (r.kind === 'progress') {
           // An unfinished book resumes where it left off, a finished one starts again at 0
           // (`resumeStart`). resumeFloor is derived from startAt below, so a restart's floor
@@ -813,6 +823,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
           // playing while the UI shows the new one, and its ticks save under the new path.
           clearPlaybackIntent();
           await svc.reset();
+          if (!current()) return;
           set({
             rate: speed,
             nowPlaying,
@@ -831,6 +842,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         if (saved > 0) speed = clampRate(saved);
       }
 
+      if (!current()) return;
       const { index, positionInTrack } =
         startTrack !== undefined
           ? {
@@ -856,7 +868,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         bookRefOf(nowPlaying),
       );
       if (get().loadingBook === key) set({ loadingBook: null });
+      if (!current()) {
+        // Switched away while it loaded: the switch's `stop` reset the engine before this
+        // load landed in it, so reset again (a set `nowPlaying` means `stop` has not yet).
+        if (!get().nowPlaying) await svc.reset();
+        return;
+      }
       await svc.setRate(speed);
+      if (!current()) return;
       await startEngine(svc);
       // The save loop is started by the engine 'playing' transition (see subscribe).
       void flushQueue();
@@ -1220,7 +1239,8 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
     console.warn('[player] could not adopt the loaded book', err);
     return false;
   }
-  if (!source) return false;
+  // Asked again: the person may have switched while the source was read.
+  if (!source || !mayActFor(loaded.connectionId)) return false;
   // Another book started (or the same one was adopted) while we read, or a start is still
   // on its way (it switches the book after its awaits): theirs stands.
   const now = usePlayer.getState();

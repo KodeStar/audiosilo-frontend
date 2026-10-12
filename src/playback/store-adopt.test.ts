@@ -76,7 +76,7 @@ jest.mock('@/api/connection-clients', () => ({
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { setConnectionAliases } from '@/lib/connection-id';
-import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
+import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import { onPickedUpAgain, usePlayer } from './store';
@@ -176,6 +176,28 @@ afterEach(() => {
 });
 
 describe('adoptLoaded', () => {
+  it('finding 5: switching profiles invalidates an adoption awaiting its source', async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'alice',
+      profiles: [
+        { id: 'alice', name: 'Alice', connectionIds: ['c1'] },
+        { id: 'bob', name: 'Bob', connectionIds: ['c9'] },
+      ],
+    });
+    try {
+      const adopting = usePlayer.getState().adoptLoaded(loadedB({}));
+      await switchProfile('bob');
+      expect(await adopting).toBe(false);
+      expect(mockSvc.adoptPlace).not.toHaveBeenCalled();
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
   // Decision 7 regression (Phase 8): `mayActFor` inside the adoption, which both the
   // Android car path and a Cast session resumed with a receiver's book go through.
   it("never adopts another person's book (an old car play spec, a receiver's book after a switch)", async () => {
