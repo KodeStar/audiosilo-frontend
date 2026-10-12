@@ -217,12 +217,55 @@ const win = (): SenderWindow | undefined =>
 let ready: Promise<boolean> | null = null;
 const handlers = new Set<(e: CastSessionEvent) => void>();
 
+/**
+ * Which tab owns the Cast session. The sender joins a session this origin already has
+ * (`ORIGIN_SCOPED`), so that a reload mid-cast finds it again; but every other tab of the
+ * player joins it too, and each would then drive the receiver with its own book and its own
+ * store (the second tab's pause, its sleep timer, its hand-back on close). Only the tab that
+ * started the session follows it: the mark lives in `sessionStorage` (per tab, kept across a
+ * reload of that tab), and any other tab leaves the session it was joined to, without
+ * stopping the receiver. Storage that can't be used (blocked) means no tab rejoins after a
+ * reload: never two tabs on one receiver.
+ */
+const TAB_CAST_KEY = 'audiosilo.castTab';
+
+function tabStore(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null {
+  try {
+    return typeof window !== 'undefined' ? (window.sessionStorage ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+function markCastTab(on: boolean): void {
+  try {
+    if (on) tabStore()?.setItem(TAB_CAST_KEY, '1');
+    else tabStore()?.removeItem(TAB_CAST_KEY);
+  } catch {
+    // Blocked storage: this tab simply won't rejoin after a reload.
+  }
+}
+
+function startedInThisTab(): boolean {
+  try {
+    return tabStore()?.getItem(TAB_CAST_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** This tab asked for a session (the Cast button): the session that starts next is its own. */
+let requested = false;
+/** This tab was joined to another tab's session and is leaving it: its events are not ours. */
+let leaving = false;
+
 function context(): CafContext | null {
   return globals()?.cast.framework.CastContext.getInstance() ?? null;
 }
 
 /** Load the sender and set it up once: the Default Media Receiver, joining a session this
- * origin already has (a page reload mid-cast), and the session events. */
+ * origin already has (a reload mid-cast of the tab that started it; any other tab leaves
+ * it, `TAB_CAST_KEY`), and the session events. */
 function initOnce(): Promise<boolean> {
   ready ??= (async () => {
     const w = win();
@@ -245,10 +288,20 @@ function initOnce(): Promise<boolean> {
       const session = ctx.getCurrentSession();
       switch (e.sessionState) {
         case S.SESSION_STARTING:
+          if (!requested) break; // another tab's chooser
           emit({ type: 'starting' });
           break;
         case S.SESSION_STARTED:
-        case S.SESSION_RESUMED:
+        case S.SESSION_RESUMED: {
+          const ours = requested || startedInThisTab();
+          requested = false;
+          if (!ours) {
+            // Another tab's session, joined because it is this origin's: leave it to them.
+            leaving = true;
+            ctx.endCurrentSession(false);
+            break;
+          }
+          markCastTab(true);
           if (session) {
             emit({
               type: e.sessionState === S.SESSION_STARTED ? 'started' : 'resumed',
@@ -257,13 +310,22 @@ function initOnce(): Promise<boolean> {
             });
           }
           break;
+        }
         case S.SESSION_START_FAILED:
+          if (!requested) break;
+          requested = false;
           emit({ type: 'startFailed', error: e.errorCode });
           break;
         case S.SESSION_ENDING:
+          if (leaving) break;
           emit({ type: 'ending' });
           break;
         case S.SESSION_ENDED:
+          if (leaving) {
+            leaving = false;
+            break;
+          }
+          markCastTab(false);
           emit({ type: 'ended' });
           break;
       }
@@ -298,9 +360,13 @@ export const castDriver: CastDriver = {
   },
   async requestSession() {
     if (!(await initOnce())) return;
+    requested = true;
     // Rejects when the listener closes the chooser: not an error.
     await context()
       ?.requestSession()
       .catch(() => undefined);
+    // The chooser closed without a session (no event says so): a session another tab
+    // starts later is not this one's.
+    if (!context()?.getCurrentSession()) requested = false;
   },
 };
