@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { openJournal, openSettings } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
@@ -92,9 +93,15 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
             </View>
           </DropdownMenuItem>
         ))}
-        <DropdownMenuItem icon="plus" onPress={() => router.push('/connect?add=1')}>
-          <Text>{t('account.connections.add')}</Text>
-        </DropdownMenuItem>
+        {/* The served web player reaches only its own server. */}
+        {onlyOwnServer(
+          servedOrigin(),
+          connections.map((c) => c.serverUrl),
+        ) ? null : (
+          <DropdownMenuItem icon="plus" onPress={() => router.push('/connect?add=1')}>
+            <Text>{t('account.connections.add')}</Text>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem icon="history" onPress={() => openJournal()}>
           <Text>{t('journal.title')}</Text>

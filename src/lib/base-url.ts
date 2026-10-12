@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { sameOrigin } from '@/lib/same-origin';
+
 /**
  * The app's base path at runtime.
  *
@@ -25,4 +27,24 @@ export function webOrigin(): string | null {
     return window.location.origin.replace(/\/+$/, '');
   }
   return null;
+}
+
+/**
+ * The server this web build was served by, or `null`. A production web build is the player the
+ * server serves at `/web`, so its origin IS the server, and the server's CSP (`connect-src
+ * 'self'`) lets it reach no other: there is no address to ask for and no second server to add.
+ * `null` on native and under the Metro dev server, which is not the server.
+ */
+export function servedOrigin(): string | null {
+  return IS_DEV ? null : webOrigin();
+}
+
+/**
+ * Whether the served player (`origin`, from `servedOrigin()`) is signed in only to its own
+ * server, so it has no other server to add. A production web build hosted on an origin of its
+ * own, beside servers whose CORS let it in (the test bed's static web host), is signed in
+ * elsewhere and still adds servers.
+ */
+export function onlyOwnServer(origin: string | null, serverUrls: readonly string[]): boolean {
+  return origin !== null && serverUrls.every((url) => sameOrigin(url, { origin }));
 }
