@@ -28,6 +28,7 @@ import { formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { pushInShell } from '@/lib/open';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
+import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
 import { wallClockSeconds } from '@/playback/rate';
@@ -115,6 +116,7 @@ function EndCreditsBody({
   const api = useOptionalApi(cid);
   const { data: book } = useBook(libraryId, path, cid);
   const title = bookTitle(book?.title, path);
+  usePageTitle(book ? title : undefined);
 
   const autoPlayNext = useSettings((s) => s.autoPlayNext);
 

@@ -19,6 +19,7 @@ import { bookSubtitle } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
+import { usePageTitle } from '@/lib/use-page-title';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.path}`;
@@ -28,6 +29,7 @@ const favKey = (f: SourcedFavourite) => `${f.connectionId}:${f.library_id}:${f.p
  * default carries its server's flag. */
 export function FavouritesScreen() {
   const { t } = useTranslation();
+  usePageTitle(t('library.favourites.title'));
   const layout = useLayout();
   const gutter = pageGutter(layout);
   const paddingBottom = useMiniPlayerInset();

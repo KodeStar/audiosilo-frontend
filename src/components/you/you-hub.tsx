@@ -12,6 +12,7 @@ import { StatsSection } from '@/components/you/stats/stats-section';
 import { YearSection } from '@/components/you/year/year-section';
 import { useLayout } from '@/lib/layout';
 import type { YouSection } from '@/lib/paths';
+import { usePageTitle } from '@/lib/use-page-title';
 
 import {
   parseYouSection,
@@ -68,6 +69,8 @@ export function YouHub() {
   useLayoutEffect(() => {
     navigation.setOptions({ title });
   }, [navigation, title]);
+  // The browser tab names the section at every width.
+  usePageTitle(title);
 
   const options = youSectionsFor(layout).map((value) => ({
     value,

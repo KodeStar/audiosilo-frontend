@@ -304,7 +304,15 @@ bounce when it opens and when it is back on top, never while the flow is over it
 `pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
 the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new
 field there; Android edge to edge doesn't resize the window). The cascade panel is generated art:
-never put fake titles on it.
+never put fake titles on it. **The served player** (`servedOrigin()`, `src/lib/base-url.ts`: a
+production web build, whose origin IS the server and whose CSP, `connect-src 'self'`, reaches no
+other) asks for no address: `/connect` asks its own origin who it is and shows the found card
+(Sign in, Try the demo) with no field or remembered servers, falling back to the field filled with
+the origin only when that fails; "Add a server" (profile menu, Account) is hidden while every
+connection is that origin (`onlyOwnServer`: a production build on a static host of its own, beside
+servers whose CORS let it in, still adds them) and the sign-in step's "Another server" reads "Back"
+and goes back (to the card, or to the app the reconnect banner was tapped in). Metro dev
+(`npm run web`) is not the server and keeps the field.
 
 **Account page (Phase 5).** One server's account is `AccountSection({ connectionId? })`
 (`src/components/account/account-section.tsx`): the `/account?connection=<cid>` route renders it,
@@ -1229,6 +1237,15 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   the tab bar (the tap for the last row hit a tab). The hub's Stats, Year and Account columns, the
   Account route, Settings, the Journal list, the Library's Folders and Collections modes, the Books
   list and every `CoverGrid` use it; a new tab page scroller does too.
+- **Every page names the browser tab (web)**: a pushed page or root modal calls
+  `usePageTitle(title)` (`src/lib/use-page-title{,.web}.ts`, a no-op on native; `undefined`
+  while its data loads, when the tab's name stands in), a claim held while the screen is
+  FOCUSED (`claimPageTitle`, `src/lib/document-title.ts`), so Back names the page under it
+  again. `DocumentTitle` (root layout, `src/components/shell/document-title{,.web}.tsx`) is the
+  one writer of `document.title`: the book playing (`▶`), else the page, else the tab, then
+  "· AudioSilo". `StaticDocumentTitle` bakes "AudioSilo" into the static HTML (a `<title>` in
+  `+html.tsx` never shows: Expo's head manager puts its own first). A new page calls
+  `usePageTitle` too.
 
 **The Library tab root is the browse modes** (`src/components/library/library-screen.tsx`):
 `/library?mode=books|authors|series|narrators|collections|folders` (absent = books; pure rules in
@@ -1613,8 +1630,8 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
   saved-locally line: needs signing in again > offline > signed in as), opening its account screen;
-  Add a server (`/connect?add=1`); the Journal; Settings; the account on the default server; a
-  light/dark switch. Phone keeps these in the Me tab's You hub.
+  Add a server (`/connect?add=1`; not on the served player, `onlyOwnServer`); the Journal; Settings;
+  the account on the default server; a light/dark switch. Phone keeps these in the Me tab's You hub.
 - **Toasts** clear the bottom chrome: each piece publishes its measured TOP edge (distance from the
   window's bottom) into `useShellMetrics` with `useChromeEdge` - `bar` (the web tab bar by layout; the
   native bar from the tab stacks' layout: iOS's bottom inset there, Android's gap between the page's

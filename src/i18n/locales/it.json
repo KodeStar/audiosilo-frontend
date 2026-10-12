@@ -380,6 +380,8 @@
       "title": "I tuoi audiolibri, dal tuo server.",
       "lead": "Inserisci l'indirizzo che ti ha dato il tuo amministratore, o scansiona il codice sul suo schermo.",
       "leadWeb": "Inserisci l'indirizzo che ti ha dato il tuo amministratore, o incolla il link di associazione che ti ha inviato.",
+      "leadServed": "Accedi con il codice o la password che ti ha dato il tuo amministratore, o incolla il link di associazione che ti ha inviato.",
+      "finding": "Ricerca del tuo server…",
       "continue": "Continua"
     },
     "signIn": {

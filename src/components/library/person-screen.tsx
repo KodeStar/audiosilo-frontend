@@ -6,6 +6,7 @@ import { PersonPage } from '@/components/series/person-page';
 import type { PersonKind } from '@/components/series/people-mode';
 import { EmptyState } from '@/components/ui/empty-state';
 import { parsePersonParams } from '@/lib/paths';
+import { usePageTitle } from '@/lib/use-page-title';
 
 /**
  * An author or narrator page: `/author?connection=&library=&name=` (`authorHref`) or
@@ -23,6 +24,7 @@ export function PersonScreen({ kind }: { kind: PersonKind }) {
 function PersonContent({ kind }: { kind: PersonKind }) {
   const { t } = useTranslation();
   const params = parsePersonParams(useLocalSearchParams());
+  usePageTitle(params?.name);
   if (!params) return <EmptyState icon="library" title={t('library.detail.badLink')} />;
   return (
     <PersonPage

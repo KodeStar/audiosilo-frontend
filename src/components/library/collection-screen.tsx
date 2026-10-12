@@ -27,6 +27,7 @@ import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { parseCollectionParams, pathLeaf } from '@/lib/paths';
+import { usePageTitle } from '@/lib/use-page-title';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -83,6 +84,7 @@ function CollectionContent() {
   const cid = useCid();
   const supported = useCapability('collections', cid);
   const query = useCollection(params?.id ?? 0, cid);
+  usePageTitle(query.data?.collection.name);
 
   if (!params || supported === false || isGone(query.error)) {
     return (
