@@ -982,7 +982,11 @@
       "noCache": "Ce navigateur ne peut pas garder d’audio hors ligne. Utilisez un navigateur récent, ou l’app iOS ou Android.",
       "noWorker": "La lecture hors ligne n’est pas encore prête dans ce navigateur. Rechargez la page et, si cela ne suffit pas, utilisez l’app iOS ou Android."
     },
-    "loading": "Chargement des téléchargements"
+    "loading": "Chargement des téléchargements",
+    "orphans": {
+      "title": "Non connecté",
+      "body": "Téléchargements d'un compte qui n'est plus connecté sur cet appareil. Reconnectez-vous à ce compte pour les écouter, ou supprimez-les pour libérer de la place."
+    }
   },
   "search": {
     "placeholder": "Rechercher livres, personnes, séries, personnages",

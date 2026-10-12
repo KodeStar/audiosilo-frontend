@@ -982,7 +982,11 @@
       "noCache": "This browser can't keep audio offline. Use a current browser, or the iOS or Android app.",
       "noWorker": "Offline playback isn't ready in this browser yet. Reload the page, and if that doesn't help, use the iOS or Android app."
     },
-    "loading": "Loading downloads"
+    "loading": "Loading downloads",
+    "orphans": {
+      "title": "Not signed in",
+      "body": "Downloads of an account that is no longer signed in on this device. Sign in to it again to play them, or remove them to free the room."
+    }
   },
   "search": {
     "placeholder": "Search books, people, series, characters",

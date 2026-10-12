@@ -982,7 +982,11 @@
       "noCache": "Este navegador no puede guardar audio sin conexión. Usa un navegador actual o la app de iOS o Android.",
       "noWorker": "La reproducción sin conexión aún no está lista en este navegador. Recarga la página y, si no sirve, usa la app de iOS o Android."
     },
-    "loading": "Cargando descargas"
+    "loading": "Cargando descargas",
+    "orphans": {
+      "title": "Sin sesión iniciada",
+      "body": "Descargas de una cuenta que ya no tiene la sesión iniciada en este dispositivo. Vuelve a iniciar sesión en ella para escucharlas, o quítalas para liberar espacio."
+    }
   },
   "search": {
     "placeholder": "Busca libros, personas, series, personajes",

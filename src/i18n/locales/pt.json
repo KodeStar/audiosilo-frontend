@@ -982,7 +982,11 @@
       "noCache": "Este navegador não consegue guardar áudio offline. Use um navegador atual ou o app para iOS ou Android.",
       "noWorker": "A reprodução offline ainda não está pronta neste navegador. Recarregue a página e, se não resolver, use o app para iOS ou Android."
     },
-    "loading": "Carregando downloads"
+    "loading": "Carregando downloads",
+    "orphans": {
+      "title": "Sem sessão iniciada",
+      "body": "Transferências de uma conta que já não tem sessão iniciada neste dispositivo. Inicie sessão nela outra vez para as ouvir, ou remova-as para libertar espaço."
+    }
   },
   "search": {
     "placeholder": "Procurar livros, pessoas, séries, personagens",

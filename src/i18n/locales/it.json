@@ -982,7 +982,11 @@
       "noCache": "Questo browser non può conservare audio offline. Usa un browser aggiornato oppure l’app iOS o Android.",
       "noWorker": "La riproduzione offline non è ancora pronta in questo browser. Ricarica la pagina e, se non basta, usa l’app iOS o Android."
     },
-    "loading": "Caricamento dei download"
+    "loading": "Caricamento dei download",
+    "orphans": {
+      "title": "Non connesso",
+      "body": "Download di un account non più connesso su questo dispositivo. Accedi di nuovo per ascoltarli, oppure rimuovili per liberare spazio."
+    }
   },
   "search": {
     "placeholder": "Cerca libri, persone, serie, personaggi",

@@ -982,7 +982,11 @@
       "noCache": "Dieser Browser kann kein Audio offline speichern. Nutze einen aktuellen Browser oder die iOS- oder Android-App.",
       "noWorker": "Die Offline-Wiedergabe ist in diesem Browser noch nicht bereit. Lade die Seite neu, und wenn das nicht hilft, nutze die iOS- oder Android-App."
     },
-    "loading": "Downloads werden geladen"
+    "loading": "Downloads werden geladen",
+    "orphans": {
+      "title": "Nicht angemeldet",
+      "body": "Downloads eines Kontos, das auf diesem Gerät nicht mehr angemeldet ist. Melde dich dort wieder an, um sie abzuspielen, oder entferne sie, um Platz zu schaffen."
+    }
   },
   "search": {
     "placeholder": "Bücher, Personen, Reihen, Figuren suchen",

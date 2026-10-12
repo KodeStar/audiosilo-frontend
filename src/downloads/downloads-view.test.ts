@@ -3,6 +3,7 @@ import {
   downloadedPaths,
   entryBytes,
   groupByServer,
+  orphanDownloads,
   splitDownloads,
   storageBar,
   unsupportedReason,
@@ -169,5 +170,25 @@ describe('downloadedPaths', () => {
     expect(downloadedPaths(entries, 'a', 1)).toBe('A\nB');
     const ticked = { ...entries, z: entry('C', 'downloading', { progress: 0.5 }) };
     expect(downloadedPaths(ticked, 'a', 1)).toBe(downloadedPaths(entries, 'a', 1));
+  });
+});
+
+describe('orphanDownloads', () => {
+  const e = (connectionId: string, savedAt: string) =>
+    ({
+      connectionId,
+      libraryId: 1,
+      path: savedAt,
+      status: 'downloaded',
+      manifest: { savedAt },
+    }) as unknown as DownloadEntry;
+
+  it("lists the entries of connections the session doesn't hold, newest first, once it was read", () => {
+    const entries = { a: e('a.1', '1'), b: e('gone.2', '2'), c: e('gone.3', '3') };
+    expect(orphanDownloads(entries, ['a.1'], true).map((x) => x.connectionId)).toEqual([
+      'gone.3',
+      'gone.2',
+    ]);
+    expect(orphanDownloads(entries, ['a.1'], false)).toEqual([]);
   });
 });
