@@ -962,9 +962,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     **Anything new a car needs must be started from `startCarStack`, never only from a screen
     or the root layout.**
   - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
-    and iOS moves the data container on an update or restore; `CarArtworkPath` reads a missing
-    file from the same `Documents/`/`Library/` path in the current container (never outside
-    it). Covered by `modules/audiosilo-player/ios/SelfCheck/run.sh`.
+    and iOS moves the data container on an update or restore; when a cover can't be read
+    where the snapshot names it, `CarArtworkPath` reads the same `Documents/`/`Library/` path in
+    the current container (never outside it). Covered by `modules/audiosilo-player/ios/SelfCheck/run.sh`.
 - **Tokens on a locked phone** (`src/lib/secure-store.ts`). CarPlay starts books with the phone
   in a pocket, and the default `WHEN_UNLOCKED` keychain item can't be read then. On iOS tokens
   live in their own keychain service, `audiosilo.tokens.afu`, written `AFTER_FIRST_UNLOCK`: a
@@ -1020,9 +1020,9 @@ runtime to cover web-vs-native branches. **Jest proves nothing about Swift or Ko
 native module's pure parts have checks of their own that need no device: the Android JVM tests
 (`TimelineMapTest`, `NarrationSilenceProcessorTest`, `VoiceBoostProcessorTest`; after an
 Android prebuild, `./gradlew :audiosilo-player:testDebugUnitTest` under JDK 17) and the iOS
-host self-check for `ChapterClips.swift` + `VoiceBoostDSP.swift`
+host self-check for `ChapterClips.swift` + `VoiceBoostDSP.swift` + `CarArtworkPath.swift`
 (`modules/audiosilo-player/ios/SelfCheck/run.sh`, Xcode toolchain only). Android Auto needs the
-Desktop Head Unit, CarPlay the Simulator (prebuilt with `AUDIOSILO_CARPLAY=1`), and lock
+Desktop Head Unit, CarPlay the Simulator, and lock
 screens, the effects by ear, widgets and the locked-phone token read a device; the docs' Testing
 page has the steps.
 
