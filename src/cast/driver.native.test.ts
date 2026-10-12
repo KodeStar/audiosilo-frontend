@@ -41,4 +41,44 @@ describe('the native Cast driver on a binary with it', () => {
     await expect(castDriver.supported()).resolves.toBe(false);
     spy.mockRestore();
   });
+
+  it("S-3: a start reported after its session ended is dropped (never a stale 'connected')", async () => {
+    const on: Record<string, (...a: unknown[]) => void> = {};
+    const sm = GoogleCast.getSessionManager() as unknown as Record<string, unknown>;
+    const names = [
+      'onSessionStarting',
+      'onSessionStarted',
+      'onSessionResumed',
+      'onSessionStartFailed',
+      'onSessionSuspended',
+      'onSessionEnding',
+      'onSessionEnded',
+    ];
+    const saved = names.map((n) => sm[n]);
+    for (const n of names) {
+      sm[n] = (fn: (...a: unknown[]) => void) => {
+        on[n] = fn;
+        return { remove() {} };
+      };
+    }
+    try {
+      const events: string[] = [];
+      const off = castDriver.subscribe((e) => events.push(e.type));
+      let name!: (d: { friendlyName: string }) => void;
+      const session = { getCastDevice: () => new Promise((r) => (name = r)) };
+      on.onSessionStarted(session);
+      on.onSessionEnded(session, undefined); // ended while its device name was being read
+      name({ friendlyName: 'TV' });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(events).toEqual(['ended']);
+      // A start that is not overtaken is reported as before.
+      const next = { getCastDevice: async () => ({ friendlyName: 'TV' }) };
+      on.onSessionStarted(next);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(events).toEqual(['ended', 'started']);
+      off();
+    } finally {
+      names.forEach((n, i) => (sm[n] = saved[i]));
+    }
+  });
 });

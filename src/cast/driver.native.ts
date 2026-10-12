@@ -112,19 +112,28 @@ export const castDriver: CastDriver = {
   subscribe(handler: (event: CastSessionEvent) => void) {
     if (!moduleInBinary()) return () => {};
     const sm = GoogleCast.getSessionManager();
+    // A start is reported once its device name is read (up to READ_TIMEOUT_MS): a session
+    // that ended (or failed, or was replaced by another start) meanwhile must not be reported
+    // as started after its end, which would leave the app "connected" to nothing.
+    let generation = 0;
     const connected = (type: 'started' | 'resumed') => (session: CastSession) => {
-      void deviceNameOf(session).then((deviceName) =>
-        handler({ type, remote: remoteOf(client()), deviceName }),
-      );
+      const gen = generation;
+      void deviceNameOf(session).then((deviceName) => {
+        if (gen === generation) handler({ type, remote: remoteOf(client()), deviceName });
+      });
+    };
+    const moved = (event: CastSessionEvent) => {
+      generation++;
+      handler(event);
     };
     const subs = [
-      sm.onSessionStarting(() => handler({ type: 'starting' })),
+      sm.onSessionStarting(() => moved({ type: 'starting' })),
       sm.onSessionStarted(connected('started')),
       sm.onSessionResumed(connected('resumed')),
-      sm.onSessionStartFailed((_s, error) => handler({ type: 'startFailed', error })),
+      sm.onSessionStartFailed((_s, error) => moved({ type: 'startFailed', error })),
       sm.onSessionSuspended(() => handler({ type: 'suspended' })),
-      sm.onSessionEnding(() => handler({ type: 'ending' })),
-      sm.onSessionEnded((_s, error) => handler({ type: 'ended', error })),
+      sm.onSessionEnding(() => moved({ type: 'ending' })),
+      sm.onSessionEnded((_s, error) => moved({ type: 'ended', error })),
     ];
     return () => {
       for (const s of subs) s.remove();
