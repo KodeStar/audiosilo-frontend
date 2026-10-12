@@ -132,6 +132,19 @@ describe('Settings > Household', () => {
     expect(leo()?.kids).toBeUndefined();
   });
 
+  it('never turns kids mode on for the last grown-up, and says why', async () => {
+    await mount();
+    await fireEvent(screen.getByLabelText('Kids mode for Leo'), 'onCheckedChange', true);
+    // Chris is the only grown-up left: his switch is off limits, with the reason beside it.
+    const chris = screen.getByLabelText('Kids mode for Chris');
+    expect(chris.props.accessibilityState?.disabled ?? chris.props.disabled).toBe(true);
+    expect(
+      screen.getByText(/Someone on this device has to stay a grown-up, or nobody could leave/),
+    ).toBeTruthy();
+    await fireEvent(chris, 'onCheckedChange', true);
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'chris')?.kids).toBeUndefined();
+  });
+
   it('sets a PIN, and asks for the current one before removing it', async () => {
     await mount();
     await fireEvent.press(screen.getByLabelText('Set a PIN for Leo'));

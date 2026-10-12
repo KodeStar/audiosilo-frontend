@@ -2207,7 +2207,8 @@
       "librariesFailed": "Couldn't load the libraries.",
       "noLibraries": "This account sees no libraries. Ask the server's admin to share one.",
       "bedtime": "Bedtime",
-      "bedtimeBody": "From then until {{until}}, playing starts a 20 minute sleep timer"
+      "bedtimeBody": "From then until {{until}}, playing starts a 20 minute sleep timer",
+      "needsGrownUp": "Someone on this device has to stay a grown-up, or nobody could leave kids mode. Add a grown-up first."
     },
     "remove": {
       "label": "Remove from this device",

@@ -2207,7 +2207,8 @@
       "librariesFailed": "Não foi possível carregar as bibliotecas.",
       "noLibraries": "Esta conta não vê nenhuma biblioteca. Peça a quem administra o servidor que partilhe uma.",
       "bedtime": "Hora de deitar",
-      "bedtimeBody": "A partir daí até às {{until}}, reproduzir inicia um temporizador de 20 minutos"
+      "bedtimeBody": "A partir daí até às {{until}}, reproduzir inicia um temporizador de 20 minutos",
+      "needsGrownUp": "Alguém neste dispositivo tem de continuar adulto, ou ninguém poderia sair do modo infantil. Adicione primeiro um adulto."
     },
     "remove": {
       "label": "Remover deste dispositivo",

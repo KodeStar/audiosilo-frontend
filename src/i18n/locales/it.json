@@ -2207,7 +2207,8 @@
       "librariesFailed": "Impossibile caricare le librerie.",
       "noLibraries": "Questo account non vede nessuna libreria. Chiedi a chi amministra il server di condividerne una.",
       "bedtime": "Ora della nanna",
-      "bedtimeBody": "Da quell'ora fino alle {{until}}, la riproduzione avvia un timer di spegnimento di 20 minuti"
+      "bedtimeBody": "Da quell'ora fino alle {{until}}, la riproduzione avvia un timer di spegnimento di 20 minuti",
+      "needsGrownUp": "Qualcuno su questo dispositivo deve restare un adulto, altrimenti nessuno potrebbe uscire dalla modalità bambini. Aggiungi prima un adulto."
     },
     "remove": {
       "label": "Rimuovi da questo dispositivo",

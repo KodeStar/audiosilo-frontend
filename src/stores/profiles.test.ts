@@ -11,6 +11,7 @@ import {
   connectionsOfProfile,
   deleteProfile,
   mayActFor,
+  mayTurnOnKids,
   mustChoose,
   otherOwner,
   parseProfilesDoc,
@@ -524,10 +525,11 @@ describe('the store', () => {
   });
 
   it('a bad bedtime falls back to the default', async () => {
-    setSession([A1], A1.id);
+    setSession([A1, A2], A1.id);
     await useProfiles.getState().hydrate();
-    setProfileKids(activeProfile()!.id, { bedtime: '25:99' });
-    expect(activeProfile()?.kids).toEqual({ bedtime: '19:30' });
+    const sam = profileOf(A2.id)!.id;
+    setProfileKids(sam, { bedtime: '25:99' });
+    expect(profileOf(A2.id)?.kids).toEqual({ bedtime: '19:30' });
   });
 
   it('the hooks: the active profile and only its connections', async () => {
@@ -714,5 +716,35 @@ describe('replaceInDoc', () => {
       },
     ]);
     expect(replaceInDoc(doc, 'nobody', 'new.9')).toBe(doc);
+  });
+});
+
+describe('kids mode keeps a grown-up on the device', () => {
+  beforeEach(() => {
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'g',
+      profiles: [
+        { id: 'g', name: 'Gran', connectionIds: ['a.1'] },
+        { id: 'k', name: 'Leo', connectionIds: ['a.2'] },
+      ],
+    });
+  });
+  afterEach(() => resetProfilesForTests());
+
+  it('refuses kids mode for the last grown-up; a kids profile still changes its settings', () => {
+    setProfileKids('k', { bedtime: '19:00' });
+    expect(mayTurnOnKids('g')).toBe(false);
+    setProfileKids('g', { bedtime: '19:00' });
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'g')?.kids).toBeUndefined();
+    setProfileKids('k', { bedtime: '20:00' });
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'k')?.kids?.bedtime).toBe('20:00');
+    // Off is always allowed.
+    setProfileKids('k', undefined);
+    expect(mayTurnOnKids('g')).toBe(true);
+    // A lone profile is the last grown-up too.
+    expect(mayTurnOnKids('g', { profiles: [{ id: 'g', name: 'Gran', connectionIds: [] }] })).toBe(
+      false,
+    );
   });
 });

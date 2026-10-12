@@ -617,9 +617,29 @@ function updateProfile(profileId: string, change: (p: Profile) => Profile): void
   });
 }
 
+/**
+ * Whether kids mode may be turned on for `profileId`: only while another profile on the
+ * device stays a grown-up (not in kids mode). Leaving kids mode is a grown-up's (the
+ * Grown-ups hold opens "Who's listening?", and only a grown-up's Settings turn it off), so
+ * a device whose every profile is a kids profile would have no way out but "Add someone"
+ * (`mayAddPerson` keeps that open for exactly this case). True for a profile already in
+ * kids mode (a change of its library or bedtime).
+ */
+export function mayTurnOnKids(
+  profileId: string,
+  state: Pick<ProfilesDoc, 'profiles'> = useProfiles.getState(),
+): boolean {
+  const profile = state.profiles.find((p) => p.id === profileId);
+  if (!profile) return false;
+  if (profile.kids) return true;
+  return state.profiles.some((p) => p.id !== profileId && !p.kids);
+}
+
 /** Turn kids mode on (with its library and bedtime) or off (`undefined`). A bedtime that
- * isn't 'HH:MM' is the default. */
+ * isn't 'HH:MM' is the default. Turning it on is refused (nothing changes) when it would
+ * leave no grown-up on the device (`mayTurnOnKids`). */
 export function setProfileKids(profileId: string, kids: KidsSettings | undefined): void {
+  if (kids && !mayTurnOnKids(profileId)) return;
   updateProfile(profileId, (p) => {
     const { kids: _old, ...rest } = p;
     if (!kids) return rest;

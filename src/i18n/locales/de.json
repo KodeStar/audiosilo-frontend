@@ -2207,7 +2207,8 @@
       "librariesFailed": "Die Bibliotheken konnten nicht geladen werden.",
       "noLibraries": "Dieses Konto sieht keine Bibliothek. Bitte die Person, die den Server verwaltet, eine freizugeben.",
       "bedtime": "Schlafenszeit",
-      "bedtimeBody": "Ab dann bis {{until}} startet das Abspielen einen 20-Minuten-Schlaftimer"
+      "bedtimeBody": "Ab dann bis {{until}} startet das Abspielen einen 20-Minuten-Schlaftimer",
+      "needsGrownUp": "Eine Person auf diesem Gerät muss erwachsen bleiben, sonst könnte niemand den Kindermodus verlassen. Füge zuerst eine erwachsene Person hinzu."
     },
     "remove": {
       "label": "Von diesem Gerät entfernen",

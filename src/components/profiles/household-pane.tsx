@@ -17,6 +17,7 @@ import { formatTimeOfDay } from '@/lib/format';
 import { KIDS_BEDTIME_UNTIL } from '@/playback/auto-sleep-controller';
 import {
   DEFAULT_BEDTIME,
+  mayTurnOnKids,
   type Profile,
   setAskAtLaunch,
   setProfileHasPin,
@@ -163,6 +164,8 @@ function PersonCard({
   const [renaming, setRenaming] = useState(false);
   const [pin, setPin] = useState<PinFlow>(null);
   const kids = profile.kids;
+  // Never the last grown-up: nobody could leave kids mode (`mayTurnOnKids`).
+  const kidsAllowed = useProfiles((s) => mayTurnOnKids(profile.id, s));
   const kidsLabel = t('profiles.kids.label');
   const libraryLabel = t('profiles.kids.library');
   const bedtimeLabel = t('profiles.kids.bedtime');
@@ -263,9 +266,13 @@ function PersonCard({
         )}
       </SettingRow>
 
-      <SettingRow label={kidsLabel} description={t('profiles.kids.body')}>
+      <SettingRow
+        label={kidsLabel}
+        description={kidsAllowed ? t('profiles.kids.body') : t('profiles.kids.needsGrownUp')}
+      >
         <Switch
           checked={!!kids}
+          disabled={!kidsAllowed}
           onCheckedChange={(on) =>
             setProfileKids(profile.id, on ? { bedtime: DEFAULT_BEDTIME } : undefined)
           }

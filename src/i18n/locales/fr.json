@@ -2207,7 +2207,8 @@
       "librariesFailed": "Impossible de charger les bibliothèques.",
       "noLibraries": "Ce compte ne voit aucune bibliothèque. Demandez à l'administrateur du serveur d'en partager une.",
       "bedtime": "Heure du coucher",
-      "bedtimeBody": "De cette heure jusqu'à {{until}}, la lecture lance une minuterie de sommeil de 20 minutes"
+      "bedtimeBody": "De cette heure jusqu'à {{until}}, la lecture lance une minuterie de sommeil de 20 minutes",
+      "needsGrownUp": "Une personne sur cet appareil doit rester adulte, sinon personne ne pourrait quitter le mode enfant. Ajoutez d'abord un adulte."
     },
     "remove": {
       "label": "Retirer de cet appareil",
