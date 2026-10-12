@@ -10,22 +10,24 @@ import Foundation
 /// not run in the car). JS does the same for downloads (`engine.localUri` rebuilds the URI from
 /// the live document root).
 ///
-/// A missing file is therefore looked up again under the current container: the part of the
-/// path after `.../Containers/Data/Application/<UUID>/` is kept when it starts with `Documents`
-/// or `Library`, and only a path that stays inside that folder of THIS app's container is ever
-/// read (no `..`, nothing outside it). Anything else (a URL, a path in no app container, an App
-/// Group path) resolves only as it is. Pure Foundation, so the host self-check (SelfCheck/run.sh)
-/// covers it.
+/// A file that can't be read is therefore looked up again under the current container: the
+/// part of the path after `.../Containers/Data/Application/<UUID>/` is kept when it starts with
+/// `Documents` or `Library`, and only a path that stays inside that folder of THIS app's
+/// container is ever read (no `..`, nothing outside it). Anything else (a URL, a path in no app
+/// container, an App Group path) resolves only as it is. Pure Foundation, so the host
+/// self-check (SelfCheck/run.sh) covers it.
 enum CarArtworkPath {
-  /// The readable path for `uri` (a `file://` URI from the snapshot), or nil. `home` is the
-  /// app's current container (`NSHomeDirectory()`); `exists` says whether a file is there.
-  static func resolve(_ uri: String, home: String, exists: (String) -> Bool) -> String? {
+  /// What `read` makes of the file `uri` names (a `file://` URI from the snapshot), or nil.
+  /// `read` is tried on the path as it is first, and only when that fails on the path re-rooted
+  /// into `home`, the app's current container (`NSHomeDirectory()`): a cover in place costs one
+  /// read, with no separate existence check.
+  static func resolve<T>(_ uri: String, home: String, read: (String) -> T?) -> T? {
     guard let url = URL(string: uri), url.isFileURL else { return nil }
     let path = url.path
     guard !path.isEmpty else { return nil }
-    if exists(path) { return path }
-    guard let moved = reroot(path, home: home), moved != path, exists(moved) else { return nil }
-    return moved
+    if let value = read(path) { return value }
+    guard let moved = reroot(path, home: home), moved != path else { return nil }
+    return read(moved)
   }
 
   /// `path` moved from the app data container it names into `home`; nil when it names none,

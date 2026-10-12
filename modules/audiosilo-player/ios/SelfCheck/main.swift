@@ -306,8 +306,12 @@ do {
     "\(new)/Library/Caches/x.jpg",
     "/etc/passwd",
   ]
-  let exists = { (p: String) in onDisk.contains(p) }
-  let resolve = { (uri: String) in CarArtworkPath.resolve(uri, home: new, exists: exists) }
+  var reads: [String] = []
+  let read = { (p: String) -> String? in
+    reads.append(p)
+    return onDisk.contains(p) ? p : nil
+  }
+  let resolve = { (uri: String) in CarArtworkPath.resolve(uri, home: new, read: read) }
 
   check(resolve("file://\(old)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg",
         "a car cover under the old container is read from the new one")
@@ -315,8 +319,14 @@ do {
         "a download's cover (percent-encoded) is re-rooted, decoded")
   check(resolve("file:///private\(old)/Library/Caches/x.jpg") == "\(new)/Library/Caches/x.jpg",
         "a /private/var path and Library/ re-root too")
-  check(resolve("file://\(new)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg",
-        "a file that exists is read as it is")
+  reads = []
+  check(resolve("file://\(new)/Documents/car-artwork/abc.jpg") == "\(new)/Documents/car-artwork/abc.jpg"
+        && reads == ["\(new)/Documents/car-artwork/abc.jpg"],
+        "a file that exists is read as it is, in one read")
+  reads = []
+  check(resolve("file://\(old)/Documents/car-artwork/abc.jpg") != nil
+        && reads == ["\(old)/Documents/car-artwork/abc.jpg", "\(new)/Documents/car-artwork/abc.jpg"],
+        "the re-rooted path is read only after the path as it is fails")
   check(resolve("file://\(old)/Documents/car-artwork/gone.jpg") == nil, "missing in both containers: nil")
   check(resolve("file://\(new)/Documents/car-artwork/gone.jpg") == nil, "missing in the current container: nil")
   check(resolve("file://\(old)/Documents/../../../../../../etc/passwd") == nil
