@@ -699,17 +699,15 @@ function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
 
 // --- Start and stop -------------------------------------------------------------------------
 
-/**
- * A car connected or left: what the sync's own connection listener does, exported for the
- * iOS car start (`register-car-task.ios.ts`), whose listener registers first at a CarPlay-first
- * launch and so receives the connect native queued before JS listened; the sync's listener,
- * registered after, never sees that one. Safe to call twice for one event (a request joins the
- * pending one, the adoption check is shared). A no-op until the sync is started.
- */
-export function handleCarConnection(connected: boolean): void {
-  if (!active) return;
+/** The sync's connection listener: records the state, and on a connect runs the connect path. */
+function onConnection(connected: boolean): void {
   setCarConnected(connected);
-  if (!connected) return;
+  if (connected) carConnected();
+}
+
+/** A car connected: remember a car has been seen here, write a fresh snapshot and check for a
+ * book the service loaded. */
+function carConnected(): void {
   if (!carSeen) {
     carSeen = true;
     void setItem(CAR_SEEN_KEY, true);
@@ -743,7 +741,7 @@ export function startCarSync(): () => void {
   /** The downloads registry's state signature last seen (a progress tick changes nothing). */
   let downloadsSig = statusSignature(useDownloads.getState().entries);
   stops = [
-    carNative.onConnection(handleCarConnection),
+    carNative.onConnection(onConnection),
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
@@ -802,6 +800,10 @@ export function startCarSync(): () => void {
     }
     request(true);
   })();
+  // A car connected before this start (the iOS car start's listener, the first, alone heard
+  // the connect native queued before JS listened, or the root layout starts late): its
+  // connect path runs once here, since this listener will not hear that connect again.
+  if (isCarConnected()) carConnected();
   return stop;
 }
 

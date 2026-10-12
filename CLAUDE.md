@@ -951,14 +951,16 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     but the root layout and everything it starts don't, until the phone app opens. So **iOS
     starts the car's work without the tree, like Android's headless task**:
     `register-car-task.ios.ts` (imported first from `index.ts`) listens for the car connection
-    and on a connect runs `startCarWork` (`car-task.ts`): `bootstrapPlayback`, the address
-    pick, the place reconcile and the car sync, once per runtime (the root layout's later
-    starts are shared ones). Its listener is the first, so it gets the connect native queued
-    before JS listened; it hands that on through `handleCarConnection` (the sync's own
-    listener registers later and never sees it). Play requests and bookmarks are the sync's
-    listeners, so a tap queued natively is answered as soon as the sync runs. **Anything new a
-    car needs on iOS must be started from `startCarWork`, never only from a screen or the
-    root layout.**
+    and on a connect runs `startCarWork` (`car-task.ts`), which runs `startCarStack` (the
+    same start as Android's `runCarTask`: `bootstrapPlayback`, the address pick, the place
+    reconcile and the car sync) once per runtime (the root layout's later starts are shared
+    ones). Its listener is the first, so it alone gets the connect native queued before JS
+    listened; it records it with `setCarConnected` (`car-connection.ts`), and the car sync,
+    starting while `isCarConnected()` is true, runs its connect path once itself (the sync's
+    own listener registers later and never sees that connect). Play requests and bookmarks are
+    the sync's listeners, so a tap queued natively is answered as soon as the sync runs.
+    **Anything new a car needs must be started from `startCarStack`, never only from a screen
+    or the root layout.**
   - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
     and iOS moves the data container on an update or restore; `CarArtworkPath` reads a missing
     file from the same `Documents/`/`Library/` path in the current container (never outside

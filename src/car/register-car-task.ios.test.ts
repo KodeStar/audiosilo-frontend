@@ -1,7 +1,11 @@
-const mockStartCarWork = jest.fn(async (_connected: () => boolean) => {});
-jest.mock('./car-task', () => ({
-  startCarWork: (connected: () => boolean) => mockStartCarWork(connected),
-}));
+import { isCarConnected } from './car-connection';
+
+/** Whether a car was recorded as connected when the car work was asked to start. */
+const connectedAtStart: boolean[] = [];
+const mockStartCarWork = jest.fn(async () => {
+  connectedAtStart.push(isCarConnected());
+});
+jest.mock('./car-task', () => ({ startCarWork: () => mockStartCarWork() }));
 
 let mockHandler: ((connected: boolean) => void) | null = null;
 const mockOnConnection = jest.fn((h: (connected: boolean) => void) => {
@@ -27,19 +31,28 @@ describe('register-car-task (iOS)', () => {
     mockHandler!(false);
     await flush();
     expect(mockStartCarWork).not.toHaveBeenCalled();
+    expect(isCarConnected()).toBe(false);
   });
 
-  it('starts the car work on a connect, handing on the connection as last heard', async () => {
+  it('records a connect for the car sync (its own listener never hears the queued one) before starting the car work', async () => {
     mockHandler!(true);
     await flush();
     expect(mockStartCarWork).toHaveBeenCalledTimes(1);
-    const connected = mockStartCarWork.mock.calls[0][0];
-    expect(connected()).toBe(true);
+    expect(connectedAtStart).toEqual([true]);
     mockHandler!(false);
-    expect(connected()).toBe(false);
+    expect(isCarConnected()).toBe(false);
     // A later connect asks again; `startCarWork` itself runs once per runtime.
     mockHandler!(true);
     await flush();
     expect(mockStartCarWork).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs a failed start', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockStartCarWork.mockRejectedValueOnce(new Error('boom'));
+    mockHandler!(true);
+    await flush();
+    expect(warn).toHaveBeenCalledWith('[car] the car start failed', expect.any(Error));
+    warn.mockRestore();
   });
 });
