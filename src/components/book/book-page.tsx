@@ -42,9 +42,10 @@ import { toast } from '@/components/ui/toast';
 import { useDownloadEntry } from '@/downloads/store';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { type BookTab, libraryHref, segmentsToPath } from '@/lib/paths';
+import { type BookTab, bookTitle, libraryHref, segmentsToPath } from '@/lib/paths';
 import { percentHeard, progressFractionRemaining } from '@/lib/progress-view';
 import { useLatest } from '@/lib/use-latest';
+import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
@@ -125,6 +126,7 @@ function BookPage() {
   const { openSeries, openAuthor, openNarrator } = useOpen();
 
   const { data: book, isLoading, refetch } = useBook(libraryId, path);
+  usePageTitle(book ? bookTitle(book.title, path) : undefined);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
   const ratings = useCapability('ratings', cid) === true;
