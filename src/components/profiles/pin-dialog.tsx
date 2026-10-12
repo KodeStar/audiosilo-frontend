@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type TextInput, View } from 'react-native';
+import { Keyboard, type TextInput, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -49,6 +49,12 @@ export type PinDialogMode = 'check' | 'set';
  * - `set`: choose four digits, then enter them again; `onDone` once saved (`setPin`).
  *
  * The caller owns visibility and what happens after (switch, change, remove).
+ *
+ * However it closes (a right PIN, a saved one, Cancel, the close button, the backdrop,
+ * Android's back), the field gives the keyboard up FIRST (`releaseKeyboard`), while it is
+ * still on screen and focused. Left to its unmount, the field was removed with the number
+ * pad up: Android kept the keyboard shown on the window's fallback input (a full QWERTY
+ * keyboard with no field) over "Who's listening?" and then Home, every time.
  */
 export function PinDialog({
   open,
@@ -74,7 +80,14 @@ export function PinDialog({
   onCancel: () => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (o) return;
+        releaseKeyboard();
+        onCancel();
+      }}
+    >
       {open ? (
         <PinDialogBody
           // A new step (check, then set) starts empty.
@@ -90,6 +103,12 @@ export function PinDialog({
       ) : null}
     </Dialog>
   );
+}
+
+/** Blur the focused field (the PIN's) and close the software keyboard. Before the prompt
+ * closes, never after: a field already being removed can't hide it any more on Android. */
+function releaseKeyboard(): void {
+  Keyboard.dismiss();
 }
 
 /** Mounted only while open, so each opening starts empty. */
@@ -119,8 +138,29 @@ function PinDialogBody({
   // The field stays editable while a PIN is checked (10,000 hash rounds): a field that
   // turns non-editable loses focus on native, the keyboard closes and the sheet drops, so
   // the next try needed a tap first. Input that arrives meanwhile is ignored (`onChange`).
-  // After a wrong PIN, and when a wait is over, it has the focus (and the keyboard) again.
-  const refocus = () => field.current?.focus();
+  // After a wrong PIN, and when a wait is over, it has the focus (and the keyboard) again,
+  // never once the prompt is closing (`leave`): a check still running when Cancel was
+  // pressed would bring the keyboard back over the screen under it (or, right, switch).
+  const closed = useRef(false);
+  // Closed from outside too (the close button, the backdrop, back): a check that lands
+  // after it neither refocuses nor switches. (Reset on mount for Strict Mode's remount.)
+  useEffect(() => {
+    closed.current = false;
+    return () => {
+      closed.current = true;
+    };
+  }, []);
+  const refocus = () => {
+    if (!closed.current) field.current?.focus();
+  };
+  /** Close the prompt (done or cancelled): the keyboard goes first, then the caller acts
+   * (switches person, navigates, opens the next step). */
+  const leave = (then: () => void) => {
+    closed.current = true;
+    field.current?.blur();
+    releaseKeyboard();
+    then();
+  };
   const wasWaiting = useRef(waiting);
   useEffect(() => {
     if (wasWaiting.current && !waiting) refocus();
@@ -149,15 +189,17 @@ function PinDialogBody({
     try {
       right = await checkPin(profileId, value, stored);
     } catch {
+      if (closed.current) return;
       setBusy(false);
       setPinValue('');
       setError(t('profiles.pin.readFailed'));
       return;
     }
-    setBusy(false);
     notePinTry(profileId, right);
+    if (closed.current) return;
+    setBusy(false);
     if (right) {
-      onDone();
+      leave(onDone);
       return;
     }
     setPinValue('');
@@ -191,8 +233,9 @@ function PinDialogBody({
     setBusy(true);
     try {
       await setPin(profileId, value);
-      onDone();
+      if (!closed.current) leave(onDone);
     } catch {
+      if (closed.current) return;
       setError(t('profiles.pin.saveFailed'));
       setFirst(null);
       setPinValue('');
@@ -268,7 +311,7 @@ function PinDialogBody({
         ) : null}
       </View>
       <DialogFooter>
-        <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
+        <Button title={t('common.cancel')} variant="ghost" onPress={() => leave(onCancel)} />
       </DialogFooter>
     </DialogContent>
   );

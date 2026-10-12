@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Keyboard } from 'react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -91,8 +92,17 @@ describe("Who's listening?", () => {
     await fireEvent.press(screen.getByLabelText('Sam, Hearthside, asks for a PIN'));
     expect(await screen.findByText("Enter Sam's PIN")).toBeTruthy();
     expect(useProfiles.getState().activeProfileId).toBe('chris');
+    // The number pad goes before the switch and Home (Android kept a QWERTY keyboard up
+    // over Home when the focused field was simply removed).
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
     await fireEvent.changeText(screen.getByTestId('pin-field'), '2468');
     await waitFor(() => expect(useProfiles.getState().activeProfileId).toBe('sam'));
+    await waitFor(() => expect(mockRouter.dismissTo).toHaveBeenCalledWith('/'));
+    expect(dismiss).toHaveBeenCalled();
+    expect(dismiss.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRouter.dismissTo.mock.invocationCallOrder[0],
+    );
+    dismiss.mockRestore();
   });
 
   it('asks for a PIN the secure store holds even when the mirror lost it (a stale web tab)', async () => {

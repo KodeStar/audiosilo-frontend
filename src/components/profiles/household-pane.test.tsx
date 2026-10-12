@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Keyboard } from 'react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -165,9 +166,14 @@ describe('Settings > Household', () => {
     await fireEvent.press(screen.getByLabelText("Change Leo's PIN"));
     await fireEvent.changeText(screen.getByTestId('pin-field'), '1111');
     expect(await screen.findByText('Choose a 4-digit PIN')).toBeTruthy();
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
     await fireEvent.changeText(screen.getByTestId('pin-field'), '2222');
     await fireEvent.changeText(screen.getByTestId('pin-field'), '2222');
     await waitFor(async () => expect(await checkPin('leo', '2222')).toBe(true));
+    // Saved: the number pad goes with the prompt (Android kept a keyboard up otherwise).
+    await waitFor(() => expect(screen.queryByTestId('pin-field')).toBeNull());
+    expect(dismiss).toHaveBeenCalled();
+    dismiss.mockRestore();
   });
 
   it('"Set a PIN" over a PIN the mirror lost asks for that PIN first (never overwrites it)', async () => {

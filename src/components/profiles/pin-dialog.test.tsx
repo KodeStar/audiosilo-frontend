@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
-import { TextInput } from 'react-native';
+import { Keyboard, TextInput } from 'react-native';
 
 import { checkPin, notePinTry, resetPinTriesForTests, setPin } from '@/lib/profile-pin';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
@@ -27,6 +27,18 @@ async function settle() {
   });
 }
 
+/** Records, in order, the keyboard going (`Keyboard.dismiss`), the field's focus and blur,
+ * and the caller's callbacks: the keyboard must go BEFORE the caller closes the prompt. */
+function trackKeyboard() {
+  const order: string[] = [];
+  const spies = [
+    jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => void order.push('dismiss')),
+    jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => void order.push('focus')),
+    jest.spyOn(TextInput.prototype, 'blur').mockImplementation(() => void order.push('blur')),
+  ];
+  return { order, restore: () => spies.forEach((s) => s.mockRestore()) };
+}
+
 async function type(value: string) {
   await fireEvent.changeText(screen.getByTestId('pin-field'), value);
   await settle();
@@ -36,7 +48,8 @@ describe('PinDialog, check', () => {
   const onDone = jest.fn();
   const onCancel = jest.fn();
   beforeEach(async () => {
-    onDone.mockClear();
+    onDone.mockReset();
+    onCancel.mockReset();
     await setPin('sam', '4821');
     await mountWithPortal(
       <PinDialog
@@ -93,6 +106,45 @@ describe('PinDialog, check', () => {
     await fireEvent.press(screen.getByText('Cancel'));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  // Android (Pixel 6a): the field was removed with the number pad up and the keyboard
+  // stayed, as a full QWERTY one, over "Who's listening?" and then Home.
+  it('a right PIN gives the keyboard up before the caller switches, and nothing refocuses', async () => {
+    const kb = trackKeyboard();
+    onDone.mockImplementation(() => kb.order.push('done'));
+    await type('4821');
+    expect(kb.order).toEqual(['blur', 'dismiss', 'done']);
+    kb.restore();
+  });
+
+  it('Cancel and the close button give the keyboard up before the caller closes', async () => {
+    const kb = trackKeyboard();
+    onCancel.mockImplementation(() => kb.order.push('cancel'));
+    await fireEvent.press(screen.getByText('Cancel'));
+    expect(kb.order).toEqual(['blur', 'dismiss', 'cancel']);
+    kb.order.length = 0;
+    await fireEvent.press(screen.getByLabelText('Close'));
+    expect(kb.order).toEqual(['dismiss', 'cancel']);
+    kb.restore();
+  });
+
+  it('a wrong PIN still being checked when Cancel is pressed does not refocus', async () => {
+    const kb = trackKeyboard();
+    await fireEvent.changeText(screen.getByTestId('pin-field'), '1111');
+    await fireEvent.press(screen.getByText('Cancel'));
+    await settle();
+    expect(kb.order).not.toContain('focus');
+    expect(screen.queryByText("That PIN doesn't match")).toBeNull();
+    kb.restore();
+  });
+
+  it('the right PIN, still being checked when Cancel is pressed, does not switch', async () => {
+    await fireEvent.changeText(screen.getByTestId('pin-field'), '4821');
+    await fireEvent.press(screen.getByText('Cancel'));
+    await settle();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
+  });
 });
 
 describe('PinDialog, a lockout outlives the prompt', () => {
@@ -127,6 +179,18 @@ describe('PinDialog, set', () => {
     expect(onDone).toHaveBeenCalled();
     expect(await checkPin('sam', '1357')).toBe(true);
     expect(useProfiles.getState().profiles[0].hasPin).toBe(true);
+  });
+
+  it('gives the keyboard up before the caller closes, once the PIN is saved', async () => {
+    const kb = trackKeyboard();
+    const onDone = jest.fn(() => kb.order.push('done'));
+    await mountWithPortal(
+      <PinDialog open mode="set" profileId="sam" name="Sam" onDone={onDone} onCancel={() => {}} />,
+    );
+    await type('1357');
+    await type('1357');
+    expect(kb.order).toEqual(['blur', 'dismiss', 'done']);
+    kb.restore();
   });
 
   it('starts again when the two entries differ', async () => {
