@@ -191,3 +191,19 @@ export function startCastSync(
 export function stopCasting(driver: CastDriver = castDriver): Promise<void> {
   return driver.endSession(true);
 }
+
+/**
+ * End a cast for the car (CarPlay / Android Auto asked to play while a book was on a Cast
+ * receiver): the car is where the listener is, so the book plays there. The receiver's
+ * latest place is read, the book comes back to this device paused there (the store saves
+ * it), and only then is the session ended and the receiver stopped, so the car's play that
+ * follows starts on this device and never on the TV. Resolves whether a cast was ended.
+ */
+export async function endCastForCar(driver: CastDriver = castDriver): Promise<boolean> {
+  const router = currentRouter();
+  if (!router?.isCasting()) return false;
+  await router.castRoute()?.refresh();
+  await router.endCast();
+  await driver.endSession(true).catch(() => undefined);
+  return true;
+}

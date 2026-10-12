@@ -59,6 +59,9 @@ const mockArtOnDisk = new Map<string, string>();
 
 jest.mock('@/lib/bootstrap', () => ({ bootstrapPlayback: jest.fn(async () => {}) }));
 
+const mockEndCastForCar = jest.fn(async () => false);
+jest.mock('@/cast/cast-session', () => ({ endCastForCar: () => mockEndCastForCar() }));
+
 const mockStartBookInPlace = jest.fn(async (..._a: unknown[]) => true);
 jest.mock('@/components/player/start-book', () => ({
   startBookInPlace: (...a: unknown[]) => mockStartBookInPlace(...a),
@@ -832,6 +835,41 @@ describe('play requests', () => {
     await handleCarPlayRequest(carItemId(ref));
     expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("another person's"));
+    warn.mockRestore();
+  });
+
+  it('finding 9: casting, a play from the car ends the cast first and plays in the car', async () => {
+    const order: string[] = [];
+    mockEndCastForCar.mockImplementationOnce(async () => {
+      order.push('end cast');
+      // The book came back here, paused at the receiver's place.
+      usePlayer.setState({
+        nowPlaying: { ...ref, queue: { offsets: [0], total: 100 } },
+        snapshot: { state: 'paused', trackIndex: 0, position: 70, duration: 100, rate: 1 },
+      });
+      return true;
+    });
+    usePlayer.getState().toggle.mockImplementationOnce(async () => {
+      order.push('play');
+    });
+    await handleCarPlayRequest(carItemId(ref));
+    expect(order).toEqual(['end cast', 'play']);
+    expect(mockStartBookInPlace).not.toHaveBeenCalled();
+  });
+
+  it("finding 9: another person's book from an old snapshot never ends their cast", async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'] },
+      ],
+      activeProfileId: 'sam',
+    });
+    mockStartBookInPlace.mockResolvedValueOnce(false);
+    await handleCarPlayRequest(carItemId(ref));
+    expect(mockEndCastForCar).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 

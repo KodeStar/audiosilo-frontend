@@ -16,7 +16,7 @@ jest.mock('@/stores/session', () => ({ onConnectionRemoved: () => () => {} }));
 
 /* eslint-disable import/first */
 import { CastBlockedError } from './cast-prepare';
-import { startCastSync } from './cast-session';
+import { endCastForCar, startCastSync } from './cast-session';
 import { useCast } from './cast-state';
 import { currentRouter, forgetRouter, routed } from './routed-service';
 import type { CastDriver, CastRemote, CastSessionEvent } from './types';
@@ -238,5 +238,33 @@ describe('startCastSync', () => {
     expect(router.castRoute()).toBe(route);
     expect(refresh).toHaveBeenCalled();
     stop();
+  });
+});
+
+describe('endCastForCar (finding 9)', () => {
+  beforeEach(() => forgetRouter());
+
+  it("brings the receiver's place home first, then ends the session and stops the receiver", async () => {
+    const router = routed(localEngine());
+    const order: string[] = [];
+    const cast = {
+      refresh: jest.fn(async () => void order.push('read the place')),
+    };
+    jest.spyOn(router, 'isCasting').mockReturnValue(true);
+    jest.spyOn(router, 'castRoute').mockReturnValue(cast as never);
+    jest.spyOn(router, 'endCast').mockImplementation(async () => void order.push('hand back'));
+    const driver = fakeDriver();
+    (driver.endSession as jest.Mock).mockImplementation(async (stop: boolean) => {
+      order.push(`end session (stop ${stop})`);
+    });
+    await expect(endCastForCar(driver)).resolves.toBe(true);
+    expect(order).toEqual(['read the place', 'hand back', 'end session (stop true)']);
+  });
+
+  it('does nothing when nothing is cast', async () => {
+    routed(localEngine());
+    const driver = fakeDriver();
+    await expect(endCastForCar(driver)).resolves.toBe(false);
+    expect(driver.endSession).not.toHaveBeenCalled();
   });
 });

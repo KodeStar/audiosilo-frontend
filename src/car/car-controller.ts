@@ -18,6 +18,7 @@ import {
   type SourcedProgress,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { endCastForCar } from '@/cast/cast-session';
 import type { Book, Progress, QueueEntry } from '@/api/types';
 import { progressAt } from '@/components/home/home-model';
 import { startBookInPlace } from '@/components/player/start-book';
@@ -530,6 +531,14 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   // Read again now the aliases are loaded: an item of a snapshot written before the identity
   // migration names the old connection id.
   const ref = parseCarItemId(id)!;
+  // Casting: a play the car asks for plays in the car, never on the TV it would not hear (and
+  // the car would show nothing playing). The cast ends with its place brought back here
+  // first (`endCastForCar`); ending it beats refusing, since the listener is in the car and
+  // a refusal there leaves a driver with silence to sort out. Another person's book is left
+  // to the start below, which refuses it, so their cast is not ended for nothing.
+  if (mayActFor(ref.connectionId)) {
+    await endCastForCar().catch((err) => console.warn('[car] could not end the cast', err));
+  }
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (np && contentKeyOf(np) === contentKeyOf(ref)) {
