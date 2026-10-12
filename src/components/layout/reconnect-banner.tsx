@@ -5,6 +5,7 @@ import { Pressable } from 'react-native';
 import { effectiveUrl } from '@/api/address-route';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -20,7 +21,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
  * When more than one connection needs reconnecting we surface the first (with a "+N"),
  * keeping the chrome unobtrusive.
  */
-export function ReconnectBanner() {
+export function ReconnectBanner({ className }: { className?: string } = {}) {
   const themed = useThemeColors();
   const { t } = useTranslation();
   // The person listening's servers only: another person's sign-in is theirs to renew.
@@ -53,7 +54,10 @@ export function ReconnectBanner() {
       accessibilityRole="button"
       accessibilityHint={t('reconnect.banner.hint')}
       onPress={onPress}
-      className="flex-row items-center gap-2 border-b border-l-4 border-b-border border-l-brand bg-brand/10 px-3 py-2 active:opacity-80"
+      className={cn(
+        'flex-row items-center gap-2 border-b border-l-4 border-b-border border-l-brand bg-brand/10 px-3 py-2 active:opacity-80',
+        className,
+      )}
     >
       <Icon name="server" size={13} color={themed.brand} />
       <Text variant="caption" className="flex-1 text-brand-ink">

@@ -194,6 +194,36 @@ it('shows the downloaded stories while the server is unreachable', async () => {
   });
 });
 
+it("offline, shows only the picked library's downloads (not the grown-ups' other library)", async () => {
+  setKids({ bedtime: '19:30', library: { connectionId: CONN.id, libraryId: 2 } });
+  useReachability.setState({ online: { [CONN.id]: false } });
+  mockClient.libraries.mockRejectedValue(new Error('offline'));
+  const saved = (path: string, libraryId: number) =>
+    ({
+      connectionId: CONN.id,
+      libraryId,
+      path,
+      title: path,
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest: {
+        book: book(path, libraryId),
+        chapters: null,
+        files: [],
+        coverUri: null,
+        savedAt: '2026-10-01T00:00:00.000Z',
+      },
+    }) as DownloadEntry;
+  useDownloads.setState({ entries: { a: saved('story', 2), b: saved('thriller', 1) } });
+  const { result } = await mount();
+  await waitFor(() => {
+    const s = result.current.stories;
+    expect(s.status === 'ready' && s.offline && s.books.map((b) => b.rel_path)).toEqual(['story']);
+  });
+});
+
 it('starts with a story in progress that is not on the first page yet', async () => {
   setKids({ bedtime: '19:30', library: { connectionId: CONN.id, libraryId: 2 } });
   mockClient.allProgress.mockResolvedValue([

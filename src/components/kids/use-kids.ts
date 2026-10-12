@@ -14,6 +14,7 @@ import {
   kidsContinuePaths,
   kidsDownloads,
   kidsLibrary,
+  kidsOfflineLibraryId,
   kidsShelf,
 } from './kids-model';
 
@@ -101,10 +102,12 @@ export function useKidsStories(): {
   // Re-read when a download lands or goes, never on a progress tick (which would
   // re-render the whole kids screen several times a second while one downloads).
   const downloadsSig = useDownloads((s) => statusSignature(s.entries));
+  // The picked library even while GET /libraries can't be read (`kidsOfflineLibraryId`).
+  const offlineLibraryId = cid ? kidsOfflineLibraryId(library, cid, profile?.kids) : null;
   const downloaded = useMemo(
-    () => (cid ? kidsDownloads(useDownloads.getState().entries, cid, library?.id ?? null) : []),
+    () => (cid ? kidsDownloads(useDownloads.getState().entries, cid, offlineLibraryId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read on the signature
-    [downloadsSig, cid, library?.id],
+    [downloadsSig, cid, offlineLibraryId],
   );
   const shelf = useMemo(() => kidsShelf(continuing.books, listed), [continuing.books, listed]);
 

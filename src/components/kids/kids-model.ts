@@ -89,6 +89,23 @@ export function kidsShelf(continuing: readonly Book[], listed: readonly Book[]):
 }
 
 /**
+ * The library kids mode's offline stories come from (`kidsDownloads`): the library the
+ * screen shows when it is known, else, while GET /libraries can't be read (offline), the
+ * profile's pick when it is on this connection, else null (every story downloaded on the
+ * connection). Without it, offline, the grown-ups' downloads of another library on the
+ * same account would show in kids mode.
+ */
+export function kidsOfflineLibraryId(
+  library: Pick<Library, 'id'> | null,
+  connectionId: string,
+  kids: Pick<KidsSettings, 'library'> | undefined,
+): number | null {
+  if (library) return library.id;
+  const pick = kids?.library;
+  return pick && pick.connectionId === connectionId ? pick.libraryId : null;
+}
+
+/**
  * The stories on this device for kids mode when its server can't be reached: the
  * finished downloads of `connectionId`, in `libraryId` when it is known, most recently
  * saved first.

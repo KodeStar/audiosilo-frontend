@@ -8,6 +8,7 @@ import {
   kidsDownloads,
   kidsGrid,
   kidsLibrary,
+  kidsOfflineLibraryId,
   kidsShelf,
 } from './kids-model';
 
@@ -205,5 +206,15 @@ describe('kidsGrid', () => {
 
   it('has a tile width before the column is measured', () => {
     expect(kidsGrid(0, 'phone')).toMatchObject({ columns: 2, tile: 150 });
+  });
+});
+
+describe('kidsOfflineLibraryId', () => {
+  it('is the shown library, else the pick on this connection, else none', () => {
+    const kids = { library: { connectionId: 'c', libraryId: 4 } };
+    expect(kidsOfflineLibraryId({ id: 9 }, 'c', kids)).toBe(9);
+    expect(kidsOfflineLibraryId(null, 'c', kids)).toBe(4);
+    expect(kidsOfflineLibraryId(null, 'd', kids)).toBeNull();
+    expect(kidsOfflineLibraryId(null, 'c', undefined)).toBeNull();
   });
 });

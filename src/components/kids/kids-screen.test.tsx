@@ -237,3 +237,38 @@ it('lays the stories out in rows by the measured width, at most 1200 wide', asyn
   expect(new Set(widths)).toEqual(new Set([180]));
   expect(widths).toHaveLength(7);
 });
+
+it("offers the kid's own sign-in again when its token is dead (the shell's banner is not here)", async () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { useSession } = require('@/stores/session') as typeof import('@/stores/session');
+  const { useProfiles } = require('@/stores/profiles') as typeof import('@/stores/profiles');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  useProfiles.setState({
+    hydrated: true,
+    activeProfileId: 'p',
+    profiles: [{ id: 'p', name: 'Leo', connectionIds: ['c'], kids: { bedtime: '19:30' } }],
+  });
+  useSession.setState({
+    connections: [
+      {
+        id: 'c',
+        serverUrl: 'https://kids.example',
+        name: 'Story Box',
+        token: 't',
+        user: { id: 1, username: 'leo' } as never,
+        needsReconnect: 'auth',
+      },
+    ],
+  });
+  try {
+    await render(<KidsScreen />);
+    await fireEvent.press(screen.getByText(/Story Box/));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { serverName: 'Story Box', reconnect: 'c' },
+    });
+  } finally {
+    useSession.setState({ connections: [] });
+    useProfiles.setState({ profiles: [], activeProfileId: null });
+  }
+});

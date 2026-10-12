@@ -7,6 +7,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Book } from '@/api/types';
+import { ReconnectBanner } from '@/components/layout/reconnect-banner';
 import type { PlayTarget } from '@/components/player/play-route';
 import { startBookInPlace } from '@/components/player/start-book';
 import { openProfiles } from '@/components/profiles/use-choose-profile';
@@ -98,8 +99,12 @@ export function KidsScreen() {
   const centring = (room - width) / 2;
 
   const name = profile?.name.trim() ?? '';
+  // The kid's own sign-in needing renewal (a dead token, a server that was reset): the
+  // shell's reconnect banner is not on this screen, so it shows here. Signing in again
+  // keeps the child's profile and kids mode (`finishConnect`).
   const header = (
     <View>
+      <ReconnectBanner className="mb-4 rounded-lg" />
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <Text
           accessibilityRole="header"
