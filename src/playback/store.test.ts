@@ -1016,6 +1016,66 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 // --- per-connection scoping of saves + the download hot-swap -----------------
 
 describe('connection scoping', () => {
+  describe("finding 11: a switch to another server's book saves the previous book through its own server", () => {
+    const client2 = { ...fakeClient, coverUrl: () => 'c2-cover' };
+    const playing = () => {
+      pushSnapshot(snap('playing', 40));
+    };
+    /** A start on c2 whose resume lookup is still out (the window between the switch and
+     * the new book becoming `nowPlaying`). */
+    async function startOnOtherServer() {
+      let resume!: (value: ResumeLookup) => void;
+      mockLoadInitialProgress.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resume = resolve;
+          }),
+      );
+      const starting = usePlayer
+        .getState()
+        .playBook('c2', 2, makeBook({ rel_path: 'B/Other.m4b' }));
+      for (let i = 0; i < 40; i++) await Promise.resolve();
+      return { resume, starting };
+    }
+
+    beforeEach(() => {
+      mockResolveClient.mockImplementation((cid: string) =>
+        cid === 'c2' ? (client2 as typeof fakeClient) : fakeClient,
+      );
+    });
+    afterEach(() => mockResolveClient.mockImplementation(() => fakeClient));
+
+    it("saves the previous book's place at the switch, through its own server", async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      mockSaveProgress.mockClear();
+      const { resume, starting } = await startOnOtherServer();
+      expect(mockSaveProgress).toHaveBeenCalledWith(
+        fakeClient,
+        expect.objectContaining({ connectionId: 'c1', path: 'A/Book.m4b', position: 40 }),
+      );
+      resume({ kind: 'empty' });
+      await starting;
+    });
+
+    it("a save before the next book is loaded (a lock-screen pause) is the previous book's, to its server", async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      const { resume, starting } = await startOnOtherServer();
+      mockSaveProgress.mockClear();
+      // The old book is still the engine's and `nowPlaying`: paused from the lock screen.
+      pushSnapshot(snap('paused', 45));
+      await flushMicrotasks();
+      expect(mockSaveProgress).toHaveBeenCalledWith(
+        fakeClient,
+        expect.objectContaining({ connectionId: 'c1', position: 45 }),
+      );
+      expect(mockSaveProgress).not.toHaveBeenCalledWith(client2, expect.anything());
+      resume({ kind: 'empty' });
+      await starting;
+    });
+  });
+
   it('finding 5: switching profiles cancels a pending resume before load or play', async () => {
     useProfiles.setState({
       hydrated: true,

@@ -78,6 +78,8 @@ function isTransportLiveState(state: PlaybackState): boolean {
 
 let service: PlaybackService | null = null;
 let apiRef: ApiClient | null = null;
+/** The connection `apiRef` belongs to (set by `switchBook`, with it). */
+let apiRefFor: string | null = null;
 let deviceId = '';
 let historyStart: { position: number; at: number } | null = null;
 /** Do we intend to be playing right now? Gates the stall watchdog so an idle/paused
@@ -313,8 +315,14 @@ async function persist(opts?: { forceFinished?: boolean }) {
   if (loadingBook && !opts?.forceFinished) return;
   // A downloaded book started while its connection wasn't there (a session that could not
   // be read yet: a CarPlay launch with the phone locked) saves from when it is back.
-  apiRef ??= resolveClient(nowPlaying.connectionId);
-  if (!apiRef) return;
+  // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`;
+  // its resume lookup and load are awaits away): a save meanwhile (a lock-screen pause, the
+  // sleep timer) is still the previous book's, and goes to its own server.
+  const api =
+    apiRefFor !== null && apiRefFor !== nowPlaying.connectionId
+      ? resolveClient(nowPlaying.connectionId)
+      : (apiRef ??= resolveClient(nowPlaying.connectionId));
+  if (!api) return;
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
@@ -338,7 +346,7 @@ async function persist(opts?: { forceFinished?: boolean }) {
     if (position < resumeFloor - SLIP_TOLERANCE) return;
     if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
   }
-  await saveProgress(apiRef, {
+  await saveProgress(api, {
     connectionId: nowPlaying.connectionId,
     libraryId: nowPlaying.libraryId,
     path: nowPlaying.path,
@@ -555,6 +563,7 @@ function switchBook(api: ApiClient | null, request: NonNullable<typeof lastPlayR
   stopSaveLoop();
   userMoved();
   apiRef = api;
+  apiRefFor = request.connectionId;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
 }
@@ -779,6 +788,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       // still needs the server (not downloaded) requires a live client.
       if (!api && !local) return; // connection gone and nothing local; nothing to play
 
+      // The previous book's place, saved now through its own server: the switch stops its
+      // save loop (up to 15 s unsaved), and once this book is `nowPlaying` nothing saves it
+      // again. Here, not in `switchBook`: the engine still holds the previous book (an
+      // adoption's engine already plays another, so its snapshot is not that book's).
+      void persist();
       switchBook(api, { connectionId, libraryId, book, chapterData });
       pausedAt = null; // a book (re)started here just had its place looked up
       deviceId = await getDeviceId();
