@@ -152,3 +152,12 @@ describe("Who's listening?", () => {
     expect(screen.getByText('Nobody is signed in here yet')).toBeTruthy();
   });
 });
+
+it('finding 7: kids cannot enter onboarding through Add someone', async () => {
+  useProfiles.setState({ activeProfileId: 'leo' });
+  await mountWithPortal(<ProfilesScreen />);
+  expect(screen.getByText('Choose a grown-up before adding someone.')).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('profiles-add'));
+  expect(mockRouter.push).not.toHaveBeenCalled();
+  expect(useProfiles.getState().activeProfileId).toBe('leo');
+});

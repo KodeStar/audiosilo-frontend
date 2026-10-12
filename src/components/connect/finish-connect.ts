@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 
 import type { AuthSession, ServerAddresses } from '@/api/types';
-import { connectForNewProfile } from '@/components/profiles/connect-intent';
+import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
+import i18n from '@/i18n';
 import { priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
@@ -57,6 +58,12 @@ export async function finishConnect(input: {
   // session adds a new one (the profiles reconcile places it at once).
   const existing = priorConnection(connections, serverId, input.session.user.id);
   const hadProfile = existing ? profileOf(existing.id) : null;
+  // Kids mode signs in again only as a connection this device has (a re-pair keeps its
+  // person): anyone or anything new would join or replace the child's profile without a
+  // grown-up (`mayAddPerson`; "Who's listening?" disables "Add someone" the same way).
+  if ((newPerson || !existing) && !mayAddPerson()) {
+    throw new Error(i18n.t('profiles.add.chooseAdult'));
+  }
   const id = await setSession({
     serverUrl: plan.serverUrl,
     serverId,

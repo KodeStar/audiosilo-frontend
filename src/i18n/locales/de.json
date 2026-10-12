@@ -2145,7 +2145,8 @@
     "add": {
       "label": "Person hinzufügen",
       "hint": "Meldet sich mit dem eigenen Konto an",
-      "a11y": "Person hinzufügen: mit dem eigenen Konto anmelden"
+      "a11y": "Person hinzufügen: mit dem eigenen Konto anmelden",
+      "chooseAdult": "Wähle einen Erwachsenen aus, bevor du jemanden hinzufügst."
     },
     "connect": {
       "title": "Eine Person zu diesem Gerät hinzufügen.",

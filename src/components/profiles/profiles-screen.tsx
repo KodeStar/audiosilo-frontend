@@ -18,7 +18,7 @@ import { type Profile, useMustChoose, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { ADD_SOMEONE_HREF } from './connect-intent';
+import { ADD_SOMEONE_HREF, mayAddPerson } from './connect-intent';
 import { profileName, profileStatus, takeLaunchDecision } from './profiles-model';
 import { forgetPickerOpener, leavePicker, useChooseProfile } from './use-choose-profile';
 
@@ -44,6 +44,7 @@ export function ProfilesScreen() {
   const connections = useSession((s) => s.connections);
   const { choose, switching, dialog } = useChooseProfile();
   const size = phone ? 76 : 96;
+  const canAdd = useProfiles(mayAddPerson);
 
   // On screen, it IS this launch's "Who's listening?" (a cold load of /profiles, a reload
   // while it was open): the auth gate must not ask again once it is closed.
@@ -134,7 +135,7 @@ export function ProfilesScreen() {
               <AnimatedPressable
                 testID="profiles-add"
                 onPress={() => router.push(ADD_SOMEONE_HREF)}
-                disabled={switching !== null}
+                disabled={switching !== null || !canAdd}
                 accessibilityRole="button"
                 accessibilityLabel={t('profiles.add.a11y')}
                 className={cn(
@@ -153,7 +154,7 @@ export function ProfilesScreen() {
                   {t('profiles.add.label')}
                 </Text>
                 <Text variant="caption" className="text-center">
-                  {t('profiles.add.hint')}
+                  {t(canAdd ? 'profiles.add.hint' : 'profiles.add.chooseAdult')}
                 </Text>
               </AnimatedPressable>
             </View>

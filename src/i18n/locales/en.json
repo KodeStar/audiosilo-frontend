@@ -2145,7 +2145,8 @@
     "add": {
       "label": "Add someone",
       "hint": "Signs in with their own account",
-      "a11y": "Add someone: sign in with their own account"
+      "a11y": "Add someone: sign in with their own account",
+      "chooseAdult": "Choose a grown-up before adding someone."
     },
     "connect": {
       "title": "Add someone to this device.",

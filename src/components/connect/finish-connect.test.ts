@@ -197,6 +197,37 @@ describe('placing the new connection in a profile (Phase 8)', () => {
     await profiles().useProfiles.getState().hydrate();
   });
 
+  it('finding 7: a child signs in only as itself while a grown-up is on the device', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    const kid = profiles().activeProfile()!.id; // Sam, now a kids profile
+    profiles().setProfileKids(kid, { bedtime: '20:00' });
+    const before = useSession.getState().connections;
+    // "Add someone" (the demo) and a new server are refused before anything is stored.
+    intent().setConnectForNewProfile(true);
+    await expect(
+      finishConnect({ serverUrl: 'https://demo', session: session('demo') }),
+    ).rejects.toThrow();
+    intent().setConnectForNewProfile(false);
+    await expect(
+      finishConnect({ serverUrl: 'https://two', session: session('srv-2', { user: sam }) }),
+    ).rejects.toThrow();
+    expect(useSession.getState().connections).toBe(before);
+    expect(profiles().activeProfile()?.id).toBe(kid);
+    // Signing in again as itself (a dead token) still works, and stays in kids mode.
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    expect(profiles().activeProfile()?.id).toBe(kid);
+    expect(profiles().activeProfile()?.kids).toBeDefined();
+  });
+
+  it('a kids profile alone on the device may still add a grown-up (no way out otherwise)', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    profiles().setProfileKids(profiles().activeProfile()!.id, { bedtime: '20:00' });
+    intent().setConnectForNewProfile(true);
+    await finishConnect({ serverUrl: 'https://two', session: session('srv-2', { user: sam }) });
+    expect(profiles().activeProfile()?.name).toBe('sam');
+  });
+
   it('a new server joins the active person', async () => {
     await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
     await finishConnect({ serverUrl: 'https://two', session: session('srv-2') });

@@ -2145,7 +2145,8 @@
     "add": {
       "label": "Adicionar alguém",
       "hint": "Inicia sessão com a própria conta",
-      "a11y": "Adicionar alguém: iniciar sessão com a própria conta"
+      "a11y": "Adicionar alguém: iniciar sessão com a própria conta",
+      "chooseAdult": "Escolha um adulto antes de adicionar alguém."
     },
     "connect": {
       "title": "Adicionar alguém a este dispositivo.",
