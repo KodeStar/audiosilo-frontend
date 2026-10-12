@@ -82,4 +82,28 @@ describe('cast token cache', () => {
     await cache.get(src, 'srv.10', 1, 'A/B'); // still cached (a prefix, not a match)
     expect(src.castToken).toHaveBeenCalledTimes(3);
   });
+
+  it('drops expired tokens instead of keeping every book a long session cast', async () => {
+    const cache = createCastTokenCache(now);
+    const src = source(24 * HOUR, now);
+    await cache.get(src, 'srv.1', 1, 'A/B');
+    await cache.get(src, 'srv.1', 1, 'A/C');
+    expect(cache.size()).toBe(2);
+    clock += 25 * HOUR;
+    await cache.get(src, 'srv.1', 1, 'A/D');
+    expect(cache.size()).toBe(1);
+  });
+
+  it('never keeps a token that was on its way when its connection was removed', async () => {
+    const cache = createCastTokenCache(now);
+    let resolve!: (t: { token: string; expires_at: string }) => void;
+    const castToken = jest.fn(
+      () => new Promise<{ token: string; expires_at: string }>((r) => (resolve = r)),
+    );
+    const asked = cache.get({ castToken }, 'srv.1', 1, 'A/B');
+    cache.clear('srv.1');
+    resolve({ token: 'late', expires_at: new Date(clock + 24 * HOUR).toISOString() });
+    expect(await asked).toBe('late'); // the load that asked still gets it
+    expect(cache.size()).toBe(0);
+  });
 });

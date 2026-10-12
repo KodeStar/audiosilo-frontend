@@ -25,8 +25,12 @@ export type CastTokenCache = {
     libraryId: number,
     path: string,
   ): Promise<string>;
-  /** Forget every token of a connection (it was removed) or all of them. */
+  /** Forget every token of a connection (it was removed: `onConnectionRemoved`, in
+   * `startCastSync`) or all of them, and any on its way for it (handed to its caller, never
+   * kept). */
   clear(connectionId?: string): void;
+  /** How many tokens are kept (expired ones are dropped on every `get`). */
+  size(): number;
 };
 
 export function createCastTokenCache(now: () => number = Date.now): CastTokenCache {
@@ -35,15 +39,21 @@ export function createCastTokenCache(now: () => number = Date.now): CastTokenCac
   return {
     get(source, connectionId, libraryId, path) {
       const key = contentKey(connectionId, libraryId, path);
+      // Expired tokens go (a long session casts many books; nothing else would drop them).
+      const at = now();
+      for (const [k, v] of tokens) if (v.expiresAt <= at) tokens.delete(k);
       const known = tokens.get(key);
       if (known && known.expiresAt - now() > CAST_TOKEN_MARGIN_MS) {
         return Promise.resolve(known.token);
       }
       const pending = inFlight.get(key);
       if (pending) return pending;
-      const request = source
+      const request: Promise<string> = source
         .castToken(libraryId, path)
         .then((minted) => {
+          // Its connection was cleared while it was on the way (`clear` let it go): used for
+          // the load that asked, never kept.
+          if (inFlight.get(key) !== request) return minted.token;
           const expiresAt = Date.parse(minted.expires_at);
           // A token whose expiry can't be read is used for this load only.
           if (Number.isFinite(expiresAt)) tokens.set(key, { token: minted.token, expiresAt });
@@ -51,18 +61,22 @@ export function createCastTokenCache(now: () => number = Date.now): CastTokenCac
           return minted.token;
         })
         .finally(() => {
-          inFlight.delete(key);
+          if (inFlight.get(key) === request) inFlight.delete(key);
         });
       inFlight.set(key, request);
       return request;
     },
     clear(connectionId) {
+      for (const key of [...inFlight.keys()]) {
+        if (connectionId === undefined || isKeyOf(key, connectionId)) inFlight.delete(key);
+      }
       if (connectionId === undefined) {
         tokens.clear();
         return;
       }
       for (const key of [...tokens.keys()]) if (isKeyOf(key, connectionId)) tokens.delete(key);
     },
+    size: () => tokens.size,
   };
 }
 
