@@ -375,6 +375,47 @@ describe('CastPlaybackService', () => {
     expect(t.svc.getSnapshot()).toMatchObject({ state: 'ended', trackIndex: 2, position: 600 });
   });
 
+  describe('finding 6: a stream that ends before the last file does', () => {
+    it('is not the end of the book: the queue loads again at the place and plays on', async () => {
+      const t = setup({ transcode: true });
+      await t.svc.load(TRACKS, 2, 0, [], BOOK);
+      t.status({ playerState: 'playing', contentId: t.url(2), position: 298 });
+      t.tick(2_000);
+      // The server or a proxy closed the stream: the receiver calls it finished, at 0.
+      t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+      expect(t.snaps.some((s) => s.state === 'ended')).toBe(false);
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 300 });
+      const req = t.remote.loads.at(-1)!;
+      expect(t.remote.loads).toHaveLength(2);
+      expect(req).toMatchObject({ startIndex: 2, autoplay: true });
+      expect(req.items[2].url).toContain('t=300');
+    });
+
+    it('ends the book when the reloaded stream ends again without getting further', async () => {
+      const t = setup({ transcode: true });
+      await t.svc.load(TRACKS, 2, 0, [], BOOK);
+      t.status({ playerState: 'playing', contentId: t.url(2), position: 300 });
+      t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+      t.status({ playerState: 'playing', contentId: t.url(2), position: 1 });
+      t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'ended', position: 600 });
+      expect(t.remote.loads).toHaveLength(2);
+    });
+
+    it('seen long ago (a suspended iPhone): back paused at that place, never played from it', async () => {
+      const t = setup({ transcode: true });
+      await t.svc.load(TRACKS, 2, 0, [], BOOK);
+      t.status({ playerState: 'playing', contentId: t.url(2), position: 120 });
+      t.tick(60_000);
+      t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', trackIndex: 2 });
+      expect(t.remote.loads).toHaveLength(1);
+      await t.svc.play();
+      expect(t.remote.loads).toHaveLength(2);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 2, autoplay: true });
+    });
+  });
+
   it('reads a stop from elsewhere as a pause, and the next play loads the place again', async () => {
     const t = setup();
     await t.svc.load(TRACKS, 1, 0, [], BOOK);

@@ -1,5 +1,6 @@
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
+import { isEarlyTranscodeEnd } from '@/playback/transcode';
 import {
   type BookRef,
   INITIAL_SNAPSHOT,
@@ -26,6 +27,11 @@ import type { CastItem, CastMediaStatus, CastRemote } from './types';
  * a different place counts as someone else's move again. */
 const ASKED_MOVE_MS = 8_000;
 
+/** How recent (ms) the last sighting of the receiver playing must be for an early `finished`
+ * to reload there and play on: an older one (an iPhone that suspended the sender) is a
+ * place the listener may long have passed, so the book comes back paused there instead. */
+const EARLY_END_FRESH_MS = 15_000;
+
 /** The book loaded on the receiver: what was sent, so a seek into a transcoded file or a
  * jump to another file can reload it, and a status can be mapped back. */
 type Loaded = {
@@ -44,7 +50,8 @@ type Loaded = {
  * playing stays `playing`: the receiver owns its buffer (a seek on a LAN, a Wi-Fi blip) and
  * the store's 3 s stall watchdog would otherwise call a normal buffer a dead stream. Idle is
  * by reason: `finished` on the last file is the book's end (on an earlier file the receiver
- * is moving on to the next: `loading`), `error` an error, and a stop from elsewhere
+ * is moving on to the next: `loading`; one well before the last file's end is a stream that
+ * died, which the service checks before taking it: `endedEarly`), `error` an error, and a stop from elsewhere
  * (`cancelled`, `interrupted`: the TV remote's stop, another sender) a pause, which the next
  * play reloads at the same place.
  */
@@ -134,6 +141,9 @@ export class CastPlaybackService implements PlaybackService {
    * loads (`sendQueue`) or adopts (`adoptQueue`) a book again. */
   private foreignMedia = false;
   private seen: SeenPlace | null = null;
+  /** The place the last early-end reload started from (`isEarlyTranscodeEnd`): a stream that
+   * ends again without real progress past it is the book's end after all. */
+  private earlyEndRetryAt: number | null = null;
   private askedMove: { until: number } | null = null;
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
@@ -183,6 +193,7 @@ export class CastPlaybackService implements PlaybackService {
     const index = status ? castTrackIndex(status, loaded.urls) : null;
     if (status && index !== null) loaded.offsets[index] = castStreamOffset(status);
     this.foreignMedia = false;
+    this.earlyEndRetryAt = null;
     this.loaded = loaded;
   }
 
@@ -204,6 +215,7 @@ export class CastPlaybackService implements PlaybackService {
   ) {
     if (!book) throw new Error('A cast needs the book it is loading');
     const seq = ++this.loadSeq;
+    this.earlyEndRetryAt = null;
     this.loadsInFlight++;
     try {
       const loaded = await this.prepareLoaded(tracks, book);
@@ -239,6 +251,7 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   async seekTo(positionInTrack: number) {
+    this.earlyEndRetryAt = null;
     if (this.foreignMedia) {
       // Ours waits for the next play, which loads it back at this place (`needsReload`).
       this.update({ position: positionInTrack });
@@ -262,6 +275,7 @@ export class CastPlaybackService implements PlaybackService {
 
   async skipToTrack(index: number, positionInTrack = 0) {
     if (!this.loaded) return;
+    this.earlyEndRetryAt = null;
     if (this.foreignMedia) {
       // As `seekTo`: the next play loads ours back there.
       this.update({
@@ -303,6 +317,7 @@ export class CastPlaybackService implements PlaybackService {
     this.queueSeq++;
     this.loaded = null;
     this.seen = null;
+    this.earlyEndRetryAt = null;
     this.needsReload = false;
     // Another sender's book on the receiver is theirs: only ours is ever stopped (and
     // theirs stays ignored until this phone loads a book again, `sendQueue`).
@@ -428,6 +443,7 @@ export class CastPlaybackService implements PlaybackService {
     let position = Number.isFinite(status.position)
       ? status.position + offset
       : this.snapshot.position;
+    if (state === 'ended' && loaded && this.endedEarly(trackIndex, position, duration)) return;
     if (state === 'ended' && duration > 0) position = duration; // the book's end reads as finished
     const patch: Partial<PlaybackSnapshot> = { state, trackIndex, position, duration };
     // The receiver's speed, when it changed by itself (not one we just set).
@@ -442,6 +458,40 @@ export class CastPlaybackService implements PlaybackService {
       this.rateChange?.(status.rate);
     }
     this.place(patch, index !== null);
+  }
+
+  /**
+   * The receiver says the last file `finished`, but the place is well before its end
+   * (`isEarlyTranscodeEnd`: a transcoded stream the server or a proxy closed reads as a
+   * normal end; so does a dropped direct one): that is not the end of the book, and reading
+   * it so would mark the book finished and save its end. The place is the receiver's, else
+   * (it reports 0 once idle) where it was last seen playing, carried on by the time since.
+   * Seen playing just now: the queue is loaded again there and plays on. Seen long ago (an
+   * iPhone suspended the sender, and the receiver may have played on to the real end): the
+   * book comes back paused at that place, and the next play loads it there. A stream that
+   * ends again without real progress past the reload is the end after all. Returns whether
+   * it handled the status (false: the book's real end).
+   */
+  private endedEarly(trackIndex: number, reported: number, duration: number): boolean {
+    if (this.loadsInFlight > 0) return false;
+    const seen = this.seen?.trackIndex === trackIndex ? this.seen : null;
+    const age = seen ? this.now() - seen.at : Infinity;
+    const carried = seen ? seen.position + (seen.playing ? (age / 1000) * seen.rate : 0) : 0;
+    const place = Math.min(Math.max(reported, carried), duration);
+    if (!isEarlyTranscodeEnd(place, duration, this.earlyEndRetryAt)) return false;
+    this.earlyEndRetryAt = place;
+    if (!seen?.playing || age > EARLY_END_FRESH_MS) {
+      this.needsReload = true;
+      this.place({ state: 'paused', trackIndex, position: place, duration }, false);
+      return true;
+    }
+    this.place({ state: 'loading', trackIndex, position: place, duration }, false);
+    void this.sendQueue(trackIndex, place, true).catch(() => {
+      // Could not load it again: paused there, and the next play tries again.
+      this.needsReload = true;
+      this.update({ state: 'paused' });
+    });
+    return true;
   }
 
   /** A progress tick names no item, so it can't tell a move from the receiver running on
