@@ -27,6 +27,7 @@ import {
   seriesViews,
 } from '@/lib/series-orderings';
 import { openExternalUrl } from '@/lib/support';
+import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useConnectionName } from '@/stores/session';
@@ -366,6 +367,8 @@ export function WorkSeriesPage({ workId }: { workId: string }) {
   const { t } = useTranslation();
   const metadata = useCapability('metadata');
   const work = useMetaWork(workId, metadata === true);
+  // The link carries no name: the work names the browser tab once it loads.
+  usePageTitle(work.data?.title);
   const paddingBottom = useMiniPlayerInset();
   if (metadata === undefined || work.isLoading) return <SeriesSkeleton />;
   const w = work.data;

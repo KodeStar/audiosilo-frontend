@@ -1204,6 +1204,15 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   the tab bar (the tap for the last row hit a tab). The hub's Stats, Year and Account columns, the
   Account route, Settings, the Journal list, the Library's Folders and Collections modes, the Books
   list and every `CoverGrid` use it; a new tab page scroller does too.
+- **Every page names the browser tab (web)**: a pushed page or root modal calls
+  `usePageTitle(title)` (`src/lib/use-page-title{,.web}.ts`, a no-op on native; `undefined`
+  while its data loads, when the tab's name stands in), a claim held while the screen is
+  FOCUSED (`claimPageTitle`, `src/lib/document-title.ts`), so Back names the page under it
+  again. `DocumentTitle` (root layout, `src/components/shell/document-title{,.web}.tsx`) is the
+  one writer of `document.title`: the book playing (`▶`), else the page, else the tab, then
+  "· AudioSilo". `StaticDocumentTitle` bakes "AudioSilo" into the static HTML (a `<title>` in
+  `+html.tsx` never shows: Expo's head manager puts its own first). A new page calls
+  `usePageTitle` too.
 
 **The Library tab root is the browse modes** (`src/components/library/library-screen.tsx`):
 `/library?mode=books|authors|series|narrators|collections|folders` (absent = books; pure rules in

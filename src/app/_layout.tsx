@@ -11,6 +11,7 @@ import { startCarSync } from '@/car/car-controller';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
+import { DocumentTitle, StaticDocumentTitle } from '@/components/shell/document-title';
 import { ShellToastHost } from '@/components/shell/shell-toast-host';
 import { RootInsetsProvider } from '@/components/ui/overlay';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
@@ -61,6 +62,8 @@ function RootNavigator() {
       {/* A shake must keep the listener going while the phone is locked
           and no player screen is mounted. */}
       <ShakeToExtendListener />
+      {/* Web: the browser tab names the page, or the book playing. */}
+      <DocumentTitle />
     </>
   );
 }
@@ -130,6 +133,8 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* Web's static HTML: the tab's title before the app (below) hydrates. */}
+      <StaticDocumentTitle />
       <SafeAreaProvider>
         {/* The window's insets, for every overlay wherever it is opened from. */}
         <RootInsetsProvider>

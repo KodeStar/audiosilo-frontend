@@ -16,6 +16,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
+import { usePageTitle } from '@/lib/use-page-title';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { CoverTile, useServerFlag } from '../cover-tile';
@@ -35,6 +36,9 @@ export function SeeAllScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ type?: string }>();
   const type: SeeAllType = params.type === 'finished' ? 'finished' : 'recent';
+  usePageTitle(
+    t(type === 'recent' ? 'library.list.recentlyAdded' : 'library.list.recentlyFinished'),
+  );
   const serverOf = useServerFlag();
 
   const recent = useRecentAll(PAGE_LIMIT);
