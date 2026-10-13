@@ -357,6 +357,14 @@ describe('kidsManager (8b-1)', () => {
     expect(kidsManager({ connectionIds: [] }, people)).toBeNull();
   });
 
+  it('names no one while the kids sign-in has ended: its stored managed_by is from before', () => {
+    const ended = {
+      connections: [{ id: 'a.12', user: user(12, 'adam'), needsReconnect: 'auth' }],
+      profiles: [],
+    };
+    expect(kidsManager({ connectionIds: ['a.12'] }, ended)).toBeNull();
+  });
+
   it("with no pick, takes the first of the profile's connections in the session's order, as kids mode does", () => {
     // The profile lists a.12 first (a sign-in again after a server reset keeps its slot),
     // the session a.1: kids mode shows a.1, so it is a.1's account that counts.

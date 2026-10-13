@@ -58,6 +58,9 @@ export type DevicePeople = {
     id: string;
     serverId?: string;
     user?: Pick<User, 'id' | 'managed_by'> | null;
+    /** The session's flag that this sign-in ended (`Connection.needsReconnect`): its `user`
+     * is then the copy from before it ended. */
+    needsReconnect?: unknown;
   }[];
   profiles: readonly { name: string; connectionIds: readonly string[] }[];
 };

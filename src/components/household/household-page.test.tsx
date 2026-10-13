@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Keyboard } from 'react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -423,6 +423,55 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     ).toBeTruthy();
     expect(screen.getByText('Shown when Chris shares no collections')).toBeTruthy();
     expect(screen.queryByText(/Ask the server's admin/)).toBeNull();
+  });
+
+  it("describes each person's kids mode by that person's own manager, never the listener's name on every card", async () => {
+    const member = (id: string, username: string, owner: { id: number; username: string } | null) =>
+      ({
+        ...conn(id, 'Hearthside', username),
+        user: {
+          id: Number(id.split('.')[1]),
+          username,
+          has_password: false,
+          has_recovery: false,
+          managed_by: owner,
+          member_kind: owner ? 'kid' : null,
+        },
+      }) as unknown as Connection;
+    useSession.setState({
+      connections: [
+        conn('a.1', 'Hearthside', 'chris'),
+        // Chris's kid; a kid of someone with no sign-in on this device; an ordinary
+        // (Phase 8) account; and an account whose sign-in here ended, still holding the
+        // managed_by it had before (leaving a household signs the person out, so the
+        // stored copy is from before they left).
+        member('a.3', 'leo', { id: 1, username: 'chris' }),
+        member('a.5', 'nan', { id: 2, username: 'adam' }),
+        member('a.9', 'ellis', null),
+        { ...member('a.7', 'robin', { id: 1, username: 'chris' }), needsReconnect: 'auth' },
+      ],
+    });
+    useProfiles.setState({
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a.1'] },
+        { id: 'leo', name: 'Leo', connectionIds: ['a.3'] },
+        { id: 'nan', name: 'Nan', connectionIds: ['a.5'] },
+        { id: 'ellis', name: 'ellis', connectionIds: ['a.9'] },
+        { id: 'robin', name: 'Robin', connectionIds: ['a.7'] },
+      ],
+    });
+    await mount();
+    const blurb = (owner: string) =>
+      `The stories ${owner} shares, as big covers, with a bedtime and no settings or search. Leaving needs a grown-up.`;
+    const generic =
+      'One library as big covers, a bedtime, and no settings or search. Leaving needs a grown-up.';
+    const card = (id: string) => within(screen.getByTestId(`household-person-${id}`));
+    expect(card('leo').getByText(blurb('Chris'))).toBeTruthy();
+    expect(card('nan').getByText(blurb('adam'))).toBeTruthy();
+    expect(card('ellis').getByText(generic)).toBeTruthy();
+    expect(card('ellis').queryByText(/The stories/)).toBeNull();
+    expect(card('robin').getByText(generic)).toBeTruthy();
+    expect(card('robin').queryByText(/The stories/)).toBeNull();
   });
 
   it('heads each section the same way (a section heading, not a card title)', async () => {

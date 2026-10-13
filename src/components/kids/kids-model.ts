@@ -51,7 +51,10 @@ export function kidsConnectionId(
 /** Who manages the account kids mode shows for `profile` (its kids connection's
  * `managerName`, Phase 8b-1): by the name this device knows them by (`people`); null for an
  * ordinary account. `people.connections` are the session's: the profile's are taken in
- * their order, as kids mode picks its own. */
+ * their order, as kids mode picks its own. Also null while that sign-in has ended
+ * (`needsReconnect`): its stored user is the copy from before, and leaving a household is
+ * one way a sign-in ends (the server signs the person out of what their old owner set up),
+ * so its `managed_by` would name an owner they no longer have. */
 export function kidsManager(
   profile: Pick<Profile, 'connectionIds' | 'kids'>,
   people: DevicePeople,
@@ -62,7 +65,8 @@ export function kidsManager(
     profile.kids,
   );
   const conn = own.find((c) => c.id === id);
-  return conn ? managerName(conn.user, { connection: conn, people }) : null;
+  if (!conn || conn.needsReconnect) return null;
+  return managerName(conn.user, { connection: conn, people });
 }
 
 /**
