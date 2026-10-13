@@ -323,6 +323,99 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     expect(await screen.findByText(/Leo has no password on Hearthside/)).toBeTruthy();
   });
 
+  it('says who can sign a household member in again, never that they need a new invite', async () => {
+    useSession.setState({
+      connections: [
+        conn('a.1', 'Hearthside', 'chris'),
+        {
+          ...conn('a.3', 'Hearthside', 'leo'),
+          user: {
+            id: 3,
+            username: 'leo',
+            role: 'user',
+            has_password: false,
+            has_recovery: false,
+            managed_by: { id: 1, username: 'chris' },
+            member_kind: 'kid',
+          },
+        } as unknown as Connection,
+      ],
+    });
+    await mount();
+    await fireEvent.press(screen.getByTestId('remove-person-leo'));
+    expect(
+      await screen.findByText(
+        "Leo's account on Hearthside stays. chris can sign Leo in here again from the Household page, or set up a device just for Leo.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/new invite/)).toBeNull();
+  });
+
+  it("reads the household again on the person's server once they are removed (the owner's member devices)", async () => {
+    await mount();
+    client.setQueryData(qk.memberDevices('a.1', 3), []);
+    client.setQueryData(qk.householdMembers('a.1'), { allowed: true, max: 6, members: [] });
+    client.setQueryData(qk.myDevices('a.1'), []);
+    client.setQueryData(qk.memberDevices('b.1', 3), []);
+    await fireEvent.press(screen.getByTestId('remove-person-leo'));
+    await fireEvent.press(await screen.findByTestId('remove-person-confirm'));
+    await waitFor(() => expect(leo()).toBeUndefined());
+    const stale = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated === true;
+    expect(stale(qk.memberDevices('a.1', 3))).toBe(true);
+    expect(stale(qk.householdMembers('a.1'))).toBe(true);
+    expect(stale(qk.myDevices('a.1'))).toBe(true);
+    // Another server's household is untouched.
+    expect(stale(qk.memberDevices('b.1', 3))).toBe(false);
+  });
+
+  it("describes a household member's kids mode by who manages them, never the server's admin", async () => {
+    useSession.setState({
+      connections: [
+        conn('a.1', 'Hearthside', 'chris'),
+        {
+          ...conn('a.3', 'Hearthside', 'leo'),
+          user: {
+            id: 3,
+            username: 'leo',
+            has_password: false,
+            has_recovery: false,
+            managed_by: { id: 1, username: 'chris' },
+            member_kind: 'kid',
+          },
+        } as unknown as Connection,
+      ],
+    });
+    useProfiles.setState({
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a.1'] },
+        { id: 'leo', name: 'Leo', connectionIds: ['a.3'], kids: { bedtime: '19:30' } },
+      ],
+    });
+    await mount();
+    client.setQueryData(qk.libraries('a.3'), []);
+    await waitFor(() =>
+      expect(
+        screen.getByText('Nothing to pick. chris shares stories from the Household page.'),
+      ).toBeTruthy(),
+    );
+    expect(
+      screen.getByText(
+        'The stories chris shares, as big covers, with a bedtime and no settings or search. Leaving needs a grown-up.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Shown when chris shares no collections')).toBeTruthy();
+    expect(screen.queryByText(/Ask the server's admin/)).toBeNull();
+  });
+
+  it('heads each section the same way (a section heading, not a card title)', async () => {
+    mockCaps['a.1'] = { household: true };
+    await mount();
+    const device = screen.getByRole('header', { name: 'On this device' });
+    const sharing = screen.getByRole('header', { name: 'Listening in the house' });
+    expect(device.props.className).toContain('text-xl');
+    expect(sharing.props.className).toBe(device.props.className);
+  });
+
   it('turns asking who is listening off', async () => {
     await mount();
     await fireEvent(

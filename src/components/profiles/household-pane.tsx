@@ -7,8 +7,10 @@ import { useCapabilitiesAll } from '@/api/hooks';
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
 import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
+import { kidsConnectionId } from '@/components/kids/kids-model';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
@@ -62,54 +64,55 @@ export function DevicePeople() {
     );
   }
 
+  // The dialogs sit outside the gapped column: a closed dialog still mounts an empty view,
+  // which a flex gap would space out like a section.
   return (
-    <View className="gap-6" testID="household-device">
-      <View className="gap-3">
-        <Text variant="title" accessibilityRole="header">
-          {t('household.device.title')}
-        </Text>
-        <Text variant="muted">{t('profiles.household.intro')}</Text>
-        {profiles.map((p) => (
-          <PersonCard
-            key={p.id}
-            profile={p}
-            connections={connections}
-            active={p.id === activeId}
-            switching={switching === p.id}
-            onSwitch={() => void choose(p)}
-            onRemove={(name) => void removal.request(p, name)}
-          />
-        ))}
-        <View className="flex-row flex-wrap gap-2">
-          <Button
-            title={t('profiles.picker.title')}
-            icon="users"
-            variant="outline"
-            onPress={openProfiles}
-          />
-          <Button
-            testID="household-sign-in-existing"
-            title={t('household.device.signInExisting')}
-            icon="plus"
-            variant="secondary"
-            onPress={() => router.push(ADD_SOMEONE_HREF)}
-          />
+    <View testID="household-device">
+      <View className="gap-6">
+        <View className="gap-3">
+          <SectionTitle title={t('household.device.title')} sub={t('profiles.household.intro')} />
+          {profiles.map((p) => (
+            <PersonCard
+              key={p.id}
+              profile={p}
+              connections={connections}
+              active={p.id === activeId}
+              switching={switching === p.id}
+              onSwitch={() => void choose(p)}
+              onRemove={(name) => void removal.request(p, name)}
+            />
+          ))}
+          <View className="flex-row flex-wrap gap-2">
+            <Button
+              title={t('profiles.picker.title')}
+              icon="users"
+              variant="outline"
+              onPress={openProfiles}
+            />
+            <Button
+              testID="household-sign-in-existing"
+              title={t('household.device.signInExisting')}
+              icon="plus"
+              variant="secondary"
+              onPress={() => router.push(ADD_SOMEONE_HREF)}
+            />
+          </View>
         </View>
-      </View>
 
-      <SettingsCard testID="household-ask">
-        <SettingRow
-          first
-          label={t('profiles.household.askAtLaunch')}
-          description={t('profiles.household.askAtLaunchBody')}
-        >
-          <Switch
-            checked={askAtLaunch}
-            onCheckedChange={setAskAtLaunch}
-            accessibilityLabel={t('profiles.household.askAtLaunch')}
-          />
-        </SettingRow>
-      </SettingsCard>
+        <SettingsCard testID="household-ask">
+          <SettingRow
+            first
+            label={t('profiles.household.askAtLaunch')}
+            description={t('profiles.household.askAtLaunchBody')}
+          >
+            <Switch
+              checked={askAtLaunch}
+              onCheckedChange={setAskAtLaunch}
+              accessibilityLabel={t('profiles.household.askAtLaunch')}
+            />
+          </SettingRow>
+        </SettingsCard>
+      </View>
 
       {chooseDialog}
       {removal.dialog}
@@ -129,9 +132,7 @@ export function HouseSharing() {
   if (sharing.length === 0 && !known) return null;
   return (
     <View className="gap-3" testID="household-sharing">
-      <Text variant="title" accessibilityRole="header">
-        {t('house.title')}
-      </Text>
+      <SectionTitle title={t('house.title')} />
       {sharing.length === 0 ? (
         <Text variant="muted">{t('profiles.household.noSharing')}</Text>
       ) : (
@@ -143,6 +144,14 @@ export function HouseSharing() {
       )}
     </View>
   );
+}
+
+/** Who manages the account kids mode shows for `profile` (its kids connection's
+ * `user.managed_by`, Phase 8b-1), by username; null for an ordinary account. */
+export function kidsManager(profile: Profile, connections: readonly Connection[]): string | null {
+  const id = kidsConnectionId(profile.connectionIds, profile.kids);
+  const owner = connections.find((c) => c.id === id)?.user?.managed_by?.username;
+  return owner || null;
 }
 
 /** The PIN prompt's step: `check` the current PIN (as `startPin` read it), then set a new
@@ -170,6 +179,9 @@ function PersonCard({
   const [renaming, setRenaming] = useState(false);
   const [pin, setPin] = useState<PinFlow>(null);
   const kids = profile.kids;
+  // A household member's account (Phase 8b-1): kids mode shows what the person who
+  // manages it shares, so its lines name them, never "ask the server's admin".
+  const manager = kidsManager(profile, connections);
   // Never the last grown-up: nobody could leave kids mode (`mayTurnOnKids`).
   const kidsAllowed = useProfiles((s) => mayTurnOnKids(profile.id, s));
   const kidsLabel = t('profiles.kids.label');
@@ -290,7 +302,13 @@ function PersonCard({
 
       <SettingRow
         label={kidsLabel}
-        description={kidsAllowed ? t('profiles.kids.body') : t('profiles.kids.needsGrownUp')}
+        description={
+          !kidsAllowed
+            ? t('profiles.kids.needsGrownUp')
+            : manager
+              ? t('profiles.kids.bodyMember', { owner: manager })
+              : t('profiles.kids.body')
+        }
       >
         <Switch
           checked={!!kids}
@@ -303,8 +321,15 @@ function PersonCard({
       </SettingRow>
       {kids ? (
         <>
-          <SettingRow label={libraryLabel} description={t('profiles.kids.libraryBody')}>
-            <KidsLibraryPicker profile={profile} label={libraryLabel} />
+          <SettingRow
+            label={libraryLabel}
+            description={
+              manager
+                ? t('profiles.kids.libraryBodyMember', { owner: manager })
+                : t('profiles.kids.libraryBody')
+            }
+          >
+            <KidsLibraryPicker profile={profile} label={libraryLabel} manager={manager} />
           </SettingRow>
           <SettingRow
             label={bedtimeLabel}

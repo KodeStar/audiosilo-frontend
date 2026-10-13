@@ -35,9 +35,9 @@ const PANE_ICON: Record<SettingsPane, IconName> = {
   support: 'heart',
 };
 
-/** The Household page's link: where its pane was (`HOUSEHOLD_LINK_GROUP`), by the same
+/** The Household page's link: where its pane was (`HOUSEHOLD_LINK_GROUP`), by the page's
  * name (Phase 8b-1). */
-const HOUSEHOLD_LABEL = 'settings.sections.household' as const;
+const HOUSEHOLD_LABEL = 'household.title' as const;
 const HOUSEHOLD_ICON: IconName = 'users';
 
 /** A pane's name (the section nav's item, the pane's heading). */

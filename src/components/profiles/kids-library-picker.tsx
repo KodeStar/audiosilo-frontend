@@ -30,9 +30,19 @@ const optionValue = (o: { connectionId: string; libraryId: number }) =>
  * connections list (GET /libraries, the server's scopes are the truth: an admin limits the
  * kid's account there), named with their server when the profile has several. No pick
  * means the first library the kid's connection lists (kids mode's own fallback). Loading,
- * failed (with Retry) and empty states.
+ * failed (with Retry) and empty states. `manager`: a household member's account (Phase
+ * 8b-1), whose stories the person who manages it shares: an empty list names them instead
+ * of sending anyone to the server's admin.
  */
-export function KidsLibraryPicker({ profile, label }: { profile: Profile; label: string }) {
+export function KidsLibraryPicker({
+  profile,
+  label,
+  manager = null,
+}: {
+  profile: Profile;
+  label: string;
+  manager?: string | null;
+}) {
   const { t } = useTranslation();
   const { clients } = useApiRegistry();
   const connections = useSession((s) => s.connections);
@@ -63,7 +73,11 @@ export function KidsLibraryPicker({ profile, label }: { profile: Profile; label:
     return (
       <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1.5">
         <Text variant="caption" className={failed.length ? 'text-destructive' : undefined}>
-          {failed.length ? t('profiles.kids.librariesFailed') : t('profiles.kids.noLibraries')}
+          {failed.length
+            ? t('profiles.kids.librariesFailed')
+            : manager
+              ? t('profiles.kids.noLibrariesMember', { owner: manager })
+              : t('profiles.kids.noLibraries')}
         </Text>
         {failed.length ? (
           <Button

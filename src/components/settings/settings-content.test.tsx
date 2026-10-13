@@ -121,6 +121,9 @@ describe('SettingsContent, the Household link (8b-1)', () => {
     await render(<SettingsContent />);
     await layOut(1000);
     expect(screen.queryByTestId('settings-pane-household')).toBeNull();
+    // The page's own short name: "Household and sharing" was cut off in the side nav.
+    expect(screen.getByTestId('settings-nav-household')).toHaveTextContent('Household');
+    expect(screen.queryByText('Household and sharing')).toBeNull();
     await fireEvent.press(screen.getByTestId('settings-nav-household'));
     expect(mockOpenHousehold).toHaveBeenCalledTimes(1);
     // A link, not a pane: the pane shown stays.
