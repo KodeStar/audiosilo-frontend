@@ -19,7 +19,7 @@ import { Text } from '@/components/ui/text';
 import { TimeStepper } from '@/components/ui/time-stepper';
 import { toast } from '@/components/ui/toast';
 import { formatTimeOfDay } from '@/lib/format';
-import { clearPin, readPin, type StoredPin } from '@/lib/profile-pin';
+import { clearPin, readPinMirrored, type StoredPin } from '@/lib/profile-pin';
 import { KIDS_BEDTIME_UNTIL } from '@/playback/listener-settings';
 import {
   connectionsOfProfile,
@@ -28,7 +28,6 @@ import {
   renameProfile,
   type Profile,
   setAskAtLaunch,
-  setProfileHasPin,
   setProfileKids,
   useProfiles,
 } from '@/stores/profiles';
@@ -257,21 +256,20 @@ function PersonCard({
   const startPin = async (then: 'set' | 'clear') => {
     let stored: StoredPin | null;
     try {
-      stored = await readPin(profile.id);
+      stored = await readPinMirrored(profile);
     } catch {
       toast({ title: t('profiles.pin.readFailed') });
       return;
     }
     if (stored) {
-      if (!profile.hasPin) setProfileHasPin(profile.id, true);
       setPin({ step: 'check', then, stored });
       return;
     }
+    // None, and the mirror said none: set one. Else the mirror had lost its hash (repaired).
     if (then === 'set' && !profile.hasPin) {
       setPin({ step: 'set' });
       return;
     }
-    setProfileHasPin(profile.id, false);
     toast({ title: t('profiles.pin.noneSet', { name }) });
   };
 

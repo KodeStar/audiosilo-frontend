@@ -141,7 +141,7 @@ describe("Who's listening?", () => {
         .getState()
         .profiles.map((p) => (p.id === 'sam' ? { ...p, hasPin: undefined } : p)),
     });
-    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    const read = jest.spyOn(profilePin, 'readPinMirrored').mockRejectedValue(new Error('locked'));
     await mountWithPortal(<ProfilesScreen />);
     await fireEvent.press(screen.getByLabelText('Sam, Hearthside'));
     await waitFor(() =>
@@ -157,7 +157,7 @@ describe("Who's listening?", () => {
 
   it('an unreadable PIN store refuses a mirrored PIN the same way', async () => {
     await setPin('sam', '2468');
-    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    const read = jest.spyOn(profilePin, 'readPinMirrored').mockRejectedValue(new Error('locked'));
     await mountWithPortal(<ProfilesScreen />);
     await fireEvent.press(screen.getByLabelText('Sam, Hearthside, asks for a PIN'));
     await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));

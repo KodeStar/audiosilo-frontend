@@ -33,7 +33,9 @@ jest.mock('@/components/profiles/pin-dialog', () => {
   };
 });
 const mockReadPin = jest.fn();
-jest.mock('@/lib/profile-pin', () => ({ readPin: (id: string) => mockReadPin(id) }));
+jest.mock('@/lib/profile-pin', () => ({
+  readPinMirrored: (p: { id: string }) => mockReadPin(p.id),
+}));
 
 // addMemberHere belongs to workstream P: here it is a mock.
 const mockAddHere = jest.fn();

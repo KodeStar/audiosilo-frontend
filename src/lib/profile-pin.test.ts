@@ -17,6 +17,7 @@ import {
   pinKey,
   pinLockedFor,
   readPin,
+  readPinMirrored,
   resetPinTriesForTests,
   setPin,
 } from './profile-pin';
@@ -153,6 +154,28 @@ describe('PIN storage', () => {
     await setSecure(pinKey(profileId()), '{"v":1,"salt":"zz"}');
     expect(await readPin(profileId())).toBeNull();
     expect(await checkPin(profileId(), '1234')).toBe(false);
+  });
+
+  it('readPinMirrored repairs the mirror to what the store holds, both ways', async () => {
+    await setPin(profileId(), '4821');
+    useProfiles.setState((st) => ({
+      profiles: st.profiles.map((p) => ({ ...p, hasPin: undefined })),
+    }));
+    const lost = profileOf(conn.id)!;
+    expect(await readPinMirrored(lost)).toEqual(await readPin(profileId()));
+    expect(profileOf(conn.id)?.hasPin).toBe(true);
+
+    await setSecure(pinKey(profileId()), '');
+    expect(await readPinMirrored(profileOf(conn.id)!)).toBeNull();
+    expect(profileOf(conn.id)?.hasPin).toBeUndefined();
+  });
+
+  it('readPinMirrored changes nothing when the store cannot be read', async () => {
+    await setPin(profileId(), '4821');
+    const SecureStore = jest.requireMock('expo-secure-store') as { getItemAsync: jest.Mock };
+    SecureStore.getItemAsync.mockRejectedValueOnce(new Error('locked'));
+    await expect(readPinMirrored(profileOf(conn.id)!)).rejects.toThrow('locked');
+    expect(profileOf(conn.id)?.hasPin).toBe(true);
   });
 
   it('a deleted profile takes its PIN with it', async () => {

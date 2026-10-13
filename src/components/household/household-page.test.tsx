@@ -242,7 +242,7 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
         .getState()
         .profiles.map((p) => (p.id === 'leo' ? { ...p, hasPin: undefined } : p)),
     });
-    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    const read = jest.spyOn(profilePin, 'readPinMirrored').mockRejectedValue(new Error('locked'));
     await mount();
     await fireEvent.press(screen.getByLabelText('Set a PIN for Leo'));
     await waitFor(() =>
@@ -283,7 +283,7 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
 
   it('Change with an unreadable PIN store says it could not check, and asks nothing', async () => {
     await setPin('leo', '1111');
-    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    const read = jest.spyOn(profilePin, 'readPinMirrored').mockRejectedValue(new Error('locked'));
     await mount();
     await fireEvent.press(screen.getByLabelText("Change Leo's PIN"));
     await waitFor(() =>

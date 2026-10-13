@@ -4,9 +4,9 @@ import { useTranslation } from 'react-i18next';
 
 import { TABS } from '@/components/shell/destinations';
 import { toast } from '@/components/ui/toast';
-import { readPin, type StoredPin } from '@/lib/profile-pin';
+import { readPinMirrored, type StoredPin } from '@/lib/profile-pin';
 import { popTabToRoot } from '@/lib/root-stack';
-import { type Profile, setProfileHasPin, switchProfile, useProfiles } from '@/stores/profiles';
+import { type Profile, switchProfile, useProfiles } from '@/stores/profiles';
 
 import { PinDialog } from './pin-dialog';
 import { profileName } from './profiles-model';
@@ -86,23 +86,20 @@ export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
       if (!stay) leavePicker();
       return;
     }
-    // The secure store says whether there is a PIN, never the profile's mirror (`hasPin`)
-    // alone: the mirror is written best effort with the whole profiles document, which a
-    // failed write or a second web tab holding an older document can leave without it.
+    // The secure store says whether there is a PIN, never the profile's mirror alone
+    // (`readPinMirrored` repairs the mirror).
     let stored: StoredPin | null;
     try {
-      stored = await readPin(profile.id);
+      stored = await readPinMirrored(profile);
     } catch {
       // Unreadable: never switch on the mirror's word (a lost mirror would let anyone in).
       toast({ title: t('profiles.pin.readFailed') });
       return;
     }
     if (stored) {
-      if (!profile.hasPin) setProfileHasPin(profile.id, true);
       setPinFor({ profile, stored });
       return;
     }
-    if (profile.hasPin) setProfileHasPin(profile.id, false);
     await finish(profile);
   };
 

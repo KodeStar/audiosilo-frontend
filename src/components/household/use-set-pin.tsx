@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { PinDialog } from '@/components/profiles/pin-dialog';
 import { profileName } from '@/components/profiles/profiles-model';
 import { toast } from '@/components/ui/toast';
-import { readPin } from '@/lib/profile-pin';
-import { type Profile, setProfileHasPin } from '@/stores/profiles';
+import { readPinMirrored } from '@/lib/profile-pin';
+import type { Profile } from '@/stores/profiles';
 
 /**
  * Set a PIN for a person on this device (after adding a kid: the owner's own, so the kid
@@ -20,8 +20,7 @@ export function useSetPin(): { start: (profile: Profile) => Promise<void>; dialo
 
   const start = async (p: Profile) => {
     try {
-      if (await readPin(p.id)) {
-        setProfileHasPin(p.id, true);
+      if (await readPinMirrored(p)) {
         toast({ title: t('household.pin.already', { name: profileName(p, t) }) });
         return;
       }
