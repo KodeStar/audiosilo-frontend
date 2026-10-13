@@ -26,7 +26,11 @@ const mockAddHere = jest.fn();
 const mockSignedInHere = jest.fn();
 jest.mock('@/components/connect/add-member-here', () => {
   class AddMemberHereError extends Error {
-    readonly code = 'already_here' as const;
+    readonly code: string;
+    constructor(mockCode: string) {
+      super(mockCode);
+      this.code = mockCode;
+    }
   }
   return {
     AddMemberHereError,
@@ -392,7 +396,6 @@ describe('MemberCard', () => {
     expect(mockSession).toHaveBeenCalledWith(12);
     expect(mockAddHere).toHaveBeenCalledWith(expect.objectContaining({ token: 's' }), {
       name: 'Evie',
-      kids: true,
     });
     expect(mockToast).toHaveBeenLastCalledWith({
       title: 'Evie is signed in on this device too.',

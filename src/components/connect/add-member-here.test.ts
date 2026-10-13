@@ -88,10 +88,7 @@ beforeEach(async () => {
 
 it('signs a kid in beside the owner: a new profile in kids mode, the owner still listening', async () => {
   const owner = activeProfile()!.id;
-  const { connectionId, profileId } = await addMemberHere(memberSession(evie), {
-    name: 'Evie',
-    kids: true,
-  });
+  const { connectionId, profileId } = await addMemberHere(memberSession(evie), { name: 'Evie' });
   expect(connectionId).toBe('srv.12');
   // The owner stays active, the default connection unchanged, no switch (nothing stopped).
   expect(activeProfile()?.id).toBe(owner);
@@ -120,8 +117,8 @@ it('signs a kid in beside the owner: a new profile in kids mode, the owner still
   expect(useProfiles.getState().askAtLaunch).toBe(true);
 });
 
-it('signs a grown-up in with kids mode off', async () => {
-  const { profileId } = await addMemberHere(memberSession(ellis), { name: 'Ellis', kids: false });
+it("signs a grown-up in with kids mode off (the server's member_kind decides)", async () => {
+  const { profileId } = await addMemberHere(memberSession(ellis), { name: 'Ellis' });
   const profile = useProfiles.getState().profiles.find((p) => p.id === profileId);
   expect(profile?.name).toBe('Ellis');
   expect(profile?.kids).toBeUndefined();
@@ -131,7 +128,6 @@ it('signs a grown-up in with kids mode off', async () => {
 it('learns the addresses the answer carried, on both connections', async () => {
   await addMemberHere(memberSession(evie, { addresses: { home: HOME, away: AWAY } }), {
     name: 'Evie',
-    kids: true,
   });
   for (const c of useSession.getState().connections) {
     expect(c.addresses).toEqual({ home: HOME, away: AWAY });
@@ -139,16 +135,13 @@ it('learns the addresses the answer carried, on both connections', async () => {
 });
 
 it('refuses a member already signed in on this device, changing nothing', async () => {
-  await addMemberHere(memberSession(evie), { name: 'Evie', kids: true });
+  await addMemberHere(memberSession(evie), { name: 'Evie' });
   const connections = useSession.getState().connections;
   const doc = useProfiles.getState().profiles;
   expect(memberSignedInHere('srv', 12)).toBe(true);
   expect(memberSignedInHere('srv', 13)).toBe(false);
   expect(memberSignedInHere('other', 12)).toBe(false);
-  const failed = addMemberHere(memberSession(evie, { token: 'again' }), {
-    name: 'Evie',
-    kids: true,
-  });
+  const failed = addMemberHere(memberSession(evie, { token: 'again' }), { name: 'Evie' });
   await expect(failed).rejects.toBeInstanceOf(AddMemberHereError);
   await expect(failed).rejects.toMatchObject({ code: 'already_here' });
   expect(useSession.getState().connections).toBe(connections);
@@ -156,33 +149,35 @@ it('refuses a member already signed in on this device, changing nothing', async 
 });
 
 it('refuses the owner signing themselves in again as a member', async () => {
-  await expect(
-    addMemberHere(memberSession(adam), { name: 'Adam', kids: false }),
-  ).rejects.toMatchObject({ code: 'already_here' });
+  await expect(addMemberHere(memberSession(adam), { name: 'Adam' })).rejects.toMatchObject({
+    code: 'already_here',
+  });
 });
 
 it('refuses while a kids profile is listening with a grown-up on the device', async () => {
-  const { profileId } = await addMemberHere(memberSession(evie), { name: 'Evie', kids: true });
+  const { profileId } = await addMemberHere(memberSession(evie), { name: 'Evie' });
   useProfiles.setState({ activeProfileId: profileId });
-  await expect(
-    addMemberHere(memberSession(ellis), { name: 'Ellis', kids: false }),
-  ).rejects.toThrow();
+  await expect(addMemberHere(memberSession(ellis), { name: 'Ellis' })).rejects.toMatchObject({
+    code: 'choose_adult',
+  });
   expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv.1', 'srv.12']);
   setProfileKids(profileId, undefined);
 });
 
 it('refuses while the profiles are not read, and with no connection to that server', async () => {
   await expect(
-    addMemberHere({ ...memberSession(evie), server_id: 'elsewhere' }, { name: 'Evie', kids: true }),
-  ).rejects.toThrow();
+    addMemberHere({ ...memberSession(evie), server_id: 'elsewhere' }, { name: 'Evie' }),
+  ).rejects.toMatchObject({ code: 'not_ready' });
   resetProfilesForTests();
-  await expect(addMemberHere(memberSession(evie), { name: 'Evie', kids: true })).rejects.toThrow();
+  await expect(addMemberHere(memberSession(evie), { name: 'Evie' })).rejects.toMatchObject({
+    code: 'not_ready',
+  });
   expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv.1']);
 });
 
 describe('signing a member this device holds in again (8b-1, D1)', () => {
   it('renews only the token: same connection, person, kids mode; the owner keeps listening', async () => {
-    const { profileId } = await addMemberHere(memberSession(evie), { name: 'Evie', kids: true });
+    const { profileId } = await addMemberHere(memberSession(evie), { name: 'Evie' });
     await useSession.getState().markNeedsReconnect('srv.12', 'auth');
     const before = profileOf('srv.12');
     const id = await renewMemberHere(memberSession(evie, { token: 'fresh' }));
@@ -199,20 +194,21 @@ describe('signing a member this device holds in again (8b-1, D1)', () => {
 
   it('refuses a member this device does not hold, changing nothing', async () => {
     const connections = useSession.getState().connections;
-    await expect(renewMemberHere(memberSession(evie))).rejects.toThrow();
+    await expect(renewMemberHere(memberSession(evie))).rejects.toMatchObject({ code: 'not_ready' });
     expect(useSession.getState().connections).toBe(connections);
   });
 
   it("finds the member's owner among the person listening's connections, and only theirs", async () => {
-    await addMemberHere(memberSession(evie), { name: 'Evie', kids: true });
+    await addMemberHere(memberSession(evie), { name: 'Evie' });
     const kid = useSession.getState().connections.find((c) => c.id === 'srv.12')!;
-    expect(memberOwnerHere(kid)?.id).toBe('srv.1');
+    const all = () => useSession.getState().connections;
+    expect(memberOwnerHere(kid, all())?.id).toBe('srv.1');
     // Someone else listening: not theirs to renew.
     const evieProfile = profileOf('srv.12')!.id;
     useProfiles.setState({ activeProfileId: evieProfile });
-    expect(memberOwnerHere(kid)).toBeNull();
+    expect(memberOwnerHere(kid, all())).toBeNull();
     // An ordinary account has no owner.
     const owner = useSession.getState().connections.find((c) => c.id === 'srv.1')!;
-    expect(memberOwnerHere(owner)).toBeNull();
+    expect(memberOwnerHere(owner, all())).toBeNull();
   });
 });

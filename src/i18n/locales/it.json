@@ -377,7 +377,6 @@
       "connect": "Connetti",
       "invalid": "Questo non è un link di associazione di AudioSilo. Questi link sono come https://<server>/web/connect?token=... o audiosilo://connect?..."
     },
-    "memberAlreadyHere": "Questa persona ha già effettuato l'accesso su questo dispositivo.",
     "memberNotReady": "Questo dispositivo non può ancora farle accedere. Riprova tra un momento."
   },
   "onboarding": {
@@ -2359,7 +2358,7 @@
     "here": {
       "done": "L'accesso di {{name}} è attivo anche su questo dispositivo.",
       "already": "L'accesso di {{name}} è già attivo su questo dispositivo.",
-      "failed": "L'account di {{name}} è pronto, ma questo dispositivo non è riuscito a collegarlo. Usa Accedi su questo dispositivo nella sua scheda.",
+      "failed": "L'account di {{name}} è pronto, ma questo dispositivo non è riuscito a collegarlo.",
       "failedRetry": "Impossibile collegare {{name}} su questo dispositivo. Riprova.",
       "failedCard": "Usa Accedi su questo dispositivo nella sua scheda."
     },

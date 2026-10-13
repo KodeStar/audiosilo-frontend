@@ -377,7 +377,6 @@
       "connect": "Conectar",
       "invalid": "Ese no es un enlace de emparejamiento de AudioSilo. Estos enlaces son como https://<servidor>/web/connect?token=... o audiosilo://connect?..."
     },
-    "memberAlreadyHere": "Esa persona ya tiene la sesión iniciada en este dispositivo.",
     "memberNotReady": "Este dispositivo aún no puede iniciar su sesión. Vuelve a intentarlo en un momento."
   },
   "onboarding": {
@@ -2359,7 +2358,7 @@
     "here": {
       "done": "La sesión de {{name}} también está iniciada en este dispositivo.",
       "already": "La sesión de {{name}} ya está iniciada en este dispositivo.",
-      "failed": "La cuenta de {{name}} está lista, pero este dispositivo no pudo iniciar su sesión. Usa Iniciar sesión en este dispositivo en su tarjeta.",
+      "failed": "La cuenta de {{name}} está lista, pero este dispositivo no pudo iniciar su sesión.",
       "failedRetry": "No se pudo iniciar la sesión de {{name}} en este dispositivo. Vuelve a intentarlo.",
       "failedCard": "Usa Iniciar sesión en este dispositivo en su tarjeta."
     },

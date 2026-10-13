@@ -377,7 +377,6 @@
       "connect": "Connect",
       "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?..."
     },
-    "memberAlreadyHere": "They're already signed in on this device.",
     "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment."
   },
   "onboarding": {
@@ -2359,7 +2358,7 @@
     "here": {
       "done": "{{name}} is signed in on this device too.",
       "already": "{{name}} is already signed in on this device.",
-      "failed": "{{name}}'s account is ready, but this device couldn't sign them in. Use Sign in on this device on their card.",
+      "failed": "{{name}}'s account is ready, but this device couldn't sign them in.",
       "failedRetry": "Couldn't sign {{name}} in on this device. Try again.",
       "failedCard": "Use Sign in on this device on their card."
     },

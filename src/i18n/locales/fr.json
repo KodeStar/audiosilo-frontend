@@ -377,7 +377,6 @@
       "connect": "Se connecter",
       "invalid": "Ce n'est pas un lien d'appairage AudioSilo. Ces liens ressemblent à https://<serveur>/web/connect?token=... ou audiosilo://connect?..."
     },
-    "memberAlreadyHere": "Cette personne est déjà connectée sur cet appareil.",
     "memberNotReady": "Cet appareil ne peut pas encore la connecter. Réessayez dans un instant."
   },
   "onboarding": {
@@ -2359,7 +2358,7 @@
     "here": {
       "done": "La session de {{name}} est aussi ouverte sur cet appareil.",
       "already": "La session de {{name}} est déjà ouverte sur cet appareil.",
-      "failed": "Le compte de {{name}} est prêt, mais cet appareil n'a pas pu ouvrir sa session. Utilisez Connecter sur cet appareil sur sa carte.",
+      "failed": "Le compte de {{name}} est prêt, mais cet appareil n'a pas pu ouvrir sa session.",
       "failedRetry": "Impossible de connecter {{name}} sur cet appareil. Réessayez.",
       "failedCard": "Utilisez Connecter sur cet appareil sur sa carte."
     },

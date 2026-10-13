@@ -377,7 +377,6 @@
       "connect": "Verbinden",
       "invalid": "Das ist kein AudioSilo-Kopplungslink. Kopplungslinks sehen so aus: https://<server>/web/connect?token=... oder audiosilo://connect?..."
     },
-    "memberAlreadyHere": "Diese Person ist auf diesem Gerät schon angemeldet.",
     "memberNotReady": "Dieses Gerät kann die Person noch nicht anmelden. Versuche es gleich noch einmal."
   },
   "onboarding": {
@@ -2359,7 +2358,7 @@
     "here": {
       "done": "{{name}} ist auch auf diesem Gerät angemeldet.",
       "already": "{{name}} ist auf diesem Gerät schon angemeldet.",
-      "failed": "Das Konto von {{name}} ist bereit, aber dieses Gerät konnte {{name}} nicht anmelden. Nutze Auf diesem Gerät anmelden auf der Karte.",
+      "failed": "Das Konto von {{name}} ist bereit, aber dieses Gerät konnte {{name}} nicht anmelden.",
       "failedRetry": "{{name}} konnte auf diesem Gerät nicht angemeldet werden. Versuch es noch einmal.",
       "failedCard": "Nutze Auf diesem Gerät anmelden auf der Karte."
     },

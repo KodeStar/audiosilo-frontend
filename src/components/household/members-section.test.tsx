@@ -40,7 +40,11 @@ const mockAddHere = jest.fn();
 const mockSignedInHere = jest.fn();
 jest.mock('@/components/connect/add-member-here', () => {
   class AddMemberHereError extends Error {
-    readonly code = 'already_here' as const;
+    readonly code: string;
+    constructor(mockCode: string) {
+      super(mockCode);
+      this.code = mockCode;
+    }
   }
   return {
     AddMemberHereError,
@@ -296,7 +300,7 @@ describe('the add dialog', () => {
       sign_in_here: true,
       collection_ids: [5],
     });
-    expect(mockAddHere).toHaveBeenCalledWith(session, { name: 'Evie', kids: true });
+    expect(mockAddHere).toHaveBeenCalledWith(session, { name: 'Evie' });
     expect(screen.getByText('Evie is added')).toBeTruthy();
     expect(screen.getByTestId('add-kid-result')).toHaveTextContent(
       "Evie is signed in on this device, in kids mode. Choose them in Who's listening? when it's their turn.",
@@ -331,7 +335,7 @@ describe('the add dialog', () => {
   });
 
   it('explains a kid this device already holds (already_here)', async () => {
-    mockAddHere.mockRejectedValue(new AddMemberHereError());
+    mockAddHere.mockRejectedValue(new AddMemberHereError('already_here'));
     await mount();
     await openAdd();
     await typeName('Evie');
@@ -342,8 +346,8 @@ describe('the add dialog', () => {
     expect(screen.queryByTestId('add-kid-pin-offer')).toBeNull();
   });
 
-  it("shows addMemberHere's own reason when it refuses otherwise", async () => {
-    mockAddHere.mockRejectedValue(new Error('Choose a grown-up before adding someone.'));
+  it('says why addMemberHere refused otherwise, in our words', async () => {
+    mockAddHere.mockRejectedValue(new AddMemberHereError('choose_adult'));
     await mount();
     await openAdd();
     await typeName('Evie');
@@ -389,7 +393,6 @@ describe('the add dialog', () => {
     expect(mockSession).toHaveBeenCalledWith(13);
     expect(mockAddHere).toHaveBeenCalledWith(expect.objectContaining({ token: 'kid-token' }), {
       name: 'Ellis',
-      kids: false,
     });
     expect(screen.getByTestId('add-grownup-here')).toHaveTextContent(
       'Ellis is signed in on this device too.',

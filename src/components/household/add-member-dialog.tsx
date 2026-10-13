@@ -1,10 +1,10 @@
+import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { useAddMember } from '@/api/hooks';
 import type { AddMemberBody, HouseholdMember } from '@/api/types';
-import { addMemberHere } from '@/components/connect/add-member-here';
 import { profileName } from '@/components/profiles/profiles-model';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { serverIdOf } from '@/lib/connection-id';
 import { useLayout } from '@/lib/layout';
 import { type Profile, useActiveProfile } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
@@ -39,7 +40,7 @@ import { MemberPairing } from './member-pairing';
 import {
   hereFailure,
   type SignInHereResult,
-  signInHereFailure,
+  signInMemberHere,
   useSignInHere,
 } from './use-sign-in-here';
 import { booksRunText, useMemberBooks } from './use-member-books';
@@ -93,18 +94,11 @@ function AddMemberFlow({
   onClose: () => void;
   onSetPin: (owner: Profile) => void;
 }) {
-  const connectionId = connection.id;
-  const serverName = connection.name;
   const [step, setStep] = useState<Step>({ kind: 'form' });
   return (
     <DialogContent testID="add-member-dialog">
       {step.kind === 'form' ? (
-        <FormStep
-          connectionId={connectionId}
-          serverName={serverName}
-          onCancel={onClose}
-          onAdded={setStep}
-        />
+        <FormStep connection={connection} onCancel={onClose} onAdded={setStep} />
       ) : step.kind === 'kid' ? (
         <KidStep step={step} onClose={onClose} onSetPin={onSetPin} />
       ) : (
@@ -129,17 +123,17 @@ function useBodyCap() {
 }
 
 function FormStep({
-  connectionId,
-  serverName,
+  connection,
   onCancel,
   onAdded,
 }: {
-  connectionId: string;
-  serverName: string;
+  connection: Connection;
   onCancel: () => void;
   onAdded: (step: Step) => void;
 }) {
   const { t } = useTranslation();
+  const connectionId = connection.id;
+  const serverName = connection.name;
   const add = useAddMember(connectionId);
   const books = useMemberBooks(connectionId);
   const [form, setForm] = useState<AddForm>(() => newAddForm());
@@ -180,15 +174,10 @@ function FormStep({
         onAdded({ kind: 'grownup', member: result.member, here: null });
         return;
       }
-      let here: SignInHereResult = { status: 'failed' };
-      if (result.session) {
-        try {
-          await addMemberHere(result.session, { name: result.member.name, kids: true });
-          here = { status: 'done' };
-        } catch (e) {
-          here = signInHereFailure(e, true);
-        }
-      }
+      const { session } = result;
+      const here: SignInHereResult = session
+        ? await signInMemberHere(async () => session, result.member, serverIdOf(connection))
+        : { status: 'failed' };
       onAdded({ kind: 'kid', member: result.member, here });
     } finally {
       setBusy(false);
@@ -265,6 +254,16 @@ function FormStep({
   );
 }
 
+/** What the kid's step says about signing them in here: signed in, already here, else
+ * why not and that their card's "Sign in on this device" tries again (their account is
+ * made either way). */
+function kidHereText(here: SignInHereResult, name: string, t: TFunction): string {
+  if (here.status === 'done') return t('household.kid.body', { name });
+  if (here.status === 'already') return hereFailure(here, name, t);
+  const why = here.reason ? hereFailure(here, name, t) : t('household.here.failed', { name });
+  return `${why} ${t('household.here.failedCard')}`;
+}
+
 /** A kid was added: signed in here in kids mode (or why not), and, when the person
  * listening has no PIN, the offer to set one (a kid could switch to them otherwise). */
 function KidStep({
@@ -288,13 +287,7 @@ function KidStep({
         <DialogHeader className="flex-1">
           <DialogTitle>{t('household.kid.title', { name })}</DialogTitle>
           <DialogDescription testID="add-kid-result">
-            {here.status === 'done'
-              ? t('household.kid.body', { name })
-              : here.status === 'already'
-                ? t('household.here.already', { name })
-                : here.message
-                  ? `${here.message} ${t('household.here.failedCard')}`
-                  : t('household.here.failed', { name })}
+            {kidHereText(here, name, t)}
           </DialogDescription>
         </DialogHeader>
       </View>
