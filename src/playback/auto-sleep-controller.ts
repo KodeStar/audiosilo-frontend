@@ -1,10 +1,9 @@
 import { isCarConnected } from '@/car/car-connection';
 import { withinAutoSleepWindow } from '@/lib/hhmm';
-import { activeProfile, useProfiles } from '@/stores/profiles';
+import { useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import {
-  type AutoSleepConfig,
   type AutoSleepDecision,
   canAutoSleepArm,
   decideAutoSleep,
@@ -13,6 +12,7 @@ import {
   type AutoSleepMemory,
 } from './auto-sleep';
 import { engineTicker } from './engine-ticks';
+import { KIDS_BEDTIME_UNTIL, listenerSettings } from './listener-settings';
 import { onSleepTimerEnded, useSleepTimer } from './sleep-timer';
 import { selectBookKey, selectIsPlaying, usePlayer } from './store';
 
@@ -41,14 +41,6 @@ const POLL_MS = 60_000;
  */
 let blocked: AutoSleepMemory = EMPTY_AUTO_SLEEP_MEMORY;
 
-/** Kids mode's bedtime ends here, local time: from the profile's bedtime until this, a
- * story that starts or resumes gets a sleep timer (Phase 8). */
-export const KIDS_BEDTIME_UNTIL = '06:00';
-
-/** How long a story plays at bedtime before the timer fades it out (a duration timer, so
- * it fades like any other). */
-const KIDS_BEDTIME_MINUTES = 20;
-
 /** Whether `now` (local wall clock) is inside a kids profile's bedtime window, from
  * `bedtime` ('HH:MM') until `KIDS_BEDTIME_UNTIL`, across midnight. A bedtime of 06:00
  * itself is a zero-length window (never), as `withinAutoSleepWindow` reads it. */
@@ -56,37 +48,16 @@ export function isBedtime(bedtime: string, now: Date): boolean {
   return withinAutoSleepWindow(bedtime, KIDS_BEDTIME_UNTIL, now);
 }
 
-/**
- * The auto sleep rule that applies now. A kids profile's bedtime: always on, from its
- * bedtime until `KIDS_BEDTIME_UNTIL`, a `KIDS_BEDTIME_MINUTES` timer on every story that
- * starts or resumes. It REPLACES the device-wide setting while a kids profile is active (a
- * grown-up's "end of chapter from 22:00" is not a child's bedtime). Everyone else: the
- * device-wide setting, untouched. Either way `decideAutoSleep` applies it, with the same
- * anti-nag memory.
- */
-export function effectiveAutoSleepConfig(): AutoSleepConfig {
-  const bedtime = activeProfile()?.kids?.bedtime;
-  if (bedtime != null) {
-    return { enabled: true, from: bedtime, until: KIDS_BEDTIME_UNTIL, type: KIDS_BEDTIME_MINUTES };
-  }
-  const settings = useSettings.getState();
-  return {
-    enabled: settings.autoSleepTimer,
-    from: settings.autoSleepFrom,
-    until: settings.autoSleepUntil,
-    type: settings.autoSleepType,
-  };
-}
-
-/** Whether anything can arm right now (`effectiveAutoSleepConfig`'s rule is on). */
+/** Whether anything can arm right now (the listener's rule is on: `listenerSettings`, a
+ * kids profile's bedtime or the device-wide setting, with the same anti-nag memory). */
 function autoSleepOn(): boolean {
-  return effectiveAutoSleepConfig().enabled;
+  return listenerSettings().autoSleep.enabled;
 }
 
 /** The decision for the book playing now, by the rule that applies. */
 function decideNow(bookKey: string | null): AutoSleepDecision {
   return decideAutoSleep({
-    ...effectiveAutoSleepConfig(),
+    ...listenerSettings().autoSleep,
     now: new Date(),
     bookKey,
     memory: blocked,
@@ -106,7 +77,7 @@ function decideNow(bookKey: string | null): AutoSleepDecision {
  * 1. the SETTING, which attaches/detaches the player watch (and takes effect the moment
  *    it is switched on, rather than at the next play edge), and the active PROFILE: a
  *    kids profile's bedtime rule replaces the setting while it is the active one, and is
- *    always on (`effectiveAutoSleepConfig`);
+ *    always on (`listenerSettings`);
  * 2. the PLAYER, for the transition into `playing` (see `watchPlayer`);
  * 3. the sleep timer's one event, `onSleepTimerEnded`, for how each timer ended.
  *
@@ -165,7 +136,7 @@ export function startAutoSleep(): () => void {
     // one that fades and pauses the book mid-drive sends the driver to the phone. The poll
     // goes on, so a book still playing once the car is gone is armed then.
     if (isCarConnected()) return;
-    // A kids profile's bedtime rule, else the device-wide setting (`effectiveAutoSleepConfig`).
+    // A kids profile's bedtime rule, else the device-wide setting (`listenerSettings`).
     const decision = decideNow(selectBookKey(usePlayer.getState()));
     if (decision.arm === 'none') return;
     if (decision.arm === 'duration') timer.startDuration(decision.minutes);

@@ -55,7 +55,7 @@ import {
 import { onForeground } from '@/lib/when-active';
 import { buildBookQueue, toBookPosition } from '@/playback/book-queue';
 import { bookSourceOf } from '@/playback/book-source';
-import { listenerDefaultRate } from '@/playback/default-rate';
+import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
 import { readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
@@ -429,7 +429,7 @@ async function playSpecs(
   if (downloaded.length > 0) {
     const places = await readLocalPlaces();
     const { virtualChapterInterval } = useSettings.getState();
-    const defaultRate = listenerDefaultRate();
+    const { defaultRate } = listenerSettings();
     for (const { key, ref, manifest } of downloaded) {
       const { connectionId, libraryId, path } = ref;
       const row = known.has(connectionId) ? progressOf(ref) : undefined;
@@ -572,7 +572,7 @@ async function buildAndWrite(): Promise<void> {
     },
     {
       t,
-      defaultRate: listenerDefaultRate(),
+      defaultRate: listenerSettings().defaultRate,
       live,
       isDownloaded: (ref) => !!downloadedEntryOf(ref),
       artworkFor: (ref) => artwork.get(contentKeyOf(ref)) ?? null,

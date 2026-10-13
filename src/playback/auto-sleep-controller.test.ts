@@ -30,6 +30,8 @@ function load() {
   const car = require('@/car/car-connection') as typeof import('@/car/car-connection');
   const profiles = require('@/stores/profiles') as typeof import('@/stores/profiles');
   const autoSleep = require('@/playback/auto-sleep') as typeof import('@/playback/auto-sleep');
+  const listener =
+    require('@/playback/listener-settings') as typeof import('@/playback/listener-settings');
   /* eslint-enable @typescript-eslint/no-require-imports */
   return {
     player,
@@ -40,7 +42,7 @@ function load() {
     engineTick: ticks.engineTick,
     setCarConnected: car.setCarConnected,
     useProfiles: profiles.useProfiles,
-    effectiveAutoSleepConfig: controller.effectiveAutoSleepConfig,
+    listenerSettings: listener.listenerSettings,
     decideAutoSleep: autoSleep.decideAutoSleep,
   };
 }
@@ -681,7 +683,7 @@ describe('auto sleep controller', () => {
       ] as const) {
         expect(
           ctx.decideAutoSleep({
-            ...ctx.effectiveAutoSleepConfig(),
+            ...ctx.listenerSettings().autoSleep,
             now,
             bookKey: 'k',
             memory: new Set(),

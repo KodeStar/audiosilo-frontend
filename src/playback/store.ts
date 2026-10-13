@@ -26,7 +26,7 @@ import {
   readMirror,
   saveProgress,
 } from './progress-sync';
-import { listenerDefaultRate } from './default-rate';
+import { listenerSettings } from './listener-settings';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
 import { bookSpeed } from './time-left';
@@ -820,8 +820,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
       let startAt = startBookPosition ?? 0;
       const askedSpeed = startSpeed !== undefined && startSpeed > 0;
-      // 1x for a kids profile, else the listener's setting (`listenerDefaultRate`).
-      const defaultRate = listenerDefaultRate();
+      // 1x for a kids profile, else the listener's setting (`listenerSettings`).
+      const { defaultRate } = listenerSettings();
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
       if (startBookPosition === undefined && startTrack === undefined) {
         const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);

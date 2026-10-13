@@ -22,7 +22,7 @@ import { TimeStepper } from '@/components/ui/time-stepper';
 import { toast } from '@/components/ui/toast';
 import { formatTimeOfDay } from '@/lib/format';
 import { clearPin, readPin, type StoredPin } from '@/lib/profile-pin';
-import { KIDS_BEDTIME_UNTIL } from '@/playback/auto-sleep-controller';
+import { KIDS_BEDTIME_UNTIL } from '@/playback/listener-settings';
 import {
   connectionsOfProfile,
   DEFAULT_BEDTIME,

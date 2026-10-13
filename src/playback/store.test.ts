@@ -932,7 +932,7 @@ describe('the speed a book starts at', () => {
   });
 
   // Decision 7 regression (8b-1, D3): the one change here is the default a book with no
-  // speed of its own starts at (`listenerDefaultRate`): 1x for a kids profile.
+  // speed of its own starts at (`listenerSettings`): 1x for a kids profile.
   describe('in kids mode', () => {
     beforeEach(() =>
       useProfiles.setState({

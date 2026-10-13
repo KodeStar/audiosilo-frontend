@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 
 import { selectBookPosition, usePlayer } from '@/playback/store';
+import { useListenerDefaultRate } from '@/playback/listener-settings';
 import { bookSpeed, displaySeconds, formatTimeLeft, timeLeft } from '@/playback/time-left';
-import { useSettings } from '@/stores/settings';
 
 import { selectIsLoaded } from './playing-target';
 import type { PlayTarget } from './use-play-book';
@@ -44,10 +44,10 @@ export function usePlayingTimeLeft(): string {
 
 /**
  * The speed `book` plays at: the player's rate while it is loaded, else its saved speed,
- * else the default speed setting.
+ * else the listener's default speed (`useListenerDefaultRate`: 1x in kids mode).
  */
 export function useBookSpeed(book: PlayTarget | null, savedSpeed?: number): number {
-  const defaultRate = useSettings((s) => s.defaultRate);
+  const defaultRate = useListenerDefaultRate();
   const live = usePlayer((s) => (selectIsLoaded(book)(s) ? s.rate : 0));
   return live > 0 ? live : bookSpeed(savedSpeed, defaultRate);
 }
@@ -65,7 +65,7 @@ export function useBookTimeLeft(
   total?: number,
 ): string {
   const { t } = useTranslation();
-  const defaultRate = useSettings((s) => s.defaultRate);
+  const defaultRate = useListenerDefaultRate();
   const loaded = usePlayer(selectIsLoaded(book));
   const position = saved?.position ?? 0;
   const length = total || saved?.duration || 0;

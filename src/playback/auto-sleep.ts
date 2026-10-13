@@ -89,7 +89,7 @@ export function recordAutoSleepOutcome(
 }
 
 /** The rule that applies: the device-wide setting's, or a kids profile's bedtime
- * (`effectiveAutoSleepConfig` in the controller picks one). */
+ * (`listenerSettings` picks one). */
 export type AutoSleepConfig = {
   /** Whether anything may arm (the `autoSleepTimer` setting; always on at bedtime). */
   enabled: boolean;
