@@ -154,6 +154,17 @@ describe('a pairing link', () => {
     expect(useSession.getState().connections).toHaveLength(0);
   });
 
+  it("says too many tries when the server's limiter refuses the exchange", async () => {
+    mockParams = { token: 'tok', server: AWAY };
+    mockApi.exchange.mockRejectedValue(new ApiError(429, 'too many attempts, try again later'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    expect(
+      await screen.findByText('Too many tries. Wait a few minutes and try again.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/too many attempts/)).toBeNull();
+  });
+
   it('a native link with no server address asks for one', async () => {
     mockParams = { token: 'tok' };
     await render(<ConnectStart />);

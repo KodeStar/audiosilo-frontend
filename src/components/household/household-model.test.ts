@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 import { ApiError } from '@/api/client';
 import type { HouseholdMember, HouseholdMembers } from '@/api/types';
 
@@ -6,13 +8,16 @@ import {
   collectionIdsFor,
   collectionsMembers,
   confirmsName,
+  createsBooks,
   defaultAccess,
   memberConnection,
   newAddForm,
   validMemberName,
   withAccess,
   withKid,
+  listIsStale,
   writeError,
+  writeErrorText,
 } from './household-model';
 
 const member = (over: Partial<HouseholdMember> = {}): HouseholdMember => ({
@@ -98,13 +103,58 @@ describe('the add form (decision J)', () => {
   });
 });
 
+describe('createsBooks', () => {
+  it('creates "<Name>\'s books" on save only when chosen, for "Only collections I share"', () => {
+    expect(newAddForm().newBooks).toBe(false);
+    expect(createsBooks('collections', true)).toBe(true);
+    expect(createsBooks('collections', false)).toBe(false);
+    // Switched to everything afterwards: the promise is taken back.
+    expect(createsBooks('all', true)).toBe(false);
+  });
+});
+
 describe('writeError', () => {
-  it('reads the cap, a refused name, a refusal and anything else', () => {
-    expect(writeError(new ApiError(409, 'member_limit'))).toBe('limit');
-    expect(writeError(new ApiError(400, 'invalid_name'))).toBe('invalid');
-    expect(writeError(new ApiError(403, 'not_allowed'))).toBe('forbidden');
+  it("branches on the server's code first", () => {
+    const coded = (status: number, code: string) => writeError(new ApiError(status, 'x', code));
+    expect(coded(409, 'member_limit')).toBe('limit');
+    expect(coded(409, 'username_taken')).toBe('usernameTaken');
+    expect(coded(400, 'invalid_name')).toBe('invalidName');
+    expect(coded(400, 'invalid_collections')).toBe('invalidCollections');
+    expect(coded(403, 'feature_off')).toBe('featureOff');
+    expect(coded(403, 'not_allowed')).toBe('notAllowed');
+    expect(coded(403, 'member_cannot_manage')).toBe('member');
+    expect(coded(403, 'kid_account')).toBe('kid');
+    expect(coded(403, 'demo_account')).toBe('demo');
+  });
+
+  it('falls back on the status for a refusal without a code (an older server)', () => {
+    expect(writeError(new ApiError(409, 'member limit'))).toBe('limit');
+    expect(writeError(new ApiError(400, 'bad'))).toBe('invalid');
+    expect(writeError(new ApiError(403, 'forbidden'))).toBe('forbidden');
+    expect(writeError(new ApiError(404, 'member not found'))).toBe('gone');
+    expect(writeError(new ApiError(429, 'too many attempts, try again later'))).toBe('tooMany');
     expect(writeError(new ApiError(500, 'oops'))).toBe('failed');
     expect(writeError(new TypeError('Network request failed'))).toBe('failed');
+  });
+
+  it('never reads a coded 409 other than the cap as the cap (a share cap)', () => {
+    expect(writeError(new ApiError(409, 'full', 'collection_full'))).toBe('invalid');
+  });
+
+  it('a 429 reads as too many tries, never as no answer', () => {
+    const t = ((key: string) => key) as unknown as TFunction;
+    expect(writeErrorText(writeError(new ApiError(429, 'x')), 'Hearthside', t)).toBe(
+      'common.tooManyTries',
+    );
+    expect(writeErrorText('failed', 'Hearthside', t)).toBe('household.errors.failed');
+  });
+
+  it('marks the refusals that leave the members list out of date', () => {
+    expect(listIsStale('limit')).toBe(true);
+    expect(listIsStale('featureOff')).toBe(true);
+    expect(listIsStale('gone')).toBe(true);
+    expect(listIsStale('invalidName')).toBe(false);
+    expect(listIsStale('tooMany')).toBe(false);
   });
 });
 

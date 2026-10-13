@@ -115,10 +115,34 @@ describe('PairDeviceCard', () => {
     expect(screen.queryByRole('image')).toBeNull();
   });
 
-  it("shows the server's own reason when it refuses", async () => {
+  it("never shows the server's own words: a refusal says nothing was made", async () => {
     mockPair.mockRejectedValue(new ApiError(403, 'API keys cannot pair devices'));
     await mount();
     await showCode();
-    expect(screen.getByText('API keys cannot pair devices')).toBeTruthy();
+    expect(screen.queryByText('API keys cannot pair devices')).toBeNull();
+    expect(
+      screen.getByText("Couldn't reach Hearthside. No code was made, so try again."),
+    ).toBeTruthy();
+  });
+
+  it('says too many tries on a 429, never that the server did not answer', async () => {
+    mockPair.mockRejectedValue(new ApiError(429, 'too many attempts, try again later'));
+    await mount();
+    await showCode();
+    expect(screen.queryByText('too many attempts, try again later')).toBeNull();
+    expect(screen.getByText('Too many tries. Wait a few minutes and try again.')).toBeTruthy();
+  });
+
+  it("says a kid's account can't pair a device", async () => {
+    mockPair.mockRejectedValue(
+      new ApiError(403, "not available for a kid's account", 'kid_account'),
+    );
+    await mount();
+    await showCode();
+    expect(
+      screen.getByText(
+        "A kid's account can't pair a device. The person who manages it sets up its devices from Household.",
+      ),
+    ).toBeTruthy();
   });
 });

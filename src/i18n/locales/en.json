@@ -9,7 +9,8 @@
     "on": "On",
     "off": "Off",
     "resumeChapter": "Resume chapter {{chapter}}",
-    "resumeTitled": "Resume {{title}}"
+    "resumeTitled": "Resume {{title}}",
+    "tooManyTries": "Too many tries. Wait a few minutes and try again."
   },
   "settings": {
     "title": "Settings",
@@ -142,7 +143,6 @@
       "downloads": "Up next and downloads",
       "appearance": "Appearance",
       "language": "Language",
-      "household": "Household and sharing",
       "accounts": "Accounts and devices",
       "support": "Support AudioSilo"
     },
@@ -202,7 +202,8 @@
       "renew": "Make a new code",
       "copy": "Copy link",
       "qr": "Pairing code for {{server}}",
-      "error": "Couldn't reach {{server}}. No code was made, so try again."
+      "error": "Couldn't reach {{server}}. No code was made, so try again.",
+      "kid": "A kid's account can't pair a device. The person who manages it sets up its devices from Household."
     },
     "devices": {
       "title": "Signed-in devices",
@@ -2225,7 +2226,10 @@
       "noLibraries": "This account sees no libraries. Ask the server's admin to share one.",
       "bedtime": "Bedtime",
       "bedtimeBody": "From then until {{until}}, playing starts a 20 minute sleep timer",
-      "needsGrownUp": "Someone on this device has to stay a grown-up, or nobody could leave kids mode. Add a grown-up first."
+      "needsGrownUp": "Someone on this device has to stay a grown-up, or nobody could leave kids mode. Add a grown-up first.",
+      "bodyMember": "The stories {{owner}} shares, as big covers, with a bedtime and no settings or search. Leaving needs a grown-up.",
+      "libraryBodyMember": "Shown when {{owner}} shares no collections",
+      "noLibrariesMember": "Nothing to pick. {{owner}} shares stories from the Household page."
     },
     "remove": {
       "label": "Remove from this device",
@@ -2234,7 +2238,8 @@
       "title": "Remove {{name}} from this device?",
       "body": "This signs {{name}} out of {{servers}} on this device and deletes their downloads here. Their place in every book stays on the server.",
       "noPassword": "{{name}} has no password on {{server}}: without one they'll need a new invite to sign in again.",
-      "confirm": "Remove and sign out"
+      "confirm": "Remove and sign out",
+      "member": "{{name}}'s account on {{server}} stays. {{owner}} can sign {{name}} in here again from the Household page, or set up a device just for {{name}}."
     },
     "household": {
       "intro": "Everyone who listens on this device, each with their own servers, place in every book, queue and stats.",
@@ -2270,8 +2275,10 @@
         "not_allowed": "Your server's admin hasn't let this account add people.",
         "member": "Only the person who manages your account can add people.",
         "demo": "Demo accounts can't add people.",
-        "at_cap": "You've added the most people this server allows ({{max}})."
-      }
+        "at_cap": "You've added the most people this server allows ({{max}}).",
+        "memberNamed": "Only {{owner}} can add people or change what you can listen to."
+      },
+      "managedBy": "{{owner}} manages your account."
     },
     "kind": {
       "kid": "Kid",
@@ -2289,8 +2296,11 @@
       "create": "Create {{name}}'s books",
       "createUnnamed": "Create their books",
       "booksName": "{{name}}'s books",
-      "created": "Created {{name}}",
-      "collectionsOff": "This server doesn't offer collections, so there's nothing to share yet."
+      "collectionsOff": "This server doesn't offer collections, so there's nothing to share yet.",
+      "createFailed": "Couldn't create {{name}}, so nothing was saved. Try again.",
+      "leftBehind": "{{name}} was created and is still in your collections.",
+      "newDetail": "New collection, created when you save",
+      "createUnnamedName": "Their books"
     },
     "add": {
       "title": "Add someone to your household",
@@ -2306,7 +2316,16 @@
       "limit": "You've added the most people this server allows.",
       "invalid": "{{server}} didn't accept that name or those collections. Check them and try again.",
       "forbidden": "Your server's admin doesn't let this account add people.",
-      "failed": "{{server}} didn't answer, so nothing changed. Try again."
+      "failed": "{{server}} didn't answer, so nothing changed. Try again.",
+      "usernameTaken": "{{server}} couldn't make a username from that name. Try another name.",
+      "invalidName": "{{server}} didn't accept that name. Use up to 40 characters.",
+      "invalidCollections": "One of those collections can't be shared from this account any more. Check them and try again.",
+      "featureOff": "Your server's admin has turned off adding people.",
+      "notAllowed": "Your server's admin hasn't let this account add people.",
+      "member": "Only the person who manages your account can do that.",
+      "kid": "That isn't available for a kid's account.",
+      "demo": "Demo accounts can't do that.",
+      "gone": "That person isn't in your household on {{server}} any more."
     },
     "kid": {
       "title": "{{name}} is added",
@@ -2357,8 +2376,9 @@
       "setUpA11y": "Show a code to set up {{name}}'s own device",
       "signInHere": "Sign in on this device",
       "signInHereA11y": "Sign {{name}} in on this device",
-      "renameBody": "The name everyone on {{server}} sees. Their username stays the same.",
-      "failed": "Couldn't change {{name}}'s account"
+      "renameBody": "Their name on {{server}}. Their username stays the same.",
+      "failed": "Couldn't change {{name}}'s account",
+      "renameBodyHere": "Their name on {{server}} and on this device. Their username stays the same."
     },
     "devices": {
       "signOutA11y": "Sign {{name}} out of {{device}}",

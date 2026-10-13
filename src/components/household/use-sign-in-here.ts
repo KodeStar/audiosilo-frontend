@@ -10,26 +10,33 @@ import {
 } from '@/components/connect/add-member-here';
 import { serverIdOf } from '@/lib/connection-id';
 
+import { isTooMany } from './household-model';
+
 /** How signing a member in on this device ended: signed in, already signed in here (as
  * any person: their profile is on this device), or it didn't work (nothing changed here;
- * `message`: `addMemberHere`'s own, already translated, when it said why). */
+ * `message`: `addMemberHere`'s own, already translated, when it said why; `tooMany`: the
+ * server's limiter refused the session, 429). */
 export type SignInHereResult =
-  { status: 'done' } | { status: 'already' } | { status: 'failed'; message?: string };
+  | { status: 'done' }
+  | { status: 'already' }
+  | { status: 'failed'; message?: string; tooMany?: boolean };
 
 /** What a failed `addMemberHere` (or the session before it) says. A refusal of
  * `addMemberHere` carries a translated message; a server error does not (its text is the
  * server's English), so the caller's own words stand in. */
 export function signInHereFailure(e: unknown, fromAddHere: boolean): SignInHereResult {
   if (e instanceof AddMemberHereError) return { status: 'already' };
+  if (isTooMany(e)) return { status: 'failed', tooMany: true };
   return fromAddHere && e instanceof Error && e.message
     ? { status: 'failed', message: e.message }
     : { status: 'failed' };
 }
 
-/** What a sign-in here that didn't work says: already here, `addMemberHere`'s own
- * (translated) reason, else that it can be tried again. */
+/** What a sign-in here that didn't work says: already here, too many tries,
+ * `addMemberHere`'s own (translated) reason, else that it can be tried again. */
 export function hereFailure(here: SignInHereResult, name: string, t: TFunction): string {
   if (here.status === 'already') return t('household.here.already', { name });
+  if (here.status === 'failed' && here.tooMany) return t('common.tooManyTries');
   if (here.status === 'failed' && here.message) return here.message;
   return t('household.here.failedRetry', { name });
 }

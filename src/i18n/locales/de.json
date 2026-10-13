@@ -9,7 +9,8 @@
     "on": "Ein",
     "off": "Aus",
     "resumeChapter": "Kapitel {{chapter}} fortsetzen",
-    "resumeTitled": "{{title}} fortsetzen"
+    "resumeTitled": "{{title}} fortsetzen",
+    "tooManyTries": "Zu viele Versuche. Warte ein paar Minuten und versuch es dann noch einmal."
   },
   "settings": {
     "title": "Einstellungen",
@@ -142,7 +143,6 @@
       "downloads": "Als Nächstes und Downloads",
       "appearance": "Darstellung",
       "language": "Sprache",
-      "household": "Haushalt und Teilen",
       "accounts": "Konten und Geräte",
       "support": "AudioSilo unterstützen"
     },
@@ -202,7 +202,8 @@
       "renew": "Neuen Code erstellen",
       "copy": "Link kopieren",
       "qr": "Kopplungscode für {{server}}",
-      "error": "{{server}} war nicht erreichbar. Es wurde kein Code erstellt, versuch es noch einmal."
+      "error": "{{server}} war nicht erreichbar. Es wurde kein Code erstellt, versuch es noch einmal.",
+      "kid": "Ein Kinderkonto kann kein Gerät koppeln. Die Person, die es verwaltet, richtet seine Geräte unter Haushalt ein."
     },
     "devices": {
       "title": "Angemeldete Geräte",
@@ -244,7 +245,7 @@
       "gone": "{{name}} war schon abgemeldet",
       "goneBody": "Die Liste ist jetzt aktuell.",
       "loadError": "Deine Geräte konnten nicht von {{server}} geladen werden.",
-      "alsoSignOut": "Auch {{names}} auf diesem Gerät abmelden",
+      "alsoSignOut": "Auch {{names}} auf jenem Gerät abmelden",
       "alsoSignOutBody": "Personen aus deinem Haushalt, die du dort angemeldet hast",
       "names": "{{first}} und {{second}}",
       "doneMembers_one": "Es muss sich neu anmelden, um {{server}} zu erreichen. {{count}} Person aus deinem Haushalt wurde mit abgemeldet.",
@@ -2225,7 +2226,10 @@
       "noLibraries": "Dieses Konto sieht keine Bibliothek. Bitte die Person, die den Server verwaltet, eine freizugeben.",
       "bedtime": "Schlafenszeit",
       "bedtimeBody": "Ab dann bis {{until}} startet das Abspielen einen 20-Minuten-Schlaftimer",
-      "needsGrownUp": "Eine Person auf diesem Gerät muss erwachsen bleiben, sonst könnte niemand den Kindermodus verlassen. Füge zuerst eine erwachsene Person hinzu."
+      "needsGrownUp": "Eine Person auf diesem Gerät muss erwachsen bleiben, sonst könnte niemand den Kindermodus verlassen. Füge zuerst eine erwachsene Person hinzu.",
+      "bodyMember": "Die Geschichten, die {{owner}} teilt, mit großen Covern, einer Schlafenszeit und ohne Einstellungen oder Suche. Verlassen geht nur mit einer erwachsenen Person.",
+      "libraryBodyMember": "Wird gezeigt, wenn {{owner}} keine Sammlungen teilt",
+      "noLibrariesMember": "Nichts zur Auswahl. {{owner}} teilt Geschichten auf der Seite Haushalt."
     },
     "remove": {
       "label": "Von diesem Gerät entfernen",
@@ -2234,7 +2238,8 @@
       "title": "{{name}} von diesem Gerät entfernen?",
       "body": "Damit wird {{name}} auf diesem Gerät von {{servers}} abgemeldet und die Downloads hier werden gelöscht. Die Stelle in jedem Buch bleibt auf dem Server.",
       "noPassword": "{{name}} hat auf {{server}} kein Passwort: Ohne eines ist für die nächste Anmeldung eine neue Einladung nötig.",
-      "confirm": "Entfernen und abmelden"
+      "confirm": "Entfernen und abmelden",
+      "member": "Das Konto von {{name}} auf {{server}} bleibt. {{owner}} kann {{name}} auf der Seite Haushalt hier wieder anmelden oder ein eigenes Gerät für {{name}} einrichten."
     },
     "household": {
       "intro": "Alle, die auf diesem Gerät hören, jeweils mit eigenen Servern, eigener Stelle in jedem Buch, Warteschlange und Statistik.",
@@ -2270,8 +2275,10 @@
         "not_allowed": "Die Admins deines Servers erlauben diesem Konto nicht, Personen hinzuzufügen.",
         "member": "Nur die Person, die dein Konto verwaltet, kann Personen hinzufügen.",
         "demo": "Demokonten können keine Personen hinzufügen.",
-        "at_cap": "Du hast so viele Personen hinzugefügt, wie dieser Server erlaubt ({{max}})."
-      }
+        "at_cap": "Du hast so viele Personen hinzugefügt, wie dieser Server erlaubt ({{max}}).",
+        "memberNamed": "Nur {{owner}} kann Personen hinzufügen oder ändern, was du hören kannst."
+      },
+      "managedBy": "{{owner}} verwaltet dein Konto."
     },
     "kind": {
       "kid": "Kind",
@@ -2289,8 +2296,11 @@
       "create": "Bücher für {{name}} anlegen",
       "createUnnamed": "Bücher für sie anlegen",
       "booksName": "Bücher für {{name}}",
-      "created": "{{name}} angelegt",
-      "collectionsOff": "Dieser Server bietet keine Sammlungen an, daher gibt es noch nichts zu teilen."
+      "collectionsOff": "Dieser Server bietet keine Sammlungen an, daher gibt es noch nichts zu teilen.",
+      "createFailed": "{{name}} konnte nicht angelegt werden, es wurde also nichts gespeichert. Versuch es noch einmal.",
+      "leftBehind": "{{name}} wurde angelegt und ist noch in deinen Sammlungen.",
+      "newDetail": "Neue Sammlung, wird beim Speichern angelegt",
+      "createUnnamedName": "Bücher für sie"
     },
     "add": {
       "title": "Jemanden zum Haushalt hinzufügen",
@@ -2306,7 +2316,16 @@
       "limit": "Du hast so viele Personen hinzugefügt, wie dieser Server erlaubt.",
       "invalid": "{{server}} hat diesen Namen oder diese Sammlungen nicht angenommen. Prüfe sie und versuch es noch einmal.",
       "forbidden": "Die Admins deines Servers erlauben diesem Konto nicht, Personen hinzuzufügen.",
-      "failed": "{{server}} hat nicht geantwortet, es hat sich also nichts geändert. Versuch es noch einmal."
+      "failed": "{{server}} hat nicht geantwortet, es hat sich also nichts geändert. Versuch es noch einmal.",
+      "usernameTaken": "{{server}} konnte aus diesem Namen keinen Benutzernamen machen. Versuch einen anderen Namen.",
+      "invalidName": "{{server}} hat diesen Namen nicht angenommen. Nutze höchstens 40 Zeichen.",
+      "invalidCollections": "Eine dieser Sammlungen kann von diesem Konto nicht mehr geteilt werden. Prüfe sie und versuch es noch einmal.",
+      "featureOff": "Die Admins deines Servers haben das Hinzufügen von Personen ausgeschaltet.",
+      "notAllowed": "Die Admins deines Servers erlauben diesem Konto nicht, Personen hinzuzufügen.",
+      "member": "Das kann nur die Person, die dein Konto verwaltet.",
+      "kid": "Das ist für ein Kinderkonto nicht verfügbar.",
+      "demo": "Mit Demokonten geht das nicht.",
+      "gone": "Diese Person gehört auf {{server}} nicht mehr zu deinem Haushalt."
     },
     "kid": {
       "title": "{{name}} ist hinzugefügt",
@@ -2357,8 +2376,9 @@
       "setUpA11y": "Einen Code zeigen, um das eigene Gerät von {{name}} einzurichten",
       "signInHere": "Auf diesem Gerät anmelden",
       "signInHereA11y": "{{name}} auf diesem Gerät anmelden",
-      "renameBody": "Der Name, den alle auf {{server}} sehen. Der Benutzername bleibt gleich.",
-      "failed": "Das Konto von {{name}} konnte nicht geändert werden"
+      "renameBody": "Der Name auf {{server}}. Der Benutzername bleibt gleich.",
+      "failed": "Das Konto von {{name}} konnte nicht geändert werden",
+      "renameBodyHere": "Der Name auf {{server}} und auf diesem Gerät. Der Benutzername bleibt gleich."
     },
     "devices": {
       "signOutA11y": "{{name}} von {{device}} abmelden",

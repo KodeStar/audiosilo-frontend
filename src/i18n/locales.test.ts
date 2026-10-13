@@ -23,4 +23,12 @@ describe('locales', () => {
     expect(l.player.routePicker.label).toBeTruthy();
     expect(l.player.routePicker.label).not.toMatch(/cast|airplay/i);
   });
+
+  // My devices' "Also sign out {{names}} on that device" (8b-1) is about the device in
+  // the row, never the one in hand: de and fr once said "this device".
+  it.each(Object.entries(LOCALES))('%s says THAT device when signing members out there', (_, l) => {
+    expect(l.account.devices.alsoSignOut).not.toMatch(
+      /this device|diesem Gerät|cet appareil(?!-là)|este dispositivo|questo dispositivo|neste dispositivo/,
+    );
+  });
 });

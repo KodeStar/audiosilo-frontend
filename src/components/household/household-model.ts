@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 import { ApiError } from '@/api/client';
 import type {
   HouseholdMember,
@@ -43,18 +45,33 @@ export function defaultAccess(kid: boolean): MemberAccess {
 }
 
 /** The add form's choices. `accessPicked`: the owner chose an access themselves, so the
- * Kids switch no longer moves it. */
+ * Kids switch no longer moves it. `newBooks`: "Create <Name>'s books" was chosen (the
+ * collection is created when the form is submitted, `useMemberBooks`). */
 export type AddForm = {
   name: string;
   kid: boolean;
   access: MemberAccess;
   accessPicked: boolean;
   collectionIds: number[];
+  newBooks: boolean;
 };
 
 /** A new form: a kid (the common case the page leads with), on its default access. */
 export function newAddForm(kid = true): AddForm {
-  return { name: '', kid, access: defaultAccess(kid), accessPicked: false, collectionIds: [] };
+  return {
+    name: '',
+    kid,
+    access: defaultAccess(kid),
+    accessPicked: false,
+    collectionIds: [],
+    newBooks: false,
+  };
+}
+
+/** Whether saving creates "<Name>'s books" first: chosen, and only for "Only
+ * collections I share" (switching to everything takes the promise back). */
+export function createsBooks(access: MemberAccess, newBooks: boolean): boolean {
+  return access === 'collections' && newBooks;
 }
 
 /** The Kids switch flipped: the access follows it until the owner picked one. */
@@ -76,17 +93,80 @@ export function collectionIdsFor(
   return access === 'collections' ? [...ids] : undefined;
 }
 
-/** What a refused add or change says (a key under `household.errors`): the server's
- * cap (409), a name or collection it would not take (400), adding turned off for this
- * account (403), anything else (the server didn't answer: nothing changed). */
-export type WriteError = 'limit' | 'invalid' | 'forbidden' | 'failed';
+/** What a refused add or change says (a key under `household.errors`, `writeErrorText`).
+ * The server's `code` decides (Phase 8b-1's coded refusals); the status stands in for a
+ * route or an older server without one: 409 the cap, 400 a name or collection it would
+ * not take, 403 adding turned off for this account, 404 the member is gone, 429 too many
+ * tries, anything else (or no answer) nothing changed. */
+export type WriteError =
+  | 'limit'
+  | 'usernameTaken'
+  | 'invalidName'
+  | 'invalidCollections'
+  | 'invalid'
+  | 'featureOff'
+  | 'notAllowed'
+  | 'member'
+  | 'kid'
+  | 'demo'
+  | 'forbidden'
+  | 'gone'
+  | 'tooMany'
+  | 'failed';
+
+const BY_CODE: Readonly<Record<string, WriteError>> = {
+  member_limit: 'limit',
+  username_taken: 'usernameTaken',
+  invalid_name: 'invalidName',
+  invalid_collections: 'invalidCollections',
+  feature_off: 'featureOff',
+  not_allowed: 'notAllowed',
+  member_cannot_manage: 'member',
+  kid_account: 'kid',
+  demo_account: 'demo',
+};
 
 export function writeError(e: unknown): WriteError {
   if (!(e instanceof ApiError)) return 'failed';
-  if (e.status === 409) return 'limit';
-  if (e.status === 400) return 'invalid';
-  if (e.status === 403) return 'forbidden';
-  return 'failed';
+  const coded = e.code ? BY_CODE[e.code] : undefined;
+  if (coded) return coded;
+  switch (e.status) {
+    case 429:
+      return 'tooMany';
+    case 409:
+      // A coded 409 that is not the cap (a collection's share cap): the change was refused.
+      return e.code ? 'invalid' : 'limit';
+    case 400:
+      return 'invalid';
+    case 403:
+      return 'forbidden';
+    case 404:
+      return 'gone';
+    default:
+      return 'failed';
+  }
+}
+
+/** Whether a refusal means the members list on screen is out of date (the cap or the
+ * admin's switch changed under the page, or the member is gone): read it again. */
+export function listIsStale(why: WriteError): boolean {
+  return (
+    why === 'limit' ||
+    why === 'featureOff' ||
+    why === 'notAllowed' ||
+    why === 'forbidden' ||
+    why === 'gone'
+  );
+}
+
+/** What a refused write says, in words (`writeError`). */
+export function writeErrorText(why: WriteError, server: string, t: TFunction): string {
+  return why === 'tooMany' ? t('common.tooManyTries') : t(`household.errors.${why}`, { server });
+}
+
+/** Whether `e` is the server's "too many tries" (429, its rate limiter). */
+export function isTooMany(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 429;
 }
 
 /** The connection on this device that is `memberId` on the owner's server (signed in

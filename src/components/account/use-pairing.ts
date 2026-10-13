@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -22,13 +23,15 @@ export type PairingCodeState = {
 /**
  * A single-use pairing code from `mint` (null: nothing to ask yet): the server's QR image
  * and `web_url`. The code works once, for 10 minutes; the hook counts down from when it
- * arrived and marks it expired at 0 (the view then offers a new one). A refusal shows the
- * server's own words, anything else `failedText`.
+ * arrived and marks it expired at 0 (the view then offers a new one). Never the server's
+ * own words (its English): too many tries (429) and a kid's account (403 `kid_account`)
+ * say so, anything else says `failedText` (`pairingError`).
  */
 export function usePairingCode(
   mint: (() => Promise<PairingPayload>) | null,
   failedText: string,
 ): PairingCodeState {
+  const { t } = useTranslation();
   const [pairing, setPairing] = useState<{ payload: PairingPayload; expiresAt: number } | null>(
     null,
   );
@@ -53,7 +56,7 @@ export function usePairingCode(
       const payload = await mint();
       setPairing({ payload, expiresAt: Date.now() + PAIRING_TTL_MS });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : failedText);
+      setError(pairingError(e, failedText, t));
     } finally {
       setLoading(false);
     }
@@ -68,6 +71,13 @@ export function usePairingCode(
     create,
     dismiss: useCallback(() => setPairing(null), []),
   };
+}
+
+/** What a pairing code that could not be made says (`usePairingCode`), translated. */
+export function pairingError(e: unknown, failedText: string, t: TFunction): string {
+  if (e instanceof ApiError && e.status === 429) return t('common.tooManyTries');
+  if (e instanceof ApiError && e.code === 'kid_account') return t('account.pair.kid');
+  return failedText;
 }
 
 /**

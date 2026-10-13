@@ -9,7 +9,8 @@
     "on": "Attivo",
     "off": "Disattivo",
     "resumeChapter": "Riprendi il capitolo {{chapter}}",
-    "resumeTitled": "Riprendi {{title}}"
+    "resumeTitled": "Riprendi {{title}}",
+    "tooManyTries": "Troppi tentativi. Aspetta qualche minuto e riprova."
   },
   "settings": {
     "title": "Impostazioni",
@@ -142,7 +143,6 @@
       "downloads": "Prossimo e download",
       "appearance": "Aspetto",
       "language": "Lingua",
-      "household": "Famiglia e condivisione",
       "accounts": "Account e dispositivi",
       "support": "Sostieni AudioSilo"
     },
@@ -202,7 +202,8 @@
       "renew": "Crea un nuovo codice",
       "copy": "Copia link",
       "qr": "Codice di associazione per {{server}}",
-      "error": "Impossibile raggiungere {{server}}. Nessun codice creato, riprova."
+      "error": "Impossibile raggiungere {{server}}. Nessun codice creato, riprova.",
+      "kid": "Un account bambini non può associare un dispositivo. La persona che lo gestisce configura i suoi dispositivi da Famiglia."
     },
     "devices": {
       "title": "Dispositivi connessi",
@@ -2225,7 +2226,10 @@
       "noLibraries": "Questo account non vede nessuna libreria. Chiedi a chi amministra il server di condividerne una.",
       "bedtime": "Ora della nanna",
       "bedtimeBody": "Da quell'ora fino alle {{until}}, la riproduzione avvia un timer di spegnimento di 20 minuti",
-      "needsGrownUp": "Qualcuno su questo dispositivo deve restare un adulto, altrimenti nessuno potrebbe uscire dalla modalità bambini. Aggiungi prima un adulto."
+      "needsGrownUp": "Qualcuno su questo dispositivo deve restare un adulto, altrimenti nessuno potrebbe uscire dalla modalità bambini. Aggiungi prima un adulto.",
+      "bodyMember": "Le storie che {{owner}} condivide, a copertine grandi, con un orario per la nanna e niente impostazioni o ricerca. Per uscire serve un adulto.",
+      "libraryBodyMember": "Mostrata quando {{owner}} non condivide nessuna raccolta",
+      "noLibrariesMember": "Niente da scegliere. {{owner}} condivide le storie dalla pagina Famiglia."
     },
     "remove": {
       "label": "Rimuovi da questo dispositivo",
@@ -2234,7 +2238,8 @@
       "title": "Rimuovere {{name}} da questo dispositivo?",
       "body": "{{name}} verrà disconnesso da {{servers}} su questo dispositivo e i suoi download qui verranno eliminati. Il punto in ogni libro resta sul server.",
       "noPassword": "{{name}} non ha una password su {{server}}: senza, servirà un nuovo invito per accedere di nuovo.",
-      "confirm": "Rimuovi e disconnetti"
+      "confirm": "Rimuovi e disconnetti",
+      "member": "L'account di {{name}} su {{server}} resta. {{owner}} può ricollegare {{name}} qui dalla pagina Famiglia, oppure configurare un dispositivo solo per {{name}}."
     },
     "household": {
       "intro": "Tutte le persone che ascoltano su questo dispositivo, ognuna con i propri server, il proprio punto in ogni libro, la propria coda e le proprie statistiche.",
@@ -2270,8 +2275,10 @@
         "not_allowed": "L'amministratore del tuo server non permette a questo account di aggiungere persone.",
         "member": "Solo la persona che gestisce il tuo account può aggiungere persone.",
         "demo": "Gli account demo non possono aggiungere persone.",
-        "at_cap": "Hai aggiunto il numero massimo di persone che questo server consente ({{max}})."
-      }
+        "at_cap": "Hai aggiunto il numero massimo di persone che questo server consente ({{max}}).",
+        "memberNamed": "Solo {{owner}} può aggiungere persone o cambiare cosa puoi ascoltare."
+      },
+      "managedBy": "{{owner}} gestisce il tuo account."
     },
     "kind": {
       "kid": "Bambino o bambina",
@@ -2289,8 +2296,11 @@
       "create": "Crea i libri di {{name}}",
       "createUnnamed": "Crea i suoi libri",
       "booksName": "I libri di {{name}}",
-      "created": "Creata {{name}}",
-      "collectionsOff": "Questo server non offre raccolte, quindi per ora non c'è niente da condividere."
+      "collectionsOff": "Questo server non offre raccolte, quindi per ora non c'è niente da condividere.",
+      "createFailed": "Impossibile creare {{name}}, quindi non è stato salvato niente. Riprova.",
+      "leftBehind": "{{name}} è stata creata ed è ancora tra le tue raccolte.",
+      "newDetail": "Nuova raccolta, creata quando salvi",
+      "createUnnamedName": "I suoi libri"
     },
     "add": {
       "title": "Aggiungi qualcuno alla tua famiglia",
@@ -2306,7 +2316,16 @@
       "limit": "Hai aggiunto il numero massimo di persone che questo server consente.",
       "invalid": "{{server}} non ha accettato quel nome o quelle raccolte. Controllali e riprova.",
       "forbidden": "L'amministratore del tuo server non permette a questo account di aggiungere persone.",
-      "failed": "{{server}} non ha risposto, quindi non è cambiato niente. Riprova."
+      "failed": "{{server}} non ha risposto, quindi non è cambiato niente. Riprova.",
+      "usernameTaken": "{{server}} non è riuscito a creare un nome utente da quel nome. Prova con un altro nome.",
+      "invalidName": "{{server}} non ha accettato quel nome. Usa al massimo 40 caratteri.",
+      "invalidCollections": "Una di quelle raccolte non si può più condividere da questo account. Controllale e riprova.",
+      "featureOff": "L'amministratore del tuo server ha disattivato l'aggiunta di persone.",
+      "notAllowed": "L'amministratore del tuo server non permette a questo account di aggiungere persone.",
+      "member": "Solo la persona che gestisce il tuo account può farlo.",
+      "kid": "Non è disponibile per un account bambini.",
+      "demo": "Gli account demo non possono farlo.",
+      "gone": "Quella persona non fa più parte della tua famiglia su {{server}}."
     },
     "kid": {
       "title": "{{name}} fa parte della famiglia",
@@ -2357,8 +2376,9 @@
       "setUpA11y": "Mostra un codice per configurare il dispositivo di {{name}}",
       "signInHere": "Accedi su questo dispositivo",
       "signInHereA11y": "Fai accedere {{name}} su questo dispositivo",
-      "renameBody": "Il nome che vedono tutti su {{server}}. Il nome utente resta lo stesso.",
-      "failed": "Impossibile modificare l'account di {{name}}"
+      "renameBody": "Il nome su {{server}}. Il nome utente resta lo stesso.",
+      "failed": "Impossibile modificare l'account di {{name}}",
+      "renameBodyHere": "Il nome su {{server}} e su questo dispositivo. Il nome utente resta lo stesso."
     },
     "devices": {
       "signOutA11y": "Disconnetti {{name}} da {{device}}",
