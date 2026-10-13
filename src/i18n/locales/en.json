@@ -367,7 +367,9 @@
       "label": "Pairing link",
       "connect": "Connect",
       "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?..."
-    }
+    },
+    "memberAlreadyHere": "They're already signed in on this device.",
+    "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment."
   },
   "onboarding": {
     "step": "Step {{step}} of {{count}}",
@@ -2124,7 +2126,8 @@
       "errorBody": "{{server}} isn't answering. Nothing is lost.",
       "offlineBody": "{{server}} can't be reached and there are no stories saved on this device.",
       "retry": "Try again",
-      "onDevice": "These stories are saved on this device."
+      "onDevice": "These stories are saved on this device.",
+      "askGrownUp": "Ask a grown-up to add stories."
     },
     "startFailed": {
       "title": "That story won't start right now",

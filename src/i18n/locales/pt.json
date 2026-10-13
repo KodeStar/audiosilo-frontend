@@ -367,7 +367,9 @@
       "label": "Ligação de emparelhamento",
       "connect": "Ligar",
       "invalid": "Isto não é uma ligação de emparelhamento do AudioSilo. Estas ligações são como https://<servidor>/web/connect?token=... ou audiosilo://connect?..."
-    }
+    },
+    "memberAlreadyHere": "Essa pessoa já tem sessão iniciada neste dispositivo.",
+    "memberNotReady": "Este dispositivo ainda não consegue iniciar a sessão dessa pessoa. Tente novamente daqui a pouco."
   },
   "onboarding": {
     "step": "Passo {{step}} de {{count}}",
@@ -2124,7 +2126,8 @@
       "errorBody": "{{server}} não está a responder. Não se perdeu nada.",
       "offlineBody": "Não é possível ligar a {{server}} e não há histórias guardadas neste dispositivo.",
       "retry": "Tentar de novo",
-      "onDevice": "Estas histórias estão guardadas neste dispositivo."
+      "onDevice": "Estas histórias estão guardadas neste dispositivo.",
+      "askGrownUp": "Pede a um adulto para adicionar histórias."
     },
     "startFailed": {
       "title": "Essa história não arranca agora",

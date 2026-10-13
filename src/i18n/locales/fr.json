@@ -367,7 +367,9 @@
       "label": "Lien d'appairage",
       "connect": "Se connecter",
       "invalid": "Ce n'est pas un lien d'appairage AudioSilo. Ces liens ressemblent à https://<serveur>/web/connect?token=... ou audiosilo://connect?..."
-    }
+    },
+    "memberAlreadyHere": "Cette personne est déjà connectée sur cet appareil.",
+    "memberNotReady": "Cet appareil ne peut pas encore la connecter. Réessayez dans un instant."
   },
   "onboarding": {
     "step": "Étape {{step}} sur {{count}}",
@@ -2124,7 +2126,8 @@
       "errorBody": "{{server}} ne répond pas. Rien n'est perdu.",
       "offlineBody": "{{server}} est injoignable et aucune histoire n'est enregistrée sur cet appareil.",
       "retry": "Réessayer",
-      "onDevice": "Ces histoires sont enregistrées sur cet appareil."
+      "onDevice": "Ces histoires sont enregistrées sur cet appareil.",
+      "askGrownUp": "Demande à un adulte d'ajouter des histoires."
     },
     "startFailed": {
       "title": "Cette histoire ne démarre pas pour l'instant",

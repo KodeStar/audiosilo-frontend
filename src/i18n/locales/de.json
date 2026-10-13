@@ -367,7 +367,9 @@
       "label": "Kopplungslink",
       "connect": "Verbinden",
       "invalid": "Das ist kein AudioSilo-Kopplungslink. Kopplungslinks sehen so aus: https://<server>/web/connect?token=... oder audiosilo://connect?..."
-    }
+    },
+    "memberAlreadyHere": "Diese Person ist auf diesem Gerät schon angemeldet.",
+    "memberNotReady": "Dieses Gerät kann die Person noch nicht anmelden. Versuche es gleich noch einmal."
   },
   "onboarding": {
     "step": "Schritt {{step}} von {{count}}",
@@ -2124,7 +2126,8 @@
       "errorBody": "{{server}} antwortet nicht. Es ist nichts verloren.",
       "offlineBody": "{{server}} ist nicht erreichbar, und auf diesem Gerät sind keine Geschichten gespeichert.",
       "retry": "Nochmal versuchen",
-      "onDevice": "Diese Geschichten sind auf diesem Gerät gespeichert."
+      "onDevice": "Diese Geschichten sind auf diesem Gerät gespeichert.",
+      "askGrownUp": "Bitte einen Erwachsenen, Geschichten hinzuzufügen."
     },
     "startFailed": {
       "title": "Diese Geschichte startet gerade nicht",

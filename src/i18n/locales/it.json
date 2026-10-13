@@ -367,7 +367,9 @@
       "label": "Link di associazione",
       "connect": "Connetti",
       "invalid": "Questo non è un link di associazione di AudioSilo. Questi link sono come https://<server>/web/connect?token=... o audiosilo://connect?..."
-    }
+    },
+    "memberAlreadyHere": "Questa persona ha già effettuato l'accesso su questo dispositivo.",
+    "memberNotReady": "Questo dispositivo non può ancora farle accedere. Riprova tra un momento."
   },
   "onboarding": {
     "step": "Passaggio {{step}} di {{count}}",
@@ -2124,7 +2126,8 @@
       "errorBody": "{{server}} non risponde. Non si è perso niente.",
       "offlineBody": "{{server}} non è raggiungibile e su questo dispositivo non ci sono storie salvate.",
       "retry": "Riprova",
-      "onDevice": "Queste storie sono salvate su questo dispositivo."
+      "onDevice": "Queste storie sono salvate su questo dispositivo.",
+      "askGrownUp": "Chiedi a un adulto di aggiungere delle storie."
     },
     "startFailed": {
       "title": "Questa storia non parte in questo momento",

@@ -367,7 +367,9 @@
       "label": "Enlace de emparejamiento",
       "connect": "Conectar",
       "invalid": "Ese no es un enlace de emparejamiento de AudioSilo. Estos enlaces son como https://<servidor>/web/connect?token=... o audiosilo://connect?..."
-    }
+    },
+    "memberAlreadyHere": "Esa persona ya tiene la sesión iniciada en este dispositivo.",
+    "memberNotReady": "Este dispositivo aún no puede iniciar su sesión. Vuelve a intentarlo en un momento."
   },
   "onboarding": {
     "step": "Paso {{step}} de {{count}}",
@@ -2124,7 +2126,8 @@
       "errorBody": "{{server}} no responde. No se ha perdido nada.",
       "offlineBody": "No se puede acceder a {{server}} y no hay cuentos guardados en este dispositivo.",
       "retry": "Reintentar",
-      "onDevice": "Estos cuentos están guardados en este dispositivo."
+      "onDevice": "Estos cuentos están guardados en este dispositivo.",
+      "askGrownUp": "Pide a un adulto que añada cuentos."
     },
     "startFailed": {
       "title": "Ese cuento no se puede iniciar ahora",

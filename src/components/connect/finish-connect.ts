@@ -9,8 +9,11 @@ import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
+  DEFAULT_BEDTIME,
+  isKidsAccount,
   placeConnection,
   profileOf,
+  setProfileKids,
   staleToRetire,
   switchProfile,
   useProfiles,
@@ -102,6 +105,9 @@ export async function finishConnect(input: {
     retire,
   });
   await placeSignedIn(id, hadProfile?.id ?? null, newPerson);
+  // A kid's account signed in for the first time on this device starts in kids mode (a
+  // re-pair, or a sign-in again after a server reset, keeps what its person had).
+  if (!existing && replaced === undefined) kidsOnForKidAccount(id);
   if (first) router.replace(readyHref(id));
   else leaveOnboarding();
   return id;
@@ -128,4 +134,22 @@ async function placeSignedIn(
       : null
     : placeConnection(id, { newProfile: newPerson });
   if (target && target !== before) await switchProfile(target);
+}
+
+/**
+ * Kids mode on for a kid's account at its first placement on this device (Phase 8b-1: the
+ * server says `user.member_kind === 'kid'`, a household member): the profile holding
+ * `connectionId` turns kids mode on (the first library the account lists, the default
+ * bedtime) when it has no kids settings yet and every account it holds is a kid's
+ * (`isKidsAccount`: a grown-up's profile that a kid's sign-in joined is never put in kids
+ * mode). Allowed with no grown-up on the device (`mayTurnOnKids`' exception: a kid's own
+ * phone). A no-op for anyone else, and on a server without household members.
+ */
+export function kidsOnForKidAccount(connectionId: string): void {
+  const { connections } = useSession.getState();
+  const conn = connections.find((c) => c.id === connectionId);
+  if (conn?.user.member_kind !== 'kid') return;
+  const profile = profileOf(connectionId);
+  if (!profile || profile.kids || !isKidsAccount(profile, connections)) return;
+  setProfileKids(profile.id, { bedtime: DEFAULT_BEDTIME });
 }
