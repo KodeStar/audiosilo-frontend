@@ -1,6 +1,6 @@
 import type { User } from '@/api/types';
 
-import { accountFlagsKnown, needsPasswordWarning } from './account';
+import { accountFlagsKnown, isKidAccount, managerName, needsPasswordWarning } from './account';
 
 const base: User = {
   id: 1,
@@ -72,5 +72,27 @@ describe('accountFlagsKnown', () => {
   it('is false for a signed-out (null/undefined) user', () => {
     expect(accountFlagsKnown(null)).toBe(false);
     expect(accountFlagsKnown(undefined)).toBe(false);
+  });
+});
+
+describe('managerName and isKidAccount (8b-1)', () => {
+  const member = {
+    ...base,
+    managed_by: { id: 1, username: 'adam' },
+    member_kind: 'kid' as const,
+  };
+
+  it("names a household member's manager, and nobody for an ordinary account", () => {
+    expect(managerName(member)).toBe('adam');
+    expect(managerName({ ...base, managed_by: null })).toBeNull();
+    expect(managerName(base)).toBeNull();
+    expect(managerName(undefined)).toBeNull();
+  });
+
+  it("is a kid's account only when the server says so", () => {
+    expect(isKidAccount(member)).toBe(true);
+    expect(isKidAccount({ ...member, member_kind: 'grownup' })).toBe(false);
+    expect(isKidAccount({ ...base, member_kind: null })).toBe(false);
+    expect(isKidAccount(null)).toBe(false);
   });
 });

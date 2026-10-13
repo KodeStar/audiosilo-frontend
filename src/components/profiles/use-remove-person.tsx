@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
-import { needsPasswordWarning } from '@/lib/account';
+import { managerName, needsPasswordWarning } from '@/lib/account';
 import { serverIdOf } from '@/lib/connection-id';
 import { clearPin } from '@/lib/profile-pin';
 import { connectionsOfProfile, deleteProfile, type Profile } from '@/stores/profiles';
@@ -61,7 +61,7 @@ export function useRemovePerson(): {
       const user = await freshAccountUser(c.user, clients.get(c.id), (fresh) => {
         void setConnectionUser(c.id, fresh);
       });
-      const owner = user?.managed_by?.username;
+      const owner = managerName(user);
       if (owner) managed.push({ connection: c, owner });
       else if (needsPasswordWarning(user)) warned.push(c);
     }

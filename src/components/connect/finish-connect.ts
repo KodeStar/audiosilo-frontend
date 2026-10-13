@@ -4,6 +4,7 @@ import type { AuthSession, ServerAddresses } from '@/api/types';
 import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import i18n from '@/i18n';
+import { isKidAccount } from '@/lib/account';
 import { priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
@@ -152,7 +153,7 @@ async function placeSignedIn(
 export function kidsOnForKidAccount(connectionId: string): void {
   const { connections } = useSession.getState();
   const conn = connections.find((c) => c.id === connectionId);
-  if (conn?.user.member_kind !== 'kid') return;
+  if (!isKidAccount(conn?.user)) return;
   const profile = profileOf(connectionId);
   if (!profile || profile.kids || !isKidsAccount(profile, connections)) return;
   setProfileKids(profile.id, { bedtime: DEFAULT_BEDTIME });

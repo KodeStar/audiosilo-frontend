@@ -49,3 +49,15 @@ export function personName(
   if (display) return display;
   return typeof user?.username === 'string' ? user.username : '';
 }
+
+/** Who manages `user`'s account when it is a household member (`managed_by`, Phase 8b-1),
+ * by username; null for an ordinary account and on older servers. */
+export function managerName(user: Pick<User, 'managed_by'> | null | undefined): string | null {
+  return user?.managed_by?.username || null;
+}
+
+/** Whether `user` is a kid's account (a household member the server says is a kid,
+ * `member_kind`, Phase 8b-1): no password or API keys, their owner signs them in. */
+export function isKidAccount(user: Pick<User, 'member_kind'> | null | undefined): boolean {
+  return user?.member_kind === 'kid';
+}

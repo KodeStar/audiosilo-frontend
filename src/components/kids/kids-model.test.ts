@@ -1,4 +1,4 @@
-import type { Book, Collection, CollectionDetail, Library, Progress } from '@/api/types';
+import type { Book, Collection, CollectionDetail, Library, Progress, User } from '@/api/types';
 import type { DownloadEntry } from '@/downloads/types';
 
 import {
@@ -11,6 +11,7 @@ import {
   kidsDownloads,
   kidsGrid,
   kidsLibrary,
+  kidsManager,
   kidsOfflineLibraryId,
   kidsOrder,
   kidsSectionBooks,
@@ -305,5 +306,35 @@ describe("a household member's shelf (Phase 8b-1)", () => {
     ]);
     expect(kidsSectionBooks(two).map((b) => b.rel_path)).toEqual(['a', 'c']);
     expect(kidsCollectionSections([coll(1)], [detail(coll(1), [null])], [])).toEqual([]);
+  });
+});
+
+describe('kidsManager (8b-1)', () => {
+  const user = (id: number, owner?: string) =>
+    ({
+      id,
+      username: `u${id}`,
+      managed_by: owner ? { id: 1, username: owner } : null,
+    }) as unknown as User;
+  const connections = [
+    { id: 'a.1', user: user(1) },
+    { id: 'a.12', user: user(12, 'adam') },
+  ];
+
+  it("names who manages the account kids mode shows, by the kids connection's user", () => {
+    expect(kidsManager({ connectionIds: ['a.12'], kids: { bedtime: '19:30' } }, connections)).toBe(
+      'adam',
+    );
+    // The picked library's connection decides which account that is.
+    expect(
+      kidsManager(
+        {
+          connectionIds: ['a.12', 'a.1'],
+          kids: { bedtime: '19:30', library: { connectionId: 'a.1', libraryId: 2 } },
+        },
+        connections,
+      ),
+    ).toBeNull();
+    expect(kidsManager({ connectionIds: [] }, connections)).toBeNull();
   });
 });

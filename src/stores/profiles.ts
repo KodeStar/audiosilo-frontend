@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { AppState, type NativeEventSubscription } from 'react-native';
 import { create } from 'zustand';
 
-import { personName } from '@/lib/account';
+import { isKidAccount, personName } from '@/lib/account';
 import { serverIdOf } from '@/lib/connection-id';
 import { parseHhMm } from '@/lib/hhmm';
 import { initialProfiles } from '@/lib/identity-migration';
@@ -739,7 +739,7 @@ export function isKidsAccount(
   connections: readonly ProfileConnection[],
 ): boolean {
   const own = connections.filter((c) => profile.connectionIds.includes(c.id));
-  return own.length > 0 && own.every((c) => c.user?.member_kind === 'kid');
+  return own.length > 0 && own.every((c) => isKidAccount(c.user));
 }
 
 /**

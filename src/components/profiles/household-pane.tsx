@@ -11,7 +11,7 @@ import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-membe
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
 import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
-import { kidsConnectionId } from '@/components/kids/kids-model';
+import { kidsManager } from '@/components/kids/kids-model';
 import { useKidsSharedShelf } from '@/components/kids/use-kids';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -150,14 +150,6 @@ export function HouseSharing() {
       )}
     </View>
   );
-}
-
-/** Who manages the account kids mode shows for `profile` (its kids connection's
- * `user.managed_by`, Phase 8b-1), by username; null for an ordinary account. */
-export function kidsManager(profile: Profile, connections: readonly Connection[]): string | null {
-  const id = kidsConnectionId(profile.connectionIds, profile.kids);
-  const owner = connections.find((c) => c.id === id)?.user?.managed_by?.username;
-  return owner || null;
 }
 
 /**

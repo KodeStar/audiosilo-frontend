@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
+import { isKidAccount, managerName } from '@/lib/account';
 import { cn } from '@/lib/utils';
 
 import { PW_MIN, type PasswordEditor } from './use-password-editor';
@@ -28,8 +29,8 @@ export function noPasswordBody(
   user: Pick<User, 'managed_by' | 'member_kind'> | null | undefined,
   t: TFunction,
 ): string {
-  const owner = user?.managed_by?.username;
-  if (user?.member_kind === 'kid') {
+  const owner = managerName(user);
+  if (isKidAccount(user)) {
     return owner ? t('account.password.bodyKid', { owner }) : t('account.password.bodyKidNoOwner');
   }
   if (owner) return t('account.password.bodyMember', { owner });
@@ -51,7 +52,7 @@ export function PasswordCard({
 }) {
   const { t } = useTranslation();
   const set = editor.hasPassword;
-  const kid = user?.member_kind === 'kid' && !set;
+  const kid = isKidAccount(user) && !set;
   return (
     <Card className={cn('gap-3', className)}>
       <View className="flex-row flex-wrap items-center gap-2">

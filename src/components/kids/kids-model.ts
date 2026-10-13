@@ -4,7 +4,9 @@ import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
 import type { LayoutClass } from '@/lib/layout';
 import { isInProgress } from '@/lib/progress-view';
-import type { KidsSettings } from '@/stores/profiles';
+import { managerName } from '@/lib/account';
+import type { KidsSettings, Profile } from '@/stores/profiles';
+import type { Connection } from '@/stores/session';
 
 /**
  * Kids mode's rules (Phase 8), pure and framework-free: which connection and library the
@@ -55,6 +57,16 @@ export function kidsConnectionId(
   const picked = kids?.library?.connectionId;
   if (picked && connectionIds.includes(picked)) return picked;
   return connectionIds[0] ?? null;
+}
+
+/** Who manages the account kids mode shows for `profile` (its kids connection's
+ * `managerName`, Phase 8b-1), by username; null for an ordinary account. */
+export function kidsManager(
+  profile: Pick<Profile, 'connectionIds' | 'kids'>,
+  connections: readonly Pick<Connection, 'id' | 'user'>[],
+): string | null {
+  const id = kidsConnectionId(profile.connectionIds, profile.kids);
+  return managerName(connections.find((c) => c.id === id)?.user);
 }
 
 /**
