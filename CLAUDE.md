@@ -898,8 +898,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `startBookInPlace`, `adoptLoaded` and the car's play specs share it, so the car and the
   phone start a book at the same place.
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
-  car sync) is read by `auto-sleep-controller.ts`, so the nightly timer never pauses a driver.
-  It is its own module so neither reader imports the car sync.
+  car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
+  `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module
+  so no reader imports the car sync.
 - **Android Auto.** `LibraryCallback` + `CarBrowseTree` answer browsing from the snapshot;
   `ArtworkProvider` serves only covers the current snapshot names inside the app's data
   directory. `playFromCar`: the book already loaded plays on; a downloaded book starts from its
@@ -917,7 +918,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     service from the background, and we already run inside one) and then the headless task
     `AudiosiloCar`, even in an already running runtime (React Native fires JS timers with no
     activity resumed only while a task runs, and the snapshot writes are timers). `index.ts`
-    (`package.json` `main`) imports `src/car/register-car-task` (empty except on Android)
+    (`package.json` `main`) imports `src/car/register-car-task` (empty on the web; iOS: see CarPlay below)
     **before** `expo-router/entry`. `runCarTask` (`car-task.ts`) runs `bootstrapPlayback()`,
     starts address routing, the place reconcile and the car sync, and resolves once no car is
     connected and the player has been idle `CAR_TASK_IDLE_MS` (30 s).
@@ -941,9 +942,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   updates the plugin and its fixture. **Plugin order**: mods of one kind run in REVERSE
   registration order, so **no plugin that rewrites the AppDelegate may be listed after
   `withCarPlay` in `app.json`** (its edit would run first and break the match). The
-  `com.apple.developer.carplay-audio` entitlement is added only with **`AUDIOSILO_CARPLAY=1`**
-  at prebuild: a device build carrying it can't be signed until Apple grants it, and without
-  it iOS never connects the CarPlay scene (the scene code still ships). The phone scene
+  `com.apple.developer.carplay-audio` entitlement is added **by default** (Apple granted it
+  2026-10-09; app.audiosilo and app.audiosilo.dev carry the capability); `AUDIOSILO_CARPLAY=0`
+  at prebuild leaves it out for a signing identity without the grant, and without it iOS never
+  connects the CarPlay scene (the scene code still ships). The phone scene
   delegate rebuilds launch options from `connectionOptions` and re-feeds URLs and user
   activities to the app delegate: **pairing deep links, cold and warm, are the regression to
   check** after any change here. The templates (`AudiosiloCarPlaySceneDelegate.swift`): a tab
@@ -951,6 +953,29 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   the saved place and the queue rules) and pushes Now Playing once the engine reports the book
   (gives up after 10 s); Now Playing reads the engine's chapter info and adds a chapter list, a
   rate button and a bookmark button. Car events wait in `AudiosiloCarEvents` until JS listens.
+  - **A CarPlay-first launch never renders the React tree.** React Native runs in the
+    parking window, which never gets a layout pass, and expo-router's `ExpoRoot` wraps the app
+    in a `SafeAreaProvider` with no initial metrics on native, which renders nothing until the
+    native provider reports insets (it needs a layout pass). The bundle and its timers run,
+    but the root layout and everything it starts don't, until the phone app opens. So **iOS
+    starts the car's work without the tree, like Android's headless task**:
+    `register-car-task.ios.ts` (imported first from `index.ts`) listens for the car connection
+    and on a connect runs `startCarWork` (`car-task.ts`), which runs `startCarStack` (the
+    same start as Android's `runCarTask`: `bootstrapPlayback`, the address pick, the place
+    reconcile and the car sync) once per runtime (the root layout's later starts are shared
+    ones). Its listener is the first, so it alone gets the connect native queued before JS
+    listened; it records it with `setCarConnected` (`car-connection.ts`), and the car sync,
+    starting while `isCarConnected()` is true, runs its connect path once itself (the sync's
+    own listener registers later and never sees that connect). Play requests and bookmarks are
+    the sync's listeners, so a tap queued natively is answered as soon as the sync runs. With
+    no `ApiProvider` mounted the reachability probe builds its client from the session
+    (`resolveClient`), so a server that dropped out mid-drive comes back (and its queued saves
+    flush). **Anything new a car needs must be started from `startCarStack`, never only from a
+    screen or the root layout.**
+  - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
+    and iOS moves the data container on an update or restore; when a cover can't be read
+    where the snapshot names it, `CarArtworkPath` reads the same `Documents/`/`Library/` path in
+    the current container (never outside it). Covered by `modules/audiosilo-player/ios/SelfCheck/run.sh`.
 - **Tokens on a locked phone** (`src/lib/secure-store.ts`). CarPlay starts books with the phone
   in a pocket, and the default `WHEN_UNLOCKED` keychain item can't be read then. On iOS tokens
   live in their own keychain service, `audiosilo.tokens.afu`, written `AFTER_FIRST_UNLOCK`: a
@@ -1006,9 +1031,9 @@ runtime to cover web-vs-native branches. **Jest proves nothing about Swift or Ko
 native module's pure parts have checks of their own that need no device: the Android JVM tests
 (`TimelineMapTest`, `NarrationSilenceProcessorTest`, `VoiceBoostProcessorTest`; after an
 Android prebuild, `./gradlew :audiosilo-player:testDebugUnitTest` under JDK 17) and the iOS
-host self-check for `ChapterClips.swift` + `VoiceBoostDSP.swift`
+host self-check for `ChapterClips.swift` + `VoiceBoostDSP.swift` + `CarArtworkPath.swift`
 (`modules/audiosilo-player/ios/SelfCheck/run.sh`, Xcode toolchain only). Android Auto needs the
-Desktop Head Unit, CarPlay the Simulator (prebuilt with `AUDIOSILO_CARPLAY=1`), and lock
+Desktop Head Unit, CarPlay the Simulator, and lock
 screens, the effects by ear, widgets and the locked-phone token read a device; the docs' Testing
 page has the steps.
 

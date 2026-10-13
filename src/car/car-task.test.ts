@@ -106,6 +106,50 @@ describe('runCarTask', () => {
   });
 });
 
+describe('startCarWork (iOS: the car start without the React tree)', () => {
+  /** A fresh copy of the module: its once-per-runtime state starts clean. */
+  function freshStart(): typeof import('./car-task').startCarWork {
+    let start!: typeof import('./car-task').startCarWork;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      start = require('./car-task').startCarWork;
+    });
+    return start;
+  }
+
+  it('runs the launch steps, the address pick, the place reconcile and the car sync, never stopping them', async () => {
+    const startCarWork = freshStart();
+    await startCarWork();
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start']);
+    expect(mockStop).not.toHaveBeenCalled();
+  });
+
+  it('starts once per runtime, however many connects arrive (the root layout adds only shared starts)', async () => {
+    const startCarWork = freshStart();
+    await Promise.all([startCarWork(), startCarWork()]);
+    await startCarWork();
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start']);
+  });
+
+  it('tries again on the next connect after a start that failed', async () => {
+    let startCarWork!: typeof import('./car-task').startCarWork;
+    let startCarSync!: jest.Mock;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      startCarWork = require('./car-task').startCarWork;
+      // The same isolated mock the fresh car-task imported.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      startCarSync = require('./car-controller').startCarSync;
+    });
+    startCarSync.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    await expect(startCarWork()).rejects.toThrow('boom');
+    await startCarWork();
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'bootstrap', 'start']);
+  });
+});
+
 describe('untilIdle', () => {
   it('waits for the player to stay idle for the whole window', async () => {
     let done = false;

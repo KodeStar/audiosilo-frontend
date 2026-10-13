@@ -699,6 +699,23 @@ function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
 
 // --- Start and stop -------------------------------------------------------------------------
 
+/** The sync's connection listener: records the state, and on a connect runs the connect path. */
+function onConnection(connected: boolean): void {
+  setCarConnected(connected);
+  if (connected) carConnected();
+}
+
+/** A car connected: remember a car has been seen here, write a fresh snapshot and check for a
+ * book the service loaded. */
+function carConnected(): void {
+  if (!carSeen) {
+    carSeen = true;
+    void setItem(CAR_SEEN_KEY, true);
+  }
+  request(true);
+  void checkLoadedBook();
+}
+
 /** Resolves once the last start's first steps (bootstrap, adopt, the bookmark drain) ran. */
 export function carSyncReady(): Promise<void> {
   return ready;
@@ -724,16 +741,7 @@ export function startCarSync(): () => void {
   /** The downloads registry's state signature last seen (a progress tick changes nothing). */
   let downloadsSig = statusSignature(useDownloads.getState().entries);
   stops = [
-    carNative.onConnection((connected) => {
-      setCarConnected(connected);
-      if (!connected) return;
-      if (!carSeen) {
-        carSeen = true;
-        void setItem(CAR_SEEN_KEY, true);
-      }
-      request(true);
-      void checkLoadedBook();
-    }),
+    carNative.onConnection(onConnection),
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
@@ -792,6 +800,10 @@ export function startCarSync(): () => void {
     }
     request(true);
   })();
+  // A car connected before this start (the iOS car start's listener, the first, alone heard
+  // the connect native queued before JS listened, or the root layout starts late): its
+  // connect path runs once here, since this listener will not hear that connect again.
+  if (isCarConnected()) carConnected();
   return stop;
 }
 

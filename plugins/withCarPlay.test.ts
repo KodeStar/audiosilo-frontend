@@ -71,18 +71,22 @@ describe('withCarPlay: AppDelegate', () => {
 });
 
 describe('withCarPlay: entitlement', () => {
-  it('adds the CarPlay audio entitlement only with AUDIOSILO_CARPLAY=1', () => {
-    expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: '1' })).toEqual({
-      [CARPLAY_ENTITLEMENT]: true,
-    });
-    expect(applyCarPlayEntitlement({}, {})).toEqual({});
-    expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: 'true' })).toEqual({});
+  it('adds the CarPlay audio entitlement by default and leaves it out with AUDIOSILO_CARPLAY=0 (or false, off, no)', () => {
+    const on = { [CARPLAY_ENTITLEMENT]: true };
+    expect(applyCarPlayEntitlement({}, {})).toEqual(on);
+    expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: '1' })).toEqual(on);
+    expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: 'true' })).toEqual(on);
+    expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: '0' })).toEqual({});
+    // The other usual spellings of off opt out too.
+    for (const off of ['false', 'FALSE', 'off', 'no', ' 0 ']) {
+      expect(applyCarPlayEntitlement({}, { AUDIOSILO_CARPLAY: off })).toEqual({});
+    }
   });
 
-  it('removes a stale entitlement when the flag is off and keeps other keys', () => {
+  it('removes a stale entitlement when opted out and keeps other keys', () => {
     const out = applyCarPlayEntitlement(
       { [CARPLAY_ENTITLEMENT]: true, 'aps-environment': 'development' },
-      {},
+      { AUDIOSILO_CARPLAY: '0' },
     );
     expect(out).toEqual({ 'aps-environment': 'development' });
   });

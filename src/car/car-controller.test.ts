@@ -169,6 +169,7 @@ import { useSession, type Connection } from '@/stores/session';
 import { getItem, setItem } from '@/lib/storage';
 
 import { artworkOnDisk, ensureArtwork, pruneArtwork } from './car-artwork';
+import { isCarConnected, setCarConnected } from './car-connection';
 import {
   forgetCarSync,
   handleCarPlayRequest,
@@ -656,6 +657,43 @@ describe('startCarSync', () => {
     mockNative.connection?.(true);
     await settle(0);
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs the connect path once for a car connected before it started (CarPlay-first: the iOS car start heard the queued connect)', async () => {
+    await setItem('audiosilo.carSeen', false);
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    // The iOS car start's listener, the first, recorded the connect native queued before JS
+    // listened; the sync's own listener never hears that one.
+    setCarConnected(true);
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(await getItem('audiosilo.carSeen')).toBe(true);
+    // One write for one connect (the catch-up and the start's own request join).
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(1);
+    // A second start (the root layout) catches up on nothing: the sync is already running.
+    const again = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(1);
+    again();
+  });
+
+  it('handles a connect once while it runs, also when the iOS car start recorded it too', async () => {
+    await setItem('audiosilo.carSeen', false);
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled(); // no car met yet
+
+    setCarConnected(true); // the iOS car start's listener, first
+    mockNative.connection?.(true); // the sync's own
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(isCarConnected()).toBe(true);
+    expect(await getItem('audiosilo.carSeen')).toBe(true);
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(1);
+    mockNative.connection?.(false);
+    expect(isCarConnected()).toBe(false);
   });
 
   it('is shared: a second start adds no listeners, and the last stop removes them', async () => {

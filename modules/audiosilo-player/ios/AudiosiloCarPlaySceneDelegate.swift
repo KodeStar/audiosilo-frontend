@@ -4,7 +4,7 @@ import UIKit
 
 /// The CarPlay scene. Named in Info.plist's scene manifest by
 /// `plugins/withCarPlay.js`, hence the stable @objc name. iOS connects it only when the app is
-/// signed with `com.apple.developer.carplay-audio` (opt-in at prebuild, `AUDIOSILO_CARPLAY=1`).
+/// signed with `com.apple.developer.carplay-audio` (added at prebuild unless `AUDIOSILO_CARPLAY=0`).
 ///
 /// A CarPlay-first launch (the app not running, possibly with the phone locked) starts React
 /// Native into a parking window (`AudiosiloScenes.ensureStarted`), so JS can write a fresh
@@ -229,10 +229,12 @@ final class AudiosiloCarPlayController: NSObject, @preconcurrency CPNowPlayingTe
     }
   }
 
-  /// The cover file scaled to fill the list item's image box. Off the main thread.
+  /// The cover file scaled to fill the list item's image box. Off the main thread. A snapshot
+  /// from before an app update names the old data container: `CarArtworkPath` finds the file
+  /// under the current one.
   private nonisolated static func decodeCover(_ path: String, size: CGSize, scale: CGFloat) -> UIImage? {
-    guard let url = URL(string: path), url.isFileURL,
-          let source = UIImage(contentsOfFile: url.path) else { return nil }
+    guard let source = CarArtworkPath.resolve(path, home: NSHomeDirectory(), read: UIImage.init(contentsOfFile:))
+    else { return nil }
     let format = UIGraphicsImageRendererFormat()
     format.scale = scale > 0 ? scale : 2
     return UIGraphicsImageRenderer(size: size, format: format).image { _ in
