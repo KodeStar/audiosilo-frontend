@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import {
@@ -12,10 +12,13 @@ import {
   useCreateCollection,
   useRemoveCollectionItem,
   useSetCollectionShares,
+  useHouseholdMembers,
   useShareTargets,
   useUpdateCollection,
 } from '@/api/hooks';
-import type { Collection } from '@/api/types';
+import type { Collection, HouseholdMember } from '@/api/types';
+import { CheckRow } from '@/components/household/check-row';
+import { collectionsMembers } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -25,14 +28,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Icon } from '@/components/ui/icon';
 import { Input, Textarea } from '@/components/ui/input';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { cn } from '@/lib/utils';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { findQueued } from '../use-queue-actions';
 import {
@@ -56,61 +56,6 @@ export function collectionFailed(e: unknown, t: TFunction, conflict?: 'full' | '
         : 'library.collection.tooMany'
       : 'library.collection.failed';
   toast({ title: t(key) });
-}
-
-const checkRowClass = cn(
-  'min-h-[48px] flex-row items-center gap-3 rounded-xl px-3 active:bg-accent hover:bg-accent',
-  Platform.select({
-    web: `cursor-pointer ${FOCUS_RING_CLASS}`,
-  }),
-);
-
-/** A checkbox row (a share target, a collection holding the book). */
-function CheckRow({
-  label,
-  detail,
-  checked,
-  busy,
-  onPress,
-}: {
-  label: string;
-  detail?: string;
-  checked: boolean | undefined;
-  busy?: boolean;
-  onPress: () => void;
-}) {
-  const themed = useThemeColors();
-  return (
-    <Pressable
-      role="checkbox"
-      aria-checked={!!checked}
-      accessibilityState={{ checked: !!checked, busy }}
-      accessibilityLabel={detail ? `${label}, ${detail}` : label}
-      disabled={checked === undefined || busy}
-      onPress={onPress}
-      className={checkRowClass}
-    >
-      <View
-        className={cn(
-          'h-5 w-5 items-center justify-center rounded-md border',
-          checked ? 'border-primary bg-primary' : 'border-border-strong bg-card',
-        )}
-      >
-        {checked ? <Icon name="check" size={13} color={themed.primaryForeground} /> : null}
-      </View>
-      <View className="flex-1">
-        <Text variant="label" numberOfLines={1}>
-          {label}
-        </Text>
-        {detail ? (
-          <Text variant="caption" numberOfLines={1}>
-            {detail}
-          </Text>
-        ) : null}
-      </View>
-      {checked === undefined ? <Skeleton className="h-3 w-10 rounded-sm" /> : null}
-    </Pressable>
-  );
 }
 
 /** The name and description of a new or edited collection, and saving them. */
@@ -383,9 +328,36 @@ export function AddToCollectionDialog({
 }
 
 /**
+ * Under the share targets (Phase 8b-1): each picked person who is the listener's own
+ * household member on "Only collections I share" gets a line saying that sharing gives
+ * them everything in this collection (it widens what they can listen to). Rendered only
+ * while the dialog is open, so the members list is asked for then (a server without
+ * `household_members` is never asked).
+ */
+function MemberShareNote({ connectionId, ids }: { connectionId: string; ids: readonly number[] }) {
+  const { t } = useTranslation();
+  const { data } = useHouseholdMembers(connectionId);
+  const members = collectionsMembers(data);
+  const picked = ids
+    .map((id) => members.get(id))
+    .filter((m): m is HouseholdMember => m !== undefined);
+  if (picked.length === 0) return null;
+  return (
+    <View className="gap-1" testID="share-member-note" accessibilityLiveRegion="polite">
+      {picked.map((m) => (
+        <Text key={m.id} variant="caption">
+          {t('household.share.member', { name: m.name })}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+/**
  * Share a collection read-only with people on the same server (owner only; never for a
  * demo account, which the server refuses): the server's share targets as checkboxes,
- * saved as one list.
+ * saved as one list. A picked household member who can listen only to shared collections
+ * is told what sharing gives them (`MemberShareNote`).
  */
 export function ShareCollectionDialog({
   open,
@@ -442,6 +414,7 @@ export function ShareCollectionDialog({
             ))}
           </ScrollView>
         )}
+        <MemberShareNote connectionId={connectionId} ids={ids} />
         <DialogFooter>
           <Button title={t('common.cancel')} variant="ghost" onPress={() => onOpenChange(false)} />
           <Button
