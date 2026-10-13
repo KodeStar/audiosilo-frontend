@@ -16,6 +16,7 @@ import {
   DialogIcon,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FormError } from '@/components/ui/form-error';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
@@ -231,15 +232,7 @@ function FormStep({
           onNewBooks={(on) => setForm((f) => ({ ...f, newBooks: on }))}
         />
       </ScrollView>
-      {error ? (
-        <Text
-          testID="add-member-error"
-          className="text-sm text-destructive"
-          accessibilityLiveRegion="polite"
-        >
-          {error}
-        </Text>
-      ) : null}
+      <FormError testID="add-member-error" error={error} />
       <DialogFooter>
         <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
         <Button
@@ -370,15 +363,10 @@ function GrownUpStep({
               loading={signIn.busy}
               onPress={() => void alsoHere()}
             />
-            {step.here ? (
-              <Text
-                testID="add-grownup-here-error"
-                className="text-sm text-destructive"
-                accessibilityLiveRegion="polite"
-              >
-                {hereFailure(step.here, name, t)}
-              </Text>
-            ) : null}
+            <FormError
+              testID="add-grownup-here-error"
+              error={step.here ? hereFailure(step.here, name, t) : null}
+            />
           </View>
         )}
       </ScrollView>

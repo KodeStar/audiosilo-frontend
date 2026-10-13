@@ -4,6 +4,7 @@ import { Image, Platform, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
 import { copyText } from '@/lib/clipboard';
 import { shareText } from '@/lib/share';
@@ -56,26 +57,16 @@ export function PairDeviceCard({
           />
         </>
       )}
-      <PairingError error={pairing.error} />
+      <FormError error={pairing.error} />
     </Card>
-  );
-}
-
-/** Why a code could not be made (the server's words, or what to try). */
-export function PairingError({ error }: { error: string | null }) {
-  if (!error) return null;
-  return (
-    <Text className="text-sm text-destructive" accessibilityLiveRegion="polite">
-      {error}
-    </Text>
   );
 }
 
 /**
  * A pairing code on screen: the server's QR image with a live countdown ("Expires in
  * 9:42"), the link to copy (web) or share (iOS and Android: the share sheet, whose first
- * action is Copy), "Make a new code" once it has expired, and Done (`onDone`, else the
- * code is put away; `hideDone`: the dialog it sits in has Done in its footer). The link
+ * action is Copy), "Make a new code" once it has expired, and Done (the code is put
+ * away; `hideDone`: the dialog it sits in has Done in its footer). The link
  * shows on one line, cut short with an ellipsis (Copy link copies all of it). Used by
  * "Pair another device" and a household member's own device ("Show Ellis this code").
  */
@@ -83,8 +74,6 @@ export function PairingCode({
   pairing,
   qrLabel,
   body,
-  onDone,
-  doneLabel,
   hideDone = false,
 }: {
   pairing: PairingCodeState;
@@ -92,8 +81,6 @@ export function PairingCode({
   qrLabel: string;
   /** What to do with it, beside the code while it is live. */
   body: string;
-  onDone?: () => void;
-  doneLabel?: string;
   hideDone?: boolean;
 }) {
   const { t } = useTranslation();
@@ -160,11 +147,10 @@ export function PairingCode({
           {hideDone ? null : (
             <Button
               variant="ghost"
-              title={doneLabel ?? t('settings.devices.done')}
+              title={t('settings.devices.done')}
               onPress={() => {
                 setCopied(false);
-                if (onDone) onDone();
-                else pairing.dismiss();
+                pairing.dismiss();
               }}
             />
           )}

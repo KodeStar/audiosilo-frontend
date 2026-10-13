@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import type { ApiKey } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { FormError } from '@/components/ui/form-error';
 import {
   Dialog,
   DialogContent,
@@ -91,11 +92,7 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
           ))
         )}
       </Card>
-      {manager.revokeError ? (
-        <Text className="text-sm text-destructive" accessibilityLiveRegion="polite">
-          {manager.revokeError}
-        </Text>
-      ) : null}
+      <FormError error={manager.revokeError} />
       <NewKeyDialog open={creating} onClose={() => setCreating(false)} manager={manager} />
     </View>
   );

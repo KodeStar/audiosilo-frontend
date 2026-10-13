@@ -4,9 +4,10 @@ import { View } from 'react-native';
 
 import { useMemberPairing } from '@/api/hooks';
 import type { HouseholdMember } from '@/api/types';
-import { PairingCode, PairingError } from '@/components/account/pair-device-card';
+import { PairingCode } from '@/components/account/pair-device-card';
 import { usePairingCode } from '@/components/account/use-pairing';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /**
@@ -67,7 +68,7 @@ export function MemberPairing({
           </View>
         </View>
       )}
-      <PairingError error={pairing.error} />
+      <FormError error={pairing.error} />
     </View>
   );
 }

@@ -7,6 +7,7 @@ import { useConnectionRemoval } from '@/components/account/connections-section';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
+import { PressableRow } from '@/components/ui/row-surface';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { openHousehold } from '@/lib/open';
 import { useLayout } from '@/lib/layout';
@@ -242,23 +243,20 @@ function HouseholdLinkCard({ onOpen }: { onOpen: () => void }) {
       <Text variant="title" accessibilityRole="header">
         {t(HOUSEHOLD_LABEL)}
       </Text>
-      <AnimatedPressable
+      <PressableRow
         testID="settings-household-link"
         onPress={onOpen}
         accessibilityRole="button"
         accessibilityLabel={t(HOUSEHOLD_LABEL)}
         accessibilityHint={t('household.settingsLink.hint')}
-        className={cn(
-          'min-h-[56px] flex-row items-center gap-3 rounded-card border border-border bg-card px-4 py-3 active:bg-accent',
-          Platform.select({ web: cn(FOCUS_RING_CLASS, 'hover:bg-accent') }),
-        )}
+        className="min-h-[56px] flex-row items-center gap-3 rounded-card px-4 py-3"
       >
         <Icon name={HOUSEHOLD_ICON} size={18} color={themed.mutedForeground} />
         <Text variant="muted" className="flex-1">
           {t('household.settingsLink.body')}
         </Text>
         <Icon name="chevron-right" size={16} color={themed.mutedForeground} />
-      </AnimatedPressable>
+      </PressableRow>
     </View>
   );
 }
