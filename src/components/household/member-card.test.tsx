@@ -40,6 +40,7 @@ jest.mock('@/components/connect/add-member-here', () => {
 });
 
 let mockDevices: { data?: MyDevice[]; isPending: boolean; isError: boolean; refetch: jest.Mock };
+const mockDevicesAsked = jest.fn();
 const mockUpdate = jest.fn();
 const mockDelete = jest.fn();
 const mockRevoke = jest.fn();
@@ -53,7 +54,10 @@ jest.mock('@/api/hooks', () => {
   return {
     CapabilityError: actual.CapabilityError,
     qk: actual.qk,
-    useMemberDevices: () => mockDevices,
+    useMemberDevices: (...a: unknown[]) => {
+      mockDevicesAsked(...a);
+      return mockDevices;
+    },
     useUpdateMember: () => mutation(mockUpdate),
     useDeleteMember: () => mutation(mockDelete),
     useRevokeMemberDevice: () => mutation(mockRevoke),
@@ -351,6 +355,14 @@ describe('MemberCard', () => {
       title: "Couldn't sign out Kitchen iPad",
       description: 'Too many tries. Wait a few minutes and try again.',
     });
+  });
+
+  it('asks for no devices of a member the list says is signed in nowhere', async () => {
+    mockDevices = { isPending: true, isError: false, refetch: jest.fn() };
+    await mount(member({ devices: 0 }));
+    expect(screen.getByText("Evie isn't signed in anywhere yet.")).toBeTruthy();
+    expect(screen.queryByTestId('member-devices-loading-12')).toBeNull();
+    expect(mockDevicesAsked).toHaveBeenCalledWith(12, 'a.1', { enabled: false });
   });
 
   it('says when they are signed in nowhere, and shows loading and errors', async () => {

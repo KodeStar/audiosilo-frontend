@@ -5,11 +5,17 @@ import { View } from 'react-native';
 import { apiErrorKind } from '@/api/client';
 import { CapabilityError, useMemberSession } from '@/api/hooks';
 import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-member-here';
-import { reconnectConnection } from '@/components/layout/reconnect-banner';
-import { Portrait } from '@/components/series/portrait';
-import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
 import { kidsManager } from '@/components/kids/kids-model';
 import { useKidsSharedShelf } from '@/components/kids/use-kids';
+import { reconnectConnection } from '@/components/layout/reconnect-banner';
+import { openAddSomeone } from '@/components/profiles/connect-intent';
+import { KidsLibraryPicker } from '@/components/profiles/kids-library-picker';
+import { PinDialog } from '@/components/profiles/pin-dialog';
+import { profileName, serversLine } from '@/components/profiles/profiles-model';
+import { RenameDialog } from '@/components/profiles/rename-dialog';
+import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose-profile';
+import { useRemovePerson } from '@/components/profiles/use-remove-person';
+import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SectionTitle } from '@/components/ui/section-title';
@@ -33,13 +39,7 @@ import {
 } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
-import { openAddSomeone } from '@/components/profiles/connect-intent';
-import { KidsLibraryPicker } from '@/components/profiles/kids-library-picker';
-import { PinDialog } from '@/components/profiles/pin-dialog';
-import { profileName, serversLine } from '@/components/profiles/profiles-model';
-import { RenameDialog } from '@/components/profiles/rename-dialog';
-import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose-profile';
-import { useRemovePerson } from '@/components/profiles/use-remove-person';
+import { PersonHeader, RenameRow } from './person-rows';
 
 /**
  * The Household page's "On this device" (Phase 8; a page of its own since 8b-1,
@@ -285,16 +285,7 @@ function PersonCard({
 
   return (
     <SettingsCard testID={`household-person-${profile.id}`}>
-      <View className="flex-row items-center gap-3 py-3.5">
-        <Portrait name={name} kind="user" size={36} ring={active} />
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text variant="label" numberOfLines={1} accessibilityRole="header">
-            {name}
-          </Text>
-          <Text variant="caption" numberOfLines={1}>
-            {serversLine(profile, connections, t)}
-          </Text>
-        </View>
+      <PersonHeader name={name} detail={serversLine(profile, connections, t)} ring={active}>
         {active ? (
           <Badge variant="secondary">
             <Text>{t('profiles.status.listening')}</Text>
@@ -309,20 +300,11 @@ function PersonCard({
             onPress={onSwitch}
           />
         )}
-      </View>
+      </PersonHeader>
 
       {signedOut ? <SignInAgainRow name={name} connection={signedOut} /> : null}
 
-      <SettingRow label={t('profiles.rename.label')} description={name}>
-        <Button
-          title={t('profiles.rename.action')}
-          accessibilityLabel={t('profiles.rename.title', { name })}
-          variant="ghost"
-          size="sm"
-          icon="pen"
-          onPress={() => setRenaming(true)}
-        />
-      </SettingRow>
+      <RenameRow name={name} onRename={() => setRenaming(true)} />
 
       <SettingRow
         testID={`household-pin-${profile.id}`}

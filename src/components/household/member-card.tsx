@@ -16,7 +16,6 @@ import { deviceDetail, deviceName } from '@/components/account/devices-section';
 import { profileName } from '@/components/profiles/profiles-model';
 import { RenameDialog } from '@/components/profiles/rename-dialog';
 import { useRemovePerson } from '@/components/profiles/use-remove-person';
-import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,7 +36,7 @@ import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useOpen } from '@/lib/open';
 import { useNow } from '@/lib/use-now';
-import { profileOf, renameProfile } from '@/stores/profiles';
+import { type Profile, profileOf, renameProfile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
 import { AccessPicker, memberBooksName } from './access-picker';
@@ -51,6 +50,7 @@ import {
   writeErrorText,
 } from './household-model';
 import { MemberPairing } from './member-pairing';
+import { PersonHeader, RenameRow } from './person-rows';
 import { booksRunText, useMemberBooks } from './use-member-books';
 import { hereFailure, useSignInHere } from './use-sign-in-here';
 
@@ -82,7 +82,6 @@ export function MemberCard({
   const remove = useDeleteMember(cid);
   const signIn = useSignInHere(connection);
   const books = useMemberBooks(cid);
-  const removal = useRemovePerson();
   const [open, setOpen] = useState<Open>(null);
   const close = () => setOpen(null);
   // Signed in on this device (as a person of their own), by server and user id.
@@ -172,25 +171,19 @@ export function MemberCard({
 
   return (
     <SettingsCard testID={`member-${member.id}`}>
-      <View className="flex-row items-center gap-3 py-3.5">
-        <Portrait name={name} kind="user" size={36} />
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text variant="label" numberOfLines={1} accessibilityRole="header">
-            {name}
-          </Text>
-          <Text variant="caption" numberOfLines={1}>
-            {t('household.card.who', {
-              kind: t(kid ? 'household.kind.kid' : 'household.kind.grownup'),
-              username: member.username,
-            })}
-          </Text>
-        </View>
+      <PersonHeader
+        name={name}
+        detail={t('household.card.who', {
+          kind: t(kid ? 'household.kind.kid' : 'household.kind.grownup'),
+          username: member.username,
+        })}
+      >
         {here ? (
           <Badge variant="secondary">
             <Text>{t('household.card.onThisDevice')}</Text>
           </Badge>
         ) : null}
-      </View>
+      </PersonHeader>
 
       <SettingRow
         testID={`member-access-${member.id}`}
@@ -249,16 +242,7 @@ export function MemberCard({
         </View>
       </SettingRow>
 
-      <SettingRow label={t('profiles.rename.label')} description={name}>
-        <Button
-          title={t('profiles.rename.action')}
-          accessibilityLabel={t('profiles.rename.title', { name })}
-          variant="ghost"
-          size="sm"
-          icon="pen"
-          onPress={() => setOpen('rename')}
-        />
-      </SettingRow>
+      <RenameRow name={name} onRename={() => setOpen('rename')} />
 
       <SettingRow
         control="block"
@@ -275,28 +259,21 @@ export function MemberCard({
             icon="trash"
             onPress={() => setOpen('delete')}
           />
-          {here && hereProfile ? (
-            <Button
-              testID={`member-remove-${member.id}`}
-              title={t('profiles.remove.action')}
-              accessibilityLabel={t('profiles.remove.a11y', { name: profileName(hereProfile, t) })}
-              variant="ghost"
-              size="sm"
-              icon="logout"
-              onPress={() => void removal.request(hereProfile, profileName(hereProfile, t))}
-            />
-          ) : null}
+          {hereProfile ? <RemoveHereButton memberId={member.id} profile={hereProfile} /> : null}
         </View>
       </SettingRow>
 
-      <AccessDialog
-        open={open === 'access'}
-        connectionId={cid}
-        serverName={server}
-        member={member}
-        onSave={saveAccess}
-        onClose={close}
-      />
+      <Dialog open={open === 'access'} onOpenChange={(o) => !o && close()}>
+        {open === 'access' ? (
+          <AccessBody
+            connectionId={cid}
+            serverName={server}
+            member={member}
+            onSave={saveAccess}
+            onClose={close}
+          />
+        ) : null}
+      </Dialog>
       <ConfirmDialog
         visible={open === 'kid'}
         title={t('household.card.kidConfirm.title', { name })}
@@ -346,21 +323,23 @@ export function MemberCard({
         onConfirm={() => setOpen('deleteTyped')}
         onCancel={close}
       />
-      <DeleteTypedDialog
-        open={open === 'deleteTyped'}
-        member={member}
-        onThisDevice={here !== undefined}
-        busy={remove.isPending}
-        onDelete={() => void deleteAccount()}
-        onClose={close}
-      />
+      <Dialog open={open === 'deleteTyped'} onOpenChange={(o) => !o && close()}>
+        {open === 'deleteTyped' ? (
+          <DeleteTypedBody
+            member={member}
+            onThisDevice={here !== undefined}
+            busy={remove.isPending}
+            onDelete={() => void deleteAccount()}
+            onClose={close}
+          />
+        ) : null}
+      </Dialog>
       <RevokeMemberDevice
         connectionId={cid}
         member={member}
         device={typeof open === 'object' && open ? open.revoke : null}
         onClose={close}
       />
-      {removal.dialog}
     </SettingsCard>
   );
 }
@@ -404,7 +383,30 @@ function AccessSummary({
   );
 }
 
-/** A member's signed-in devices, each with Sign out; loading, error and none states. */
+/** "Remove from this device" for a member signed in here: their profile on this device
+ * only (`useRemovePerson`, mounted only on a card whose member is here). */
+function RemoveHereButton({ memberId, profile }: { memberId: number; profile: Profile }) {
+  const { t } = useTranslation();
+  const removal = useRemovePerson();
+  const name = profileName(profile, t);
+  return (
+    <>
+      <Button
+        testID={`member-remove-${memberId}`}
+        title={t('profiles.remove.action')}
+        accessibilityLabel={t('profiles.remove.a11y', { name })}
+        variant="ghost"
+        size="sm"
+        icon="logout"
+        onPress={() => void removal.request(profile, name)}
+      />
+      {removal.dialog}
+    </>
+  );
+}
+
+/** A member's signed-in devices, each with Sign out; loading, error and none states. None
+ * is said from the members list's count, without asking. */
 function MemberDevices({
   connectionId,
   member,
@@ -415,9 +417,12 @@ function MemberDevices({
   onRevoke: (d: MyDevice) => void;
 }) {
   const { t } = useTranslation();
-  const devices = useMemberDevices(member.id, connectionId);
-  const now = useNow(60_000);
+  const signedIn = member.devices > 0;
+  const devices = useMemberDevices(member.id, connectionId, { enabled: signedIn });
   const rows = signedInSessions(devices.data);
+  if (!signedIn) {
+    return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
+  }
   if (devices.isError) {
     return (
       <View className="gap-2" testID={`member-devices-error-${member.id}`}>
@@ -443,6 +448,22 @@ function MemberDevices({
   if (rows.length === 0) {
     return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
   }
+  return <MemberDeviceRows member={member} rows={rows} onRevoke={onRevoke} />;
+}
+
+/** The rows of `MemberDevices`, each with Sign out; the clock ticks only while they show
+ * ("last seen 5 minutes ago" moves by the minute). */
+function MemberDeviceRows({
+  member,
+  rows,
+  onRevoke,
+}: {
+  member: HouseholdMember;
+  rows: MyDevice[];
+  onRevoke: (d: MyDevice) => void;
+}) {
+  const { t } = useTranslation();
+  const now = useNow(60_000);
   return (
     <View className="overflow-hidden rounded-xl border border-border" accessibilityRole="list">
       {rows.map((d, i) => {
@@ -525,36 +546,6 @@ function RevokeMemberDevice({
  * (without its own heading: the dialog's title asks the question), saved as one change
  * (access and, for collections, the full set to share, "<Name>'s books" created first
  * when chosen). */
-function AccessDialog({
-  open,
-  connectionId,
-  serverName,
-  member,
-  onSave,
-  onClose,
-}: {
-  open: boolean;
-  connectionId: string;
-  serverName: string;
-  member: HouseholdMember;
-  onSave: (access: MemberAccess, ids: number[], newBooks: boolean) => Promise<void>;
-  onClose: () => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      {open ? (
-        <AccessBody
-          connectionId={connectionId}
-          serverName={serverName}
-          member={member}
-          onSave={onSave}
-          onClose={onClose}
-        />
-      ) : null}
-    </Dialog>
-  );
-}
-
 function AccessBody({
   connectionId,
   serverName,
@@ -615,36 +606,6 @@ function AccessBody({
 }
 
 /** The second confirmation of "Delete their account": type their name. */
-function DeleteTypedDialog({
-  open,
-  member,
-  onThisDevice,
-  busy,
-  onDelete,
-  onClose,
-}: {
-  open: boolean;
-  member: HouseholdMember;
-  onThisDevice: boolean;
-  busy: boolean;
-  onDelete: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      {open ? (
-        <DeleteTypedBody
-          member={member}
-          onThisDevice={onThisDevice}
-          busy={busy}
-          onDelete={onDelete}
-          onClose={onClose}
-        />
-      ) : null}
-    </Dialog>
-  );
-}
-
 function DeleteTypedBody({
   member,
   onThisDevice,

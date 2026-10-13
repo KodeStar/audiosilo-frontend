@@ -9,6 +9,7 @@ import { usePairingCode } from '@/components/account/use-pairing';
 import { Button } from '@/components/ui/button';
 import { FormError } from '@/components/ui/form-error';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useLatest } from '@/lib/use-latest';
 
 /**
  * A household member's own pairing code (Phase 8b-1: "Show Ellis this code", "Set up their
@@ -33,13 +34,15 @@ export function MemberPairing({
     () => mint.mutateAsync(member.id),
     t('household.qr.failed', { server: serverName }),
   );
-  // Asked for once, when it shows.
+  // Asked for once, when it shows (`create` is stable; the ref keeps a second mount pass
+  // from minting a second code).
+  const create = useLatest(pairing.create);
   const asked = useRef(false);
   useEffect(() => {
     if (asked.current) return;
     asked.current = true;
-    void pairing.create();
-  }, [pairing]);
+    void create();
+  }, [create]);
 
   return (
     <View className="gap-3" testID="member-pairing">
