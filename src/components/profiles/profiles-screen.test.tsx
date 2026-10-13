@@ -38,7 +38,7 @@ import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
 import { resetLaunchDecisionForTests, takeLaunchDecision } from './profiles-model';
-import { endKidsConnect, kidsConnectAllowed } from './connect-intent';
+import { endConnectFlow, kidsConnectAllowed } from './connect-intent';
 import { ProfilesScreen } from './profiles-screen';
 import { forgetPickerOpener, openProfiles } from './use-choose-profile';
 /* eslint-enable import/first */
@@ -243,7 +243,7 @@ it("a kid-only device: a grown-up's Add someone opens the connect flow, which ki
     expect(mockRouter.push).toHaveBeenCalledWith('/connect?add=1&profile=new');
     expect(kidsConnectAllowed()).toBe(true);
   } finally {
-    endKidsConnect();
+    endConnectFlow();
   }
 });
 

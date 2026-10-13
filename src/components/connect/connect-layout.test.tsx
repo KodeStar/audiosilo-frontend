@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -7,6 +7,7 @@ import { seedProfile } from '@/testing/seed-profile';
 // The flow's screens, as the layout's Stack: whatever renders here would run (a pairing
 // link's token exchange starts as `/connect` mounts).
 const mockPush = jest.fn();
+const mockDismissTo = jest.fn();
 jest.mock('expo-router', () => {
   const Stack = function Stack() {
     const { Text } = jest.requireActual('react-native');
@@ -15,14 +16,20 @@ jest.mock('expo-router', () => {
   Stack.Screen = function Screen() {
     return null;
   };
-  return { Stack, router: { push: (h: unknown) => mockPush(h) } };
+  return {
+    Stack,
+    router: { push: (h: unknown) => mockPush(h), dismissTo: (h: unknown) => mockDismissTo(h) },
+    useRootNavigationState: () => ({ key: 'root' }),
+  };
 });
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 
 /* eslint-disable import/first */
 import ConnectLayout from '@/app/connect/_layout';
 import {
   connectForNewProfile,
-  endKidsConnect,
+  endConnectFlow,
   kidsConnectAllowed,
   openAddSomeone,
   setConnectForNewProfile,
@@ -32,10 +39,12 @@ import {
 beforeEach(() => {
   useSession.setState({ status: 'authenticated' });
   mockPush.mockClear();
+  mockDismissTo.mockClear();
+  mockToast.mockClear();
 });
 afterEach(() => {
   resetProfilesForTests();
-  endKidsConnect();
+  endConnectFlow();
   setConnectForNewProfile(false);
 });
 
@@ -49,6 +58,22 @@ it("runs none of the flow while a kids profile listens (D1: a link's token stays
   seedProfile({ kids: true });
   await render(<ConnectLayout />);
   expect(screen.queryByText('connect flow')).toBeNull();
+  // A link reached in kids mode: back to /kids, asking a grown-up to open it.
+  expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+  expect(mockToast).toHaveBeenCalledWith({
+    title: 'Ask a grown-up to open this link',
+    description: 'A grown-up holds Grown-ups first, then opens the link again.',
+  });
+});
+
+it("takes kids mode turned on mid-flow (a kid's first sign-in) to /kids, saying nothing", async () => {
+  seedProfile();
+  await render(<ConnectLayout />);
+  expect(screen.getByText('connect flow')).toBeTruthy();
+  await act(async () => seedProfile({ kids: true }));
+  expect(screen.queryByText('connect flow')).toBeNull();
+  expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+  expect(mockToast).not.toHaveBeenCalled();
 });
 
 it('runs it for a grown-up\'s "Add someone" from kids mode on a device with no grown-up', async () => {

@@ -375,9 +375,9 @@ describe('placing the new connection in a profile (Phase 8)', () => {
       expect(kid?.connectionIds).toEqual(['srv-1.12']);
       expect(kid?.kids).toEqual({ bedtime: profiles().DEFAULT_BEDTIME });
       // Straight to kids mode (D9): never the grown-up "Your library is ready." step,
-      // which kids mode doesn't allow. Home, where the route guard takes it to /kids.
+      // which kids mode doesn't allow, nor Home on the way.
       expect(mockReplace).not.toHaveBeenCalled();
-      expect(mockDismissTo).toHaveBeenCalledWith('/');
+      expect(mockDismissTo.mock.calls).toEqual([['/kids']]);
     });
 
     it('starts in kids mode when a grown-up signs the kid in on their device', async () => {

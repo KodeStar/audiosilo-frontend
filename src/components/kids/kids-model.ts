@@ -18,31 +18,21 @@ import type { Connection } from '@/stores/session';
 export const KIDS_PATH = '/kids';
 
 /**
- * Where a kids profile may be. Kids mode itself, and "Who's listening?" (leaving kids mode
- * goes through it, and the PIN rules apply there). Everything else (the tabs, search,
- * settings, downloads, the full player, the end credits, the year story) sends a kids
- * profile back to `/kids`, and so does the connect flow (8b-1, D1: signing in, a server's
- * Reconnect and Forget are a grown-up's), unless `connect`: a grown-up opened it from
- * "Who's listening?" on a device with no grown-up (`kidsConnectAllowed`).
+ * Where a kids profile may be. Kids mode itself, "Who's listening?" (leaving kids mode
+ * goes through it, and the PIN rules apply there), and the connect flow, which keeps kids
+ * mode out itself (8b-1, D1: `connect/_layout.tsx` runs none of it for a kids profile
+ * without a grown-up's pass). Everything else (the tabs, search, settings, downloads, the
+ * full player, the end credits, the year story) sends a kids profile back to `/kids`.
  */
-const KIDS_ALLOWED = [KIDS_PATH, '/profiles'];
-
-/** The connect flow's routes (`/connect` and its steps). */
-export const CONNECT_PATH = '/connect';
+const KIDS_ALLOWED = [KIDS_PATH, '/profiles', '/connect'];
 
 /** Whether `pathname` is `base` or a route under it. */
 const under = (pathname: string, base: string) =>
   pathname === base || pathname.startsWith(`${base}/`);
 
-/** Whether `pathname` is in the connect flow. */
-export function isConnectPath(pathname: string): boolean {
-  return under(pathname, CONNECT_PATH);
-}
-
-/** Whether a kids profile may stay on `pathname` (expo-router's, without the web base);
- * `connect`: the connect flow too (a grown-up's, `kidsConnectAllowed`). */
-export function kidsAllowsPath(pathname: string, { connect = false } = {}): boolean {
-  return KIDS_ALLOWED.some((p) => under(pathname, p)) || (connect && isConnectPath(pathname));
+/** Whether a kids profile may stay on `pathname` (expo-router's, without the web base). */
+export function kidsAllowsPath(pathname: string): boolean {
+  return KIDS_ALLOWED.some((p) => under(pathname, p));
 }
 
 /**

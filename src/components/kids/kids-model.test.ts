@@ -2,7 +2,6 @@ import type { Book, Collection, CollectionDetail, Library, Progress, User } from
 import type { DownloadEntry } from '@/downloads/types';
 
 import {
-  isConnectPath,
   kidsAllowsPath,
   kidsCollections,
   kidsCollectionSections,
@@ -183,15 +182,11 @@ describe('kidsAllowsPath', () => {
     }
   });
 
-  it("refuses the connect flow (D1), unless a grown-up's pass lets it through", () => {
+  it('leaves the connect flow to its own gate (D1: connect/_layout.tsx keeps kids mode out)', () => {
     for (const p of ['/connect', '/connect/sign-in', '/connect/scan', '/connect/ready']) {
-      expect(isConnectPath(p)).toBe(true);
-      expect(kidsAllowsPath(p)).toBe(false);
-      expect(kidsAllowsPath(p, { connect: true })).toBe(true);
+      expect(kidsAllowsPath(p)).toBe(true);
     }
-    // The pass is the connect flow's only.
-    expect(kidsAllowsPath('/settings', { connect: true })).toBe(false);
-    expect(isConnectPath('/connectx')).toBe(false);
+    expect(kidsAllowsPath('/connectx')).toBe(false);
   });
 
   it('refuses the tabs, settings, downloads, the player and the rest', () => {

@@ -2,9 +2,10 @@ import { Stack } from 'expo-router';
 import { store } from 'expo-router/build/global-state/router-store';
 import { act, renderRouter } from 'expo-router/testing-library';
 
-import { endKidsConnect, openAddSomeone } from '@/components/profiles/connect-intent';
+import { endConnectFlow, openAddSomeone } from '@/components/profiles/connect-intent';
 import { toast } from '@/components/ui/toast';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
+import { useSession } from '@/stores/session';
 import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
 import { seedProfile } from '@/testing/seed-profile';
 
@@ -13,7 +14,8 @@ import { KidsRouteGuard } from './kids-route-guard';
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 
 // The real route tree with the guard mounted by the root layout, as `src/app/_layout.tsx`
-// mounts it (the root keeps its real `anchor`).
+// mounts it (the root keeps its real `anchor`), and the connect flow's real layout, which
+// keeps kids mode out of the flow itself (8b-1, D1).
 const rootRoutes = () => (store.state?.routes[0]?.state?.routes ?? []).map((r) => r.name);
 
 function mount(initialUrl: string) {
@@ -27,12 +29,14 @@ function mount(initialUrl: string) {
     ),
     unstable_settings: { anchor: '(app)' },
   } as unknown as (typeof tree)['_layout'];
+  tree['connect/_layout'] = jest.requireActual('@/app/connect/_layout');
   return renderRouter(tree, { initialUrl }) as unknown as Promise<unknown>;
 }
 
+beforeEach(() => useSession.setState({ status: 'authenticated' }));
 afterEach(() => {
   resetProfilesForTests();
-  endKidsConnect();
+  endConnectFlow();
   jest.mocked(toast).mockClear();
 });
 

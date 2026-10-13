@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 
 import type { AuthSession, ServerAddresses } from '@/api/types';
+import { KIDS_PATH } from '@/components/kids/kids-model';
 import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import i18n from '@/i18n';
@@ -111,9 +112,9 @@ export async function finishConnect(input: {
   // re-pair, or a sign-in again after a server reset, keeps what its person had).
   if (!existing && replaced === undefined) kidsOnForKidAccount(id);
   // "Your library is ready." is a grown-up's first run (8b-1, D9): a kid's account (or
-  // anyone signing in while kids mode listens) goes straight to kids mode, which the
-  // route guard takes on from Home.
-  if (first && !activeProfile()?.kids) router.replace(readyHref(id));
+  // anyone signing in while kids mode listens) goes straight to kids mode.
+  if (activeProfile()?.kids) router.dismissTo(KIDS_PATH);
+  else if (first) router.replace(readyHref(id));
   else leaveOnboarding();
   return id;
 }

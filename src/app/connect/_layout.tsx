@@ -1,34 +1,48 @@
-import { Stack } from 'expo-router';
-import { useEffect } from 'react';
+import { router, Stack, useRootNavigationState } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
+import { KIDS_PATH } from '@/components/kids/kids-model';
 import { useKidsActive } from '@/components/kids/use-kids';
-import {
-  endKidsConnect,
-  kidsConnectAllowed,
-  setConnectForNewProfile,
-} from '@/components/profiles/connect-intent';
+import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
+import { toast } from '@/components/ui/toast';
 import { useSession } from '@/stores/session';
 
+/**
+ * The connect flow's layout, and the one gate between it and kids mode (8b-1, D1): while a
+ * kids profile listens it runs none of the flow (not a step of it, so a pairing link's
+ * token is never exchanged and no server can be reconnected or forgotten) and takes the
+ * child back to `/kids`. Only a grown-up's "Add someone" on a device with no grown-up gets
+ * through (`kidsConnectAllowed`).
+ *
+ * A flow opened while kids mode was already on is a link (`audiosilo://connect?token=`, a
+ * QR scanned elsewhere, `/web/connect`, the old reconnect banner's sign-in): a toast asks a
+ * grown-up to open it (the grown-up holds Grown-ups, chooses themselves with their PIN,
+ * then opens the link again). Kids mode turning on while the flow is up is a kid's first
+ * sign-in (`finishConnect` takes them to `/kids` itself): no toast, no "Your library is
+ * ready." for a kid's account.
+ *
+ * `dismissTo`, as the route guard (`KidsRouteGuard`) does, once the root navigator is ready
+ * (a navigation before it mounts throws). Leaving the flow ends what it was for
+ * (`endConnectFlow`: "Add someone", the grown-up's pass through kids mode).
+ */
 export default function ConnectLayout() {
+  const { t } = useTranslation();
   const status = useSession((s) => s.status);
   const kids = useKidsActive();
-  // "Add someone" holds for the whole flow (`connect/index.tsx` sets it), until the flow
-  // is left: the next flow starts as a sign-in of the person listening again. So does a
-  // grown-up's pass through kids mode (`kidsConnectAllowed`).
-  useEffect(
-    () => () => {
-      setConnectForNewProfile(false);
-      endKidsConnect();
-    },
-    [],
-  );
-  // Kids mode never runs the flow (8b-1, D1): not a step of it, so a pairing link's token
-  // is never exchanged and no server can be reconnected or forgotten, while the route guard
-  // (`KidsRouteGuard`) takes the child back to `/kids`. Only a grown-up's "Add someone" on
-  // a device with no grown-up gets through.
-  if (status === 'loading' || (kids && !kidsConnectAllowed())) {
+  const ready = !!useRootNavigationState()?.key;
+  const refused = kids && !kidsConnectAllowed();
+  // Kids mode was on as the flow opened: a link, not a sign-in that turned it on.
+  const [openedInKids] = useState(refused);
+  useEffect(() => () => endConnectFlow(), []);
+  useEffect(() => {
+    if (!refused || !ready) return;
+    if (openedInKids) toast({ title: t('kids.link.title'), description: t('kids.link.body') });
+    router.dismissTo(KIDS_PATH);
+  }, [refused, ready, openedInKids, t]);
+  if (status === 'loading' || refused) {
     return (
       <Screen>
         <Spinner center />

@@ -10,6 +10,8 @@ jest.mock('@/playback/store', () =>
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test device' }));
+// The connect layout's kids-mode toast (none here): its overlay needs the native animations.
+jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 
 const dad: User = {
   id: 1,
