@@ -33,6 +33,7 @@ import { resolveClient } from './connection-clients';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteError } from './reachability';
 import type {
+  AddMemberBody,
   Book,
   Bookmark,
   BookmarkLabel,
@@ -45,6 +46,8 @@ import type {
   CollectionPatch,
   Favourite,
   HistoryEntry,
+  HouseholdMember,
+  HouseholdMembers,
   HouseListening,
   Library,
   ListeningGoalStatus,
@@ -60,6 +63,7 @@ import type {
   RatingValue,
   ServerInfo,
   StatsRange,
+  UpdateMemberBody,
 } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. Every key leads with
@@ -135,6 +139,12 @@ export const qk = {
   // Listening in the house, capability `household` (player redesign Phase 8).
   household: (cid: string) => ['household', cid] as const,
   houseListening: (cid: string) => ['houseListening', cid] as const,
+  // Household members, capability `household_members` (player redesign Phase 8b-1).
+  householdMembers: (cid: string) => ['householdMembers', cid] as const,
+  /** One member's devices (`null`: no member chosen yet, never asked). */
+  memberDevices: (cid: string, id: number | null) => ['memberDevices', cid, id] as const,
+  /** Prefix matching every member's devices on a connection (invalidation). */
+  memberDevicesAll: (cid: string) => ['memberDevices', cid] as const,
   /** Prefix matching every connection's progress list (refetch on Home). */
   allProgressAll: () => ['progress', 'all'] as const,
   /** Prefix matching every connection's recently added list. */
@@ -1831,17 +1841,34 @@ export function useMyDevices(connectionId?: string) {
  * only 401 and raise the reconnect banner instead. Otherwise it refreshes the device
  * list and the API keys (a device can be an API key). */
 export function useRevokeMyDevice(connectionId?: string) {
+  const members = useCapability('household_members', connectionId) === true;
   return useCapabilityMutation(
     'my_devices',
     connectionId,
-    (api, id: number) => api.revokeMyDevice(id),
+    (api, vars: RevokeMyDeviceVars) => {
+      const { id, alsoMembers } = typeof vars === 'number' ? { id: vars } : vars;
+      // Only a server with `household_members` knows the parameter.
+      return alsoMembers && members
+        ? api.revokeMyDevice(id, { alsoMembers: true })
+        : api.revokeMyDevice(id);
+    },
     ({ qc, cid }, res) => {
       if (res.current) return;
       void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
       void qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
+      if (res.members_signed_out) {
+        void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+        void qc.invalidateQueries({ queryKey: qk.memberDevicesAll(cid) });
+      }
     },
   );
 }
+
+/** What `useRevokeMyDevice` takes: the device id, or the id with `alsoMembers` to also
+ * sign out the caller's household members signed in on that device (its
+ * `member_sign_ins`). `alsoMembers` is sent only to a server with `household_members`;
+ * elsewhere the device alone is signed out. */
+export type RevokeMyDeviceVars = number | { id: number; alsoMembers?: boolean };
 
 /** Whether the caller shares what they are listening to with the house (capability
  * `household`; `{ share_listening }`, off by default). Fresh until the app restarts:
@@ -1897,6 +1924,133 @@ export function useHouseListening(connectionId?: string, opts: { enabled?: boole
     (api, signal) => api.houseListening(signal),
     connectionId,
     { ready: opts.enabled !== false, refetchInterval: housePollInterval },
+  );
+}
+
+// --- Household members (capability `household_members`, Phase 8b-1) -----------------
+// The queries ask only a server that advertises the flag (`skipToken` elsewhere); the
+// writes reject with a `CapabilityError`, sending nothing, while it is off or not known
+// yet (never hand that to `noteError`). An owner can rename, sign out and delete their
+// members whatever `allowed` says; only adding is gated by it.
+
+/** The caller's household members, whether they may add more (`allowed`, else a
+ * `reason`) and the most they may have (`max`). */
+export function useHouseholdMembers(connectionId?: string) {
+  return useCapabilityQuery(
+    'household_members',
+    qk.householdMembers,
+    (api, signal) => api.members(signal),
+    connectionId,
+  );
+}
+
+/** One member's signed-in devices. `id` null or undefined asks nothing. */
+export function useMemberDevices(id: number | null | undefined, connectionId?: string) {
+  return useCapabilityQuery(
+    'household_members',
+    (cid) => qk.memberDevices(cid, id ?? null),
+    (api, signal) => api.memberDevices(id as number, signal),
+    connectionId,
+    { ready: id != null },
+  );
+}
+
+/** Add a household member ({@link AddMemberBody}); resolves to `{ member, session? }`
+ * (`session` when the body asked for `sign_in_here`: the member's session on this
+ * device, to place as a connection). Refreshes the members list, and the caller's
+ * devices when a session was made here (their `member_sign_ins`). */
+export function useAddMember(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, body: AddMemberBody) => api.addMember(body),
+    ({ qc, cid }, res) => {
+      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+      if (res.session) void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+    },
+  );
+}
+
+/** Sign one of the caller's members in on this device (takes the member's id); resolves
+ * to their session. Refreshes the members list, that member's devices and the caller's
+ * devices (their `member_sign_ins`). */
+export function useMemberSession(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, id: number) => api.memberSession(id),
+    ({ qc, cid }, _session, id) => {
+      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+      void qc.invalidateQueries({ queryKey: qk.memberDevices(cid, id) });
+      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+    },
+  );
+}
+
+/** A single-use pairing (QR) for one of the caller's members to sign in on their own
+ * device (takes the member's id). Changes nothing cached: the device appears once it
+ * signs in. */
+export function useMemberPairing(connectionId?: string) {
+  return useCapabilityMutation('household_members', connectionId, (api, id: number) =>
+    api.memberPairing(id),
+  );
+}
+
+/** Sign a member out of one of their devices (`{ id, deviceId }`, `id` the member's).
+ * Refreshes that member's devices, the members list (its device count) and the caller's
+ * devices (their `member_sign_ins`). */
+export function useRevokeMemberDevice(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, { id, deviceId }: { id: number; deviceId: number }) =>
+      api.revokeMemberDevice(id, deviceId),
+    ({ qc, cid }, _answer, { id }) => {
+      void qc.invalidateQueries({ queryKey: qk.memberDevices(cid, id) });
+      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+    },
+  );
+}
+
+/** Change a member (`{ id, body }`, {@link UpdateMemberBody}); resolves to the member.
+ * Puts the answer in the members list and reads the list and that member's devices
+ * again (making them a kid removes their API keys). */
+export function useUpdateMember(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, { id, body }: { id: number; body: UpdateMemberBody }) => api.updateMember(id, body),
+    async ({ qc, cid }, member: HouseholdMember) => {
+      await storeAnswer<HouseholdMembers>(qc, qk.householdMembers(cid), (list) =>
+        list?.members.some((m) => m.id === member.id)
+          ? { ...list, members: list.members.map((m) => (m.id === member.id ? member : m)) }
+          : undefined,
+      );
+      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+      void qc.invalidateQueries({ queryKey: qk.memberDevices(cid, member.id) });
+    },
+  );
+}
+
+/** Delete a member's account (takes the member's id). Takes them off the members list
+ * at once, reads it again, forgets their devices and refreshes the caller's devices
+ * (their `member_sign_ins`). */
+export function useDeleteMember(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, id: number) => api.deleteMember(id),
+    async ({ qc, cid }, _answer, id) => {
+      qc.removeQueries({ queryKey: qk.memberDevices(cid, id), exact: true });
+      await storeAnswer<HouseholdMembers>(
+        qc,
+        qk.householdMembers(cid),
+        (list) => list && { ...list, members: list.members.filter((m) => m.id !== id) },
+      );
+      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+    },
   );
 }
 

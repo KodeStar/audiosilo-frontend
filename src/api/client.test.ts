@@ -6,6 +6,7 @@ import {
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
 } from '@/api/client';
+import type { AddMemberBody } from '@/api/types';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -1650,5 +1651,230 @@ describe('ApiClient household and cast (Phase 8)', () => {
   it("surfaces a book outside the caller's access as a 403 ApiError", async () => {
     installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
     await expect(c().castToken(2, 'Other/Book')).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('ApiClient household members (Phase 8b-1)', () => {
+  const c = () => new ApiClient('https://h', 'tok');
+  const evie = {
+    id: 12,
+    name: 'Evie',
+    username: 'evie',
+    kind: 'kid',
+    access: 'collections',
+    created_at: '2026-10-13T10:00:00.000Z',
+    collections: [{ id: 4, name: "Evie's books", items: 2 }],
+    devices: 1,
+    last_listened_at: '2026-10-13T18:00:00.000Z',
+  };
+  const ellis = {
+    id: 13,
+    name: 'Ellis',
+    username: 'ellis',
+    kind: 'grownup',
+    access: 'all',
+    created_at: '2026-10-13T11:00:00.000Z',
+    devices: 0,
+    last_listened_at: null,
+  };
+  const session = {
+    token: 'member-secret',
+    server_id: 'srv',
+    user: {
+      id: 12,
+      username: 'evie',
+      role: 'user',
+      disabled: false,
+      has_password: false,
+      has_recovery: false,
+      managed_by: { id: 1, username: 'adam' },
+      member_kind: 'kid',
+    },
+    addresses: { home: 'http://192.168.1.5:8080', away: 'nonsense' },
+  };
+  const device = {
+    id: 21,
+    kind: 'session',
+    name: "Adam's iPhone",
+    client: null,
+    created_at: '2026-10-13T10:00:00.000Z',
+    last_seen: null,
+    last_ip: '',
+    current: false,
+  };
+
+  it('lists GET /me/household/members, every field round-tripped', async () => {
+    const body = { allowed: true, max: 6, members: [evie, ellis] };
+    const fetchMock = installFetch(() => ({ status: 200, body }));
+    await expect(c().members()).resolves.toEqual(body);
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household/members',
+      method: 'GET',
+      body: undefined,
+      contentType: undefined,
+    });
+  });
+
+  it('reads a refusal reason, and a null members list as []', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: { allowed: false, reason: 'member', max: 6, members: null },
+    }));
+    await expect(c().members()).resolves.toEqual({
+      allowed: false,
+      reason: 'member',
+      max: 6,
+      members: [],
+    });
+  });
+
+  it('adds with POST /me/household/members and the exact body', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: { member: ellis } }));
+    const body = { name: 'Ellis', kind: 'grownup', access: 'all' } as const;
+    await expect(c().addMember(body)).resolves.toEqual({ member: ellis });
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household/members',
+      method: 'POST',
+      body,
+      contentType: 'application/json',
+    });
+  });
+
+  it('adds signed in here: sends sign_in_here and collection_ids, cleans the session addresses', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: { member: evie, session } }));
+    const body: AddMemberBody = {
+      name: 'Evie',
+      kind: 'kid',
+      access: 'collections',
+      sign_in_here: true,
+      collection_ids: [4],
+    };
+    await expect(c().addMember(body)).resolves.toEqual({
+      member: evie,
+      session: { ...session, addresses: { home: 'http://192.168.1.5:8080' } },
+    });
+    expect(sent(fetchMock).body).toEqual(body);
+  });
+
+  it('surfaces a refusal to add as a coded ApiError', async () => {
+    installFetch(() => ({ status: 409, body: { error: 'member limit reached' } }));
+    await expect(c().addMember({ name: 'Evie', kind: 'kid', access: 'all' })).rejects.toMatchObject(
+      { name: 'ApiError', status: 409, message: 'member limit reached' },
+    );
+  });
+
+  it('signs a member in here with POST .../{id}/session (no body), addresses cleaned', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: session }));
+    await expect(c().memberSession(12)).resolves.toEqual({
+      ...session,
+      addresses: { home: 'http://192.168.1.5:8080' },
+    });
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household/members/12/session',
+      method: 'POST',
+      body: undefined,
+      contentType: undefined,
+    });
+  });
+
+  it('mints a pairing with POST .../{id}/pair (no body)', async () => {
+    const pairing = {
+      server_name: 'Home',
+      base_url: 'https://h',
+      pairing_token: 'pt',
+      uri: 'audiosilo://connect?server=https%3A%2F%2Fh&token=pt',
+      web_url: 'https://h/web/connect?token=pt',
+      qr_png_data_uri: 'data:image/png;base64,AA',
+      links: { web: 'https://h/web', admin: 'https://h/admin' },
+    };
+    const fetchMock = installFetch(() => ({ status: 200, body: pairing }));
+    await expect(c().memberPairing(13)).resolves.toEqual({ ...pairing, addresses: undefined });
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household/members/13/pair',
+      method: 'POST',
+      body: undefined,
+      contentType: undefined,
+    });
+  });
+
+  it("lists a member's devices with GET .../{id}/devices (a bare array, or wrapped)", async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: [device] }));
+    await expect(c().memberDevices(12)).resolves.toEqual([device]);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/me/household/members/12/devices',
+      method: 'GET',
+      body: undefined,
+    });
+    installFetch(() => ({ status: 200, body: { devices: [device] } }));
+    await expect(c().memberDevices(12)).resolves.toEqual([device]);
+    installFetch(() => ({ status: 200, body: null }));
+    await expect(c().memberDevices(12)).resolves.toEqual([]);
+  });
+
+  it('signs a member out of a device with DELETE .../{id}/devices/{device_id}', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await expect(c().revokeMemberDevice(12, 21)).resolves.toBeUndefined();
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household/members/12/devices/21',
+      method: 'DELETE',
+      body: undefined,
+      contentType: undefined,
+    });
+  });
+
+  it('changes a member with PATCH .../{id}, only the given fields', async () => {
+    const changed = { ...evie, name: 'Evie B', kind: 'grownup' };
+    const fetchMock = installFetch(() => ({ status: 200, body: changed }));
+    await expect(c().updateMember(12, { name: 'Evie B', kind: 'grownup' })).resolves.toEqual(
+      changed,
+    );
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household/members/12',
+      method: 'PATCH',
+      body: { name: 'Evie B', kind: 'grownup' },
+      contentType: 'application/json',
+    });
+    const again = installFetch(() => ({ status: 200, body: evie }));
+    await c().updateMember(12, { access: 'collections', collection_ids: [] });
+    expect(sent(again).body).toEqual({ access: 'collections', collection_ids: [] });
+  });
+
+  it('deletes a member with DELETE .../{id}', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await expect(c().deleteMember(12)).resolves.toBeUndefined();
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/household/members/12',
+      method: 'DELETE',
+      body: undefined,
+      contentType: undefined,
+    });
+  });
+
+  it("reads a member's 404 as an ApiError", async () => {
+    installFetch(() => ({ status: 404, body: { error: 'member not found' } }));
+    await expect(c().deleteMember(99)).rejects.toMatchObject({ name: 'ApiError', status: 404 });
+  });
+
+  it('revokes a device with ?also_members=1 only when asked', async () => {
+    const answer = { current: false, members_signed_out: 2 };
+    const fetchMock = installFetch(() => ({ status: 200, body: answer }));
+    await expect(c().revokeMyDevice(11, { alsoMembers: true })).resolves.toEqual(answer);
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/me/devices/11?also_members=1',
+      method: 'DELETE',
+      body: undefined,
+      contentType: undefined,
+    });
+    const off = installFetch(() => ({ status: 200, body: { current: false } }));
+    await c().revokeMyDevice(11, { alsoMembers: false });
+    await c().revokeMyDevice(11, {});
+    await c().revokeMyDevice(11);
+    for (const i of [0, 1, 2]) expect(sent(off, i).url).toBe('https://h/api/v1/me/devices/11');
+  });
+
+  it('reads member_sign_ins on GET /me/devices', async () => {
+    const row = { ...device, current: true, member_sign_ins: [{ id: 12, name: 'Evie' }] };
+    installFetch(() => ({ status: 200, body: { devices: [row] } }));
+    await expect(c().myDevices()).resolves.toEqual([row]);
   });
 });

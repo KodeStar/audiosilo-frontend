@@ -101,6 +101,13 @@ export type Capabilities = {
    * never gets the session token (player redesign Phase 8). Absent on older servers:
    * treat missing as false and show no Cast button. */
   cast?: boolean;
+  /** Whether the caller can add household members (player redesign Phase 8b-1): accounts
+   * they own and manage (`/me/household/members/**`, {@link HouseholdMembers}), the
+   * `managed_by` and `member_kind` of a {@link User}, `member_sign_ins` on
+   * {@link MyDevice} and `?also_members=1` on `DELETE /me/devices/{id}`. Absent on older
+   * servers: treat missing as false, never call the routes and never send
+   * `also_members`. */
+  household_members?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -143,6 +150,13 @@ export type User = {
   /** Throwaway demo account. The server refuses self-service password for these,
    * so the UI hides that affordance when set. */
   is_demo?: boolean;
+  /** The person who manages this account when it is a household member (capability
+   * `household_members`); `null` for an ordinary account, absent on older servers. */
+  managed_by?: UserRef | null;
+  /** A household member's kind (capability `household_members`); `null` for an ordinary
+   * account, absent on older servers. A kid's account has no password or API keys and
+   * can't pair a device itself: their owner signs them in. */
+  member_kind?: MemberKind | null;
 };
 
 /** Response of /auth/exchange and /auth/login. The token is the session secret;
@@ -1024,8 +1038,95 @@ export type MyDevice = {
   last_ip: string;
   /** Whether this is the token making the request (this device). */
   current: boolean;
+  /** The caller's household members signed in on this device (made here, still live):
+   * `DELETE /me/devices/{id}?also_members=1` signs them out with it. Capability
+   * `household_members`; absent on older servers and on a member's own device rows. */
+  member_sign_ins?: { id: number; name: string }[];
 };
 
 /** Response of DELETE /me/devices/{id}: `current` is true when the caller signed out
  * the very token it used, which is dead from then on (sign out locally). */
-export type MyDeviceRevoked = { current: boolean };
+export type MyDeviceRevoked = {
+  current: boolean;
+  /** How many of the caller's household members' sign-ins made on that device were
+   * signed out with it (`?also_members=1`; 0 without it). Capability
+   * `household_members`; absent on older servers. */
+  members_signed_out?: number;
+};
+
+// --- Household members (capability `household_members`, player redesign Phase 8b-1) ---
+// Accounts the caller owns and manages: a kid (no password or API keys; the owner signs
+// them in) or a grown-up. A member's access is everything the owner can listen to
+// (`all`) or only the owner's collections shared with them (`collections`).
+
+/** A household member's kind. */
+export type MemberKind = 'kid' | 'grownup';
+
+/** What a household member can listen to: everything their owner can (`all`), or only
+ * the owner's collections shared with them (`collections`). */
+export type MemberAccess = 'all' | 'collections';
+
+/** One of the owner's collections shared with a member, with its item count. */
+export type HouseholdMemberCollection = { id: number; name: string; items: number };
+
+/** One of the caller's household members (GET /me/household/members, and the answers of
+ * POST and PATCH). Timestamps are fixed-width UTC milliseconds. */
+export type HouseholdMember = {
+  id: number;
+  /** The name the owner gave them (the username when none). */
+  name: string;
+  username: string;
+  kind: MemberKind;
+  access: MemberAccess;
+  created_at: string;
+  /** The owner's collections shared with them: present (possibly `[]`) for
+   * `access: 'collections'`, absent for `all`. */
+  collections?: HouseholdMemberCollection[];
+  /** How many devices they are signed in on (sessions plus API keys). */
+  devices: number;
+  /** Null when they have never listened. */
+  last_listened_at: string | null;
+};
+
+/** Why the caller can't add household members: the server's switch is off
+ * (`feature_off`), the admin turned it off for this person (`not_allowed`), the caller is
+ * a member themselves (`member`) or a demo account (`demo`). Being at the cap is not a
+ * reason: compare `members.length` with `max`. */
+export type HouseholdMembersReason = 'feature_off' | 'not_allowed' | 'member' | 'demo';
+
+/** Response of GET /me/household/members (capability `household_members`). `allowed`
+ * gates adding only: an owner can always rename, sign out and delete the members they
+ * have. `max` is the most members one person may have. Members sorted oldest first. */
+export type HouseholdMembers = {
+  allowed: boolean;
+  /** Present when `allowed` is false. */
+  reason?: HouseholdMembersReason;
+  max: number;
+  members: HouseholdMember[];
+};
+
+/** Body of POST /me/household/members. `name` is 1-40 characters after trimming (the
+ * server derives the username). `sign_in_here` also signs the member in on the caller's
+ * device (the answer's `session`). `collection_ids` is the full set of the caller's own
+ * collections to share with them (sent for `access: 'collections'`). */
+export type AddMemberBody = {
+  name: string;
+  kind: MemberKind;
+  access: MemberAccess;
+  sign_in_here?: boolean;
+  collection_ids?: number[];
+};
+
+/** Response of POST /me/household/members (201): the new member, and their session on
+ * this device when the body asked for `sign_in_here`. */
+export type AddMemberResult = { member: HouseholdMember; session?: AuthSession };
+
+/** Body of PATCH /me/household/members/{id}: absent fields are left as they are (at least
+ * one is required). `kind: 'kid'` removes the member's password and API keys.
+ * `collection_ids` replaces the set of the caller's collections shared with them. */
+export type UpdateMemberBody = {
+  name?: string;
+  kind?: MemberKind;
+  access?: MemberAccess;
+  collection_ids?: number[];
+};
