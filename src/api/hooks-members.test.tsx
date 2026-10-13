@@ -31,7 +31,12 @@ function makeClient() {
 }
 type StubClient = ReturnType<typeof makeClient>;
 const mockClients: Record<string, StubClient> = {};
+/** The app's query client, as `removeConnection`'s hook in hooks.ts reaches it. */
+let mockQueryClient: QueryClient | undefined;
 jest.mock('@/api/provider', () => ({
+  get queryClient() {
+    return mockQueryClient;
+  },
   useApi: (id?: string) => mockClients[id ?? 'c1'],
   useApis: () => [],
   useCid: (id?: string) => id ?? 'c1',
@@ -60,6 +65,7 @@ import {
   useUpdateMember,
 } from '@/api/hooks';
 import { noteError } from '@/api/reachability';
+import { type Connection, useSession } from '@/stores/session';
 /* eslint-enable import/first */
 
 function serverWith(id: string, caps: Partial<Capabilities>): ServerInfo {
@@ -478,5 +484,41 @@ describe('useRevokeMyDevice and alsoMembers', () => {
     await run(result.current.m, { id: 11, alsoMembers: true });
     expect(mockClients.c1.revokeMyDevice).toHaveBeenCalledWith(11);
     expect(mockClients.c1.revokeMyDevice.mock.calls[0]).toHaveLength(1);
+  });
+});
+
+describe('a connection removed from this device', () => {
+  const conn = (id: string, serverId: string, userId: number) =>
+    ({
+      id,
+      serverId,
+      name: 'S',
+      serverUrl: 'u',
+      token: 't',
+      user: { id: userId, username: `u${userId}` },
+    }) as unknown as Connection;
+
+  // Any way out (signed out on their account page, removed from the Household page or
+  // "Who's listening?"): the owner's lists of who is signed in here are read again.
+  it('reads the household again on every other connection here on its server', async () => {
+    const qc = new QueryClient();
+    mockQueryClient = qc;
+    const invalidate = jest.spyOn(qc, 'invalidateQueries');
+    useSession.setState({
+      connections: [conn('a.1', 'a', 1), conn('a.12', 'a', 12), conn('b.3', 'b', 3)],
+      defaultConnectionId: 'a.1',
+    });
+    await useSession.getState().removeConnection('a.12');
+    const keys = invalidate.mock.calls.map(([f]) => (f as { queryKey?: unknown }).queryKey);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        qk.householdMembers('a.1'),
+        qk.memberDevicesAll('a.1'),
+        qk.myDevices('a.1'),
+      ]),
+    );
+    // Another server's household is not theirs.
+    expect(keys.some((k) => (k as unknown[]).includes('b.3'))).toBe(false);
+    mockQueryClient = undefined;
   });
 });

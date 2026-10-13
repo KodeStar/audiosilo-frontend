@@ -1,9 +1,7 @@
-import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { invalidateHousehold } from '@/api/hooks';
 import { useApiRegistry } from '@/api/provider';
 import { freshAccountUser, signOutConnection } from '@/components/account/use-sign-out';
 import {
@@ -18,13 +16,12 @@ import { Button } from '@/components/ui/button';
 import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { managerName, needsPasswordWarning } from '@/lib/account';
-import { serverIdOf } from '@/lib/connection-id';
 import { clearPin } from '@/lib/profile-pin';
 import { connectionsOfProfile, deleteProfile, type Profile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
 /**
- * "Remove from this device" for a person (Settings > Household): signs this device out of
+ * "Remove from this device" for a person (the Household page): signs this device out of
  * each of their servers through the same sign-out as an account page (`signOutConnection`:
  * their book stops with its place saved, queued saves land, the token is revoked, their
  * downloads here go), then drops their PIN and profile. Before it, the same warning as
@@ -33,7 +30,8 @@ import { type Connection, useSession } from '@/stores/session';
  * 8b-1, `user.managed_by`) needs none: the line says who manages their account and can
  * sign them in here again or set up their own device. Once they are signed out, the
  * other connections on each of their servers read their household again (the members'
- * devices, the list's device counts, `member_sign_ins`): the owner's page must not keep
+ * devices, the list's device counts, `member_sign_ins`; `removeConnection`'s hook in
+ * hooks.ts does it, for every way a connection leaves): the owner's page must not keep
  * showing this device under the member. The way out of a forgotten PIN.
  */
 export function useRemovePerson(): {
@@ -41,7 +39,6 @@ export function useRemovePerson(): {
   dialog: ReactNode;
 } {
   const { t } = useTranslation();
-  const qc = useQueryClient();
   const { clients } = useApiRegistry();
   const setConnectionUser = useSession((s) => s.setConnectionUser);
   const [pending, setPending] = useState<{
@@ -74,7 +71,6 @@ export function useRemovePerson(): {
     try {
       for (const c of pending.servers) {
         await signOutConnection(c.id, clients.get(c.id) ?? null);
-        refreshHousehold(qc, c);
       }
       await clearPin(pending.profile.id).catch(() => undefined);
       deleteProfile(pending.profile.id);
@@ -130,15 +126,4 @@ export function useRemovePerson(): {
   );
 
   return { request, dialog };
-}
-
-/** `removed` was signed out of this device: every other connection here on its server
- * (its owner's, when it is a household member) reads what showed it signed in here
- * again: the members' devices, the members list and its own devices. */
-function refreshHousehold(qc: QueryClient, removed: Connection) {
-  const server = serverIdOf(removed);
-  for (const c of useSession.getState().connections) {
-    if (c.id === removed.id || serverIdOf(c) !== server) continue;
-    invalidateHousehold(qc, c.id);
-  }
 }

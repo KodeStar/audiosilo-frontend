@@ -57,6 +57,7 @@ jest.mock('@/components/house/house-sharing-row', () => {
 
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 import { formatTimeOfDay } from '@/lib/format';
 import * as profilePin from '@/lib/profile-pin';
 import { checkPin, setPin } from '@/lib/profile-pin';
@@ -365,20 +366,24 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
   });
 
   it("reads the household again on the person's server once they are removed (the owner's member devices)", async () => {
+    // The app's query client (the provider's): `removeConnection`'s hook in hooks.ts reads
+    // the household again there, whichever screen removed them.
     await mount();
-    client.setQueryData(qk.memberDevices('a.1', 3), []);
-    client.setQueryData(qk.householdMembers('a.1'), { allowed: true, max: 6, members: [] });
-    client.setQueryData(qk.myDevices('a.1'), []);
-    client.setQueryData(qk.memberDevices('b.1', 3), []);
+    queryClient.setQueryData(qk.memberDevices('a.1', 3), []);
+    queryClient.setQueryData(qk.householdMembers('a.1'), { allowed: true, max: 6, members: [] });
+    queryClient.setQueryData(qk.myDevices('a.1'), []);
+    queryClient.setQueryData(qk.memberDevices('b.1', 3), []);
     await fireEvent.press(screen.getByTestId('remove-person-leo'));
     await fireEvent.press(await screen.findByTestId('remove-person-confirm'));
     await waitFor(() => expect(leo()).toBeUndefined());
-    const stale = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated === true;
+    const stale = (key: readonly unknown[]) =>
+      queryClient.getQueryState(key)?.isInvalidated === true;
     expect(stale(qk.memberDevices('a.1', 3))).toBe(true);
     expect(stale(qk.householdMembers('a.1'))).toBe(true);
     expect(stale(qk.myDevices('a.1'))).toBe(true);
     // Another server's household is untouched.
     expect(stale(qk.memberDevices('b.1', 3))).toBe(false);
+    queryClient.clear();
   });
 
   it("describes a household member's kids mode by who manages them, never the server's admin", async () => {

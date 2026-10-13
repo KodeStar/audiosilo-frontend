@@ -18,9 +18,11 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 
 import { byPosition } from '@/lib/by-position';
+import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
+import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
@@ -2010,6 +2012,18 @@ export function invalidateHousehold(qc: QueryClient, cid: string, memberId?: num
   });
   void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
 }
+
+// Whoever is removed from this device (signed out, their person removed, a member's
+// profile removed from the Household page: any path through `removeConnection`), every
+// other connection here on the same server reads again what showed them signed in here
+// (`invalidateHousehold`: the members' devices and counts, the owner's `member_sign_ins`).
+// The removed connection's own answers are dropped by the provider.
+onConnectionRemoved((id) => {
+  const server = parseConnectionId(id).serverId;
+  for (const c of useSession.getState().connections) {
+    if (serverIdOf(c) === server) invalidateHousehold(queryClient, c.id);
+  }
+});
 
 /** Read again the collections a member write changed the sharing of: the list and every
  * detail (each lists the people it is shared with, `shared_with`, which the share sheet
